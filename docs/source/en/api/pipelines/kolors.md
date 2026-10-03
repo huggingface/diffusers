@@ -32,8 +32,8 @@ import torch
 
 from diffusers import DPMSolverMultistepScheduler, KolorsPipeline
 
-pipe = KolorsPipeline.from_pretrained("Kwai-Kolors/Kolors-diffusers", torch_dtype=torch.float16, variant="fp16")
-pipe.to("cuda")
+pipe = KolorsPipeline.from_pretrained("Kwai-Kolors/Kolors-diffusers", dtype=torch.float16, variant="fp16")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, use_karras_sigmas=True)
 
 image = pipe(
@@ -50,17 +50,11 @@ image.save("kolors_sample.png")
 
 Kolors needs a different IP Adapter to work, and it uses [Openai-CLIP-336](https://huggingface.co/openai/clip-vit-large-patch14-336) as an image encoder.
 
-<Tip>
+> [!TIP]
+> Using an IP Adapter with Kolors requires more than 24GB of VRAM. To use it, we recommend using [`~DiffusionPipeline.enable_model_cpu_offload`] on consumer GPUs.
 
-Using an IP Adapter with Kolors requires more than 24GB of VRAM. To use it, we recommend using [`~DiffusionPipeline.enable_model_cpu_offload`] on consumer GPUs.
-
-</Tip>
-
-<Tip>
-
-While Kolors is integrated in Diffusers, you need to load the image encoder from a revision to use the safetensor files. You can still use the main branch of the original repository if you're comfortable loading pickle checkpoints.
-
-</Tip>
+> [!TIP]
+> While Kolors is integrated in Diffusers, you need to load the image encoder from a revision to use the safetensor files. You can still use the main branch of the original repository if you're comfortable loading pickle checkpoints.
 
 ```python
 import torch
@@ -73,12 +67,12 @@ image_encoder = CLIPVisionModelWithProjection.from_pretrained(
     "Kwai-Kolors/Kolors-IP-Adapter-Plus",
     subfolder="image_encoder",
     low_cpu_mem_usage=True,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     revision="refs/pr/4",
 )
 
 pipe = KolorsPipeline.from_pretrained(
-    "Kwai-Kolors/Kolors-diffusers", image_encoder=image_encoder, torch_dtype=torch.float16, variant="fp16"
+    "Kwai-Kolors/Kolors-diffusers", image_encoder=image_encoder, dtype=torch.float16, variant="fp16"
 )
 pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config, use_karras_sigmas=True)
 

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,9 +31,8 @@ from .utils import PeftLoraLoaderMixinTests  # noqa: E402
 @require_peft_backend
 class SanaLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     pipeline_class = SanaPipeline
-    scheduler_cls = FlowMatchEulerDiscreteScheduler(shift=7.0)
-    scheduler_kwargs = {}
-    scheduler_classes = [FlowMatchEulerDiscreteScheduler]
+    scheduler_cls = FlowMatchEulerDiscreteScheduler
+    scheduler_kwargs = {"shift": 7.0}
     transformer_kwargs = {
         "patch_size": 1,
         "in_channels": 4,
@@ -76,6 +75,8 @@ class SanaLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     tokenizer_cls, tokenizer_id = GemmaTokenizer, "hf-internal-testing/dummy-gemma"
     text_encoder_cls, text_encoder_id = Gemma2Model, "hf-internal-testing/dummy-gemma-for-diffusers"
 
+    supports_text_encoder_loras = False
+
     @property
     def output_shape(self):
         return (1, 32, 32, 3)
@@ -107,33 +108,9 @@ class SanaLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         return noise, input_ids, pipeline_inputs
 
     @unittest.skip("Not supported in SANA.")
-    def test_modify_padding_mode(self):
-        pass
-
-    @unittest.skip("Not supported in SANA.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
     @unittest.skip("Not supported in SANA.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in SANA.")
-    def test_simple_inference_with_partial_text_lora(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in SANA.")
-    def test_simple_inference_with_text_lora(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in SANA.")
-    def test_simple_inference_with_text_lora_and_scale(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in SANA.")
-    def test_simple_inference_with_text_lora_fused(self):
-        pass
-
-    @unittest.skip("Text encoder LoRA is not supported in SANA.")
-    def test_simple_inference_with_text_lora_save_load(self):
         pass

@@ -33,6 +33,8 @@ The table below provides a comparison of optimization strategy combinations and 
 
 This guide will show you how to compile and offload a quantized model with [bitsandbytes](../quantization/bitsandbytes#torchcompile). Make sure you are using [PyTorch nightly](https://pytorch.org/get-started/locally/) and the latest version of bitsandbytes.
 
+While we use bitsandbytes in this example, other quantization backends such as [TorchAO](../quantization/torchao.md) also support these features.
+
 ```bash
 pip install -U bitsandbytes
 ```
@@ -59,8 +61,8 @@ pipeline_quant_config = PipelineQuantizationConfig(
 pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
-).to("cuda")
+    dtype=torch.bfloat16,
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 # compile
 pipeline.transformer.to(memory_format=torch.channels_last)
@@ -100,8 +102,8 @@ pipeline_quant_config = PipelineQuantizationConfig(
 pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
-).to("cuda")
+    dtype=torch.bfloat16,
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 # model CPU offloading
 pipeline.enable_model_cpu_offload()
@@ -140,13 +142,13 @@ pipeline_quant_config = PipelineQuantizationConfig(
 )
 
 text_encoder = UMT5EncoderModel.from_pretrained(
-    "Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16
+    "Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", dtype=torch.bfloat16
 )
 pipeline = DiffusionPipeline.from_pretrained(
     "Wan-AI/Wan2.1-T2V-14B-Diffusers",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
-).to("cuda")
+    dtype=torch.bfloat16,
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 # group offloading
 onload_device = torch.device("cuda")

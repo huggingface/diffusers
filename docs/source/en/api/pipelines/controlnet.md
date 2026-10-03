@@ -28,11 +28,8 @@ This model was contributed by [takuma104](https://huggingface.co/takuma104). ❤
 
 The original codebase can be found at [lllyasviel/ControlNet](https://github.com/lllyasviel/ControlNet), and you can find official ControlNet checkpoints on [lllyasviel's](https://huggingface.co/lllyasviel) Hub profile.
 
-<Tip>
-
-Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
-
-</Tip>
+> [!TIP]
+> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reusing-models-in-multiple-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
 ## StableDiffusionControlNetPipeline
 [[autodoc]] StableDiffusionControlNetPipeline
@@ -40,8 +37,6 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 	- __call__
 	- enable_attention_slicing
 	- disable_attention_slicing
-	- enable_vae_slicing
-	- disable_vae_slicing
 	- enable_xformers_memory_efficient_attention
 	- disable_xformers_memory_efficient_attention
 	- load_textual_inversion
@@ -52,8 +47,6 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 	- __call__
 	- enable_attention_slicing
 	- disable_attention_slicing
-	- enable_vae_slicing
-	- disable_vae_slicing
 	- enable_xformers_memory_efficient_attention
 	- disable_xformers_memory_efficient_attention
 	- load_textual_inversion
@@ -64,8 +57,6 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 	- __call__
 	- enable_attention_slicing
 	- disable_attention_slicing
-	- enable_vae_slicing
-	- disable_vae_slicing
 	- enable_xformers_memory_efficient_attention
 	- disable_xformers_memory_efficient_attention
 	- load_textual_inversion

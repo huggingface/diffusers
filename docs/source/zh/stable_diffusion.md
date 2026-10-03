@@ -39,11 +39,8 @@ prompt = "portrait photo of a old warrior chief"
 
 ## 速度
 
-<Tip>
-
-💡 如果你没有 GPU, 你可以从像 [Colab](https://colab.research.google.com/) 这样的 GPU 提供商获取免费的 GPU !
-
-</Tip>
+> [!TIP]
+> 💡 如果你没有 GPU, 你可以从像 [Colab](https://colab.research.google.com/) 这样的 GPU 提供商获取免费的 GPU !
 
 加速推理的最简单方法之一是将 pipeline 放在 GPU 上 ，就像使用任何 PyTorch 模块一样：
 
@@ -78,7 +75,7 @@ image
 ```python
 import torch
 
-pipeline = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, use_safetensors=True)
+pipeline = DiffusionPipeline.from_pretrained(model_id, dtype=torch.float16, use_safetensors=True)
 pipeline = pipeline.to("cuda")
 generator = torch.Generator("cuda").manual_seed(0)
 image = pipeline(prompt, generator=generator).images[0]
@@ -91,11 +88,8 @@ image
 
 这一次，生成图像只花了约 11 秒，比之前快了近 3 倍！
 
-<Tip>
-
-💡 我们强烈建议把 pipeline 精度降低至 `float16` , 到目前为止, 我们很少看到输出质量有任何下降。
-
-</Tip>
+> [!TIP]
+> 💡 我们强烈建议把 pipeline 精度降低至 `float16` , 到目前为止, 我们很少看到输出质量有任何下降。
 
 另一个选择是减少推理步数。 你可以选择一个更高效的调度器 (*scheduler*) 可以减少推理步数同时保证输出质量。您可以在 [DiffusionPipeline] 中通过调用compatibles方法找到与当前模型兼容的调度器 (*scheduler*)。
 
@@ -201,7 +195,7 @@ make_image_grid(images, rows=2, cols=4)
 ```python
 from diffusers import AutoencoderKL
 
-vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16).to("cuda")
+vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", dtype=torch.float16).to("cuda")
 pipeline.vae = vae
 images = pipeline(**get_inputs(batch_size=8)).images
 make_image_grid(images, rows=2, cols=4)

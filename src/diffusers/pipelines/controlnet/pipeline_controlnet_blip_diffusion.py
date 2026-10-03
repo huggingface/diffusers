@@ -1,5 +1,5 @@
 # Copyright 2025 Salesforce.com, inc.
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,8 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import List, Optional, Union
-
 import PIL.Image
 import torch
 from transformers import CLIPTokenizer
@@ -22,9 +20,9 @@ from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
 from ...schedulers import PNDMScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
-from ..blip_diffusion.blip_image_processing import BlipImageProcessor
-from ..blip_diffusion.modeling_blip2 import Blip2QFormerModel
-from ..blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
+from ..deprecated.blip_diffusion.blip_image_processing import BlipImageProcessor
+from ..deprecated.blip_diffusion.modeling_blip2 import Blip2QFormerModel
+from ..deprecated.blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
 from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, ImagePipelineOutput
 
 
@@ -126,8 +124,8 @@ class BlipDiffusionControlNetPipeline(DeprecatedPipelineMixin, DiffusionPipeline
         controlnet: ControlNetModel,
         image_processor: BlipImageProcessor,
         ctx_begin_pos: int = 2,
-        mean: List[float] = None,
-        std: List[float] = None,
+        mean: list[float] = None,
+        std: list[float] = None,
     ):
         super().__init__()
 
@@ -241,36 +239,36 @@ class BlipDiffusionControlNetPipeline(DeprecatedPipelineMixin, DiffusionPipeline
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: List[str],
+        prompt: list[str],
         reference_image: PIL.Image.Image,
         condtioning_image: PIL.Image.Image,
-        source_subject_category: List[str],
-        target_subject_category: List[str],
-        latents: Optional[torch.Tensor] = None,
+        source_subject_category: list[str],
+        target_subject_category: list[str],
+        latents: torch.Tensor | None = None,
         guidance_scale: float = 7.5,
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 50,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        neg_prompt: Optional[str] = "",
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        neg_prompt: str | None = "",
         prompt_strength: float = 1.0,
         prompt_reps: int = 20,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
-    ):
+    ) -> ImagePipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`List[str]`):
+            prompt (`list[str]`):
                 The prompt or prompts to guide the image generation.
             reference_image (`PIL.Image.Image`):
                 The reference image to condition the generation on.
             condtioning_image (`PIL.Image.Image`):
                 The conditioning canny edge image to condition the generation on.
-            source_subject_category (`List[str]`):
+            source_subject_category (`list[str]`):
                 The source subject category.
-            target_subject_category (`List[str]`):
+            target_subject_category (`list[str]`):
                 The target subject category.
             latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
@@ -286,12 +284,10 @@ class BlipDiffusionControlNetPipeline(DeprecatedPipelineMixin, DiffusionPipeline
                 The height of the generated image.
             width (`int`, *optional*, defaults to 512):
                 The width of the generated image.
-            seed (`int`, *optional*, defaults to 42):
-                The seed to use for random generation.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             neg_prompt (`str`, *optional*, defaults to ""):
@@ -302,6 +298,10 @@ class BlipDiffusionControlNetPipeline(DeprecatedPipelineMixin, DiffusionPipeline
                 to amplify the prompt.
             prompt_reps (`int`, *optional*, defaults to 20):
                 The number of times the prompt is repeated along with prompt_strength to amplify the prompt.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
         Examples:
 
         Returns:

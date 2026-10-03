@@ -225,7 +225,7 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
         decoder_guidance_scale: float = 8.0,
         enable_sequential_cpu_offload=True,
         gpu_id=0,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
     ):
         """

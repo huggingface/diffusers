@@ -12,16 +12,15 @@ specific language governing permissions and limitations under the License.
 
 # Instalação
 
-🤗 Diffusers é testado no Python 3.8+, PyTorch 1.7.0+, e Flax. Siga as instruções de instalação abaixo para a biblioteca de deep learning que você está utilizando:
+🤗 Diffusers é testado no Python 3.8+ e PyTorch 1.7.0+. Siga as instruções de instalação abaixo para a biblioteca de deep learning que você está utilizando:
 
 - [PyTorch](https://pytorch.org/get-started/locally/) instruções de instalação
-- [Flax](https://flax.readthedocs.io/en/latest/) instruções de instalação
 
 ## Instalação com pip
 
 Recomenda-se instalar 🤗 Diffusers em um [ambiente virtual](https://docs.python.org/3/library/venv.html).
 Se você não está familiarizado com ambiente virtuals, veja o [guia](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/).
-Um ambiente virtual deixa mais fácil gerenciar diferentes projetos e evitar problemas de compatibilidade entre dependências.
+Um ambiente virtual facilita gerenciar diferentes projetos e evitar problemas de compatibilidade entre dependências.
 
 Comece criando um ambiente virtual no diretório do projeto:
 
@@ -43,11 +42,6 @@ Recomenda-se a instalação do 🤗 Transformers porque 🤗 Diffusers depende d
 pip install diffusers["torch"] transformers
 ```
 </pt>
-<jax>
-```bash
-pip install diffusers["flax"] transformers
-```
-</jax>
 </frameworkcontent>
 
 ## Instalação a partir do código fonte
@@ -93,22 +87,14 @@ cd diffusers
 pip install -e ".[torch]"
 ```
 </pt>
-<jax>
-```bash
-pip install -e ".[flax]"
-```
-</jax>
 </frameworkcontent>
 
-Esses comandos irá linkar a pasta que você clonou o repositório e os caminhos das suas bibliotecas Python.
+Esses comandos irão vincular a pasta que você clonou o repositório e os caminhos das suas bibliotecas Python.
 Python então irá procurar dentro da pasta que você clonou além dos caminhos normais das bibliotecas.
 Por exemplo, se o pacote python for tipicamente instalado no `~/anaconda3/envs/main/lib/python3.10/site-packages/`, o Python também irá procurar na pasta `~/diffusers/` que você clonou.
 
-<Tip warning={true}>
-
-Você deve deixar a pasta `diffusers` se você quiser continuar usando a biblioteca.
-
-</Tip>
+> [!WARNING]
+> Você deve manter a pasta `diffusers` se quiser continuar usando a biblioteca.
 
 Agora você pode facilmente atualizar seu clone para a última versão do 🤗 Diffusers com o seguinte comando:
 
@@ -134,7 +120,7 @@ Para mais detalhes de como gerenciar e limpar o cache, olhe o guia de [caching](
 ## Telemetria
 
 Nossa biblioteca coleta informações de telemetria durante as requisições [`~DiffusionPipeline.from_pretrained`].
-O dado coletado inclui a versão do 🤗 Diffusers e PyTorch/Flax, o modelo ou classe de pipeline requisitado,
+O dado coletado inclui a versão do 🤗 Diffusers e PyTorch, o modelo ou classe de pipeline requisitado,
 e o caminho para um checkpoint pré-treinado se ele estiver hospedado no Hugging Face Hub.
 Esse dado de uso nos ajuda a debugar problemas e priorizar novas funcionalidades.
 Telemetria é enviada apenas quando é carregado modelos e pipelines do Hub,

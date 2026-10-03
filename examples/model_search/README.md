@@ -101,7 +101,7 @@ pipeline.auto_load_textual_inversion("EasyNegative", token="EasyNegative")
 | search_word     | string, Path           | ー            | The search query string. Can be a keyword, Civitai URL, local directory or file path. |
 | model_type      | string                 | `Checkpoint`  | The type of model to search for.  <br>(for example `Checkpoint`, `TextualInversion`, `Controlnet`, `LORA`, `Hypernetwork`, `AestheticGradient`, `Poses`)      |
 | base_model      | string                 | None          | Trained model tag (for example  `SD 1.5`, `SD 3.5`, `SDXL 1.0`) |
-| torch_dtype     | string, torch.dtype    | None          | Override the default `torch.dtype` and load the model with another dtype.     |
+| dtype     | string, torch.dtype    | None          | Override the default `torch.dtype` and load the model with another dtype.     |
 | force_download  | bool                   | False         | Whether or not to force the (re-)download of the model weights and configuration files, overriding the cached versions if they exist. |
 | cache_dir       | string, Path | None    | Path to the folder where cached files are stored. |
 | resume          | bool   | False         | Whether to resume an incomplete download. |
@@ -134,7 +134,7 @@ pipeline.auto_load_textual_inversion("EasyNegative", token="EasyNegative")
 |:---------------------:|:-------------------:|:--------------:|:----------------------------------------------------------------:|
 | search_word           | string, Path        | ー             | The search query string. Can be a keyword, Hugging Face URL, local directory or file path, or a Hugging Face path (`<creator>/<repo>`). |
 | checkpoint_format     | string              | `single_file`  | The format of the model checkpoint.<br>● `single_file` to search for `single file checkpoint` <br>●`diffusers` to search for `multifolder diffusers format checkpoint` |
-| torch_dtype           | string, torch.dtype | None           | Override the default `torch.dtype` and load the model with another dtype. |
+| dtype           | string, torch.dtype | None           | Override the default `torch.dtype` and load the model with another dtype. |
 | force_download        | bool                | False          | Whether or not to force the (re-)download of the model weights and configuration files, overriding the cached versions if they exist. |
 | cache_dir             | string, Path        | None           | Path to a directory where a downloaded pretrained model configuration is cached if the standard cache is not used.   |
 | token                 | string, bool        | None           | The token to use as HTTP bearer authorization for remote files.  |

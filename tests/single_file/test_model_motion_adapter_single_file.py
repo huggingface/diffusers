@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
 
 from diffusers import (
     MotionAdapter,
@@ -27,7 +26,7 @@ from ..testing_utils import (
 enable_full_determinism()
 
 
-class MotionAdapterSingleFileTests(unittest.TestCase):
+class MotionAdapterSingleFileTests:
     model_class = MotionAdapter
 
     def test_single_file_components_version_v1_5(self):

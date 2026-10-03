@@ -15,22 +15,24 @@
 import inspect
 import json
 import os
+from collections import defaultdict
 from functools import partial
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Union
+from typing import Literal
 
 import safetensors
 import torch
 
+from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
 from ..utils import (
     MIN_PEFT_VERSION,
     USE_PEFT_BACKEND,
     check_peft_version,
+    convert_sai_sd_control_lora_state_dict_to_peft,
     convert_unet_state_dict_to_peft,
     delete_adapter_layers,
     get_adapter_name,
     is_peft_available,
-    is_peft_version,
     logging,
     set_adapter_layers,
     set_weights_and_activate_adapters,
@@ -42,27 +44,13 @@ from .unet_loader_utils import _maybe_expand_lora_scales
 
 logger = logging.get_logger(__name__)
 
-_SET_ADAPTER_SCALE_FN_MAPPING = {
-    "UNet2DConditionModel": _maybe_expand_lora_scales,
-    "UNetMotionModel": _maybe_expand_lora_scales,
-    "SD3Transformer2DModel": lambda model_cls, weights: weights,
-    "FluxTransformer2DModel": lambda model_cls, weights: weights,
-    "CogVideoXTransformer3DModel": lambda model_cls, weights: weights,
-    "ConsisIDTransformer3DModel": lambda model_cls, weights: weights,
-    "MochiTransformer3DModel": lambda model_cls, weights: weights,
-    "HunyuanVideoTransformer3DModel": lambda model_cls, weights: weights,
-    "LTXVideoTransformer3DModel": lambda model_cls, weights: weights,
-    "SanaTransformer2DModel": lambda model_cls, weights: weights,
-    "AuraFlowTransformer2DModel": lambda model_cls, weights: weights,
-    "Lumina2Transformer2DModel": lambda model_cls, weights: weights,
-    "WanTransformer3DModel": lambda model_cls, weights: weights,
-    "CogView4Transformer2DModel": lambda model_cls, weights: weights,
-    "HiDreamImageTransformer2DModel": lambda model_cls, weights: weights,
-    "HunyuanVideoFramepackTransformer3DModel": lambda model_cls, weights: weights,
-    "WanVACETransformer3DModel": lambda model_cls, weights: weights,
-    "ChromaTransformer2DModel": lambda model_cls, weights: weights,
-    "QwenImageTransformer2DModel": lambda model_cls, weights: weights,
-}
+_SET_ADAPTER_SCALE_FN_MAPPING = defaultdict(
+    lambda: (lambda model_cls, weights: weights),
+    {
+        "UNet2DConditionModel": _maybe_expand_lora_scales,
+        "UNetMotionModel": _maybe_expand_lora_scales,
+    },
+)
 
 
 class PeftAdapterMixin:
@@ -81,7 +69,7 @@ class PeftAdapterMixin:
 
     _hf_peft_config_loaded = False
     # kwargs for prepare_model_for_compiled_hotswap, if required
-    _prepare_lora_hotswap_kwargs: Optional[dict] = None
+    _prepare_lora_hotswap_kwargs: dict | None = None
 
     @classmethod
     # Copied from diffusers.loaders.lora_base.LoraBaseMixin._optionally_disable_offloading
@@ -107,13 +95,13 @@ class PeftAdapterMixin:
 
             prefix (`str`, *optional*): Prefix to filter the state dict.
 
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             local_files_only (`bool`, *optional*, defaults to `False`):
@@ -127,7 +115,7 @@ class PeftAdapterMixin:
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
-            network_alphas (`Dict[str, float]`):
+            network_alphas (`dict[str, float]`):
                 The value of the network alpha used for stable learning and preventing underflow. This value has the
                 same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
                 link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
@@ -165,6 +153,16 @@ class PeftAdapterMixin:
         from peft.tuners.tuners_utils import BaseTunerLayer
 
         from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
+        from ..hooks.tensor_parallel import _raise_if_tensor_parallel
+
+        # `_tp_plan` covers the base `Linear` layers only, so the injected adapter weights would stay unsharded
+        # and the sharded base layer would be added to a full-sized adapter output.
+        _raise_if_tensor_parallel(
+            self,
+            "have a LoRA adapter loaded",
+            "The adapter layers are not covered by the model's `_tp_plan`. Load the adapter before sharding the "
+            "model.",
+        )
 
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
@@ -181,11 +179,6 @@ class PeftAdapterMixin:
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
         metadata = kwargs.pop("metadata", None)
         allow_pickle = False
-
-        if low_cpu_mem_usage and is_peft_version("<=", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
         state_dict, metadata = _fetch_state_dict(
@@ -229,6 +222,13 @@ class PeftAdapterMixin:
             if "lora_A" not in first_key:
                 state_dict = convert_unet_state_dict_to_peft(state_dict)
 
+            # Control LoRA from SAI is different from BFL Control LoRA
+            # https://huggingface.co/stabilityai/control-lora
+            # https://huggingface.co/comfyanonymous/ControlNet-v1-1_fp16_safetensors
+            is_sai_sd_control_lora = "lora_controlnet" in state_dict
+            if is_sai_sd_control_lora:
+                state_dict = convert_sai_sd_control_lora_state_dict_to_peft(state_dict)
+
             rank = {}
             for key, val in state_dict.items():
                 # Cannot figure out rank from lora layers that don't have at least 2 dimensions.
@@ -260,6 +260,14 @@ class PeftAdapterMixin:
                 adapter_name=adapter_name,
             )
 
+            # Adjust LoRA config for Control LoRA
+            if is_sai_sd_control_lora:
+                lora_config.lora_alpha = lora_config.r
+                lora_config.alpha_pattern = lora_config.rank_pattern
+                lora_config.bias = "all"
+                lora_config.modules_to_save = lora_config.exclude_modules
+                lora_config.exclude_modules = None
+
             # <Unsafe code
             # We can be sure that the following works as it just sets attention processors, lora layers and puts all in the same dtype
             # Now we remove any existing hooks to `_pipeline`.
@@ -269,23 +277,14 @@ class PeftAdapterMixin:
             is_model_cpu_offload, is_sequential_cpu_offload, is_group_offload = self._optionally_disable_offloading(
                 _pipeline
             )
-            peft_kwargs = {}
-            if is_peft_version(">=", "0.13.1"):
-                peft_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
+            peft_kwargs = {"low_cpu_mem_usage": low_cpu_mem_usage}
 
             if hotswap or (self._prepare_lora_hotswap_kwargs is not None):
-                if is_peft_version(">", "0.14.0"):
-                    from peft.utils.hotswap import (
-                        check_hotswap_configs_compatible,
-                        hotswap_adapter_from_state_dict,
-                        prepare_model_for_compiled_hotswap,
-                    )
-                else:
-                    msg = (
-                        "Hotswapping requires PEFT > v0.14. Please upgrade PEFT to a higher version or install it "
-                        "from source."
-                    )
-                    raise ImportError(msg)
+                from peft.utils.hotswap import (
+                    check_hotswap_configs_compatible,
+                    hotswap_adapter_from_state_dict,
+                    prepare_model_for_compiled_hotswap,
+                )
 
             if hotswap:
 
@@ -293,7 +292,7 @@ class PeftAdapterMixin:
                     # For hotswapping, we need the adapter name to be present in the state dict keys
                     new_sd = {}
                     for k, v in sd.items():
-                        if k.endswith("lora_A.weight") or key.endswith("lora_B.weight"):
+                        if k.endswith("lora_A.weight") or k.endswith("lora_B.weight"):
                             k = k[: -len(".weight")] + f".{adapter_name}.weight"
                         elif k.endswith("lora_B.bias"):  # lora_bias=True option
                             k = k[: -len(".bias")] + f".{adapter_name}.bias"
@@ -383,7 +382,7 @@ class PeftAdapterMixin:
         adapter_name: str = "default",
         upcast_before_saving: bool = False,
         safe_serialization: bool = True,
-        weight_name: Optional[str] = None,
+        weight_name: str | None = None,
     ):
         """
         Save the LoRA parameters corresponding to the underlying model.
@@ -447,16 +446,16 @@ class PeftAdapterMixin:
 
     def set_adapters(
         self,
-        adapter_names: Union[List[str], str],
-        weights: Optional[Union[float, Dict, List[float], List[Dict], List[None]]] = None,
+        adapter_names: list[str] | str,
+        weights: float | dict | list[float] | list[dict] | list[None] | None = None,
     ):
         """
         Set the currently active adapters for use in the diffusion network (e.g. unet, transformer, etc.).
 
         Args:
-            adapter_names (`List[str]` or `str`):
+            adapter_names (`list[str]` or `str`):
                 The names of the adapters to use.
-            adapter_weights (`Union[List[float], float]`, *optional*):
+            weights (`Union[List[float], float]`, *optional*):
                 The adapter(s) weights to use with the UNet. If `None`, the weights are set to `1.0` for all the
                 adapters.
 
@@ -473,7 +472,7 @@ class PeftAdapterMixin:
             "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
         )
         pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.unet.set_adapters(["cinematic", "pixel"], adapter_weights=[0.5, 0.5])
+        pipeline.unet.set_adapters(["cinematic", "pixel"], weights=[0.5, 0.5])
         ```
         """
         if not USE_PEFT_BACKEND:
@@ -539,7 +538,7 @@ class PeftAdapterMixin:
         inject_adapter_in_model(adapter_config, self, adapter_name)
         self.set_adapter(adapter_name)
 
-    def set_adapter(self, adapter_name: Union[str, List[str]]) -> None:
+    def set_adapter(self, adapter_name: str | list[str]) -> None:
         """
         Sets a specific adapter by forcing the model to only use that adapter and disables the other adapters.
 
@@ -547,7 +546,7 @@ class PeftAdapterMixin:
         [documentation](https://huggingface.co/docs/peft).
 
         Args:
-            adapter_name (Union[str, List[str]])):
+            adapter_name (str | list[str])):
                 The list of adapters to set or the adapter name in the case of a single adapter.
         """
         check_peft_version(min_version=MIN_PEFT_VERSION)
@@ -633,7 +632,7 @@ class PeftAdapterMixin:
                     # support for older PEFT versions
                     module.disable_adapters = False
 
-    def active_adapters(self) -> List[str]:
+    def active_adapters(self) -> list[str]:
         """
         Gets the current list of active adapters of the model.
 
@@ -756,12 +755,12 @@ class PeftAdapterMixin:
             raise ValueError("PEFT backend is required for this method.")
         set_adapter_layers(self, enabled=True)
 
-    def delete_adapters(self, adapter_names: Union[List[str], str]):
+    def delete_adapters(self, adapter_names: list[str] | str):
         """
         Delete an adapter's LoRA layers from the underlying model.
 
         Args:
-            adapter_names (`Union[List[str], str]`):
+            adapter_names (`list[str, str]`):
                 The names (single string or list of strings) of the adapter to delete.
 
         Example:
@@ -791,6 +790,8 @@ class PeftAdapterMixin:
             # Pop also the corresponding adapter from the config
             if hasattr(self, "peft_config"):
                 self.peft_config.pop(adapter_name, None)
+
+        _maybe_remove_and_reapply_group_offloading(self)
 
     def enable_lora_hotswap(
         self, target_rank: int = 128, check_compiled: Literal["error", "warn", "ignore"] = "error"

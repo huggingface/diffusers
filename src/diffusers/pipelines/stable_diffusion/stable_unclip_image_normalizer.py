@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from typing import Optional, Union
 
 import torch
 from torch import nn
@@ -41,8 +39,8 @@ class StableUnCLIPImageNormalizer(ModelMixin, ConfigMixin):
 
     def to(
         self,
-        torch_device: Optional[Union[str, torch.device]] = None,
-        torch_dtype: Optional[torch.dtype] = None,
+        torch_device: str | torch.device | None = None,
+        torch_dtype: torch.dtype | None = None,
     ):
         self.mean = nn.Parameter(self.mean.to(torch_device).to(torch_dtype))
         self.std = nn.Parameter(self.std.to(torch_device).to(torch_dtype))

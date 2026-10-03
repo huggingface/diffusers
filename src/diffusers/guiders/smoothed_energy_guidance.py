@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import math
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 
 import torch
 
@@ -54,11 +56,11 @@ class SmoothedEnergyGuidance(BaseGuidance):
             The fraction of the total number of denoising steps after which smoothed energy guidance starts.
         seg_guidance_stop (`float`, defaults to `1.0`):
             The fraction of the total number of denoising steps after which smoothed energy guidance stops.
-        seg_guidance_layers (`int` or `List[int]`, *optional*):
+        seg_guidance_layers (`int` or `list[int]`, *optional*):
             The layer indices to apply smoothed energy guidance to. Can be a single integer or a list of integers. If
             not provided, `seg_guidance_config` must be provided. The recommended values are `[7, 8, 9]` for Stable
             Diffusion 3.5 Medium.
-        seg_guidance_config (`SmoothedEnergyGuidanceConfig` or `List[SmoothedEnergyGuidanceConfig]`, *optional*):
+        seg_guidance_config (`SmoothedEnergyGuidanceConfig` or `list[SmoothedEnergyGuidanceConfig]`, *optional*):
             The configuration for the smoothed energy layer guidance. Can be a single `SmoothedEnergyGuidanceConfig` or
             a list of `SmoothedEnergyGuidanceConfig`. If not provided, `seg_guidance_layers` must be provided.
         guidance_rescale (`float`, defaults to `0.0`):
@@ -86,14 +88,15 @@ class SmoothedEnergyGuidance(BaseGuidance):
         seg_blur_threshold_inf: float = 9999.0,
         seg_guidance_start: float = 0.0,
         seg_guidance_stop: float = 1.0,
-        seg_guidance_layers: Optional[Union[int, List[int]]] = None,
-        seg_guidance_config: Union[SmoothedEnergyGuidanceConfig, List[SmoothedEnergyGuidanceConfig]] = None,
+        seg_guidance_layers: int | list[int] | None = None,
+        seg_guidance_config: SmoothedEnergyGuidanceConfig | list[SmoothedEnergyGuidanceConfig] = None,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
         start: float = 0.0,
         stop: float = 1.0,
+        enabled: bool = True,
     ):
-        super().__init__(start, stop)
+        super().__init__(start, stop, enabled)
 
         self.guidance_scale = guidance_scale
         self.seg_guidance_scale = seg_guidance_scale
@@ -153,12 +156,7 @@ class SmoothedEnergyGuidance(BaseGuidance):
             for hook_name in self._seg_layer_hook_names:
                 registry.remove_hook(hook_name, recurse=True)
 
-    def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
-    ) -> List["BlockState"]:
-        if input_fields is None:
-            input_fields = self._input_fields
-
+    def prepare_inputs(self, data: dict[str, tuple[torch.Tensor, torch.Tensor]]) -> list["BlockState"]:
         if self.num_conditions == 1:
             tuple_indices = [0]
             input_predictions = ["pred_cond"]
@@ -171,16 +169,36 @@ class SmoothedEnergyGuidance(BaseGuidance):
             tuple_indices = [0, 1, 0]
             input_predictions = ["pred_cond", "pred_uncond", "pred_cond_seg"]
         data_batches = []
-        for i in range(self.num_conditions):
-            data_batch = self._prepare_batch(input_fields, data, tuple_indices[i], input_predictions[i])
+        for tuple_idx, input_prediction in zip(tuple_indices, input_predictions):
+            data_batch = self._prepare_batch(data, tuple_idx, input_prediction)
+            data_batches.append(data_batch)
+        return data_batches
+
+    def prepare_inputs_from_block_state(
+        self, data: "BlockState", input_fields: dict[str, str | tuple[str, str]]
+    ) -> list["BlockState"]:
+        if self.num_conditions == 1:
+            tuple_indices = [0]
+            input_predictions = ["pred_cond"]
+        elif self.num_conditions == 2:
+            tuple_indices = [0, 1]
+            input_predictions = (
+                ["pred_cond", "pred_uncond"] if self._is_cfg_enabled() else ["pred_cond", "pred_cond_seg"]
+            )
+        else:
+            tuple_indices = [0, 1, 0]
+            input_predictions = ["pred_cond", "pred_uncond", "pred_cond_seg"]
+        data_batches = []
+        for tuple_idx, input_prediction in zip(tuple_indices, input_predictions):
+            data_batch = self._prepare_batch_from_block_state(input_fields, data, tuple_idx, input_prediction)
             data_batches.append(data_batch)
         return data_batches
 
     def forward(
         self,
         pred_cond: torch.Tensor,
-        pred_uncond: Optional[torch.Tensor] = None,
-        pred_cond_seg: Optional[torch.Tensor] = None,
+        pred_uncond: torch.Tensor | None = None,
+        pred_cond_seg: torch.Tensor | None = None,
     ) -> GuiderOutput:
         pred = None
 

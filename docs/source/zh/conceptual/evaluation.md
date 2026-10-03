@@ -92,11 +92,8 @@ images = sd_pipeline(sample_prompts, num_images_per_prompt=1, generator=generato
 
 当使用多个待评估模型为所有提示词生成若干图像后，这些结果将提交给人类评估员进行打分。有关DrawBench和PartiPrompts基准测试的更多细节，请参阅各自的论文。
 
-<Tip>
-
-在模型训练过程中查看推理样本有助于评估训练进度。我们的[训练脚本](https://github.com/huggingface/diffusers/tree/main/examples/)支持此功能，并额外提供TensorBoard和Weights & Biases日志记录功能。
-
-</Tip>
+> [!TIP]
+> 在模型训练过程中查看推理样本有助于评估训练进度。我们的[训练脚本](https://github.com/huggingface/diffusers/tree/main/examples/)支持此功能，并额外提供TensorBoard和Weights & Biases日志记录功能。
 
 ## 定量评估
 
@@ -116,7 +113,7 @@ from diffusers import StableDiffusionPipeline
 import torch
 
 model_ckpt = "CompVis/stable-diffusion-v1-4"
-sd_pipeline = StableDiffusionPipeline.from_pretrained(model_ckpt, torch_dtype=torch.float16).to("cuda")
+sd_pipeline = StableDiffusionPipeline.from_pretrained(model_ckpt, dtype=torch.float16).to("cuda")
 ```
 
 使用多个提示词生成图像：
@@ -170,7 +167,7 @@ images = sd_pipeline(prompts, num_images_per_prompt=1, generator=generator, outp
 
 ```python
 model_ckpt_1_5 = "stable-diffusion-v1-5/stable-diffusion-v1-5"
-sd_pipeline_1_5 = StableDiffusionPipeline.from_pretrained(model_ckpt_1_5, torch_dtype=torch.float16).to("cuda")
+sd_pipeline_1_5 = StableDiffusionPipeline.from_pretrained(model_ckpt_1_5, dtype=torch.float16).to("cuda")
 
 images_1_5 = sd_pipeline_1_5(prompts, num_images_per_prompt=1, generator=generator, output_type="np").images
 ```
@@ -189,11 +186,8 @@ print(f"v-1-5版本的CLIP分数: {sd_clip_score_1_5}")
 
 结果表明[v1-5](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5)检查点性能优于前代。但需注意，我们用于计算CLIP分数的提示词数量较少。实际评估时应使用更多样化且数量更大的提示词集。
 
-<Tip warning={true}>
-
-该分数存在固有局限性：训练数据中的标题是从网络爬取，并提取自图片关联的`alt`等标签。这些描述未必符合人类描述图像的方式，因此我们需要人工"设计"部分提示词。
-
-</Tip>
+> [!WARNING]
+> 该分数存在固有局限性：训练数据中的标题是从网络爬取，并提取自图片关联的`alt`等标签。这些描述未必符合人类描述图像的方式，因此我们需要人工"设计"部分提示词。
 
 ### 图像条件式文本生成图像
 
@@ -265,7 +259,7 @@ dataset[idx]["image"]
 from diffusers import StableDiffusionInstructPix2PixPipeline
 
 instruct_pix2pix_pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-    "timbrooks/instruct-pix2pix", torch_dtype=torch.float16
+    "timbrooks/instruct-pix2pix", dtype=torch.float16
 ).to("cuda")
 ```  
 
@@ -402,11 +396,8 @@ print(f"CLIP方向相似度: {np.mean(scores)}")
 
 该度量方法同样适用于类似流程，例如[`StableDiffusionPix2PixZeroPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/pix2pix_zero#diffusers.StableDiffusionPix2PixZeroPipeline)。
 
-<Tip>
-
-CLIP分数和CLIP方向相似度都依赖CLIP模型，可能导致评估结果存在偏差。
-
-</Tip>
+> [!TIP]
+> CLIP分数和CLIP方向相似度都依赖CLIP模型，可能导致评估结果存在偏差。
 
 ***扩展IS、FID（后文讨论）或KID等指标存在困难***，当被评估模型是在大型图文数据集（如[LAION-5B数据集](https://laion.ai/blog/laion-5b/)）上预训练时。因为这些指标的底层都使用了在ImageNet-1k数据集上预训练的InceptionNet来提取图像特征。Stable Diffusion的预训练数据集与InceptionNet的预训练数据集可能重叠有限，因此不适合作为特征提取器。
 
@@ -483,7 +474,7 @@ print(real_images.shape)
 ```python
 from diffusers import DiTPipeline, DPMSolverMultistepScheduler
 
-dit_pipeline = DiTPipeline.from_pretrained("facebook/DiT-XL-2-256", torch_dtype=torch.float16)
+dit_pipeline = DiTPipeline.from_pretrained("facebook/DiT-XL-2-256", dtype=torch.float16)
 dit_pipeline.scheduler = DPMSolverMultistepScheduler.from_config(dit_pipeline.scheduler.config)
 dit_pipeline = dit_pipeline.to("cuda")
 
@@ -536,19 +527,16 @@ FID分数越低越好。以下因素会影响FID结果：
 
 对于最后两点，最佳实践是使用不同的随机种子和推理步数进行多次评估，然后报告平均结果。
 
-<Tip warning={true}>
-
-FID结果往往具有脆弱性，因为它依赖于许多因素：
-
-* 计算过程中使用的特定Inception模型
-* 计算实现的准确性
-* 图像格式（PNG和JPG的起点不同）
-
-需要注意的是，FID通常在比较相似实验时最有用，但除非作者仔细公开FID测量代码，否则很难复现论文结果。
-
-这些注意事项同样适用于其他相关指标，如KID和IS。
-
-</Tip>
+> [!WARNING]
+> FID结果往往具有脆弱性，因为它依赖于许多因素：
+>
+> * 计算过程中使用的特定Inception模型
+> * 计算实现的准确性
+> * 图像格式（PNG和JPG的起点不同）
+>
+> 需要注意的是，FID通常在比较相似实验时最有用，但除非作者仔细公开FID测量代码，否则很难复现论文结果。
+>
+> 这些注意事项同样适用于其他相关指标，如KID和IS。
 
 最后，让我们可视化检查这些`fake_images`。
 

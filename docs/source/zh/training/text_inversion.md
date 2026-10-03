@@ -12,7 +12,7 @@ http://www.apache.org/licenses/LICENSE-2.0
 
 [文本反转](https://hf.co/papers/2208.01618)是一种训练技术，仅需少量示例图像即可个性化图像生成模型。该技术通过学习和更新文本嵌入（新嵌入会绑定到提示中必须使用的特殊词汇）来匹配您提供的示例图像。
 
-如果在显存有限的GPU上训练，建议在训练命令中启用`gradient_checkpointing`和`mixed_precision`参数。您还可以通过[xFormers](../optimization/xformers)使用内存高效注意力机制来减少内存占用。JAX/Flax训练也支持在TPU和GPU上进行高效训练，但不支持梯度检查点或xFormers。在配置与PyTorch相同的情况下，Flax训练脚本的速度至少应快70%！
+如果在显存有限的GPU上训练，建议在训练命令中启用`gradient_checkpointing`和`mixed_precision`参数。您还可以通过[xFormers](../optimization/xformers)使用内存高效注意力机制来减少内存占用。
 
 本指南将探索[textual_inversion.py](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py)脚本，帮助您更熟悉其工作原理，并了解如何根据自身需求进行调整。
 
@@ -35,21 +35,10 @@ pip install -r requirements.txt
 ```
 
 </hfoption>
-<hfoption id="Flax">
-
-```bash
-cd examples/textual_inversion
-pip install -r requirements_flax.txt
-```
-
-</hfoption>
 </hfoptions>
 
-<Tip>
-
-🤗 Accelerate 是一个帮助您在多GPU/TPU或混合精度环境下训练的工具库。它会根据硬件和环境自动配置训练设置。查看🤗 Accelerate [快速入门](https://huggingface.co/docs/accelerate/quicktour)了解更多。
-
-</Tip>
+> [!TIP]
+> 🤗 Accelerate 是一个帮助您在多GPU/TPU或混合精度环境下训练的工具库。它会根据硬件和环境自动配置训练设置。查看🤗 Accelerate [快速入门](https://huggingface.co/docs/accelerate/quicktour)了解更多。
 
 初始化🤗 Accelerate环境：
 
@@ -73,11 +62,8 @@ write_basic_config()
 
 最后，如果想在自定义数据集上训练模型，请参阅[创建训练数据集](create_dataset)指南，了解如何创建适用于训练脚本的数据集。
 
-<Tip>
-
-以下部分重点介绍训练脚本中需要理解的关键修改点，但未涵盖脚本所有细节。如需深入了解，可随时查阅[脚本源码](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py)，如有疑问欢迎反馈。
-
-</Tip>
+> [!TIP]
+> 以下部分重点介绍训练脚本中需要理解的关键修改点，但未涵盖脚本所有细节。如需深入了解，可随时查阅[脚本源码](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py)，如有疑问欢迎反馈。
 
 ## 脚本参数
 
@@ -173,11 +159,8 @@ snapshot_download(
 - `token_identifier.txt`：特殊占位符词汇
 - `type_of_concept.txt`：训练概念类型（"object"或"style"）
 
-<Tip warning={true}>
-
-在单块V100 GPU上完整训练约需1小时。
-
-</Tip>
+> [!WARNING]
+> 在单块V100 GPU上完整训练约需1小时。
 
 启动脚本前还有最后一步。如果想实时观察训练过程，可以定期保存生成图像。在训练命令中添加以下参数：
 
@@ -213,28 +196,6 @@ accelerate launch textual_inversion.py \
 ```
 
 </hfoption>
-<hfoption id="Flax">
-
-```bash
-export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export DATA_DIR="./cat"
-
-python textual_inversion_flax.py \
-  --pretrained_model_name_or_path=$MODEL_NAME \
-  --train_data_dir=$DATA_DIR \
-  --learnable_property="object" \
-  --placeholder_token="<cat-toy>" \
-  --initializer_token="toy" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --max_train_steps=3000 \
-  --learning_rate=5.0e-04 \
-  --scale_lr \
-  --output_dir="textual_inversion_cat" \
-  --push_to_hub
-```
-
-</hfoption>
 </hfoptions>
 
 训练完成后，可以像这样使用新模型进行推理：
@@ -246,42 +207,9 @@ python textual_inversion_flax.py \
 from diffusers import StableDiffusionPipeline
 import torch
 
-pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+pipeline = StableDiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to("cuda")
 pipeline.load_textual_inversion("sd-concepts-library/cat-toy")
 image = pipeline("A <cat-toy> train", num_inference_steps=50).images[0]
-image.save("cat-train.png")
-```
-
-</hfoption>
-<hfoption id="Flax">
-
-Flax不支持[`~loaders.TextualInversionLoaderMixin.load_textual_inversion`]方法，但textual_inversion_flax.py脚本会在训练后[保存](https://github.com/huggingface/diffusers/blob/c0f058265161178f2a88849e92b37ffdc81f1dcc/examples/textual_inversion/textual_inversion_flax.py#L636C2-L636C2)学习到的嵌入作为模型的一部分。这意味着您可以像使用其他Flax模型一样进行推理：
-
-```py
-import jax
-import numpy as np
-from flax.jax_utils import replicate
-from flax.training.common_utils import shard
-from diffusers import FlaxStableDiffusionPipeline
-
-model_path = "path-to-your-trained-model"
-pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(model_path, dtype=jax.numpy.bfloat16)
-
-prompt = "A <cat-toy> train"
-prng_seed = jax.random.PRNGKey(0)
-num_inference_steps = 50
-
-num_samples = jax.device_count()
-prompt = num_samples * [prompt]
-prompt_ids = pipeline.prepare_inputs(prompt)
-
-# 分片输入和随机数生成器
-params = replicate(params)
-prng_seed = jax.random.split(prng_seed, jax.device_count())
-prompt_ids = shard(prompt_ids)
-
-images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
-images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 image.save("cat-train.png")
 ```
 

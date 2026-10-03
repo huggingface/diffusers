@@ -39,11 +39,8 @@ For instance, retrieving an image by indexing into it returns the tuple `(output
 outputs[:1]
 ```
 
-<Tip>
-
-To check a specific pipeline or model output, refer to its corresponding API documentation.
-
-</Tip>
+> [!TIP]
+> To check a specific pipeline or model output, refer to its corresponding API documentation.
 
 ## BaseOutput
 

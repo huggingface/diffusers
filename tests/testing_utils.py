@@ -13,43 +13,46 @@ import struct
 import sys
 import tempfile
 import time
-import unittest
 import urllib.parse
 from collections import UserDict
 from contextlib import contextmanager
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Tuple, Union
 
 import numpy as np
 import PIL.Image
 import PIL.ImageOps
+import pytest
 import requests
 from numpy.linalg import norm
 from packaging import version
 
-from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT
+from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT, USE_PEFT_BACKEND
 from diffusers.utils.import_utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
+    is_auto_round_available,
     is_bitsandbytes_available,
     is_compel_available,
-    is_flax_available,
+    is_flashpack_available,
     is_gguf_available,
     is_kernels_available,
     is_note_seq_available,
-    is_onnx_available,
+    is_nvidia_modelopt_version,
     is_opencv_available,
-    is_optimum_quanto_available,
     is_peft_available,
+    is_sdnq_available,
     is_timm_available,
     is_torch_available,
+    is_torch_neuronx_available,
     is_torch_version,
     is_torchao_available,
     is_torchsde_available,
     is_transformers_available,
 )
 from diffusers.utils.logging import get_logger
+from diffusers.utils.torch_utils import TorchDeviceBackend
 
 
 if is_torch_available():
@@ -63,18 +66,12 @@ else:
     IS_CUDA_SYSTEM = False
     IS_XPU_SYSTEM = False
 
+IS_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true" and os.getenv("DIFFUSERS_IS_CI") == "yes"
+
 global_rng = random.Random()
 
 logger = get_logger(__name__)
 
-_required_peft_version = is_peft_available() and version.parse(
-    version.parse(importlib.metadata.version("peft")).base_version
-) > version.parse("0.5")
-_required_transformers_version = is_transformers_available() and version.parse(
-    version.parse(importlib.metadata.version("transformers")).base_version
-) > version.parse("4.33")
-
-USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
 BIG_GPU_MEMORY = int(os.getenv("BIG_GPU_MEMORY", 40))
 
 if is_torch_available():
@@ -106,6 +103,8 @@ if is_torch_available():
             torch_device = "cuda"
         elif torch.xpu.is_available():
             torch_device = "xpu"
+        elif is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available():
+            torch_device = torch.neuron.current_device()
         else:
             torch_device = "cpu"
         is_torch_higher_equal_than_1_12 = version.parse(
@@ -126,6 +125,70 @@ def torch_all_close(a, b, *args, **kwargs):
     if not torch.allclose(a, b, *args, **kwargs):
         assert False, f"Max diff is absolute {(a - b).abs().max()}. Diff tensor is {(a - b).abs()}."
     return True
+
+
+def assert_tensors_close(
+    actual: "torch.Tensor",
+    expected: "torch.Tensor",
+    atol: float = 1e-5,
+    rtol: float = 1e-5,
+    msg: str = "",
+) -> None:
+    """
+    Assert that two tensors are close within tolerance.
+
+    Uses the same formula as torch.allclose: |actual - expected| <= atol + rtol * |expected| Provides concise,
+    actionable error messages without dumping full tensors.
+
+    Args:
+        actual: The actual tensor from the computation.
+        expected: The expected tensor to compare against.
+        atol: Absolute tolerance.
+        rtol: Relative tolerance.
+        msg: Optional message prefix for the assertion error.
+
+    Raises:
+        AssertionError: If tensors have different shapes or values exceed tolerance.
+
+    Example:
+        >>> assert_tensors_close(output, expected_output, atol=1e-5, rtol=1e-5, msg="Forward pass")
+    """
+    if not is_torch_available():
+        raise ValueError("PyTorch needs to be installed to use this function.")
+
+    # Some models (e.g. Z-Image, Cosmos ControlNet) return a list/tuple of tensors as their output. Compare these
+    # element-wise so the same helper works regardless of whether the output is a single tensor or a sequence.
+    if isinstance(actual, (list, tuple)) or isinstance(expected, (list, tuple)):
+        if not (isinstance(actual, (list, tuple)) and isinstance(expected, (list, tuple))):
+            raise AssertionError(f"{msg} Type mismatch: actual {type(actual)} vs expected {type(expected)}")
+        if len(actual) != len(expected):
+            raise AssertionError(f"{msg} Length mismatch: actual {len(actual)} vs expected {len(expected)}")
+        for i, (a, e) in enumerate(zip(actual, expected)):
+            assert_tensors_close(a, e, atol=atol, rtol=rtol, msg=f"{msg} [element {i}]")
+        return
+
+    if actual.shape != expected.shape:
+        raise AssertionError(f"{msg} Shape mismatch: actual {actual.shape} vs expected {expected.shape}")
+
+    if not torch.allclose(actual, expected, atol=atol, rtol=rtol):
+        abs_diff = (actual - expected).abs()
+        max_diff = abs_diff.max().item()
+
+        flat_idx = abs_diff.argmax().item()
+        max_idx = tuple(idx.item() for idx in torch.unravel_index(torch.tensor(flat_idx), actual.shape))
+
+        threshold = atol + rtol * expected.abs()
+        mismatched = (abs_diff > threshold).sum().item()
+        total = actual.numel()
+
+        raise AssertionError(
+            f"{msg}\n"
+            f"Tensors not close! Mismatched elements: {mismatched}/{total} ({100 * mismatched / total:.1f}%)\n"
+            f"  Max diff: {max_diff:.6e} at index {max_idx}\n"
+            f"  Actual:   {actual.flatten()[flat_idx].item():.6e}\n"
+            f"  Expected: {expected.flatten()[flat_idx].item():.6e}\n"
+            f"  atol: {atol:.6e}, rtol: {rtol:.6e}"
+        )
 
 
 def numpy_cosine_similarity_distance(a, b):
@@ -239,7 +302,6 @@ def parse_flag_from_env(key, default=False):
 
 _run_slow_tests = parse_flag_from_env("RUN_SLOW", default=False)
 _run_nightly_tests = parse_flag_from_env("RUN_NIGHTLY", default=False)
-_run_compile_tests = parse_flag_from_env("RUN_COMPILE", default=False)
 
 
 def floats_tensor(shape, scale=1.0, rng=None, name=None):
@@ -265,7 +327,7 @@ def slow(test_case):
     Slow tests are skipped by default. Set the RUN_SLOW environment variable to a truthy value to run them.
 
     """
-    return unittest.skipUnless(_run_slow_tests, "test is slow")(test_case)
+    return pytest.mark.skipif(not _run_slow_tests, reason="test is slow")(test_case)
 
 
 def nightly(test_case):
@@ -275,33 +337,176 @@ def nightly(test_case):
     Slow tests are skipped by default. Set the RUN_NIGHTLY environment variable to a truthy value to run them.
 
     """
-    return unittest.skipUnless(_run_nightly_tests, "test is nightly")(test_case)
+    return pytest.mark.skipif(not _run_nightly_tests, reason="test is nightly")(test_case)
 
 
 def is_torch_compile(test_case):
     """
-    Decorator marking a test that runs compile tests in the diffusers CI.
-
-    Compile tests are skipped by default. Set the RUN_COMPILE environment variable to a truthy value to run them.
-
+    Decorator marking a test as a torch.compile test. These tests can be filtered using:
+        pytest -m "not compile" to skip pytest -m compile to run only these tests
     """
-    return unittest.skipUnless(_run_compile_tests, "test is torch compile")(test_case)
+    return pytest.mark.compile(test_case)
+
+
+def is_single_file(test_case):
+    """
+    Decorator marking a test as a single file loading test. These tests can be filtered using:
+        pytest -m "not single_file" to skip pytest -m single_file to run only these tests
+    """
+    return pytest.mark.single_file(test_case)
+
+
+def is_lora(test_case):
+    """
+    Decorator marking a test as a LoRA test. These tests can be filtered using:
+        pytest -m "not lora" to skip pytest -m lora to run only these tests
+    """
+    return pytest.mark.lora(test_case)
+
+
+def is_ip_adapter(test_case):
+    """
+    Decorator marking a test as an IP Adapter test. These tests can be filtered using:
+        pytest -m "not ip_adapter" to skip pytest -m ip_adapter to run only these tests
+    """
+    return pytest.mark.ip_adapter(test_case)
+
+
+def is_training(test_case):
+    """
+    Decorator marking a test as a training test. These tests can be filtered using:
+        pytest -m "not training" to skip pytest -m training to run only these tests
+    """
+    return pytest.mark.training(test_case)
+
+
+def is_attention(test_case):
+    """
+    Decorator marking a test as an attention test. These tests can be filtered using:
+        pytest -m "not attention" to skip pytest -m attention to run only these tests
+    """
+    return pytest.mark.attention(test_case)
+
+
+def is_memory(test_case):
+    """
+    Decorator marking a test as a memory optimization test. These tests can be filtered using:
+        pytest -m "not memory" to skip pytest -m memory to run only these tests
+    """
+    return pytest.mark.memory(test_case)
+
+
+def is_cpu_offload(test_case):
+    """
+    Decorator marking a test as a CPU offload test. These tests can be filtered using:
+        pytest -m "not cpu_offload" to skip pytest -m cpu_offload to run only these tests
+    """
+    return pytest.mark.cpu_offload(test_case)
+
+
+def is_group_offload(test_case):
+    """
+    Decorator marking a test as a group offload test. These tests can be filtered using:
+        pytest -m "not group_offload" to skip pytest -m group_offload to run only these tests
+    """
+    return pytest.mark.group_offload(test_case)
+
+
+def is_quantization(test_case):
+    """
+    Decorator marking a test as a quantization test. These tests can be filtered using:
+        pytest -m "not quantization" to skip pytest -m quantization to run only these tests
+    """
+    return pytest.mark.quantization(test_case)
+
+
+def is_bitsandbytes(test_case):
+    """
+    Decorator marking a test as a BitsAndBytes quantization test. These tests can be filtered using:
+        pytest -m "not bitsandbytes" to skip pytest -m bitsandbytes to run only these tests
+    """
+    return pytest.mark.bitsandbytes(test_case)
+
+
+def is_torchao(test_case):
+    """
+    Decorator marking a test as a TorchAO quantization test. These tests can be filtered using:
+        pytest -m "not torchao" to skip pytest -m torchao to run only these tests
+    """
+    return pytest.mark.torchao(test_case)
+
+
+def is_gguf(test_case):
+    """
+    Decorator marking a test as a GGUF quantization test. These tests can be filtered using:
+        pytest -m "not gguf" to skip pytest -m gguf to run only these tests
+    """
+    return pytest.mark.gguf(test_case)
+
+
+def is_autoround(test_case):
+    """
+    Decorator marking a test as an AutoRound quantization test. These tests can be filtered using:
+        pytest -m "not autoround" to skip
+        pytest -m autoround to run only these tests
+    """
+    return pytest.mark.autoround(test_case)
+
+
+def is_modelopt(test_case):
+    """
+    Decorator marking a test as a NVIDIA ModelOpt quantization test. These tests can be filtered using:
+        pytest -m "not modelopt" to skip pytest -m modelopt to run only these tests
+    """
+    return pytest.mark.modelopt(test_case)
+
+
+def is_sdnq(test_case):
+    """
+    Decorator marking a test as an SDNQ quantization test. These tests can be filtered using:
+        pytest -m "not sdnq" to skip pytest -m sdnq to run only these tests
+    """
+    return pytest.mark.sdnq(test_case)
+
+
+def is_context_parallel(test_case):
+    """
+    Decorator marking a test as a context parallel inference test. These tests can be filtered using:
+        pytest -m "not context_parallel" to skip pytest -m context_parallel to run only these tests
+    """
+    return pytest.mark.context_parallel(test_case)
+
+
+def is_tensor_parallel(test_case):
+    """
+    Decorator marking a test as a tensor parallel inference test. These tests can be filtered using:
+        pytest -m "not tensor_parallel" to skip pytest -m tensor_parallel to run only these tests
+    """
+    return pytest.mark.tensor_parallel(test_case)
+
+
+def is_cache(test_case):
+    """
+    Decorator marking a test as a cache test. These tests can be filtered using:
+        pytest -m "not cache" to skip pytest -m cache to run only these tests
+    """
+    return pytest.mark.cache(test_case)
 
 
 def require_torch(test_case):
     """
     Decorator marking a test that requires PyTorch. These tests are skipped when PyTorch isn't installed.
     """
-    return unittest.skipUnless(is_torch_available(), "test requires PyTorch")(test_case)
+    return pytest.mark.skipif(not is_torch_available(), reason="test requires PyTorch")(test_case)
 
 
 def require_torch_2(test_case):
     """
     Decorator marking a test that requires PyTorch 2. These tests are skipped when it isn't installed.
     """
-    return unittest.skipUnless(is_torch_available() and is_torch_version(">=", "2.0.0"), "test requires PyTorch 2")(
-        test_case
-    )
+    return pytest.mark.skipif(
+        not (is_torch_available() and is_torch_version(">=", "2.0.0")), reason="test requires PyTorch 2"
+    )(test_case)
 
 
 def require_torch_version_greater_equal(torch_version):
@@ -309,8 +514,9 @@ def require_torch_version_greater_equal(torch_version):
 
     def decorator(test_case):
         correct_torch_version = is_torch_available() and is_torch_version(">=", torch_version)
-        return unittest.skipUnless(
-            correct_torch_version, f"test requires torch with the version greater than or equal to {torch_version}"
+        return pytest.mark.skipif(
+            not correct_torch_version,
+            reason=f"test requires torch with the version greater than or equal to {torch_version}",
         )(test_case)
 
     return decorator
@@ -321,8 +527,8 @@ def require_torch_version_greater(torch_version):
 
     def decorator(test_case):
         correct_torch_version = is_torch_available() and is_torch_version(">", torch_version)
-        return unittest.skipUnless(
-            correct_torch_version, f"test requires torch with the version greater than {torch_version}"
+        return pytest.mark.skipif(
+            not correct_torch_version, reason=f"test requires torch with the version greater than {torch_version}"
         )(test_case)
 
     return decorator
@@ -330,19 +536,18 @@ def require_torch_version_greater(torch_version):
 
 def require_torch_gpu(test_case):
     """Decorator marking a test that requires CUDA and PyTorch."""
-    return unittest.skipUnless(is_torch_available() and torch_device == "cuda", "test requires PyTorch+CUDA")(
-        test_case
-    )
+    return pytest.mark.skipif(torch_device != "cuda", reason="test requires PyTorch+CUDA")(test_case)
 
 
 def require_torch_cuda_compatibility(expected_compute_capability):
     def decorator(test_case):
         if torch.cuda.is_available():
             current_compute_capability = get_torch_cuda_device_capability()
-            return unittest.skipUnless(
-                float(current_compute_capability) == float(expected_compute_capability),
-                "Test not supported for this compute capability.",
-            )
+            return pytest.mark.skipif(
+                float(current_compute_capability) != float(expected_compute_capability),
+                reason="Test not supported for this compute capability.",
+            )(test_case)
+        return test_case
 
     return decorator
 
@@ -350,9 +555,15 @@ def require_torch_cuda_compatibility(expected_compute_capability):
 # These decorators are for accelerator-specific behaviours that are not GPU-specific
 def require_torch_accelerator(test_case):
     """Decorator marking a test that requires an accelerator backend and PyTorch."""
-    return unittest.skipUnless(is_torch_available() and torch_device != "cpu", "test requires accelerator+PyTorch")(
-        test_case
-    )
+    return pytest.mark.skipif(torch_device == "cpu", reason="test requires accelerator+PyTorch")(test_case)
+
+
+def require_torch_neuron(test_case):
+    """Decorator marking a test that requires a Neuron device (Trainium/Inferentia)."""
+    return pytest.mark.skipif(
+        not (is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available()),
+        reason="test requires Neuron device",
+    )(test_case)
 
 
 def require_torch_multi_gpu(test_case):
@@ -362,11 +573,11 @@ def require_torch_multi_gpu(test_case):
     -k "multi_gpu"
     """
     if not is_torch_available():
-        return unittest.skip("test requires PyTorch")(test_case)
+        return pytest.mark.skip(reason="test requires PyTorch")(test_case)
 
     import torch
 
-    return unittest.skipUnless(torch.cuda.device_count() > 1, "test requires multiple GPUs")(test_case)
+    return pytest.mark.skipif(torch.cuda.device_count() <= 1, reason="test requires multiple GPUs")(test_case)
 
 
 def require_torch_multi_accelerator(test_case):
@@ -375,27 +586,28 @@ def require_torch_multi_accelerator(test_case):
     without multiple hardware accelerators.
     """
     if not is_torch_available():
-        return unittest.skip("test requires PyTorch")(test_case)
+        return pytest.mark.skip(reason="test requires PyTorch")(test_case)
 
     import torch
 
-    return unittest.skipUnless(
-        torch.cuda.device_count() > 1 or torch.xpu.device_count() > 1, "test requires multiple hardware accelerators"
+    return pytest.mark.skipif(
+        not (torch.cuda.device_count() > 1 or torch.xpu.device_count() > 1),
+        reason="test requires multiple hardware accelerators",
     )(test_case)
 
 
 def require_torch_accelerator_with_fp16(test_case):
     """Decorator marking a test that requires an accelerator with support for the FP16 data type."""
-    return unittest.skipUnless(_is_torch_fp16_available(torch_device), "test requires accelerator with fp16 support")(
-        test_case
-    )
+    return pytest.mark.skipif(
+        not _is_torch_fp16_available(torch_device), reason="test requires accelerator with fp16 support"
+    )(test_case)
 
 
 def require_torch_accelerator_with_fp64(test_case):
     """Decorator marking a test that requires an accelerator with support for the FP64 data type."""
-    return unittest.skipUnless(_is_torch_fp64_available(torch_device), "test requires accelerator with fp64 support")(
-        test_case
-    )
+    return pytest.mark.skipif(
+        not _is_torch_fp64_available(torch_device), reason="test requires accelerator with fp64 support"
+    )(test_case)
 
 
 def require_big_gpu_with_torch_cuda(test_case):
@@ -404,17 +616,17 @@ def require_big_gpu_with_torch_cuda(test_case):
     etc.
     """
     if not is_torch_available():
-        return unittest.skip("test requires PyTorch")(test_case)
+        return pytest.mark.skip(reason="test requires PyTorch")(test_case)
 
     import torch
 
     if not torch.cuda.is_available():
-        return unittest.skip("test requires PyTorch CUDA")(test_case)
+        return pytest.mark.skip(reason="test requires PyTorch CUDA")(test_case)
 
     device_properties = torch.cuda.get_device_properties(0)
     total_memory = device_properties.total_memory / (1024**3)
-    return unittest.skipUnless(
-        total_memory >= BIG_GPU_MEMORY, f"test requires a GPU with at least {BIG_GPU_MEMORY} GB memory"
+    return pytest.mark.skipif(
+        total_memory < BIG_GPU_MEMORY, reason=f"test requires a GPU with at least {BIG_GPU_MEMORY} GB memory"
     )(test_case)
 
 
@@ -428,12 +640,12 @@ def require_big_accelerator(test_case):
     test_case = pytest.mark.big_accelerator(test_case)
 
     if not is_torch_available():
-        return unittest.skip("test requires PyTorch")(test_case)
+        return pytest.mark.skip(reason="test requires PyTorch")(test_case)
 
     import torch
 
     if not (torch.cuda.is_available() or torch.xpu.is_available()):
-        return unittest.skip("test requires PyTorch CUDA")(test_case)
+        return pytest.mark.skip(reason="test requires PyTorch CUDA")(test_case)
 
     if torch.xpu.is_available():
         device_properties = torch.xpu.get_device_properties(0)
@@ -441,30 +653,45 @@ def require_big_accelerator(test_case):
         device_properties = torch.cuda.get_device_properties(0)
 
     total_memory = device_properties.total_memory / (1024**3)
-    return unittest.skipUnless(
-        total_memory >= BIG_GPU_MEMORY,
-        f"test requires a hardware accelerator with at least {BIG_GPU_MEMORY} GB memory",
+    return pytest.mark.skipif(
+        total_memory < BIG_GPU_MEMORY,
+        reason=f"test requires a hardware accelerator with at least {BIG_GPU_MEMORY} GB memory",
     )(test_case)
+
+
+def require_accelerator_memory(min_memory_gb: int):
+    """
+    Decorator marking a test that needs at least `min_memory_gb` GB of memory on the accelerator it runs on. Tests
+    running on CPU are not affected.
+    """
+
+    def decorator(test_case):
+        if torch_device == "cuda" and torch.cuda.is_available():
+            total_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        elif torch_device == "xpu" and torch.xpu.is_available():
+            total_memory = torch.xpu.get_device_properties(0).total_memory / (1024**3)
+        else:
+            return test_case
+
+        return pytest.mark.skipif(
+            total_memory < min_memory_gb,
+            reason=f"test requires an accelerator with at least {min_memory_gb} GB memory",
+        )(test_case)
+
+    return decorator
 
 
 def require_torch_accelerator_with_training(test_case):
     """Decorator marking a test that requires an accelerator with support for training."""
-    return unittest.skipUnless(
-        is_torch_available() and backend_supports_training(torch_device),
-        "test requires accelerator with training support",
+    return pytest.mark.skipif(
+        not (is_torch_available() and backend_supports_training(torch_device)),
+        reason="test requires accelerator with training support",
     )(test_case)
 
 
 def skip_mps(test_case):
     """Decorator marking a test to skip if torch_device is 'mps'"""
-    return unittest.skipUnless(torch_device != "mps", "test requires non 'mps' device")(test_case)
-
-
-def require_flax(test_case):
-    """
-    Decorator marking a test that requires JAX & Flax. These tests are skipped when one / both are not installed
-    """
-    return unittest.skipUnless(is_flax_available(), "test requires JAX & Flax")(test_case)
+    return pytest.mark.skipif(torch_device == "mps", reason="test requires non 'mps' device")(test_case)
 
 
 def require_compel(test_case):
@@ -472,21 +699,14 @@ def require_compel(test_case):
     Decorator marking a test that requires compel: https://github.com/damian0815/compel. These tests are skipped when
     the library is not installed.
     """
-    return unittest.skipUnless(is_compel_available(), "test requires compel")(test_case)
-
-
-def require_onnxruntime(test_case):
-    """
-    Decorator marking a test that requires onnxruntime. These tests are skipped when onnxruntime isn't installed.
-    """
-    return unittest.skipUnless(is_onnx_available(), "test requires onnxruntime")(test_case)
+    return pytest.mark.skipif(not is_compel_available(), reason="test requires compel")(test_case)
 
 
 def require_note_seq(test_case):
     """
     Decorator marking a test that requires note_seq. These tests are skipped when note_seq isn't installed.
     """
-    return unittest.skipUnless(is_note_seq_available(), "test requires note_seq")(test_case)
+    return pytest.mark.skipif(not is_note_seq_available(), reason="test requires note_seq")(test_case)
 
 
 def require_accelerator(test_case):
@@ -494,14 +714,14 @@ def require_accelerator(test_case):
     Decorator marking a test that requires a hardware accelerator backend. These tests are skipped when there are no
     hardware accelerator available.
     """
-    return unittest.skipUnless(torch_device != "cpu", "test requires a hardware accelerator")(test_case)
+    return pytest.mark.skipif(torch_device == "cpu", reason="test requires a hardware accelerator")(test_case)
 
 
 def require_torchsde(test_case):
     """
     Decorator marking a test that requires torchsde. These tests are skipped when torchsde isn't installed.
     """
-    return unittest.skipUnless(is_torchsde_available(), "test requires torchsde")(test_case)
+    return pytest.mark.skipif(not is_torchsde_available(), reason="test requires torchsde")(test_case)
 
 
 def require_peft_backend(test_case):
@@ -509,35 +729,42 @@ def require_peft_backend(test_case):
     Decorator marking a test that requires PEFT backend, this would require some specific versions of PEFT and
     transformers.
     """
-    return unittest.skipUnless(USE_PEFT_BACKEND, "test requires PEFT backend")(test_case)
+    return pytest.mark.skipif(not USE_PEFT_BACKEND, reason="test requires PEFT backend")(test_case)
 
 
 def require_timm(test_case):
     """
     Decorator marking a test that requires timm. These tests are skipped when timm isn't installed.
     """
-    return unittest.skipUnless(is_timm_available(), "test requires timm")(test_case)
+    return pytest.mark.skipif(not is_timm_available(), reason="test requires timm")(test_case)
 
 
 def require_bitsandbytes(test_case):
     """
     Decorator marking a test that requires bitsandbytes. These tests are skipped when bitsandbytes isn't installed.
     """
-    return unittest.skipUnless(is_bitsandbytes_available(), "test requires bitsandbytes")(test_case)
+    return pytest.mark.skipif(not is_bitsandbytes_available(), reason="test requires bitsandbytes")(test_case)
 
 
-def require_quanto(test_case):
+def require_sdnq(test_case):
     """
-    Decorator marking a test that requires quanto. These tests are skipped when quanto isn't installed.
+    Decorator marking a test that requires sdnq. These tests are skipped when sdnq isn't installed.
     """
-    return unittest.skipUnless(is_optimum_quanto_available(), "test requires quanto")(test_case)
+    return pytest.mark.skipif(not is_sdnq_available(), reason="test requires sdnq")(test_case)
 
 
 def require_accelerate(test_case):
     """
     Decorator marking a test that requires accelerate. These tests are skipped when accelerate isn't installed.
     """
-    return unittest.skipUnless(is_accelerate_available(), "test requires accelerate")(test_case)
+    return pytest.mark.skipif(not is_accelerate_available(), reason="test requires accelerate")(test_case)
+
+
+def require_flashpack(test_case):
+    """
+    Decorator marking a test that requires flashpack. These tests are skipped when flashpack isn't installed.
+    """
+    return pytest.mark.skipif(not is_flashpack_available(), reason="test requires flashpack")(test_case)
 
 
 def require_peft_version_greater(peft_version):
@@ -550,8 +777,8 @@ def require_peft_version_greater(peft_version):
         correct_peft_version = is_peft_available() and version.parse(
             version.parse(importlib.metadata.version("peft")).base_version
         ) > version.parse(peft_version)
-        return unittest.skipUnless(
-            correct_peft_version, f"test requires PEFT backend with the version greater than {peft_version}"
+        return pytest.mark.skipif(
+            not correct_peft_version, reason=f"test requires PEFT backend with the version greater than {peft_version}"
         )(test_case)
 
     return decorator
@@ -567,9 +794,9 @@ def require_transformers_version_greater(transformers_version):
         correct_transformers_version = is_transformers_available() and version.parse(
             version.parse(importlib.metadata.version("transformers")).base_version
         ) > version.parse(transformers_version)
-        return unittest.skipUnless(
-            correct_transformers_version,
-            f"test requires transformers with the version greater than {transformers_version}",
+        return pytest.mark.skipif(
+            not correct_transformers_version,
+            reason=f"test requires transformers with the version greater than {transformers_version}",
         )(test_case)
 
     return decorator
@@ -580,8 +807,9 @@ def require_accelerate_version_greater(accelerate_version):
         correct_accelerate_version = is_accelerate_available() and version.parse(
             version.parse(importlib.metadata.version("accelerate")).base_version
         ) > version.parse(accelerate_version)
-        return unittest.skipUnless(
-            correct_accelerate_version, f"Test requires accelerate with the version greater than {accelerate_version}."
+        return pytest.mark.skipif(
+            not correct_accelerate_version,
+            reason=f"Test requires accelerate with the version greater than {accelerate_version}.",
         )(test_case)
 
     return decorator
@@ -592,11 +820,21 @@ def require_bitsandbytes_version_greater(bnb_version):
         correct_bnb_version = is_bitsandbytes_available() and version.parse(
             version.parse(importlib.metadata.version("bitsandbytes")).base_version
         ) > version.parse(bnb_version)
-        return unittest.skipUnless(
-            correct_bnb_version, f"Test requires bitsandbytes with the version greater than {bnb_version}."
+        return pytest.mark.skipif(
+            not correct_bnb_version, reason=f"Test requires bitsandbytes with the version greater than {bnb_version}."
         )(test_case)
 
     return decorator
+
+
+def require_hf_token(test_case):
+    """
+    Decorator marking a test that requires a Hugging Face auth token (e.g. to access gated repos). The test is
+    skipped when no token is available.
+    """
+    from huggingface_hub import get_token
+
+    return pytest.mark.skipif(get_token() is None, reason="test requires a Hugging Face auth token")(test_case)
 
 
 def require_hf_hub_version_greater(hf_hub_version):
@@ -604,8 +842,9 @@ def require_hf_hub_version_greater(hf_hub_version):
         correct_hf_hub_version = version.parse(
             version.parse(importlib.metadata.version("huggingface_hub")).base_version
         ) > version.parse(hf_hub_version)
-        return unittest.skipUnless(
-            correct_hf_hub_version, f"Test requires huggingface_hub with the version greater than {hf_hub_version}."
+        return pytest.mark.skipif(
+            not correct_hf_hub_version,
+            reason=f"Test requires huggingface_hub with the version greater than {hf_hub_version}.",
         )(test_case)
 
     return decorator
@@ -616,8 +855,8 @@ def require_gguf_version_greater_or_equal(gguf_version):
         correct_gguf_version = is_gguf_available() and version.parse(
             version.parse(importlib.metadata.version("gguf")).base_version
         ) >= version.parse(gguf_version)
-        return unittest.skipUnless(
-            correct_gguf_version, f"Test requires gguf with the version greater than {gguf_version}."
+        return pytest.mark.skipif(
+            not correct_gguf_version, reason=f"Test requires gguf with the version greater than {gguf_version}."
         )(test_case)
 
     return decorator
@@ -628,8 +867,21 @@ def require_torchao_version_greater_or_equal(torchao_version):
         correct_torchao_version = is_torchao_available() and version.parse(
             version.parse(importlib.metadata.version("torchao")).base_version
         ) >= version.parse(torchao_version)
-        return unittest.skipUnless(
-            correct_torchao_version, f"Test requires torchao with version greater than {torchao_version}."
+        return pytest.mark.skipif(
+            not correct_torchao_version, reason=f"Test requires torchao with version greater than {torchao_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_auto_round_version_greater_or_equal(auto_round_version):
+    def decorator(test_case):
+        correct_auto_round_version = is_auto_round_available() and version.parse(
+            version.parse(importlib.metadata.version("auto_round")).base_version
+        ) >= version.parse(auto_round_version)
+        return pytest.mark.skipif(
+            not correct_auto_round_version,
+            reason=f"Test requires auto-round with version greater than {auto_round_version}.",
         )(test_case)
 
     return decorator
@@ -640,8 +892,18 @@ def require_kernels_version_greater_or_equal(kernels_version):
         correct_kernels_version = is_kernels_available() and version.parse(
             version.parse(importlib.metadata.version("kernels")).base_version
         ) >= version.parse(kernels_version)
-        return unittest.skipUnless(
-            correct_kernels_version, f"Test requires kernels with version greater than {kernels_version}."
+        return pytest.mark.skipif(
+            not correct_kernels_version, reason=f"Test requires kernels with version greater than {kernels_version}."
+        )(test_case)
+
+    return decorator
+
+
+def require_modelopt_version_greater_or_equal(modelopt_version):
+    def decorator(test_case):
+        return pytest.mark.skipif(
+            not is_nvidia_modelopt_version(">=", modelopt_version),
+            reason=f"Test requires modelopt with version greater than {modelopt_version}.",
         )(test_case)
 
     return decorator
@@ -651,7 +913,7 @@ def deprecate_after_peft_backend(test_case):
     """
     Decorator marking a test that will be skipped after PEFT backend
     """
-    return unittest.skipUnless(not USE_PEFT_BACKEND, "test skipped in favor of PEFT backend")(test_case)
+    return pytest.mark.skipif(USE_PEFT_BACKEND, reason="test skipped in favor of PEFT backend")(test_case)
 
 
 def get_python_version():
@@ -660,7 +922,7 @@ def get_python_version():
     return major, minor
 
 
-def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
+def load_numpy(arry: str | np.ndarray, local_path: str | None = None) -> np.ndarray:
     if isinstance(arry, str):
         if local_path is not None:
             # local_path can be passed to correct images of tests
@@ -686,14 +948,14 @@ def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -
     return arry
 
 
-def load_pt(url: str, map_location: Optional[str] = None, weights_only: Optional[bool] = True):
+def load_pt(url: str, map_location: str | None = None, weights_only: bool = True):
     response = requests.get(url, timeout=DIFFUSERS_REQUEST_TIMEOUT)
     response.raise_for_status()
     arry = torch.load(BytesIO(response.content), map_location=map_location, weights_only=weights_only)
     return arry
 
 
-def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
+def load_image(image: str | PIL.Image.Image) -> PIL.Image.Image:
     """
     Loads `image` to a PIL Image.
 
@@ -734,7 +996,7 @@ def preprocess_image(image: PIL.Image, batch_size: int):
     return 2.0 * image - 1.0
 
 
-def export_to_gif(image: List[PIL.Image.Image], output_gif_path: str = None) -> str:
+def export_to_gif(image: list[PIL.Image.Image], output_gif_path: str = None) -> str:
     if output_gif_path is None:
         output_gif_path = tempfile.NamedTemporaryFile(suffix=".gif").name
 
@@ -747,6 +1009,25 @@ def export_to_gif(image: List[PIL.Image.Image], output_gif_path: str = None) -> 
         loop=0,
     )
     return output_gif_path
+
+
+@contextmanager
+def skip_if_no_cudnn_engine():
+    """
+    Skip the enclosing test when cuDNN has no kernel for an op the pipeline runs.
+
+    cuDNN does not ship an engine for every (op, dtype, layout) combination, and the set it covers differs between
+    cuDNN builds and GPU architectures. When none applies it raises `RuntimeError: GET was unable to find an engine
+    to execute this computation` — for instance for Sana's depthwise `Conv2d` in bfloat16. That is a property of the
+    runner, not of the code under test, so tests that can hit it are skipped there rather than failed. Any other
+    `RuntimeError` propagates untouched.
+    """
+    try:
+        yield
+    except RuntimeError as e:
+        if "unable to find an engine" not in str(e):
+            raise
+        pytest.skip(f"cuDNN has no engine for this computation on {torch_device}: {e}")
 
 
 @contextmanager
@@ -828,7 +1109,7 @@ def export_to_obj(mesh, output_obj_path: str = None):
         f.writelines("\n".join(combined_data))
 
 
-def export_to_video(video_frames: List[np.ndarray], output_video_path: str = None) -> str:
+def export_to_video(video_frames: list[np.ndarray], output_video_path: str = None) -> str:
     if is_opencv_available():
         import cv2
     else:
@@ -1009,7 +1290,7 @@ def pytest_terminal_summary_main(tr, id):
 
 
 # Adapted from https://github.com/huggingface/transformers/blob/000e52aec8850d3fe2f360adc6fd256e5b47fe4c/src/transformers..testing_utils.py#L1905
-def is_flaky(max_attempts: int = 5, wait_before_retry: Optional[float] = None, description: Optional[str] = None):
+def is_flaky(max_attempts: int = 5, wait_before_retry: float | None = None, description: str | None = None):
     """
     To decorate flaky tests (methods or entire classes). They will be retried on failures.
 
@@ -1057,13 +1338,11 @@ def is_flaky(max_attempts: int = 5, wait_before_retry: Optional[float] = None, d
 
 
 # Taken from: https://github.com/huggingface/transformers/blob/3658488ff77ff8d45101293e749263acf437f4d5/src/transformers..testing_utils.py#L1787
-def run_test_in_subprocess(test_case, target_func, inputs=None, timeout=None):
+def run_test_in_subprocess(target_func, inputs=None, timeout=None):
     """
     To run a test in a subprocess. In particular, this can avoid (GPU) memory issue.
 
     Args:
-        test_case (`unittest.TestCase`):
-            The test that will run `target_func`.
         target_func (`Callable`):
             The function implementing the actual testing logic.
         inputs (`dict`, *optional*, defaults to `None`):
@@ -1081,7 +1360,7 @@ def run_test_in_subprocess(test_case, target_func, inputs=None, timeout=None):
     input_queue = ctx.Queue(1)
     output_queue = ctx.JoinableQueue(1)
 
-    # We can't send `unittest.TestCase` to the child, otherwise we get issues regarding pickle.
+    # We can't send test case objects to the child, otherwise we get issues regarding pickle.
     input_queue.put(inputs, timeout=timeout)
 
     process = ctx.Process(target=target_func, args=(input_queue, output_queue, timeout))
@@ -1093,11 +1372,11 @@ def run_test_in_subprocess(test_case, target_func, inputs=None, timeout=None):
         output_queue.task_done()
     except Exception as e:
         process.terminate()
-        test_case.fail(e)
+        pytest.fail(str(e))
     process.join(timeout=timeout)
 
     if results["error"] is not None:
-        test_case.fail(f"{results['error']}")
+        pytest.fail(f"{results['error']}")
 
 
 class CaptureLogger:
@@ -1110,7 +1389,7 @@ class CaptureLogger:
     Example:
     ```python
     >>> from diffusers import logging
-    >>> from diffusers..testing_utils import CaptureLogger
+    >>> from diffusers.utils.testing_utils import CaptureLogger
 
     >>> msg = "Testing 1, 2, 3"
     >>> logging.set_verbosity_info()
@@ -1148,7 +1427,12 @@ def enable_full_determinism():
     #  variable 'CUDA_LAUNCH_BLOCKING' or 'CUBLAS_WORKSPACE_CONFIG' to be set,
     # depending on the CUDA version, so we set them both here
     os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
+    # Use larger workspace size for PyTorch 2.10+ to avoid CUBLAS_STATUS_NOT_INITIALIZED errors
+    # (catches 2.11 dev versions which report as >= 2.10)
+    if is_torch_version(">=", "2.10"):
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+    else:
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
     torch.use_deterministic_algorithms(True)
 
     # Enable CUDNN deterministic mode
@@ -1213,100 +1497,47 @@ if is_torch_available():
     # Behaviour flags
     BACKEND_SUPPORTS_TRAINING = {"cuda": True, "xpu": True, "cpu": True, "mps": False, "default": True}
 
-    # Function definitions
-    BACKEND_EMPTY_CACHE = {
-        "cuda": torch.cuda.empty_cache,
-        "xpu": torch.xpu.empty_cache,
-        "cpu": None,
-        "mps": torch.mps.empty_cache,
-        "default": None,
-    }
-    BACKEND_DEVICE_COUNT = {
-        "cuda": torch.cuda.device_count,
-        "xpu": torch.xpu.device_count,
-        "cpu": lambda: 0,
-        "mps": lambda: 0,
-        "default": 0,
-    }
-    BACKEND_MANUAL_SEED = {
-        "cuda": torch.cuda.manual_seed,
-        "xpu": torch.xpu.manual_seed,
-        "cpu": torch.manual_seed,
-        "mps": torch.mps.manual_seed,
-        "default": torch.manual_seed,
-    }
-    BACKEND_RESET_PEAK_MEMORY_STATS = {
-        "cuda": torch.cuda.reset_peak_memory_stats,
-        "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
-        "cpu": None,
-        "mps": None,
-        "default": None,
-    }
-    BACKEND_RESET_MAX_MEMORY_ALLOCATED = {
-        "cuda": torch.cuda.reset_max_memory_allocated,
-        "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
-        "cpu": None,
-        "mps": None,
-        "default": None,
-    }
-    BACKEND_MAX_MEMORY_ALLOCATED = {
-        "cuda": torch.cuda.max_memory_allocated,
-        "xpu": getattr(torch.xpu, "max_memory_allocated", None),
-        "cpu": 0,
-        "mps": 0,
-        "default": 0,
-    }
-    BACKEND_SYNCHRONIZE = {
-        "cuda": torch.cuda.synchronize,
-        "xpu": getattr(torch.xpu, "synchronize", None),
-        "cpu": None,
-        "mps": None,
-        "default": None,
-    }
+    # Neuron device key: torch.neuron.current_device() returns an int (e.g. 0).
+    # We capture it once at import time if torch_neuronx is available so we can add it
+    # to all dispatch tables using the same key that torch_device is set to.
+    _neuron_device = (
+        torch.neuron.current_device()
+        if (is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available())
+        else None
+    )
+
+    if _neuron_device is not None:
+        BACKEND_SUPPORTS_TRAINING[_neuron_device] = False
 
 
-# This dispatches a defined function according to the accelerator from the function definitions.
-def _device_agnostic_dispatch(device: str, dispatch_table: Dict[str, Callable], *args, **kwargs):
-    if device not in dispatch_table:
-        return dispatch_table["default"](*args, **kwargs)
-
-    fn = dispatch_table[device]
-
-    # Some device agnostic functions return values. Need to guard against 'None' instead at
-    # user level
-    if not callable(fn):
-        return fn
-
-    return fn(*args, **kwargs)
-
-
-# These are callables which automatically dispatch the function specific to the accelerator
+# Device operations go through `TorchDeviceBackend`.
 def backend_manual_seed(device: str, seed: int):
-    return _device_agnostic_dispatch(device, BACKEND_MANUAL_SEED, seed)
+    TorchDeviceBackend(device).manual_seed(seed)
 
 
 def backend_synchronize(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_SYNCHRONIZE)
+    TorchDeviceBackend(device).synchronize()
 
 
 def backend_empty_cache(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_EMPTY_CACHE)
+    TorchDeviceBackend(device).empty_cache()
 
 
 def backend_device_count(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_DEVICE_COUNT)
+    return TorchDeviceBackend(device).device_count()
 
 
 def backend_reset_peak_memory_stats(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_RESET_PEAK_MEMORY_STATS)
+    TorchDeviceBackend(device).reset_peak_memory_stats()
 
 
 def backend_reset_max_memory_allocated(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_RESET_MAX_MEMORY_ALLOCATED)
+    # `reset_max_memory_allocated` is CUDA's deprecated alias of `reset_peak_memory_stats`.
+    TorchDeviceBackend(device).reset_peak_memory_stats()
 
 
 def backend_max_memory_allocated(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_MAX_MEMORY_ALLOCATED)
+    return TorchDeviceBackend(device).max_memory_allocated()
 
 
 # These are callables which return boolean behaviour flags and can be used to specify some
@@ -1324,7 +1555,7 @@ def backend_supports_training(device: str):
 # Guard for when Torch is not available
 if is_torch_available():
     # Update device function dict mapping
-    def update_mapping_from_spec(device_fn_dict: Dict[str, Callable], attribute_name: str):
+    def update_mapping_from_spec(device_fn_dict: dict[str, Callable], attribute_name: str):
         try:
             # Try to import the function directly
             spec_fn = getattr(device_spec_module, attribute_name)
@@ -1360,14 +1591,9 @@ if is_torch_available():
 
         torch_device = device_name
 
-        # Add one entry here for each `BACKEND_*` dictionary.
-        update_mapping_from_spec(BACKEND_MANUAL_SEED, "MANUAL_SEED_FN")
-        update_mapping_from_spec(BACKEND_EMPTY_CACHE, "EMPTY_CACHE_FN")
-        update_mapping_from_spec(BACKEND_DEVICE_COUNT, "DEVICE_COUNT_FN")
+        # `SUPPORTS_TRAINING` is the only per-device table left. Device operations come from the backend's own
+        # `torch.<backend>` module through `TorchDeviceBackend`, so a spec file no longer supplies them.
         update_mapping_from_spec(BACKEND_SUPPORTS_TRAINING, "SUPPORTS_TRAINING")
-        update_mapping_from_spec(BACKEND_RESET_PEAK_MEMORY_STATS, "RESET_PEAK_MEMORY_STATS_FN")
-        update_mapping_from_spec(BACKEND_RESET_MAX_MEMORY_ALLOCATED, "RESET_MAX_MEMORY_ALLOCATED_FN")
-        update_mapping_from_spec(BACKEND_MAX_MEMORY_ALLOCATED, "MAX_MEMORY_ALLOCATED_FN")
 
 
 # Modified from https://github.com/huggingface/transformers/blob/cdfb018d0300fef3b07d9220f3efe9c2a9974662/src/transformers..testing_utils.py#L3090
@@ -1420,8 +1646,10 @@ if is_torch_available():
         module: torch.nn.Module,
         offload_to_disk_path: str,
         offload_type: str,
-        num_blocks_per_group: Optional[int] = None,
-    ) -> Set[str]:
+        num_blocks_per_group: int | None = None,
+        block_modules: list[str] | None = None,
+        module_prefix: str = "",
+    ) -> set[str]:
         expected_files = set()
 
         def get_hashed_filename(group_id: str) -> str:
@@ -1432,23 +1660,36 @@ if is_torch_available():
             if num_blocks_per_group is None:
                 raise ValueError("num_blocks_per_group must be provided for 'block_level' offloading.")
 
-            # Handle groups of ModuleList and Sequential blocks
+            block_modules_set = set(block_modules) if block_modules is not None else set()
+
+            modules_with_group_offloading = set()
             unmatched_modules = []
             for name, submodule in module.named_children():
-                if not isinstance(submodule, (torch.nn.ModuleList, torch.nn.Sequential)):
-                    unmatched_modules.append(module)
-                    continue
+                if name in block_modules_set:
+                    new_prefix = f"{module_prefix}{name}." if module_prefix else f"{name}."
+                    submodule_files = _get_expected_safetensors_files(
+                        submodule, offload_to_disk_path, offload_type, num_blocks_per_group, block_modules, new_prefix
+                    )
+                    expected_files.update(submodule_files)
+                    modules_with_group_offloading.add(name)
 
-                for i in range(0, len(submodule), num_blocks_per_group):
-                    current_modules = submodule[i : i + num_blocks_per_group]
-                    if not current_modules:
-                        continue
-                    group_id = f"{name}_{i}_{i + len(current_modules) - 1}"
-                    expected_files.add(get_hashed_filename(group_id))
+                elif isinstance(submodule, (torch.nn.ModuleList, torch.nn.Sequential)):
+                    for i in range(0, len(submodule), num_blocks_per_group):
+                        current_modules = submodule[i : i + num_blocks_per_group]
+                        if not current_modules:
+                            continue
+                        group_id = f"{module_prefix}{name}_{i}_{i + len(current_modules) - 1}"
+                        expected_files.add(get_hashed_filename(group_id))
+                        for j in range(i, i + len(current_modules)):
+                            modules_with_group_offloading.add(f"{name}.{j}")
+                else:
+                    unmatched_modules.append(submodule)
 
-            # Handle the group for unmatched top-level modules and parameters
-            for module in unmatched_modules:
-                expected_files.add(get_hashed_filename(f"{module.__class__.__name__}_unmatched_group"))
+            parameters = _gather_parameters_with_no_group_offloading_parent(module, modules_with_group_offloading)
+            buffers = _gather_buffers_with_no_group_offloading_parent(module, modules_with_group_offloading)
+
+            if len(unmatched_modules) > 0 or len(parameters) > 0 or len(buffers) > 0:
+                expected_files.add(get_hashed_filename(f"{module_prefix}{module.__class__.__name__}_unmatched_group"))
 
         elif offload_type == "leaf_level":
             # Handle leaf-level module groups
@@ -1488,13 +1729,14 @@ if is_torch_available():
         module: torch.nn.Module,
         offload_to_disk_path: str,
         offload_type: str,
-        num_blocks_per_group: Optional[int] = None,
+        num_blocks_per_group: int | None = None,
+        block_modules: list[str] | None = None,
     ) -> bool:
         if not os.path.isdir(offload_to_disk_path):
             return False, None, None
 
         expected_files = _get_expected_safetensors_files(
-            module, offload_to_disk_path, offload_type, num_blocks_per_group
+            module, offload_to_disk_path, offload_type, num_blocks_per_group, block_modules
         )
         actual_files = set(glob.glob(os.path.join(offload_to_disk_path, "*.safetensors")))
         missing_files = expected_files - actual_files

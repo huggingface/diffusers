@@ -1,8 +1,9 @@
-from ...utils import is_flax_available, is_torch_available
+from ...utils import is_torch_available
 
 
 if is_torch_available():
     from .controlnet import ControlNetModel, ControlNetOutput
+    from .controlnet_cosmos import CosmosControlNetModel
     from .controlnet_flux import FluxControlNetModel, FluxControlNetOutput, FluxMultiControlNetModel
     from .controlnet_hunyuan import (
         HunyuanControlNetOutput,
@@ -19,8 +20,6 @@ if is_torch_available():
     )
     from .controlnet_union import ControlNetUnionModel
     from .controlnet_xs import ControlNetXSAdapter, ControlNetXSOutput, UNetControlNetXSModel
+    from .controlnet_z_image import ZImageControlNetModel
     from .multicontrolnet import MultiControlNetModel
     from .multicontrolnet_union import MultiControlNetUnionModel
-
-if is_flax_available():
-    from .controlnet_flax import FlaxControlNetModel

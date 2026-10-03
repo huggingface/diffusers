@@ -19,7 +19,7 @@ from collections import UserDict
 from contextlib import contextmanager
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Set
 
 import numpy as np
 import PIL.Image
@@ -28,13 +28,13 @@ import requests
 from numpy.linalg import norm
 from packaging import version
 
-from .constants import DIFFUSERS_REQUEST_TIMEOUT
+from .constants import DIFFUSERS_REQUEST_TIMEOUT, USE_PEFT_BACKEND
+from .deprecation_utils import deprecate
 from .import_utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
     is_bitsandbytes_available,
     is_compel_available,
-    is_flax_available,
     is_gguf_available,
     is_kernels_available,
     is_note_seq_available,
@@ -43,8 +43,10 @@ from .import_utils import (
     is_opencv_available,
     is_optimum_quanto_available,
     is_peft_available,
+    is_sdnq_available,
     is_timm_available,
     is_torch_available,
+    is_torch_neuronx_available,
     is_torch_version,
     is_torchao_available,
     is_torchsde_available,
@@ -67,18 +69,12 @@ else:
 global_rng = random.Random()
 
 logger = get_logger(__name__)
-logger.warning(
-    "diffusers.utils.testing_utils' is deprecated and will be removed in a future version. "
-    "Determinism and device backend utilities have been moved to `diffusers.utils.torch_utils`. "
+deprecate(
+    "diffusers.utils.testing_utils",
+    "1.0.0",
+    "diffusers.utils.testing_utils is deprecated and will be removed in a future version. "
+    "Determinism and device backend utilities have been moved to `diffusers.utils.torch_utils`. ",
 )
-_required_peft_version = is_peft_available() and version.parse(
-    version.parse(importlib.metadata.version("peft")).base_version
-) > version.parse("0.5")
-_required_transformers_version = is_transformers_available() and version.parse(
-    version.parse(importlib.metadata.version("transformers")).base_version
-) > version.parse("4.33")
-
-USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
 BIG_GPU_MEMORY = int(os.getenv("BIG_GPU_MEMORY", 40))
 
 if is_torch_available():
@@ -110,6 +106,8 @@ if is_torch_available():
             torch_device = "cuda"
         elif torch.xpu.is_available():
             torch_device = "xpu"
+        elif is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available():
+            torch_device = torch.neuron.current_device()
         else:
             torch_device = "cpu"
         is_torch_higher_equal_than_1_12 = version.parse(
@@ -464,13 +462,6 @@ def skip_mps(test_case):
     return unittest.skipUnless(torch_device != "mps", "test requires non 'mps' device")(test_case)
 
 
-def require_flax(test_case):
-    """
-    Decorator marking a test that requires JAX & Flax. These tests are skipped when one / both are not installed
-    """
-    return unittest.skipUnless(is_flax_available(), "test requires JAX & Flax")(test_case)
-
-
 def require_compel(test_case):
     """
     Decorator marking a test that requires compel: https://github.com/damian0815/compel. These tests are skipped when
@@ -535,6 +526,13 @@ def require_quanto(test_case):
     Decorator marking a test that requires quanto. These tests are skipped when quanto isn't installed.
     """
     return unittest.skipUnless(is_optimum_quanto_available(), "test requires quanto")(test_case)
+
+
+def require_sdnq(test_case):
+    """
+    Decorator marking a test that requires sdnq. These tests are skipped when sdnq isn't installed.
+    """
+    return unittest.skipUnless(is_sdnq_available(), "test requires sdnq")(test_case)
 
 
 def require_accelerate(test_case):
@@ -642,7 +640,7 @@ def require_torchao_version_greater_or_equal(torchao_version):
 def require_modelopt_version_greater_or_equal(modelopt_version):
     def decorator(test_case):
         correct_nvidia_modelopt_version = is_nvidia_modelopt_available() and version.parse(
-            version.parse(importlib.metadata.version("modelopt")).base_version
+            version.parse(importlib.metadata.version("nvidia-modelopt")).base_version
         ) >= version.parse(modelopt_version)
         return unittest.skipUnless(
             correct_nvidia_modelopt_version, f"Test requires modelopt with version greater than {modelopt_version}."
@@ -676,7 +674,7 @@ def get_python_version():
     return major, minor
 
 
-def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
+def load_numpy(arry: str | np.ndarray, local_path: str | None = None) -> np.ndarray:
     if isinstance(arry, str):
         if local_path is not None:
             # local_path can be passed to correct images of tests
@@ -702,14 +700,14 @@ def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -
     return arry
 
 
-def load_pt(url: str, map_location: Optional[str] = None, weights_only: Optional[bool] = True):
+def load_pt(url: str, map_location: str | None = None, weights_only: bool | None = True):
     response = requests.get(url, timeout=DIFFUSERS_REQUEST_TIMEOUT)
     response.raise_for_status()
     arry = torch.load(BytesIO(response.content), map_location=map_location, weights_only=weights_only)
     return arry
 
 
-def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
+def load_image(image: str | PIL.Image.Image) -> PIL.Image.Image:
     """
     Loads `image` to a PIL Image.
 
@@ -750,7 +748,7 @@ def preprocess_image(image: PIL.Image, batch_size: int):
     return 2.0 * image - 1.0
 
 
-def export_to_gif(image: List[PIL.Image.Image], output_gif_path: str = None) -> str:
+def export_to_gif(image: list[PIL.Image.Image], output_gif_path: str = None) -> str:
     if output_gif_path is None:
         output_gif_path = tempfile.NamedTemporaryFile(suffix=".gif").name
 
@@ -843,7 +841,7 @@ def export_to_obj(mesh, output_obj_path: str = None):
         f.writelines("\n".join(combined_data))
 
 
-def export_to_video(video_frames: List[np.ndarray], output_video_path: str = None) -> str:
+def export_to_video(video_frames: list[np.ndarray], output_video_path: str = None) -> str:
     if is_opencv_available():
         import cv2
     else:
@@ -1024,7 +1022,7 @@ def pytest_terminal_summary_main(tr, id):
 
 
 # Adapted from https://github.com/huggingface/transformers/blob/000e52aec8850d3fe2f360adc6fd256e5b47fe4c/src/transformers/testing_utils.py#L1905
-def is_flaky(max_attempts: int = 5, wait_before_retry: Optional[float] = None, description: Optional[str] = None):
+def is_flaky(max_attempts: int = 5, wait_before_retry: float | None = None, description: str | None = None):
     """
     To decorate flaky tests (methods or entire classes). They will be retried on failures.
 
@@ -1281,7 +1279,7 @@ if is_torch_available():
 
 
 # This dispatches a defined function according to the accelerator from the function definitions.
-def _device_agnostic_dispatch(device: str, dispatch_table: Dict[str, Callable], *args, **kwargs):
+def _device_agnostic_dispatch(device: str, dispatch_table: dict[str, Callable], *args, **kwargs):
     if device not in dispatch_table:
         return dispatch_table["default"](*args, **kwargs)
 
@@ -1381,7 +1379,7 @@ def backend_supports_training(device: str):
 # Guard for when Torch is not available
 if is_torch_available():
     # Update device function dict mapping
-    def update_mapping_from_spec(device_fn_dict: Dict[str, Callable], attribute_name: str):
+    def update_mapping_from_spec(device_fn_dict: dict[str, Callable], attribute_name: str):
         try:
             # Try to import the function directly
             spec_fn = getattr(device_spec_module, attribute_name)
@@ -1430,7 +1428,7 @@ if is_torch_available():
 # Modified from https://github.com/huggingface/transformers/blob/cdfb018d0300fef3b07d9220f3efe9c2a9974662/src/transformers/testing_utils.py#L3090
 
 # Type definition of key used in `Expectations` class.
-DeviceProperties = Tuple[Union[str, None], Union[int, None]]
+DeviceProperties = tuple[str | None, int | None]
 
 
 @functools.lru_cache
@@ -1477,7 +1475,7 @@ if is_torch_available():
         module: torch.nn.Module,
         offload_to_disk_path: str,
         offload_type: str,
-        num_blocks_per_group: Optional[int] = None,
+        num_blocks_per_group: int | None = None,
     ) -> Set[str]:
         expected_files = set()
 
@@ -1545,7 +1543,7 @@ if is_torch_available():
         module: torch.nn.Module,
         offload_to_disk_path: str,
         offload_type: str,
-        num_blocks_per_group: Optional[int] = None,
+        num_blocks_per_group: int | None = None,
     ) -> bool:
         if not os.path.isdir(offload_to_disk_path):
             return False, None, None

@@ -26,12 +26,10 @@ Qwen-Image comes in the following variants:
 |:----------:|:--------:|
 | Qwen-Image | [`Qwen/Qwen-Image`](https://huggingface.co/Qwen/Qwen-Image) |
 | Qwen-Image-Edit | [`Qwen/Qwen-Image-Edit`](https://huggingface.co/Qwen/Qwen-Image-Edit) |
+| Qwen-Image-Edit Plus | [Qwen/Qwen-Image-Edit-2509](https://huggingface.co/Qwen/Qwen-Image-Edit-2509) |
 
-<Tip>
-
-[Caching](../../optimization/cache) may also speed up inference by storing and reusing intermediate outputs.
-
-</Tip>
+> [!TIP]
+> See the [Caching](../../optimization/cache) guide to speed up inference by storing and reusing intermediate outputs.
 
 ## LoRA for faster inference
 
@@ -68,8 +66,8 @@ scheduler_config = {
 }
 scheduler = FlowMatchEulerDiscreteScheduler.from_config(scheduler_config)
 pipe = DiffusionPipeline.from_pretrained(
-    ckpt_id, scheduler=scheduler, torch_dtype=torch.bfloat16
-).to("cuda")
+    ckpt_id, scheduler=scheduler, dtype=torch.bfloat16
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipe.load_lora_weights(
     "lightx2v/Qwen-Image-Lightning", weight_name="Qwen-Image-Lightning-8steps-V1.0.safetensors"
 )
@@ -90,11 +88,65 @@ image.save("qwen_fewsteps.png")
 
 </details>
 
-<Tip>
+> [!TIP]
+> The `guidance_scale` parameter in the pipeline is there to support future guidance-distilled models when they come up. Note that passing `guidance_scale` to the pipeline is ineffective. To enable classifier-free guidance, please pass `true_cfg_scale` and `negative_prompt` (even an empty negative prompt like " ") should enable classifier-free guidance computations.
 
-The `guidance_scale` parameter in the pipeline is there to support future guidance-distilled models when they come up. Note that passing `guidance_scale` to the pipeline is ineffective. To enable classifier-free guidance, please pass `true_cfg_scale` and `negative_prompt` (even an empty negative prompt like " ") should enable classifier-free guidance computations.
+## Multi-image reference with QwenImageEditPlusPipeline
 
-</Tip>
+With [`QwenImageEditPlusPipeline`], one can provide multiple images as input reference.
+
+```py
+import torch
+from PIL import Image
+from diffusers import QwenImageEditPlusPipeline
+from diffusers.utils import load_image
+
+pipe = QwenImageEditPlusPipeline.from_pretrained(
+    "Qwen/Qwen-Image-Edit-2509", dtype=torch.bfloat16
+).to("cuda")  # or "mps", "xpu", "cpu"
+
+image_1 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/grumpy.jpg")
+image_2 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peng.png")
+image = pipe(
+    image=[image_1, image_2],
+    prompt='''put the penguin and the cat at a game show called "Qwen Edit Plus Games"''',
+    num_inference_steps=50
+).images[0]
+```
+
+## Performance
+
+### torch.compile
+
+Using `torch.compile` on the transformer provides ~2.4x speedup (A100 80GB: 4.70s → 1.93s):
+
+```python
+import torch
+from diffusers import QwenImagePipeline
+
+pipe = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", dtype=torch.bfloat16).to("cuda")  # or "mps", "xpu", "cpu"
+pipe.transformer = torch.compile(pipe.transformer)
+
+# First call triggers compilation (~7s overhead)
+# Subsequent calls run at ~2.4x faster
+image = pipe("a cat", num_inference_steps=50).images[0]
+```
+
+### Batched Inference with Variable-Length Prompts
+
+When using classifier-free guidance (CFG) with prompts of different lengths, the pipeline properly handles padding through attention masking. This ensures padding tokens do not influence the generated output.
+
+```python
+# CFG with different prompt lengths works correctly
+image = pipe(
+    prompt="A cat",
+    negative_prompt="blurry, low quality, distorted",
+    true_cfg_scale=3.5,
+    num_inference_steps=50,
+).images[0]
+```
+
+For detailed benchmark scripts and results, see [this gist](https://gist.github.com/cdutr/bea337e4680268168550292d7819dc2f).
 
 ## QwenImagePipeline
 
@@ -126,7 +178,21 @@ The `guidance_scale` parameter in the pipeline is there to support future guidan
   - all
   - __call__
 
-## QwenImaggeControlNetPipeline
+## QwenImageControlNetPipeline
+
+[[autodoc]] QwenImageControlNetPipeline
+  - all
+  - __call__
+
+## QwenImageEditPlusPipeline
+
+[[autodoc]] QwenImageEditPlusPipeline
+  - all
+  - __call__
+
+## QwenImageLayeredPipeline
+
+[[autodoc]] QwenImageLayeredPipeline
   - all
   - __call__
 

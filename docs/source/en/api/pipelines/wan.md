@@ -40,6 +40,7 @@ The following Wan models are supported in Diffusers:
 - [Wan 2.2 T2V 14B](https://huggingface.co/Wan-AI/Wan2.2-T2V-A14B-Diffusers)
 - [Wan 2.2 I2V 14B](https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B-Diffusers)
 - [Wan 2.2 TI2V 5B](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B-Diffusers)
+- [Wan 2.2 Animate 14B](https://huggingface.co/Wan-AI/Wan2.2-Animate-14B-Diffusers)
 
 > [!TIP]
 > Click on the Wan models in the right sidebar for more examples of video generation.
@@ -65,9 +66,9 @@ from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
 from transformers import UMT5EncoderModel
 
-text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
-vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
-transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", dtype=torch.bfloat16)
+vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", dtype=torch.float32)
+transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", dtype=torch.bfloat16)
 
 # group-offloading
 onload_device = torch.device("cuda")
@@ -90,20 +91,20 @@ pipeline = WanPipeline.from_pretrained(
     vae=vae,
     transformer=transformer,
     text_encoder=text_encoder,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = """
-The camera rushes from far to near in a low-angle shot, 
-revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in 
-for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground. 
-Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic 
+The camera rushes from far to near in a low-angle shot,
+revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in
+for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground.
+Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic
 shadows and warm highlights. Medium composition, front view, low angle, with depth of field.
 """
 negative_prompt = """
-Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, 
-low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, 
+Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality,
+low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured,
 misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards
 """
 
@@ -130,18 +131,18 @@ from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
 from transformers import UMT5EncoderModel
 
-text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
-vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
-transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", dtype=torch.bfloat16)
+vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", dtype=torch.float32)
+transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", dtype=torch.bfloat16)
 
 pipeline = WanPipeline.from_pretrained(
     "Wan-AI/Wan2.1-T2V-14B-Diffusers",
     vae=vae,
     transformer=transformer,
     text_encoder=text_encoder,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 # torch.compile
 pipeline.transformer.to(memory_format=torch.channels_last)
@@ -150,15 +151,15 @@ pipeline.transformer = torch.compile(
 )
 
 prompt = """
-The camera rushes from far to near in a low-angle shot, 
-revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in 
-for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground. 
-Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic 
+The camera rushes from far to near in a low-angle shot,
+revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in
+for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground.
+Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic
 shadows and warm highlights. Medium composition, front view, low angle, with depth of field.
 """
 negative_prompt = """
-Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, 
-low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, 
+Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality,
+low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured,
 misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards
 """
 
@@ -191,12 +192,12 @@ from transformers import CLIPVisionModel
 
 
 model_id = "Wan-AI/Wan2.1-FLF2V-14B-720P-diffusers"
-image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", torch_dtype=torch.float32)
-vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+image_encoder = CLIPVisionModel.from_pretrained(model_id, subfolder="image_encoder", dtype=torch.float32)
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
 pipe = WanImageToVideoPipeline.from_pretrained(
-    model_id, vae=vae, image_encoder=image_encoder, torch_dtype=torch.bfloat16
+    model_id, vae=vae, image_encoder=image_encoder, dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 first_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_first_frame.png")
 last_frame = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flf2v_input_last_frame.png")
@@ -249,6 +250,205 @@ The code snippets available in [this](https://github.com/huggingface/diffusers/p
 
 The general rule of thumb to keep in mind when preparing inputs for the VACE pipeline is that the input images, or frames of a video that you want to use for conditioning, should have a corresponding mask that is black in color. The black mask signifies that the model will not generate new content for that area, and only use those parts for conditioning the generation process. For parts/frames that should be generated by the model, the mask should be white in color.
 
+### Wan-Animate: Unified Character Animation and Replacement with Holistic Replication
+
+[Wan-Animate](https://huggingface.co/papers/2509.14055) by the Wan Team.
+
+*We introduce Wan-Animate, a unified framework for character animation and replacement. Given a character image and a reference video, Wan-Animate can animate the character by precisely replicating the expressions and movements of the character in the video to generate high-fidelity character videos. Alternatively, it can integrate the animated character into the reference video to replace the original character, replicating the scene's lighting and color tone to achieve seamless environmental integration. Wan-Animate is built upon the Wan model. To adapt it for character animation tasks, we employ a modified input paradigm to differentiate between reference conditions and regions for generation. This design unifies multiple tasks into a common symbolic representation. We use spatially-aligned skeleton signals to replicate body motion and implicit facial features extracted from source images to reenact expressions, enabling the generation of character videos with high controllability and expressiveness. Furthermore, to enhance environmental integration during character replacement, we develop an auxiliary Relighting LoRA. This module preserves the character's appearance consistency while applying the appropriate environmental lighting and color tone. Experimental results demonstrate that Wan-Animate achieves state-of-the-art performance. We are committed to open-sourcing the model weights and its source code.*
+
+The project page: https://humanaigc.github.io/wan-animate
+
+This model was mostly contributed by [M. Tolga Cangöz](https://github.com/tolgacangoz).
+
+#### Usage
+
+The Wan-Animate pipeline supports two modes of operation:
+
+1. **Animation Mode** (default): Animates a character image based on motion and expression from reference videos
+2. **Replacement Mode**: Replaces a character in a background video with a new character while preserving the scene
+
+##### Prerequisites
+
+Before using the pipeline, you need to preprocess your reference video to extract:
+- **Pose video**: Contains skeletal keypoints representing body motion
+- **Face video**: Contains facial feature representations for expression control
+
+For replacement mode, you additionally need:
+- **Background video**: The original video containing the scene
+- **Mask video**: A mask indicating where to generate content (white) vs. preserve original (black)
+
+> [!NOTE]
+> Raw videos should not be used for inputs such as `pose_video`, which the pipeline expects to be preprocessed to extract the proper information. Preprocessing scripts to prepare these inputs are available in the [original Wan-Animate repository](https://github.com/Wan-Video/Wan2.2?tab=readme-ov-file#1-preprocessing). Integration of these preprocessing steps into Diffusers is planned for a future release.
+
+The example below demonstrates how to use the Wan-Animate pipeline:
+
+<hfoptions id="Animate usage">
+<hfoption id="Animation mode">
+
+```python
+import numpy as np
+import torch
+from diffusers import AutoencoderKLWan, WanAnimatePipeline
+from diffusers.utils import export_to_video, load_image, load_video
+
+model_id = "Wan-AI/Wan2.2-Animate-14B-Diffusers"
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
+pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, dtype=torch.bfloat16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
+
+# Load character image and preprocessed videos
+image = load_image("path/to/character.jpg")
+pose_video = load_video("path/to/pose_video.mp4")  # Preprocessed skeletal keypoints
+face_video = load_video("path/to/face_video.mp4")  # Preprocessed facial features
+
+# Resize image to match VAE constraints
+def aspect_ratio_resize(image, pipe, max_area=720 * 1280):
+    aspect_ratio = image.height / image.width
+    mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
+    height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
+    width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
+    image = image.resize((width, height))
+    return image, height, width
+
+image, height, width = aspect_ratio_resize(image, pipe)
+
+prompt = "A person dancing energetically in a studio with dynamic lighting and professional camera work"
+negative_prompt = "blurry, low quality, distorted, deformed, static, poorly drawn"
+
+# Generate animated video
+output = pipe(
+    image=image,
+    pose_video=pose_video,
+    face_video=face_video,
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    height=height,
+    width=width,
+    segment_frame_length=77,
+    guidance_scale=1.0,
+    mode="animate",  # Animation mode (default)
+).frames[0]
+export_to_video(output, "animated_character.mp4", fps=30)
+```
+
+</hfoption>
+<hfoption id="Replacement mode">
+
+```python
+import numpy as np
+import torch
+from diffusers import AutoencoderKLWan, WanAnimatePipeline
+from diffusers.utils import export_to_video, load_image, load_video
+
+model_id = "Wan-AI/Wan2.2-Animate-14B-Diffusers"
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
+pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, dtype=torch.bfloat16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
+
+# Load all required inputs for replacement mode
+image = load_image("path/to/new_character.jpg")
+pose_video = load_video("path/to/pose_video.mp4")  # Preprocessed skeletal keypoints
+face_video = load_video("path/to/face_video.mp4")  # Preprocessed facial features
+background_video = load_video("path/to/background_video.mp4")  # Original scene
+mask_video = load_video("path/to/mask_video.mp4")  # Black: preserve, White: generate
+
+# Resize image to match video dimensions
+def aspect_ratio_resize(image, pipe, max_area=720 * 1280):
+    aspect_ratio = image.height / image.width
+    mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
+    height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
+    width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
+    image = image.resize((width, height))
+    return image, height, width
+
+image, height, width = aspect_ratio_resize(image, pipe)
+
+prompt = "A person seamlessly integrated into the scene with consistent lighting and environment"
+negative_prompt = "blurry, low quality, inconsistent lighting, floating, disconnected from scene"
+
+# Replace character in background video
+output = pipe(
+    image=image,
+    pose_video=pose_video,
+    face_video=face_video,
+    background_video=background_video,
+    mask_video=mask_video,
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    height=height,
+    width=width,
+    segment_frame_lengths=77,
+    guidance_scale=1.0,
+    mode="replace",  # Replacement mode
+).frames[0]
+export_to_video(output, "character_replaced.mp4", fps=30)
+```
+
+</hfoption>
+<hfoption id="Advanced options">
+
+```python
+import numpy as np
+import torch
+from diffusers import AutoencoderKLWan, WanAnimatePipeline
+from diffusers.utils import export_to_video, load_image, load_video
+
+model_id = "Wan-AI/Wan2.2-Animate-14B-Diffusers"
+vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
+pipe = WanAnimatePipeline.from_pretrained(model_id, vae=vae, dtype=torch.bfloat16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
+
+image = load_image("path/to/character.jpg")
+pose_video = load_video("path/to/pose_video.mp4")
+face_video = load_video("path/to/face_video.mp4")
+
+def aspect_ratio_resize(image, pipe, max_area=720 * 1280):
+    aspect_ratio = image.height / image.width
+    mod_value = pipe.vae_scale_factor_spatial * pipe.transformer.config.patch_size[1]
+    height = round(np.sqrt(max_area * aspect_ratio)) // mod_value * mod_value
+    width = round(np.sqrt(max_area / aspect_ratio)) // mod_value * mod_value
+    image = image.resize((width, height))
+    return image, height, width
+
+image, height, width = aspect_ratio_resize(image, pipe)
+
+prompt = "A person dancing energetically in a studio"
+negative_prompt = "blurry, low quality"
+
+# Advanced: Use temporal guidance and custom callback
+def callback_fn(pipe, step_index, timestep, callback_kwargs):
+    # You can modify latents or other tensors here
+    print(f"Step {step_index}, Timestep {timestep}")
+    return callback_kwargs
+
+output = pipe(
+    image=image,
+    pose_video=pose_video,
+    face_video=face_video,
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    height=height,
+    width=width,
+    segment_frame_length=77,
+    num_inference_steps=50,
+    guidance_scale=5.0,
+    prev_segment_conditioning_frames=5,  # Use 5 frames for temporal guidance (1 or 5 recommended)
+    callback_on_step_end=callback_fn,
+    callback_on_step_end_tensor_inputs=["latents"],
+).frames[0]
+export_to_video(output, "animated_advanced.mp4", fps=30)
+```
+
+</hfoption>
+</hfoptions>
+
+#### Key Parameters
+
+- **mode**: Choose between `"animate"` (default) or `"replace"`
+- **prev_segment_conditioning_frames**: Number of frames for temporal guidance (1 or 5 recommended). Using 5 provides better temporal consistency but requires more memory
+- **guidance_scale**: Controls how closely the output follows the text prompt. Higher values (5-7) produce results more aligned with the prompt. For Wan-Animate, CFG is disabled by default (`guidance_scale=1.0`) but can be enabled to support negative prompts and finer control over facial expressions. (Note that CFG will only target the text prompt and face conditioning.)
+
+
 ## Notes
 
 - Wan2.1 supports LoRAs with [`~loaders.WanLoraLoaderMixin.load_lora_weights`].
@@ -264,15 +464,15 @@ The general rule of thumb to keep in mind when preparing inputs for the VACE pip
   from diffusers.utils import export_to_video
 
   vae = AutoModel.from_pretrained(
-      "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", subfolder="vae", torch_dtype=torch.float32
+      "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", subfolder="vae", dtype=torch.float32
   )
   pipeline = WanPipeline.from_pretrained(
-      "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", vae=vae, torch_dtype=torch.bfloat16
+      "Wan-AI/Wan2.1-T2V-1.3B-Diffusers", vae=vae, dtype=torch.bfloat16
   )
   pipeline.scheduler = UniPCMultistepScheduler.from_config(
       pipeline.scheduler.config, flow_shift=5.0
   )
-  pipeline.to("cuda")
+  pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
   pipeline.load_lora_weights("benjamin-paine/steamboat-willie-1.3b", adapter_name="steamboat-willie")
   pipeline.set_adapters("steamboat-willie")
@@ -281,10 +481,10 @@ The general rule of thumb to keep in mind when preparing inputs for the VACE pip
 
   # use "steamboat willie style" to trigger the LoRA
   prompt = """
-  steamboat willie style, golden era animation, The camera rushes from far to near in a low-angle shot, 
-  revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in 
-  for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground. 
-  Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic 
+  steamboat willie style, golden era animation, The camera rushes from far to near in a low-angle shot,
+  revealing a white ferret on a log. It plays, leaps into the water, and emerges, as the camera zooms in
+  for a close-up. Water splashes berry bushes nearby, while moss, snow, and leaves blanket the ground.
+  Birch trees and a light blue sky frame the scene, with ferns in the foreground. Side lighting casts dynamic
   shadows and warm highlights. Medium composition, front view, low angle, with depth of field.
   """
 
@@ -313,13 +513,13 @@ The general rule of thumb to keep in mind when preparing inputs for the VACE pip
   )
   transformer = WanTransformer3DModel.from_single_file(
       "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/diffusion_models/wan2.1_t2v_1.3B_bf16.safetensors",
-      torch_dtype=torch.bfloat16
+      dtype=torch.bfloat16
   )
   pipeline = WanPipeline.from_pretrained(
       "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
       vae=vae,
       transformer=transformer,
-      torch_dtype=torch.bfloat16
+      dtype=torch.bfloat16
   )
   ```
 
@@ -331,7 +531,7 @@ The general rule of thumb to keep in mind when preparing inputs for the VACE pip
 
 - Try lower `shift` values (`2.0` to `5.0`) for lower resolution videos and higher `shift` values (`7.0` to `12.0`) for higher resolution images.
 
-- Wan 2.1 and 2.2 support using [LightX2V LoRAs](https://huggingface.co/Kijai/WanVideo_comfy/tree/main/Lightx2v) to speed up inference. Using them on Wan 2.2 is slightly more involed. Refer to [this code snippet](https://github.com/huggingface/diffusers/pull/12040#issuecomment-3144185272) to learn more.
+- Wan 2.1 and 2.2 support using [LightX2V LoRAs](https://huggingface.co/Kijai/WanVideo_comfy/tree/main/Lightx2v) to speed up inference. Using them on Wan 2.2 is slightly more involved. Refer to [this code snippet](https://github.com/huggingface/diffusers/pull/12040#issuecomment-3144185272) to learn more.
 
 - Wan 2.2 has two denoisers. By default, LoRAs are only loaded into the first denoiser. One can set `load_into_transformer_2=True` to load LoRAs into the second denoiser. Refer to [this](https://github.com/huggingface/diffusers/pull/12074#issue-3292620048) and [this](https://github.com/huggingface/diffusers/pull/12074#issuecomment-3155896144) examples to learn more.
 
@@ -356,6 +556,12 @@ The general rule of thumb to keep in mind when preparing inputs for the VACE pip
 ## WanVideoToVideoPipeline
 
 [[autodoc]] WanVideoToVideoPipeline
+  - all
+  - __call__
+
+## WanAnimatePipeline
+
+[[autodoc]] WanAnimatePipeline
   - all
   - __call__
 

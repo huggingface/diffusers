@@ -17,11 +17,8 @@ Diffusers 功能可在 [AWS Inf2 实例](https://aws.amazon.com/ec2/instance-typ
 python -m pip install --upgrade-strategy eager optimum[neuronx]
 ```
 
-<Tip>
-
-我们提供预构建的 [Hugging Face Neuron 深度学习 AMI](https://aws.amazon.com/marketplace/pp/prodview-gr3e6yiscria2)（DLAMI）和用于 Amazon SageMaker 的 Optimum Neuron 容器。建议正确设置您的环境。
-
-</Tip>
+> [!TIP]
+> 我们提供预构建的 [Hugging Face Neuron 深度学习 AMI](https://aws.amazon.com/marketplace/pp/prodview-gr3e6yiscria2)（DLAMI）和用于 Amazon SageMaker 的 Optimum Neuron 容器。建议正确设置您的环境。
 
 下面的示例演示了如何在 inf2.8xlarge 实例上使用 Stable Diffusion XL 模型生成图像（一旦模型编译完成，您可以切换到更便宜的 inf2.xlarge 实例）。要生成一些图像，请使用 [`~optimum.neuron.NeuronStableDiffusionXLPipeline`] 类，该类类似于 Diffusers 中的 [`StableDiffusionXLPipeline`] 类。
 

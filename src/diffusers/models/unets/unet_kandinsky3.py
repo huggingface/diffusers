@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,15 +13,14 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import Dict, Tuple, Union
 
 import torch
-import torch.utils.checkpoint
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput, logging
-from ..attention_processor import Attention, AttentionProcessor, AttnProcessor
+from ..attention import AttentionMixin
+from ..attention_processor import Attention, AttnProcessor
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
 
@@ -40,13 +39,13 @@ class Kandinsky3EncoderProj(nn.Module):
         self.projection_linear = nn.Linear(encoder_hid_dim, cross_attention_dim, bias=False)
         self.projection_norm = nn.LayerNorm(cross_attention_dim)
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         x = self.projection_linear(x)
         x = self.projection_norm(x)
         return x
 
 
-class Kandinsky3UNet(ModelMixin, ConfigMixin):
+class Kandinsky3UNet(ModelMixin, AttentionMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
@@ -54,9 +53,9 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
         time_embedding_dim: int = 1536,
         groups: int = 32,
         attention_head_dim: int = 64,
-        layers_per_block: Union[int, Tuple[int]] = 3,
-        block_out_channels: Tuple[int] = (384, 768, 1536, 3072),
-        cross_attention_dim: Union[int, Tuple[int]] = 4096,
+        layers_per_block: int | tuple[int] = 3,
+        block_out_channels: tuple[int, ...] = (384, 768, 1536, 3072),
+        cross_attention_dim: int | tuple[int] = 4096,
         encoder_hid_dim: int = 4096,
     ):
         super().__init__()
@@ -141,71 +140,32 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
         self.conv_act_out = nn.SiLU()
         self.conv_out = nn.Conv2d(init_channels, out_channels, kernel_size=3, padding=1)
 
-    @property
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
-        r"""
-        Returns:
-            `dict` of attention processors: A dictionary containing all attention processors used in the model with
-            indexed by its weight name.
-        """
-        # set recursively
-        processors = {}
-
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
-            if hasattr(module, "set_processor"):
-                processors[f"{name}.processor"] = module.processor
-
-            for sub_name, child in module.named_children():
-                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
-
-            return processors
-
-        for name, module in self.named_children():
-            fn_recursive_add_processors(name, module, processors)
-
-        return processors
-
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
-        r"""
-        Sets the attention processor to use to compute attention.
-
-        Parameters:
-            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
-                The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                for **all** `Attention` layers.
-
-                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
-                processor. This is strongly recommended when setting trainable attention processors.
-
-        """
-        count = len(self.attn_processors.keys())
-
-        if isinstance(processor, dict) and len(processor) != count:
-            raise ValueError(
-                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
-                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
-            )
-
-        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
-            if hasattr(module, "set_processor"):
-                if not isinstance(processor, dict):
-                    module.set_processor(processor)
-                else:
-                    module.set_processor(processor.pop(f"{name}.processor"))
-
-            for sub_name, child in module.named_children():
-                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
-
-        for name, module in self.named_children():
-            fn_recursive_attn_processor(name, module, processor)
-
     def set_default_attn_processor(self):
         """
         Disables custom attention processors and sets the default attention implementation.
         """
         self.set_attn_processor(AttnProcessor())
 
-    def forward(self, sample, timestep, encoder_hidden_states=None, encoder_attention_mask=None, return_dict=True):
+    def forward(
+        self, sample, timestep, encoder_hidden_states=None, encoder_attention_mask=None, return_dict=True
+    ) -> Kandinsky3UNetOutput | tuple[torch.Tensor]:
+        r"""
+        Args:
+            sample (`torch.Tensor`): Input sample.
+            timestep (`torch.Tensor`, `float`, or `int`):
+                The number of timesteps to denoise an input.
+            encoder_hidden_states (`torch.Tensor`, *optional*):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            encoder_attention_mask (`torch.Tensor`, *optional*):
+                Attention mask applied to `encoder_hidden_states`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.unets.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            If `return_dict` is True, a [`~models.unets.unet_kandinsky3.Kandinsky3UNetOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
+        """
         if encoder_attention_mask is not None:
             encoder_attention_mask = (1 - encoder_attention_mask.to(sample.dtype)) * -10000.0
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
@@ -306,7 +266,7 @@ class Kandinsky3UpSampleBlock(nn.Module):
         self.resnets_in = nn.ModuleList(resnets_in)
         self.resnets_out = nn.ModuleList(resnets_out)
 
-    def forward(self, x, time_embed, context=None, context_mask=None, image_mask=None):
+    def forward(self, x, time_embed, context=None, context_mask=None, image_mask=None) -> torch.Tensor:
         for attention, resnet_in, resnet_out in zip(self.attentions[1:], self.resnets_in, self.resnets_out):
             x = resnet_in(x, time_embed)
             if self.context_dim is not None:
@@ -374,7 +334,7 @@ class Kandinsky3DownSampleBlock(nn.Module):
         self.resnets_in = nn.ModuleList(resnets_in)
         self.resnets_out = nn.ModuleList(resnets_out)
 
-    def forward(self, x, time_embed, context=None, context_mask=None, image_mask=None):
+    def forward(self, x, time_embed, context=None, context_mask=None, image_mask=None) -> torch.Tensor:
         if self.self_attention:
             x = self.attentions[0](x, time_embed, image_mask=image_mask)
 
@@ -394,7 +354,7 @@ class Kandinsky3ConditionalGroupNorm(nn.Module):
         self.context_mlp[1].weight.data.zero_()
         self.context_mlp[1].bias.data.zero_()
 
-    def forward(self, x, context):
+    def forward(self, x, context) -> torch.Tensor:
         context = self.context_mlp(context)
 
         for _ in range(len(x.shape[2:])):
@@ -423,7 +383,7 @@ class Kandinsky3Block(nn.Module):
         else:
             self.down_sample = nn.Identity()
 
-    def forward(self, x, time_embed):
+    def forward(self, x, time_embed) -> torch.Tensor:
         x = self.group_norm(x, time_embed)
         x = self.activation(x)
         x = self.up_sample(x)
@@ -464,7 +424,7 @@ class Kandinsky3ResNetBlock(nn.Module):
             else nn.Identity()
         )
 
-    def forward(self, x, time_embed):
+    def forward(self, x, time_embed) -> torch.Tensor:
         out = x
         for resnet_block in self.resnet_blocks:
             out = resnet_block(out, time_embed)
@@ -487,7 +447,7 @@ class Kandinsky3AttentionPooling(nn.Module):
             out_bias=False,
         )
 
-    def forward(self, x, context, context_mask=None):
+    def forward(self, x, context, context_mask=None) -> torch.Tensor:
         context_mask = context_mask.to(dtype=context.dtype)
         context = self.attention(context.mean(dim=1, keepdim=True), context, context_mask)
         return x + context.squeeze(1)
@@ -513,7 +473,7 @@ class Kandinsky3AttentionBlock(nn.Module):
             nn.Conv2d(hidden_channels, num_channels, kernel_size=1, bias=False),
         )
 
-    def forward(self, x, time_embed, context=None, context_mask=None, image_mask=None):
+    def forward(self, x, time_embed, context=None, context_mask=None, image_mask=None) -> torch.Tensor:
         height, width = x.shape[-2:]
         out = self.in_norm(x, time_embed)
         out = out.reshape(x.shape[0], -1, height * width).permute(0, 2, 1)

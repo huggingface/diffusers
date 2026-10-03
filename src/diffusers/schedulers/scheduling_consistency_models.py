@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -66,7 +65,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             [paper](https://huggingface.co/papers/2206.00364). Defaults to 7.0 from the original implementation.
         clip_denoised (`bool`, defaults to `True`):
             Whether to clip the denoised outputs to `(-1, 1)`.
-        timesteps (`List` or `np.ndarray` or `torch.Tensor`, *optional*):
+        timesteps (`list` or `np.ndarray` or `torch.Tensor`, *optional*):
             An explicit timestep schedule that can be optionally specified. The timesteps are expected to be in
             increasing order.
     """
@@ -83,7 +82,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         s_noise: float = 1.0,
         rho: float = 7.0,
         clip_denoised: bool = True,
-    ):
+    ) -> None:
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = sigma_max
 
@@ -102,31 +101,39 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     @property
-    def step_index(self):
+    def step_index(self) -> int:
         """
         The index counter for current timestep. It will increase 1 after each scheduler step.
+
+        Returns:
+            `int` or `None`:
+                The current step index, or `None` if not yet initialized.
         """
         return self._step_index
 
     @property
-    def begin_index(self):
+    def begin_index(self) -> int:
         """
         The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
+
+        Returns:
+            `int` or `None`:
+                The begin index, or `None` if not yet set.
         """
         return self._begin_index
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
-    def set_begin_index(self, begin_index: int = 0):
+    def set_begin_index(self, begin_index: int = 0) -> None:
         """
         Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
 
         Args:
-            begin_index (`int`):
+            begin_index (`int`, defaults to `0`):
                 The begin index for the scheduler.
         """
         self._begin_index = begin_index
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Union[float, torch.Tensor]) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: float | torch.Tensor) -> torch.Tensor:
         """
         Scales the consistency model input by `(sigma**2 + sigma_data**2) ** 0.5`.
 
@@ -151,7 +158,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         self.is_scale_input_called = True
         return sample
 
-    def sigma_to_t(self, sigmas: Union[float, np.ndarray]):
+    def sigma_to_t(self, sigmas: float | np.ndarray):
         """
         Gets scaled timesteps from the Karras sigmas for input to the consistency model.
 
@@ -160,8 +167,8 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
                 A single Karras sigma or an array of Karras sigmas.
 
         Returns:
-            `float` or `np.ndarray`:
-                A scaled input timestep or scaled input timestep array.
+            `np.ndarray`:
+                A scaled input timestep array.
         """
         if not isinstance(sigmas, np.ndarray):
             sigmas = np.array(sigmas, dtype=np.float64)
@@ -172,19 +179,19 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(
         self,
-        num_inference_steps: Optional[int] = None,
-        device: Union[str, torch.device] = None,
-        timesteps: Optional[List[int]] = None,
+        num_inference_steps: int | None = None,
+        device: str | torch.device = None,
+        timesteps: list[int] | None = None,
     ):
         """
         Sets the timesteps used for the diffusion chain (to be run before inference).
 
         Args:
-            num_inference_steps (`int`):
+            num_inference_steps (`int`, *optional*):
                 The number of diffusion steps used when generating samples with a pre-trained model.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-            timesteps (`List[int]`, *optional*):
+            timesteps (`list[int]`, *optional*):
                 Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
                 timestep spacing strategy of equal spacing between timesteps is used. If `timesteps` is passed,
                 `num_inference_steps` must be `None`.
@@ -244,9 +251,19 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Modified _convert_to_karras implementation that takes in ramp as argument
-    def _convert_to_karras(self, ramp):
-        """Constructs the noise schedule of Karras et al. (2022)."""
+    def _convert_to_karras(self, ramp: np.ndarray) -> np.ndarray:
+        """
+        Construct the noise schedule as proposed in [Elucidating the Design Space of Diffusion-Based Generative
+        Models](https://huggingface.co/papers/2206.00364).
 
+        Args:
+            ramp (`np.ndarray`):
+                A ramp array of values between 0 and 1 used to interpolate between sigma_min and sigma_max.
+
+        Returns:
+            `np.ndarray`:
+                The Karras sigma schedule array.
+        """
         sigma_min: float = self.config.sigma_min
         sigma_max: float = self.config.sigma_max
 
@@ -256,30 +273,37 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
         return sigmas
 
-    def get_scalings(self, sigma):
+    def get_scalings(self, sigma: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Computes the scaling factors for the consistency model output.
+
+        Args:
+            sigma (`torch.Tensor`):
+                The current sigma value in the noise schedule.
+
+        Returns:
+            `tuple[torch.Tensor, torch.Tensor]`:
+                A tuple containing `c_skip` (scaling for the input sample) and `c_out` (scaling for the model output).
+        """
         sigma_data = self.config.sigma_data
 
         c_skip = sigma_data**2 / (sigma**2 + sigma_data**2)
         c_out = sigma * sigma_data / (sigma**2 + sigma_data**2) ** 0.5
         return c_skip, c_out
 
-    def get_scalings_for_boundary_condition(self, sigma):
+    def get_scalings_for_boundary_condition(self, sigma: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Gets the scalings used in the consistency model parameterization (from Appendix C of the
         [paper](https://huggingface.co/papers/2303.01469)) to enforce boundary condition.
 
-        <Tip>
-
-        `epsilon` in the equations for `c_skip` and `c_out` is set to `sigma_min`.
-
-        </Tip>
+        > [!TIP] > `epsilon` in the equations for `c_skip` and `c_out` is set to `sigma_min`.
 
         Args:
             sigma (`torch.Tensor`):
                 The current sigma in the Karras sigma schedule.
 
         Returns:
-            `tuple`:
+            `tuple[torch.Tensor, torch.Tensor]`:
                 A two-element tuple where `c_skip` (which weights the current sample) is the first element and `c_out`
                 (which weights the consistency model output) is the second element.
         """
@@ -291,7 +315,23 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         return c_skip, c_out
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
-    def index_for_timestep(self, timestep, schedule_timesteps=None):
+    def index_for_timestep(
+        self, timestep: float | torch.Tensor, schedule_timesteps: torch.Tensor | None = None
+    ) -> int:
+        """
+        Find the index of a given timestep in the timestep schedule.
+
+        Args:
+            timestep (`float` or `torch.Tensor`):
+                The timestep value to find in the schedule.
+            schedule_timesteps (`torch.Tensor`, *optional*):
+                The timestep schedule to search in. If `None`, uses `self.timesteps`.
+
+        Returns:
+            `int`:
+                The index of the timestep in the schedule. For the very first step, returns the second index if
+                multiple matches exist to avoid skipping a sigma when starting mid-schedule (e.g., for image-to-image).
+        """
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
 
@@ -306,7 +346,14 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         return indices[pos].item()
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
-    def _init_step_index(self, timestep):
+    def _init_step_index(self, timestep: float | torch.Tensor) -> None:
+        """
+        Initialize the step index for the scheduler based on the given timestep.
+
+        Args:
+            timestep (`float` or `torch.Tensor`):
+                The current timestep to initialize the step index from.
+        """
         if self.begin_index is None:
             if isinstance(timestep, torch.Tensor):
                 timestep = timestep.to(self.timesteps.device)
@@ -317,11 +364,11 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.Tensor,
-        timestep: Union[float, torch.Tensor],
+        timestep: float | torch.Tensor,
         sample: torch.Tensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> Union[CMStochasticIterativeSchedulerOutput, Tuple]:
+    ) -> CMStochasticIterativeSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -329,13 +376,13 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output (`torch.Tensor`):
                 The direct output from the learned diffusion model.
-            timestep (`float`):
+            timestep (`float` or `torch.Tensor`):
                 The current timestep in the diffusion chain.
             sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
             generator (`torch.Generator`, *optional*):
                 A random number generator.
-            return_dict (`bool`, *optional*, defaults to `True`):
+            return_dict (`bool`, defaults to `True`):
                 Whether or not to return a
                 [`~schedulers.scheduling_consistency_models.CMStochasticIterativeSchedulerOutput`] or `tuple`.
 
@@ -387,7 +434,10 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         # Noise is not used for onestep sampling.
         if len(self.timesteps) > 1:
             noise = randn_tensor(
-                model_output.shape, dtype=model_output.dtype, device=model_output.device, generator=generator
+                model_output.shape,
+                dtype=model_output.dtype,
+                device=model_output.device,
+                generator=generator,
             )
         else:
             noise = torch.zeros_like(model_output)
@@ -414,6 +464,21 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.Tensor,
         timesteps: torch.Tensor,
     ) -> torch.Tensor:
+        """
+        Add noise to the original samples according to the noise schedule at the specified timesteps.
+
+        Args:
+            original_samples (`torch.Tensor`):
+                The original samples to which noise will be added.
+            noise (`torch.Tensor`):
+                The noise tensor to add to the original samples.
+            timesteps (`torch.Tensor`):
+                The timesteps at which to add noise, determining the noise level from the schedule.
+
+        Returns:
+            `torch.Tensor`:
+                The noisy samples with added noise scaled according to the timestep schedule.
+        """
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
         if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
@@ -441,5 +506,12 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         noisy_samples = original_samples + noise * sigma
         return noisy_samples
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """
+        Returns the number of training timesteps.
+
+        Returns:
+            `int`:
+                The number of training timesteps configured for the scheduler.
+        """
         return self.config.num_train_timesteps

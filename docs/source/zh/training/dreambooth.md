@@ -11,7 +11,7 @@ http://www.apache.org/licenses/LICENSE-2.0
 
 [DreamBooth](https://huggingface.co/papers/2208.12242) 是一种训练技术，通过仅训练少数主题或风格的图像来更新整个扩散模型。它通过在提示中关联一个特殊词与示例图像来工作。
 
-如果您在 vRAM 有限的 GPU 上训练，应尝试在训练命令中启用 `gradient_checkpointing` 和 `mixed_precision` 参数。您还可以通过使用 [xFormers](../optimization/xformers) 的内存高效注意力来减少内存占用。JAX/Flax 训练也支持在 TPU 和 GPU 上进行高效训练，但不支持梯度检查点或 xFormers。如果您想使用 Flax 更快地训练，应拥有内存 >30GB 的 GPU。
+如果您在 vRAM 有限的 GPU 上训练，应尝试在训练命令中启用 `gradient_checkpointing` 和 `mixed_precision` 参数。您还可以通过使用 [xFormers](../optimization/xformers) 的内存高效注意力来减少内存占用。
 
 本指南将探索 [train_dreambooth.py](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth.py) 脚本，帮助您更熟悉它，以及如何根据您的用例进行适配。
 
@@ -34,21 +34,10 @@ pip install -r requirements.txt
 ```
 
 </hfoption>
-<hfoption id="Flax">
-
-```bash
-cd examples/dreambooth
-pip install -r requirements_flax.txt
-```
-
-</hfoption>
 </hfoptions>
 
-<Tip>
-
-🤗 Accelerate 是一个库，用于帮助您在多个 GPU/TPU 上或使用混合精度进行训练。它会根据您的硬件和环境自动配置训练设置。查看 🤗 Accelerate [快速入门](https://huggingface.co/docs/accelerate/quicktour) 以了解更多信息。
-
-</Tip>
+> [!TIP]
+> 🤗 Accelerate 是一个库，用于帮助您在多个 GPU/TPU 上或使用混合精度进行训练。它会根据您的硬件和环境自动配置训练设置。查看 🤗 Accelerate [快速入门](https://huggingface.co/docs/accelerate/quicktour) 以了解更多信息。
 
 初始化 🤗 Accelerate 环境：
 
@@ -73,19 +62,13 @@ write_basic_config()
 最后，如果您想在自己的数据集上训练模型，请查看 [创建用于训练的数据集](create_dataset) 指南，了解如何创建与
 训练脚本。
 
-<Tip>
-
-以下部分重点介绍了训练脚本中对于理解如何修改它很重要的部分，但并未详细涵盖脚本的每个方面。如果您有兴趣了解更多，请随时阅读[脚本](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth.py)，并告诉我们如果您有任何问题或疑虑。
-
-</Tip>
+> [!TIP]
+> 以下部分重点介绍了训练脚本中对于理解如何修改它很重要的部分，但并未详细涵盖脚本的每个方面。如果您有兴趣了解更多，请随时阅读[脚本](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth.py)，并告诉我们如果您有任何问题或疑虑。
 
 ## 脚本参数
 
-<Tip warning={true}>
-
-DreamBooth 对训练超参数非常敏感，容易过拟合。阅读 [使用 🧨 Diffusers 训练 Stable Diffusion 与 Dreambooth](https://huggingface.co/blog/dreambooth) 博客文章，了解针对不同主题的推荐设置，以帮助您选择合适的超参数。
-
-</Tip>
+> [!WARNING]
+> DreamBooth 对训练超参数非常敏感，容易过拟合。阅读 [使用 🧨 Diffusers 训练 Stable Diffusion 与 Dreambooth](https://huggingface.co/blog/dreambooth) 博客文章，了解针对不同主题的推荐设置，以帮助您选择合适的超参数。
 
 训练脚本提供了许多参数来自定义您的训练运行。所有参数及其描述都可以在 [`parse_args()`](https://github.com/huggingface/diffusers/blob/072e00897a7cf4302c347a63ec917b4b8add16d4/examples/dreambooth/train_dreambooth.py#L228) 函数中找到。参数设置了默认值，这些默认值应该开箱即用效果不错，但如果您愿意，也可以在训练命令中设置自己的值。
 
@@ -108,7 +91,7 @@ accelerate launch train_dreambooth.py \
 
 ### Min-SNR 加权
 
-[Min-SNR](https://huggingface.co/papers/2303.09556) 加权策略可以通过重新平衡损失来帮助训练，以实现更快的收敛。训练脚本支持预测 `epsilon`（噪声）或 `v_prediction`，但 Min-SNR 与两种预测类型都兼容。此加权策略仅由 PyTorch 支持，在 Flax 训练脚本中不可用。
+[Min-SNR](https://huggingface.co/papers/2303.09556) 加权策略可以通过重新平衡损失来帮助训练，以实现更快的收敛。训练脚本支持预测 `epsilon`（噪声）或 `v_prediction`，但 Min-SNR 与两种预测类型都兼容。
 
 添加 `--snr_gamma` 参数并将其设置为推荐值 5.0：
 
@@ -335,53 +318,30 @@ accelerate launch train_dreambooth.py \
 ```
 
 </hfoption>
-<hfoption id="Flax">
-
-```bash
-export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export INSTANCE_DIR="./dog"
-export OUTPUT_DIR="path-to-save-model"
-
-python train_dreambooth_flax.py \
-  --pretrained_model_name_or_path=$MODEL_NAME  \
-  --instance_data_dir=$INSTANCE_DIR \
-  --output_dir=$OUTPUT_DIR \
-  --instance_prompt="a photo of sks dog" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --learning_rate=5e-6 \
-  --max_train_steps=400 \
-  --push_to_hub
-```
-
-</hfoption>
 </hfoptions>
 
 训练完成后，您可以使用新训练的模型进行推理！
 
-<Tip>
-
-等不及在训练完成前就尝试您的模型进行推理？🤭 请确保安装了最新版本的 🤗 Accelerate。
-
-```py
-from diffusers import DiffusionPipeline, UNet2DConditionModel
-from transformers import CLIPTextModel
-import torch
-
-unet = UNet2DConditionModel.from_pretrained("path/to/model/checkpoint-100/unet")
-
-# 如果您使用了 `--args.train_text_encoder` 进行训练，请确保也加载文本编码器
-text_encoder = CLIPTextModel.from_pretrained("path/to/model/checkpoint-100/checkpoint-100/text_encoder")
-
-pipeline = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", unet=unet, text_encoder=text_encoder, dtype=torch.float16,
-).to("cuda")
-
-image = pipeline("A photo of sks dog in a bucket", num_inference_steps=50, guidance_scale=7.5).images[0]
-image.save("dog-bucket.png")
-```
-
-</Tip>
+> [!TIP]
+> 等不及在训练完成前就尝试您的模型进行推理？🤭 请确保安装了最新版本的 🤗 Accelerate。
+>
+> ```py
+> from diffusers import DiffusionPipeline, UNet2DConditionModel
+> from transformers import CLIPTextModel
+> import torch
+>
+> unet = UNet2DConditionModel.from_pretrained("path/to/model/checkpoint-100/unet")
+>
+> # 如果您使用了 `--args.train_text_encoder` 进行训练，请确保也加载文本编码器
+> text_encoder = CLIPTextModel.from_pretrained("path/to/model/checkpoint-100/checkpoint-100/text_encoder")
+>
+> pipeline = DiffusionPipeline.from_pretrained(
+>     "stable-diffusion-v1-5/stable-diffusion-v1-5", unet=unet, text_encoder=text_encoder, dtype=torch.float16,
+> ).to("cuda")
+>
+> image = pipeline("A photo of sks dog in a bucket", num_inference_steps=50, guidance_scale=7.5).images[0]
+> image.save("dog-bucket.png")
+> ```
 
 <hfoptions id="training-inference">
 <hfoption id="PyTorch">
@@ -390,39 +350,8 @@ image.save("dog-bucket.png")
 from diffusers import DiffusionPipeline
 import torch
 
-pipeline = DiffusionPipeline.from_pretrained("path_to_saved_model", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+pipeline = DiffusionPipeline.from_pretrained("path_to_saved_model", dtype=torch.float16, use_safetensors=True).to("cuda")
 image = pipeline("A photo of sks dog in a bucket", num_inference_steps=50, guidance_scale=7.5).images[0]
-image.save("dog-bucket.png")
-```
-
-</hfoption>
-<hfoption id="Flax">
-
-```py
-import jax
-import numpy as np
-from flax.jax_utils import replicate
-from flax.training.common_utils import shard
-from diffusers import FlaxStableDiffusionPipeline
-
-pipeline, params = FlaxStableDiffusionPipeline.from_pretrained("path-to-your-trained-model", dtype=jax.numpy.bfloat16)
-
-prompt = "A photo of sks dog in a bucket"
-prng_seed = jax.random.PRNGKey(0)
-num_inference_steps = 50
-
-num_samples = jax.device_count()
-prompt = num_samples * [prompt]
-prompt_ids = pipeline.prepare_inputs(prompt)
-
-# 分片输入和随机数生成器
-params = replicate(params)
-prng_seed = jax.random.split(prng_seed, jax.device_count())
-prompt_ids = shard(prompt_ids)
-
-images = pipeline(prompt_ids, params, prng_seed, num_inference_
-steps, jit=True).images
-images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 image.save("dog-bucket.png")
 ```
 

@@ -26,6 +26,10 @@ Utility and helper functions for working with 🤗 Diffusers.
 
 [[autodoc]] utils.load_image
 
+## load_video
+
+[[autodoc]] utils.load_video
+
 ## export_to_gif
 
 [[autodoc]] utils.export_to_gif
@@ -34,6 +38,10 @@ Utility and helper functions for working with 🤗 Diffusers.
 
 [[autodoc]] utils.export_to_video
 
+## encode_video
+
+[[autodoc]] utils.encode_video
+
 ## make_image_grid
 
 [[autodoc]] utils.make_image_grid
@@ -41,6 +49,10 @@ Utility and helper functions for working with 🤗 Diffusers.
 ## randn_tensor
 
 [[autodoc]] utils.torch_utils.randn_tensor
+
+## TorchDeviceBackend
+
+[[autodoc]] utils.torch_utils.TorchDeviceBackend
 
 ## apply_layerwise_casting
 

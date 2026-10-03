@@ -12,13 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Union
-
 import torch
 
 from ...image_processor import PipelineImageInput
 from ...models import AutoencoderKLLTXVideo
-from ...utils import deprecate, get_logger
+from ...utils import get_logger
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
@@ -31,7 +29,7 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
 ):
     if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
@@ -65,12 +63,12 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
 
     def prepare_latents(
         self,
-        video: Optional[torch.Tensor] = None,
+        video: torch.Tensor | None = None,
         batch_size: int = 1,
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        generator: Optional[torch.Generator] = None,
-        latents: Optional[torch.Tensor] = None,
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+        generator: torch.Generator | None = None,
+        latents: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if latents is not None:
             return latents.to(device=device, dtype=dtype)
@@ -99,7 +97,7 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
         tensor.
 
         Args:
-            latent (`torch.Tensor`):
+            latents (`torch.Tensor`):
                 Input latents to normalize
             reference_latents (`torch.Tensor`):
                 The reference latents providing style statistics.
@@ -120,6 +118,38 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
 
         result = torch.lerp(latents, result, factor)
         return result
+
+    def tone_map_latents(self, latents: torch.Tensor, compression: float) -> torch.Tensor:
+        """
+        Applies a non-linear tone-mapping function to latent values to reduce their dynamic range in a perceptually
+        smooth way using a sigmoid-based compression.
+
+        This is useful for regularizing high-variance latents or for conditioning outputs during generation, especially
+        when controlling dynamic behavior with a `compression` factor.
+
+        Args:
+            latents : torch.Tensor
+                Input latent tensor with arbitrary shape. Expected to be roughly in [-1, 1] or [0, 1] range.
+            compression : float
+                Compression strength in the range [0, 1].
+                - 0.0: No tone-mapping (identity transform)
+                - 1.0: Full compression effect
+
+        Returns:
+            torch.Tensor
+                The tone-mapped latent tensor of the same shape as input.
+        """
+        # Remap [0-1] to [0-0.75] and apply sigmoid compression in one shot
+        scale_factor = compression * 0.75
+        abs_latents = torch.abs(latents)
+
+        # Sigmoid compression: sigmoid shifts large values toward 0.2, small values stay ~1.0
+        # When scale_factor=0, sigmoid term vanishes, when scale_factor=0.75, full effect
+        sigmoid_term = torch.sigmoid(4.0 * scale_factor * (abs_latents - 1.0))
+        scales = 1.0 - 0.8 * scale_factor * sigmoid_term
+
+        filtered = latents * scales
+        return filtered
 
     @staticmethod
     # Copied from diffusers.pipelines.ltx.pipeline_ltx.LTXPipeline._normalize_latents
@@ -143,60 +173,7 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
         latents = latents * latents_std / scaling_factor + latents_mean
         return latents
 
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        depr_message = f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_slicing()`."
-        deprecate(
-            "enable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_slicing()`."
-        deprecate(
-            "disable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_slicing()
-
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
-        deprecate(
-            "enable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_tiling()
-
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
-        deprecate(
-            "disable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_tiling()
-
-    def check_inputs(self, video, height, width, latents):
+    def check_inputs(self, video, height, width, latents, tone_map_compression_ratio):
         if height % self.vae_spatial_compression_ratio != 0 or width % self.vae_spatial_compression_ratio != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 32 but are {height} and {width}.")
 
@@ -205,25 +182,63 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
         if video is None and latents is None:
             raise ValueError("One of `video` or `latents` has to be provided.")
 
+        if not (0 <= tone_map_compression_ratio <= 1):
+            raise ValueError("`tone_map_compression_ratio` must be in the range [0, 1]")
+
     @torch.no_grad()
     def __call__(
         self,
-        video: Optional[List[PipelineImageInput]] = None,
+        video: list[PipelineImageInput] | None = None,
         height: int = 512,
         width: int = 704,
-        latents: Optional[torch.Tensor] = None,
-        decode_timestep: Union[float, List[float]] = 0.0,
-        decode_noise_scale: Optional[Union[float, List[float]]] = None,
+        latents: torch.Tensor | None = None,
+        decode_timestep: float | list[float] = 0.0,
+        decode_noise_scale: float | list[float] | None = None,
         adain_factor: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        output_type: Optional[str] = "pil",
+        tone_map_compression_ratio: float = 0.0,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-    ):
+    ) -> LTXPipelineOutput | tuple:
+        r"""
+        Function invoked when calling the pipeline for latent upsampling.
+
+        Args:
+            video (`list[PipelineImageInput]`, *optional*):
+                The input video frames to upsample. Mutually exclusive with `latents`.
+            height (`int`, defaults to `512`):
+                The height in pixels of the upsampled output.
+            width (`int`, defaults to `704`):
+                The width in pixels of the upsampled output.
+            latents (`torch.Tensor`, *optional*):
+                Pre-encoded video latents to upsample. Mutually exclusive with `video`.
+            decode_timestep (`float` or `list[float]`, defaults to `0.0`):
+                The timestep at which the upsampled latents are decoded.
+            decode_noise_scale (`float` or `list[float]`, *optional*):
+                Interpolation factor between random noise and denoised latents at the decode timestep.
+            adain_factor (`float`, defaults to `0.0`):
+                Strength of AdaIN statistical matching applied to the upsampled latents.
+            tone_map_compression_ratio (`float`, defaults to `0.0`):
+                Compression ratio used for tone mapping the upsampled latents. Must be in the range [0, 1].
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generated video. Choose between `PIL.Image`, `np.array`, or `latent`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.ltx.LTXPipelineOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~pipelines.ltx.LTXPipelineOutput`] or `tuple`: [`~pipelines.ltx.LTXPipelineOutput`] if `return_dict` is
+            True, otherwise a `tuple`. When returning a tuple, the first element is the upsampled video (or the latents
+            if `output_type="latent"`).
+        """
         self.check_inputs(
             video=video,
             height=height,
             width=width,
             latents=latents,
+            tone_map_compression_ratio=tone_map_compression_ratio,
         )
 
         if video is not None:
@@ -265,6 +280,9 @@ class LTXLatentUpsamplePipeline(DiffusionPipeline):
             latents = self.adain_filter_latent(latents_upsampled, latents, adain_factor)
         else:
             latents = latents_upsampled
+
+        if tone_map_compression_ratio > 0.0:
+            latents = self.tone_map_latents(latents, tone_map_compression_ratio)
 
         if output_type == "latent":
             latents = self._normalize_latents(

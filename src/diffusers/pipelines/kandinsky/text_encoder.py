@@ -20,6 +20,8 @@ class MultilingualCLIP(PreTrainedModel):
         self.LinearTransformation = torch.nn.Linear(
             in_features=config.transformerDimensions, out_features=config.numDims
         )
+        if hasattr(self, "post_init"):
+            self.post_init()
 
     def forward(self, input_ids, attention_mask):
         embs = self.transformer(input_ids=input_ids, attention_mask=attention_mask)[0]

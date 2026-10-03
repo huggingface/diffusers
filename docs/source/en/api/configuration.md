@@ -14,11 +14,8 @@ specific language governing permissions and limitations under the License.
 
 Schedulers from [`~schedulers.scheduling_utils.SchedulerMixin`] and models from [`ModelMixin`] inherit from [`ConfigMixin`] which stores all the parameters that are passed to their respective `__init__` methods in a JSON-configuration file.
 
-<Tip>
-
-To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `hf auth login`.
-
-</Tip>
+> [!TIP]
+> To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `hf auth login`.
 
 ## ConfigMixin
 

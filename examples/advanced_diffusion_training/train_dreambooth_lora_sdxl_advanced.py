@@ -95,7 +95,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.36.0.dev0")
+check_min_version("0.41.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -929,19 +929,28 @@ class TokenEmbeddingsHandler:
             self.train_ids = tokenizer.convert_tokens_to_ids(self.inserting_toks)
 
             # random initialization of new tokens
-            std_token_embedding = text_encoder.text_model.embeddings.token_embedding.weight.data.std()
+            std_token_embedding = (
+                text_encoder.text_model if hasattr(text_encoder, "text_model") else text_encoder
+            ).embeddings.token_embedding.weight.data.std()
 
             print(f"{idx} text encoder's std_token_embedding: {std_token_embedding}")
 
-            text_encoder.text_model.embeddings.token_embedding.weight.data[self.train_ids] = (
-                torch.randn(len(self.train_ids), text_encoder.text_model.config.hidden_size)
+            (
+                text_encoder.text_model if hasattr(text_encoder, "text_model") else text_encoder
+            ).embeddings.token_embedding.weight.data[self.train_ids] = (
+                torch.randn(
+                    len(self.train_ids),
+                    (
+                        text_encoder.text_model if hasattr(text_encoder, "text_model") else text_encoder
+                    ).config.hidden_size,
+                )
                 .to(device=self.device)
                 .to(dtype=self.dtype)
                 * std_token_embedding
             )
             self.embeddings_settings[f"original_embeddings_{idx}"] = (
-                text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
-            )
+                text_encoder.text_model if hasattr(text_encoder, "text_model") else text_encoder
+            ).embeddings.token_embedding.weight.data.clone()
             self.embeddings_settings[f"std_token_embedding_{idx}"] = std_token_embedding
 
             inu = torch.ones((len(tokenizer),), dtype=torch.bool)
@@ -959,10 +968,14 @@ class TokenEmbeddingsHandler:
         # text_encoder_0 - CLIP ViT-L/14, text_encoder_1 -  CLIP ViT-G/14
         idx_to_text_encoder_name = {0: "clip_l", 1: "clip_g"}
         for idx, text_encoder in enumerate(self.text_encoders):
-            assert text_encoder.text_model.embeddings.token_embedding.weight.data.shape[0] == len(
-                self.tokenizers[0]
-            ), "Tokenizers should be the same."
-            new_token_embeddings = text_encoder.text_model.embeddings.token_embedding.weight.data[self.train_ids]
+            assert (
+                text_encoder.text_model if hasattr(text_encoder, "text_model") else text_encoder
+            ).embeddings.token_embedding.weight.data.shape[0] == len(self.tokenizers[0]), (
+                "Tokenizers should be the same."
+            )
+            new_token_embeddings = (
+                text_encoder.text_model if hasattr(text_encoder, "text_model") else text_encoder
+            ).embeddings.token_embedding.weight.data[self.train_ids]
 
             # New tokens for each text encoder are saved under "clip_l" (for text_encoder 0), "clip_g" (for
             # text_encoder 1) to keep compatible with the ecosystem.
@@ -984,7 +997,9 @@ class TokenEmbeddingsHandler:
     def retract_embeddings(self):
         for idx, text_encoder in enumerate(self.text_encoders):
             index_no_updates = self.embeddings_settings[f"index_no_updates_{idx}"]
-            text_encoder.text_model.embeddings.token_embedding.weight.data[index_no_updates] = (
+            (
+                text_encoder.text_model if hasattr(text_encoder, "text_model") else text_encoder
+            ).embeddings.token_embedding.weight.data[index_no_updates] = (
                 self.embeddings_settings[f"original_embeddings_{idx}"][index_no_updates]
                 .to(device=text_encoder.device)
                 .to(dtype=text_encoder.dtype)
@@ -995,11 +1010,15 @@ class TokenEmbeddingsHandler:
             std_token_embedding = self.embeddings_settings[f"std_token_embedding_{idx}"]
 
             index_updates = ~index_no_updates
-            new_embeddings = text_encoder.text_model.embeddings.token_embedding.weight.data[index_updates]
+            new_embeddings = (
+                text_encoder.text_model if hasattr(text_encoder, "text_model") else text_encoder
+            ).embeddings.token_embedding.weight.data[index_updates]
             off_ratio = std_token_embedding / new_embeddings.std()
 
             new_embeddings = new_embeddings * (off_ratio**0.1)
-            text_encoder.text_model.embeddings.token_embedding.weight.data[index_updates] = new_embeddings
+            (
+                text_encoder.text_model if hasattr(text_encoder, "text_model") else text_encoder
+            ).embeddings.token_embedding.weight.data[index_updates] = new_embeddings
 
 
 class DreamBoothDataset(Dataset):
@@ -1929,6 +1948,8 @@ def main(args):
 
     if args.cache_latents:
         latents_cache = []
+        # Store vae config before potential deletion
+        vae_scaling_factor = vae.config.scaling_factor
         for batch in tqdm(train_dataloader, desc="Caching latents"):
             with torch.no_grad():
                 batch["pixel_values"] = batch["pixel_values"].to(
@@ -1940,6 +1961,8 @@ def main(args):
             del vae
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+    else:
+        vae_scaling_factor = vae.config.scaling_factor
 
     # Scheduler and math around the number of training steps.
     # Check the PR https://github.com/huggingface/diffusers/pull/8312 for detailed explanation.
@@ -2079,8 +2102,10 @@ def main(args):
                 text_encoder_two.train()
                 # set top parameter requires_grad = True for gradient checkpointing works
                 if args.train_text_encoder:
-                    accelerator.unwrap_model(text_encoder_one).text_model.embeddings.requires_grad_(True)
-                    accelerator.unwrap_model(text_encoder_two).text_model.embeddings.requires_grad_(True)
+                    _te_one = accelerator.unwrap_model(text_encoder_one)
+                    (_te_one.text_model if hasattr(_te_one, "text_model") else _te_one).embeddings.requires_grad_(True)
+                    _te_two = accelerator.unwrap_model(text_encoder_two)
+                    (_te_two.text_model if hasattr(_te_two, "text_model") else _te_two).embeddings.requires_grad_(True)
 
         for step, batch in enumerate(train_dataloader):
             if pivoted:
@@ -2109,13 +2134,13 @@ def main(args):
                     model_input = vae.encode(pixel_values).latent_dist.sample()
 
                 if latents_mean is None and latents_std is None:
-                    model_input = model_input * vae.config.scaling_factor
+                    model_input = model_input * vae_scaling_factor
                     if args.pretrained_vae_model_name_or_path is None:
                         model_input = model_input.to(weight_dtype)
                 else:
                     latents_mean = latents_mean.to(device=model_input.device, dtype=model_input.dtype)
                     latents_std = latents_std.to(device=model_input.device, dtype=model_input.dtype)
-                    model_input = (model_input - latents_mean) * vae.config.scaling_factor / latents_std
+                    model_input = (model_input - latents_mean) * vae_scaling_factor / latents_std
                     model_input = model_input.to(dtype=weight_dtype)
 
                 # Sample noise that we'll add to the latents

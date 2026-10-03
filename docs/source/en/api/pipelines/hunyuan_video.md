@@ -60,7 +60,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
 pipeline = HunyuanVideoPipeline.from_pretrained(
     "hunyuanvideo-community/HunyuanVideo",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 
 # model-offloading and tiling
@@ -97,7 +97,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
 pipeline = HunyuanVideoPipeline.from_pretrained(
     "hunyuanvideo-community/HunyuanVideo",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 
 # model-offloading and tiling
@@ -145,7 +145,7 @@ export_to_video(video, "output.mp4", fps=15)
   pipeline = HunyuanVideoPipeline.from_pretrained(
       "hunyuanvideo-community/HunyuanVideo",
       quantization_config=pipeline_quant_config,
-      torch_dtype=torch.bfloat16,
+      dtype=torch.bfloat16,
   )
 
   # load LoRA weights

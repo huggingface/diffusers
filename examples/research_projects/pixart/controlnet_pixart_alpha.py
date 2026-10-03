@@ -26,7 +26,7 @@ class PixArtControlNetAdapterBlock(nn.Module):
         norm_type: str = "ada_norm_single",
         norm_elementwise_affine: bool = False,
         norm_eps: float = 1e-6,
-        attention_type: Optional[str] = "default",
+        attention_type: str | None = "default",
     ):
         super().__init__()
 

@@ -27,12 +27,12 @@ from collections import OrderedDict
 from contextlib import ExitStack, contextmanager
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, ContextManager, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, ContextManager, Type
 
 import safetensors
 import torch
 import torch.utils.checkpoint
-from huggingface_hub import DDUFEntry, create_repo, split_torch_state_dict_into_shards
+from huggingface_hub import create_repo, split_torch_state_dict_into_shards
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 from typing_extensions import Self
@@ -42,7 +42,7 @@ from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
     CONFIG_NAME,
-    FLAX_WEIGHTS_NAME,
+    FLASHPACK_WEIGHTS_NAME,
     HF_ENABLE_PARALLEL_LOADING,
     SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_WEIGHTS_NAME,
@@ -51,20 +51,25 @@ from ..utils import (
     _add_variant,
     _get_checkpoint_shard_files,
     _get_model_file,
+    _resolve_revision,
     deprecate,
     is_accelerate_available,
     is_bitsandbytes_available,
     is_bitsandbytes_version,
+    is_flashpack_available,
     is_peft_available,
     is_torch_version,
     logging,
 )
-from ..utils.hub_utils import (
-    PushToHubMixin,
-    load_or_create_model_card,
-    populate_model_card,
-)
+from ..utils.distributed_utils import is_torch_dist_rank_zero
+from ..utils.hub_utils import PushToHubMixin, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import empty_device_cache
+from ._modeling_parallel import (
+    ContextParallelConfig,
+    ContextParallelModelPlan,
+    ParallelConfig,
+    TensorParallelConfig,
+)
 from .model_loading_utils import (
     _caching_allocator_warmup,
     _determine_device_map,
@@ -72,6 +77,7 @@ from .model_loading_utils import (
     _fetch_index_file,
     _fetch_index_file_legacy,
     _load_shard_file,
+    _load_shard_file_tp,
     _load_shard_files_with_threadpool,
     load_state_dict,
 )
@@ -83,7 +89,7 @@ class ContextManagers:
     in the `fastcore` library.
     """
 
-    def __init__(self, context_managers: List[ContextManager]):
+    def __init__(self, context_managers: list[ContextManager]):
         self.context_managers = context_managers
         self.stack = ExitStack()
 
@@ -98,6 +104,11 @@ class ContextManagers:
 logger = logging.get_logger(__name__)
 
 _REGEX_SHARD = re.compile(r"(.*?)-\d{5}-of-\d{5}")
+
+# The `user_agent` dict is flattened into a single `user-agent` HTTP header. Serializing an
+# unbounded `quantization_config` into it can exceed server header size limits, so we only
+# attach the serialized config for telemetry when it stays under this many characters.
+_MAX_QUANT_CONFIG_USER_AGENT_CHARS = 2048
 
 TORCH_INIT_FUNCTIONS = {
     "uniform_": nn.init.uniform_,
@@ -145,7 +156,7 @@ def get_parameter_device(parameter: torch.nn.Module) -> torch.device:
     except StopIteration:
         # For torch.nn.DataParallel compatibility in PyTorch 1.5
 
-        def find_tensor_attributes(module: torch.nn.Module) -> List[Tuple[str, Tensor]]:
+        def find_tensor_attributes(module: torch.nn.Module) -> list[tuple[str, Tensor]]:
             tuples = [(k, v) for k, v in module.__dict__.items() if torch.is_tensor(v)]
             return tuples
 
@@ -193,7 +204,7 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
         return last_dtype
 
     # For nn.DataParallel compatibility in PyTorch > 1.5
-    def find_tensor_attributes(module: nn.Module) -> List[Tuple[str, Tensor]]:
+    def find_tensor_attributes(module: nn.Module) -> list[tuple[str, Tensor]]:
         tuples = [(k, v) for k, v in module.__dict__.items() if torch.is_tensor(v)]
         return tuples
 
@@ -248,6 +259,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _skip_layerwise_casting_patterns = None
     _supports_group_offloading = True
     _repeated_blocks = []
+    _parallel_config = None
+    _cp_plan = None
+    _tp_plan = None
+    _skip_keys = None
 
     def __init__(self):
         super().__init__()
@@ -279,7 +294,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         return any(hasattr(m, "gradient_checkpointing") and m.gradient_checkpointing for m in self.modules())
 
-    def enable_gradient_checkpointing(self, gradient_checkpointing_func: Optional[Callable] = None) -> None:
+    def enable_gradient_checkpointing(self, gradient_checkpointing_func: Callable | None = None) -> None:
         """
         Activates gradient checkpointing for the current model (may be referred to as *activation checkpointing* or
         *checkpoint activations* in other frameworks).
@@ -348,7 +363,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         self.set_use_npu_flash_attention(False)
 
     def set_use_xla_flash_attention(
-        self, use_xla_flash_attention: bool, partition_spec: Optional[Callable] = None, **kwargs
+        self, use_xla_flash_attention: bool, partition_spec: Callable | None = None, **kwargs
     ) -> None:
         # Recursively walk through all the children.
         # Any children which exposes the set_use_xla_flash_attention method
@@ -364,7 +379,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if isinstance(module, torch.nn.Module):
                 fn_recursive_set_flash_attention(module)
 
-    def enable_xla_flash_attention(self, partition_spec: Optional[Callable] = None, **kwargs):
+    def enable_xla_flash_attention(self, partition_spec: Callable | None = None, **kwargs):
         r"""
         Enable the flash attention pallals kernel for torch_xla.
         """
@@ -376,9 +391,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         self.set_use_xla_flash_attention(False)
 
-    def set_use_memory_efficient_attention_xformers(
-        self, valid: bool, attention_op: Optional[Callable] = None
-    ) -> None:
+    def set_use_memory_efficient_attention_xformers(self, valid: bool, attention_op: Callable | None = None) -> None:
         # Recursively walk through all the children.
         # Any children which exposes the set_use_memory_efficient_attention_xformers method
         # gets the message
@@ -393,19 +406,15 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if isinstance(module, torch.nn.Module):
                 fn_recursive_set_mem_eff(module)
 
-    def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None) -> None:
+    def enable_xformers_memory_efficient_attention(self, attention_op: Callable | None = None) -> None:
         r"""
         Enable memory efficient attention from [xFormers](https://facebookresearch.github.io/xformers/).
 
         When this option is enabled, you should observe lower GPU memory usage and a potential speed up during
         inference. Speed up during training is not guaranteed.
 
-        <Tip warning={true}>
-
-        ⚠️ When memory efficient attention and sliced attention are both enabled, memory efficient attention takes
-        precedent.
-
-        </Tip>
+        > [!WARNING] > ⚠️ When memory efficient attention and sliced attention are both enabled, memory efficient
+        attention takes > precedent.
 
         Parameters:
             attention_op (`Callable`, *optional*):
@@ -438,9 +447,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     def enable_layerwise_casting(
         self,
         storage_dtype: torch.dtype = torch.float8_e4m3fn,
-        compute_dtype: Optional[torch.dtype] = None,
-        skip_modules_pattern: Optional[Tuple[str, ...]] = None,
-        skip_modules_classes: Optional[Tuple[Type[torch.nn.Module], ...]] = None,
+        compute_dtype: torch.dtype | None = None,
+        skip_modules_pattern: tuple[str, ...] | None = None,
+        skip_modules_classes: tuple[Type[torch.nn.Module], ...] | None = None,
         non_blocking: bool = False,
     ) -> None:
         r"""
@@ -476,11 +485,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 The dtype to which the model should be cast for storage.
             compute_dtype (`torch.dtype`):
                 The dtype to which the model weights should be cast during the forward pass.
-            skip_modules_pattern (`Tuple[str, ...]`, *optional*):
+            skip_modules_pattern (`tuple[str, ...]`, *optional*):
                 A list of patterns to match the names of the modules to skip during the layerwise casting process. If
                 set to `None`, default skip patterns are used to ignore certain internal layers of modules and PEFT
                 layers.
-            skip_modules_classes (`Tuple[Type[torch.nn.Module], ...]`, *optional*):
+            skip_modules_classes (`tuple[Type[torch.nn.Module], ...]`, *optional*):
                 A list of module classes to skip during the layerwise casting process.
             non_blocking (`bool`, *optional*, defaults to `False`):
                 If `True`, the weight casting operations are non-blocking.
@@ -525,12 +534,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         onload_device: torch.device,
         offload_device: torch.device = torch.device("cpu"),
         offload_type: str = "block_level",
-        num_blocks_per_group: Optional[int] = None,
+        num_blocks_per_group: int | None = None,
         non_blocking: bool = False,
         use_stream: bool = False,
         record_stream: bool = False,
         low_cpu_mem_usage=False,
-        offload_to_disk_path: Optional[str] = None,
+        offload_to_disk_path: str | None = None,
+        block_modules: str | None = None,
+        exclude_kwargs: str | None = None,
     ) -> None:
         r"""
         Activates group offloading for the current model.
@@ -564,12 +575,21 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 "2. Or, run a forward pass with tiling disabled (can still use small dummy inputs)."
             )
             logger.warning(msg)
+        from ..hooks.tensor_parallel import _raise_if_tensor_parallel
+
+        _raise_if_tensor_parallel(
+            self,
+            "be group-offloaded",
+            "Both decide where a parameter lives, and tensor parallelism already keeps only one shard of each weight "
+            "per rank, so offloading is not needed on top of it.",
+        )
         if not self._supports_group_offloading:
             raise ValueError(
                 f"{self.__class__.__name__} does not support group offloading. Please make sure to set the boolean attribute "
                 f"`_supports_group_offloading` to `True` in the class definition. If you believe this is a mistake, please "
                 f"open an issue at https://github.com/huggingface/diffusers/issues."
             )
+
         apply_group_offloading(
             module=self,
             onload_device=onload_device,
@@ -581,6 +601,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             record_stream=record_stream,
             low_cpu_mem_usage=low_cpu_mem_usage,
             offload_to_disk_path=offload_to_disk_path,
+            block_modules=block_modules,
+            exclude_kwargs=exclude_kwargs,
         )
 
     def set_attention_backend(self, backend: str) -> None:
@@ -595,21 +617,45 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 attention as backend.
         """
         from .attention import AttentionModuleMixin
-        from .attention_dispatch import AttentionBackendName, _check_attention_backend_requirements
+        from .attention_dispatch import (
+            AttentionBackendName,
+            _AttentionBackendRegistry,
+            _check_attention_backend_requirements,
+            _maybe_download_kernel_for_backend,
+        )
 
         # TODO: the following will not be required when everything is refactored to AttentionModuleMixin
         from .attention_processor import Attention, MochiAttention
 
         logger.warning("Attention backends are an experimental feature and the API may be subject to change.")
+        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
+
+        parallel_config_set = False
+        for module in self.modules():
+            if not isinstance(module, attention_classes):
+                continue
+            processor = module.processor
+            if getattr(processor, "_parallel_config", None) is not None:
+                parallel_config_set = True
+                break
 
         backend = backend.lower()
         available_backends = {x.value for x in AttentionBackendName.__members__.values()}
         if backend not in available_backends:
             raise ValueError(f"`{backend=}` must be one of the following: " + ", ".join(available_backends))
-        backend = AttentionBackendName(backend)
-        _check_attention_backend_requirements(backend)
 
-        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
+        backend = AttentionBackendName(backend)
+        if parallel_config_set and not _AttentionBackendRegistry._is_context_parallel_available(backend):
+            compatible_backends = sorted(_AttentionBackendRegistry._supports_context_parallel)
+            raise ValueError(
+                f"Context parallelism is enabled but current attention backend '{backend.value}' "
+                f"does not support context parallelism. "
+                f"Please set a compatible attention backend: {compatible_backends} using `model.set_attention_backend()`."
+            )
+
+        _check_attention_backend_requirements(backend)
+        _maybe_download_kernel_for_backend(backend)
+
         for module in self.modules():
             if not isinstance(module, attention_classes):
                 continue
@@ -618,10 +664,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 continue
             processor._attention_backend = backend
 
+        # Important to set the active backend so that it propagates gracefully throughout.
+        _AttentionBackendRegistry.set_active_backend(backend)
+
     def reset_attention_backend(self) -> None:
         """
-        Resets the attention backend for the model. Following calls to `forward` will use the environment default or
-        the torch native scaled dot product attention.
+        Resets the attention backend for the model. Following calls to `forward` will use the environment default, if
+        set, or the torch native scaled dot product attention.
         """
         from .attention import AttentionModuleMixin
         from .attention_processor import Attention, MochiAttention
@@ -639,13 +688,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     def save_pretrained(
         self,
-        save_directory: Union[str, os.PathLike],
+        save_directory: str | os.PathLike,
         is_main_process: bool = True,
-        save_function: Optional[Callable] = None,
+        save_function: Callable | None = None,
         safe_serialization: bool = True,
-        variant: Optional[str] = None,
-        max_shard_size: Union[int, str] = "10GB",
+        variant: str | None = None,
+        max_shard_size: int | str = "10GB",
         push_to_hub: bool = False,
+        use_flashpack: bool = False,
         **kwargs,
     ):
         """
@@ -678,12 +728,21 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
                 repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
                 namespace).
-            kwargs (`Dict[str, Any]`, *optional*):
+            kwargs (`dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
+
+        from ..hooks.tensor_parallel import _raise_if_tensor_parallel
+
+        _raise_if_tensor_parallel(
+            self,
+            "be saved yet",
+            "Its parameters are sharded across ranks. Save the model before sharding it instead.",
+            error_cls=NotImplementedError,
+        )
 
         hf_quantizer = getattr(self, "hf_quantizer", None)
         if hf_quantizer is not None:
@@ -692,13 +751,22 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 and isinstance(hf_quantizer, DiffusersQuantizer)
                 and hf_quantizer.is_serializable
             )
+            if safe_serialization and quantization_serializable:
+                quantization_serializable = (
+                    quantization_serializable and hf_quantizer.supports_safetensors_serialization
+                )
             if not quantization_serializable:
                 raise ValueError(
                     f"The model is quantized with {hf_quantizer.quantization_config.quant_method} and is not serializable - check out the warnings from"
                     " the logger on the traceback to understand the reason why the quantized model is not serializable."
                 )
 
-        weights_name = SAFETENSORS_WEIGHTS_NAME if safe_serialization else WEIGHTS_NAME
+        weights_name = WEIGHTS_NAME
+        if use_flashpack:
+            weights_name = FLASHPACK_WEIGHTS_NAME
+        elif safe_serialization:
+            weights_name = SAFETENSORS_WEIGHTS_NAME
+
         weights_name = _add_variant(weights_name, variant)
         weights_name_pattern = weights_name.replace(".bin", "{suffix}.bin").replace(
             ".safetensors", "{suffix}.safetensors"
@@ -724,59 +792,87 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         # Save the model
         state_dict = model_to_save.state_dict()
+        quantization_metadata = {}
+        if hf_quantizer is not None:
+            state_dict, quantization_metadata = hf_quantizer.get_state_dict_and_metadata(
+                state_dict, safe_serialization=safe_serialization
+            )
 
-        # Save the model
-        state_dict_split = split_torch_state_dict_into_shards(
-            state_dict, max_shard_size=max_shard_size, filename_pattern=weights_name_pattern
-        )
-
-        # Clean the folder from a previous save
-        if is_main_process:
-            for filename in os.listdir(save_directory):
-                if filename in state_dict_split.filename_to_tensors.keys():
-                    continue
-                full_filename = os.path.join(save_directory, filename)
-                if not os.path.isfile(full_filename):
-                    continue
-                weights_without_ext = weights_name_pattern.replace(".bin", "").replace(".safetensors", "")
-                weights_without_ext = weights_without_ext.replace("{suffix}", "")
-                filename_without_ext = filename.replace(".bin", "").replace(".safetensors", "")
-                # make sure that file to be deleted matches format of sharded file, e.g. pytorch_model-00001-of-00005
-                if (
-                    filename.startswith(weights_without_ext)
-                    and _REGEX_SHARD.fullmatch(filename_without_ext) is not None
-                ):
-                    os.remove(full_filename)
-
-        for filename, tensors in state_dict_split.filename_to_tensors.items():
-            shard = {tensor: state_dict[tensor].contiguous() for tensor in tensors}
-            filepath = os.path.join(save_directory, filename)
-            if safe_serialization:
-                # At some point we will need to deal better with save_function (used for TPU and other distributed
-                # joyfulness), but for now this enough.
-                safetensors.torch.save_file(shard, filepath, metadata={"format": "pt"})
+        if use_flashpack:
+            if is_flashpack_available():
+                import flashpack
             else:
-                torch.save(shard, filepath)
+                logger.error(
+                    "Saving a FlashPack checkpoint in PyTorch, requires both PyTorch and flashpack to be installed. Please see "
+                    "https://pytorch.org/ and https://github.com/fal-ai/flashpack for installation instructions."
+                )
+                raise ImportError("Please install torch and flashpack to save a FlashPack checkpoint in PyTorch.")
 
-        if state_dict_split.is_sharded:
-            index = {
-                "metadata": state_dict_split.metadata,
-                "weight_map": state_dict_split.tensor_to_filename,
-            }
-            save_index_file = SAFE_WEIGHTS_INDEX_NAME if safe_serialization else WEIGHTS_INDEX_NAME
-            save_index_file = os.path.join(save_directory, _add_variant(save_index_file, variant))
-            # Save the index as well
-            with open(save_index_file, "w", encoding="utf-8") as f:
-                content = json.dumps(index, indent=2, sort_keys=True) + "\n"
-                f.write(content)
-            logger.info(
-                f"The model is bigger than the maximum size per checkpoint ({max_shard_size}) and is going to be "
-                f"split in {len(state_dict_split.filename_to_tensors)} checkpoint shards. You can find where each parameters has been saved in the "
-                f"index located at {save_index_file}."
+            flashpack.serialization.pack_to_file(
+                state_dict_or_model=state_dict,
+                destination_path=os.path.join(save_directory, weights_name),
+                target_dtype=self.dtype,
             )
         else:
-            path_to_weights = os.path.join(save_directory, weights_name)
-            logger.info(f"Model weights saved in {path_to_weights}")
+            # Save the model
+            state_dict_split = split_torch_state_dict_into_shards(
+                state_dict, max_shard_size=max_shard_size, filename_pattern=weights_name_pattern
+            )
+
+            # Clean the folder from a previous save
+            if is_main_process:
+                for filename in os.listdir(save_directory):
+                    if filename in state_dict_split.filename_to_tensors.keys():
+                        continue
+                    full_filename = os.path.join(save_directory, filename)
+                    if not os.path.isfile(full_filename):
+                        continue
+                    weights_without_ext = weights_name_pattern.replace(".bin", "").replace(".safetensors", "")
+                    weights_without_ext = weights_without_ext.replace("{suffix}", "")
+                    filename_without_ext = filename.replace(".bin", "").replace(".safetensors", "")
+                    # make sure that file to be deleted matches format of sharded file, e.g. pytorch_model-00001-of-00005
+                    if (
+                        filename.startswith(weights_without_ext)
+                        and _REGEX_SHARD.fullmatch(filename_without_ext) is not None
+                    ):
+                        os.remove(full_filename)
+
+            for filename, tensors in state_dict_split.filename_to_tensors.items():
+                shard = {tensor: state_dict[tensor].contiguous() for tensor in tensors}
+                filepath = os.path.join(save_directory, filename)
+                if safe_serialization:
+                    metadata = {"format": "pt"}
+                    if quantization_metadata:
+                        metadata.update(quantization_metadata)
+                    metadata = {k: str(v) if not isinstance(v, str) else v for k, v in metadata.items()}
+                    # At some point we will need to deal better with save_function (used for TPU and other distributed
+                    # joyfulness), but for now this enough.
+                    safetensors.torch.save_file(shard, filepath, metadata=metadata)
+                else:
+                    torch.save(shard, filepath)
+
+            if state_dict_split.is_sharded:
+                metadata = dict(state_dict_split.metadata)
+                if quantization_metadata:
+                    metadata.update(quantization_metadata)
+                index = {
+                    "metadata": metadata,
+                    "weight_map": state_dict_split.tensor_to_filename,
+                }
+                save_index_file = SAFE_WEIGHTS_INDEX_NAME if safe_serialization else WEIGHTS_INDEX_NAME
+                save_index_file = os.path.join(save_directory, _add_variant(save_index_file, variant))
+                # Save the index as well
+                with open(save_index_file, "w", encoding="utf-8") as f:
+                    content = json.dumps(index, indent=2, sort_keys=True) + "\n"
+                    f.write(content)
+                logger.info(
+                    f"The model is bigger than the maximum size per checkpoint ({max_shard_size}) and is going to be "
+                    f"split in {len(state_dict_split.filename_to_tensors)} checkpoint shards. You can find where each parameters has been saved in the "
+                    f"index located at {save_index_file}."
+                )
+            else:
+                path_to_weights = os.path.join(save_directory, weights_name)
+                logger.info(f"Model weights saved in {path_to_weights}")
 
         if push_to_hub:
             # Create a new empty model card and eventually tag it
@@ -806,7 +902,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs) -> Self:
+    def from_pretrained(cls, pretrained_model_name_or_path: str | os.PathLike | None, **kwargs) -> Self:
         r"""
         Instantiate a pretrained PyTorch model from a pretrained model configuration.
 
@@ -822,15 +918,15 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
                       with [`~ModelMixin.save_pretrained`].
 
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
-            torch_dtype (`torch.dtype`, *optional*):
+            dtype (`torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info (`bool`, *optional*, defaults to `False`):
@@ -844,15 +940,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
-            from_flax (`bool`, *optional*, defaults to `False`):
-                Load the model weights from a Flax checkpoint save file.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             mirror (`str`, *optional*):
                 Mirror source to resolve accessibility issues if you're downloading a model in China. We do not
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
                 information.
-            device_map (`Union[int, str, torch.device]` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+            device_map (`int | str | torch.device` or `dict[str, int | str | torch.device]`, *optional*):
                 A map that specifies where each submodule should go. It doesn't need to be defined for each
                 parameter/buffer name; once a given module name is inside, every submodule of it will be sent to the
                 same device. Defaults to `None`, meaning that the model will be loaded on CPU.
@@ -904,8 +998,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
                 argument to `True` will raise an error.
             variant (`str`, *optional*):
-                Load weights from a specified `variant` filename such as `"fp16"` or `"ema"`. This is ignored when
-                loading `from_flax`.
+                Load weights from a specified `variant` filename such as `"fp16"` or `"ema"`.
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If set to `None`, the `safetensors` weights are downloaded if they're available **and** if the
                 `safetensors` library is installed. If set to `True`, the model is forcibly loaded from `safetensors`
@@ -913,28 +1006,30 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             disable_mmap ('bool', *optional*, defaults to 'False'):
                 Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
                 is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
+            use_flashpack (`bool`, *optional*, defaults to `False`):
+                If set to `True`, the model is loaded from `flashpack` weights.
+            flashpack_kwargs(`dict[str, Any]`, *optional*, defaults to `{}`):
+                Kwargs passed to
+                [`flashpack.deserialization.assign_from_file`](https://github.com/fal-ai/flashpack/blob/f1aa91c5cd9532a3dbf5bcc707ab9b01c274b76c/src/flashpack/deserialization.py#L408-L422)
 
-        <Tip>
 
-        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with `hf
-        auth login`. You can also activate the special
-        ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use this method in a
+        > [!TIP] > To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in
+        with `hf > auth login`. You can also activate the special >
+        ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use this method in a >
         firewalled environment.
-
-        </Tip>
 
         Example:
 
         ```py
         from diffusers import UNet2DConditionModel
 
-        unet = UNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="unet")
+        unet = UNet2DConditionModel.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="unet")
         ```
 
         If you get the error message below, you need to finetune the weights for your downstream task:
 
         ```bash
-        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at runwayml/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
+        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at stable-diffusion-v1-5/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
         - conv_in.weight: found shape torch.Size([320, 4, 3, 3]) in the checkpoint and torch.Size([320, 9, 3, 3]) in the model instantiated
         You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
         ```
@@ -942,13 +1037,14 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         cache_dir = kwargs.pop("cache_dir", None)
         ignore_mismatched_sizes = kwargs.pop("ignore_mismatched_sizes", False)
         force_download = kwargs.pop("force_download", False)
-        from_flax = kwargs.pop("from_flax", False)
         proxies = kwargs.pop("proxies", None)
         output_loading_info = kwargs.pop("output_loading_info", False)
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
+        dtype = kwargs.pop("dtype", None)
+        torch_dtype = dtype if dtype is not None else torch_dtype
         subfolder = kwargs.pop("subfolder", None)
         device_map = kwargs.pop("device_map", None)
         max_memory = kwargs.pop("max_memory", None)
@@ -958,8 +1054,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
         quantization_config = kwargs.pop("quantization_config", None)
-        dduf_entries: Optional[Dict[str, DDUFEntry]] = kwargs.pop("dduf_entries", None)
         disable_mmap = kwargs.pop("disable_mmap", False)
+        parallel_config: ParallelConfig | ContextParallelConfig | TensorParallelConfig | None = kwargs.pop(
+            "parallel_config", None
+        )
+        use_flashpack = kwargs.pop("use_flashpack", False)
+        flashpack_kwargs = kwargs.pop("flashpack_kwargs", {})
 
         is_parallel_loading_enabled = HF_ENABLE_PARALLEL_LOADING
         if is_parallel_loading_enabled and not low_cpu_mem_usage:
@@ -1044,8 +1144,18 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             "diffusers": __version__,
             "file_type": "model",
             "framework": "pytorch",
+            "model_class": str(cls.__name__),
         }
         unused_kwargs = {}
+
+        # Resolve the revision only once
+        revision = _resolve_revision(
+            pretrained_model_name_or_path,
+            revision=revision,
+            cache_dir=cache_dir,
+            local_files_only=local_files_only,
+            token=token,
+        )
 
         # Load config if we don't provide a configuration
         config_path = pretrained_model_name_or_path
@@ -1063,7 +1173,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             revision=revision,
             subfolder=subfolder,
             user_agent=user_agent,
-            dduf_entries=dduf_entries,
             **kwargs,
         )
         # no in-place modification of the original config.
@@ -1086,12 +1195,17 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             hf_quantizer = None
 
         if hf_quantizer is not None:
-            hf_quantizer.validate_environment(torch_dtype=torch_dtype, from_flax=from_flax, device_map=device_map)
+            hf_quantizer.validate_environment(torch_dtype=torch_dtype, device_map=device_map)
             torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
             device_map = hf_quantizer.update_device_map(device_map)
 
-            # In order to ensure popular quantization methods are supported. Can be disable with `disable_telemetry`
+            # In order to ensure popular quantization methods are supported. Can be disabled with `disable_telemetry`
             user_agent["quant"] = hf_quantizer.quantization_config.quant_method.value
+            # Attach the full serialized config for telemetry, but skip it when it is large enough to
+            # risk exceeding HTTP header size limits (see `_MAX_QUANT_CONFIG_USER_AGENT_CHARS`).
+            serialized_quant_config = json.dumps(hf_quantizer.quantization_config.to_dict(), sort_keys=True)
+            if len(serialized_quant_config) <= _MAX_QUANT_CONFIG_USER_AGENT_CHARS:
+                user_agent["quant_config"] = serialized_quant_config
 
             # Force-set to `True` for more mem efficiency
             if low_cpu_mem_usage is None:
@@ -1118,6 +1232,35 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         else:
             keep_in_fp32_modules = []
 
+        # A tensor-parallel `parallel_config` makes `from_pretrained` shard while it reads, so each rank only
+        # ever materializes its own slice. Validate the combination before any file is fetched.
+        tp_config = None
+        if parallel_config is not None:
+            tp_config = (
+                parallel_config
+                if isinstance(parallel_config, TensorParallelConfig)
+                else parallel_config.tensor_parallel_config
+            )
+            if tp_config is not None and tp_config.tp_degree == 1 and tp_config.mesh is None:
+                # Nothing to shard, so take the ordinary loader rather than building 1-rank DTensors.
+                tp_config = None
+        if tp_config is not None:
+            from ..hooks.tensor_parallel import _check_tp_supported
+
+            # Before the checkpoint files are resolved, so that e.g. `use_flashpack` fails with the real reason
+            # instead of a missing-file error. The weights-format check lives where the resolved file list is known.
+            _check_tp_supported(
+                cls.__name__,
+                cls._tp_plan,
+                config.get("num_attention_heads"),
+                tp_config,
+                device_map=device_map,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                use_flashpack=use_flashpack,
+                use_safetensors=use_safetensors,
+                hf_quantizer=hf_quantizer,
+            )
+
         is_sharded = False
         resolved_model_file = None
 
@@ -1139,60 +1282,41 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             "revision": revision,
             "user_agent": user_agent,
             "commit_hash": commit_hash,
-            "dduf_entries": dduf_entries,
         }
         index_file = _fetch_index_file(**index_file_kwargs)
         # In case the index file was not found we still have to consider the legacy format.
         # this becomes applicable when the variant is not None.
         if variant is not None and (index_file is None or not os.path.exists(index_file)):
             index_file = _fetch_index_file_legacy(**index_file_kwargs)
-        if index_file is not None and (dduf_entries or index_file.is_file()):
+        if index_file is not None and index_file.is_file():
             is_sharded = True
 
-        if is_sharded and from_flax:
-            raise ValueError("Loading of sharded checkpoints is not supported when `from_flax=True`.")
-
         # load model
-        if from_flax:
-            resolved_model_file = _get_model_file(
+        # in the case it is sharded, we have already the index
+        if is_sharded:
+            resolved_model_file, sharded_metadata = _get_checkpoint_shard_files(
                 pretrained_model_name_or_path,
-                weights_name=FLAX_WEIGHTS_NAME,
+                index_file,
                 cache_dir=cache_dir,
-                force_download=force_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
                 token=token,
-                revision=revision,
-                subfolder=subfolder,
                 user_agent=user_agent,
-                commit_hash=commit_hash,
+                revision=revision,
+                subfolder=subfolder or "",
             )
-            model = cls.from_config(config, **unused_kwargs)
-
-            # Convert the weights
-            from .modeling_pytorch_flax_utils import load_flax_checkpoint_in_pytorch_model
-
-            model = load_flax_checkpoint_in_pytorch_model(model, resolved_model_file)
         else:
-            # in the case it is sharded, we have already the index
-            if is_sharded:
-                resolved_model_file, sharded_metadata = _get_checkpoint_shard_files(
-                    pretrained_model_name_or_path,
-                    index_file,
-                    cache_dir=cache_dir,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    token=token,
-                    user_agent=user_agent,
-                    revision=revision,
-                    subfolder=subfolder or "",
-                    dduf_entries=dduf_entries,
-                )
+            if use_flashpack:
+                weights_name = FLASHPACK_WEIGHTS_NAME
             elif use_safetensors:
+                weights_name = _add_variant(SAFETENSORS_WEIGHTS_NAME, variant)
+            else:
+                weights_name = None
+            if weights_name is not None:
                 try:
                     resolved_model_file = _get_model_file(
                         pretrained_model_name_or_path,
-                        weights_name=_add_variant(SAFETENSORS_WEIGHTS_NAME, variant),
+                        weights_name=weights_name,
                         cache_dir=cache_dir,
                         force_download=force_download,
                         proxies=proxies,
@@ -1202,7 +1326,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         subfolder=subfolder,
                         user_agent=user_agent,
                         commit_hash=commit_hash,
-                        dduf_entries=dduf_entries,
                     )
 
                 except IOError as e:
@@ -1213,24 +1336,29 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         "Defaulting to unsafe serialization. Pass `allow_pickle=False` to raise an error instead."
                     )
 
-            if resolved_model_file is None and not is_sharded:
-                resolved_model_file = _get_model_file(
-                    pretrained_model_name_or_path,
-                    weights_name=_add_variant(WEIGHTS_NAME, variant),
-                    cache_dir=cache_dir,
-                    force_download=force_download,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    token=token,
-                    revision=revision,
-                    subfolder=subfolder,
-                    user_agent=user_agent,
-                    commit_hash=commit_hash,
-                    dduf_entries=dduf_entries,
-                )
+        if resolved_model_file is None and not is_sharded:
+            resolved_model_file = _get_model_file(
+                pretrained_model_name_or_path,
+                weights_name=_add_variant(WEIGHTS_NAME, variant),
+                cache_dir=cache_dir,
+                force_download=force_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                token=token,
+                revision=revision,
+                subfolder=subfolder,
+                user_agent=user_agent,
+                commit_hash=commit_hash,
+            )
 
         if not isinstance(resolved_model_file, list):
             resolved_model_file = [resolved_model_file]
+
+        if tp_config is not None:
+            from ..hooks.tensor_parallel import _check_tp_weights_format
+
+            # As soon as the resolved files are known, before the model is built.
+            _check_tp_weights_format(resolved_model_file)
 
         # set dtype to instantiate the model under:
         # 1. If torch_dtype is not None, we use that dtype
@@ -1251,25 +1379,95 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         with ContextManagers(init_contexts):
             model = cls.from_config(config, **unused_kwargs)
 
+        # Resolve the tensor-parallel mesh before any weights are read, so each rank can stream only its own
+        # slice of every planned parameter straight into a DTensor instead of materializing the full
+        # checkpoint and resharding it afterwards.
+        tp_shard_specs = None
+        if tp_config is not None:
+            from ..hooks.tensor_parallel import resolve_tp_shard_specs
+
+            parallel_config = model._resolve_parallel_config(parallel_config)
+            tp_config = parallel_config.tensor_parallel_config
+            tp_shard_specs = resolve_tp_shard_specs(model, cls._tp_plan, tp_config._mesh.size())
+            # Each rank opens every shard file but only reads its own slices, so threading the files buys
+            # nothing and would have several threads calling `register_parameter` on the same modules.
+            if is_parallel_loading_enabled:
+                logger.debug("Disabling parallel loading: a tensor-parallel load reads the shard files sequentially.")
+            is_parallel_loading_enabled = False
+
+        if use_flashpack:
+            if is_flashpack_available():
+                import flashpack
+            else:
+                logger.error(
+                    "Loading a FlashPack checkpoint in PyTorch, requires both PyTorch and flashpack to be installed. Please see "
+                    "https://pytorch.org/ and https://github.com/fal-ai/flashpack for installation instructions."
+                )
+                raise ImportError("Please install torch and flashpack to load a FlashPack checkpoint in PyTorch.")
+
+            if device_map is None:
+                logger.warning(
+                    "`device_map` has not been provided for FlashPack, model will be on `cpu` - provide `device_map` to fully utilize "
+                    "the benefit of FlashPack."
+                )
+                flashpack_device = torch.device("cpu")
+            else:
+                device = device_map[""]
+                if isinstance(device, str) and device in ["auto", "balanced", "balanced_low_0", "sequential"]:
+                    raise ValueError(
+                        "FlashPack `device_map` should not be one of `auto`, `balanced`, `balanced_low_0`, `sequential`. Use a specific device instead, e.g., `device_map='cuda'` or `device_map='cuda:0'"
+                    )
+                flashpack_device = torch.device(device) if not isinstance(device, torch.device) else device
+
+            flashpack.mixin.assign_from_file(
+                model=model,
+                path=resolved_model_file[0],
+                device=flashpack_device,
+                **flashpack_kwargs,
+            )
+            if dtype_orig is not None:
+                torch.set_default_dtype(dtype_orig)
+            if output_loading_info:
+                logger.warning("`output_loading_info` is not supported with FlashPack.")
+                return model, {}
+
+            return model
+
         if dtype_orig is not None:
             torch.set_default_dtype(dtype_orig)
 
         state_dict = None
-        if not is_sharded:
+        if not is_sharded and tp_shard_specs is None:
             # Time to load the checkpoint
-            state_dict = load_state_dict(resolved_model_file[0], disable_mmap=disable_mmap, dduf_entries=dduf_entries)
+            state_dict = load_state_dict(resolved_model_file[0], disable_mmap=disable_mmap)
             # We only fix it for non sharded checkpoints as we don't need it yet for sharded one.
             model._fix_state_dict_keys_on_load(state_dict)
 
         if is_sharded:
             loaded_keys = sharded_metadata["all_checkpoint_keys"]
+        elif tp_shard_specs is not None:
+            # Read the key names out of the safetensors header without materializing any tensor, and leave
+            # `state_dict` as None so `_load_pretrained_model` keeps reading from the file itself.
+            from safetensors import safe_open
+
+            with safe_open(resolved_model_file[0], framework="pt") as f:
+                loaded_keys = list(f.keys())
         else:
             loaded_keys = list(state_dict.keys())
 
+        checkpoint_files = resolved_model_file
+        if hf_quantizer is not None:
+            loaded_keys = hf_quantizer.maybe_update_loaded_keys(loaded_keys, checkpoint_files)
+
         if hf_quantizer is not None:
             hf_quantizer.preprocess_model(
-                model=model, device_map=device_map, keep_in_fp32_modules=keep_in_fp32_modules
+                model=model,
+                device_map=device_map,
+                keep_in_fp32_modules=keep_in_fp32_modules,
             )
+
+        if hf_quantizer is not None and not hf_quantizer.supports_parallel_loading:
+            is_parallel_loading_enabled = False
 
         # Now that the model is loaded, we can determine the device_map
         device_map = _determine_device_map(
@@ -1299,8 +1497,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             dtype=torch_dtype,
             hf_quantizer=hf_quantizer,
             keep_in_fp32_modules=keep_in_fp32_modules,
-            dduf_entries=dduf_entries,
             is_parallel_loading_enabled=is_parallel_loading_enabled,
+            disable_mmap=disable_mmap,
+            tp_shard_specs=tp_shard_specs,
+            tp_config=tp_config,
         )
         loading_info = {
             "missing_keys": missing_keys,
@@ -1340,6 +1540,16 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # Set model in evaluation mode to deactivate DropOut modules by default
         model.eval()
 
+        if parallel_config is not None:
+            if tp_shard_specs is not None:
+                # The weights are already sharded, so this only registers the forward hooks. `_parallel_config`
+                # was recorded by `_resolve_parallel_config` before loading.
+                from ..hooks.tensor_parallel import apply_tensor_parallel
+
+                apply_tensor_parallel(model, tp_config, cls._tp_plan, weights_already_sharded=True)
+            else:
+                model.enable_parallelism(config=parallel_config)
+
         if output_loading_info:
             return model, loading_info
 
@@ -1352,12 +1562,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         # Checks if the model has been loaded in 4-bit or 8-bit with BNB
         if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
-            if getattr(self, "is_loaded_in_8bit", False):
+            if getattr(self, "is_loaded_in_8bit", False) and is_bitsandbytes_version("<", "0.48.0"):
                 raise ValueError(
-                    "Calling `cuda()` is not supported for `8-bit` quantized models. "
-                    " Please use the model as it is, since the model has already been set to the correct devices."
+                    "Calling `cuda()` is not supported for `8-bit` quantized models with the installed version of bitsandbytes. "
+                    f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.48.0."
                 )
-            elif is_bitsandbytes_version("<", "0.43.2"):
+            elif getattr(self, "is_loaded_in_4bit", False) and is_bitsandbytes_version("<", "0.43.2"):
                 raise ValueError(
                     "Calling `cuda()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
                     f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
@@ -1376,6 +1586,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     @wraps(torch.nn.Module.to)
     def to(self, *args, **kwargs):
         from ..hooks.group_offloading import _is_group_offload_enabled
+
+        fp32_modules = self._keep_in_fp32_modules or []
 
         device_arg_or_kwarg_present = any(isinstance(arg, torch.device) for arg in args) or "device" in kwargs
         dtype_present_in_args = "dtype" in kwargs
@@ -1396,6 +1608,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     dtype_present_in_args = True
                     break
 
+        if dtype_present_in_args and fp32_modules is not None:
+            logger.warning(
+                f"There are modules in {self.__class__.__name__} that should be kept in float32: {fp32_modules}. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32."
+            )
+
         if getattr(self, "is_quantized", False):
             if dtype_present_in_args:
                 raise ValueError(
@@ -1404,17 +1621,16 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 )
 
         if getattr(self, "quantization_method", None) == QuantizationMethod.BITS_AND_BYTES:
-            if getattr(self, "is_loaded_in_8bit", False):
+            if getattr(self, "is_loaded_in_8bit", False) and is_bitsandbytes_version("<", "0.48.0"):
                 raise ValueError(
-                    "`.to` is not supported for `8-bit` bitsandbytes models. Please use the model as it is, since the"
-                    " model has already been set to the correct devices and casted to the correct `dtype`."
+                    "Calling `to()` is not supported for `8-bit` quantized models with the installed version of bitsandbytes. "
+                    f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.48.0."
                 )
-            elif is_bitsandbytes_version("<", "0.43.2"):
+            elif getattr(self, "is_loaded_in_4bit", False) and is_bitsandbytes_version("<", "0.43.2"):
                 raise ValueError(
                     "Calling `to()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
                     f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
                 )
-
         if _is_group_offload_enabled(self) and device_arg_or_kwarg_present:
             logger.warning(
                 f"The module '{self.__class__.__name__}' is group offloaded and moving it using `.to()` is not supported."
@@ -1478,25 +1694,168 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"Regional compilation failed because {repeated_blocks} classes are not found in the model. "
             )
 
+    def _resolve_parallel_config(
+        self, config: ParallelConfig | ContextParallelConfig | TensorParallelConfig
+    ) -> ParallelConfig:
+        """Normalize `config`, build its device mesh, and record it on the model.
+
+        Split out of `enable_parallelism` because `from_pretrained` needs the mesh *before* it reads any weights, in
+        order to stream each rank's shard straight into place. Whichever of the two runs first builds the mesh exactly
+        once.
+        """
+        if not torch.distributed.is_available() or not torch.distributed.is_initialized():
+            raise RuntimeError(
+                "torch.distributed must be available and initialized before applying a `parallel_config`."
+            )
+
+        if isinstance(config, ContextParallelConfig):
+            config = ParallelConfig(context_parallel_config=config)
+        elif isinstance(config, TensorParallelConfig):
+            config = ParallelConfig(tensor_parallel_config=config)
+
+        rank = torch.distributed.get_rank()
+        world_size = torch.distributed.get_world_size()
+        device_type = torch._C._get_accelerator().type
+        device_module = torch.get_device_module(device_type)
+        device = torch.device(device_type, rank % device_module.device_count())
+
+        mesh = None
+        if config.context_parallel_config is not None:
+            cp_config = config.context_parallel_config
+            mesh = cp_config.mesh or torch.distributed.device_mesh.init_device_mesh(
+                device_type=device_type,
+                mesh_shape=cp_config.mesh_shape,
+                mesh_dim_names=cp_config.mesh_dim_names,
+            )
+        elif config.tensor_parallel_config is not None:
+            tp_config = config.tensor_parallel_config
+            mesh = tp_config.mesh or torch.distributed.device_mesh.init_device_mesh(
+                device_type=device_type,
+                mesh_shape=(tp_config.tp_degree,),
+                mesh_dim_names=("tp",),
+            )
+
+        # `config.setup()` records the mesh resolved above onto the config; see `ParallelConfig.setup`.
+        config.setup(rank, world_size, device, mesh=mesh)
+        self._parallel_config = config
+        return config
+
+    def enable_parallelism(
+        self,
+        *,
+        config: ParallelConfig | ContextParallelConfig | TensorParallelConfig,
+        cp_plan: dict[str, ContextParallelModelPlan] | None = None,
+    ):
+        logger.warning(
+            "`enable_parallelism` is an experimental feature. The API may change in the future and breaking changes may be introduced at any time without warning."
+        )
+
+        from ..hooks.context_parallel import apply_context_parallel
+        from .attention import AttentionModuleMixin
+        from .attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
+        from .attention_processor import Attention, MochiAttention
+
+        if self._parallel_config is not None:
+            raise RuntimeError(
+                f"Parallelism is already applied to this {self.__class__.__name__}. `enable_parallelism` cannot be "
+                "called twice, and it must not be called on a model loaded with `from_pretrained(..., "
+                "parallel_config=...)` — that already sharded the weights while reading the checkpoint."
+            )
+
+        tp_config = (
+            config if isinstance(config, TensorParallelConfig) else getattr(config, "tensor_parallel_config", None)
+        )
+        if tp_config is not None:
+            from ..hooks.tensor_parallel import _check_tp_supported, _tp_degree, resolve_tp_shard_specs
+
+            # Before `_resolve_parallel_config`, which records the config on the model: a model that fails these
+            # checks is left untouched.
+            _check_tp_supported(
+                self.__class__.__name__,
+                self._tp_plan,
+                getattr(self.config, "num_attention_heads", None),
+                tp_config,
+                model=self,
+            )
+            resolve_tp_shard_specs(self, self._tp_plan, _tp_degree(tp_config))
+
+        config = self._resolve_parallel_config(config)
+
+        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
+
+        if config.context_parallel_config is not None:
+            for module in self.modules():
+                if not isinstance(module, attention_classes):
+                    continue
+
+                processor = module.processor
+                if processor is None or not hasattr(processor, "_attention_backend"):
+                    continue
+
+                attention_backend = processor._attention_backend
+                if attention_backend is None:
+                    attention_backend, _ = _AttentionBackendRegistry.get_active_backend()
+                else:
+                    attention_backend = AttentionBackendName(attention_backend)
+
+                if not _AttentionBackendRegistry._is_context_parallel_available(attention_backend):
+                    compatible_backends = sorted(_AttentionBackendRegistry._supports_context_parallel)
+                    raise ValueError(
+                        f"Context parallelism is enabled but the attention processor '{processor.__class__.__name__}' "
+                        f"is using backend '{attention_backend.value}' which does not support context parallelism. "
+                        f"Please set a compatible attention backend: {compatible_backends} using `model.set_attention_backend()` before "
+                        f"calling `model.enable_parallelism()`."
+                    )
+
+                # All modules use the same attention processor and backend. We don't need to
+                # iterate over all modules after checking the first processor
+                break
+
+        # Only context parallelism needs the config inside attention: it replaces the attention computation itself
+        # (Ulysses all-to-all / ring). Tensor parallelism only shards `Linear` weights, so each rank runs the ordinary
+        # attention op over its own heads and the processors must stay unaware of it.
+        if config.context_parallel_config is not None:
+            for module in self.modules():
+                if not isinstance(module, attention_classes):
+                    continue
+                processor = module.processor
+                if processor is None or not hasattr(processor, "_parallel_config"):
+                    continue
+                processor._parallel_config = config
+
+            if cp_plan is None and self._cp_plan is None:
+                raise ValueError(
+                    "`cp_plan` must be provided either as an argument or set in the model's `_cp_plan` attribute."
+                )
+            cp_plan = cp_plan if cp_plan is not None else self._cp_plan
+            apply_context_parallel(self, config.context_parallel_config, cp_plan)
+
+        if config.tensor_parallel_config is not None:
+            from ..hooks.tensor_parallel import apply_tensor_parallel
+
+            apply_tensor_parallel(self, config.tensor_parallel_config, self._tp_plan)
+
     @classmethod
     def _load_pretrained_model(
         cls,
         model,
         state_dict: OrderedDict,
-        resolved_model_file: List[str],
-        pretrained_model_name_or_path: Union[str, os.PathLike],
-        loaded_keys: List[str],
+        resolved_model_file: list[str],
+        pretrained_model_name_or_path: str | os.PathLike,
+        loaded_keys: list[str],
         ignore_mismatched_sizes: bool = False,
         assign_to_params_buffers: bool = False,
-        hf_quantizer: Optional[DiffusersQuantizer] = None,
+        hf_quantizer: DiffusersQuantizer | None = None,
         low_cpu_mem_usage: bool = True,
-        dtype: Optional[Union[str, torch.dtype]] = None,
-        keep_in_fp32_modules: Optional[List[str]] = None,
-        device_map: Union[str, int, torch.device, Dict[str, Union[int, str, torch.device]]] = None,
-        offload_state_dict: Optional[bool] = None,
-        offload_folder: Optional[Union[str, os.PathLike]] = None,
-        dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
-        is_parallel_loading_enabled: Optional[bool] = False,
+        dtype: str | torch.dtype | None = None,
+        keep_in_fp32_modules: list[str] | None = None,
+        device_map: str | int | torch.device | dict[str, str | int | torch.device] = None,
+        offload_state_dict: bool | None = None,
+        offload_folder: str | os.PathLike | None = None,
+        is_parallel_loading_enabled: bool | None = False,
+        disable_mmap: bool = False,
+        tp_shard_specs: dict | None = None,
+        tp_config: TensorParallelConfig | None = None,
     ):
         model_state_dict = model.state_dict()
         expected_keys = list(model_state_dict.keys())
@@ -1512,6 +1871,17 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         mismatched_keys = []
         error_msgs = []
+
+        if tp_shard_specs is not None:
+            # `_hooks_only_styles` lets `parallelize_module` broadcast any planned parameter it finds still
+            # plain, and for a key the checkpoint does not carry that broadcast would be issued on a `meta`
+            # tensor.
+            missing_planned_keys = sorted(set(tp_shard_specs) & set(missing_keys))
+            if missing_planned_keys:
+                raise ValueError(
+                    f"Cannot shard {cls.__name__} across tensor-parallel ranks because its `_tp_plan` covers "
+                    f"parameters that the checkpoint does not contain: {missing_planned_keys}."
+                )
 
         # Deal with offload
         if device_map is not None and "disk" in device_map.values():
@@ -1548,24 +1918,37 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             resolved_model_file = [state_dict]
 
         # Prepare the loading function sharing the attributes shared between them.
-        load_fn = functools.partial(
-            _load_shard_files_with_threadpool if is_parallel_loading_enabled else _load_shard_file,
-            model=model,
-            model_state_dict=model_state_dict,
-            device_map=device_map,
-            dtype=dtype,
-            hf_quantizer=hf_quantizer,
-            keep_in_fp32_modules=keep_in_fp32_modules,
-            dduf_entries=dduf_entries,
-            loaded_keys=loaded_keys,
-            unexpected_keys=unexpected_keys,
-            offload_index=offload_index,
-            offload_folder=offload_folder,
-            state_dict_index=state_dict_index,
-            state_dict_folder=state_dict_folder,
-            ignore_mismatched_sizes=ignore_mismatched_sizes,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-        )
+        if tp_shard_specs is not None:
+            load_fn = functools.partial(
+                _load_shard_file_tp,
+                model=model,
+                model_state_dict=model_state_dict,
+                tp_shard_specs=tp_shard_specs,
+                tp_config=tp_config,
+                dtype=dtype,
+                keep_in_fp32_modules=keep_in_fp32_modules,
+                unexpected_keys=unexpected_keys,
+                ignore_mismatched_sizes=ignore_mismatched_sizes,
+            )
+        else:
+            load_fn = functools.partial(
+                _load_shard_files_with_threadpool if is_parallel_loading_enabled else _load_shard_file,
+                model=model,
+                model_state_dict=model_state_dict,
+                device_map=device_map,
+                dtype=dtype,
+                hf_quantizer=hf_quantizer,
+                keep_in_fp32_modules=keep_in_fp32_modules,
+                loaded_keys=loaded_keys,
+                unexpected_keys=unexpected_keys,
+                offload_index=offload_index,
+                offload_folder=offload_folder,
+                state_dict_index=state_dict_index,
+                state_dict_folder=state_dict_folder,
+                ignore_mismatched_sizes=ignore_mismatched_sizes,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                disable_mmap=disable_mmap,
+            )
 
         if is_parallel_loading_enabled:
             offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_fn(resolved_model_file)
@@ -1574,7 +1957,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         else:
             shard_files = resolved_model_file
             if len(resolved_model_file) > 1:
-                shard_files = logging.tqdm(resolved_model_file, desc="Loading checkpoint shards")
+                shard_tqdm_kwargs = {"desc": "Loading checkpoint shards"}
+                if not is_torch_dist_rank_zero():
+                    shard_tqdm_kwargs["disable"] = True
+                shard_files = logging.tqdm(resolved_model_file, **shard_tqdm_kwargs)
 
             for shard_file in shard_files:
                 offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_fn(shard_file)
@@ -1655,7 +2041,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 The device map value. Options are ["auto", "balanced", "balanced_low_0", "sequential"]
 
         Returns:
-            `List[str]`: List of modules that should not be split
+            `list[str]`: list of modules that should not be split
         """
         _no_split_modules = set()
         modules_to_check = [self]
@@ -1734,7 +2120,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         ```py
         from diffusers import UNet2DConditionModel
 
-        model_id = "runwayml/stable-diffusion-v1-5"
+        model_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
         unet = UNet2DConditionModel.from_pretrained(model_id, subfolder="unet")
         unet.num_parameters(only_trainable=True)
         859520964
@@ -1876,7 +2262,7 @@ class LegacyModelMixin(ModelMixin):
 
     @classmethod
     @validate_hf_hub_args
-    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
+    def from_pretrained(cls, pretrained_model_name_or_path: str | os.PathLike | None, **kwargs):
         # To prevent dependency import problem.
         from .model_loading_utils import _fetch_remapped_cls_from_config
 

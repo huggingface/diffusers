@@ -17,7 +17,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import Literal
 
 import numpy as np
 import torch
@@ -40,21 +40,21 @@ class LCMSchedulerOutput(BaseOutput):
         prev_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
-        pred_original_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
-            The predicted denoised sample `(x_{0})` based on the model output from the current timestep.
-            `pred_original_sample` can be used to preview progress or for guidance.
+        denoised (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images, *optional*):
+            The predicted denoised sample `(x_{0})` based on the model output from the current timestep. `denoised` can
+            be used to preview progress or for guidance.
     """
 
     prev_sample: torch.Tensor
-    denoised: Optional[torch.Tensor] = None
+    denoised: torch.Tensor | None = None
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
 def betas_for_alpha_bar(
-    num_diffusion_timesteps,
-    max_beta=0.999,
-    alpha_transform_type="cosine",
-):
+    num_diffusion_timesteps: int,
+    max_beta: float = 0.999,
+    alpha_transform_type: Literal["cosine", "exp", "laplace"] = "cosine",
+) -> torch.Tensor:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
@@ -62,21 +62,29 @@ def betas_for_alpha_bar(
     Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
     to that part of the diffusion process.
 
-
     Args:
-        num_diffusion_timesteps (`int`): the number of betas to produce.
-        max_beta (`float`): the maximum beta to use; use values lower than 1 to
-                     prevent singularities.
-        alpha_transform_type (`str`, *optional*, default to `cosine`): the type of noise schedule for alpha_bar.
-                     Choose from `cosine` or `exp`
+        num_diffusion_timesteps (`int`):
+            The number of betas to produce.
+        max_beta (`float`, defaults to `0.999`):
+            The maximum beta to use; use values lower than 1 to avoid numerical instability.
+        alpha_transform_type (`str`, defaults to `"cosine"`):
+            The type of noise schedule for `alpha_bar`. Choose from `cosine`, `exp`, or `laplace`.
 
     Returns:
-        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
+        `torch.Tensor`:
+            The betas used by the scheduler to step the model outputs.
     """
     if alpha_transform_type == "cosine":
 
         def alpha_bar_fn(t):
             return math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2
+
+    elif alpha_transform_type == "laplace":
+
+        def alpha_bar_fn(t):
+            lmb = -0.5 * math.copysign(1, 0.5 - t) * math.log(1 - 2 * math.fabs(0.5 - t) + 1e-6)
+            snr = math.exp(lmb)
+            return math.sqrt(snr / (1 + snr))
 
     elif alpha_transform_type == "exp":
 
@@ -99,13 +107,13 @@ def rescale_zero_terminal_snr(betas: torch.Tensor) -> torch.Tensor:
     """
     Rescales betas to have zero terminal SNR Based on https://huggingface.co/papers/2305.08891 (Algorithm 1)
 
-
     Args:
         betas (`torch.Tensor`):
-            the betas that the scheduler is being initialized with.
+            The betas that the scheduler is being initialized with.
 
     Returns:
-        `torch.Tensor`: rescaled betas with zero terminal SNR
+        `torch.Tensor`:
+            Rescaled betas with zero terminal SNR.
     """
     # Convert betas to alphas_bar_sqrt
     alphas = 1.0 - betas
@@ -142,45 +150,45 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
     functionality via the [`SchedulerMixin.save_pretrained`] and [`~SchedulerMixin.from_pretrained`] functions.
 
     Args:
-        num_train_timesteps (`int`, defaults to 1000):
+        num_train_timesteps (`int`, defaults to `1000`):
             The number of diffusion steps to train the model.
-        beta_start (`float`, defaults to 0.0001):
+        beta_start (`float`, defaults to `0.00085`):
             The starting `beta` value of inference.
-        beta_end (`float`, defaults to 0.02):
+        beta_end (`float`, defaults to `0.012`):
             The final `beta` value.
-        beta_schedule (`str`, defaults to `"linear"`):
+        beta_schedule (`str`, defaults to `"scaled_linear"`):
             The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
-        trained_betas (`np.ndarray`, *optional*):
+        trained_betas (`np.ndarray` or `list[float]`, *optional*):
             Pass an array of betas directly to the constructor to bypass `beta_start` and `beta_end`.
-        original_inference_steps (`int`, *optional*, defaults to 50):
+        original_inference_steps (`int`, defaults to `50`):
             The default number of inference steps used to generate a linearly-spaced timestep schedule, from which we
             will ultimately take `num_inference_steps` evenly spaced timesteps to form the final timestep schedule.
-        clip_sample (`bool`, defaults to `True`):
+        clip_sample (`bool`, defaults to `False`):
             Clip the predicted sample for numerical stability.
-        clip_sample_range (`float`, defaults to 1.0):
+        clip_sample_range (`float`, defaults to `1.0`):
             The maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
         set_alpha_to_one (`bool`, defaults to `True`):
             Each diffusion step uses the alphas product value at that step and at the previous one. For the final step
             there is no previous alpha. When this option is `True` the previous alpha product is fixed to `1`,
             otherwise it uses the alpha value at step 0.
-        steps_offset (`int`, defaults to 0):
+        steps_offset (`int`, defaults to `0`):
             An offset added to the inference steps, as required by some model families.
-        prediction_type (`str`, defaults to `epsilon`, *optional*):
+        prediction_type (`str`, defaults to `"epsilon"`):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
-            Video](https://imagen.research.google/video/paper.pdf) paper).
+            Video](https://huggingface.co/papers/2210.02303) paper).
         thresholding (`bool`, defaults to `False`):
             Whether to use the "dynamic thresholding" method. This is unsuitable for latent-space diffusion models such
             as Stable Diffusion.
-        dynamic_thresholding_ratio (`float`, defaults to 0.995):
+        dynamic_thresholding_ratio (`float`, defaults to `0.995`):
             The ratio for the dynamic thresholding method. Valid only when `thresholding=True`.
-        sample_max_value (`float`, defaults to 1.0):
+        sample_max_value (`float`, defaults to `1.0`):
             The threshold value for dynamic thresholding. Valid only when `thresholding=True`.
         timestep_spacing (`str`, defaults to `"leading"`):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
-        timestep_scaling (`float`, defaults to 10.0):
+        timestep_scaling (`float`, defaults to `10.0`):
             The factor the timesteps will be multiplied by when calculating the consistency model boundary conditions
             `c_skip` and `c_out`. Increasing this will decrease the approximation error (although the approximation
             error at the default of `10.0` is already pretty small).
@@ -199,7 +207,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.00085,
         beta_end: float = 0.012,
         beta_schedule: str = "scaled_linear",
-        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        trained_betas: np.ndarray | list[float] | None = None,
         original_inference_steps: int = 50,
         clip_sample: bool = False,
         clip_sample_range: float = 1.0,
@@ -251,7 +259,23 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = None
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
-    def index_for_timestep(self, timestep, schedule_timesteps=None):
+    def index_for_timestep(
+        self, timestep: float | torch.Tensor, schedule_timesteps: torch.Tensor | None = None
+    ) -> int:
+        """
+        Find the index of a given timestep in the timestep schedule.
+
+        Args:
+            timestep (`float` or `torch.Tensor`):
+                The timestep value to find in the schedule.
+            schedule_timesteps (`torch.Tensor`, *optional*):
+                The timestep schedule to search in. If `None`, uses `self.timesteps`.
+
+        Returns:
+            `int`:
+                The index of the timestep in the schedule. For the very first step, returns the second index if
+                multiple matches exist to avoid skipping a sigma when starting mid-schedule (e.g., for image-to-image).
+        """
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
 
@@ -266,7 +290,14 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         return indices[pos].item()
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
-    def _init_step_index(self, timestep):
+    def _init_step_index(self, timestep: float | torch.Tensor) -> None:
+        """
+        Initialize the step index for the scheduler based on the given timestep.
+
+        Args:
+            timestep (`float` or `torch.Tensor`):
+                The current timestep to initialize the step index from.
+        """
         if self.begin_index is None:
             if isinstance(timestep, torch.Tensor):
                 timestep = timestep.to(self.timesteps.device)
@@ -275,13 +306,24 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
             self._step_index = self._begin_index
 
     @property
-    def step_index(self):
+    def step_index(self) -> int | None:
+        """
+        The index counter for current timestep. It will increase by 1 after each scheduler step.
+
+        Returns:
+            `int` or `None`:
+                The current step index, or `None` if not initialized.
+        """
         return self._step_index
 
     @property
-    def begin_index(self):
+    def begin_index(self) -> int | None:
         """
         The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
+
+        Returns:
+            `int` or `None`:
+                The begin index for the scheduler, or `None` if not set.
         """
         return self._begin_index
 
@@ -291,12 +333,12 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
 
         Args:
-            begin_index (`int`):
+            begin_index (`int`, defaults to `0`):
                 The begin index for the scheduler.
         """
         self._begin_index = begin_index
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int | None = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -306,6 +348,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
                 The input sample.
             timestep (`int`, *optional*):
                 The current timestep in the diffusion chain.
+
         Returns:
             `torch.Tensor`:
                 A scaled input sample.
@@ -315,6 +358,8 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.Tensor) -> torch.Tensor:
         """
+        Apply dynamic thresholding to the predicted sample.
+
         "Dynamic thresholding: At each sampling step we set s to a certain percentile absolute pixel value in xt0 (the
         prediction of x_0 at timestep t), and if s > 1, then we threshold xt0 to the range [-s, s] and then divide by
         s. Dynamic thresholding pushes saturated pixels (those near -1 and 1) inwards, thereby actively preventing
@@ -322,6 +367,14 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         photorealism as well as better image-text alignment, especially when using very large guidance weights."
 
         https://huggingface.co/papers/2205.11487
+
+        Args:
+            sample (`torch.Tensor`):
+                The predicted sample to be thresholded.
+
+        Returns:
+            `torch.Tensor`:
+                The thresholded sample.
         """
         dtype = sample.dtype
         batch_size, channels, *remaining_dims = sample.shape
@@ -348,12 +401,12 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(
         self,
-        num_inference_steps: Optional[int] = None,
-        device: Union[str, torch.device] = None,
-        original_inference_steps: Optional[int] = None,
-        timesteps: Optional[List[int]] = None,
-        strength: int = 1.0,
-    ):
+        num_inference_steps: int | None = None,
+        device: str | torch.device | None = None,
+        original_inference_steps: int | None = None,
+        timesteps: list[int] | None = None,
+        strength: float = 1.0,
+    ) -> None:
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
@@ -368,10 +421,16 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
                 schedule (which is different from the standard `diffusers` implementation). We will then take
                 `num_inference_steps` timesteps from this schedule, evenly spaced in terms of indices, and use that as
                 our final timestep schedule. If not set, this will default to the `original_inference_steps` attribute.
-            timesteps (`List[int]`, *optional*):
+            timesteps (`list[int]`, *optional*):
                 Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
                 timestep spacing strategy of equal spacing between timesteps on the training/distillation timestep
                 schedule is used. If `timesteps` is passed, `num_inference_steps` must be `None`.
+            strength (`float`, defaults to `1.0`):
+                Strength factor used to generate a partial timestep schedule (e.g. for image-to-image). A value of
+                `1.0` uses the full schedule.
+
+        Returns:
+            `None`
         """
         # 0. Check inputs
         if num_inference_steps is None and timesteps is None:
@@ -486,7 +545,20 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         self._step_index = None
         self._begin_index = None
 
-    def get_scalings_for_boundary_condition_discrete(self, timestep):
+    def get_scalings_for_boundary_condition_discrete(self, timestep: int) -> tuple[float, float]:
+        """
+        Computes the boundary condition scalings (`c_skip` and `c_out`) for the given discrete timestep, as used in the
+        Latent Consistency Model.
+
+        Args:
+            timestep (`int`):
+                The discrete timestep for which to compute the scalings.
+
+        Returns:
+            `tuple[float, float]`:
+                A tuple containing `c_skip` (scaling for the input sample) and `c_out` (scaling for the predicted
+                denoised sample).
+        """
         self.sigma_data = 0.5  # Default: 0.5
         scaled_timestep = timestep * self.config.timestep_scaling
 
@@ -499,9 +571,9 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.Tensor,
         timestep: int,
         sample: torch.Tensor,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> Union[LCMSchedulerOutput, Tuple]:
+    ) -> LCMSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -509,16 +581,17 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output (`torch.Tensor`):
                 The direct output from learned diffusion model.
-            timestep (`float`):
+            timestep (`int`):
                 The current discrete timestep in the diffusion chain.
             sample (`torch.Tensor`):
                 A current instance of a sample created by the diffusion process.
             generator (`torch.Generator`, *optional*):
-                A random number generator.
-            return_dict (`bool`, *optional*, defaults to `True`):
+                A random number generator for reproducible sampling.
+            return_dict (`bool`, defaults to `True`):
                 Whether or not to return a [`~schedulers.scheduling_lcm.LCMSchedulerOutput`] or `tuple`.
+
         Returns:
-            [`~schedulers.scheduling_utils.LCMSchedulerOutput`] or `tuple`:
+            [`~schedulers.scheduling_lcm.LCMSchedulerOutput`] or `tuple`:
                 If return_dict is `True`, [`~schedulers.scheduling_lcm.LCMSchedulerOutput`] is returned, otherwise a
                 tuple is returned where the first element is the sample tensor.
         """
@@ -597,6 +670,22 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.Tensor,
         timesteps: torch.IntTensor,
     ) -> torch.Tensor:
+        """
+        Add noise to the original samples according to the noise magnitude at each timestep (this is the forward
+        diffusion process).
+
+        Args:
+            original_samples (`torch.Tensor`):
+                The original samples to which noise will be added.
+            noise (`torch.Tensor`):
+                The noise to add to the samples.
+            timesteps (`torch.IntTensor`):
+                The timesteps indicating the noise level for each sample.
+
+        Returns:
+            `torch.Tensor`:
+                The noisy samples.
+        """
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
         # Move the self.alphas_cumprod to device to avoid redundant CPU to GPU data movement
         # for the subsequent add_noise calls
@@ -619,6 +708,21 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.get_velocity
     def get_velocity(self, sample: torch.Tensor, noise: torch.Tensor, timesteps: torch.IntTensor) -> torch.Tensor:
+        """
+        Compute the velocity prediction from the sample and noise according to the velocity formula.
+
+        Args:
+            sample (`torch.Tensor`):
+                The input sample.
+            noise (`torch.Tensor`):
+                The noise tensor.
+            timesteps (`torch.IntTensor`):
+                The timesteps for velocity computation.
+
+        Returns:
+            `torch.Tensor`:
+                The computed velocity.
+        """
         # Make sure alphas_cumprod and timestep have same device and dtype as sample
         self.alphas_cumprod = self.alphas_cumprod.to(device=sample.device)
         alphas_cumprod = self.alphas_cumprod.to(dtype=sample.dtype)
@@ -637,11 +741,29 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         velocity = sqrt_alpha_prod * noise - sqrt_one_minus_alpha_prod * sample
         return velocity
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """
+        Returns the number of train timesteps.
+
+        Returns:
+            `int`:
+                The number of diffusion steps used to train the model.
+        """
         return self.config.num_train_timesteps
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.previous_timestep
     def previous_timestep(self, timestep):
+        """
+        Compute the previous timestep in the diffusion chain.
+
+        Args:
+            timestep (`int`):
+                The current timestep.
+
+        Returns:
+            `int` or `torch.Tensor`:
+                The previous timestep.
+        """
         if self.custom_timesteps or self.num_inference_steps:
             index = (self.timesteps == timestep).nonzero(as_tuple=True)[0][0]
             if index == self.timesteps.shape[0] - 1:

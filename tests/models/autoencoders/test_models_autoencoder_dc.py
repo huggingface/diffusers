@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,27 +13,44 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
+import pytest
+import torch
 
 from diffusers import AutoencoderDC
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import (
-    enable_full_determinism,
-    floats_tensor,
-    torch_device,
+from ...testing_utils import IS_GITHUB_ACTIONS, enable_full_determinism, torch_device
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    SingleFileTesterMixin,
+    TrainingTesterMixin,
 )
-from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
 
 
-class AutoencoderDCTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
-    model_class = AutoencoderDC
-    main_input_name = "sample"
-    base_precision = 1e-2
+class AutoencoderDCTesterConfig(BaseModelTesterConfig):
+    @property
+    def main_input_name(self):
+        return "sample"
 
-    def get_autoencoder_dc_config(self):
+    @property
+    def model_class(self):
+        return AutoencoderDC
+
+    @property
+    def output_shape(self):
+        return (3, 32, 32)
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self):
         return {
             "in_channels": 3,
             "latent_channels": 4,
@@ -59,29 +76,45 @@ class AutoencoderDCTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
             "scaling_factor": 0.41407,
         }
 
-    @property
-    def dummy_input(self):
+    def get_dummy_inputs(self):
         batch_size = 4
         num_channels = 3
         sizes = (32, 32)
-
-        image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-
+        image = randn_tensor((batch_size, num_channels, *sizes), generator=self.generator, device=torch_device)
         return {"sample": image}
 
+
+class TestAutoencoderDC(AutoencoderDCTesterConfig, ModelTesterMixin):
+    base_precision = 1e-2
+
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
+    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
+        if dtype == torch.bfloat16 and IS_GITHUB_ACTIONS:
+            pytest.skip("Skipping bf16 test inside GitHub Actions environment")
+        super().test_from_save_pretrained_dtype_inference(tmp_path, dtype)
+
+
+class TestAutoencoderDCTraining(AutoencoderDCTesterConfig, TrainingTesterMixin):
+    """Training tests for AutoencoderDC."""
+
+
+class TestAutoencoderDCMemory(AutoencoderDCTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for AutoencoderDC."""
+
+    @pytest.mark.skipif(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
+    def test_layerwise_casting_memory(self):
+        super().test_layerwise_casting_memory()
+
+
+class TestAutoencoderDCSlicingTiling(AutoencoderDCTesterConfig, AutoencoderTesterMixin):
+    """Slicing and tiling tests for AutoencoderDC."""
+
+
+class TestAutoencoderDCSingleFile(AutoencoderDCTesterConfig, SingleFileTesterMixin):
     @property
-    def input_shape(self):
-        return (3, 32, 32)
+    def ckpt_path(self):
+        return "https://huggingface.co/mit-han-lab/dc-ae-f32c32-sana-1.0/blob/main/model.safetensors"
 
     @property
-    def output_shape(self):
-        return (3, 32, 32)
-
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = self.get_autoencoder_dc_config()
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
-
-    @unittest.skip("AutoencoderDC does not support `norm_num_groups` because it does not use GroupNorm.")
-    def test_forward_with_norm_groups(self):
-        pass
+    def pretrained_model_name_or_path(self):
+        return "mit-han-lab/dc-ae-f32c32-sana-1.0-diffusers"

@@ -26,29 +26,26 @@ Depending on the use case, one should choose a technique accordingly. In many ca
 
 Unless otherwise mentioned, these are techniques that work with existing models and don't require their own weights.
 
-1. [InstructPix2Pix](#instruct-pix2pix)
-2. [Pix2Pix Zero](#pix2pix-zero)
-3. [Attend and Excite](#attend-and-excite)
-4. [Semantic Guidance](#semantic-guidance-sega)
-5. [Self-attention Guidance](#self-attention-guidance-sag)
-6. [Depth2Image](#depth2image)
-7. [MultiDiffusion Panorama](#multidiffusion-panorama)
-8. [DreamBooth](#dreambooth)
-9. [Textual Inversion](#textual-inversion)
-10. [ControlNet](#controlnet)
-11. [Prompt Weighting](#prompt-weighting)
-12. [Custom Diffusion](#custom-diffusion)
-13. [Model Editing](#model-editing)
-14. [DiffEdit](#diffedit)
-15. [T2I-Adapter](#t2i-adapter)
-16. [FABRIC](#fabric)
+1. [InstructPix2Pix](#instructpix2pix)
+2. [Attend and Excite](#attend-and-excite)
+3. [Semantic Guidance](#semantic-guidance-sega)
+4. [Self-attention Guidance](#self-attention-guidance-sag)
+5. [Depth2Image](#depth2image)
+6. [MultiDiffusion Panorama](#multidiffusion-panorama)
+7. [DreamBooth](#dreambooth)
+8. [Textual Inversion](#textual-inversion)
+9. [ControlNet](#controlnet)
+10. [Prompt Weighting](#prompt-weighting)
+11. [Custom Diffusion](#custom-diffusion)
+12. [DiffEdit](#diffedit)
+13. [T2I-Adapter](#t2i-adapter)
+14. [FABRIC](#fabric)
 
 For convenience, we provide a table to denote which methods are inference-only and which require fine-tuning/training.
 
 |                     **Method**                      | **Inference only** | **Requires training /<br> fine-tuning** |                                          **Comments**                                           |
 | :-------------------------------------------------: | :----------------: | :-------------------------------------: | :---------------------------------------------------------------------------------------------: |
-|        [InstructPix2Pix](#instruct-pix2pix)        |         ✅         |                   ❌                    | Can additionally be<br>fine-tuned for better <br>performance on specific <br>edit instructions. |
-|            [Pix2Pix Zero](#pix2pix-zero)            |         ✅         |                   ❌                    |                                                                                                 |
+|        [InstructPix2Pix](#instructpix2pix)        |         ✅         |                   ❌                    | Can additionally be<br>fine-tuned for better <br>performance on specific <br>edit instructions. |
 |       [Attend and Excite](#attend-and-excite)       |         ✅         |                   ❌                    |                                                                                                 |
 |       [Semantic Guidance](#semantic-guidance-sega)       |         ✅         |                   ❌                    |                                                                                                 |
 | [Self-attention Guidance](#self-attention-guidance-sag) |         ✅         |                   ❌                    |                                                                                                 |
@@ -59,7 +56,6 @@ For convenience, we provide a table to denote which methods are inference-only a
 |              [ControlNet](#controlnet)              |         ✅         |                   ❌                    |             A ControlNet can be <br>trained/fine-tuned on<br>a custom conditioning.             |
 |        [Prompt Weighting](#prompt-weighting)        |         ✅         |                   ❌                    |                                                                                                 |
 |        [Custom Diffusion](#custom-diffusion)        |         ❌         |                   ✅                    |                                                                                                 |
-|           [Model Editing](#model-editing)           |         ✅         |                   ❌                    |                                                                                                 |
 |                [DiffEdit](#diffedit)                |         ✅         |                   ❌                    |                                                                                                 |
 |             [T2I-Adapter](#t2i-adapter)             |         ✅         |                   ❌                    |                                                                                                 |
 |                [Fabric](#fabric)                    |         ✅         |                   ❌                    |                                                                                                 |
@@ -70,43 +66,11 @@ For convenience, we provide a table to denote which methods are inference-only a
 [InstructPix2Pix](../api/pipelines/pix2pix) is fine-tuned from Stable Diffusion to support editing input images. It takes as inputs an image and a prompt describing an edit, and it outputs the edited image.
 InstructPix2Pix has been explicitly trained to work well with [InstructGPT](https://openai.com/blog/instruction-following/)-like prompts.
 
-## Pix2Pix Zero
-
-[Paper](https://huggingface.co/papers/2302.03027)
-
-[Pix2Pix Zero](../api/pipelines/pix2pix_zero) allows modifying an image so that one concept or subject is translated to another one while preserving general image semantics.
-
-The denoising process is guided from one conceptual embedding towards another conceptual embedding. The intermediate latents are optimized during the denoising process to push the attention maps towards reference attention maps. The reference attention maps are from the denoising process of the input image and are used to encourage semantic preservation.
-
-Pix2Pix Zero can be used both to edit synthetic images as well as real images.
-
-- To edit synthetic images, one first generates an image given a caption.
-  Next, we generate image captions for the concept that shall be edited and for the new target concept. We can use a model like [Flan-T5](https://huggingface.co/docs/transformers/model_doc/flan-t5) for this purpose. Then, "mean" prompt embeddings for both the source and target concepts are created via the text encoder. Finally, the pix2pix-zero algorithm is used to edit the synthetic image.
-- To edit a real image, one first generates an image caption using a model like [BLIP](https://huggingface.co/docs/transformers/model_doc/blip). Then one applies DDIM inversion on the prompt and image to generate "inverse" latents. Similar to before, "mean" prompt embeddings for both source and target concepts are created and finally the pix2pix-zero algorithm in combination with the "inverse" latents is used to edit the image.
-
-<Tip>
-
-Pix2Pix Zero is the first model that allows "zero-shot" image editing. This means that the model
-can edit an image in less than a minute on a consumer GPU as shown [here](../api/pipelines/pix2pix_zero#usage-example).
-
-</Tip>
-
-As mentioned above, Pix2Pix Zero includes optimizing the latents (and not any of the UNet, VAE, or the text encoder) to steer the generation toward a specific concept. This means that the overall
-pipeline might require more memory than a standard [StableDiffusionPipeline](../api/pipelines/stable_diffusion/text2img).
-
-<Tip>
-
-An important distinction between methods like InstructPix2Pix and Pix2Pix Zero is that the former
-involves fine-tuning the pre-trained weights while the latter does not. This means that you can
-apply Pix2Pix Zero to any of the available Stable Diffusion models.
-
-</Tip>
-
 ## Attend and Excite
 
 [Paper](https://huggingface.co/papers/2301.13826)
 
-[Attend and Excite](../api/pipelines/attend_and_excite) allows subjects in the prompt to be faithfully represented in the final image.
+Attend and Excite allows subjects in the prompt to be faithfully represented in the final image.
 
 A set of token indices are given as input, corresponding to the subjects in the prompt that need to be present in the image. During denoising, each token index is guaranteed to have a minimum attention threshold for at least one patch of the image. The intermediate latents are iteratively optimized during the denoising process to strengthen the attention of the most neglected subject token until the attention threshold is passed for all subject tokens.
 
@@ -116,7 +80,7 @@ Like Pix2Pix Zero, Attend and Excite also involves a mini optimization loop (lea
 
 [Paper](https://huggingface.co/papers/2301.12247)
 
-[SEGA](../api/pipelines/semantic_stable_diffusion) allows applying or removing one or more concepts from an image. The strength of the concept can also be controlled. I.e. the smile concept can be used to incrementally increase or decrease the smile of a portrait.
+SEGA allows applying or removing one or more concepts from an image. The strength of the concept can also be controlled. I.e. the smile concept can be used to incrementally increase or decrease the smile of a portrait.
 
 Similar to how classifier free guidance provides guidance via empty prompt inputs, SEGA provides guidance on conceptual prompts. Multiple of these conceptual prompts can be applied simultaneously. Each conceptual prompt can either add or remove their concept depending on if the guidance is applied positively or negatively.
 
@@ -126,7 +90,7 @@ Unlike Pix2Pix Zero or Attend and Excite, SEGA directly interacts with the diffu
 
 [Paper](https://huggingface.co/papers/2210.00939)
 
-[Self-attention Guidance](../api/pipelines/self_attention_guidance) improves the general quality of images.
+Self-attention Guidance improves the general quality of images.
 
 SAG provides guidance from predictions not conditioned on high-frequency details to fully conditioned images. The high frequency details are extracted out of the UNet self-attention maps.
 
@@ -142,8 +106,8 @@ It conditions on a monocular depth estimate of the original image.
 
 [Paper](https://huggingface.co/papers/2302.08113)
 
-[MultiDiffusion Panorama](../api/pipelines/panorama) defines a new generation process over a pre-trained diffusion model. This process binds together multiple diffusion generation methods that can be readily applied to generate high quality and diverse images. Results adhere to user-provided controls, such as desired aspect ratio (e.g., panorama), and spatial guiding signals, ranging from tight segmentation masks to bounding boxes.
-MultiDiffusion Panorama allows to generate high-quality images at arbitrary aspect ratios (e.g., panoramas).
+MultiDiffusion Panorama defines a new generation process over a pre-trained diffusion model. This process binds together multiple diffusion generation methods that can be readily applied to generate high quality and diverse images. Results adhere to user-provided controls, such as desired aspect ratio (e.g., panorama), and spatial guiding signals, ranging from tight segmentation masks to bounding boxes.
+MultiDiffusion Panorama allows you to generate high-quality images at arbitrary aspect ratios (e.g., panoramas).
 
 ## Fine-tuning your own models
 
@@ -184,19 +148,11 @@ multi-concept training by design. Like DreamBooth and Textual Inversion, Custom 
 teach a pre-trained text-to-image diffusion model about new concepts to generate outputs involving the
 concept(s) of interest.
 
-## Model Editing
-
-[Paper](https://huggingface.co/papers/2303.08084)
-
-The [text-to-image model editing pipeline](../api/pipelines/model_editing) helps you mitigate some of the incorrect implicit assumptions a pre-trained text-to-image
-diffusion model might make about the subjects present in the input prompt. For example, if you prompt Stable Diffusion to generate images for "A pack of roses", the roses in the generated images
-are more likely to be red. This pipeline helps you change that assumption.
-
 ## DiffEdit
 
 [Paper](https://huggingface.co/papers/2210.11427)
 
-[DiffEdit](../api/pipelines/diffedit) allows for semantic editing of input images along with
+DiffEdit allows for semantic editing of input images along with
 input prompts while preserving the original input images as much as possible.
 
 ## T2I-Adapter

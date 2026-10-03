@@ -1243,15 +1243,11 @@ class EasyPipelineForText2Image(AutoPipelineForText2Image):
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
                 below for more information.
             variant (`str`, *optional*):
-                Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
-                loading `from_flax`.
+                Load weights from a specified variant filename such as `"fp16"` or `"ema"`.
 
-        <Tip>
-
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `hf auth login`.
-
-        </Tip>
+        > [!TIP]
+        > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
+        > `hf auth login`.
 
         Examples:
 
@@ -1355,12 +1351,9 @@ class EasyPipelineForText2Image(AutoPipelineForText2Image):
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
                 below for more information.
 
-        <Tip>
-
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `hf auth login`.
-
-        </Tip>
+        > [!TIP]
+        > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
+        > `hf auth login`.
 
         Examples:
 
@@ -1501,15 +1494,11 @@ class EasyPipelineForImage2Image(AutoPipelineForImage2Image):
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
                 below for more information.
             variant (`str`, *optional*):
-                Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
-                loading `from_flax`.
+                Load weights from a specified variant filename such as `"fp16"` or `"ema"`.
 
-        <Tip>
-
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `hf auth login`.
-
-        </Tip>
+        > [!TIP]
+        > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
+        > `hf auth login`.
 
         Examples:
 
@@ -1614,12 +1603,9 @@ class EasyPipelineForImage2Image(AutoPipelineForImage2Image):
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
                 below for more information.
 
-        <Tip>
-
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `hf auth login`.
-
-        </Tip>
+        > [!TIP]
+        > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
+        > `hf auth login`.
 
         Examples:
 
@@ -1760,15 +1746,11 @@ class EasyPipelineForInpainting(AutoPipelineForInpainting):
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
                 below for more information.
             variant (`str`, *optional*):
-                Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
-                loading `from_flax`.
+                Load weights from a specified variant filename such as `"fp16"` or `"ema"`.
 
-        <Tip>
-
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `hf auth login
-
-        </Tip>
+        > [!TIP]
+        > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
+        > `hf auth login
 
         Examples:
 
@@ -1872,12 +1854,9 @@ class EasyPipelineForInpainting(AutoPipelineForInpainting):
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
                 below for more information.
 
-        <Tip>
-
-        To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
-        `hf auth login
-
-        </Tip>
+        > [!TIP]
+        > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with
+        > `hf auth login
 
         Examples:
 

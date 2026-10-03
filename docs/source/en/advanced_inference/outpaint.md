@@ -46,7 +46,7 @@ For example, remove the background from this image of a pair of shoes.
   </div>
 </div>
 
-[Stable Diffusion XL (SDXL)](../using-diffusers/sdxl) models work best with 1024x1024 images, but you can resize the image to any size as long as your hardware has enough memory to support it. The transparent background in the image should also be replaced with a white background. Create a function (like the one below) that scales and pastes the image onto a white background.
+[Stable Diffusion XL (SDXL)](../api/pipelines/stable_diffusion/stable_diffusion_xl) models work best with 1024x1024 images, but you can resize the image to any size as long as your hardware has enough memory to support it. The transparent background in the image should also be replaced with a white background. Create a function (like the one below) that scales and pastes the image onto a white background.
 
 ```py
 import random
@@ -111,15 +111,15 @@ Load the inpainting ControlNet, ZoeDepth model, VAE and pass them to the [`Stabl
 ```py
 controlnets = [
     ControlNetModel.from_pretrained(
-        "destitech/controlnet-inpaint-dreamer-sdxl", torch_dtype=torch.float16, variant="fp16"
+        "destitech/controlnet-inpaint-dreamer-sdxl", dtype=torch.float16, variant="fp16"
     ),
     ControlNetModel.from_pretrained(
-        "diffusers/controlnet-zoe-depth-sdxl-1.0", torch_dtype=torch.float16
+        "diffusers/controlnet-zoe-depth-sdxl-1.0", dtype=torch.float16
     ),
 ]
-vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16).to("cuda")
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
-    "SG161222/RealVisXL_V4.0", torch_dtype=torch.float16, variant="fp16", controlnet=controlnets, vae=vae
+    "SG161222/RealVisXL_V4.0", dtype=torch.float16, variant="fp16", controlnet=controlnets, vae=vae
 ).to("cuda")
 
 def generate_image(prompt, negative_prompt, inpaint_image, zoe_image, seed: int = None):
@@ -173,10 +173,10 @@ Now that you have an initial outpainted image, load the [`StableDiffusionXLInpai
 ```py
 pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
     "OzzyGT/RealVisXL_V4.0_inpainting",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16",
     vae=vae,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 Prepare a mask for the final outpainted image. To create a more natural transition between the original image and the outpainted background, blur the mask to help it blend better.

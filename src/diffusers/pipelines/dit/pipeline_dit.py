@@ -4,7 +4,7 @@
 # Copyright (c) 2021 OpenAI
 # MIT License
 #
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,8 +17,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -62,7 +60,7 @@ class DiTPipeline(DiffusionPipeline):
         transformer: DiTTransformer2DModel,
         vae: AutoencoderKL,
         scheduler: KarrasDiffusionSchedulers,
-        id2label: Optional[Dict[int, str]] = None,
+        id2label: dict[int, str] | None = None,
     ):
         super().__init__()
         self.register_modules(transformer=transformer, vae=vae, scheduler=scheduler)
@@ -75,7 +73,7 @@ class DiTPipeline(DiffusionPipeline):
                     self.labels[label.lstrip().rstrip()] = int(key)
             self.labels = dict(sorted(self.labels.items()))
 
-    def get_label_ids(self, label: Union[str, List[str]]) -> List[int]:
+    def get_label_ids(self, label: str | list[str]) -> list[int]:
         r"""
 
         Map label strings from ImageNet to corresponding class ids.
@@ -103,19 +101,19 @@ class DiTPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        class_labels: List[int],
+        class_labels: list[int],
         guidance_scale: float = 4.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        generator: torch.Generator | list[torch.Generator] | None = None,
         num_inference_steps: int = 50,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
-    ) -> Union[ImagePipelineOutput, Tuple]:
+    ) -> ImagePipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 
         Args:
-            class_labels (List[int]):
-                List of ImageNet class labels for the images to be generated.
+            class_labels (list[int]):
+                list of ImageNet class labels for the images to be generated.
             guidance_scale (`float`, *optional*, defaults to 4.0):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
@@ -126,7 +124,8 @@ class DiTPipeline(DiffusionPipeline):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
+                The output format of the generated image. Choose between `"pil"` (`PIL.Image`), `"np"` (`np.array`) or
+                `"pt"` (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`ImagePipelineOutput`] instead of a plain tuple.
 
@@ -236,11 +235,12 @@ class DiTPipeline(DiffusionPipeline):
 
         samples = (samples / 2 + 0.5).clamp(0, 1)
 
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        samples = samples.cpu().permute(0, 2, 3, 1).float().numpy()
+        if output_type != "pt":
+            # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
+            samples = samples.cpu().permute(0, 2, 3, 1).float().numpy()
 
-        if output_type == "pil":
-            samples = self.numpy_to_pil(samples)
+            if output_type == "pil":
+                samples = self.numpy_to_pil(samples)
 
         # Offload all models
         self.maybe_free_model_hooks()

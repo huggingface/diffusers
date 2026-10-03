@@ -41,10 +41,10 @@ def load_vae_model(
     *,
     device: torch.device,
     model_name_or_path: str,
-    revision: Optional[str],
-    variant: Optional[str],
+    revision: str | None,
+    variant: str | None,
     # NOTE: use subfolder="vae" if the pointed model is for stable diffusion as a whole instead of just the VAE
-    subfolder: Optional[str],
+    subfolder: str | None,
     use_tiny_nn: bool,
 ) -> SupportedAutoencoder:
     if use_tiny_nn:
@@ -156,9 +156,9 @@ def main_kwargs(
     device: torch.device,
     input_image_path: str,
     pretrained_model_name_or_path: str,
-    revision: Optional[str],
-    variant: Optional[str],
-    subfolder: Optional[str],
+    revision: str | None,
+    variant: str | None,
+    subfolder: str | None,
     use_tiny_nn: bool,
 ) -> None:
     vae = load_vae_model(
@@ -238,7 +238,7 @@ def parse_args() -> argparse.Namespace:
 
 # EXAMPLE USAGE:
 #
-# python vae_roundtrip.py --use_cuda --pretrained_model_name_or_path "runwayml/stable-diffusion-v1-5" --subfolder "vae" --input_image "foo.png"
+# python vae_roundtrip.py --use_cuda --pretrained_model_name_or_path "stable-diffusion-v1-5/stable-diffusion-v1-5" --subfolder "vae" --input_image "foo.png"
 #
 # python vae_roundtrip.py --use_cuda --pretrained_model_name_or_path "madebyollin/taesd" --use_tiny_nn --input_image "foo.png"
 #

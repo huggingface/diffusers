@@ -27,7 +27,7 @@
 *Mochi 1 preview is an open state-of-the-art video generation model with high-fidelity motion and strong prompt adherence in preliminary evaluation. This model dramatically closes the gap between closed and open video generation systems. The model is released under a permissive Apache 2.0 license.*
 
 > [!TIP]
-> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
+> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reusing-models-in-multiple-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
 ## Quantization
 
@@ -46,7 +46,7 @@ text_encoder_8bit = T5EncoderModel.from_pretrained(
     "genmo/mochi-1-preview",
     subfolder="text_encoder",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
@@ -54,14 +54,14 @@ transformer_8bit = MochiTransformer3DModel.from_pretrained(
     "genmo/mochi-1-preview",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 pipeline = MochiPipeline.from_pretrained(
     "genmo/mochi-1-preview",
     text_encoder=text_encoder_8bit,
     transformer=transformer_8bit,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="balanced",
 )
 
@@ -86,7 +86,7 @@ pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview")
 
 # Enable memory savings
 pipe.enable_model_cpu_offload()
-pipe.enable_vae_tiling()
+pipe.vae.enable_tiling()
 
 prompt = "Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k."
 
@@ -105,11 +105,11 @@ import torch
 from diffusers import MochiPipeline
 from diffusers.utils import export_to_video
 
-pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", variant="bf16", torch_dtype=torch.bfloat16)
+pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", variant="bf16", dtype=torch.bfloat16)
 
 # Enable memory savings
 pipe.enable_model_cpu_offload()
-pipe.enable_vae_tiling()
+pipe.vae.enable_tiling()
 
 prompt = "Close-up of a chameleon's eye, with its scaly skin changing color. Ultra high resolution 4k."
 frames = pipe(prompt, num_frames=85).frames[0]
@@ -121,15 +121,13 @@ export_to_video(frames, "mochi.mp4", fps=30)
 
 The [Genmo Mochi implementation](https://github.com/genmoai/mochi/tree/main) uses different precision values for each stage in the inference process. The text encoder and VAE use `torch.float32`, while the DiT uses `torch.bfloat16` with the [attention kernel](https://pytorch.org/docs/stable/generated/torch.nn.attention.sdpa_kernel.html#torch.nn.attention.sdpa_kernel) set to `EFFICIENT_ATTENTION`. Diffusers pipelines currently do not support setting different `dtypes` for different stages of the pipeline. In order to run inference in the same way as the original implementation, please refer to the following example.
 
-<Tip>
-The original Mochi implementation zeros out empty prompts. However, enabling this option and placing the entire pipeline under autocast can lead to numerical overflows with the T5 text encoder.
+> [!TIP]
+> The original Mochi implementation zeros out empty prompts. However, enabling this option and placing the entire pipeline under autocast can lead to numerical overflows with the T5 text encoder.
+>
+> When enabling `force_zeros_for_empty_prompt`, it is recommended to run the text encoding step outside the autocast context in full precision.
 
-When enabling `force_zeros_for_empty_prompt`, it is recommended to run the text encoding step outside the autocast context in full precision.
-</Tip>
-
-<Tip>
-Decoding the latents in full precision is very memory intensive. You will need at least 70GB VRAM to generate the 163 frames in this example. To reduce memory, either reduce the number of frames or run the decoding step in `torch.bfloat16`.
-</Tip>
+> [!TIP]
+> Decoding the latents in full precision is very memory intensive. You will need at least 70GB VRAM to generate the 163 frames in this example. To reduce memory, either reduce the number of frames or run the decoding step in `torch.bfloat16`.
 
 ```python
 import torch
@@ -140,7 +138,7 @@ from diffusers.utils import export_to_video
 from diffusers.video_processor import VideoProcessor
 
 pipe = MochiPipeline.from_pretrained("genmo/mochi-1-preview", force_zeros_for_empty_prompt=True)
-pipe.enable_vae_tiling()
+pipe.vae.enable_tiling()
 pipe.enable_model_cpu_offload()
 
 prompt =  "An aerial shot of a parade of elephants walking across the African savannah. The camera showcases the herd and the surrounding landscape."
@@ -207,7 +205,7 @@ transformer = MochiTransformer3DModel.from_pretrained(
 
 pipe = MochiPipeline.from_pretrained(model_id,  transformer=transformer)
 pipe.enable_model_cpu_offload()
-pipe.enable_vae_tiling()
+pipe.vae.enable_tiling()
 
 with torch.autocast(device_type="cuda", dtype=torch.bfloat16, cache_enabled=False):
     frames = pipe(
@@ -219,7 +217,7 @@ with torch.autocast(device_type="cuda", dtype=torch.bfloat16, cache_enabled=Fals
         num_inference_steps=50,
         guidance_scale=4.5,
         num_videos_per_prompt=1,
-        generator=torch.Generator(device="cuda").manual_seed(0),
+        generator=torch.Generator(device="cuda").manual_seed(0),  # or "mps", "xpu", "cpu"
         max_sequence_length=256,
         output_type="pil",
     ).frames[0]
@@ -231,9 +229,8 @@ export_to_video(frames, "output.mp4", fps=30)
 
 You can use `from_single_file` to load the Mochi transformer in its original format.
 
-<Tip>
-Diffusers currently doesn't support using the FP8 scaled versions of the Mochi single file checkpoints.
-</Tip>
+> [!TIP]
+> Diffusers currently doesn't support using the FP8 scaled versions of the Mochi single file checkpoints.
 
 ```python
 import torch
@@ -244,11 +241,11 @@ model_id = "genmo/mochi-1-preview"
 
 ckpt_path = "https://huggingface.co/Comfy-Org/mochi_preview_repackaged/blob/main/split_files/diffusion_models/mochi_preview_bf16.safetensors"
 
-transformer = MochiTransformer3DModel.from_pretrained(ckpt_path, torch_dtype=torch.bfloat16)
+transformer = MochiTransformer3DModel.from_pretrained(ckpt_path, dtype=torch.bfloat16)
 
 pipe = MochiPipeline.from_pretrained(model_id,  transformer=transformer)
 pipe.enable_model_cpu_offload()
-pipe.enable_vae_tiling()
+pipe.vae.enable_tiling()
 
 with torch.autocast(device_type="cuda", dtype=torch.bfloat16, cache_enabled=False):
     frames = pipe(
@@ -260,7 +257,7 @@ with torch.autocast(device_type="cuda", dtype=torch.bfloat16, cache_enabled=Fals
         num_inference_steps=50,
         guidance_scale=4.5,
         num_videos_per_prompt=1,
-        generator=torch.Generator(device="cuda").manual_seed(0),
+        generator=torch.Generator(device="cuda").manual_seed(0),  # or "mps", "xpu", "cpu"
         max_sequence_length=256,
         output_type="pil",
     ).frames[0]

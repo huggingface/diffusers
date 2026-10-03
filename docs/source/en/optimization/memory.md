@@ -49,13 +49,13 @@ import torch
 from diffusers import AutoModel, StableDiffusionXLPipeline
 
 unet = AutoModel.from_pretrained(
-    "username/sdxl-unet-sharded", torch_dtype=torch.float16
+    "username/sdxl-unet-sharded", dtype=torch.float16
 )
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     unet=unet,
-    torch_dtype=torch.float16
-).to("cuda")
+    dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 ### Device placement
@@ -76,7 +76,7 @@ from diffusers import AutoModel, StableDiffusionXLPipeline
 
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="balanced"
 )
 ```
@@ -91,7 +91,7 @@ print(pipeline.hf_device_map)
 </hfoption>
 <hfoption id="model level">
 
-The `device_map` is useful for loading large models, such as the Flux diffusion transformer which has 12.5B parameters. Set it to `"auto"` to automatically distribute a model across the fastest device first before moving to slower devices. Refer to the [Model sharding](../training/distributed_inference#model-sharding) docs for more details.
+The `device_map` is useful for loading large models, such as the Flux diffusion transformer which has 12.5B parameters. Set it to `"auto"` to automatically distribute a model across the fastest device first before moving to slower devices. Refer to the [Sharded checkpoints](#sharded-checkpoints) section for more details.
 
 ```py
 import torch
@@ -101,7 +101,7 @@ transformer = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev", 
     subfolder="transformer",
     device_map="auto",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 ```
 
@@ -137,7 +137,7 @@ transformer = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev", 
     subfolder="transformer",
     device_map=device_map,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 ```
 
@@ -150,13 +150,13 @@ from diffusers import AutoModel, StableDiffusionXLPipeline
 max_memory = {0:"1GB", 1:"1GB"}
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="balanced",
     max_memory=max_memory
 )
 ```
 
-Diffusers uses the maxmium memory of all devices by default, but if they don't fit on the GPUs, then you'll need to use a single GPU and offload to the CPU with the methods below.
+Diffusers uses the maximum memory of all devices by default, but if they don't fit on the GPUs, then you'll need to use a single GPU and offload to the CPU with the methods below.
 
 - [`~DiffusionPipeline.enable_model_cpu_offload`] only works on a single GPU but a very large model may not fit on it
 - [`~DiffusionPipeline.enable_sequential_cpu_offload`] may work but it is extremely slow and also limited to a single GPU
@@ -173,7 +173,7 @@ VAE slicing saves memory by splitting large batches of inputs into a single batc
 
 For example, if you're generating 4 images at once, decoding would increase peak activation memory by 4x. VAE slicing reduces this by only decoding 1 image at a time instead of all 4 images at once.
 
-Call [`~StableDiffusionPipeline.enable_vae_slicing`] to enable sliced VAE. You can expect a small increase in performance when decoding multi-image batches and no performance impact for single-image batches.
+Call [`~AutoencoderKL.enable_slicing`] to enable sliced VAE. You can expect a small increase in performance when decoding multi-image batches and no performance impact for single-image batches.
 
 ```py
 import torch
@@ -181,9 +181,9 @@ from diffusers import AutoModel, StableDiffusionXLPipeline
 
 pipeline = StableDiffusionXLPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
-).to("cuda")
-pipeline.enable_vae_slicing()
+    dtype=torch.float16,
+).to("cuda")  # or "mps", "xpu", "cpu"
+pipeline.vae.enable_slicing()
 pipeline(["An astronaut riding a horse on Mars"]*32).images[0]
 print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
 ```
@@ -195,7 +195,7 @@ print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} G
 
 VAE tiling saves memory by dividing an image into smaller overlapping tiles instead of processing the entire image at once. This also reduces peak memory usage because the GPU is only processing a tile at a time.
 
-Call [`~StableDiffusionPipeline.enable_vae_tiling`] to enable VAE tiling. The generated image may have some tone variation from tile-to-tile because they're decoded separately, but there shouldn't be any obvious seams between the tiles. Tiling is disabled for resolutions lower than a pre-specified (but configurable) limit. For example, this limit is 512x512 for the VAE in [`StableDiffusionPipeline`].
+Call [`~AutoencoderKL.enable_tiling`] to enable VAE tiling. The generated image may have some tone variation from tile-to-tile because they're decoded separately, but there shouldn't be any obvious seams between the tiles. Tiling is disabled for resolutions lower than a pre-specified (but configurable) limit. For example, this limit is 512x512 for the VAE in [`StableDiffusionPipeline`].
 
 ```py
 import torch
@@ -203,9 +203,9 @@ from diffusers import AutoPipelineForImage2Image
 from diffusers.utils import load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-).to("cuda")
-pipeline.enable_vae_tiling()
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
+pipeline.vae.enable_tiling()
 
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-sdxl-init.png")
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
@@ -238,7 +238,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16
+    "black-forest-labs/FLUX.1-schnell", dtype=torch.bfloat16
 )
 pipeline.enable_sequential_cpu_offload()
 
@@ -267,7 +267,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16
+    "black-forest-labs/FLUX.1-schnell", dtype=torch.bfloat16
 )
 pipeline.enable_model_cpu_offload()
 
@@ -312,7 +312,7 @@ from diffusers.utils import export_to_video
 onload_device = torch.device("cuda")
 offload_device = torch.device("cpu")
 
-pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
+pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
 pipeline.enable_group_offload(
     onload_device=onload_device,
     offload_device=offload_device,
@@ -346,7 +346,7 @@ from diffusers.utils import export_to_video
 
 onload_device = torch.device("cuda")
 offload_device = torch.device("cpu")
-pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", torch_dtype=torch.bfloat16)
+pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
 
 # Use the enable_group_offload method for Diffusers model implementations
 pipeline.transformer.enable_group_offload(onload_device=onload_device, offload_device=offload_device, offload_type="leaf_level")
@@ -424,14 +424,14 @@ from diffusers.utils import export_to_video
 transformer = CogVideoXTransformer3DModel.from_pretrained(
     "THUDM/CogVideoX-5b",
     subfolder="transformer",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 transformer.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16)
 
 pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b",
     transformer=transformer,
-    torch_dtype=torch.bfloat16
-).to("cuda")
+    dtype=torch.bfloat16
+).to("cuda")  # or "mps", "xpu", "cpu"
 prompt = (
     "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "
     "The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other "
@@ -455,7 +455,7 @@ from diffusers.hooks import apply_layerwise_casting
 transformer = CogVideoXTransformer3DModel.from_pretrained(
     "THUDM/CogVideoX-5b",
     subfolder="transformer",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 
 # skip the normalization layer
@@ -470,7 +470,7 @@ apply_layerwise_casting(
 
 ## torch.channels_last
 
-[torch.channels_last](https://pytorch.org/tutorials/intermediate/memory_format_tutorial.html) flips how tensors are stored from `(batch size, channels, height, width)` to `(batch size, heigh, width, channels)`. This aligns the tensors with how the hardware sequentially accesses the tensors stored in memory and avoids skipping around in memory to access the pixel values.
+[torch.channels_last](https://pytorch.org/tutorials/intermediate/memory_format_tutorial.html) flips how tensors are stored from `(batch size, channels, height, width)` to `(batch size, height, width, channels)`. This aligns the tensors with how the hardware sequentially accesses the tensors stored in memory and avoids skipping around in memory to access the pixel values.
 
 Not all operators currently support the channels-last format and may result in worst performance, but it is still worth trying.
 
@@ -482,144 +482,6 @@ print(
 )  # (2880, 1, 960, 320) having a stride of 1 for the 2nd dimension proves that it works
 ```
 
-## torch.jit.trace
-
-[torch.jit.trace](https://pytorch.org/docs/stable/generated/torch.jit.trace.html) records the operations a model performs on a sample input and creates a new, optimized representation of the model based on the recorded execution path. During tracing, the model is optimized to reduce overhead from Python and dynamic control flows and operations are fused together for more efficiency. The returned executable or [ScriptFunction](https://pytorch.org/docs/stable/generated/torch.jit.ScriptFunction.html) can be compiled.
-
-```py
-import time
-import torch
-from diffusers import StableDiffusionPipeline
-import functools
-
-# torch disable grad
-torch.set_grad_enabled(False)
-
-# set variables
-n_experiments = 2
-unet_runs_per_experiment = 50
-
-# load sample inputs
-def generate_inputs():
-    sample = torch.randn((2, 4, 64, 64), device="cuda", dtype=torch.float16)
-    timestep = torch.rand(1, device="cuda", dtype=torch.float16) * 999
-    encoder_hidden_states = torch.randn((2, 77, 768), device="cuda", dtype=torch.float16)
-    return sample, timestep, encoder_hidden_states
-
-
-pipeline = StableDiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    torch_dtype=torch.float16,
-    use_safetensors=True,
-).to("cuda")
-unet = pipeline.unet
-unet.eval()
-unet.to(memory_format=torch.channels_last)  # use channels_last memory format
-unet.forward = functools.partial(unet.forward, return_dict=False)  # set return_dict=False as default
-
-# warmup
-for _ in range(3):
-    with torch.inference_mode():
-        inputs = generate_inputs()
-        orig_output = unet(*inputs)
-
-# trace
-print("tracing..")
-unet_traced = torch.jit.trace(unet, inputs)
-unet_traced.eval()
-print("done tracing")
-
-# warmup and optimize graph
-for _ in range(5):
-    with torch.inference_mode():
-        inputs = generate_inputs()
-        orig_output = unet_traced(*inputs)
-
-# benchmarking
-with torch.inference_mode():
-    for _ in range(n_experiments):
-        torch.cuda.synchronize()
-        start_time = time.time()
-        for _ in range(unet_runs_per_experiment):
-            orig_output = unet_traced(*inputs)
-        torch.cuda.synchronize()
-        print(f"unet traced inference took {time.time() - start_time:.2f} seconds")
-    for _ in range(n_experiments):
-        torch.cuda.synchronize()
-        start_time = time.time()
-        for _ in range(unet_runs_per_experiment):
-            orig_output = unet(*inputs)
-        torch.cuda.synchronize()
-        print(f"unet inference took {time.time() - start_time:.2f} seconds")
-
-# save the model
-unet_traced.save("unet_traced.pt")
-```
-
-Replace the pipeline's UNet with the traced version.
-
-```py
-import torch
-from diffusers import StableDiffusionPipeline
-from dataclasses import dataclass
-
-@dataclass
-class UNet2DConditionOutput:
-    sample: torch.Tensor
-
-pipeline = StableDiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    torch_dtype=torch.float16,
-    use_safetensors=True,
-).to("cuda")
-
-# use jitted unet
-unet_traced = torch.jit.load("unet_traced.pt")
-
-# del pipeline.unet
-class TracedUNet(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.in_channels = pipe.unet.config.in_channels
-        self.device = pipe.unet.device
-
-    def forward(self, latent_model_input, t, encoder_hidden_states):
-        sample = unet_traced(latent_model_input, t, encoder_hidden_states)[0]
-        return UNet2DConditionOutput(sample=sample)
-
-pipeline.unet = TracedUNet()
-
-with torch.inference_mode():
-    image = pipe([prompt] * 1, num_inference_steps=50).images[0]
-```
-
 ## Memory-efficient attention
 
-> [!TIP]
-> Memory-efficient attention optimizes for memory usage *and* [inference speed](./fp16#scaled-dot-product-attention)!
-
-The Transformers attention mechanism is memory-intensive, especially for long sequences, so you can try using different and more memory-efficient attention types.
-
-By default, if PyTorch >= 2.0 is installed, [scaled dot-product attention (SDPA)](https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html) is used. You don't need to make any additional changes to your code.
-
-SDPA supports [FlashAttention](https://github.com/Dao-AILab/flash-attention) and [xFormers](https://github.com/facebookresearch/xformers) as well as a native C++ PyTorch implementation. It automatically selects the most optimal implementation based on your input.
-
-You can explicitly use xFormers with the [`~ModelMixin.enable_xformers_memory_efficient_attention`] method.
-
-```py
-# pip install xformers
-import torch
-from diffusers import StableDiffusionXLPipeline
-
-pipeline = StableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16,
-).to("cuda")
-pipeline.enable_xformers_memory_efficient_attention()
-```
-
-Call [`~ModelMixin.disable_xformers_memory_efficient_attention`] to disable it.
-
-```py
-pipeline.disable_xformers_memory_efficient_attention()
-```
+Diffusers supports multiple memory-efficient attention backends (FlashAttention, xFormers, SageAttention, and more) through [`~ModelMixin.set_attention_backend`]. Refer to the [Attention backends](./attention_backends) guide to learn how to switch between them.

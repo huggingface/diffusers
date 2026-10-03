@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -22,6 +21,7 @@ from ...utils import BaseOutput
 from ...utils.accelerate_utils import apply_forward_hook
 from ..autoencoders.vae import Decoder, DecoderOutput, Encoder, VectorQuantizer
 from ..modeling_utils import ModelMixin
+from .vae import AutoencoderMixin
 
 
 @dataclass
@@ -37,7 +37,7 @@ class VQEncoderOutput(BaseOutput):
     latents: torch.Tensor
 
 
-class VQModel(ModelMixin, ConfigMixin):
+class VQModel(ModelMixin, AutoencoderMixin, ConfigMixin):
     r"""
     A VQ-VAE model for decoding latent representations.
 
@@ -47,12 +47,12 @@ class VQModel(ModelMixin, ConfigMixin):
     Parameters:
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
-            Tuple of downsample block types.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
-            Tuple of upsample block types.
-        block_out_channels (`Tuple[int]`, *optional*, defaults to `(64,)`):
-            Tuple of block output channels.
+        down_block_types (`tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
+            tuple of downsample block types.
+        up_block_types (`tuple[str]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
+            tuple of upsample block types.
+        block_out_channels (`tuple[int]`, *optional*, defaults to `(64,)`):
+            tuple of block output channels.
         layers_per_block (`int`, *optional*, defaults to `1`): Number of layers per block.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         latent_channels (`int`, *optional*, defaults to `3`): Number of channels in the latent space.
@@ -79,16 +79,16 @@ class VQModel(ModelMixin, ConfigMixin):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str, ...] = ("DownEncoderBlock2D",),
-        up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D",),
-        block_out_channels: Tuple[int, ...] = (64,),
+        down_block_types: tuple[str, ...] = ("DownEncoderBlock2D",),
+        up_block_types: tuple[str, ...] = ("UpDecoderBlock2D",),
+        block_out_channels: tuple[int, ...] = (64,),
         layers_per_block: int = 1,
         act_fn: str = "silu",
         latent_channels: int = 3,
         sample_size: int = 32,
         num_vq_embeddings: int = 256,
         norm_num_groups: int = 32,
-        vq_embed_dim: Optional[int] = None,
+        vq_embed_dim: int | None = None,
         scaling_factor: float = 0.18215,
         norm_type: str = "group",  # group, spatial
         mid_block_add_attention=True,
@@ -142,7 +142,7 @@ class VQModel(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def decode(
         self, h: torch.Tensor, force_not_quantize: bool = False, return_dict: bool = True, shape=None
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> DecoderOutput | torch.Tensor:
         # also go through quantization layer
         if not force_not_quantize:
             quant, commit_loss, _ = self.quantize(h)
@@ -160,9 +160,7 @@ class VQModel(ModelMixin, ConfigMixin):
 
         return DecoderOutput(sample=dec, commit_loss=commit_loss)
 
-    def forward(
-        self, sample: torch.Tensor, return_dict: bool = True
-    ) -> Union[DecoderOutput, Tuple[torch.Tensor, ...]]:
+    def forward(self, sample: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor, ...]:
         r"""
         The [`VQModel`] forward method.
 

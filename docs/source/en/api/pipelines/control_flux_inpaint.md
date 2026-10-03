@@ -26,11 +26,8 @@ FLUX.1 Depth and Canny [dev] is a 12 billion parameter rectified flow transforme
 | Canny | [Black Forest Labs](https://huggingface.co/black-forest-labs) | [Link](https://huggingface.co/black-forest-labs/FLUX.1-Canny-dev) |
 
 
-<Tip>
-
-Flux can be quite expensive to run on consumer hardware devices. However, you can perform a suite of optimizations to run it faster and in a more memory-friendly manner. Check out [this section](https://huggingface.co/blog/sd3#memory-optimizations-for-sd3) for more details. Additionally, Flux can benefit from quantization for memory efficiency with a trade-off in inference latency. Refer to [this blog post](https://huggingface.co/blog/quanto-diffusers) to learn more. For an exhaustive list of resources, check out [this gist](https://gist.github.com/sayakpaul/b664605caf0aa3bf8585ab109dd5ac9c).
-
-</Tip>
+> [!TIP]
+> Flux can be quite expensive to run on consumer hardware devices. However, you can perform a suite of optimizations to run it faster and in a more memory-friendly manner. Check out [this section](https://huggingface.co/blog/sd3#memory-optimizations-for-sd3) for more details. Additionally, Flux can benefit from quantization for memory efficiency with a trade-off in inference latency. Refer to [this blog post](https://huggingface.co/blog/quanto-diffusers) to learn more. For an exhaustive list of resources, check out [this gist](https://gist.github.com/sayakpaul/b664605caf0aa3bf8585ab109dd5ac9c).
 
 ```python
 import torch
@@ -44,21 +41,21 @@ import numpy as np
 
 pipe = FluxControlInpaintPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-Depth-dev",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 # use following lines if you have GPU constraints
 # ---------------------------------------------------------------
 transformer = FluxTransformer2DModel.from_pretrained(
-    "sayakpaul/FLUX.1-Depth-dev-nf4", subfolder="transformer", torch_dtype=torch.bfloat16
+    "sayakpaul/FLUX.1-Depth-dev-nf4", subfolder="transformer", dtype=torch.bfloat16
 )
 text_encoder_2 = T5EncoderModel.from_pretrained(
-    "sayakpaul/FLUX.1-Depth-dev-nf4", subfolder="text_encoder_2", torch_dtype=torch.bfloat16
+    "sayakpaul/FLUX.1-Depth-dev-nf4", subfolder="text_encoder_2", dtype=torch.bfloat16
 )
 pipe.transformer = transformer
 pipe.text_encoder_2 = text_encoder_2
 pipe.enable_model_cpu_offload()
 # ---------------------------------------------------------------
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "a blue robot singing opera with human-like expressions"
 image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")

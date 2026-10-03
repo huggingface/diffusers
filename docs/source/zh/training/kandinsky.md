@@ -9,11 +9,8 @@ http://www.apache.org/licenses/LICENSE-2.0
 
 # Kandinsky 2.2
 
-<Tip warning={true}>
-
-此脚本是实验性的，容易过拟合并遇到灾难性遗忘等问题。尝试探索不同的超参数以在您的数据集上获得最佳结果。
-
-</Tip>
+> [!WARNING]
+> 此脚本是实验性的，容易过拟合并遇到灾难性遗忘等问题。尝试探索不同的超参数以在您的数据集上获得最佳结果。
 
 Kandinsky 2.2 是一个多语言文本到图像模型，能够生成更逼真的图像。该模型包括一个图像先验模型，用于从文本提示创建图像嵌入，以及一个解码器模型，基于先验模型的嵌入生成图像。这就是为什么在 Diffusers 中您会找到两个独立的脚本用于 Kandinsky 2.2，一个用于训练先验模型，另一个用于训练解码器模型。您可以分别训练这两个模型，但为了获得最佳结果，您应该同时训练先验和解码器模型。
 
@@ -36,12 +33,9 @@ cd examples/kandinsky2_2/text_to_image
 pip install -r requirements.txt
 ```
 
-<Tip>
-
-🤗 Accelerate 是一个帮助您在多个 GPU/TPU 上或使用混合精度进行训练的库。它会根据您的硬件和环境自动配置训练设置。查看 🤗 Accelerate 的 [快速入门](https://huggingface.co/docs/accelerate/quicktour
-) 了解更多。
-
-</Tip>
+> [!TIP]
+> 🤗 Accelerate 是一个帮助您在多个 GPU/TPU 上或使用混合精度进行训练的库。它会根据您的硬件和环境自动配置训练设置。查看 🤗 Accelerate 的 [快速入门](https://huggingface.co/docs/accelerate/quicktour
+> ) 了解更多。
 
 初始化一个 🤗 Accelerate 环境：
 
@@ -65,11 +59,8 @@ write_basic_config()
 
 最后，如果您想在自己的数据集上训练模型，请查看 [创建用于训练的数据集](create_dataset) 指南，了解如何创建与训练脚本兼容的数据集。
 
-<Tip>
-
-以下部分重点介绍了训练脚本中对于理解如何修改它很重要的部分，但并未详细涵盖脚本的每个方面。如果您有兴趣了解更多，请随时阅读脚本，并让我们知道您有任何疑问或顾虑。
-
-</Tip>
+> [!TIP]
+> 以下部分重点介绍了训练脚本中对于理解如何修改它很重要的部分，但并未详细涵盖脚本的每个方面。如果您有兴趣了解更多，请随时阅读脚本，并让我们知道您有任何疑问或顾虑。
 
 ## 脚本参数
 
@@ -86,7 +77,7 @@ accelerate launch train_text_to_image_prior.py \
 
 ### Min-SNR 加权
 
-[Min-SNR](https://huggingface.co/papers/2303.09556) 加权策略可以通过重新平衡损失来帮助训练，实现更快的收敛。训练脚本支持预测 `epsilon`（噪声）或 `v_prediction`，但 Min-SNR 与两种预测类型都兼容。此加权策略仅由 PyTorch 支持，在 Flax 训练脚本中不可用。
+[Min-SNR](https://huggingface.co/papers/2303.09556) 加权策略可以通过重新平衡损失来帮助训练，实现更快的收敛。训练脚本支持预测 `epsilon`（噪声）或 `v_prediction`，但 Min-SNR 与两种预测类型都兼容。
 
 添加 `--snr_gamma` 参数并将其设置为推荐值 5.0：
 
@@ -116,10 +107,10 @@ tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_prior_model_name_or_pa
 
 with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
     image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-        args.pretrained_prior_model_name_or_path, subfolder="image_encoder", torch_dtype=weight_dtype
+        args.pretrained_prior_model_name_or_path, subfolder="image_encoder", dtype=weight_dtype
     ).eval()
     text_encoder = CLIPTextModelWithProjection.from_pretrained(
-        args.pretrained_prior_model_name_or_path, subfolder="text_encoder", torch_dtype=weight_dtype
+        args.pretrained_prior_model_name_or_path, subfolder="text_encoder", dtype=weight_dtype
     ).eval()
 ```
 
@@ -172,10 +163,10 @@ ffusers/blob/6e68c71503682c8693cb5b06a4da4911dfd655ee/examples/kandinsky2_2/text
 ```py
 with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
     vae = VQModel.from_pretrained(
-        args.pretrained_decoder_model_name_or_path, subfolder="movq", torch_dtype=weight_dtype
+        args.pretrained_decoder_model_name_or_path, subfolder="movq", dtype=weight_dtype
     ).eval()
     image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-        args.pretrained_prior_model_name_or_path, subfolder="image_encoder", torch_dtype=weight_dtype
+        args.pretrained_prior_model_name_or_path, subfolder="image_encoder", dtype=weight_dtype
     ).eval()
 unet = UNet2DConditionModel.from_pretrained(args.pretrained_decoder_model_name_or_path, subfolder="unet")
 ```
@@ -209,12 +200,9 @@ model_pred = unet(noisy_latents, timesteps, None, added_cond_kwargs=added_cond_k
 
 如果您在多个GPU上训练，请在 `accelerate launch` 命令中添加 `--multi_gpu` 参数。
 
-<Tip>
-
-要使用Weights & Biases监控训练进度，请在训练命令中添加 `--report_to=wandb` 参数。您还需要
-建议在训练命令中添加 `--validation_prompt` 以跟踪结果。这对于调试模型和查看中间结果非常有用。
-
-</Tip>
+> [!TIP]
+> 要使用Weights & Biases监控训练进度，请在训练命令中添加 `--report_to=wandb` 参数。您还需要
+> 建议在训练命令中添加 `--validation_prompt` 以跟踪结果。这对于调试模型和查看中间结果非常有用。
 
 <hfoptions id="training-inference">
 <hfoption id="prior model">
@@ -275,20 +263,17 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image_decoder.py \
 from diffusers import AutoPipelineForText2Image, DiffusionPipeline
 import torch
 
-prior_pipeline = DiffusionPipeline.from_pretrained(output_dir, torch_dtype=torch.float16)
+prior_pipeline = DiffusionPipeline.from_pretrained(output_dir, dtype=torch.float16)
 prior_components = {"prior_" + k: v for k,v in prior_pipeline.components.items()}
-pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", **prior_components, torch_dtype=torch.float16)
+pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", **prior_components, dtype=torch.float16)
 
 pipe.enable_model_cpu_offload()
 prompt="A robot naruto, 4k photo"
 image = pipeline(prompt=prompt, negative_prompt=negative_prompt).images[0]
 ```
 
-<Tip>
-
-可以随意将 `kandinsky-community/kandinsky-2-2-decoder` 替换为您自己训练的 decoder 检查点！
-
-</Tip>
+> [!TIP]
+> 可以随意将 `kandinsky-community/kandinsky-2-2-decoder` 替换为您自己训练的 decoder 检查点！
 
 </hfoption>
 <hfoption id="decoder model">
@@ -297,7 +282,7 @@ image = pipeline(prompt=prompt, negative_prompt=negative_prompt).images[0]
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("path/to/saved/model", torch_dtype=torch.float16)
+pipeline = AutoPipelineForText2Image.from_pretrained("path/to/saved/model", dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 prompt="A robot naruto, 4k photo"
@@ -311,7 +296,7 @@ from diffusers import AutoPipelineForText2Image, UNet2DConditionModel
 
 unet = UNet2DConditionModel.from_pretrained("path/to/saved/model" + "/checkpoint-<N>/unet")
 
-pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", unet=unet, torch_dtype=torch.float16)
+pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", unet=unet, dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 image = pipeline(prompt="A robot naruto, 4k photo").images[0]

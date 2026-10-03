@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable
 
 import numpy as np
 import PIL.Image
@@ -24,7 +24,7 @@ from ...configuration_utils import FrozenDict
 from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
 from ...utils import deprecate, logging
 from ..onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 
 
@@ -53,7 +53,9 @@ def preprocess(image):
     return image
 
 
-class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
+class OnnxStableDiffusionUpscalePipeline(DeprecatedPipelineMixin, DiffusionPipeline):
+    _last_supported_version = "0.43.0"
+
     vae: OnnxRuntimeModel
     text_encoder: OnnxRuntimeModel
     tokenizer: CLIPTokenizer
@@ -74,8 +76,8 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
         unet: OnnxRuntimeModel,
         low_res_scheduler: DDPMScheduler,
         scheduler: KarrasDiffusionSchedulers,
-        safety_checker: Optional[OnnxRuntimeModel] = None,
-        feature_extractor: Optional[CLIPImageProcessor] = None,
+        safety_checker: OnnxRuntimeModel | None = None,
+        feature_extractor: CLIPImageProcessor | None = None,
         max_noise_level: int = 350,
         num_latent_channels=4,
         num_unet_input_channels=7,
@@ -144,7 +146,7 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
 
     def check_inputs(
         self,
-        prompt: Union[str, List[str]],
+        prompt: str | list[str],
         image,
         noise_level,
         callback_steps,
@@ -245,24 +247,24 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
 
     def _encode_prompt(
         self,
-        prompt: Union[str, List[str]],
-        num_images_per_prompt: Optional[int],
+        prompt: str | list[str],
+        num_images_per_prompt: int | None,
         do_classifier_free_guidance: bool,
-        negative_prompt: Optional[str],
-        prompt_embeds: Optional[np.ndarray] = None,
-        negative_prompt_embeds: Optional[np.ndarray] = None,
+        negative_prompt: str | None,
+        prompt_embeds: np.ndarray | None = None,
+        negative_prompt_embeds: np.ndarray | None = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str` or `list[str]`):
                 prompt to be encoded
             num_images_per_prompt (`int`):
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_prompt (`str` or `List[str]`):
+            negative_prompt (`str` or `list[str]`):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
             prompt_embeds (`np.ndarray`, *optional*):
@@ -307,7 +309,7 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            uncond_tokens: List[str]
+            uncond_tokens: list[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
             elif type(prompt) is not type(negative_prompt):
@@ -348,28 +350,28 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
 
     def __call__(
         self,
-        prompt: Union[str, List[str]],
-        image: Union[np.ndarray, PIL.Image.Image, List[PIL.Image.Image]],
+        prompt: str | list[str],
+        image: np.ndarray | PIL.Image.Image | list[PIL.Image.Image],
         num_inference_steps: int = 75,
         guidance_scale: float = 9.0,
         noise_level: int = 20,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        num_images_per_prompt: Optional[int] = 1,
+        negative_prompt: str | list[str] | None = None,
+        num_images_per_prompt: int | None = 1,
         eta: float = 0.0,
-        generator: Optional[Union[np.random.RandomState, List[np.random.RandomState]]] = None,
-        latents: Optional[np.ndarray] = None,
-        prompt_embeds: Optional[np.ndarray] = None,
-        negative_prompt_embeds: Optional[np.ndarray] = None,
-        output_type: Optional[str] = "pil",
+        generator: np.random.RandomState | list[np.random.RandomState] | None = None,
+        latents: np.ndarray | None = None,
+        prompt_embeds: np.ndarray | None = None,
+        negative_prompt_embeds: np.ndarray | None = None,
+        output_type: str | None = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, np.ndarray], None]] = None,
-        callback_steps: Optional[int] = 1,
-    ):
+        callback: Callable[[int, int, np.ndarray], None] | None = None,
+        callback_steps: int | None = 1,
+    ) -> StableDiffusionPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str` or `list[str]`):
                 The prompt or prompts to guide the image generation.
             image (`np.ndarray` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
@@ -385,7 +387,7 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
                 the text `prompt`, usually at the expense of lower image quality.
             noise_level (`float`, defaults to 0.2):
                 Deteremines the amount of noise to add to the initial image before performing upscaling.
-            negative_prompt (`str` or `List[str]`, *optional*):
+            negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):

@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License. -->
 
 # NVIDIA ModelOpt
 
-[NVIDIA-ModelOpt](https://github.com/NVIDIA/TensorRT-Model-Optimizer) is a unified library of state-of-the-art model optimization techniques like quantization, pruning, distillation, speculative decoding, etc. It compresses deep learning models for downstream deployment frameworks like TensorRT-LLM or TensorRT to optimize inference speed.
+[NVIDIA-ModelOpt](https://github.com/NVIDIA/Model-Optimizer) is a unified library of state-of-the-art model optimization techniques like quantization, pruning, distillation, speculative decoding, etc. It compresses deep learning models for downstream deployment frameworks like TensorRT-LLM or TensorRT to optimize inference speed.
 
 Before you begin, make sure you have nvidia_modelopt installed.
 
@@ -35,14 +35,14 @@ transformer = AutoModel.from_pretrained(
     model_id,
     subfolder="transformer",
     quantization_config=quantization_config,
-    torch_dtype=dtype,
+    dtype=dtype,
 )
 pipe = SanaPipeline.from_pretrained(
     model_id,
     transformer=transformer,
-    torch_dtype=dtype,
+    dtype=dtype,
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 print(f"Pipeline memory usage: {torch.cuda.max_memory_reserved() / 1024**3:.3f} GB")
 
@@ -57,7 +57,7 @@ image.save("output.png")
 >
 > The quantization methods in NVIDIA-ModelOpt are designed to reduce the memory footprint of model weights using various QAT (Quantization-Aware Training) and PTQ (Post-Training Quantization) techniques while maintaining model performance. However, the actual performance gain during inference depends on the deployment framework (e.g., TRT-LLM, TensorRT) and the specific hardware configuration.  
 > 
-> More details can be found [here](https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples).
+> More details can be found [here](https://github.com/NVIDIA/Model-Optimizer/tree/main/examples).
 
 ## NVIDIAModelOptConfig
 
@@ -86,7 +86,7 @@ The quantization methods supported are as follows:
 | **NVFP4** | `nvfp4 weight only`, `nvfp4 block quantization` | `quant_type`, `quant_type + channel_quantize + block_quantize` | `channel_quantize = -1 is only supported for now`|
 
 
-Refer to the [official modelopt documentation](https://nvidia.github.io/TensorRT-Model-Optimizer/) for a better understanding of the available quantization methods and the exhaustive list of configuration options available.
+Refer to the [official modelopt documentation](https://nvidia.github.io/Model-Optimizer/) for a better understanding of the available quantization methods and the exhaustive list of configuration options available.
 
 ## Serializing and Deserializing quantized models
 
@@ -106,7 +106,7 @@ model = AutoModel.from_pretrained(
     model_id,
     subfolder="transformer",
     quantization_config=quant_config_fp8,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 model.save_pretrained('path/to/sana_fp8', safe_serialization=False)
 ```
@@ -125,14 +125,14 @@ transformer = AutoModel.from_pretrained(
     "path/to/sana_fp8",
     subfolder="transformer",
     quantization_config=quantization_config,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 pipe = SanaPipeline.from_pretrained(
     "Efficient-Large-Model/Sana_600M_1024px_diffusers",
     transformer=transformer,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 prompt = "A cat holding a sign that says hello world"
 image = pipe(
     prompt, num_inference_steps=50, guidance_scale=4.5, max_sequence_length=512

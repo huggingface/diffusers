@@ -34,18 +34,15 @@ Use the command below to log in:
 hf auth login
 ```
 
-<Tip>
-
-The SD3 pipeline uses three text encoders to generate an image. Model offloading is necessary in order for it to run on most commodity hardware. Please use the `torch.float16` data type for additional memory savings.
-
-</Tip>
+> [!TIP]
+> The SD3 pipeline uses three text encoders to generate an image. Model offloading is necessary in order for it to run on most commodity hardware. Please use the `torch.float16` data type for additional memory savings.
 
 ```python
 import torch
 from diffusers import StableDiffusion3Pipeline
 
-pipe = StableDiffusion3Pipeline.from_pretrained("stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16)
-pipe.to("cuda")
+pipe = StableDiffusion3Pipeline.from_pretrained("stabilityai/stable-diffusion-3-medium-diffusers", dtype=torch.float16)
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe(
     prompt="a photo of a cat holding a sign that says hello world",
@@ -86,16 +83,16 @@ ip_adapter_id = "InstantX/SD3.5-Large-IP-Adapter"
 
 feature_extractor = SiglipImageProcessor.from_pretrained(
     image_encoder_id,
-    torch_dtype=torch.float16
+    dtype=torch.float16
 )
 image_encoder = SiglipVisionModel.from_pretrained(
     image_encoder_id,
-    torch_dtype=torch.float16
-).to( "cuda")
+    dtype=torch.float16
+).to( "cuda")  # or "mps", "xpu", "cpu"
 
 pipe = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3.5-large",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     feature_extractor=feature_extractor,
     image_encoder=image_encoder,
 ).to("cuda")
@@ -124,11 +121,8 @@ image.save("result.jpg")
 </div>
 
 
-<Tip>
-
-Check out [IP-Adapter](../../../using-diffusers/ip_adapter) to learn more about how IP-Adapters work.
-
-</Tip>
+> [!TIP]
+> Check out [IP-Adapter](../../../using-diffusers/ip_adapter) to learn more about how IP-Adapters work.
 
 
 ## Memory Optimisations for SD3
@@ -143,7 +137,7 @@ The most basic memory optimization available in Diffusers allows you to offload 
 import torch
 from diffusers import StableDiffusion3Pipeline
 
-pipe = StableDiffusion3Pipeline.from_pretrained("stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16)
+pipe = StableDiffusion3Pipeline.from_pretrained("stabilityai/stable-diffusion-3-medium-diffusers", dtype=torch.float16)
 pipe.enable_model_cpu_offload()
 
 image = pipe(
@@ -170,9 +164,9 @@ pipe = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3-medium-diffusers",
     text_encoder_3=None,
     tokenizer_3=None,
-    torch_dtype=torch.float16
+    dtype=torch.float16
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe(
     prompt="a photo of a cat holding a sign that says hello world",
@@ -215,7 +209,7 @@ pipe = StableDiffusion3Pipeline.from_pretrained(
     model_id,
     text_encoder_3=text_encoder,
     device_map="balanced",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 )
 
 image = pipe(
@@ -251,8 +245,8 @@ torch._inductor.config.coordinate_descent_check_all_directions = True
 
 pipe = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3-medium-diffusers",
-    torch_dtype=torch.float16
-).to("cuda")
+    dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipe.set_progress_bar_config(disable=True)
 
 pipe.transformer.to(memory_format=torch.channels_last)
@@ -277,7 +271,7 @@ Check out the full script [here](https://gist.github.com/sayakpaul/508d89d7aad4f
 
 Quantization helps reduce the memory requirements of very large models by storing model weights in a lower precision data type. However, quantization may have varying impact on video quality depending on the video model.
 
-Refer to the [Quantization](../../quantization/overview) overview to learn more about supported quantization backends and selecting a quantization backend that supports your use case. The example below demonstrates how to load a quantized [`StableDiffusion3Pipeline`] for inference with bitsandbytes.
+Refer to the [Quantization](../../../quantization/overview) overview to learn more about supported quantization backends and selecting a quantization backend that supports your use case. The example below demonstrates how to load a quantized [`StableDiffusion3Pipeline`] for inference with bitsandbytes.
 
 ```py
 import torch
@@ -289,7 +283,7 @@ text_encoder_8bit = T5EncoderModel.from_pretrained(
     "stabilityai/stable-diffusion-3.5-large",
     subfolder="text_encoder_3",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
@@ -297,14 +291,14 @@ transformer_8bit = SD3Transformer2DModel.from_pretrained(
     "stabilityai/stable-diffusion-3.5-large",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 pipeline = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3.5-large",
     text_encoder=text_encoder_8bit,
     transformer=transformer_8bit,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="balanced",
 )
 
@@ -333,11 +327,8 @@ image = pipe(
 
 You can send a different prompt to the CLIP Text Encoders and the T5 Text Encoder to prevent the prompt from being truncated by the CLIP Text Encoders and to improve generation.
 
-<Tip>
-
-The prompt with the CLIP Text Encoders is still truncated to the 77 token limit.
-
-</Tip>
+> [!TIP]
+> The prompt with the CLIP Text Encoders is still truncated to the 77 token limit.
 
 ```python
 prompt = "A whimsical and creative image depicting a hybrid creature that is a mix of a waffle and a hippopotamus, basking in a river of melted butter amidst a breakfast-themed landscape. A river of warm, melted butter, pancake-like foliage in the background, a towering pepper mill standing in for a tree."
@@ -365,10 +356,10 @@ import torch
 from diffusers import StableDiffusion3Pipeline, AutoencoderTiny
 
 pipe = StableDiffusion3Pipeline.from_pretrained(
-    "stabilityai/stable-diffusion-3-medium-diffusers", torch_dtype=torch.float16
+    "stabilityai/stable-diffusion-3-medium-diffusers", dtype=torch.float16
 )
-pipe.vae = AutoencoderTiny.from_pretrained("madebyollin/taesd3", torch_dtype=torch.float16)
-pipe = pipe.to("cuda")
+pipe.vae = AutoencoderTiny.from_pretrained("madebyollin/taesd3", dtype=torch.float16)
+pipe = pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "slice of delicious New York-style berry cheesecake"
 image = pipe(prompt, num_inference_steps=25).images[0]
@@ -397,7 +388,7 @@ from diffusers import StableDiffusion3Pipeline
 
 pipe = StableDiffusion3Pipeline.from_single_file(
     "https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/sd3_medium_incl_clips.safetensors",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     text_encoder_3=None
 )
 pipe.enable_model_cpu_offload()
@@ -417,7 +408,7 @@ from diffusers import StableDiffusion3Pipeline
 
 pipe = StableDiffusion3Pipeline.from_single_file(
     "https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/sd3_medium_incl_clips_t5xxlfp8.safetensors",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 pipe.enable_model_cpu_offload()
 
@@ -433,12 +424,12 @@ from diffusers import SD3Transformer2DModel, StableDiffusion3Pipeline
 
 transformer = SD3Transformer2DModel.from_single_file(
     "https://huggingface.co/stabilityai/stable-diffusion-3.5-large-turbo/blob/main/sd3.5_large.safetensors",
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 pipe = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3.5-large",
     transformer=transformer,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 pipe.enable_model_cpu_offload()
 image = pipe("a cat holding a sign that says hello world").images[0]

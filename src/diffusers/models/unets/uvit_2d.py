@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, Union
 
 import torch
 import torch.nn.functional as F
@@ -22,11 +21,11 @@ from torch.utils.checkpoint import checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
-from ..attention import BasicTransformerBlock, SkipFFTransformerBlock
+from ...utils import apply_lora_scale
+from ..attention import AttentionMixin, BasicTransformerBlock, SkipFFTransformerBlock
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
-    AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
 )
@@ -36,7 +35,7 @@ from ..normalization import GlobalResponseNorm, RMSNorm
 from ..resnet import Downsample2D, Upsample2D
 
 
-class UVit2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
+class UVit2DModel(ModelMixin, AttentionMixin, ConfigMixin, PeftAdapterMixin):
     _supports_gradient_checkpointing = True
 
     @register_to_config
@@ -148,7 +147,27 @@ class UVit2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         self.gradient_checkpointing = False
 
-    def forward(self, input_ids, encoder_hidden_states, pooled_text_emb, micro_conds, cross_attention_kwargs=None):
+    @apply_lora_scale("cross_attention_kwargs")
+    def forward(
+        self, input_ids, encoder_hidden_states, pooled_text_emb, micro_conds, cross_attention_kwargs=None
+    ) -> torch.Tensor:
+        r"""
+        Args:
+            input_ids (`torch.LongTensor`):
+                Token ids of the masked latent image tokens, with shape `(batch_size, height, width)`.
+            encoder_hidden_states (`torch.Tensor`):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            pooled_text_emb (`torch.Tensor`):
+                Pooled text embeddings used for additional conditioning.
+            micro_conds (`torch.Tensor`):
+                Micro-conditioning values that are embedded and combined with `pooled_text_emb`.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor`.
+
+        Returns:
+            `torch.Tensor`: The logits over the codebook for each image token, of shape `(batch_size, codebook_size,
+            height, width)`.
+        """
         encoder_hidden_states = self.encoder_proj(encoder_hidden_states)
         encoder_hidden_states = self.encoder_proj_layer_norm(encoder_hidden_states)
 
@@ -209,66 +228,6 @@ class UVit2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         return logits
 
-    @property
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
-        r"""
-        Returns:
-            `dict` of attention processors: A dictionary containing all attention processors used in the model with
-            indexed by its weight name.
-        """
-        # set recursively
-        processors = {}
-
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
-            if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor()
-
-            for sub_name, child in module.named_children():
-                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
-
-            return processors
-
-        for name, module in self.named_children():
-            fn_recursive_add_processors(name, module, processors)
-
-        return processors
-
-    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
-        r"""
-        Sets the attention processor to use to compute attention.
-
-        Parameters:
-            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
-                The instantiated processor class or a dictionary of processor classes that will be set as the processor
-                for **all** `Attention` layers.
-
-                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
-                processor. This is strongly recommended when setting trainable attention processors.
-
-        """
-        count = len(self.attn_processors.keys())
-
-        if isinstance(processor, dict) and len(processor) != count:
-            raise ValueError(
-                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
-                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
-            )
-
-        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
-            if hasattr(module, "set_processor"):
-                if not isinstance(processor, dict):
-                    module.set_processor(processor)
-                else:
-                    module.set_processor(processor.pop(f"{name}.processor"))
-
-            for sub_name, child in module.named_children():
-                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
-
-        for name, module in self.named_children():
-            fn_recursive_attn_processor(name, module, processor)
-
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self):
         """
@@ -293,7 +252,7 @@ class UVit2DConvEmbed(nn.Module):
         self.layer_norm = RMSNorm(in_channels, eps, elementwise_affine)
         self.conv = nn.Conv2d(in_channels, block_out_channels, kernel_size=1, bias=bias)
 
-    def forward(self, input_ids):
+    def forward(self, input_ids) -> torch.Tensor:
         embeddings = self.embeddings(input_ids)
         embeddings = self.layer_norm(embeddings)
         embeddings = embeddings.permute(0, 3, 1, 2)
@@ -380,7 +339,7 @@ class UVitBlock(nn.Module):
         else:
             self.upsample = None
 
-    def forward(self, x, pooled_text_emb, encoder_hidden_states, cross_attention_kwargs):
+    def forward(self, x, pooled_text_emb, encoder_hidden_states, cross_attention_kwargs) -> torch.Tensor:
         if self.downsample is not None:
             x = self.downsample(x)
 
@@ -421,7 +380,7 @@ class ConvNextBlock(nn.Module):
         self.channelwise_dropout = nn.Dropout(hidden_dropout)
         self.cond_embeds_mapper = nn.Linear(hidden_size, channels * 2, use_bias)
 
-    def forward(self, x, cond_embeds):
+    def forward(self, x, cond_embeds) -> torch.Tensor:
         x_res = x
 
         x = self.depthwise(x)
@@ -460,7 +419,7 @@ class ConvMlmLayer(nn.Module):
         self.layer_norm = RMSNorm(in_channels, layer_norm_eps, ln_elementwise_affine)
         self.conv2 = nn.Conv2d(in_channels, codebook_size, kernel_size=1, bias=use_bias)
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states) -> torch.Tensor:
         hidden_states = self.conv1(hidden_states)
         hidden_states = self.layer_norm(hidden_states.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
         logits = self.conv2(hidden_states)

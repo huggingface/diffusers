@@ -116,7 +116,7 @@ VAE_SPECIAL_KEYS_REMAP = {
 }
 
 
-def get_state_dict(saved_dict: Dict[str, Any]) -> Dict[str, Any]:
+def get_state_dict(saved_dict: Dict[str, Any]) -> dict[str, Any]:
     state_dict = saved_dict
     if "model" in saved_dict.keys():
         state_dict = state_dict["model"]
@@ -127,7 +127,7 @@ def get_state_dict(saved_dict: Dict[str, Any]) -> Dict[str, Any]:
     return state_dict
 
 
-def update_state_dict_inplace(state_dict: Dict[str, Any], old_key: str, new_key: str) -> Dict[str, Any]:
+def update_state_dict_inplace(state_dict: Dict[str, Any], old_key: str, new_key: str) -> dict[str, Any]:
     state_dict[new_key] = state_dict.pop(old_key)
 
 
@@ -192,7 +192,7 @@ def convert_spatial_latent_upsampler(ckpt_path: str, config, dtype: torch.dtype)
     return latent_upsampler
 
 
-def get_transformer_config(version: str) -> Dict[str, Any]:
+def get_transformer_config(version: str) -> dict[str, Any]:
     if version == "0.9.7":
         config = {
             "in_channels": 128,
@@ -232,7 +232,7 @@ def get_transformer_config(version: str) -> Dict[str, Any]:
     return config
 
 
-def get_vae_config(version: str) -> Dict[str, Any]:
+def get_vae_config(version: str) -> dict[str, Any]:
     if version in ["0.9.0"]:
         config = {
             "in_channels": 3,
@@ -359,8 +359,17 @@ def get_vae_config(version: str) -> Dict[str, Any]:
     return config
 
 
-def get_spatial_latent_upsampler_config(version: str) -> Dict[str, Any]:
+def get_spatial_latent_upsampler_config(version: str) -> dict[str, Any]:
     if version == "0.9.7":
+        config = {
+            "in_channels": 128,
+            "mid_channels": 512,
+            "num_blocks_per_stage": 4,
+            "dims": 3,
+            "spatial_upsample": True,
+            "temporal_upsample": False,
+        }
+    elif version == "0.9.8":
         config = {
             "in_channels": 128,
             "mid_channels": 512,
@@ -402,7 +411,7 @@ def get_args():
         "--version",
         type=str,
         default="0.9.0",
-        choices=["0.9.0", "0.9.1", "0.9.5", "0.9.7"],
+        choices=["0.9.0", "0.9.1", "0.9.5", "0.9.7", "0.9.8"],
         help="Version of the LTX model",
     )
     return parser.parse_args()

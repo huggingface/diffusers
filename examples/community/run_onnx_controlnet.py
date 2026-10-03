@@ -54,7 +54,7 @@ EXAMPLE_DOC_STRING = """
         >>> # load control net and stable diffusion v1-5
         >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
         >>> pipe = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16
         ... )
 
         >>> # speed up diffusion process with faster scheduler and memory optimization
@@ -136,7 +136,7 @@ class OnnxStableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]],
         num_images_per_prompt: Optional[int],
         do_classifier_free_guidance: bool,
-        negative_prompt: Optional[str],
+        negative_prompt: str | None,
         prompt_embeds: Optional[np.ndarray] = None,
         negative_prompt_embeds: Optional[np.ndarray] = None,
     ):
@@ -534,7 +534,7 @@ class OnnxStableDiffusionControlNetImg2ImgPipeline(DiffusionPipeline):
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,

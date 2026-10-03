@@ -1,9 +1,10 @@
+import importlib.metadata
 import tempfile
-import unittest
 
 import numpy as np
 import pytest
 import torch
+from packaging import version
 
 from diffusers import DiffusionPipeline
 from diffusers.models.attention_processor import Attention, AttnAddedKVProcessor
@@ -11,7 +12,7 @@ from diffusers.models.attention_processor import Attention, AttnAddedKVProcessor
 from ..testing_utils import torch_device
 
 
-class AttnAddedKVProcessorTests(unittest.TestCase):
+class TestAttnAddedKVProcessor:
     def get_constructor_arguments(self, only_cross_attention: bool = False):
         query_dim = 10
 
@@ -53,8 +54,8 @@ class AttnAddedKVProcessorTests(unittest.TestCase):
         constructor_args = self.get_constructor_arguments(only_cross_attention=False)
         attn = Attention(**constructor_args)
 
-        self.assertTrue(attn.to_k is not None)
-        self.assertTrue(attn.to_v is not None)
+        assert attn.to_k is not None
+        assert attn.to_v is not None
 
         forward_args = self.get_forward_arguments(
             query_dim=constructor_args["query_dim"], added_kv_proj_dim=constructor_args["added_kv_proj_dim"]
@@ -69,8 +70,8 @@ class AttnAddedKVProcessorTests(unittest.TestCase):
         constructor_args = self.get_constructor_arguments(only_cross_attention=True)
         attn = Attention(**constructor_args)
 
-        self.assertTrue(attn.to_k is None)
-        self.assertTrue(attn.to_v is None)
+        assert attn.to_k is None
+        assert attn.to_v is None
 
         forward_args = self.get_forward_arguments(
             query_dim=constructor_args["query_dim"], added_kv_proj_dim=constructor_args["added_kv_proj_dim"]
@@ -78,18 +79,19 @@ class AttnAddedKVProcessorTests(unittest.TestCase):
 
         only_cross_attn_out = attn(**forward_args)
 
-        self.assertTrue((only_cross_attn_out != self_and_cross_attn_out).all())
+        assert (only_cross_attn_out != self_and_cross_attn_out).all()
 
 
-class DeprecatedAttentionBlockTests(unittest.TestCase):
+class TestDeprecatedAttentionBlock:
     @pytest.fixture(scope="session")
     def is_dist_enabled(pytestconfig):
         return pytestconfig.getoption("dist") == "loadfile"
 
     @pytest.mark.xfail(
-        condition=torch.device(torch_device).type == "cuda" and is_dist_enabled,
-        reason="Test currently fails on our GPU  CI because of `loadfile`. Note that it only fails when the tests are distributed from `pytest ... tests/models`. If the tests are run individually, even with `loadfile` it won't fail.",
-        strict=True,
+        condition=(torch.device(torch_device).type == "cuda" and is_dist_enabled)
+        or version.parse(importlib.metadata.version("transformers")).is_devrelease,
+        reason="Test currently fails on our GPU CI because of `loadfile` or with source installation of transformers due to CLIPTextModel key prefix changes.",
+        strict=False,
     )
     def test_conversion_when_using_device_map(self):
         pipe = DiffusionPipeline.from_pretrained(
@@ -128,5 +130,5 @@ class DeprecatedAttentionBlockTests(unittest.TestCase):
             output_type="np",
         ).images
 
-        self.assertTrue(np.allclose(pre_conversion, conversion, atol=1e-3))
-        self.assertTrue(np.allclose(conversion, after_conversion, atol=1e-3))
+        assert np.allclose(pre_conversion, conversion, atol=1e-3)
+        assert np.allclose(conversion, after_conversion, atol=1e-3)

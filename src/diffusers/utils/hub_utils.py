@@ -21,30 +21,32 @@ import sys
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Dict, List, Optional, Union
 from uuid import uuid4
 
 from huggingface_hub import (
-    DDUFEntry,
     ModelCard,
     ModelCardData,
     create_repo,
     hf_hub_download,
     model_info,
+    resolve_revision,
     snapshot_download,
     upload_folder,
 )
 from huggingface_hub.constants import HF_HUB_DISABLE_TELEMETRY, HF_HUB_OFFLINE
+from huggingface_hub.errors import RevisionResolutionError
 from huggingface_hub.file_download import REGEX_COMMIT_HASH
 from huggingface_hub.utils import (
     EntryNotFoundError,
+    HfHubHTTPError,
+    HFValidationError,
     RepositoryNotFoundError,
     RevisionNotFoundError,
+    httpx,
     is_jinja_available,
     validate_hf_hub_args,
 )
 from packaging import version
-from requests import HTTPError
 
 from .. import __version__
 from .constants import (
@@ -55,11 +57,8 @@ from .constants import (
 )
 from .import_utils import (
     ENV_VARS_TRUE_VALUES,
-    _flax_version,
-    _jax_version,
     _onnxruntime_version,
     _torch_version,
-    is_flax_available,
     is_onnx_available,
     is_torch_available,
 )
@@ -72,7 +71,7 @@ MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "model_card_template.md"
 SESSION_ID = uuid4().hex
 
 
-def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
+def http_user_agent(user_agent: dict | str | None = None) -> str:
     """
     Formats a user-agent string with basic info about a request.
     """
@@ -81,9 +80,6 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
         return ua + "; telemetry/off"
     if is_torch_available():
         ua += f"; torch/{_torch_version}"
-    if is_flax_available():
-        ua += f"; jax/{_jax_version}"
-        ua += f"; flax/{_flax_version}"
     if is_onnx_available():
         ua += f"; onnxruntime/{_onnxruntime_version}"
     # CI will set this value to True
@@ -98,22 +94,25 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
 
 def load_or_create_model_card(
     repo_id_or_path: str = None,
-    token: Optional[str] = None,
+    token: str | None = None,
     is_pipeline: bool = False,
     from_training: bool = False,
-    model_description: Optional[str] = None,
+    model_description: str | None = None,
     base_model: str = None,
-    prompt: Optional[str] = None,
-    license: Optional[str] = None,
-    widget: Optional[List[dict]] = None,
-    inference: Optional[bool] = None,
+    prompt: str | None = None,
+    license: str | None = None,
+    widget: list[dict] | None = None,
+    inference: bool | None = None,
+    is_modular: bool = False,
+    update_model_card: bool = False,
 ) -> ModelCard:
     """
     Loads or creates a model card.
 
     Args:
         repo_id_or_path (`str`):
-            The repo id (e.g., "runwayml/stable-diffusion-v1-5") or local path where to look for the model card.
+            The repo id (e.g., "stable-diffusion-v1-5/stable-diffusion-v1-5") or local path where to look for the model
+            card.
         token (`str`, *optional*):
             Authentication token. Will default to the stored token. See https://huggingface.co/settings/token for more
             details.
@@ -127,9 +126,14 @@ def load_or_create_model_card(
         prompt (`str`, *optional*): Prompt used for training. Useful for DreamBooth-like training.
         license: (`str`, *optional*): License of the output artifact. Helpful when using
             `load_or_create_model_card` from a training script.
-        widget (`List[dict]`, *optional*): Widget to accompany a gallery template.
+        widget (`list[dict]`, *optional*): Widget to accompany a gallery template.
         inference: (`bool`, optional): Whether to turn on inference widget. Helpful when using
             `load_or_create_model_card` from a training script.
+        is_modular: (`bool`, optional): Boolean flag to denote if the model card is for a modular pipeline.
+            When True, uses model_description as-is without additional template formatting.
+        update_model_card: (`bool`, optional): When True, regenerates the model card content even if one
+            already exists on the remote repo. Existing card metadata (tags, license, etc.) is preserved. Only
+            supported for modular pipelines (i.e., `is_modular=True`).
     """
     if not is_jinja_available():
         raise ValueError(
@@ -138,9 +142,17 @@ def load_or_create_model_card(
             " To install it, please run `pip install Jinja2`."
         )
 
+    if update_model_card and not is_modular:
+        raise ValueError("`update_model_card=True` is only supported for modular pipelines (`is_modular=True`).")
+
     try:
         # Check if the model card is present on the remote repo
         model_card = ModelCard.load(repo_id_or_path, token=token)
+        # For modular pipelines, regenerate card content when requested (preserve existing metadata)
+        if update_model_card and is_modular and model_description is not None:
+            existing_data = model_card.data
+            model_card = ModelCard(model_description)
+            model_card.data = existing_data
     except (EntryNotFoundError, RepositoryNotFoundError):
         # Otherwise create a model card from template
         if from_training:
@@ -158,15 +170,19 @@ def load_or_create_model_card(
             )
         else:
             card_data = ModelCardData()
-            component = "pipeline" if is_pipeline else "model"
-            if model_description is None:
-                model_description = f"This is the model card of a 🧨 diffusers {component} that has been pushed on the Hub. This model card has been automatically generated."
-            model_card = ModelCard.from_template(card_data, model_description=model_description)
+            if is_modular and model_description is not None:
+                model_card = ModelCard(model_description)
+                model_card.data = card_data
+            else:
+                component = "pipeline" if is_pipeline else "model"
+                if model_description is None:
+                    model_description = f"This is the model card of a 🧨 diffusers {component} that has been pushed on the Hub. This model card has been automatically generated."
+                model_card = ModelCard.from_template(card_data, model_description=model_description)
 
     return model_card
 
 
-def populate_model_card(model_card: ModelCard, tags: Union[str, List[str]] = None) -> ModelCard:
+def populate_model_card(model_card: ModelCard, tags: str | list[str] | None = None) -> ModelCard:
     """Populates the `model_card` with library name and optional tags."""
     if model_card.data.library_name is None:
         model_card.data.library_name = "diffusers"
@@ -182,7 +198,7 @@ def populate_model_card(model_card: ModelCard, tags: Union[str, List[str]] = Non
     return model_card
 
 
-def extract_commit_hash(resolved_file: Optional[str], commit_hash: Optional[str] = None):
+def extract_commit_hash(resolved_file: str | None, commit_hash: str | None = None):
     """
     Extracts the commit hash from a resolved filename toward a cache file.
     """
@@ -196,7 +212,42 @@ def extract_commit_hash(resolved_file: Optional[str], commit_hash: Optional[str]
     return commit_hash if REGEX_COMMIT_HASH.match(commit_hash) else None
 
 
-def _add_variant(weights_name: str, variant: Optional[str] = None) -> str:
+def _resolve_revision(
+    pretrained_model_name_or_path: str | os.PathLike | None,
+    *,
+    revision: str | None = None,
+    cache_dir: str | os.PathLike | None = None,
+    local_files_only: bool | None = None,
+    token: str | bool | None = None,
+) -> str | None:
+    """
+    Resolves `revision` to a commit hash, to be called once at the beginning of a loading method.
+
+    Loading a model or a pipeline fetches several files from the same repo (config, weight index, shards, custom code,
+    ...). Passing the returned [`~huggingface_hub.ResolvedRevision`] down to every download pins them all to the same
+    commit - even if the repo is updated in the meantime - and lets `huggingface_hub` serve them from the cache without
+    resolving `revision` again on each call.
+
+    Resolution is best-effort: local folders are returned untouched and, if the Hub cannot answer (repo or revision not
+    found, offline mode with nothing cached, ...), `revision` is returned as is so that the download that follows fails
+    with its usual error message.
+    """
+    if pretrained_model_name_or_path is None or os.path.isdir(pretrained_model_name_or_path):
+        return revision
+
+    try:
+        return resolve_revision(
+            str(pretrained_model_name_or_path),
+            revision=revision,
+            cache_dir=cache_dir,
+            local_files_only=bool(local_files_only),
+            token=token,
+        )
+    except (HfHubHTTPError, RevisionResolutionError, HFValidationError, httpx.TransportError):
+        return revision
+
+
+def _add_variant(weights_name: str, variant: str | None = None) -> str:
     if variant is not None:
         splits = weights_name.split(".")
         splits = splits[:-1] + [variant] + splits[-1:]
@@ -207,38 +258,22 @@ def _add_variant(weights_name: str, variant: Optional[str] = None) -> str:
 
 @validate_hf_hub_args
 def _get_model_file(
-    pretrained_model_name_or_path: Union[str, Path],
+    pretrained_model_name_or_path: str | Path,
     *,
     weights_name: str,
-    subfolder: Optional[str] = None,
-    cache_dir: Optional[str] = None,
+    subfolder: str | None = None,
+    cache_dir: str | None = None,
     force_download: bool = False,
-    proxies: Optional[Dict] = None,
+    proxies: dict | None = None,
     local_files_only: bool = False,
-    token: Optional[str] = None,
-    user_agent: Optional[Union[Dict, str]] = None,
-    revision: Optional[str] = None,
-    commit_hash: Optional[str] = None,
-    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
+    token: str | None = None,
+    user_agent: dict | str | None = None,
+    revision: str | None = None,
+    commit_hash: str | None = None,
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
 
-    if dduf_entries:
-        if subfolder is not None:
-            raise ValueError(
-                "DDUF file only allow for 1 level of directory (e.g transformer/model1/model.safetentors is not allowed). "
-                "Please check the DDUF structure"
-            )
-        model_file = (
-            weights_name
-            if pretrained_model_name_or_path == ""
-            else "/".join([pretrained_model_name_or_path, weights_name])
-        )
-        if model_file in dduf_entries:
-            return model_file
-        else:
-            raise EnvironmentError(f"Error no file named {weights_name} found in archive {dduf_entries.keys()}.")
-    elif os.path.isfile(pretrained_model_name_or_path):
+    if os.path.isfile(pretrained_model_name_or_path):
         return pretrained_model_name_or_path
     elif os.path.isdir(pretrained_model_name_or_path):
         if os.path.isfile(os.path.join(pretrained_model_name_or_path, weights_name)):
@@ -316,7 +351,7 @@ def _get_model_file(
             raise EnvironmentError(
                 f"{pretrained_model_name_or_path} does not appear to have a file named {weights_name}."
             ) from e
-        except HTTPError as e:
+        except HfHubHTTPError as e:
             raise EnvironmentError(
                 f"There was a specific connection error when trying to load {pretrained_model_name_or_path}:\n{e}"
             ) from e
@@ -347,7 +382,6 @@ def _get_checkpoint_shard_files(
     user_agent=None,
     revision=None,
     subfolder="",
-    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
 ):
     """
     For a given model:
@@ -359,41 +393,34 @@ def _get_checkpoint_shard_files(
     For the description of each arg, see [`PreTrainedModel.from_pretrained`]. `index_filename` is the full path to the
     index (downloaded and cached if `pretrained_model_name_or_path` is a model ID on the Hub).
     """
-    if dduf_entries:
-        if index_filename not in dduf_entries:
-            raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
-    else:
-        if not os.path.isfile(index_filename):
-            raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
+    if not os.path.isfile(index_filename):
+        raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
 
-    if dduf_entries:
-        index = json.loads(dduf_entries[index_filename].read_text())
-    else:
-        with open(index_filename, "r") as f:
-            index = json.loads(f.read())
+    with open(index_filename, "r") as f:
+        index = json.loads(f.read())
 
     original_shard_filenames = sorted(set(index["weight_map"].values()))
+    for shard_filename in original_shard_filenames:
+        if os.path.basename(shard_filename) != shard_filename:
+            raise ValueError(
+                f"The shard filename {shard_filename!r} in the checkpoint index contains a path separator or a "
+                "parent-directory reference, which is not allowed. Shard filenames must be plain filenames located "
+                "in the model directory."
+            )
     sharded_metadata = index["metadata"]
     sharded_metadata["all_checkpoint_keys"] = list(index["weight_map"].keys())
     sharded_metadata["weight_map"] = index["weight_map"].copy()
     shards_path = os.path.join(pretrained_model_name_or_path, subfolder)
 
     # First, let's deal with local folder.
-    if os.path.isdir(pretrained_model_name_or_path) or dduf_entries:
+    if os.path.isdir(pretrained_model_name_or_path):
         shard_filenames = [os.path.join(shards_path, f) for f in original_shard_filenames]
         for shard_file in shard_filenames:
-            if dduf_entries:
-                if shard_file not in dduf_entries:
-                    raise FileNotFoundError(
-                        f"{shards_path} does not appear to have a file named {shard_file} which is "
-                        "required according to the checkpoint index."
-                    )
-            else:
-                if not os.path.exists(shard_file):
-                    raise FileNotFoundError(
-                        f"{shards_path} does not appear to have a file named {shard_file} which is "
-                        "required according to the checkpoint index."
-                    )
+            if not os.path.exists(shard_file):
+                raise FileNotFoundError(
+                    f"{shards_path} does not appear to have a file named {shard_file} which is "
+                    "required according to the checkpoint index."
+                )
         return shard_filenames, sharded_metadata
 
     # At this stage pretrained_model_name_or_path is a model identifier on the Hub
@@ -432,7 +459,7 @@ def _get_checkpoint_shard_files(
 
     # We have already dealt with RepositoryNotFoundError and RevisionNotFoundError when getting the index, so
     # we don't have to catch them here. We have also dealt with EntryNotFoundError.
-    except HTTPError as e:
+    except HfHubHTTPError as e:
         raise EnvironmentError(
             f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load {pretrained_model_name_or_path}. You should try"
             " again after checking your internet connection."
@@ -448,7 +475,7 @@ def _get_checkpoint_shard_files(
     return cached_filenames, sharded_metadata
 
 
-def _check_legacy_sharding_variant_format(folder: str = None, filenames: List[str] = None, variant: str = None):
+def _check_legacy_sharding_variant_format(folder: str = None, filenames: list[str] = None, variant: str = None):
     if filenames and folder:
         raise ValueError("Both `filenames` and `folder` cannot be provided.")
     if not filenames:
@@ -468,12 +495,12 @@ class PushToHubMixin:
 
     def _upload_folder(
         self,
-        working_dir: Union[str, os.PathLike],
+        working_dir: str | os.PathLike,
         repo_id: str,
-        token: Optional[str] = None,
-        commit_message: Optional[str] = None,
+        token: str | None = None,
+        commit_message: str | None = None,
         create_pr: bool = False,
-        subfolder: Optional[str] = None,
+        subfolder: str | None = None,
     ):
         """
         Uploads all files in `working_dir` to `repo_id`.
@@ -499,13 +526,13 @@ class PushToHubMixin:
     def push_to_hub(
         self,
         repo_id: str,
-        commit_message: Optional[str] = None,
-        private: Optional[bool] = None,
-        token: Optional[str] = None,
+        commit_message: str | None = None,
+        private: bool | None = None,
+        token: str | None = None,
         create_pr: bool = False,
         safe_serialization: bool = True,
-        variant: Optional[str] = None,
-        subfolder: Optional[str] = None,
+        variant: str | None = None,
+        subfolder: str | None = None,
     ) -> str:
         """
         Upload model, scheduler, or pipeline files to the 🤗 Hugging Face Hub.

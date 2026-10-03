@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import math
-from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -24,7 +25,7 @@ from ...utils import get_logger
 from ...utils.accelerate_utils import apply_forward_hook
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from .vae import DecoderOutput, IdentityDistribution
+from .vae import AutoencoderMixin, DecoderOutput, IdentityDistribution
 
 
 logger = get_logger(__name__)
@@ -47,9 +48,9 @@ class CosmosCausalConv3d(nn.Conv3d):
         self,
         in_channels: int = 1,
         out_channels: int = 1,
-        kernel_size: Union[int, Tuple[int, int, int]] = (3, 3, 3),
-        dilation: Union[int, Tuple[int, int, int]] = (1, 1, 1),
-        stride: Union[int, Tuple[int, int, int]] = (1, 1, 1),
+        kernel_size: int | tuple[int, int, int] = (3, 3, 3),
+        dilation: int | tuple[int, int, int] = (1, 1, 1),
+        stride: int | tuple[int, int, int] = (1, 1, 1),
         padding: int = 1,
         pad_mode: str = "constant",
     ) -> None:
@@ -419,7 +420,7 @@ class CosmosCausalAttention(nn.Module):
         attention_head_dim: int,
         num_groups: int = 1,
         dropout: float = 0.0,
-        processor: Union["CosmosSpatialAttentionProcessor2_0", "CosmosTemporalAttentionProcessor2_0"] = None,
+        processor: "CosmosSpatialAttentionProcessor2_0" | "CosmosTemporalAttentionProcessor2_0" = None,
     ) -> None:
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -438,7 +439,7 @@ class CosmosCausalAttention(nn.Module):
         if self.processor is None:
             raise ValueError("CosmosCausalAttention requires a processor.")
 
-    def forward(self, hidden_states: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor | None = None) -> torch.Tensor:
         return self.processor(self, hidden_states=hidden_states, attention_mask=attention_mask)
 
 
@@ -450,7 +451,7 @@ class CosmosSpatialAttentionProcessor2_0:
             )
 
     def __call__(
-        self, attn: CosmosCausalAttention, hidden_states: torch.Tensor, attention_mask: Optional[torch.Tensor] = None
+        self, attn: CosmosCausalAttention, hidden_states: torch.Tensor, attention_mask: torch.Tensor | None = None
     ) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         residual = hidden_states
@@ -489,7 +490,7 @@ class CosmosTemporalAttentionProcessor2_0:
             )
 
     def __call__(
-        self, attn: CosmosCausalAttention, hidden_states: torch.Tensor, attention_mask: Optional[torch.Tensor] = None
+        self, attn: CosmosCausalAttention, hidden_states: torch.Tensor, attention_mask: torch.Tensor | None = None
     ) -> torch.Tensor:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         residual = hidden_states
@@ -711,9 +712,9 @@ class CosmosEncoder3d(nn.Module):
         self,
         in_channels: int = 3,
         out_channels: int = 16,
-        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
+        block_out_channels: tuple[int, ...] = (128, 256, 512, 512),
         num_resnet_blocks: int = 2,
-        attention_resolutions: Tuple[int, ...] = (32,),
+        attention_resolutions: tuple[int, ...] = (32,),
         resolution: int = 1024,
         patch_size: int = 4,
         patch_type: str = "haar",
@@ -795,9 +796,9 @@ class CosmosDecoder3d(nn.Module):
         self,
         in_channels: int = 16,
         out_channels: int = 3,
-        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
+        block_out_channels: tuple[int, ...] = (128, 256, 512, 512),
         num_resnet_blocks: int = 2,
-        attention_resolutions: Tuple[int, ...] = (32,),
+        attention_resolutions: tuple[int, ...] = (32,),
         resolution: int = 1024,
         patch_size: int = 4,
         patch_type: str = "haar",
@@ -875,7 +876,7 @@ class CosmosDecoder3d(nn.Module):
         return hidden_states
 
 
-class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
+class AutoencoderKLCosmos(ModelMixin, AutoencoderMixin, ConfigMixin):
     r"""
     Autoencoder used in [Cosmos](https://huggingface.co/papers/2501.03575).
 
@@ -886,12 +887,12 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
             Number of output channels.
         latent_channels (`int`, defaults to `16`):
             Number of latent channels.
-        encoder_block_out_channels (`Tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
+        encoder_block_out_channels (`tuple[int, ...]`, defaults to `(128, 256, 512, 512)`):
             Number of output channels for each encoder down block.
-        decode_block_out_channels (`Tuple[int, ...]`, defaults to `(256, 512, 512, 512)`):
+        decode_block_out_channels (`tuple[int, ...]`, defaults to `(256, 512, 512, 512)`):
             Number of output channels for each decoder up block.
-        attention_resolutions (`Tuple[int, ...]`, defaults to `(32,)`):
-            List of image/video resolutions at which to apply attention.
+        attention_resolutions (`tuple[int, ...]`, defaults to `(32,)`):
+            list of image/video resolutions at which to apply attention.
         resolution (`int`, defaults to `1024`):
             Base image/video resolution used for computing whether a block should have attention layers.
         num_layers (`int`, defaults to `2`):
@@ -924,9 +925,9 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
         in_channels: int = 3,
         out_channels: int = 3,
         latent_channels: int = 16,
-        encoder_block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
-        decode_block_out_channels: Tuple[int, ...] = (256, 512, 512, 512),
-        attention_resolutions: Tuple[int, ...] = (32,),
+        encoder_block_out_channels: tuple[int, ...] = (128, 256, 512, 512),
+        decode_block_out_channels: tuple[int, ...] = (256, 512, 512, 512),
+        attention_resolutions: tuple[int, ...] = (32,),
         resolution: int = 1024,
         num_layers: int = 2,
         patch_size: int = 4,
@@ -934,8 +935,8 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
         scaling_factor: float = 1.0,
         spatial_compression_ratio: int = 8,
         temporal_compression_ratio: int = 8,
-        latents_mean: Optional[List[float]] = LATENTS_MEAN,
-        latents_std: Optional[List[float]] = LATENTS_STD,
+        latents_mean: list[float] | None = LATENTS_MEAN,
+        latents_std: list[float] | None = LATENTS_STD,
     ) -> None:
         super().__init__()
 
@@ -999,12 +1000,12 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
 
     def enable_tiling(
         self,
-        tile_sample_min_height: Optional[int] = None,
-        tile_sample_min_width: Optional[int] = None,
-        tile_sample_min_num_frames: Optional[int] = None,
-        tile_sample_stride_height: Optional[float] = None,
-        tile_sample_stride_width: Optional[float] = None,
-        tile_sample_stride_num_frames: Optional[float] = None,
+        tile_sample_min_height: int | None = None,
+        tile_sample_min_width: int | None = None,
+        tile_sample_min_num_frames: int | None = None,
+        tile_sample_stride_height: float | None = None,
+        tile_sample_stride_width: float | None = None,
+        tile_sample_stride_num_frames: float | None = None,
     ) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -1031,27 +1032,6 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
         self.tile_sample_stride_width = tile_sample_stride_width or self.tile_sample_stride_width
         self.tile_sample_stride_num_frames = tile_sample_stride_num_frames or self.tile_sample_stride_num_frames
 
-    def disable_tiling(self) -> None:
-        r"""
-        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_tiling = False
-
-    def enable_slicing(self) -> None:
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.use_slicing = True
-
-    def disable_slicing(self) -> None:
-        r"""
-        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_slicing = False
-
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
         x = self.encoder(x)
         enc = self.quant_conv(x)
@@ -1071,7 +1051,7 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
             return (posterior,)
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor]:
         z = self.post_quant_conv(z)
         dec = self.decoder(z)
 
@@ -1080,7 +1060,7 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
         return DecoderOutput(sample=dec)
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor]:
         if self.use_slicing and z.shape[0] > 1:
             decoded_slices = [self._decode(z_slice).sample for z_slice in z.split(1)]
             decoded = torch.cat(decoded_slices)
@@ -1096,8 +1076,24 @@ class AutoencoderKLCosmos(ModelMixin, ConfigMixin):
         sample: torch.Tensor,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
-    ) -> Union[Tuple[torch.Tensor], DecoderOutput]:
+        generator: torch.Generator | None = None,
+    ) -> tuple[torch.Tensor] | DecoderOutput:
+        r"""
+        Args:
+            sample (`torch.Tensor`): Input sample.
+            sample_posterior (`bool`, *optional*, defaults to `False`):
+                Whether to sample from the posterior.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+            generator (`torch.Generator`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make sampling
+                deterministic.
+
+        Returns:
+            [`~models.vae.DecoderOutput`] or `tuple`:
+                If `return_dict` is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
+                returned.
+        """
         x = sample
         posterior = self.encode(x).latent_dist
         if sample_posterior:

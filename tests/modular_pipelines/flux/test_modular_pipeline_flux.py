@@ -1,0 +1,271 @@
+# coding=utf-8
+# Copyright 2026 HuggingFace Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import random
+
+import numpy as np
+import PIL
+import torch
+
+from diffusers.image_processor import VaeImageProcessor
+from diffusers.modular_pipelines import (
+    FluxAutoBlocks,
+    FluxKontextAutoBlocks,
+    FluxKontextModularPipeline,
+    FluxModularPipeline,
+    ModularPipeline,
+)
+
+from ...testing_utils import floats_tensor, torch_device
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularAutoOffloadTesterMixin,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
+
+
+FLUX_TEXT2IMAGE_WORKFLOWS = {
+    "text2image": [
+        ("text_encoder", "FluxTextEncoderStep"),
+        ("denoise.input", "FluxTextInputStep"),
+        ("denoise.before_denoise.prepare_latents", "FluxPrepareLatentsStep"),
+        ("denoise.before_denoise.set_timesteps", "FluxSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_rope_inputs", "FluxRoPEInputsStep"),
+        ("denoise.denoise", "FluxDenoiseStep"),
+        ("decode", "FluxDecodeStep"),
+    ]
+}
+
+
+class FluxModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
+    pipeline_class = FluxModularPipeline
+    pipeline_blocks_class = FluxAutoBlocks
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-modular"
+
+    params = frozenset(["prompt", "height", "width", "guidance_scale"])
+    batch_params = frozenset(["prompt"])
+    expected_workflow_blocks = FLUX_TEXT2IMAGE_WORKFLOWS
+
+    def get_dummy_inputs(self, seed=0):
+        generator = self.get_generator(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 5.0,
+            "height": 8,
+            "width": 8,
+            "max_sequence_length": 48,
+            "output_type": "pt",
+        }
+        return inputs
+
+
+class TestFluxModularPipelineFast(FluxModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    def test_float16_inference(self):
+        super().test_float16_inference(9e-2)
+
+
+class TestFluxModularPipelineLoading(FluxModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestFluxModularPipelineWorkflow(FluxModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestFluxModularPipelineMemory(FluxModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
+
+
+class TestFluxModularPipelineAutoOffload(FluxModularPipelineTesterConfig, ModularAutoOffloadTesterMixin):
+    pass
+
+
+FLUX_IMAGE2IMAGE_WORKFLOWS = {
+    "image2image": [
+        ("text_encoder", "FluxTextEncoderStep"),
+        ("vae_encoder.preprocess", "FluxProcessImagesInputStep"),
+        ("vae_encoder.encode", "FluxVaeEncoderStep"),
+        ("denoise.input.text_inputs", "FluxTextInputStep"),
+        ("denoise.input.additional_inputs", "FluxAdditionalInputsStep"),
+        ("denoise.before_denoise.prepare_latents", "FluxPrepareLatentsStep"),
+        ("denoise.before_denoise.set_timesteps", "FluxImg2ImgSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_img2img_latents", "FluxImg2ImgPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_rope_inputs", "FluxRoPEInputsStep"),
+        ("denoise.denoise", "FluxDenoiseStep"),
+        ("decode", "FluxDecodeStep"),
+    ]
+}
+
+
+class FluxImg2ImgModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
+    pipeline_class = FluxModularPipeline
+    pipeline_blocks_class = FluxAutoBlocks
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-modular"
+
+    params = frozenset(["prompt", "height", "width", "guidance_scale", "image"])
+    batch_params = frozenset(["prompt", "image"])
+    expected_workflow_blocks = FLUX_IMAGE2IMAGE_WORKFLOWS
+
+    def get_pipeline(self, components_manager=None, dtype=torch.float32):
+        pipeline = super().get_pipeline(components_manager, dtype)
+
+        # Override `vae_scale_factor` here as currently, `image_processor` is initialized with
+        # fixed constants instead of
+        # https://github.com/huggingface/diffusers/blob/d54622c2679d700b425ad61abce9b80fc36212c0/src/diffusers/pipelines/flux/pipeline_flux_img2img.py#L230C9-L232C10
+        pipeline.image_processor = VaeImageProcessor(vae_scale_factor=2)
+        return pipeline
+
+    def get_dummy_inputs(self, seed=0):
+        generator = self.get_generator(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 4,
+            "guidance_scale": 5.0,
+            "height": 8,
+            "width": 8,
+            "max_sequence_length": 48,
+            "output_type": "pt",
+        }
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(torch_device)
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        init_image = PIL.Image.fromarray(np.uint8(image)).convert("RGB")
+
+        inputs["image"] = init_image
+        inputs["strength"] = 0.5
+
+        return inputs
+
+
+class TestFluxImg2ImgModularPipelineFast(FluxImg2ImgModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    def test_float16_inference(self):
+        super().test_float16_inference(8e-2)
+
+
+class TestFluxImg2ImgModularPipelineLoading(FluxImg2ImgModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    def test_save_from_pretrained(self, tmp_path, base_pipe_output):
+        base_pipe = self.get_pipeline().to(torch_device)
+        base_pipe.save_pretrained(str(tmp_path))
+
+        pipe = ModularPipeline.from_pretrained(tmp_path)
+        pipe.load_components(dtype=torch.float32)
+        pipe.to(torch_device)
+        # Re-apply the `vae_scale_factor` override `get_pipeline` makes (see the comment there).
+        pipe.image_processor = VaeImageProcessor(vae_scale_factor=2)
+
+        image = pipe(**self.get_dummy_inputs(), output=self.output_name)
+
+        expected_slice = base_pipe_output[0, -3:, -3:, -1].flatten()
+        image_slice = image[0, -3:, -3:, -1].flatten()
+        assert torch.abs(expected_slice - image_slice).max() < 1e-3
+
+
+class TestFluxImg2ImgModularPipelineWorkflow(FluxImg2ImgModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestFluxImg2ImgModularPipelineMemory(FluxImg2ImgModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
+
+
+FLUX_KONTEXT_WORKFLOWS = {
+    "text2image": [
+        ("text_encoder", "FluxTextEncoderStep"),
+        ("denoise.input", "FluxTextInputStep"),
+        ("denoise.before_denoise.prepare_latents", "FluxPrepareLatentsStep"),
+        ("denoise.before_denoise.set_timesteps", "FluxSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_rope_inputs", "FluxRoPEInputsStep"),
+        ("denoise.denoise", "FluxKontextDenoiseStep"),
+        ("decode", "FluxDecodeStep"),
+    ],
+    "image_conditioned": [
+        ("text_encoder", "FluxTextEncoderStep"),
+        ("vae_encoder.preprocess", "FluxKontextProcessImagesInputStep"),
+        ("vae_encoder.encode", "FluxVaeEncoderStep"),
+        ("denoise.input.set_resolution", "FluxKontextSetResolutionStep"),
+        ("denoise.input.text_inputs", "FluxTextInputStep"),
+        ("denoise.input.additional_inputs", "FluxKontextAdditionalInputsStep"),
+        ("denoise.before_denoise.prepare_latents", "FluxPrepareLatentsStep"),
+        ("denoise.before_denoise.set_timesteps", "FluxSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_rope_inputs", "FluxKontextRoPEInputsStep"),
+        ("denoise.denoise", "FluxKontextDenoiseStep"),
+        ("decode", "FluxDecodeStep"),
+    ],
+}
+
+
+class FluxKontextModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
+    pipeline_class = FluxKontextModularPipeline
+    pipeline_blocks_class = FluxKontextAutoBlocks
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-kontext-pipe"
+
+    params = frozenset(["prompt", "height", "width", "guidance_scale", "image"])
+    batch_params = frozenset(["prompt", "image"])
+    expected_workflow_blocks = FLUX_KONTEXT_WORKFLOWS
+
+    def get_dummy_inputs(self, seed=0):
+        generator = self.get_generator(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 5.0,
+            "height": 8,
+            "width": 8,
+            "max_sequence_length": 48,
+            "output_type": "pt",
+        }
+        image = PIL.Image.new("RGB", (32, 32), 0)
+
+        inputs["image"] = image
+        inputs["max_area"] = inputs["height"] * inputs["width"]
+        inputs["_auto_resize"] = False
+
+        return inputs
+
+
+class TestFluxKontextModularPipelineFast(FluxKontextModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    def test_float16_inference(self):
+        super().test_float16_inference(9e-2)
+
+
+class TestFluxKontextModularPipelineLoading(FluxKontextModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    def test_save_from_pretrained(self, tmp_path, base_pipe_output):
+        base_pipe = self.get_pipeline().to(torch_device)
+        base_pipe.save_pretrained(str(tmp_path))
+
+        pipe = ModularPipeline.from_pretrained(tmp_path)
+        pipe.load_components(dtype=torch.float32)
+        pipe.to(torch_device)
+        pipe.image_processor = VaeImageProcessor(vae_scale_factor=2)
+
+        image = pipe(**self.get_dummy_inputs(), output=self.output_name)
+
+        expected_slice = base_pipe_output[0, -3:, -3:, -1].flatten()
+        image_slice = image[0, -3:, -3:, -1].flatten()
+        assert torch.abs(expected_slice - image_slice).max() < 1e-3
+
+
+class TestFluxKontextModularPipelineWorkflow(FluxKontextModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestFluxKontextModularPipelineMemory(FluxKontextModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass

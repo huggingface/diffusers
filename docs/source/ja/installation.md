@@ -14,10 +14,9 @@ specific language governing permissions and limitations under the License.
 
 お使いのディープラーニングライブラリに合わせてDiffusersをインストールできます。
 
-🤗 DiffusersはPython 3.8+、PyTorch 1.7.0+、Flaxでテストされています。使用するディープラーニングライブラリの以下のインストール手順に従ってください：
+🤗 DiffusersはPython 3.8+、PyTorch 1.7.0+でテストされています。使用するディープラーニングライブラリの以下のインストール手順に従ってください：
 
 - [PyTorch](https://pytorch.org/get-started/locally/)のインストール手順。
-- [Flax](https://flax.readthedocs.io/en/latest/)のインストール手順。
 
 ## pip でインストール
 
@@ -45,11 +44,6 @@ source .env/bin/activate
 pip install diffusers["torch"] transformers
 ```
 </pt>
-<jax>
-```bash
-pip install diffusers["flax"] transformers
-```
-</jax>
 </frameworkcontent>
 
 ## ソースからのインストール
@@ -97,22 +91,14 @@ cd diffusers
 pip install -e ".[torch]"
 ```
 </pt>
-<jax>
-```bash
-pip install -e ".[flax]"
-```
-</jax>
 </frameworkcontent>
 
 これらのコマンドは、リポジトリをクローンしたフォルダと Python のライブラリパスをリンクします。
 Python は通常のライブラリパスに加えて、クローンしたフォルダの中を探すようになります。
 例えば、Python パッケージが通常 `~/anaconda3/envs/main/lib/python3.10/site-packages/` にインストールされている場合、Python はクローンした `~/diffusers/` フォルダも同様に参照します。
 
-<Tip warning={true}>
-
-ライブラリを使い続けたい場合は、`diffusers`フォルダを残しておく必要があります。
-
-</Tip>
+> [!WARNING]
+> ライブラリを使い続けたい場合は、`diffusers`フォルダを残しておく必要があります。
 
 これで、以下のコマンドで簡単にクローンを最新版の🤗 Diffusersにアップデートできます：
 
@@ -126,7 +112,7 @@ Python環境は次の実行時に `main` バージョンの🤗 Diffusersを見�
 ## テレメトリー・ロギングに関するお知らせ
 
 このライブラリは `from_pretrained()` リクエスト中にデータを収集します。
-このデータには Diffusers と PyTorch/Flax のバージョン、要求されたモデルやパイプラインクラスが含まれます。
+このデータには Diffusers と PyTorch のバージョン、要求されたモデルやパイプラインクラスが含まれます。
 また、Hubでホストされている場合は、事前に学習されたチェックポイントへのパスが含まれます。
 この使用データは問題のデバッグや新機能の優先順位付けに役立ちます。
 テレメトリーはHuggingFace Hubからモデルやパイプラインをロードするときのみ送信されます。ローカルでの使用中は収集されません。

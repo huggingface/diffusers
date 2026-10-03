@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ Generic utilities
 
 from collections import OrderedDict
 from dataclasses import fields, is_dataclass
-from typing import Any, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -43,12 +43,8 @@ class BaseOutput(OrderedDict):
     tuple) or strings (like a dictionary) that will ignore the `None` attributes. Otherwise behaves like a regular
     Python dictionary.
 
-    <Tip warning={true}>
-
-    You can't unpack a [`BaseOutput`] directly. Use the [`~utils.BaseOutput.to_tuple`] method to convert it to a tuple
-    first.
-
-    </Tip>
+    > [!WARNING] > You can't unpack a [`BaseOutput`] directly. Use the [`~utils.BaseOutput.to_tuple`] method to convert
+    it to a tuple > first.
     """
 
     def __init_subclass__(cls) -> None:
@@ -131,7 +127,7 @@ class BaseOutput(OrderedDict):
         args = tuple(getattr(self, field.name) for field in fields(self))
         return callable, args, *remaining
 
-    def to_tuple(self) -> Tuple[Any, ...]:
+    def to_tuple(self) -> tuple[Any, ...]:
         """
         Convert self to a tuple containing all the attributes/keys that are not `None`.
         """

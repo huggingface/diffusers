@@ -27,7 +27,7 @@ You can build multiple datasets for every subject and upload them to the 🤗 hu
 Before launching the training script, make sure to select the inpainting the target model, the output directory and the 🤗 datasets.
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-inpainting"
+export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-inpainting"
 export OUTPUT_DIR="path-to-save-model"
 
 export DATASET_1="gzguevara/mr_potato_head_masked"

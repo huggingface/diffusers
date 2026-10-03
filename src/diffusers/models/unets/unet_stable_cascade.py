@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,6 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -27,7 +26,7 @@ from ..attention_processor import Attention
 from ..modeling_utils import ModelMixin
 
 
-# Copied from diffusers.pipelines.wuerstchen.modeling_wuerstchen_common.WuerstchenLayerNorm with WuerstchenLayerNorm -> SDCascadeLayerNorm
+# Copied from diffusers.pipelines.deprecated.wuerstchen.modeling_wuerstchen_common.WuerstchenLayerNorm with WuerstchenLayerNorm -> SDCascadeLayerNorm
 class SDCascadeLayerNorm(nn.LayerNorm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -47,7 +46,7 @@ class SDCascadeTimestepBlock(nn.Module):
         for cname in conds:
             setattr(self, f"mapper_{cname}", nn.Linear(c_timestep, c * 2))
 
-    def forward(self, x, t):
+    def forward(self, x, t) -> torch.Tensor:
         t = t.chunk(len(self.conds) + 1, dim=1)
         a, b = self.mapper(t[0])[:, :, None, None].chunk(2, dim=1)
         for i, c in enumerate(self.conds):
@@ -69,7 +68,7 @@ class SDCascadeResBlock(nn.Module):
             nn.Linear(c * 4, c),
         )
 
-    def forward(self, x, x_skip=None):
+    def forward(self, x, x_skip=None) -> torch.Tensor:
         x_res = x
         x = self.norm(self.depthwise(x))
         if x_skip is not None:
@@ -85,7 +84,7 @@ class GlobalResponseNorm(nn.Module):
         self.gamma = nn.Parameter(torch.zeros(1, 1, 1, dim))
         self.beta = nn.Parameter(torch.zeros(1, 1, 1, dim))
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         agg_norm = torch.norm(x, p=2, dim=(1, 2), keepdim=True)
         stand_div_norm = agg_norm / (agg_norm.mean(dim=-1, keepdim=True) + 1e-6)
         return self.gamma * (x * stand_div_norm) + self.beta + x
@@ -100,7 +99,7 @@ class SDCascadeAttnBlock(nn.Module):
         self.attention = Attention(query_dim=c, heads=nhead, dim_head=c // nhead, dropout=dropout, bias=True)
         self.kv_mapper = nn.Sequential(nn.SiLU(), nn.Linear(c_cond, c))
 
-    def forward(self, x, kv):
+    def forward(self, x, kv) -> torch.Tensor:
         kv = self.kv_mapper(kv)
         norm_x = self.norm(x)
         if self.self_attn:
@@ -123,7 +122,7 @@ class UpDownBlock2d(nn.Module):
         mapping = nn.Conv2d(in_channels, out_channels, kernel_size=1)
         self.blocks = nn.ModuleList([interpolation, mapping] if mode == "up" else [mapping, interpolation])
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         for block in self.blocks:
             x = block(x)
         return x
@@ -145,30 +144,30 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         timestep_ratio_embedding_dim: int = 64,
         patch_size: int = 1,
         conditioning_dim: int = 2048,
-        block_out_channels: Tuple[int] = (2048, 2048),
-        num_attention_heads: Tuple[int] = (32, 32),
-        down_num_layers_per_block: Tuple[int] = (8, 24),
-        up_num_layers_per_block: Tuple[int] = (24, 8),
-        down_blocks_repeat_mappers: Optional[Tuple[int]] = (
+        block_out_channels: tuple[int, ...] = (2048, 2048),
+        num_attention_heads: tuple[int, ...] = (32, 32),
+        down_num_layers_per_block: tuple[int, ...] = (8, 24),
+        up_num_layers_per_block: tuple[int, ...] = (24, 8),
+        down_blocks_repeat_mappers: tuple[int] | None = (
             1,
             1,
         ),
-        up_blocks_repeat_mappers: Optional[Tuple[int]] = (1, 1),
-        block_types_per_layer: Tuple[Tuple[str]] = (
+        up_blocks_repeat_mappers: tuple[int] | None = (1, 1),
+        block_types_per_layer: tuple[tuple[str]] = (
             ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"),
             ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"),
         ),
-        clip_text_in_channels: Optional[int] = None,
+        clip_text_in_channels: int | None = None,
         clip_text_pooled_in_channels=1280,
-        clip_image_in_channels: Optional[int] = None,
+        clip_image_in_channels: int | None = None,
         clip_seq=4,
-        effnet_in_channels: Optional[int] = None,
-        pixel_mapper_in_channels: Optional[int] = None,
+        effnet_in_channels: int | None = None,
+        pixel_mapper_in_channels: int | None = None,
         kernel_size=3,
-        dropout: Union[float, Tuple[float]] = (0.1, 0.1),
-        self_attn: Union[bool, Tuple[bool]] = True,
-        timestep_conditioning_type: Tuple[str] = ("sca", "crp"),
-        switch_level: Optional[Tuple[bool]] = None,
+        dropout: float | tuple[float] = (0.1, 0.1),
+        self_attn: bool | tuple[bool] = True,
+        timestep_conditioning_type: tuple[str, ...] = ("sca", "crp"),
+        switch_level: tuple[bool] | None = None,
     ):
         """
 
@@ -183,20 +182,20 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 Patch size to use for pixel unshuffling layer
             conditioning_dim (`int`, defaults to 2048):
                 Dimension of the image and text conditional embedding.
-            block_out_channels (Tuple[int], defaults to (2048, 2048)):
-                Tuple of output channels for each block.
-            num_attention_heads (Tuple[int], defaults to (32, 32)):
+            block_out_channels (tuple[int], defaults to (2048, 2048)):
+                tuple of output channels for each block.
+            num_attention_heads (tuple[int], defaults to (32, 32)):
                 Number of attention heads in each attention block. Set to -1 to if block types in a layer do not have
                 attention.
-            down_num_layers_per_block (Tuple[int], defaults to [8, 24]):
+            down_num_layers_per_block (tuple[int], defaults to [8, 24]):
                 Number of layers in each down block.
-            up_num_layers_per_block (Tuple[int], defaults to [24, 8]):
+            up_num_layers_per_block (tuple[int], defaults to [24, 8]):
                 Number of layers in each up block.
-            down_blocks_repeat_mappers (Tuple[int], optional, defaults to [1, 1]):
+            down_blocks_repeat_mappers (tuple[int], optional, defaults to [1, 1]):
                 Number of 1x1 Convolutional layers to repeat in each down block.
-            up_blocks_repeat_mappers (Tuple[int], optional, defaults to [1, 1]):
+            up_blocks_repeat_mappers (tuple[int], optional, defaults to [1, 1]):
                 Number of 1x1 Convolutional layers to repeat in each up block.
-            block_types_per_layer (Tuple[Tuple[str]], optional,
+            block_types_per_layer (tuple[tuple[str]], optional,
                 defaults to (
                     ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"), ("SDCascadeResBlock",
                     "SDCascadeTimestepBlock", "SDCascadeAttnBlock")
@@ -214,14 +213,14 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
                 Number of input channels for pixel mapper conditioning.
             kernel_size (`int`, *optional*, defaults to 3):
                 Kernel size to use in the block convolutional layers.
-            dropout (Tuple[float], *optional*, defaults to (0.1, 0.1)):
+            dropout (tuple[float], *optional*, defaults to (0.1, 0.1)):
                 Dropout to use per block.
-            self_attn (Union[bool, Tuple[bool]]):
-                Tuple of booleans that determine whether to use self attention in a block or not.
-            timestep_conditioning_type (Tuple[str], defaults to ("sca", "crp")):
+            self_attn (bool | tuple[bool]):
+                tuple of booleans that determine whether to use self attention in a block or not.
+            timestep_conditioning_type (tuple[str], defaults to ("sca", "crp")):
                 Timestep conditioning type.
-            switch_level (Optional[Tuple[bool]], *optional*, defaults to `None`):
-                Tuple that indicates whether upsampling or downsampling should be applied in a block
+            switch_level (tuple[bool] | None, *optional*, defaults to `None`):
+                tuple that indicates whether upsampling or downsampling should be applied in a block
         """
 
         super().__init__()
@@ -548,7 +547,33 @@ class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         sca=None,
         crp=None,
         return_dict=True,
-    ):
+    ) -> StableCascadeUNetOutput | tuple[torch.Tensor]:
+        r"""
+        Args:
+            sample (`torch.Tensor`): The noisy input sample.
+            timestep_ratio (`torch.Tensor`):
+                Timestep ratio used to compute the timestep embedding.
+            clip_text_pooled (`torch.Tensor`):
+                Pooled CLIP text embeddings.
+            clip_text (`torch.Tensor`, *optional*):
+                Sequence-level CLIP text embeddings.
+            clip_img (`torch.Tensor`, *optional*):
+                CLIP image embeddings.
+            effnet (`torch.Tensor`, *optional*):
+                EfficientNet feature map used as additional conditioning.
+            pixels (`torch.Tensor`, *optional*):
+                Pixel-level conditioning tensor. If `None`, a tensor of zeros is used.
+            sca (`torch.Tensor`, *optional*):
+                Optional `sca` conditioning value used to build the timestep embedding.
+            crp (`torch.Tensor`, *optional*):
+                Optional `crp` conditioning value used to build the timestep embedding.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`StableCascadeUNetOutput`] instead of a plain tuple.
+
+        Returns:
+            If `return_dict` is True, a [`~models.unets.unet_stable_cascade.StableCascadeUNetOutput`] is returned,
+            otherwise a `tuple` where the first element is the sample tensor.
+        """
         if pixels is None:
             pixels = sample.new_zeros(sample.size(0), 3, 8, 8)
 

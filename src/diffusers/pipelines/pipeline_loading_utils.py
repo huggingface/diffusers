@@ -17,42 +17,40 @@ import os
 import re
 import warnings
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any
 
-import requests
 import torch
-from huggingface_hub import DDUFEntry, ModelCard, model_info, snapshot_download
-from huggingface_hub.utils import OfflineModeIsEnabled, validate_hf_hub_args
+from huggingface_hub import ModelCard, model_info
+from huggingface_hub.utils import validate_hf_hub_args
 from packaging import version
-from requests.exceptions import HTTPError
 
 from .. import __version__
 from ..utils import (
-    FLAX_WEIGHTS_NAME,
+    FLASHPACK_WEIGHTS_NAME,
     ONNX_EXTERNAL_WEIGHTS_NAME,
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
+    _maybe_remap_transformers_class,
     deprecate,
     get_class_from_dynamic_module,
     is_accelerate_available,
     is_peft_available,
+    is_sdnq_available,
     is_transformers_available,
     is_transformers_version,
     logging,
 )
+from ..utils.constants import DIFFUSERS_SDNQ_TRANSFORMERS
 from ..utils.torch_utils import is_compiled_module
-from .transformers_loading_utils import _load_tokenizer_from_dduf, _load_transformers_model_from_dduf
 
 
 if is_transformers_available():
     import transformers
-    from transformers import PreTrainedModel, PreTrainedTokenizerBase
+    from transformers import PreTrainedModel
     from transformers.utils import SAFE_WEIGHTS_NAME as TRANSFORMERS_SAFE_WEIGHTS_NAME
     from transformers.utils import WEIGHTS_NAME as TRANSFORMERS_WEIGHTS_NAME
 
-    if is_transformers_version("<=", "4.56.2"):
-        from transformers.utils import FLAX_WEIGHTS_NAME as TRANSFORMERS_FLAX_WEIGHTS_NAME
 
 if is_accelerate_available():
     import accelerate
@@ -75,6 +73,7 @@ LOADABLE_CLASSES = {
         "SchedulerMixin": ["save_pretrained", "from_pretrained"],
         "DiffusionPipeline": ["save_pretrained", "from_pretrained"],
         "OnnxRuntimeModel": ["save_pretrained", "from_pretrained"],
+        "BaseGuidance": ["save_pretrained", "from_pretrained"],
     },
     "transformers": {
         "PreTrainedTokenizer": ["save_pretrained", "from_pretrained"],
@@ -108,15 +107,12 @@ def is_safetensors_compatible(filenames, passed_components=None, folder_names=No
     weight_names = [
         WEIGHTS_NAME,
         SAFETENSORS_WEIGHTS_NAME,
-        FLAX_WEIGHTS_NAME,
         ONNX_WEIGHTS_NAME,
         ONNX_EXTERNAL_WEIGHTS_NAME,
     ]
 
     if is_transformers_available():
         weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME]
-        if is_transformers_version("<=", "4.56.2"):
-            weight_names += [TRANSFORMERS_FLAX_WEIGHTS_NAME]
 
     # model_pytorch, diffusion_model_pytorch, ...
     weight_prefixes = [w.split(".")[0] for w in weight_names]
@@ -133,6 +129,8 @@ def is_safetensors_compatible(filenames, passed_components=None, folder_names=No
     )
 
     passed_components = passed_components or []
+    # only weight files matter for safetensors compatibility
+    filenames = filter_model_files(filenames)
     if folder_names:
         filenames = {f for f in filenames if os.path.split(f)[0] in folder_names}
 
@@ -189,15 +187,13 @@ def filter_model_files(filenames):
     weight_names = [
         WEIGHTS_NAME,
         SAFETENSORS_WEIGHTS_NAME,
-        FLAX_WEIGHTS_NAME,
         ONNX_WEIGHTS_NAME,
         ONNX_EXTERNAL_WEIGHTS_NAME,
+        FLASHPACK_WEIGHTS_NAME,
     ]
 
     if is_transformers_available():
         weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME]
-        if is_transformers_version("<=", "4.56.2"):
-            weight_names += [TRANSFORMERS_FLAX_WEIGHTS_NAME]
 
     allowed_extensions = [wn.split(".")[-1] for wn in weight_names]
 
@@ -208,19 +204,16 @@ def filter_with_regex(filenames, pattern_re):
     return {f for f in filenames if pattern_re.match(f.split("/")[-1]) is not None}
 
 
-def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -> Union[List[os.PathLike], str]:
+def variant_compatible_siblings(filenames, variant=None, ignore_patterns=None) -> list[os.PathLike] | str:
     weight_names = [
         WEIGHTS_NAME,
         SAFETENSORS_WEIGHTS_NAME,
-        FLAX_WEIGHTS_NAME,
         ONNX_WEIGHTS_NAME,
         ONNX_EXTERNAL_WEIGHTS_NAME,
     ]
 
     if is_transformers_available():
         weight_names += [TRANSFORMERS_WEIGHTS_NAME, TRANSFORMERS_SAFE_WEIGHTS_NAME]
-        if is_transformers_version("<=", "4.56.2"):
-            weight_names += [TRANSFORMERS_FLAX_WEIGHTS_NAME]
 
     # model_pytorch, diffusion_model_pytorch, ...
     weight_prefixes = [w.split(".")[0] for w in weight_names]
@@ -356,6 +349,11 @@ def maybe_raise_or_warn(
     """Simple helper method to raise or warn in case incorrect module has been passed"""
     if not is_pipeline_module:
         library = importlib.import_module(library_name)
+
+        # Handle deprecated Transformers classes
+        if library_name == "transformers":
+            class_name = _maybe_remap_transformers_class(class_name) or class_name
+
         class_obj = getattr(library, class_name)
         class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
 
@@ -390,16 +388,31 @@ def simple_get_class_obj(library_name, class_name):
         class_obj = getattr(pipeline_module, class_name)
     else:
         library = importlib.import_module(library_name)
+
+        # Handle deprecated Transformers classes
+        if library_name == "transformers":
+            class_name = _maybe_remap_transformers_class(class_name) or class_name
+
         class_obj = getattr(library, class_name)
 
     return class_obj
 
 
 def get_class_obj_and_candidates(
-    library_name, class_name, importable_classes, pipelines, is_pipeline_module, component_name=None, cache_dir=None
+    library_name,
+    class_name,
+    importable_classes,
+    pipelines,
+    is_pipeline_module,
+    component_name=None,
+    cache_dir=None,
+    trust_remote_code: bool = False,
 ):
     """Simple helper method to retrieve class object of module as well as potential parent class objects"""
     component_folder = os.path.join(cache_dir, component_name) if component_name and cache_dir else None
+
+    if class_name.startswith("FlashPack"):
+        class_name = class_name.removeprefix("FlashPack")
 
     if is_pipeline_module:
         pipeline_module = getattr(pipelines, library_name)
@@ -409,12 +422,19 @@ def get_class_obj_and_candidates(
     elif component_folder and os.path.isfile(os.path.join(component_folder, library_name + ".py")):
         # load custom component
         class_obj = get_class_from_dynamic_module(
-            component_folder, module_file=library_name + ".py", class_name=class_name
+            component_folder,
+            module_file=library_name + ".py",
+            class_name=class_name,
+            trust_remote_code=trust_remote_code,
         )
         class_candidates = dict.fromkeys(importable_classes.keys(), class_obj)
     else:
         # else we just import it from the library.
         library = importlib.import_module(library_name)
+
+        # Handle deprecated Transformers classes
+        if library_name == "transformers":
+            class_name = _maybe_remap_transformers_class(class_name) or class_name
 
         class_obj = getattr(library, class_name)
         class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
@@ -429,6 +449,7 @@ def _get_custom_pipeline_class(
     class_name=None,
     cache_dir=None,
     revision=None,
+    trust_remote_code: bool = False,
 ):
     if custom_pipeline.endswith(".py"):
         path = Path(custom_pipeline)
@@ -452,6 +473,7 @@ def _get_custom_pipeline_class(
         class_name=class_name,
         cache_dir=cache_dir,
         revision=revision,
+        trust_remote_code=trust_remote_code,
     )
 
 
@@ -465,6 +487,7 @@ def _get_pipeline_class(
     class_name=None,
     cache_dir=None,
     revision=None,
+    trust_remote_code: bool = False,
 ):
     if custom_pipeline is not None:
         return _get_custom_pipeline_class(
@@ -474,6 +497,7 @@ def _get_pipeline_class(
             class_name=class_name,
             cache_dir=cache_dir,
             revision=revision,
+            trust_remote_code=trust_remote_code,
         )
 
     if class_obj.__name__ != "DiffusionPipeline" and class_obj.__name__ != "ModularPipeline":
@@ -485,8 +509,6 @@ def _get_pipeline_class(
         raise ValueError(
             "The class name could not be found in the configuration file. Please make sure to pass the correct `class_name`."
         )
-
-    class_name = class_name[4:] if class_name.startswith("Flax") else class_name
 
     pipeline_cls = getattr(diffusers_module, class_name)
 
@@ -509,12 +531,12 @@ def _get_pipeline_class(
 def _load_empty_model(
     library_name: str,
     class_name: str,
-    importable_classes: List[Any],
+    importable_classes: list[Any],
     pipelines: Any,
     is_pipeline_module: bool,
     name: str,
-    torch_dtype: Union[str, torch.dtype],
-    cached_folder: Union[str, os.PathLike],
+    dtype: str | torch.dtype,
+    cached_folder: str | os.PathLike,
     **kwargs,
 ):
     # retrieve class objects.
@@ -586,12 +608,12 @@ def _load_empty_model(
             model = class_obj(config)
 
     if model is not None:
-        model = model.to(dtype=torch_dtype)
+        model = model.to(dtype=dtype)
     return model
 
 
 def _assign_components_to_devices(
-    module_sizes: Dict[str, float], device_memory: Dict[str, float], device_mapping_strategy: str = "balanced"
+    module_sizes: dict[str, float], device_memory: dict[str, float], device_mapping_strategy: str = "balanced"
 ):
     device_ids = list(device_memory.keys())
     device_cycle = device_ids + device_ids[::-1]
@@ -627,14 +649,11 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
     # To avoid circular import problem.
     from diffusers import pipelines
 
-    torch_dtype = kwargs.get("torch_dtype", torch.float32)
+    dtype = kwargs.get("dtype", torch.float32)
 
     # Load each module in the pipeline on a meta device so that we can derive the device map.
     init_empty_modules = {}
     for name, (library_name, class_name) in init_dict.items():
-        if class_name.startswith("Flax"):
-            raise ValueError("Flax pipelines are not supported with `device_map`.")
-
         # Define all importable classes
         is_pipeline_module = hasattr(pipelines, library_name)
         importable_classes = ALL_IMPORTABLE_CLASSES
@@ -658,9 +677,7 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
 
         else:
             sub_model_dtype = (
-                torch_dtype.get(name, torch_dtype.get("default", torch.float32))
-                if isinstance(torch_dtype, dict)
-                else torch_dtype
+                dtype.get(name, dtype.get("default", torch.float32)) if isinstance(dtype, dict) else dtype
             )
             loaded_sub_model = _load_empty_model(
                 library_name=library_name,
@@ -670,7 +687,7 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
                 is_pipeline_module=is_pipeline_module,
                 pipeline_class=pipeline_class,
                 name=name,
-                torch_dtype=sub_model_dtype,
+                dtype=sub_model_dtype,
                 cached_folder=kwargs.get("cached_folder", None),
                 force_download=kwargs.get("force_download", None),
                 proxies=kwargs.get("proxies", None),
@@ -688,9 +705,7 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
     module_sizes = {
         module_name: compute_module_sizes(
             module,
-            dtype=torch_dtype.get(module_name, torch_dtype.get("default", torch.float32))
-            if isinstance(torch_dtype, dict)
-            else torch_dtype,
+            dtype=dtype.get(module_name, dtype.get("default", torch.float32)) if isinstance(dtype, dict) else dtype,
         )[""]
         for module_name, module in init_empty_modules.items()
         if isinstance(module, torch.nn.Module)
@@ -722,27 +737,28 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
 def load_sub_model(
     library_name: str,
     class_name: str,
-    importable_classes: List[Any],
+    importable_classes: list[Any],
     pipelines: Any,
     is_pipeline_module: bool,
     pipeline_class: Any,
-    torch_dtype: torch.dtype,
+    dtype: torch.dtype,
     provider: Any,
     sess_options: Any,
-    device_map: Optional[Union[Dict[str, torch.device], str]],
-    max_memory: Optional[Dict[Union[int, str], Union[int, str]]],
-    offload_folder: Optional[Union[str, os.PathLike]],
+    device_map: dict[str, torch.device] | str | None,
+    max_memory: dict[int | str, int | str] | None,
+    offload_folder: str | os.PathLike | None,
     offload_state_dict: bool,
-    model_variants: Dict[str, str],
+    model_variants: dict[str, str],
     name: str,
-    from_flax: bool,
     variant: str,
     low_cpu_mem_usage: bool,
-    cached_folder: Union[str, os.PathLike],
+    cached_folder: str | os.PathLike,
     use_safetensors: bool,
-    dduf_entries: Optional[Dict[str, DDUFEntry]],
     provider_options: Any,
-    quantization_config: Optional[Any] = None,
+    disable_mmap: bool,
+    quantization_config: Any | None = None,
+    use_flashpack: bool = False,
+    trust_remote_code: bool = False,
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
     from ..quantizers import PipelineQuantizationConfig
@@ -757,6 +773,7 @@ def load_sub_model(
         is_pipeline_module,
         component_name=name,
         cache_dir=cached_folder,
+        trust_remote_code=trust_remote_code,
     )
 
     load_method_name = None
@@ -780,17 +797,11 @@ def load_sub_model(
             f" any of the loading methods defined in {ALL_IMPORTABLE_CLASSES}."
         )
 
-    load_method = _get_load_method(class_obj, load_method_name, is_dduf=dduf_entries is not None)
+    load_method = getattr(class_obj, load_method_name)
 
     # add kwargs to loading method
     diffusers_module = importlib.import_module(__name__.split(".")[0])
     loading_kwargs = {}
-    if issubclass(class_obj, torch.nn.Module):
-        loading_kwargs["torch_dtype"] = torch_dtype
-    if issubclass(class_obj, diffusers_module.OnnxRuntimeModel):
-        loading_kwargs["provider"] = provider
-        loading_kwargs["sess_options"] = sess_options
-        loading_kwargs["provider_options"] = provider_options
 
     is_diffusers_model = issubclass(class_obj, diffusers_module.ModelMixin)
 
@@ -805,6 +816,17 @@ def load_sub_model(
         and transformers_version >= version.parse("4.20.0")
     )
 
+    # For transformers models >= 4.56.0, use 'dtype' instead of 'torch_dtype' to avoid deprecation warnings
+    if issubclass(class_obj, torch.nn.Module):
+        if is_transformers_model and transformers_version >= version.parse("4.56.0"):
+            loading_kwargs["dtype"] = dtype
+        else:
+            loading_kwargs["torch_dtype"] = dtype
+    if issubclass(class_obj, diffusers_module.OnnxRuntimeModel):
+        loading_kwargs["provider"] = provider
+        loading_kwargs["sess_options"] = sess_options
+        loading_kwargs["provider_options"] = provider_options
+
     # When loading a transformers model, if the device_map is None, the weights will be initialized as opposed to diffusers.
     # To make default loading faster we set the `low_cpu_mem_usage=low_cpu_mem_usage` flag which is `True` by default.
     # This makes sure that the weights won't be initialized which significantly speeds up loading.
@@ -816,8 +838,8 @@ def load_sub_model(
         loading_kwargs["variant"] = model_variants.pop(name, None)
         loading_kwargs["use_safetensors"] = use_safetensors
 
-        if from_flax:
-            loading_kwargs["from_flax"] = True
+        if is_diffusers_model:
+            loading_kwargs["use_flashpack"] = use_flashpack
 
         # the following can be deleted once the minimum required `transformers` version
         # is higher than 4.27
@@ -832,11 +854,13 @@ def load_sub_model(
         elif is_transformers_model and loading_kwargs["variant"] is None:
             loading_kwargs.pop("variant")
 
-        # if `from_flax` and model is transformer model, can currently not load with `low_cpu_mem_usage`
-        if not (from_flax and is_transformers_model):
-            loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
-        else:
-            loading_kwargs["low_cpu_mem_usage"] = False
+        loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
+
+    if is_diffusers_model:
+        loading_kwargs["disable_mmap"] = disable_mmap
+
+    if is_transformers_model and is_transformers_version(">=", "4.57.0"):
+        loading_kwargs.pop("offload_state_dict")
 
     if (
         quantization_config is not None
@@ -849,20 +873,26 @@ def load_sub_model(
         if model_quant_config is not None:
             loading_kwargs["quantization_config"] = model_quant_config
 
+    if is_transformers_model and DIFFUSERS_SDNQ_TRANSFORMERS and is_sdnq_available():
+        # Opt-in via DIFFUSERS_SDNQ_TRANSFORMERS: import sdnq so it registers with transformers.
+        from ..quantizers.sdnq.sdnq_quantizer import _ensure_sdnq_registered
+
+        _ensure_sdnq_registered()
+
     # check if the module is in a subdirectory
-    if dduf_entries:
-        loading_kwargs["dduf_entries"] = dduf_entries
-        loaded_sub_model = load_method(name, **loading_kwargs)
-    elif os.path.isdir(os.path.join(cached_folder, name)):
+    if os.path.isdir(os.path.join(cached_folder, name)):
         loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
     else:
         # else load from the root directory
         loaded_sub_model = load_method(cached_folder, **loading_kwargs)
 
-    if isinstance(loaded_sub_model, torch.nn.Module) and isinstance(device_map, dict):
+    if isinstance(loaded_sub_model, torch.nn.Module) and isinstance(device_map, dict) and not use_flashpack:
         # remove hooks
         remove_hook_from_module(loaded_sub_model, recurse=True)
         needs_offloading_to_cpu = device_map[""] == "cpu"
+        skip_keys = None
+        if hasattr(loaded_sub_model, "_skip_keys") and loaded_sub_model._skip_keys is not None:
+            skip_keys = loaded_sub_model._skip_keys
 
         if needs_offloading_to_cpu:
             dispatch_model(
@@ -871,27 +901,12 @@ def load_sub_model(
                 device_map=device_map,
                 force_hooks=True,
                 main_device=0,
+                skip_keys=skip_keys,
             )
         else:
-            dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True)
+            dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True, skip_keys=skip_keys)
 
     return loaded_sub_model
-
-
-def _get_load_method(class_obj: object, load_method_name: str, is_dduf: bool) -> Callable:
-    """
-    Return the method to load the sub model.
-
-    In practice, this method will return the `"from_pretrained"` (or `load_method_name`) method of the class object
-    except if loading from a DDUF checkpoint. In that case, transformers models and tokenizers have a specific loading
-    method that we need to use.
-    """
-    if is_dduf:
-        if issubclass(class_obj, PreTrainedTokenizerBase):
-            return lambda *args, **kwargs: _load_tokenizer_from_dduf(class_obj, *args, **kwargs)
-        if issubclass(class_obj, PreTrainedModel):
-            return lambda *args, **kwargs: _load_transformers_model_from_dduf(class_obj, *args, **kwargs)
-    return getattr(class_obj, load_method_name)
 
 
 def _fetch_class_library_tuple(module):
@@ -1018,10 +1033,10 @@ def _update_init_kwargs_with_connected_pipeline(
 
 def _get_custom_components_and_folders(
     pretrained_model_name: str,
-    config_dict: Dict[str, Any],
-    filenames: Optional[List[str]] = None,
-    variant_filenames: Optional[List[str]] = None,
-    variant: Optional[str] = None,
+    config_dict: dict[str, Any],
+    filenames: list[str] | None = None,
+    variant_filenames: list[str] | None = None,
+    variant: str | None = None,
 ):
     config_dict = config_dict.copy()
 
@@ -1054,15 +1069,15 @@ def _get_custom_components_and_folders(
 
 def _get_ignore_patterns(
     passed_components,
-    model_folder_names: List[str],
-    model_filenames: List[str],
+    model_folder_names: list[str],
+    model_filenames: list[str],
     use_safetensors: bool,
-    from_flax: bool,
     allow_pickle: bool,
     use_onnx: bool,
     is_onnx: bool,
-    variant: Optional[str] = None,
-) -> List[str]:
+    use_flashpack: bool,
+    variant: str | None = None,
+) -> list[str]:
     if (
         use_safetensors
         and not allow_pickle
@@ -1074,10 +1089,7 @@ def _get_ignore_patterns(
             f"Could not find the necessary `safetensors` weights in {model_filenames} (variant={variant})"
         )
 
-    if from_flax:
-        ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb"]
-
-    elif use_safetensors and is_safetensors_compatible(
+    if use_safetensors and is_safetensors_compatible(
         model_filenames, passed_components=passed_components, folder_names=model_folder_names, variant=variant
     ):
         ignore_patterns = ["*.bin", "*.msgpack"]
@@ -1085,6 +1097,9 @@ def _get_ignore_patterns(
         use_onnx = use_onnx if use_onnx is not None else is_onnx
         if not use_onnx:
             ignore_patterns += ["*.onnx", "*.pb"]
+
+    elif use_flashpack:
+        ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb", "*.msgpack"]
 
     else:
         ignore_patterns = ["*.safetensors", "*.msgpack"]
@@ -1094,73 +1109,6 @@ def _get_ignore_patterns(
             ignore_patterns += ["*.onnx", "*.pb"]
 
     return ignore_patterns
-
-
-def _download_dduf_file(
-    pretrained_model_name: str,
-    dduf_file: str,
-    pipeline_class_name: str,
-    cache_dir: str,
-    proxies: str,
-    local_files_only: bool,
-    token: str,
-    revision: str,
-):
-    model_info_call_error = None
-    if not local_files_only:
-        try:
-            info = model_info(pretrained_model_name, token=token, revision=revision)
-        except (HTTPError, OfflineModeIsEnabled, requests.ConnectionError) as e:
-            logger.warning(f"Couldn't connect to the Hub: {e}.\nWill try to load from local cache.")
-            local_files_only = True
-            model_info_call_error = e  # save error to reraise it if model is not cached locally
-
-    if (
-        not local_files_only
-        and dduf_file is not None
-        and dduf_file not in (sibling.rfilename for sibling in info.siblings)
-    ):
-        raise ValueError(f"Requested {dduf_file} file is not available in {pretrained_model_name}.")
-
-    try:
-        user_agent = {"pipeline_class": pipeline_class_name, "dduf": True}
-        cached_folder = snapshot_download(
-            pretrained_model_name,
-            cache_dir=cache_dir,
-            proxies=proxies,
-            local_files_only=local_files_only,
-            token=token,
-            revision=revision,
-            allow_patterns=[dduf_file],
-            user_agent=user_agent,
-        )
-        return cached_folder
-    except FileNotFoundError:
-        # Means we tried to load pipeline with `local_files_only=True` but the files have not been found in local cache.
-        # This can happen in two cases:
-        # 1. If the user passed `local_files_only=True`                    => we raise the error directly
-        # 2. If we forced `local_files_only=True` when `model_info` failed => we raise the initial error
-        if model_info_call_error is None:
-            # 1. user passed `local_files_only=True`
-            raise
-        else:
-            # 2. we forced `local_files_only=True` when `model_info` failed
-            raise EnvironmentError(
-                f"Cannot load model {pretrained_model_name}: model is not cached locally and an error occurred"
-                " while trying to fetch metadata from the Hub. Please check out the root cause in the stacktrace"
-                " above."
-            ) from model_info_call_error
-
-
-def _maybe_raise_error_for_incorrect_transformers(config_dict):
-    has_transformers_component = False
-    for k in config_dict:
-        if isinstance(config_dict[k], list):
-            has_transformers_component = config_dict[k][0] == "transformers"
-            if has_transformers_component:
-                break
-    if has_transformers_component and not is_transformers_version(">", "4.47.1"):
-        raise ValueError("Please upgrade your `transformers` installation to the latest version to use DDUF.")
 
 
 def _maybe_warn_for_wrong_component_in_quant_config(pipe_init_dict, quant_config):

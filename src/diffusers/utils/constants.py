@@ -21,7 +21,7 @@ from ..dependency_versions_check import dep_version_check
 from .import_utils import ENV_VARS_TRUE_VALUES, is_peft_available, is_transformers_available
 
 
-MIN_PEFT_VERSION = "0.6.0"
+MIN_PEFT_VERSION = "0.17.0"
 MIN_TRANSFORMERS_VERSION = "4.34.0"
 _CHECK_PEFT = os.environ.get("_CHECK_PEFT", "1") in ENV_VARS_TRUE_VALUES
 
@@ -29,29 +29,46 @@ _CHECK_PEFT = os.environ.get("_CHECK_PEFT", "1") in ENV_VARS_TRUE_VALUES
 CONFIG_NAME = "config.json"
 WEIGHTS_NAME = "diffusion_pytorch_model.bin"
 WEIGHTS_INDEX_NAME = "diffusion_pytorch_model.bin.index.json"
-FLAX_WEIGHTS_NAME = "diffusion_flax_model.msgpack"
 ONNX_WEIGHTS_NAME = "model.onnx"
 SAFETENSORS_WEIGHTS_NAME = "diffusion_pytorch_model.safetensors"
 SAFE_WEIGHTS_INDEX_NAME = "diffusion_pytorch_model.safetensors.index.json"
 SAFETENSORS_FILE_EXTENSION = "safetensors"
+FLASHPACK_WEIGHTS_NAME = "model.flashpack"
+FLASHPACK_FILE_EXTENSION = "flashpack"
 GGUF_FILE_EXTENSION = "gguf"
 ONNX_EXTERNAL_WEIGHTS_NAME = "weights.pb"
+# Auxiliary (non-weight) files a transformers component saves next to its weights, or as its only files for tokenizers
+# and processors. `DiffusionPipeline.download` uses them to fetch components hosted at the root of a flat,
+# transformers-style repo, and `ModularPipeline` to tell that such a component is present in a local directory.
+TRANSFORMERS_COMPONENT_AUX_FILES = [
+    "chat_template.jinja",
+    "generation_config.json",
+    "preprocessor_config.json",
+    "processor_config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+]
 HUGGINGFACE_CO_RESOLVE_ENDPOINT = os.environ.get("HF_ENDPOINT", "https://huggingface.co")
 DIFFUSERS_DYNAMIC_MODULE_NAME = "diffusers_modules"
 HF_MODULES_CACHE = os.getenv("HF_MODULES_CACHE", os.path.join(HF_HOME, "modules"))
 DEPRECATED_REVISION_ARGS = ["fp16", "non-ema"]
 DIFFUSERS_REQUEST_TIMEOUT = 60
 DIFFUSERS_ATTN_BACKEND = os.getenv("DIFFUSERS_ATTN_BACKEND", "native")
-DIFFUSERS_ATTN_CHECKS = os.getenv("DIFFUSERS_ATTN_CHECKS", "0") in ENV_VARS_TRUE_VALUES
+DIFFUSERS_ATTN_CHECKS = os.getenv("DIFFUSERS_ATTN_CHECKS", "0").upper() in ENV_VARS_TRUE_VALUES
 DEFAULT_HF_PARALLEL_LOADING_WORKERS = 8
 HF_ENABLE_PARALLEL_LOADING = os.environ.get("HF_ENABLE_PARALLEL_LOADING", "").upper() in ENV_VARS_TRUE_VALUES
-DIFFUSERS_DISABLE_REMOTE_CODE = os.getenv("DIFFUSERS_DISABLE_REMOTE_CODE", "false").lower() in ENV_VARS_TRUE_VALUES
-DIFFUSERS_ENABLE_HUB_KERNELS = os.environ.get("DIFFUSERS_ENABLE_HUB_KERNELS", "").upper() in ENV_VARS_TRUE_VALUES
+DIFFUSERS_DISABLE_REMOTE_CODE = os.getenv("DIFFUSERS_DISABLE_REMOTE_CODE", "false").upper() in ENV_VARS_TRUE_VALUES
+DIFFUSERS_SDNQ_TRANSFORMERS = os.getenv("DIFFUSERS_SDNQ_TRANSFORMERS", "false").upper() in ENV_VARS_TRUE_VALUES
+# Kernels published by untrusted publishers execute remote code, so a globally disabled remote code wins over the opt-in.
+DIFFUSERS_TRUST_REMOTE_KERNELS = (
+    os.getenv("DIFFUSERS_TRUST_REMOTE_KERNELS", "false").upper() in ENV_VARS_TRUE_VALUES
+    and not DIFFUSERS_DISABLE_REMOTE_CODE
+)
 
 # Below should be `True` if the current version of `peft` and `transformers` are compatible with
 # PEFT backend. Will automatically fall back to PEFT backend if the correct versions of the libraries are
 # available.
-# For PEFT it is has to be greater than or equal to 0.6.0 and for transformers it has to be greater than or equal to 4.34.0.
+# For PEFT it has to be at least `MIN_PEFT_VERSION` and for transformers at least `MIN_TRANSFORMERS_VERSION`.
 _required_peft_version = is_peft_available() and version.parse(
     version.parse(importlib.metadata.version("peft")).base_version
 ) >= version.parse(MIN_PEFT_VERSION)
@@ -74,3 +91,11 @@ DECODE_ENDPOINT_HUNYUAN_VIDEO = "https://o7ywnmrahorts457.us-east-1.aws.endpoint
 ENCODE_ENDPOINT_SD_V1 = "https://qc6479g0aac6qwy9.us-east-1.aws.endpoints.huggingface.cloud/"
 ENCODE_ENDPOINT_SD_XL = "https://xjqqhmyn62rog84g.us-east-1.aws.endpoints.huggingface.cloud/"
 ENCODE_ENDPOINT_FLUX = "https://ptccx55jz97f9zgo.us-east-1.aws.endpoints.huggingface.cloud/"
+
+
+DIFFUSERS_LOAD_ID_FIELDS = [
+    "pretrained_model_name_or_path",
+    "subfolder",
+    "variant",
+    "revision",
+]

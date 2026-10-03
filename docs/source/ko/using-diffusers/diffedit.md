@@ -46,14 +46,14 @@ from diffusers import DDIMScheduler, DDIMInverseScheduler, StableDiffusionDiffEd
 
 pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-1",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     safety_checker=None,
     use_safetensors=True,
 )
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
 pipeline.enable_model_cpu_offload()
-pipeline.enable_vae_slicing()
+pipeline.vae.enable_slicing()
 ```
 
 수정하기 위한 이미지를 불러옵니다:
@@ -122,7 +122,7 @@ import torch
 from transformers import AutoTokenizer, T5ForConditionalGeneration
 
 tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-large")
-model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-large", device_map="auto", torch_dtype=torch.float16)
+model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-large", device_map="auto", dtype=torch.float16)
 ```
 
 모델에 프롬프트할 source와 target 프롬프트를 생성하기 위해 초기 텍스트들을 제공합니다.
@@ -156,11 +156,8 @@ print(source_prompts)
 print(target_prompts)
 ```
 
-<Tip>
-
-다양한 품질의 텍스트를 생성하는 전략에 대해 자세히 알아보려면 [생성 전략](https://huggingface.co/docs/transformers/main/en/generation_strategies) 가이드를 참조하세요.
-
-</Tip>
+> [!TIP]
+> 다양한 품질의 텍스트를 생성하는 전략에 대해 자세히 알아보려면 [생성 전략](https://huggingface.co/docs/transformers/main/en/generation_strategies) 가이드를 참조하세요.
 
 텍스트 인코딩을 위해 [`StableDiffusionDiffEditPipeline`]에서 사용하는 텍스트 인코더 모델을 불러옵니다. 텍스트 인코더를 사용하여 텍스트 임베딩을 계산합니다:
 
@@ -169,10 +166,10 @@ import torch
 from diffusers import StableDiffusionDiffEditPipeline
 
 pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16, use_safetensors=True
+    "stabilityai/stable-diffusion-2-1", dtype=torch.float16, use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
-pipeline.enable_vae_slicing()
+pipeline.vae.enable_slicing()
 
 @torch.no_grad()
 def embed_prompts(sentences, tokenizer, text_encoder, device="cuda"):
@@ -244,7 +241,7 @@ import torch
 from transformers import BlipForConditionalGeneration, BlipProcessor
 
 processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base", torch_dtype=torch.float16, low_cpu_mem_usage=True)
+model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base", dtype=torch.float16, low_cpu_mem_usage=True)
 ```
 
 입력 이미지에서 캡션을 생성하는 유틸리티 함수를 만듭니다:

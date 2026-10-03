@@ -12,11 +12,11 @@ specific language governing permissions and limitations under the License.
 
 # SequentialPipelineBlocks
 
-[`~modular_pipelines.SequentialPipelineBlocks`] are a multi-block type that composes other [`~modular_pipelines.ModularPipelineBlocks`] together in a sequence. Data flows linearly from one block to the next using `intermediate_inputs` and `intermediate_outputs`. Each block in [`~modular_pipelines.SequentialPipelineBlocks`] usually represents a step in the pipeline, and by combining them, you gradually build a pipeline.
+[`~modular_pipelines.SequentialPipelineBlocks`] are a multi-block type that composes other [`~modular_pipelines.ModularPipelineBlocks`] together in a sequence. Data flows linearly from one block to the next using `inputs` and `intermediate_outputs`. Each block in [`~modular_pipelines.SequentialPipelineBlocks`] usually represents a step in the pipeline, and by combining them, you gradually build a pipeline.
 
 This guide shows you how to connect two blocks into a [`~modular_pipelines.SequentialPipelineBlocks`].
 
-Create two [`~modular_pipelines.ModularPipelineBlocks`]. The first block, `InputBlock`, outputs a `batch_size` value and the second block, `ImageEncoderBlock` uses `batch_size` as `intermediate_inputs`.
+Create two [`~modular_pipelines.ModularPipelineBlocks`]. The first block, `InputBlock`, outputs a `batch_size` value and the second block, `ImageEncoderBlock` uses `batch_size` as `inputs`.
 
 <hfoptions id="sequential">
 <hfoption id="InputBlock">
@@ -91,23 +91,42 @@ class ImageEncoderBlock(ModularPipelineBlocks):
 </hfoption>
 </hfoptions>
 
-Connect the two blocks by defining an [`InsertableDict`] to map the block names to the block instances. Blocks are executed in the order they're registered in `blocks_dict`.
-
-Use [`~modular_pipelines.SequentialPipelineBlocks.from_blocks_dict`] to create a [`~modular_pipelines.SequentialPipelineBlocks`].
+Connect the two blocks by defining a [`~modular_pipelines.SequentialPipelineBlocks`]. List the block instances in `block_classes` and their corresponding names in `block_names`. The blocks are executed in the order they appear in `block_classes`, and data flows from one block to the next through [`~modular_pipelines.PipelineState`].
 
 ```py
-from diffusers.modular_pipelines import SequentialPipelineBlocks, InsertableDict
+class ImageProcessingStep(SequentialPipelineBlocks):
+    """
+    # auto_docstring
+    """
+    model_name = "my_model"
+    block_classes = [InputBlock(), ImageEncoderBlock()]
+    block_names = ["input", "image_encoder"]
 
-blocks_dict = InsertableDict()
-blocks_dict["input"] = input_block
-blocks_dict["image_encoder"] = image_encoder_block
-
-blocks = SequentialPipelineBlocks.from_blocks_dict(blocks_dict)
+    @property
+    def description(self):
+        return (
+            "Process text prompts and images for the pipeline. It:\n"
+            " - Determines the batch size from the prompts.\n"
+            " - Encodes the image into latent space."
+        )
 ```
 
-Inspect the sub-blocks in [`~modular_pipelines.SequentialPipelineBlocks`] by calling `blocks`, and for more details about the inputs and outputs, access the `docs` attribute.
+When you create a [`~modular_pipelines.SequentialPipelineBlocks`], properties like `inputs`, `intermediate_outputs`, and `expected_components` are automatically aggregated from the sub-blocks, so there is no need to define them again.
+
+There are a few properties you should set:
+
+- `description`: We recommend adding a description for the assembled block to explain what the combined step does.
+- `model_name`: This is automatically derived from the sub-blocks but isn't always correct, so you may need to override it.
+- `outputs`: By default this is the same as `intermediate_outputs`, but you can manually set it to control which values appear in the doc. This is useful for showing only the final outputs instead of all intermediate values.
+
+These properties, together with the aggregated `inputs`, `intermediate_outputs`, and `expected_components`, are used to automatically generate the `doc` property.
+
+
+Print the `ImageProcessingStep` block to inspect its sub-blocks, and use `doc` for a full summary of the block's inputs, outputs, and components.
+
 
 ```py
+blocks = ImageProcessingStep()
 print(blocks)
 print(blocks.doc)
 ```

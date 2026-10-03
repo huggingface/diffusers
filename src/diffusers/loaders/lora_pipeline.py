@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,24 +13,24 @@
 # limitations under the License.
 
 import os
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..utils import (
-    USE_PEFT_BACKEND,
     deprecate,
+    get_peft_kwargs,
     get_submodule_by_name,
     is_bitsandbytes_available,
     is_gguf_available,
     is_peft_available,
-    is_peft_version,
-    is_torch_version,
     is_transformers_available,
     is_transformers_version,
     logging,
+    require_peft_backend,
 )
+from ..utils.torch_utils import get_device
 from .lora_base import (  # noqa
     LORA_WEIGHT_NAME,
     LORA_WEIGHT_NAME_SAFE,
@@ -43,28 +43,31 @@ from .lora_conversion_utils import (
     _convert_bfl_flux_control_lora_to_diffusers,
     _convert_fal_kontext_lora_to_diffusers,
     _convert_hunyuan_video_lora_to_diffusers,
+    _convert_kohya_flux2_lora_to_diffusers,
     _convert_kohya_flux_lora_to_diffusers,
     _convert_musubi_wan_lora_to_diffusers,
+    _convert_non_diffusers_ace_step_lora_to_diffusers,
+    _convert_non_diffusers_anima_lora_to_diffusers,
+    _convert_non_diffusers_flux2_lora_to_diffusers,
     _convert_non_diffusers_hidream_lora_to_diffusers,
+    _convert_non_diffusers_ideogram4_lora_to_diffusers,
+    _convert_non_diffusers_krea2_lora_to_diffusers,
     _convert_non_diffusers_lora_to_diffusers,
+    _convert_non_diffusers_ltx2_lora_to_diffusers,
     _convert_non_diffusers_ltxv_lora_to_diffusers,
     _convert_non_diffusers_lumina2_lora_to_diffusers,
+    _convert_non_diffusers_minimax_h3_lora_to_diffusers,
     _convert_non_diffusers_qwen_lora_to_diffusers,
     _convert_non_diffusers_wan_lora_to_diffusers,
+    _convert_non_diffusers_z_image_lora_to_diffusers,
     _convert_xlabs_flux_lora_to_diffusers,
     _maybe_map_sgm_blocks_to_diffusers,
 )
 
 
-_LOW_CPU_MEM_USAGE_DEFAULT_LORA = False
-if is_torch_version(">=", "1.9.0"):
-    if (
-        is_peft_available()
-        and is_peft_version(">=", "0.13.1")
-        and is_transformers_available()
-        and is_transformers_version(">", "4.45.2")
-    ):
-        _LOW_CPU_MEM_USAGE_DEFAULT_LORA = True
+_LOW_CPU_MEM_USAGE_DEFAULT_LORA = (
+    is_peft_available() and is_transformers_available() and is_transformers_version(">", "4.45.2")
+)
 
 
 logger = logging.get_logger(__name__)
@@ -72,6 +75,9 @@ logger = logging.get_logger(__name__)
 TEXT_ENCODER_NAME = "text_encoder"
 UNET_NAME = "unet"
 TRANSFORMER_NAME = "transformer"
+LTX2_CONNECTOR_NAME = "connectors"
+# MiniMax-H3 ships two independently trained DiT partitions in one repository, under two component names.
+MINIMAX_H3_TRANSFORMER_REF_NAME = "transformer_ref"
 
 _MODULE_NAME_TO_ATTRIBUTE_MAP_FLUX = {"x_embedder": "in_channels"}
 
@@ -104,7 +110,7 @@ def _maybe_dequantize_weight_for_expanded_lora(model, module):
     if module.weight.device.type == "cpu":
         weight_on_cpu = True
 
-    device = torch.accelerator.current_accelerator().type if hasattr(torch, "accelerator") else "cuda"
+    device = get_device()
     if is_bnb_4bit_quantized or is_bnb_8bit_quantized:
         module_weight = dequantize_bnb_weight(
             module.weight.to(device) if weight_on_cpu else module.weight,
@@ -135,10 +141,11 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
     unet_name = UNET_NAME
     text_encoder_name = TEXT_ENCODER_NAME
 
+    @require_peft_backend
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        adapter_name: Optional[str] = None,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
@@ -191,14 +198,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             kwargs (`dict`, *optional*):
                 See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -210,7 +210,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError("Invalid LoRA checkpoint.")
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
         self.load_lora_into_unet(
             state_dict,
@@ -240,19 +240,14 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
         Return state dict for lora weights and the network alphas.
 
-        <Tip warning={true}>
-
-        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
-
-        This function is experimental and might change in the future.
-
-        </Tip>
+        > [!WARNING] > We support loading A1111 formatted LoRA checkpoints in a limited capacity. > > This function is
+        experimental and might change in the future.
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
@@ -265,14 +260,14 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                     - A [torch state
                       dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
 
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
 
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             local_files_only (`bool`, *optional*, defaults to `False`):
@@ -353,6 +348,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         return out
 
     @classmethod
+    @require_peft_backend
     def load_lora_into_unet(
         cls,
         state_dict,
@@ -372,7 +368,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 A standard state dict containing the lora layer parameters. The keys can either be indexed directly
                 into the unet or prefixed with an additional `unet` which can be used to distinguish between text
                 encoder lora layers.
-            network_alphas (`Dict[str, float]`):
+            network_alphas (`dict[str, float]`):
                 The value of the network alpha used for stable learning and preventing underflow. This value has the
                 same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
                 link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
@@ -390,14 +386,6 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
                 Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
                 from the state dict.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `cls.unet_name` and/or `cls.text_encoder_name` as
         # their prefixes.
@@ -434,7 +422,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             state_dict (`dict`):
                 A standard state dict containing the lora layer parameters. The key should be prefixed with an
                 additional `text_encoder` to distinguish between unet lora layers.
-            network_alphas (`Dict[str, float]`):
+            network_alphas (`dict[str, float]`):
                 The value of the network alpha used for stable learning and preventing underflow. This value has the
                 same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
                 link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
@@ -474,9 +462,9 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
     @classmethod
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
-        text_encoder_lora_layers: Dict[str, torch.nn.Module] = None,
+        save_directory: str | os.PathLike,
+        unet_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        text_encoder_lora_layers: dict[str, torch.nn.Module] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -490,9 +478,9 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
         Arguments:
             save_directory (`str` or `os.PathLike`):
                 Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            unet_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
+            unet_lora_layers (`dict[str, torch.nn.Module]` or `dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `unet`.
-            text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
+            text_encoder_lora_layers (`dict[str, torch.nn.Module]` or `dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
                 encoder LoRA state dict because it comes from 🤗 Transformers.
             is_main_process (`bool`, *optional*, defaults to `True`):
@@ -510,61 +498,48 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             text_encoder_lora_adapter_metadata:
                 LoRA adapter metadata associated with the text encoder to be serialized with the state dict.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
-
-        if not (unet_lora_layers or text_encoder_lora_layers):
-            raise ValueError("You must pass at least one of `unet_lora_layers` and `text_encoder_lora_layers`.")
+        lora_layers = {}
+        lora_metadata = {}
 
         if unet_lora_layers:
-            state_dict.update(cls.pack_weights(unet_lora_layers, cls.unet_name))
+            lora_layers[cls.unet_name] = unet_lora_layers
+            lora_metadata[cls.unet_name] = unet_lora_adapter_metadata
 
         if text_encoder_lora_layers:
-            state_dict.update(cls.pack_weights(text_encoder_lora_layers, cls.text_encoder_name))
+            lora_layers[cls.text_encoder_name] = text_encoder_lora_layers
+            lora_metadata[cls.text_encoder_name] = text_encoder_lora_adapter_metadata
 
-        if unet_lora_adapter_metadata:
-            lora_adapter_metadata.update(_pack_dict_with_prefix(unet_lora_adapter_metadata, cls.unet_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `unet_lora_layers` or `text_encoder_lora_layers`.")
 
-        if text_encoder_lora_adapter_metadata:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(text_encoder_lora_adapter_metadata, cls.text_encoder_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     def fuse_lora(
         self,
-        components: List[str] = ["unet", "text_encoder"],
+        components: list[str] = ["unet", "text_encoder"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[List[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
         Fuses the LoRA parameters into the original parameters of the corresponding blocks.
 
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
         Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
+            components: (`list[str]`): list of LoRA-injectable components to fuse the LoRAs into.
             lora_scale (`float`, defaults to 1.0):
                 Controls how much to influence the outputs with the LoRA parameters.
             safe_fusing (`bool`, defaults to `False`):
                 Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
+            adapter_names (`list[str]`, *optional*):
                 Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
 
         Example:
@@ -588,19 +563,13 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             **kwargs,
         )
 
-    def unfuse_lora(self, components: List[str] = ["unet", "text_encoder"], **kwargs):
+    def unfuse_lora(self, components: list[str] = ["unet", "text_encoder"], **kwargs):
         r"""
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
 
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
         Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
+            components (`list[str]`): list of LoRA-injectable components to unfuse LoRA from.
             unfuse_unet (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
             unfuse_text_encoder (`bool`, defaults to `True`):
                 Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
@@ -620,50 +589,18 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
     unet_name = UNET_NAME
     text_encoder_name = TEXT_ENCODER_NAME
 
+    @require_peft_backend
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        adapter_name: Optional[str] = None,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
-        `self.text_encoder`.
-
-        All kwargs are forwarded to `self.lora_state_dict`.
-
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is
-        loaded.
-
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details on how the state dict is
-        loaded into `self.unet`.
-
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder`] for more details on how the state
-        dict is loaded into `self.text_encoder`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # We could have accessed the unet config from `lora_state_dict()` too. We pass
         # it here explicitly to be able to tell that it's coming from an SDXL
@@ -683,7 +620,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError("Invalid LoRA checkpoint.")
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
         self.load_lora_into_unet(
             state_dict,
@@ -725,19 +662,14 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
         Return state dict for lora weights and the network alphas.
 
-        <Tip warning={true}>
-
-        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
-
-        This function is experimental and might change in the future.
-
-        </Tip>
+        > [!WARNING] > We support loading A1111 formatted LoRA checkpoints in a limited capacity. > > This function is
+        experimental and might change in the future.
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
@@ -750,14 +682,14 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                     - A [torch state
                       dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
 
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
 
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             local_files_only (`bool`, *optional*, defaults to `False`):
@@ -838,6 +770,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         return out
 
     @classmethod
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.load_lora_into_unet
     def load_lora_into_unet(
         cls,
@@ -858,7 +791,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 A standard state dict containing the lora layer parameters. The keys can either be indexed directly
                 into the unet or prefixed with an additional `unet` which can be used to distinguish between text
                 encoder lora layers.
-            network_alphas (`Dict[str, float]`):
+            network_alphas (`dict[str, float]`):
                 The value of the network alpha used for stable learning and preventing underflow. This value has the
                 same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
                 link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
@@ -876,14 +809,6 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
                 Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
                 from the state dict.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `cls.unet_name` and/or `cls.text_encoder_name` as
         # their prefixes.
@@ -921,7 +846,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             state_dict (`dict`):
                 A standard state dict containing the lora layer parameters. The key should be prefixed with an
                 additional `text_encoder` to distinguish between unet lora layers.
-            network_alphas (`Dict[str, float]`):
+            network_alphas (`dict[str, float]`):
                 The value of the network alpha used for stable learning and preventing underflow. This value has the
                 same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
                 link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
@@ -961,10 +886,10 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
     @classmethod
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
-        text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
-        text_encoder_2_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        unet_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        text_encoder_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        text_encoder_2_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -974,114 +899,48 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
         text_encoder_2_lora_adapter_metadata=None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            unet_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `unet`.
-            text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
-                encoder LoRA state dict because it comes from 🤗 Transformers.
-            text_encoder_2_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `text_encoder_2`. Must explicitly pass the text
-                encoder LoRA state dict because it comes from 🤗 Transformers.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            unet_lora_adapter_metadata:
-                LoRA adapter metadata associated with the unet to be serialized with the state dict.
-            text_encoder_lora_adapter_metadata:
-                LoRA adapter metadata associated with the text encoder to be serialized with the state dict.
-            text_encoder_2_lora_adapter_metadata:
-                LoRA adapter metadata associated with the second text encoder to be serialized with the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
-
-        if not (unet_lora_layers or text_encoder_lora_layers or text_encoder_2_lora_layers):
-            raise ValueError(
-                "You must pass at least one of `unet_lora_layers`, `text_encoder_lora_layers`, `text_encoder_2_lora_layers`."
-            )
+        lora_layers = {}
+        lora_metadata = {}
 
         if unet_lora_layers:
-            state_dict.update(cls.pack_weights(unet_lora_layers, cls.unet_name))
+            lora_layers[cls.unet_name] = unet_lora_layers
+            lora_metadata[cls.unet_name] = unet_lora_adapter_metadata
 
         if text_encoder_lora_layers:
-            state_dict.update(cls.pack_weights(text_encoder_lora_layers, "text_encoder"))
+            lora_layers["text_encoder"] = text_encoder_lora_layers
+            lora_metadata["text_encoder"] = text_encoder_lora_adapter_metadata
 
         if text_encoder_2_lora_layers:
-            state_dict.update(cls.pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
+            lora_layers["text_encoder_2"] = text_encoder_2_lora_layers
+            lora_metadata["text_encoder_2"] = text_encoder_2_lora_adapter_metadata
 
-        if unet_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(_pack_dict_with_prefix(unet_lora_adapter_metadata, cls.unet_name))
-
-        if text_encoder_lora_adapter_metadata:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(text_encoder_lora_adapter_metadata, cls.text_encoder_name)
+        if not lora_layers:
+            raise ValueError(
+                "You must pass at least one of `unet_lora_layers`, `text_encoder_lora_layers`, or `text_encoder_2_lora_layers`."
             )
 
-        if text_encoder_2_lora_adapter_metadata:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(text_encoder_2_lora_adapter_metadata, "text_encoder_2")
-            )
-
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     def fuse_lora(
         self,
-        components: List[str] = ["unet", "text_encoder", "text_encoder_2"],
+        components: list[str] = ["unet", "text_encoder", "text_encoder_2"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[List[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -1091,23 +950,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             **kwargs,
         )
 
-    def unfuse_lora(self, components: List[str] = ["unet", "text_encoder", "text_encoder_2"], **kwargs):
+    def unfuse_lora(self, components: list[str] = ["unet", "text_encoder", "text_encoder_2"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_unet (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
-            unfuse_text_encoder (`bool`, defaults to `True`):
-                Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
-                LoRA parameters then it won't have any effect.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -1129,55 +974,11 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
-        Return state dict for lora weights and the network alphas.
-
-        <Tip warning={true}>
-
-        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
-
-        This function is experimental and might change in the future.
-
-        </Tip>
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                Can be either:
-
-                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
-                      the Hub.
-                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
-                      with [`ModelMixin.save_pretrained`].
-                    - A [torch state
-                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
-                is not used.
-            force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
-                cached versions if they exist.
-
-            proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
-                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to `True`, the model
-                won't be downloaded from the Hub.
-            token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
-                `diffusers-cli login` (stored in `~/.huggingface`) is used.
-            revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
-                allowed by Git.
-            subfolder (`str`, *optional*, defaults to `""`):
-                The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata (`bool`, *optional*, defaults to False):
-                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
-
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -1223,47 +1024,18 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         adapter_name=None,
         hotswap: bool = False,
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
-        `self.text_encoder`.
-
-        All kwargs are forwarded to `self.lora_state_dict`.
-
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is
-        loaded.
-
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -1275,7 +1047,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError("Invalid LoRA checkpoint.")
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -1323,32 +1095,8 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`SD3Transformer2DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -1383,7 +1131,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             state_dict (`dict`):
                 A standard state dict containing the lora layer parameters. The key should be prefixed with an
                 additional `text_encoder` to distinguish between unet lora layers.
-            network_alphas (`Dict[str, float]`):
+            network_alphas (`dict[str, float]`):
                 The value of the network alpha used for stable learning and preventing underflow. This value has the
                 same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
                 link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
@@ -1424,10 +1172,10 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionXLLoraLoaderMixin.save_lora_weights with unet->transformer
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
-        text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
-        text_encoder_2_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        text_encoder_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        text_encoder_2_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -1437,117 +1185,49 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         text_encoder_2_lora_adapter_metadata=None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
-                encoder LoRA state dict because it comes from 🤗 Transformers.
-            text_encoder_2_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `text_encoder_2`. Must explicitly pass the text
-                encoder LoRA state dict because it comes from 🤗 Transformers.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
-            text_encoder_lora_adapter_metadata:
-                LoRA adapter metadata associated with the text encoder to be serialized with the state dict.
-            text_encoder_2_lora_adapter_metadata:
-                LoRA adapter metadata associated with the second text encoder to be serialized with the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
-
-        if not (transformer_lora_layers or text_encoder_lora_layers or text_encoder_2_lora_layers):
-            raise ValueError(
-                "You must pass at least one of `transformer_lora_layers`, `text_encoder_lora_layers`, `text_encoder_2_lora_layers`."
-            )
+        lora_layers = {}
+        lora_metadata = {}
 
         if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
         if text_encoder_lora_layers:
-            state_dict.update(cls.pack_weights(text_encoder_lora_layers, "text_encoder"))
+            lora_layers["text_encoder"] = text_encoder_lora_layers
+            lora_metadata["text_encoder"] = text_encoder_lora_adapter_metadata
 
         if text_encoder_2_lora_layers:
-            state_dict.update(cls.pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
+            lora_layers["text_encoder_2"] = text_encoder_2_lora_layers
+            lora_metadata["text_encoder_2"] = text_encoder_2_lora_adapter_metadata
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
+        if not lora_layers:
+            raise ValueError(
+                "You must pass at least one of `transformer_lora_layers`, `text_encoder_lora_layers`, or `text_encoder_2_lora_layers`."
             )
 
-        if text_encoder_lora_adapter_metadata:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(text_encoder_lora_adapter_metadata, cls.text_encoder_name)
-            )
-
-        if text_encoder_2_lora_adapter_metadata:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(text_encoder_2_lora_adapter_metadata, "text_encoder_2")
-            )
-
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionXLLoraLoaderMixin.fuse_lora with unet->transformer
     def fuse_lora(
         self,
-        components: List[str] = ["transformer", "text_encoder", "text_encoder_2"],
+        components: list[str] = ["transformer", "text_encoder", "text_encoder_2"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[List[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -1558,23 +1238,9 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
         )
 
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionXLLoraLoaderMixin.unfuse_lora with unet->transformer
-    def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder", "text_encoder_2"], **kwargs):
+    def unfuse_lora(self, components: list[str] = ["transformer", "text_encoder", "text_encoder_2"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
-            unfuse_text_encoder (`bool`, defaults to `True`):
-                Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
-                LoRA parameters then it won't have any effect.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -1592,55 +1258,11 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
-        Return state dict for lora weights and the network alphas.
-
-        <Tip warning={true}>
-
-        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
-
-        This function is experimental and might change in the future.
-
-        </Tip>
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                Can be either:
-
-                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
-                      the Hub.
-                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
-                      with [`ModelMixin.save_pretrained`].
-                    - A [torch state
-                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
-                is not used.
-            force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
-                cached versions if they exist.
-
-            proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
-                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to `True`, the model
-                won't be downloaded from the Hub.
-            token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
-                `diffusers-cli login` (stored in `~/.huggingface`) is used.
-            revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
-                allowed by Git.
-            subfolder (`str`, *optional*, defaults to `""`):
-                The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata (`bool`, *optional*, defaults to False):
-                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
-
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -1686,43 +1308,19 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        adapter_name: Optional[str] = None,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -1734,7 +1332,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError("Invalid LoRA checkpoint.")
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -1759,32 +1357,8 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`AuraFlowTransformer2DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -1801,98 +1375,48 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
-        components: List[str] = ["transformer"],
+        components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[List[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -1903,20 +1427,9 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
         )
 
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.unfuse_lora
-    def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder"], **kwargs):
+    def unfuse_lora(self, components: list[str] = ["transformer", "text_encoder"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -1926,7 +1439,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
     Load LoRA layers into [`FluxTransformer2DModel`],
     [`CLIPTextModel`](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel).
 
-    Specific to [`StableDiffusion3Pipeline`].
+    Specific to [`FluxPipeline`].
     """
 
     _lora_loadable_modules = ["transformer", "text_encoder"]
@@ -1938,55 +1451,12 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         return_alphas: bool = False,
         **kwargs,
     ):
         r"""
-        Return state dict for lora weights and the network alphas.
-
-        <Tip warning={true}>
-
-        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
-
-        This function is experimental and might change in the future.
-
-        </Tip>
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                Can be either:
-
-                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
-                      the Hub.
-                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
-                      with [`ModelMixin.save_pretrained`].
-                    - A [torch state
-                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
-                is not used.
-            force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
-                cached versions if they exist.
-
-            proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
-                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to `True`, the model
-                won't be downloaded from the Hub.
-            token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
-                `diffusers-cli login` (stored in `~/.huggingface`) is used.
-            revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
-                allowed by Git.
-            subfolder (`str`, *optional*, defaults to `""`):
-                The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata (`bool`, *optional*, defaults to False):
-                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -2102,47 +1572,18 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         else:
             return state_dict
 
+    @require_peft_backend
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        adapter_name: Optional[str] = None,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`.
-
-        All kwargs are forwarded to `self.lora_state_dict`.
-
-        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is
-        loaded.
-
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                `Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -2162,7 +1603,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         )
 
         if not (has_lora_keys or has_norm_keys):
-            raise ValueError("Invalid LoRA checkpoint.")
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
         transformer_lora_state_dict = {
             k: state_dict.get(k)
@@ -2240,36 +1681,8 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         hotswap: bool = False,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            network_alphas (`Dict[str, float]`):
-                The value of the network alpha used for stable learning and preventing underflow. This value has the
-                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
-                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
-            transformer (`FluxTransformer2DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -2289,7 +1702,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         transformer,
         prefix=None,
         discard_original_layers=False,
-    ) -> Dict[str, torch.Tensor]:
+    ) -> dict[str, torch.Tensor]:
         # Remove prefix if present
         prefix = prefix or cls.transformer_name
         for key in list(state_dict.keys()):
@@ -2358,7 +1771,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             state_dict (`dict`):
                 A standard state dict containing the lora layer parameters. The key should be prefixed with an
                 additional `text_encoder` to distinguish between unet lora layers.
-            network_alphas (`Dict[str, float]`):
+            network_alphas (`dict[str, float]`):
                 The value of the network alpha used for stable learning and preventing underflow. This value has the
                 same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
                 link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
@@ -2399,9 +1812,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights with unet->transformer
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
-        text_encoder_lora_layers: Dict[str, torch.nn.Module] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        text_encoder_lora_layers: dict[str, torch.nn.Module] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -2415,9 +1828,9 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
         Arguments:
             save_directory (`str` or `os.PathLike`):
                 Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
+            transformer_lora_layers (`dict[str, torch.nn.Module]` or `dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `transformer`.
-            text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
+            text_encoder_lora_layers (`dict[str, torch.nn.Module]` or `dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
                 encoder LoRA state dict because it comes from 🤗 Transformers.
             is_main_process (`bool`, *optional*, defaults to `True`):
@@ -2435,77 +1848,40 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             text_encoder_lora_adapter_metadata:
                 LoRA adapter metadata associated with the text encoder to be serialized with the state dict.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
-
-        if not (transformer_lora_layers or text_encoder_lora_layers):
-            raise ValueError("You must pass at least one of `transformer_lora_layers` and `text_encoder_lora_layers`.")
+        lora_layers = {}
+        lora_metadata = {}
 
         if transformer_lora_layers:
-            state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
         if text_encoder_lora_layers:
-            state_dict.update(cls.pack_weights(text_encoder_lora_layers, cls.text_encoder_name))
+            lora_layers[cls.text_encoder_name] = text_encoder_lora_layers
+            lora_metadata[cls.text_encoder_name] = text_encoder_lora_adapter_metadata
 
-        if transformer_lora_adapter_metadata:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if text_encoder_lora_adapter_metadata:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(text_encoder_lora_adapter_metadata, cls.text_encoder_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     def fuse_lora(
         self,
-        components: List[str] = ["transformer"],
+        components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[List[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
 
         transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
@@ -2528,19 +1904,13 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             **kwargs,
         )
 
-    def unfuse_lora(self, components: List[str] = ["transformer", "text_encoder"], **kwargs):
+    def unfuse_lora(self, components: list[str] = ["transformer", "text_encoder"], **kwargs):
         r"""
         Reverses the effect of
         [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
 
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
         Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
+            components (`list[str]`): list of LoRA-injectable components to unfuse LoRA from.
         """
         transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
         if hasattr(transformer, "_transformer_norm_layers") and transformer._transformer_norm_layers:
@@ -2848,36 +2218,8 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
         hotswap: bool = False,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            network_alphas (`Dict[str, float]`):
-                The value of the network alpha used for stable learning and preventing underflow. This value has the
-                same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
-                link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
-            transformer (`UVit2DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and not is_peft_version(">=", "0.13.1"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -2912,7 +2254,7 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
             state_dict (`dict`):
                 A standard state dict containing the lora layer parameters. The key should be prefixed with an
                 additional `text_encoder` to distinguish between unet lora layers.
-            network_alphas (`Dict[str, float]`):
+            network_alphas (`dict[str, float]`):
                 The value of the network alpha used for stable learning and preventing underflow. This value has the
                 same meaning as the `--network_alpha` option in the kohya-ss trainer script. Refer to [this
                 link](https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning).
@@ -2952,9 +2294,9 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
     @classmethod
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        text_encoder_lora_layers: Dict[str, torch.nn.Module] = None,
-        transformer_lora_layers: Dict[str, torch.nn.Module] = None,
+        save_directory: str | os.PathLike,
+        text_encoder_lora_layers: dict[str, torch.nn.Module] = None,
+        transformer_lora_layers: dict[str, torch.nn.Module] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -2966,9 +2308,9 @@ class AmusedLoraLoaderMixin(StableDiffusionLoraLoaderMixin):
         Arguments:
             save_directory (`str` or `os.PathLike`):
                 Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            unet_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
+            unet_lora_layers (`dict[str, torch.nn.Module]` or `dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `unet`.
-            text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
+            text_encoder_lora_layers (`dict[str, torch.nn.Module]` or `dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
                 encoder LoRA state dict because it comes from 🤗 Transformers.
             is_main_process (`bool`, *optional*, defaults to `True`):
@@ -3017,55 +2359,11 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
-        Return state dict for lora weights and the network alphas.
-
-        <Tip warning={true}>
-
-        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
-
-        This function is experimental and might change in the future.
-
-        </Tip>
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                Can be either:
-
-                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
-                      the Hub.
-                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
-                      with [`ModelMixin.save_pretrained`].
-                    - A [torch state
-                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
-                is not used.
-            force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
-                cached versions if they exist.
-
-            proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
-                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to `True`, the model
-                won't be downloaded from the Hub.
-            token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
-                `diffusers-cli login` (stored in `~/.huggingface`) is used.
-            revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
-                allowed by Git.
-            subfolder (`str`, *optional*, defaults to `""`):
-                The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata (`bool`, *optional*, defaults to False):
-                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
-
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -3111,42 +2409,18 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        adapter_name: Optional[str] = None,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -3158,7 +2432,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError("Invalid LoRA checkpoint.")
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -3183,32 +2457,8 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`CogVideoXTransformer3DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -3222,100 +2472,49 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
         )
 
     @classmethod
-    # Adapted from diffusers.loaders.lora_pipeline.StableDiffusionLoraLoaderMixin.save_lora_weights without support for text encoder
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     def fuse_lora(
         self,
-        components: List[str] = ["transformer"],
+        components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[List[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -3325,20 +2524,9 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             **kwargs,
         )
 
-    def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -3356,55 +2544,11 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
-        Return state dict for lora weights and the network alphas.
-
-        <Tip warning={true}>
-
-        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
-
-        This function is experimental and might change in the future.
-
-        </Tip>
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                Can be either:
-
-                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
-                      the Hub.
-                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
-                      with [`ModelMixin.save_pretrained`].
-                    - A [torch state
-                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
-                is not used.
-            force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
-                cached versions if they exist.
-
-            proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
-                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to `True`, the model
-                won't be downloaded from the Hub.
-            token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
-                `diffusers-cli login` (stored in `~/.huggingface`) is used.
-            revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
-                allowed by Git.
-            subfolder (`str`, *optional*, defaults to `""`):
-                The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata (`bool`, *optional*, defaults to False):
-                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
-
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -3450,43 +2594,19 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        adapter_name: Optional[str] = None,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -3498,7 +2618,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError("Invalid LoRA checkpoint.")
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -3523,32 +2643,8 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`MochiTransformer3DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -3565,98 +2661,48 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
-        components: List[str] = ["transformer"],
+        components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[List[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -3667,20 +2713,9 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
-    def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -3697,54 +2732,11 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
-        Return state dict for lora weights and the network alphas.
-
-        <Tip warning={true}>
-
-        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
-
-        This function is experimental and might change in the future.
-
-        </Tip>
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                Can be either:
-
-                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
-                      the Hub.
-                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
-                      with [`ModelMixin.save_pretrained`].
-                    - A [torch state
-                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
-                is not used.
-            force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
-                cached versions if they exist.
-
-            proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
-                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to `True`, the model
-                won't be downloaded from the Hub.
-            token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
-                `diffusers-cli login` (stored in `~/.huggingface`) is used.
-            revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
-                allowed by Git.
-            subfolder (`str`, *optional*, defaults to `""`):
-                The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata (`bool`, *optional*, defaults to False):
-                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -3794,43 +2786,19 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        adapter_name: Optional[str] = None,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -3842,7 +2810,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError("Invalid LoRA checkpoint.")
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -3867,32 +2835,8 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`LTXVideoTransformer3DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -3909,98 +2853,48 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
-        components: List[str] = ["transformer"],
+        components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[List[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -4011,20 +2905,225 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
-    def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        """
+        super().unfuse_lora(components=components, **kwargs)
 
-        <Tip warning={true}>
 
-        This is an experimental API.
+class LTX2LoraLoaderMixin(LoraBaseMixin):
+    r"""
+    Load LoRA layers into [`LTX2VideoTransformer3DModel`]. Specific to [`LTX2Pipeline`].
+    """
 
-        </Tip>
+    _lora_loadable_modules = ["transformer", "connectors"]
+    transformer_name = TRANSFORMER_NAME
+    connectors_name = LTX2_CONNECTOR_NAME
 
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+    @classmethod
+    @validate_hf_hub_args
+    def lora_state_dict(
+        cls,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        """
+        # Load the main state dict first which has the LoRA layers for either of
+        # transformer and text encoder or both.
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        weight_name = kwargs.pop("weight_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = True
+            allow_pickle = True
+
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
+
+        state_dict, metadata = _fetch_state_dict(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            allow_pickle=allow_pickle,
+        )
+
+        is_dora_scale_present = any("dora_scale" in k for k in state_dict)
+        if is_dora_scale_present:
+            warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
+            logger.warning(warn_msg)
+            state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        final_state_dict = state_dict
+        is_non_diffusers_format = any(k.startswith("diffusion_model.") for k in state_dict)
+        has_connector = any(k.startswith("text_embedding_projection.") for k in state_dict)
+        if is_non_diffusers_format:
+            final_state_dict = _convert_non_diffusers_ltx2_lora_to_diffusers(state_dict)
+        if has_connector:
+            connectors_state_dict = _convert_non_diffusers_ltx2_lora_to_diffusers(
+                state_dict, "text_embedding_projection"
+            )
+            final_state_dict.update(connectors_state_dict)
+        out = (final_state_dict, metadata) if return_lora_metadata else final_state_dict
+        return out
+
+    @require_peft_backend
+    def load_lora_weights(
+        self,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
+        hotswap: bool = False,
+        **kwargs,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        """
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+
+        # if a dict is passed, copy it instead of modifying it inplace
+        if isinstance(pretrained_model_name_or_path_or_dict, dict):
+            pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
+
+        # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
+
+        transformer_peft_state_dict = {
+            k: v for k, v in state_dict.items() if k.startswith(f"{self.transformer_name}.")
+        }
+        connectors_peft_state_dict = {k: v for k, v in state_dict.items() if k.startswith(f"{self.connectors_name}.")}
+        self.load_lora_into_transformer(
+            transformer_peft_state_dict,
+            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+        if connectors_peft_state_dict:
+            self.load_lora_into_transformer(
+                connectors_peft_state_dict,
+                transformer=getattr(self, self.connectors_name)
+                if not hasattr(self, "connectors")
+                else self.connectors,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+                prefix=self.connectors_name,
+            )
+
+    @classmethod
+    def load_lora_into_transformer(
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
+        metadata=None,
+        prefix: str = "transformer",
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        """
+        # Load the layers corresponding to transformer.
+        logger.info(f"Loading {prefix}.")
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=None,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+            prefix=prefix,
+        )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
+    def save_lora_weights(
+        cls,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: dict | None = None,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        """
+        lora_layers = {}
+        lora_metadata = {}
+
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
+
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
+
+        cls._save_lora_weights(
+            save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
+    def fuse_lora(
+        self,
+        components: list[str] = ["transformer"],
+        lora_scale: float = 1.0,
+        safe_fusing: bool = False,
+        adapter_names: list[str] | None = None,
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        """
+        super().fuse_lora(
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -4042,55 +3141,11 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
-        Return state dict for lora weights and the network alphas.
-
-        <Tip warning={true}>
-
-        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
-
-        This function is experimental and might change in the future.
-
-        </Tip>
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                Can be either:
-
-                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
-                      the Hub.
-                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
-                      with [`ModelMixin.save_pretrained`].
-                    - A [torch state
-                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
-                is not used.
-            force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
-                cached versions if they exist.
-
-            proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
-                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to `True`, the model
-                won't be downloaded from the Hub.
-            token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
-                `diffusers-cli login` (stored in `~/.huggingface`) is used.
-            revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
-                allowed by Git.
-            subfolder (`str`, *optional*, defaults to `""`):
-                The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata (`bool`, *optional*, defaults to False):
-                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
-
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -4136,43 +3191,19 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        adapter_name: Optional[str] = None,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -4184,7 +3215,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError("Invalid LoRA checkpoint.")
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -4209,32 +3240,8 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`SanaTransformer2DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -4251,98 +3258,48 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
-        components: List[str] = ["transformer"],
+        components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[List[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -4353,20 +3310,199 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
-    def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        """
+        super().unfuse_lora(components=components, **kwargs)
 
-        <Tip warning={true}>
 
-        This is an experimental API.
+class HeliosLoraLoaderMixin(LoraBaseMixin):
+    r"""
+    Load LoRA layers into [`HeliosTransformer3DModel`]. Specific to [`HeliosPipeline`] and [`HeliosPyramidPipeline`].
+    """
 
-        </Tip>
+    _lora_loadable_modules = ["transformer"]
+    transformer_name = TRANSFORMER_NAME
 
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+    @classmethod
+    @validate_hf_hub_args
+    def lora_state_dict(
+        cls,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        """
+        # Load the main state dict first which has the LoRA layers for either of
+        # transformer and text encoder or both.
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        weight_name = kwargs.pop("weight_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = True
+            allow_pickle = True
+
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
+
+        state_dict, metadata = _fetch_state_dict(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            allow_pickle=allow_pickle,
+        )
+        if any(k.startswith("diffusion_model.") for k in state_dict):
+            state_dict = _convert_non_diffusers_wan_lora_to_diffusers(state_dict)
+        elif any(k.startswith("lora_unet_") for k in state_dict):
+            state_dict = _convert_musubi_wan_lora_to_diffusers(state_dict)
+
+        is_dora_scale_present = any("dora_scale" in k for k in state_dict)
+        if is_dora_scale_present:
+            warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
+            logger.warning(warn_msg)
+            state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
+
+    @require_peft_backend
+    def load_lora_weights(
+        self,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
+        hotswap: bool = False,
+        **kwargs,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        """
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+
+        # if a dict is passed, copy it instead of modifying it inplace
+        if isinstance(pretrained_model_name_or_path_or_dict, dict):
+            pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
+
+        # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
+
+        self.load_lora_into_transformer(
+            state_dict,
+            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->WanTransformer3DModel
+    def load_lora_into_transformer(
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
+        metadata=None,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        """
+        # Load the layers corresponding to transformer.
+        logger.info(f"Loading {cls.transformer_name}.")
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=None,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
+    def save_lora_weights(
+        cls,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: dict | None = None,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        """
+        lora_layers = {}
+        lora_metadata = {}
+
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
+
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
+
+        cls._save_lora_weights(
+            save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
+    def fuse_lora(
+        self,
+        components: list[str] = ["transformer"],
+        lora_scale: float = 1.0,
+        safe_fusing: bool = False,
+        adapter_names: list[str] | None = None,
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        """
+        super().fuse_lora(
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -4383,54 +3519,11 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
-        Return state dict for lora weights and the network alphas.
-
-        <Tip warning={true}>
-
-        We support loading original format HunyuanVideo LoRA checkpoints.
-
-        This function is experimental and might change in the future.
-
-        </Tip>
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                Can be either:
-
-                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
-                      the Hub.
-                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
-                      with [`ModelMixin.save_pretrained`].
-                    - A [torch state
-                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
-                is not used.
-            force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
-                cached versions if they exist.
-
-            proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
-                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to `True`, the model
-                won't be downloaded from the Hub.
-            token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
-                `diffusers-cli login` (stored in `~/.huggingface`) is used.
-            revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
-                allowed by Git.
-            subfolder (`str`, *optional*, defaults to `""`):
-                The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata (`bool`, *optional*, defaults to False):
-                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -4480,43 +3573,19 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        adapter_name: Optional[str] = None,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -4528,7 +3597,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError("Invalid LoRA checkpoint.")
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -4553,32 +3622,8 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`HunyuanVideoTransformer3DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -4595,98 +3640,48 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
-        components: List[str] = ["transformer"],
+        components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[List[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -4697,27 +3692,16 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
-    def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
 
 class Lumina2LoraLoaderMixin(LoraBaseMixin):
     r"""
-    Load LoRA layers into [`Lumina2Transformer2DModel`]. Specific to [`Lumina2Text2ImgPipeline`].
+    Load LoRA layers into [`Lumina2Transformer2DModel`]. Specific to [`Lumina2Pipeline`].
     """
 
     _lora_loadable_modules = ["transformer"]
@@ -4727,54 +3711,11 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
-        Return state dict for lora weights and the network alphas.
-
-        <Tip warning={true}>
-
-        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
-
-        This function is experimental and might change in the future.
-
-        </Tip>
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                Can be either:
-
-                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
-                      the Hub.
-                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
-                      with [`ModelMixin.save_pretrained`].
-                    - A [torch state
-                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
-                is not used.
-            force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
-                cached versions if they exist.
-
-            proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
-                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to `True`, the model
-                won't be downloaded from the Hub.
-            token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
-                `diffusers-cli login` (stored in `~/.huggingface`) is used.
-            revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
-                allowed by Git.
-            subfolder (`str`, *optional*, defaults to `""`):
-                The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata (`bool`, *optional*, defaults to False):
-                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -4825,43 +3766,19 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        adapter_name: Optional[str] = None,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -4873,7 +3790,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError("Invalid LoRA checkpoint.")
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -4898,32 +3815,8 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`Lumina2Transformer2DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -4940,98 +3833,48 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
-        components: List[str] = ["transformer"],
+        components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[List[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -5042,20 +3885,198 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
         )
 
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.unfuse_lora
-    def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        """
+        super().unfuse_lora(components=components, **kwargs)
 
-        <Tip warning={true}>
 
-        This is an experimental API.
+class KandinskyLoraLoaderMixin(LoraBaseMixin):
+    r"""
+    Load LoRA layers into [`Kandinsky5Transformer3DModel`],
+    """
 
-        </Tip>
+    _lora_loadable_modules = ["transformer"]
+    transformer_name = TRANSFORMER_NAME
 
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+    @classmethod
+    @validate_hf_hub_args
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.lora_state_dict
+    def lora_state_dict(
+        cls,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        """
+        # Load the main state dict first which has the LoRA layers for either of
+        # transformer and text encoder or both.
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        weight_name = kwargs.pop("weight_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = True
+            allow_pickle = True
+
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
+
+        state_dict, metadata = _fetch_state_dict(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            allow_pickle=allow_pickle,
+        )
+
+        is_dora_scale_present = any("dora_scale" in k for k in state_dict)
+        if is_dora_scale_present:
+            warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
+            logger.warning(warn_msg)
+            state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
+
+    @require_peft_backend
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
+    def load_lora_weights(
+        self,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
+        hotswap: bool = False,
+        **kwargs,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        """
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+
+        # if a dict is passed, copy it instead of modifying it inplace
+        if isinstance(pretrained_model_name_or_path_or_dict, dict):
+            pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
+
+        # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
+
+        self.load_lora_into_transformer(
+            state_dict,
+            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer
+    def load_lora_into_transformer(
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
+        metadata=None,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        """
+        # Load the layers corresponding to transformer.
+        logger.info(f"Loading {cls.transformer_name}.")
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=None,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
+    def save_lora_weights(
+        cls,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: dict | None = None,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        """
+        lora_layers = {}
+        lora_metadata = {}
+
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
+
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
+
+        cls._save_lora_weights(
+            save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
+    def fuse_lora(
+        self,
+        components: list[str] = ["transformer"],
+        lora_scale: float = 1.0,
+        safe_fusing: bool = False,
+        adapter_names: list[str] | None = None,
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        """
+        super().fuse_lora(
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -5072,54 +4093,11 @@ class WanLoraLoaderMixin(LoraBaseMixin):
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
-        Return state dict for lora weights and the network alphas.
-
-        <Tip warning={true}>
-
-        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
-
-        This function is experimental and might change in the future.
-
-        </Tip>
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                Can be either:
-
-                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
-                      the Hub.
-                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
-                      with [`ModelMixin.save_pretrained`].
-                    - A [torch state
-                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
-                is not used.
-            force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
-                cached versions if they exist.
-
-            proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
-                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to `True`, the model
-                won't be downloaded from the Hub.
-            token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
-                `diffusers-cli login` (stored in `~/.huggingface`) is used.
-            revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
-                allowed by Git.
-            subfolder (`str`, *optional*, defaults to `""`):
-                The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata (`bool`, *optional*, defaults to False):
-                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -5217,42 +4195,18 @@ class WanLoraLoaderMixin(LoraBaseMixin):
 
         return state_dict
 
+    @require_peft_backend
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        adapter_name: Optional[str] = None,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -5268,7 +4222,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         )
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError("Invalid LoRA checkpoint.")
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
         load_into_transformer_2 = kwargs.pop("load_into_transformer_2", False)
         if load_into_transformer_2:
@@ -5313,32 +4267,8 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`WanTransformer3DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -5355,98 +4285,48 @@ class WanLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
-        components: List[str] = ["transformer"],
+        components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[List[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -5457,20 +4337,9 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
-    def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -5488,54 +4357,11 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.WanLoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
-        Return state dict for lora weights and the network alphas.
-
-        <Tip warning={true}>
-
-        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
-
-        This function is experimental and might change in the future.
-
-        </Tip>
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                Can be either:
-
-                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
-                      the Hub.
-                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
-                      with [`ModelMixin.save_pretrained`].
-                    - A [torch state
-                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
-                is not used.
-            force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
-                cached versions if they exist.
-
-            proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
-                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to `True`, the model
-                won't be downloaded from the Hub.
-            token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
-                `diffusers-cli login` (stored in `~/.huggingface`) is used.
-            revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
-                allowed by Git.
-            subfolder (`str`, *optional*, defaults to `""`):
-                The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata (`bool`, *optional*, defaults to False):
-                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -5634,43 +4460,19 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
 
         return state_dict
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.WanLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        adapter_name: Optional[str] = None,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -5686,7 +4488,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         )
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError("Invalid LoRA checkpoint.")
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
         load_into_transformer_2 = kwargs.pop("load_into_transformer_2", False)
         if load_into_transformer_2:
@@ -5731,32 +4533,8 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`SkyReelsV2Transformer3DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -5773,98 +4551,48 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
-        components: List[str] = ["transformer"],
+        components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[List[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -5875,20 +4603,9 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
-    def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -5906,55 +4623,11 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.lora_state_dict
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
-        Return state dict for lora weights and the network alphas.
-
-        <Tip warning={true}>
-
-        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
-
-        This function is experimental and might change in the future.
-
-        </Tip>
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                Can be either:
-
-                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
-                      the Hub.
-                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
-                      with [`ModelMixin.save_pretrained`].
-                    - A [torch state
-                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
-                is not used.
-            force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
-                cached versions if they exist.
-
-            proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
-                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to `True`, the model
-                won't be downloaded from the Hub.
-            token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
-                `diffusers-cli login` (stored in `~/.huggingface`) is used.
-            revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
-                allowed by Git.
-            subfolder (`str`, *optional*, defaults to `""`):
-                The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata (`bool`, *optional*, defaults to False):
-                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
-
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -6000,43 +4673,19 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        adapter_name: Optional[str] = None,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -6048,7 +4697,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError("Invalid LoRA checkpoint.")
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -6073,32 +4722,8 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`CogView4Transformer2DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -6115,98 +4740,48 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
-        components: List[str] = ["transformer"],
+        components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[List[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -6217,20 +4792,9 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
-    def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -6247,54 +4811,11 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
-        Return state dict for lora weights and the network alphas.
-
-        <Tip warning={true}>
-
-        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
-
-        This function is experimental and might change in the future.
-
-        </Tip>
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                Can be either:
-
-                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
-                      the Hub.
-                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
-                      with [`ModelMixin.save_pretrained`].
-                    - A [torch state
-                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
-                is not used.
-            force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
-                cached versions if they exist.
-
-            proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
-                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to `True`, the model
-                won't be downloaded from the Hub.
-            token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
-                `diffusers-cli login` (stored in `~/.huggingface`) is used.
-            revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
-                allowed by Git.
-            subfolder (`str`, *optional*, defaults to `""`):
-                The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata (`bool`, *optional*, defaults to False):
-                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -6344,43 +4865,19 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        adapter_name: Optional[str] = None,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -6392,7 +4889,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError("Invalid LoRA checkpoint.")
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -6417,32 +4914,8 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`HiDreamImageTransformer2DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -6459,98 +4932,48 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
-        components: List[str] = ["transformer"],
+        components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[List[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -6561,20 +4984,9 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
         )
 
     # Copied from diffusers.loaders.lora_pipeline.SanaLoraLoaderMixin.unfuse_lora
-    def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 
@@ -6591,55 +5003,11 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
     @validate_hf_hub_args
     def lora_state_dict(
         cls,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
         **kwargs,
     ):
         r"""
-        Return state dict for lora weights and the network alphas.
-
-        <Tip warning={true}>
-
-        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
-
-        This function is experimental and might change in the future.
-
-        </Tip>
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                Can be either:
-
-                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
-                      the Hub.
-                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
-                      with [`ModelMixin.save_pretrained`].
-                    - A [torch state
-                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
-                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
-                is not used.
-            force_download (`bool`, *optional*, defaults to `False`):
-                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
-                cached versions if they exist.
-
-            proxies (`Dict[str, str]`, *optional*):
-                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
-                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            local_files_only (`bool`, *optional*, defaults to `False`):
-                Whether to only load local model weights and configuration files or not. If set to `True`, the model
-                won't be downloaded from the Hub.
-            token (`str` or *bool*, *optional*):
-                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
-                `diffusers-cli login` (stored in `~/.huggingface`) is used.
-            revision (`str`, *optional*, defaults to `"main"`):
-                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
-                allowed by Git.
-            subfolder (`str`, *optional*, defaults to `""`):
-                The subfolder location of a model file within a larger model repository on the Hub or locally.
-            return_lora_metadata (`bool`, *optional*, defaults to False):
-                When enabled, additionally return the LoRA adapter metadata, typically found in the state dict.
-
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
         """
         # Load the main state dict first which has the LoRA layers for either of
         # transformer and text encoder or both.
@@ -6685,49 +5053,26 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         has_alphas_in_sd = any(k.endswith(".alpha") for k in state_dict)
         has_lora_unet = any(k.startswith("lora_unet_") for k in state_dict)
         has_diffusion_model = any(k.startswith("diffusion_model.") for k in state_dict)
-        if has_alphas_in_sd or has_lora_unet or has_diffusion_model:
+        has_default = any("default." in k for k in state_dict)
+        if has_alphas_in_sd or has_lora_unet or has_diffusion_model or has_default:
             state_dict = _convert_non_diffusers_qwen_lora_to_diffusers(state_dict)
 
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
+    @require_peft_backend
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        adapter_name: Optional[str] = None,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
         hotswap: bool = False,
         **kwargs,
     ):
         """
-        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.transformer` and
-        `self.text_encoder`. All kwargs are forwarded to `self.lora_state_dict`. See
-        [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
-        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_transformer`] for more details on how the state
-        dict is loaded into `self.transformer`.
-
-        Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            kwargs (`dict`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`].
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
         """
-        if not USE_PEFT_BACKEND:
-            raise ValueError("PEFT backend is required for this method.")
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
 
         # if a dict is passed, copy it instead of modifying it inplace
         if isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -6739,7 +5084,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError("Invalid LoRA checkpoint.")
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -6764,32 +5109,8 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         metadata=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `transformer`.
-
-        Parameters:
-            state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
-            transformer (`QwenImageTransformer2DModel`):
-                The Transformer model to load the LoRA layers into.
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
-            low_cpu_mem_usage (`bool`, *optional*):
-                Speed up model loading by only loading the pretrained LoRA weights and not initializing the random
-                weights.
-            hotswap (`bool`, *optional*):
-                See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`].
-            metadata (`dict`):
-                Optional LoRA adapter metadata. When supplied, the `LoraConfig` arguments of `peft` won't be derived
-                from the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
         """
-        if low_cpu_mem_usage and is_peft_version("<", "0.13.0"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
-
         # Load the layers corresponding to transformer.
         logger.info(f"Loading {cls.transformer_name}.")
         transformer.load_lora_adapter(
@@ -6806,98 +5127,48 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
     def save_lora_weights(
         cls,
-        save_directory: Union[str, os.PathLike],
-        transformer_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        transformer_lora_adapter_metadata: Optional[dict] = None,
+        transformer_lora_adapter_metadata: dict | None = None,
     ):
         r"""
-        Save the LoRA parameters corresponding to the transformer.
-
-        Arguments:
-            save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
-            transformer_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
-                State dict of the LoRA layers corresponding to the `transformer`.
-            is_main_process (`bool`, *optional*, defaults to `True`):
-                Whether the process calling this is the main process or not. Useful during distributed training and you
-                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
-                process to avoid race conditions.
-            save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
-                `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
-            transformer_lora_adapter_metadata:
-                LoRA adapter metadata associated with the transformer to be serialized with the state dict.
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
         """
-        state_dict = {}
-        lora_adapter_metadata = {}
+        lora_layers = {}
+        lora_metadata = {}
 
-        if not transformer_lora_layers:
-            raise ValueError("You must pass `transformer_lora_layers`.")
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
 
-        state_dict.update(cls.pack_weights(transformer_lora_layers, cls.transformer_name))
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
 
-        if transformer_lora_adapter_metadata is not None:
-            lora_adapter_metadata.update(
-                _pack_dict_with_prefix(transformer_lora_adapter_metadata, cls.transformer_name)
-            )
-
-        # Save the model
-        cls.write_lora_layers(
-            state_dict=state_dict,
+        cls._save_lora_weights(
             save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
             is_main_process=is_main_process,
             weight_name=weight_name,
             save_function=save_function,
             safe_serialization=safe_serialization,
-            lora_adapter_metadata=lora_adapter_metadata,
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
     def fuse_lora(
         self,
-        components: List[str] = ["transformer"],
+        components: list[str] = ["transformer"],
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
-        adapter_names: Optional[List[str]] = None,
+        adapter_names: list[str] | None = None,
         **kwargs,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
-
-        <Tip warning={true}>
-
-        This is an experimental API.
-
-        </Tip>
-
-        Args:
-            components: (`List[str]`): List of LoRA-injectable components to fuse the LoRAs into.
-            lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
-            adapter_names (`List[str]`, *optional*):
-                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        ```
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
         """
         super().fuse_lora(
             components=components,
@@ -6908,20 +5179,1947 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
         )
 
     # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
-    def unfuse_lora(self, components: List[str] = ["transformer"], **kwargs):
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraBaseMixin.fuse_lora).
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        """
+        super().unfuse_lora(components=components, **kwargs)
 
-        <Tip warning={true}>
 
-        This is an experimental API.
+class Krea2LoraLoaderMixin(LoraBaseMixin):
+    r"""
+    Load LoRA layers into [`Krea2Transformer2DModel`]. Specific to [`Krea2Pipeline`].
+    """
 
-        </Tip>
+    _lora_loadable_modules = ["transformer"]
+    transformer_name = TRANSFORMER_NAME
+
+    @classmethod
+    @validate_hf_hub_args
+    def lora_state_dict(
+        cls,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        """
+        # Load the main state dict first which has the LoRA layers for either of
+        # transformer and text encoder or both.
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        weight_name = kwargs.pop("weight_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = True
+            allow_pickle = True
+
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
+
+        state_dict, metadata = _fetch_state_dict(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            allow_pickle=allow_pickle,
+        )
+
+        is_dora_scale_present = any("dora_scale" in k for k in state_dict)
+        if is_dora_scale_present:
+            warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
+            logger.warning(warn_msg)
+            state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        is_non_diffusers_format = any(
+            k.startswith("diffusion_model.") or k.startswith("base_model.model.") for k in state_dict
+        )
+        if is_non_diffusers_format:
+            state_dict = _convert_non_diffusers_krea2_lora_to_diffusers(state_dict)
+
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
+
+    @require_peft_backend
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
+    def load_lora_weights(
+        self,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
+        hotswap: bool = False,
+        **kwargs,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        """
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+
+        # if a dict is passed, copy it instead of modifying it inplace
+        if isinstance(pretrained_model_name_or_path_or_dict, dict):
+            pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
+
+        # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
+
+        self.load_lora_into_transformer(
+            state_dict,
+            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->Krea2Transformer2DModel
+    def load_lora_into_transformer(
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
+        metadata=None,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        """
+        # Load the layers corresponding to transformer.
+        logger.info(f"Loading {cls.transformer_name}.")
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=None,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
+    def save_lora_weights(
+        cls,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: dict | None = None,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        """
+        lora_layers = {}
+        lora_metadata = {}
+
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
+
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
+
+        cls._save_lora_weights(
+            save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
+    def fuse_lora(
+        self,
+        components: list[str] = ["transformer"],
+        lora_scale: float = 1.0,
+        safe_fusing: bool = False,
+        adapter_names: list[str] | None = None,
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        """
+        super().fuse_lora(
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        """
+        super().unfuse_lora(components=components, **kwargs)
+
+
+class ZImageLoraLoaderMixin(LoraBaseMixin):
+    r"""
+    Load LoRA layers into [`ZImageTransformer2DModel`]. Specific to [`ZImagePipeline`].
+    """
+
+    _lora_loadable_modules = ["transformer"]
+    transformer_name = TRANSFORMER_NAME
+
+    @classmethod
+    @validate_hf_hub_args
+    def lora_state_dict(
+        cls,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        """
+        # Load the main state dict first which has the LoRA layers for either of
+        # transformer and text encoder or both.
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        weight_name = kwargs.pop("weight_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = True
+            allow_pickle = True
+
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
+
+        state_dict, metadata = _fetch_state_dict(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            allow_pickle=allow_pickle,
+        )
+
+        is_dora_scale_present = any("dora_scale" in k for k in state_dict)
+        if is_dora_scale_present:
+            warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
+            logger.warning(warn_msg)
+            state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        has_alphas_in_sd = any(k.endswith(".alpha") for k in state_dict)
+        has_lora_unet = any(k.startswith("lora_unet_") for k in state_dict)
+        has_diffusion_model = any(k.startswith("diffusion_model.") for k in state_dict)
+        has_default = any("default." in k for k in state_dict)
+        if has_alphas_in_sd or has_lora_unet or has_diffusion_model or has_default:
+            state_dict = _convert_non_diffusers_z_image_lora_to_diffusers(state_dict)
+
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
+
+    @require_peft_backend
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
+    def load_lora_weights(
+        self,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
+        hotswap: bool = False,
+        **kwargs,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        """
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+
+        # if a dict is passed, copy it instead of modifying it inplace
+        if isinstance(pretrained_model_name_or_path_or_dict, dict):
+            pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
+
+        # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
+
+        self.load_lora_into_transformer(
+            state_dict,
+            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->ZImageTransformer2DModel
+    def load_lora_into_transformer(
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
+        metadata=None,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        """
+        # Load the layers corresponding to transformer.
+        logger.info(f"Loading {cls.transformer_name}.")
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=None,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
+    def save_lora_weights(
+        cls,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: dict | None = None,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        """
+        lora_layers = {}
+        lora_metadata = {}
+
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
+
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
+
+        cls._save_lora_weights(
+            save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
+    def fuse_lora(
+        self,
+        components: list[str] = ["transformer"],
+        lora_scale: float = 1.0,
+        safe_fusing: bool = False,
+        adapter_names: list[str] | None = None,
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        """
+        super().fuse_lora(
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        """
+        super().unfuse_lora(components=components, **kwargs)
+
+
+class AnimaLoraLoaderMixin(LoraBaseMixin):
+    r"""
+    Load LoRA layers into [`CosmosTransformer3DModel`] and [`AnimaTextConditioner`].
+    """
+
+    _lora_loadable_modules = ["transformer", "text_conditioner"]
+    transformer_name = TRANSFORMER_NAME
+    text_conditioner_name = "text_conditioner"
+
+    @classmethod
+    @validate_hf_hub_args
+    def lora_state_dict(
+        cls,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        """
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        weight_name = kwargs.pop("weight_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = True
+            allow_pickle = True
+
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
+
+        state_dict, metadata = _fetch_state_dict(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            allow_pickle=allow_pickle,
+        )
+
+        is_dora_scale_present = any("dora_scale" in k for k in state_dict)
+        if is_dora_scale_present:
+            warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
+            logger.warning(warn_msg)
+            state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        has_diffusion_model = any(k.startswith("diffusion_model.") for k in state_dict)
+        if has_diffusion_model:
+            state_dict = _convert_non_diffusers_anima_lora_to_diffusers(state_dict)
+
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
+
+    @require_peft_backend
+    def load_lora_weights(
+        self,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
+        hotswap: bool = False,
+        **kwargs,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        """
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+
+        if isinstance(pretrained_model_name_or_path_or_dict, dict):
+            pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
+
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
+
+        transformer_state_dict = {k: v for k, v in state_dict.items() if k.startswith(f"{self.transformer_name}.")}
+        text_conditioner_state_dict = {
+            k: v for k, v in state_dict.items() if k.startswith(f"{self.text_conditioner_name}.")
+        }
+
+        if transformer_state_dict:
+            self.load_lora_into_transformer(
+                transformer_state_dict,
+                transformer=self.transformer,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+            )
+
+        if text_conditioner_state_dict:
+            self.load_lora_into_text_conditioner(
+                text_conditioner_state_dict,
+                text_conditioner=self.text_conditioner,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+            )
+
+    @classmethod
+    def load_lora_into_transformer(
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
+        metadata=None,
+    ):
+        logger.info(f"Loading {cls.transformer_name}.")
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=None,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    def load_lora_into_text_conditioner(
+        cls,
+        state_dict,
+        text_conditioner,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
+        metadata=None,
+    ):
+        logger.info(f"Loading {cls.text_conditioner_name}.")
+        text_conditioner.load_lora_adapter(
+            state_dict,
+            prefix=cls.text_conditioner_name,
+            network_alphas=None,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    def fuse_lora(
+        self,
+        components: list[str] = ["transformer", "text_conditioner"],
+        lora_scale: float = 1.0,
+        safe_fusing: bool = False,
+        adapter_names: list[str] | None = None,
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        """
+        super().fuse_lora(
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
+        )
+
+    def unfuse_lora(self, components: list[str] = ["transformer", "text_conditioner"], **kwargs):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        """
+        super().unfuse_lora(components=components, **kwargs)
+
+
+class Flux2LoraLoaderMixin(LoraBaseMixin):
+    r"""
+    Load LoRA layers into [`Flux2Transformer2DModel`]. Specific to [`Flux2Pipeline`].
+    """
+
+    _lora_loadable_modules = ["transformer"]
+    transformer_name = TRANSFORMER_NAME
+
+    @classmethod
+    @validate_hf_hub_args
+    def lora_state_dict(
+        cls,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        """
+        # Load the main state dict first which has the LoRA layers for either of
+        # transformer and text encoder or both.
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        weight_name = kwargs.pop("weight_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = True
+            allow_pickle = True
+
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
+
+        state_dict, metadata = _fetch_state_dict(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            allow_pickle=allow_pickle,
+        )
+
+        is_dora_scale_present = any("dora_scale" in k for k in state_dict)
+        if is_dora_scale_present:
+            warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
+            logger.warning(warn_msg)
+            state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        is_kohya = any(".lora_down.weight" in k for k in state_dict)
+        if is_kohya:
+            state_dict = _convert_kohya_flux2_lora_to_diffusers(state_dict)
+            # Kohya already takes care of scaling the LoRA parameters with alpha.
+            out = (state_dict, metadata) if return_lora_metadata else state_dict
+            return out
+
+        is_peft_format = any(k.startswith("base_model.model.") for k in state_dict)
+        if is_peft_format:
+            state_dict = {k.replace("base_model.model.", "diffusion_model."): v for k, v in state_dict.items()}
+
+        is_ai_toolkit = any(k.startswith("diffusion_model.") for k in state_dict)
+        if is_ai_toolkit:
+            state_dict = _convert_non_diffusers_flux2_lora_to_diffusers(state_dict)
+
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
+
+    @require_peft_backend
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
+    def load_lora_weights(
+        self,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
+        hotswap: bool = False,
+        **kwargs,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        """
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+
+        # if a dict is passed, copy it instead of modifying it inplace
+        if isinstance(pretrained_model_name_or_path_or_dict, dict):
+            pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
+
+        # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
+
+        self.load_lora_into_transformer(
+            state_dict,
+            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->CogView4Transformer2DModel
+    def load_lora_into_transformer(
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
+        metadata=None,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        """
+        # Load the layers corresponding to transformer.
+        logger.info(f"Loading {cls.transformer_name}.")
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=None,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
+    def save_lora_weights(
+        cls,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: dict | None = None,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        """
+        lora_layers = {}
+        lora_metadata = {}
+
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
+
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
+
+        cls._save_lora_weights(
+            save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
+    def fuse_lora(
+        self,
+        components: list[str] = ["transformer"],
+        lora_scale: float = 1.0,
+        safe_fusing: bool = False,
+        adapter_names: list[str] | None = None,
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        """
+        super().fuse_lora(
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        """
+        super().unfuse_lora(components=components, **kwargs)
+
+
+class Ideogram4LoraLoaderMixin(LoraBaseMixin):
+    r"""
+    Load LoRA layers into [`Ideogram4Transformer2DModel`]. Specific to [`Ideogram4Pipeline`].
+    """
+
+    _lora_loadable_modules = ["transformer"]
+    transformer_name = TRANSFORMER_NAME
+
+    @classmethod
+    @validate_hf_hub_args
+    def lora_state_dict(
+        cls,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        """
+        # Load the main state dict first which has the LoRA layers for either of
+        # transformer and text encoder or both.
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        weight_name = kwargs.pop("weight_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = True
+            allow_pickle = True
+
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
+
+        state_dict, metadata = _fetch_state_dict(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            allow_pickle=allow_pickle,
+        )
+
+        is_dora_scale_present = any("dora_scale" in k for k in state_dict)
+        if is_dora_scale_present:
+            warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
+            logger.warning(warn_msg)
+            state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        # ai-toolkit (ostris) saves Ideogram4 LoRAs under a `diffusion_model.` prefix with a fused
+        # `attention.qkv` projection; convert those to the diffusers layout before loading.
+        is_non_diffusers_format = any(k.startswith("diffusion_model.") for k in state_dict) or any(
+            ".attention.qkv." in k for k in state_dict
+        )
+        if is_non_diffusers_format:
+            state_dict = _convert_non_diffusers_ideogram4_lora_to_diffusers(state_dict)
+
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
+
+    @require_peft_backend
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
+    def load_lora_weights(
+        self,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
+        hotswap: bool = False,
+        **kwargs,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        """
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+
+        # if a dict is passed, copy it instead of modifying it inplace
+        if isinstance(pretrained_model_name_or_path_or_dict, dict):
+            pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
+
+        # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
+
+        self.load_lora_into_transformer(
+            state_dict,
+            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->CogView4Transformer2DModel
+    def load_lora_into_transformer(
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
+        metadata=None,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        """
+        # Load the layers corresponding to transformer.
+        logger.info(f"Loading {cls.transformer_name}.")
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=None,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
+    def save_lora_weights(
+        cls,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: dict | None = None,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        """
+        lora_layers = {}
+        lora_metadata = {}
+
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
+
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
+
+        cls._save_lora_weights(
+            save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
+    def fuse_lora(
+        self,
+        components: list[str] = ["transformer"],
+        lora_scale: float = 1.0,
+        safe_fusing: bool = False,
+        adapter_names: list[str] | None = None,
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        """
+        super().fuse_lora(
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        """
+        super().unfuse_lora(components=components, **kwargs)
+
+
+class ErnieImageLoraLoaderMixin(LoraBaseMixin):
+    r"""
+    Load LoRA layers into [`ErnieImageTransformer2DModel`]. Specific to [`ErnieImagePipeline`].
+    """
+
+    _lora_loadable_modules = ["transformer"]
+    transformer_name = TRANSFORMER_NAME
+
+    @classmethod
+    @validate_hf_hub_args
+    def lora_state_dict(
+        cls,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        """
+        # Load the main state dict first which has the LoRA layers for either of
+        # transformer and text encoder or both.
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        weight_name = kwargs.pop("weight_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = True
+            allow_pickle = True
+
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
+
+        state_dict, metadata = _fetch_state_dict(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            allow_pickle=allow_pickle,
+        )
+
+        is_dora_scale_present = any("dora_scale" in k for k in state_dict)
+        if is_dora_scale_present:
+            warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
+            logger.warning(warn_msg)
+            state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        # PEFT format -> normalize to diffusion_model.* prefix
+        is_peft_format = any(k.startswith("base_model.model.") for k in state_dict)
+        if is_peft_format:
+            state_dict = {k.replace("base_model.model.", "diffusion_model."): v for k, v in state_dict.items()}
+
+        # AI-Toolkit / diffusion_model.* prefix -> swap to transformer.*
+        # The Ernie LoRA naming under diffusion_model.* already matches diffusers module
+        # paths (layers.X.self_attention.to_q etc.), so only the prefix needs to change.
+        is_diffusion_model_prefix = any(k.startswith("diffusion_model.") for k in state_dict)
+        if is_diffusion_model_prefix:
+            state_dict = {k.replace("diffusion_model.", "transformer."): v for k, v in state_dict.items()}
+
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
+
+    @require_peft_backend
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
+    def load_lora_weights(
+        self,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
+        hotswap: bool = False,
+        **kwargs,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        """
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+
+        # if a dict is passed, copy it instead of modifying it inplace
+        if isinstance(pretrained_model_name_or_path_or_dict, dict):
+            pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
+
+        # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
+
+        self.load_lora_into_transformer(
+            state_dict,
+            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->ErnieImageTransformer2DModel
+    def load_lora_into_transformer(
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
+        metadata=None,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        """
+        # Load the layers corresponding to transformer.
+        logger.info(f"Loading {cls.transformer_name}.")
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=None,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
+    def save_lora_weights(
+        cls,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: dict | None = None,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        """
+        lora_layers = {}
+        lora_metadata = {}
+
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
+
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
+
+        cls._save_lora_weights(
+            save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
+    def fuse_lora(
+        self,
+        components: list[str] = ["transformer"],
+        lora_scale: float = 1.0,
+        safe_fusing: bool = False,
+        adapter_names: list[str] | None = None,
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        """
+        super().fuse_lora(
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        """
+        super().unfuse_lora(components=components, **kwargs)
+
+
+class CosmosLoraLoaderMixin(LoraBaseMixin):
+    r"""
+    Load LoRA layers into [`CosmosTransformer3DModel`], Specific to [`Cosmos2_5_PredictBasePipeline`].
+    """
+
+    _lora_loadable_modules = ["transformer"]
+    transformer_name = TRANSFORMER_NAME
+    text_encoder_name = TEXT_ENCODER_NAME
+
+    @classmethod
+    @validate_hf_hub_args
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.lora_state_dict
+    def lora_state_dict(
+        cls,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        """
+        # Load the main state dict first which has the LoRA layers for either of
+        # transformer and text encoder or both.
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        weight_name = kwargs.pop("weight_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = True
+            allow_pickle = True
+
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
+
+        state_dict, metadata = _fetch_state_dict(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            allow_pickle=allow_pickle,
+        )
+
+        is_dora_scale_present = any("dora_scale" in k for k in state_dict)
+        if is_dora_scale_present:
+            warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
+            logger.warning(warn_msg)
+            state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
+
+    @require_peft_backend
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
+    def load_lora_weights(
+        self,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
+        hotswap: bool = False,
+        **kwargs,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        """
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+
+        # if a dict is passed, copy it instead of modifying it inplace
+        if isinstance(pretrained_model_name_or_path_or_dict, dict):
+            pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
+
+        # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
+
+        self.load_lora_into_transformer(
+            state_dict,
+            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->CosmosTransformer3DModel
+    def load_lora_into_transformer(
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
+        metadata=None,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        """
+        # Load the layers corresponding to transformer.
+        logger.info(f"Loading {cls.transformer_name}.")
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=None,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
+    def save_lora_weights(
+        cls,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: dict | None = None,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        """
+        lora_layers = {}
+        lora_metadata = {}
+
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
+
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
+
+        cls._save_lora_weights(
+            save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
+    def fuse_lora(
+        self,
+        components: list[str] = ["transformer"],
+        lora_scale: float = 1.0,
+        safe_fusing: bool = False,
+        adapter_names: list[str] | None = None,
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        """
+        super().fuse_lora(
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        """
+        super().unfuse_lora(components=components, **kwargs)
+
+
+class AceStepLoraLoaderMixin(LoraBaseMixin):
+    r"""
+    Load LoRA layers into [`AceStepTransformer1DModel`]. Specific to [`AceStepPipeline`].
+    """
+
+    _lora_loadable_modules = ["transformer"]
+    transformer_name = TRANSFORMER_NAME
+
+    @classmethod
+    @validate_hf_hub_args
+    def lora_state_dict(
+        cls,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        """
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        weight_name = kwargs.pop("weight_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = True
+            allow_pickle = True
+
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
+
+        state_dict, metadata = _fetch_state_dict(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            allow_pickle=allow_pickle,
+        )
+
+        is_dora_scale_present = any("dora_scale" in k for k in state_dict)
+        if is_dora_scale_present:
+            warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
+            logger.warning(warn_msg)
+            state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        # Detect original ACE-Step-1.5 PEFT format (q_proj/k_proj naming).
+        is_original_ace_step = any("q_proj" in k or "k_proj" in k for k in state_dict)
+        if is_original_ace_step:
+            state_dict = _convert_non_diffusers_ace_step_lora_to_diffusers(state_dict)
+
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
+
+    @require_peft_backend
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
+    def load_lora_weights(
+        self,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
+        hotswap: bool = False,
+        **kwargs,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
+        """
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+
+        # if a dict is passed, copy it instead of modifying it inplace
+        if isinstance(pretrained_model_name_or_path_or_dict, dict):
+            pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
+
+        # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
+
+        self.load_lora_into_transformer(
+            state_dict,
+            transformer=getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=self,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->AceStepTransformer1DModel
+    def load_lora_into_transformer(
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
+        metadata=None,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        """
+        # Load the layers corresponding to transformer.
+        logger.info(f"Loading {cls.transformer_name}.")
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=None,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.save_lora_weights
+    def save_lora_weights(
+        cls,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: dict | None = None,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        """
+        lora_layers = {}
+        lora_metadata = {}
+
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
+
+        if not lora_layers:
+            raise ValueError("You must pass at least one of `transformer_lora_layers` or `text_encoder_lora_layers`.")
+
+        cls._save_lora_weights(
+            save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.fuse_lora
+    def fuse_lora(
+        self,
+        components: list[str] = ["transformer"],
+        lora_scale: float = 1.0,
+        safe_fusing: bool = False,
+        adapter_names: list[str] | None = None,
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        """
+        super().fuse_lora(
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
+        )
+
+    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.unfuse_lora
+    def unfuse_lora(self, components: list[str] = ["transformer"], **kwargs):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
+        """
+        super().unfuse_lora(components=components, **kwargs)
+
+
+class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
+    r"""
+    Load LoRA layers into [`MiniMaxH3Transformer3DModel`]. Specific to [`MiniMaxH3ModularPipeline`].
+
+    MiniMax-H3 ships two independent DiT partitions with identical module names (a LoRA for one loads into the other
+    and degrades output), so routing is explicit: converted state dicts target `transformer.`; reach `transformer_ref`
+    with a `transformer_ref.`-prefixed file or `load_into_transformer_ref=True`.
+
+    DiffSynth-Studio LoRAs (e.g.
+    [DiffSynth-Studio/MiniMax-H3-LoRA-LineartAnime](https://huggingface.co/DiffSynth-Studio/MiniMax-H3-LoRA-LineartAnime))
+    are trained against the raw checkpoint's per-head-interleaved fused QKV and are de-interleaved on conversion. Their
+    fp32 factors make the unfused LoRA path compute in fp32; `.to(torch.bfloat16)` on the model after loading restores
+    the bf16 memory budget.
+
+    LoRAs trained against a pruned checkpoint (the `*_pruned_*` files in
+    [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3);
+    [joyfox/MiniMax-H3-Turbo](https://huggingface.co/joyfox/MiniMax-H3-Turbo) is one) fail with a size mismatch.
+    Alpha-less files load at `alpha == rank` (scale 1.0, the convention stated by e.g.
+    [larryvrh/MiniMax-H3-Turbo-Lora](https://huggingface.co/larryvrh/MiniMax-H3-Turbo-Lora)); a `__metadata__` `alpha`
+    entry (e.g. [lightx2v/Minimax-h3-Turbo](https://huggingface.co/lightx2v/Minimax-h3-Turbo)'s 8-step file), when
+    present, is honored instead.
+    """
+
+    _lora_loadable_modules = ["transformer", "transformer_ref"]
+    transformer_name = TRANSFORMER_NAME
+    transformer_ref_name = MINIMAX_H3_TRANSFORMER_REF_NAME
+
+    @classmethod
+    @validate_hf_hub_args
+    def lora_state_dict(
+        cls,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.lora_state_dict`] for more details.
+        """
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        weight_name = kwargs.pop("weight_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+        return_lora_metadata = kwargs.pop("return_lora_metadata", False)
+
+        allow_pickle = False
+        if use_safetensors is None:
+            use_safetensors = True
+            allow_pickle = True
+
+        user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
+
+        # `return_file_metadata=True` because some H3 LoRAs record their training alpha in the file's `__metadata__`.
+        state_dict, metadata, file_metadata = _fetch_state_dict(
+            pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
+            weight_name=weight_name,
+            use_safetensors=use_safetensors,
+            local_files_only=local_files_only,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            allow_pickle=allow_pickle,
+            return_file_metadata=True,
+        )
+
+        # Read before the conversion below, which folds per-module alphas into the weights and drops the scalars.
+        has_alpha_tensors = any(k.endswith(".alpha") for k in state_dict)
+
+        is_dora_scale_present = any("dora_scale" in k for k in state_dict)
+        if is_dora_scale_present:
+            warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
+            logger.warning(warn_msg)
+            state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
+
+        # The original checkpoint's module names, none of which a diffusers name shares. Checked before the peft dump
+        # below, which DiffSynth-Studio's files would otherwise match: they carry `.default.` over these same names.
+        is_non_diffusers_format = any(
+            k.startswith(("diffusion_model.", "blocks.", "token_refiner.blocks.", "final_layer.", "lora_unet_"))
+            for k in state_dict
+        )
+        # A peft dump: diffusers module names carrying peft's `.default.` infix and no component prefix. The missing
+        # prefix is what keeps this from shadowing a file diffusers itself wrote.
+        is_unprefixed_diffusers_format = any(".default.weight" in k for k in state_dict) and not any(
+            k.startswith((f"{cls.transformer_name}.", f"{cls.transformer_ref_name}.")) for k in state_dict
+        )
+
+        if is_non_diffusers_format:
+            state_dict = _convert_non_diffusers_minimax_h3_lora_to_diffusers(state_dict)
+        elif is_unprefixed_diffusers_format:
+            state_dict = {f"{cls.transformer_name}.{k.replace('.default.', '.')}": v for k, v in state_dict.items()}
+
+        # Published H3 LoRAs are alpha-less and mixed-rank (64 on attention and FFN, 16 on the AdaLN projections), and
+        # `get_peft_kwargs` would scale one of the two rank groups by `alpha / r`, so `alpha == rank` is pinned below.
+        #
+        # An alpha-less file may instead record its training alpha in the `__metadata__`, honored as a uniform network
+        # alpha (`alpha / rank` per module). Per-module scalars win, the fold above having already applied them.
+        network_alpha = None
+        if file_metadata is not None and "alpha" in file_metadata and not has_alpha_tensors:
+            try:
+                network_alpha = float(file_metadata["alpha"])
+            except ValueError:
+                logger.warning(
+                    f"This LoRA file records `alpha` as {file_metadata['alpha']!r} in its `__metadata__`. MiniMax-H3"
+                    " reads that entry as the network alpha every module was trained with, and it has to be a number,"
+                    " so it is being ignored — the adapter is loaded with `alpha == rank` instead."
+                )
+            else:
+                logger.info(
+                    f"Using the network alpha {network_alpha} this LoRA file records in its `__metadata__`; every "
+                    "module is scaled by `alpha / rank`."
+                )
+
+        # Without a `__metadata__` alpha, no metadata is built: `get_peft_kwargs` already derives `alpha == rank` for
+        # alpha-less files, which is the fold's contract too.
+        if metadata is None and network_alpha is not None:
+            metadata = {}
+            for prefix in (cls.transformer_name, cls.transformer_ref_name):
+                component_state_dict = {
+                    k.removeprefix(f"{prefix}."): v for k, v in state_dict.items() if k.startswith(f"{prefix}.")
+                }
+                # `^` anchors each pattern to a full module name, as `load_lora_adapter` does for the ranks it derives.
+                rank = {f"^{k}": v.shape[1] for k, v in component_state_dict.items() if "lora_B" in k and v.ndim > 1}
+                if not rank:
+                    continue
+                lora_config_kwargs = get_peft_kwargs(
+                    rank, network_alpha_dict=None, peft_state_dict=component_state_dict, is_unet=False
+                )
+                lora_config_kwargs["lora_alpha"] = network_alpha
+                lora_config_kwargs["alpha_pattern"] = {}
+                metadata.update(_pack_dict_with_prefix(lora_config_kwargs, prefix))
+            metadata = metadata or None
+
+        out = (state_dict, metadata) if return_lora_metadata else state_dict
+        return out
+
+    def load_lora_weights(
+        self,
+        pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
+        adapter_name: str | None = None,
+        hotswap: bool = False,
+        load_into_transformer_ref: bool = False,
+        **kwargs,
+    ):
+        """
+        Load LoRA layers into `transformer` or, with `load_into_transformer_ref=True`, into `transformer_ref`. See
+        [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_weights`] for more details.
 
         Args:
-            components (`List[str]`): List of LoRA-injectable components to unfuse LoRA from.
-            unfuse_transformer (`bool`, defaults to `True`): Whether to unfuse the UNet LoRA parameters.
+            load_into_transformer_ref (`bool`, defaults to `False`):
+                Load the `transformer.`-prefixed layers into the `transformer_ref` partition — the one the `ref2va`
+                workflow denoises with — instead of `transformer`. Only needed when both partitions are loaded: a
+                pipeline that holds `transformer_ref` alone routes there on its own.
+        """
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT_LORA)
+        # if a dict is passed, copy it instead of modifying it inplace
+        if isinstance(pretrained_model_name_or_path_or_dict, dict):
+            pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
+
+        kwargs["return_lora_metadata"] = True
+        state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
+
+        # A workflow loads only its own partition, so `getattr(..., None)` — never the `hasattr` ternary the
+        # single-denoiser mixins use — is what tells the two apart.
+        transformer = getattr(self, self.transformer_name, None)
+        transformer_ref = getattr(self, self.transformer_ref_name, None)
+
+        transformer_state_dict = {k: v for k, v in state_dict.items() if k.startswith(f"{self.transformer_name}.")}
+        transformer_ref_state_dict = {
+            k: v for k, v in state_dict.items() if k.startswith(f"{self.transformer_ref_name}.")
+        }
+
+        if transformer is None and transformer_ref is None:
+            logger.warning(
+                f"No denoiser to load the LoRA into: this pipeline holds neither `{self.transformer_name}` nor "
+                f"`{self.transformer_ref_name}`. Skipping."
+            )
+            return
+
+        if not transformer_state_dict and not transformer_ref_state_dict:
+            logger.warning(
+                f"No LoRA keys associated to {type(self).__name__} found with the prefix "
+                f"`{self.transformer_name}.` or `{self.transformer_ref_name}.`, so loading this state dict would "
+                f"target no module at all and nothing was loaded. This is an unrecognized MiniMax-H3 LoRA layout; "
+                f"its first keys are {sorted(state_dict)[:4]}. Open an issue if you think it's unexpected: "
+                "https://github.com/huggingface/diffusers/issues/new"
+            )
+            return
+
+        if transformer_ref_state_dict and transformer_ref is None:
+            raise ValueError(
+                f"This LoRA has `{self.transformer_ref_name}.`-prefixed layers but the pipeline does not hold a "
+                f'`{self.transformer_ref_name}` component. Load it with `workflow="ref2va"`.'
+            )
+
+        if transformer_state_dict:
+            # `transformer.`-prefixed layers go to `transformer_ref` when the caller asks for it, and also when
+            # `transformer_ref` is the only partition present — which is what `workflow="ref2va"` loads.
+            into_ref = load_into_transformer_ref or transformer is None
+            if into_ref and transformer_ref is None:
+                raise ValueError(
+                    f"`load_into_transformer_ref=True` needs a `{self.transformer_ref_name}` component, which this "
+                    'pipeline does not have. Load it with `workflow="ref2va"`, or drop the argument to load into '
+                    f"`{self.transformer_name}`."
+                )
+            if not into_ref and transformer_ref is not None and not transformer_ref_state_dict:
+                logger.warning(
+                    f"Both MiniMax-H3 partitions are loaded and this LoRA does not say which one it was trained "
+                    f"against, so it is going into `{self.transformer_name}` — the partition every published H3 LoRA "
+                    f"so far targets. Pass `load_into_transformer_ref=True` for the `{self.transformer_ref_name}` "
+                    "partition instead."
+                )
+            if into_ref:
+                # `transformer.`-prefixed layers into the other partition, so the prefix and the target differ.
+                self.load_lora_into_transformer_ref(
+                    transformer_state_dict,
+                    transformer_ref=transformer_ref,
+                    prefix=self.transformer_name,
+                    adapter_name=adapter_name,
+                    metadata=metadata,
+                    _pipeline=self,
+                    low_cpu_mem_usage=low_cpu_mem_usage,
+                    hotswap=hotswap,
+                )
+            else:
+                self.load_lora_into_transformer(
+                    transformer_state_dict,
+                    transformer=transformer,
+                    adapter_name=adapter_name,
+                    metadata=metadata,
+                    _pipeline=self,
+                    low_cpu_mem_usage=low_cpu_mem_usage,
+                    hotswap=hotswap,
+                )
+
+        if transformer_ref_state_dict:
+            self.load_lora_into_transformer_ref(
+                transformer_ref_state_dict,
+                transformer_ref=transformer_ref,
+                prefix=self.transformer_ref_name,
+                adapter_name=adapter_name,
+                metadata=metadata,
+                _pipeline=self,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                hotswap=hotswap,
+            )
+
+    @classmethod
+    # Copied from diffusers.loaders.lora_pipeline.SD3LoraLoaderMixin.load_lora_into_transformer with SD3Transformer2DModel->MiniMaxH3Transformer3DModel
+    def load_lora_into_transformer(
+        cls,
+        state_dict,
+        transformer,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
+        metadata=None,
+    ):
+        """
+        See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more details.
+        """
+        # Load the layers corresponding to transformer.
+        logger.info(f"Loading {cls.transformer_name}.")
+        transformer.load_lora_adapter(
+            state_dict,
+            network_alphas=None,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    def load_lora_into_transformer_ref(
+        cls,
+        state_dict,
+        transformer_ref,
+        prefix,
+        adapter_name=None,
+        _pipeline=None,
+        low_cpu_mem_usage=False,
+        hotswap: bool = False,
+        metadata=None,
+    ):
+        """
+        Load LoRA layers into the `transformer_ref` partition. `prefix` is the component name the keys carry, which is
+        `transformer_ref` for a file that names the partition and `transformer` for one routed here by
+        `load_into_transformer_ref=True`. See [`~loaders.StableDiffusionLoraLoaderMixin.load_lora_into_unet`] for more
+        details.
+        """
+        logger.info(f"Loading {prefix}.")
+        transformer_ref.load_lora_adapter(
+            state_dict,
+            prefix=prefix,
+            network_alphas=None,
+            adapter_name=adapter_name,
+            metadata=metadata,
+            _pipeline=_pipeline,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            hotswap=hotswap,
+        )
+
+    @classmethod
+    def save_lora_weights(
+        cls,
+        save_directory: str | os.PathLike,
+        transformer_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        transformer_ref_lora_layers: dict[str, torch.nn.Module | torch.Tensor] = None,
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = True,
+        transformer_lora_adapter_metadata: dict | None = None,
+        transformer_ref_lora_adapter_metadata: dict | None = None,
+    ):
+        r"""
+        Save the LoRA layers of one or both MiniMax-H3 partitions. Which partition a LoRA belongs to is not recoverable
+        from its keys, so this is the only way to publish an H3 LoRA that records it. See
+        [`~loaders.StableDiffusionLoraLoaderMixin.save_lora_weights`] for more information.
+        """
+        lora_layers = {}
+        lora_metadata = {}
+
+        if transformer_lora_layers:
+            lora_layers[cls.transformer_name] = transformer_lora_layers
+            lora_metadata[cls.transformer_name] = transformer_lora_adapter_metadata
+        if transformer_ref_lora_layers:
+            lora_layers[cls.transformer_ref_name] = transformer_ref_lora_layers
+            lora_metadata[cls.transformer_ref_name] = transformer_ref_lora_adapter_metadata
+
+        if not lora_layers:
+            raise ValueError(
+                "You must pass at least one of `transformer_lora_layers` or `transformer_ref_lora_layers`."
+            )
+
+        cls._save_lora_weights(
+            save_directory=save_directory,
+            lora_layers=lora_layers,
+            lora_metadata=lora_metadata,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+        )
+
+    def fuse_lora(
+        self,
+        components: list[str] = ["transformer", "transformer_ref"],
+        lora_scale: float = 1.0,
+        safe_fusing: bool = False,
+        adapter_names: list[str] | None = None,
+        **kwargs,
+    ):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.fuse_lora`] for more details.
+        """
+        super().fuse_lora(
+            components=components,
+            lora_scale=lora_scale,
+            safe_fusing=safe_fusing,
+            adapter_names=adapter_names,
+            **kwargs,
+        )
+
+    def unfuse_lora(self, components: list[str] = ["transformer", "transformer_ref"], **kwargs):
+        r"""
+        See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
 

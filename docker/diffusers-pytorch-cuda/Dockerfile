@@ -1,51 +1,58 @@
-FROM nvidia/cuda:12.1.0-runtime-ubuntu20.04
+FROM nvidia/cuda:12.9.1-runtime-ubuntu24.04
 LABEL maintainer="Hugging Face"
 LABEL repository="diffusers"
 
+ARG PYTHON_VERSION=3.10
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get -y update \
     && apt-get install -y software-properties-common \
-    && add-apt-repository ppa:deadsnakes/ppa
+    && add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update
 
+# The runtime base image only ships the CUDA libraries, but AOT-inductor compiles a C++
+# wrapper against the CUDA headers. cuda-cudart-dev provides cuda.h/cuda_runtime_api.h, and
+# cuda-nvcc pulls in the crt/ headers (crt/host_defines.h etc.) that cuda_runtime_api.h
+# includes in turn -- both are needed or the AOT tests fail with a CppCompileError.
 RUN apt install -y bash \
     build-essential \
+    cuda-cudart-dev-12-9 \
+    cuda-nvcc-12-9 \
     git \
     git-lfs \
     curl \
     ca-certificates \
+    libglib2.0-0 \
     libsndfile1-dev \
     libgl1 \
-    python3.10 \
-    python3.10-dev \
+    python3 \
     python3-pip \
-    python3.10-venv && \
-    rm -rf /var/lib/apt/lists
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# make sure to use venv
-RUN python3.10 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+ENV VIRTUAL_ENV="/opt/venv"
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python
+RUN uv venv --python ${PYTHON_VERSION} --seed ${VIRTUAL_ENV}
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
-RUN python3.10 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
-    python3.10 -m uv pip install --no-cache-dir \
-    torch \
-    torchvision \
-    torchaudio \
-    invisible_watermark && \
-    python3.10 -m pip install --no-cache-dir \
+# Pin torch, torchvision, and torchaudio to a matching set so the torchvision C++
+# extension's ABI lines up with torch (otherwise torchvision::nms fails to register).
+RUN uv pip install --no-cache-dir \
+    torch==2.10.0 \
+    torchvision==0.25.0 \
+    torchaudio==2.10.0 \
+    --index-url https://download.pytorch.org/whl/cu129
+
+RUN uv pip install --no-cache-dir "git+https://github.com/huggingface/diffusers.git@main#egg=diffusers[test]"
+
+# Extra dependencies
+RUN uv pip install --no-cache-dir \
     accelerate \
-    datasets \
-    hf-doc-builder \
-    huggingface-hub \
-    hf_transfer \
-    Jinja2 \
-    librosa \
     numpy==1.26.4 \
-    scipy \
-    tensorboard \
-    transformers \
-    pytorch-lightning  \
-    hf_transfer
+    pytorch-lightning \
+    hf_xet
 
 CMD ["/bin/bash"]

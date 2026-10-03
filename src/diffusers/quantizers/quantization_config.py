@@ -20,20 +20,20 @@ Adapted from
 https://github.com/huggingface/transformers/blob/52cb4034ada381fe1ffe8d428a1076e5411a8026/src/transformers/utils/quantization_config.py
 """
 
+from __future__ import annotations
+
 import copy
 import importlib.metadata
-import inspect
 import json
 import os
 import warnings
 from dataclasses import dataclass
 from enum import Enum
-from functools import partial
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable
 
 from packaging import version
 
-from ..utils import is_torch_available, is_torchao_available, logging
+from ..utils import deprecate, is_torch_available, is_torchao_version, logging
 
 
 if is_torch_available():
@@ -45,19 +45,12 @@ logger = logging.get_logger(__name__)
 class QuantizationMethod(str, Enum):
     BITS_AND_BYTES = "bitsandbytes"
     GGUF = "gguf"
+    NUNCHAKU_LITE = "nunchaku_lite"
     TORCHAO = "torchao"
     QUANTO = "quanto"
     MODELOPT = "modelopt"
-
-
-if is_torchao_available():
-    from torchao.quantization.quant_primitives import MappingType
-
-    class TorchAoJSONEncoder(json.JSONEncoder):
-        def default(self, obj):
-            if isinstance(obj, MappingType):
-                return obj.name
-            return super().default(obj)
+    AUTOROUND = "auto-round"
+    SDNQ = "sdnq"
 
 
 @dataclass
@@ -75,12 +68,12 @@ class QuantizationConfigMixin:
         Instantiates a [`QuantizationConfigMixin`] from a Python dictionary of parameters.
 
         Args:
-            config_dict (`Dict[str, Any]`):
+            config_dict (`dict[str, Any]`):
                 Dictionary that will be used to instantiate the configuration object.
             return_unused_kwargs (`bool`, *optional*, defaults to `False`):
                 Whether or not to return a list of unused keyword arguments. Used for `from_pretrained` method in
                 `PreTrainedModel`.
-            kwargs (`Dict[str, Any]`):
+            kwargs (`dict[str, Any]`):
                 Additional parameters from which to initialize the configuration object.
 
         Returns:
@@ -102,7 +95,7 @@ class QuantizationConfigMixin:
         else:
             return config
 
-    def to_json_file(self, json_file_path: Union[str, os.PathLike]):
+    def to_json_file(self, json_file_path: str | os.PathLike):
         """
         Save this instance to a JSON file.
 
@@ -119,10 +112,10 @@ class QuantizationConfigMixin:
 
             writer.write(json_string)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Serializes this instance to a Python dictionary. Returns:
-            `Dict[str, Any]`: Dictionary of all the attributes that make up this configuration instance.
+            `dict[str, Any]`: Dictionary of all the attributes that make up this configuration instance.
         """
         return copy.deepcopy(self.__dict__)
 
@@ -158,11 +151,11 @@ class QuantizationConfigMixin:
         returning all the unused kwargs.
 
         Args:
-            kwargs (`Dict[str, Any]`):
+            kwargs (`dict[str, Any]`):
                 Dictionary of attributes to tentatively update this class.
 
         Returns:
-            `Dict[str, Any]`: Dictionary containing all the key-value pairs that were not used to update the instance.
+            `dict[str, Any]`: Dictionary containing all the key-value pairs that were not used to update the instance.
         """
         to_remove = []
         for key, value in kwargs.items():
@@ -201,7 +194,7 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
             These outliers are often in the interval [-60, -6] or [6, 60]. Int8 quantization works well for values of
             magnitude ~5, but beyond that, there is a significant performance penalty. A good default threshold is 6,
             but a lower threshold might be needed for more unstable models (small models, fine-tuning).
-        llm_int8_skip_modules (`List[str]`, *optional*):
+        llm_int8_skip_modules (`list[str]`, *optional*):
             An explicit list of the modules that we do not want to convert in 8-bit. This is useful for models such as
             Jukebox that has several heads in different places and not necessarily at the last position. For example
             for `CausalLM` models, the last `lm_head` is typically kept in its original `dtype`.
@@ -224,7 +217,7 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
             quantized again.
         bnb_4bit_quant_storage (`torch.dtype` or str, *optional*, defaults to `torch.uint8`):
             This sets the storage type to pack the quanitzed 4-bit prarams.
-        kwargs (`Dict[str, Any]`, *optional*):
+        kwargs (`dict[str, Any]`, *optional*):
             Additional parameters from which to initialize the configuration object.
     """
 
@@ -375,10 +368,10 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
         else:
             return None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Serializes this instance to a Python dictionary. Returns:
-            `Dict[str, Any]`: Dictionary of all the attributes that make up this configuration instance.
+            `dict[str, Any]`: Dictionary of all the attributes that make up this configuration instance.
         """
         output = copy.deepcopy(self.__dict__)
         output["bnb_4bit_compute_dtype"] = str(output["bnb_4bit_compute_dtype"]).split(".")[1]
@@ -392,13 +385,13 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
         config_dict = self.to_dict()
         return f"{self.__class__.__name__} {json.dumps(config_dict, indent=2, sort_keys=True)}\n"
 
-    def to_diff_dict(self) -> Dict[str, Any]:
+    def to_diff_dict(self) -> dict[str, Any]:
         """
         Removes all attributes from config which correspond to the default config attributes for better readability and
         serializes to a Python dictionary.
 
         Returns:
-            `Dict[str, Any]`: Dictionary of all the attributes that make up this configuration instance,
+            `dict[str, Any]`: Dictionary of all the attributes that make up this configuration instance,
         """
         config_dict = self.to_dict()
 
@@ -426,7 +419,7 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
 
     """
 
-    def __init__(self, compute_dtype: Optional["torch.dtype"] = None):
+    def __init__(self, compute_dtype: "torch.dtype" | None = None):
         self.quant_method = QuantizationMethod.GGUF
         self.compute_dtype = compute_dtype
         self.pre_quantized = True
@@ -439,46 +432,146 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
 
 
 @dataclass
+class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
+    """Configuration for loading Nunchaku Lite checkpoints.
+
+    Nunchaku Lite support in Diffusers loads prequantized checkpoints. To create a compatible checkpoint, use
+    [`diffuse-compressor`](https://github.com/rootonchair/diffuse-compressor) to choose or adapt a target configuration
+    for the model architecture, quantize and export the transformer, and package it as a Diffusers pipeline with the
+    compact `quantization_config` stored in `config.json`.
+
+    The exported state dict must match the target Diffusers model architecture exactly. Checkpoints quantized with
+    fused QKV projections won't load into a model config that expects separate Q, K, and V projection modules.
+
+    Example compact `config.json` config:
+
+    ```json
+    {
+      "_class_name": "ErnieImageTransformer2DModel",
+      "quantization_config": {
+        "quant_method": "nunchaku_lite",
+        "compute_dtype": "bfloat16",
+        "svdq_w4a4": {
+          "precision": "nvfp4",
+          "group_size": 16,
+          "rank": 32,
+          "targets": ["layers.0.self_attention.to_q"]
+        },
+        "awq_w4a16": {
+          "precision": "int4",
+          "group_size": 64,
+          "targets": ["final_linear"]
+        }
+      }
+    }
+    ```
+
+    Args:
+        compute_dtype (`torch.dtype`, defaults to `torch.bfloat16`):
+            Runtime dtype used by the floating-point buffers in the quantized modules.
+        svdq_w4a4 (`dict`, *optional*):
+            Explicit SVDQ W4A4 target configuration with `precision`, `group_size`, `rank`, and `targets`.
+        awq_w4a16 (`dict`, *optional*):
+            Explicit AWQ W4A16 target configuration with `precision`, `group_size`, and `targets`.
+    """
+
+    def __init__(
+        self,
+        compute_dtype: "torch.dtype" | str | None = None,
+        svdq_w4a4: dict[str, Any] | None = None,
+        awq_w4a16: dict[str, Any] | None = None,
+        **kwargs,
+    ):
+        self.quant_method = QuantizationMethod.NUNCHAKU_LITE
+        if compute_dtype is None:
+            compute_dtype = torch.bfloat16
+        if isinstance(compute_dtype, str):
+            if not hasattr(torch, compute_dtype):
+                raise ValueError(f"Unsupported Nunchaku compute dtype: {compute_dtype!r}.")
+            compute_dtype = getattr(torch, compute_dtype)
+        if not isinstance(compute_dtype, torch.dtype):
+            raise ValueError("Nunchaku compute_dtype must be a string or a torch.dtype.")
+        self.compute_dtype = compute_dtype
+        self.pre_quantized = True
+        self.svdq_w4a4 = svdq_w4a4
+        self.awq_w4a16 = awq_w4a16
+
+        self.post_init()
+
+    def post_init(self):
+        if self.svdq_w4a4 is None and self.awq_w4a16 is None:
+            raise ValueError(
+                "Nunchaku compact quantization config must include `svdq_w4a4.targets` or `awq_w4a16.targets`."
+            )
+
+        for op, raw in (("svdq_w4a4", self.svdq_w4a4), ("awq_w4a16", self.awq_w4a16)):
+            if raw is None:
+                continue
+            if not isinstance(raw, dict):
+                raise ValueError(f"Nunchaku compact config section {op!r} must be a JSON object.")
+
+            for key, expected_type in (("precision", str), ("group_size", int), ("targets", list)):
+                if key not in raw:
+                    raise ValueError(f"Nunchaku compact config section {op!r} is missing required field {key!r}.")
+                if not isinstance(raw[key], expected_type):
+                    raise ValueError(
+                        f"Nunchaku compact config section {op!r} field {key!r} must be {expected_type.__name__}."
+                    )
+
+            precision = raw["precision"]
+            group_size = raw["group_size"]
+            targets = raw["targets"]
+            if precision not in ("int4", "nvfp4"):
+                raise ValueError(f"Unsupported Nunchaku precision {precision!r} for {op!r}.")
+            if group_size <= 0:
+                raise ValueError(f"Nunchaku compact config section {op!r} must have positive group_size.")
+            if not targets:
+                raise ValueError(f"Nunchaku compact config section {op!r} must contain at least one target.")
+            if not all(isinstance(target, str) for target in targets):
+                raise ValueError(f"Nunchaku compact config section {op!r} targets must be strings.")
+
+            if op == "svdq_w4a4":
+                if "rank" not in raw:
+                    raise ValueError(f"Nunchaku compact config section {op!r} is missing required field 'rank'.")
+                if not isinstance(raw["rank"], int):
+                    raise ValueError(f"Nunchaku compact config section {op!r} field 'rank' must be int.")
+                if raw["rank"] < 0:
+                    raise ValueError(f"Nunchaku compact config section {op!r} must have non-negative rank.")
+                expected_group_size = 16 if precision == "nvfp4" else 64
+                if group_size != expected_group_size:
+                    raise ValueError(
+                        f"Nunchaku SVDQ config with precision={precision!r} requires "
+                        f"group_size={expected_group_size}, got {group_size}."
+                    )
+            elif precision != "int4":
+                raise ValueError("Nunchaku AWQ target requires precision='int4'.")
+
+    def to_dict(self) -> dict[str, Any]:
+        output = super().to_dict()
+        output["compute_dtype"] = str(output["compute_dtype"]).split(".")[1]
+        return output
+
+
+@dataclass
 class TorchAoConfig(QuantizationConfigMixin):
     """This is a config class for torchao quantization/sparsity techniques.
 
     Args:
-        quant_type (`str`):
-            The type of quantization we want to use, currently supporting:
-                - **Integer quantization:**
-                    - Full function names: `int4_weight_only`, `int8_dynamic_activation_int4_weight`,
-                      `int8_weight_only`, `int8_dynamic_activation_int8_weight`
-                    - Shorthands: `int4wo`, `int4dq`, `int8wo`, `int8dq`
-
-                - **Floating point 8-bit quantization:**
-                    - Full function names: `float8_weight_only`, `float8_dynamic_activation_float8_weight`,
-                      `float8_static_activation_float8_weight`
-                    - Shorthands: `float8wo`, `float8wo_e5m2`, `float8wo_e4m3`, `float8dq`, `float8dq_e4m3`,
-                      `float8_e4m3_tensor`, `float8_e4m3_row`,
-
-                - **Floating point X-bit quantization:**
-                    - Full function names: `fpx_weight_only`
-                    - Shorthands: `fpX_eAwB`, where `X` is the number of bits (between `1` to `7`), `A` is the number
-                      of exponent bits and `B` is the number of mantissa bits. The constraint of `X == A + B + 1` must
-                      be satisfied for a given shorthand notation.
-
-                - **Unsigned Integer quantization:**
-                    - Full function names: `uintx_weight_only`
-                    - Shorthands: `uint1wo`, `uint2wo`, `uint3wo`, `uint4wo`, `uint5wo`, `uint6wo`, `uint7wo`
-        modules_to_not_convert (`List[str]`, *optional*, default to `None`):
+        quant_type (`AOBaseConfig`):
+            An `AOBaseConfig` subclass instance specifying the quantization type. See the [torchao
+            documentation](https://docs.pytorch.org/ao/main/api_ref_quantization.html#inference-apis-for-quantize) for
+            available config classes (e.g. `Int4WeightOnlyConfig`, `Int8WeightOnlyConfig`, `Float8WeightOnlyConfig`,
+            `Float8DynamicActivationFloat8WeightConfig`, etc.).
+        modules_to_not_convert (`list[str]`, *optional*, default to `None`):
             The list of modules to not quantize, useful for quantizing models that explicitly require to have some
             modules left in their original precision.
-        kwargs (`Dict[str, Any]`, *optional*):
-            The keyword arguments for the chosen type of quantization, for example, int4_weight_only quantization
-            supports two keyword arguments `group_size` and `inner_k_tiles` currently. More API examples and
-            documentation of arguments can be found in
-            https://github.com/pytorch/ao/tree/main/torchao/quantization#other-available-quantization-techniques
 
     Example:
         ```python
         from diffusers import FluxTransformer2DModel, TorchAoConfig
+        from torchao.quantization import Int8WeightOnlyConfig
 
-        quantization_config = TorchAoConfig("int8wo")
+        quantization_config = TorchAoConfig(Int8WeightOnlyConfig())
         transformer = FluxTransformer2DModel.from_pretrained(
             "black-forest-labs/Flux.1-Dev",
             subfolder="transformer",
@@ -490,219 +583,68 @@ class TorchAoConfig(QuantizationConfigMixin):
 
     def __init__(
         self,
-        quant_type: str,
-        modules_to_not_convert: Optional[List[str]] = None,
+        quant_type: "AOBaseConfig",  # noqa: F821
+        modules_to_not_convert: list[str] | None = None,
         **kwargs,
     ) -> None:
         self.quant_method = QuantizationMethod.TORCHAO
         self.quant_type = quant_type
         self.modules_to_not_convert = modules_to_not_convert
 
-        # When we load from serialized config, "quant_type_kwargs" will be the key
-        if "quant_type_kwargs" in kwargs:
-            self.quant_type_kwargs = kwargs["quant_type_kwargs"]
-        else:
-            self.quant_type_kwargs = kwargs
+        self.post_init()
 
-        TORCHAO_QUANT_TYPE_METHODS = self._get_torchao_quant_type_to_method()
-        if self.quant_type not in TORCHAO_QUANT_TYPE_METHODS.keys():
-            is_floating_quant_type = self.quant_type.startswith("float") or self.quant_type.startswith("fp")
-            if is_floating_quant_type and not self._is_xpu_or_cuda_capability_atleast_8_9():
-                raise ValueError(
-                    f"Requested quantization type: {self.quant_type} is not supported on GPUs with CUDA capability <= 8.9. You "
-                    f"can check the CUDA capability of your GPU using `torch.cuda.get_device_capability()`."
-                )
+    def post_init(self):
+        if is_torchao_version("<", "0.15.0"):
+            raise ValueError("TorchAoConfig requires torchao >= 0.15.0. Please upgrade with `pip install -U torchao`.")
 
-            raise ValueError(
-                f"Requested quantization type: {self.quant_type} is not supported or is an incorrect `quant_type` name. If you think the "
-                f"provided quantization type should be supported, please open an issue at https://github.com/huggingface/diffusers/issues."
-            )
+        from torchao.quantization.quant_api import AOBaseConfig
 
-        method = TORCHAO_QUANT_TYPE_METHODS[self.quant_type]
-        signature = inspect.signature(method)
-        all_kwargs = {
-            param.name
-            for param in signature.parameters.values()
-            if param.kind in [inspect.Parameter.KEYWORD_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD]
-        }
-        unsupported_kwargs = list(self.quant_type_kwargs.keys() - all_kwargs)
+        if not isinstance(self.quant_type, AOBaseConfig):
+            raise TypeError(f"quant_type must be an AOBaseConfig instance, got {type(self.quant_type).__name__}")
 
-        if len(unsupported_kwargs) > 0:
-            raise ValueError(
-                f'The quantization method "{quant_type}" does not support the following keyword arguments: '
-                f"{unsupported_kwargs}. The following keywords arguments are supported: {all_kwargs}."
-            )
+    def to_dict(self):
+        """Convert configuration to a dictionary."""
+        d = super().to_dict()
+
+        # Handle AOBaseConfig serialization
+        from torchao.core.config import config_to_dict
+
+        # For now we assume there is 1 config per Transformer, however in the future
+        # we may want to support a config per fqn.
+        # See: https://docs.pytorch.org/ao/stable/api_reference/generated/torchao.quantization.quantize_.html
+        d["quant_type"] = {"default": config_to_dict(self.quant_type)}
+
+        return d
 
     @classmethod
-    def _get_torchao_quant_type_to_method(cls):
-        r"""
-        Returns supported torchao quantization types with all commonly used notations.
-        """
+    def from_dict(cls, config_dict, return_unused_kwargs=False, **kwargs):
+        """Create configuration from a dictionary."""
+        if not is_torchao_version(">=", "0.15.0"):
+            raise NotImplementedError("TorchAoConfig requires torchao >= 0.15.0 for construction from dict")
+        config_dict = config_dict.copy()
+        quant_type = config_dict.pop("quant_type")
 
-        if is_torchao_available():
-            # TODO(aryan): Support autoquant and sparsify
-            from torchao.quantization import (
-                float8_dynamic_activation_float8_weight,
-                float8_static_activation_float8_weight,
-                float8_weight_only,
-                fpx_weight_only,
-                int4_weight_only,
-                int8_dynamic_activation_int4_weight,
-                int8_dynamic_activation_int8_weight,
-                int8_weight_only,
-                uintx_weight_only,
-            )
+        # Check if we only have one key which is "default"
+        # In the future we may update this
+        assert len(quant_type) == 1 and "default" in quant_type, (
+            "Expected only one key 'default' in quant_type dictionary"
+        )
+        quant_type = quant_type["default"]
 
-            # TODO(aryan): Add a note on how to use PerAxis and PerGroup observers
-            from torchao.quantization.observer import PerRow, PerTensor
+        # Deserialize quant_type if needed
+        from torchao.core.config import config_from_dict
 
-            def generate_float8dq_types(dtype: torch.dtype):
-                name = "e5m2" if dtype == torch.float8_e5m2 else "e4m3"
-                types = {}
+        quant_type = config_from_dict(quant_type)
 
-                for granularity_cls in [PerTensor, PerRow]:
-                    # Note: Activation and Weights cannot have different granularities
-                    granularity_name = "tensor" if granularity_cls is PerTensor else "row"
-                    types[f"float8dq_{name}_{granularity_name}"] = partial(
-                        float8_dynamic_activation_float8_weight,
-                        activation_dtype=dtype,
-                        weight_dtype=dtype,
-                        granularity=(granularity_cls(), granularity_cls()),
-                    )
-
-                return types
-
-            def generate_fpx_quantization_types(bits: int):
-                types = {}
-
-                for ebits in range(1, bits):
-                    mbits = bits - ebits - 1
-                    types[f"fp{bits}_e{ebits}m{mbits}"] = partial(fpx_weight_only, ebits=ebits, mbits=mbits)
-
-                non_sign_bits = bits - 1
-                default_ebits = (non_sign_bits + 1) // 2
-                default_mbits = non_sign_bits - default_ebits
-                types[f"fp{bits}"] = partial(fpx_weight_only, ebits=default_ebits, mbits=default_mbits)
-
-                return types
-
-            INT4_QUANTIZATION_TYPES = {
-                # int4 weight + bfloat16/float16 activation
-                "int4wo": int4_weight_only,
-                "int4_weight_only": int4_weight_only,
-                # int4 weight + int8 activation
-                "int4dq": int8_dynamic_activation_int4_weight,
-                "int8_dynamic_activation_int4_weight": int8_dynamic_activation_int4_weight,
-            }
-
-            INT8_QUANTIZATION_TYPES = {
-                # int8 weight + bfloat16/float16 activation
-                "int8wo": int8_weight_only,
-                "int8_weight_only": int8_weight_only,
-                # int8 weight + int8 activation
-                "int8dq": int8_dynamic_activation_int8_weight,
-                "int8_dynamic_activation_int8_weight": int8_dynamic_activation_int8_weight,
-            }
-
-            # TODO(aryan): handle torch 2.2/2.3
-            FLOATX_QUANTIZATION_TYPES = {
-                # float8_e5m2 weight + bfloat16/float16 activation
-                "float8wo": partial(float8_weight_only, weight_dtype=torch.float8_e5m2),
-                "float8_weight_only": float8_weight_only,
-                "float8wo_e5m2": partial(float8_weight_only, weight_dtype=torch.float8_e5m2),
-                # float8_e4m3 weight + bfloat16/float16 activation
-                "float8wo_e4m3": partial(float8_weight_only, weight_dtype=torch.float8_e4m3fn),
-                # float8_e5m2 weight + float8 activation (dynamic)
-                "float8dq": float8_dynamic_activation_float8_weight,
-                "float8_dynamic_activation_float8_weight": float8_dynamic_activation_float8_weight,
-                # ===== Matrix multiplication is not supported in float8_e5m2 so the following errors out.
-                # However, changing activation_dtype=torch.float8_e4m3 might work here =====
-                # "float8dq_e5m2": partial(
-                #     float8_dynamic_activation_float8_weight,
-                #     activation_dtype=torch.float8_e5m2,
-                #     weight_dtype=torch.float8_e5m2,
-                # ),
-                # **generate_float8dq_types(torch.float8_e5m2),
-                # ===== =====
-                # float8_e4m3 weight + float8 activation (dynamic)
-                "float8dq_e4m3": partial(
-                    float8_dynamic_activation_float8_weight,
-                    activation_dtype=torch.float8_e4m3fn,
-                    weight_dtype=torch.float8_e4m3fn,
-                ),
-                **generate_float8dq_types(torch.float8_e4m3fn),
-                # float8 weight + float8 activation (static)
-                "float8_static_activation_float8_weight": float8_static_activation_float8_weight,
-                # For fpx, only x <= 8 is supported by default. Other dtypes can be explored by users directly
-                # fpx weight + bfloat16/float16 activation
-                **generate_fpx_quantization_types(3),
-                **generate_fpx_quantization_types(4),
-                **generate_fpx_quantization_types(5),
-                **generate_fpx_quantization_types(6),
-                **generate_fpx_quantization_types(7),
-            }
-
-            UINTX_QUANTIZATION_DTYPES = {
-                "uintx_weight_only": uintx_weight_only,
-                "uint1wo": partial(uintx_weight_only, dtype=torch.uint1),
-                "uint2wo": partial(uintx_weight_only, dtype=torch.uint2),
-                "uint3wo": partial(uintx_weight_only, dtype=torch.uint3),
-                "uint4wo": partial(uintx_weight_only, dtype=torch.uint4),
-                "uint5wo": partial(uintx_weight_only, dtype=torch.uint5),
-                "uint6wo": partial(uintx_weight_only, dtype=torch.uint6),
-                "uint7wo": partial(uintx_weight_only, dtype=torch.uint7),
-                # "uint8wo": partial(uintx_weight_only, dtype=torch.uint8),  # uint8 quantization is not supported
-            }
-
-            QUANTIZATION_TYPES = {}
-            QUANTIZATION_TYPES.update(INT4_QUANTIZATION_TYPES)
-            QUANTIZATION_TYPES.update(INT8_QUANTIZATION_TYPES)
-            QUANTIZATION_TYPES.update(UINTX_QUANTIZATION_DTYPES)
-
-            if cls._is_xpu_or_cuda_capability_atleast_8_9():
-                QUANTIZATION_TYPES.update(FLOATX_QUANTIZATION_TYPES)
-
-            return QUANTIZATION_TYPES
-        else:
-            raise ValueError(
-                "TorchAoConfig requires torchao to be installed, please install with `pip install torchao`"
-            )
-
-    @staticmethod
-    def _is_xpu_or_cuda_capability_atleast_8_9() -> bool:
-        if torch.cuda.is_available():
-            major, minor = torch.cuda.get_device_capability()
-            if major == 8:
-                return minor >= 9
-            return major >= 9
-        elif torch.xpu.is_available():
-            return True
-        else:
-            raise RuntimeError("TorchAO requires a CUDA compatible GPU or Intel XPU and installation of PyTorch.")
+        return cls(quant_type=quant_type, **config_dict)
 
     def get_apply_tensor_subclass(self):
-        TORCHAO_QUANT_TYPE_METHODS = self._get_torchao_quant_type_to_method()
-        return TORCHAO_QUANT_TYPE_METHODS[self.quant_type](**self.quant_type_kwargs)
+        """Create the appropriate quantization method based on configuration."""
+        return self.quant_type
 
     def __repr__(self):
-        r"""
-        Example of how this looks for `TorchAoConfig("uint4wo", group_size=32)`:
-
-        ```
-        TorchAoConfig {
-            "modules_to_not_convert": null,
-            "quant_method": "torchao",
-            "quant_type": "uint4wo",
-            "quant_type_kwargs": {
-                "group_size": 32
-            }
-        }
-        ```
-        """
         config_dict = self.to_dict()
-        return (
-            f"{self.__class__.__name__} {json.dumps(config_dict, indent=2, sort_keys=True, cls=TorchAoJSONEncoder)}\n"
-        )
+        return f"{self.__class__.__name__} {json.dumps(config_dict, indent=2, sort_keys=True)}\n"
 
 
 @dataclass
@@ -710,6 +652,13 @@ class QuantoConfig(QuantizationConfigMixin):
     """
     This is a wrapper class about all possible attributes and features that you can play with a model that has been
     loaded using `quanto`.
+
+    <Tip warning={true}>
+
+    `QuantoConfig` is deprecated and will be removed in version 1.0.0. Consider switching to one of the other supported
+    quantization backends, such as [`BitsAndBytesConfig`] or [`TorchAoConfig`].
+
+    </Tip>
 
     Args:
         weights_dtype (`str`, *optional*, defaults to `"int8"`):
@@ -722,9 +671,11 @@ class QuantoConfig(QuantizationConfigMixin):
     def __init__(
         self,
         weights_dtype: str = "int8",
-        modules_to_not_convert: Optional[List[str]] = None,
+        modules_to_not_convert: list[str] | None = None,
         **kwargs,
     ):
+        deprecation_message = "`QuantoConfig` is deprecated and will be removed in version 1.0.0."
+        deprecate("QuantoConfig", "1.0.0", deprecation_message)
         self.quant_method = QuantizationMethod.QUANTO
         self.weights_dtype = weights_dtype
         self.modules_to_not_convert = modules_to_not_convert
@@ -754,7 +705,7 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
                     - INT4
                     - NF4
                     - NVFP4
-        modules_to_not_convert (`List[str]`, *optional*, default to `None`):
+        modules_to_not_convert (`list[str]`, *optional*, default to `None`):
             The list of modules to not quantize, useful for quantizing models that explicitly require to have some
         weight_only (`bool`, *optional*, default to `False`):
             If set to `True`, the quantization will be applied only to the weights of the model.
@@ -774,7 +725,7 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
             The modelopt config, useful for passing custom configs to modelopt.
         disable_conv_quantization (`bool`, *optional*, default to `False`):
             If set to `True`, the quantization will be disabled for convolutional layers.
-        kwargs (`Dict[str, Any]`, *optional*):
+        kwargs (`dict[str, Any]`, *optional*):
             Additional parameters which are to be used for calibration.
     """
 
@@ -793,15 +744,15 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
     def __init__(
         self,
         quant_type: str,
-        modules_to_not_convert: Optional[List[str]] = None,
+        modules_to_not_convert: list[str] | None = None,
         weight_only: bool = True,
-        channel_quantize: Optional[int] = None,
-        block_quantize: Optional[int] = None,
-        scale_channel_quantize: Optional[int] = None,
-        scale_block_quantize: Optional[int] = None,
+        channel_quantize: int | None = None,
+        block_quantize: int | None = None,
+        scale_channel_quantize: int | None = None,
+        scale_block_quantize: int | None = None,
         algorithm: str = "max",
-        forward_loop: Optional[Callable] = None,
-        modelopt_config: Optional[dict] = None,
+        forward_loop: Callable | None = None,
+        modelopt_config: dict | None = None,
         disable_conv_quantization: bool = False,
         **kwargs,
     ) -> None:
@@ -863,7 +814,7 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
                 act_type = None
         self.quant_type = w_type + ("_" + act_type if act_type is not None else "")
 
-    def get_config_from_quant_type(self) -> Dict[str, Any]:
+    def get_config_from_quant_type(self) -> dict[str, Any]:
         """
         Get the config from the quantization type.
         """
@@ -929,3 +880,117 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
                 )
 
         return BASE_CONFIG
+
+
+@dataclass
+class AutoRoundConfig(QuantizationConfigMixin):
+    """Configuration class for AutoRound quantization.
+
+    AutoRound is a weight-only quantization algorithm that uses sign gradient descent to jointly optimize weight
+    rounding and min-max values. This config targets the W4A16 (4-bit weights, 16-bit activations) setting.
+
+    Reference: https://github.com/intel/auto-round
+
+    Args:
+        bits (`int`, *optional*, defaults to `4`):
+            The number of bits to quantize weights to. For W4A16 this should be 4.
+        group_size (`int`, *optional*, defaults to `128`):
+            The group size for weight quantization. Weights in each group share the same scale and zero-point. Common
+            choices: 32, 64, 128, -1 (per-channel).
+        sym (`bool`, *optional*, defaults to `True`):
+            Whether to use symmetric quantization (zero-point fixed at 0) or asymmetric quantization (zero-point is
+            learned).
+        backend (`str`, *optional*, defaults to `"auto"`):
+            The backend kernel to use for quantized inference. Available backends:
+            - `"auto"`: Automatically select the best available backend for the current device.
+            - `"torch"`: Pure PyTorch kernel — works on CPU and CUDA.
+            - `"tritonv2"`: Triton-based kernel — requires CUDA.
+            - `"exllamav2"`: Exllamav2 kernel via GPTQModel — requires CUDA and `gptqmodel>=5.8.0`. Offers good CUDA
+              inference performance.
+            - `"marlin"`: Marlin kernel via GPTQModel — requires CUDA and `gptqmodel>=5.8.0`. Offers the best CUDA
+              inference performance.
+        kwargs (`dict[str, Any]`, *optional*):
+            Additional keyword arguments forwarded to AutoRound (e.g. `iters`, `seqlen`, `batch_size`, `lr`,
+            `minmax_lr` for calibration when quantizing from scratch).
+    """
+
+    VALID_BACKENDS = ["auto", "torch", "tritonv2", "exllamav2", "marlin"]
+
+    def __init__(
+        self,
+        bits: int = 4,
+        group_size: int = 128,
+        sym: bool = True,
+        backend: str = "auto",
+        **kwargs,
+    ) -> None:
+        self.quant_method = QuantizationMethod.AUTOROUND
+        self._validate_backend(backend)
+        self.bits = bits
+        self.group_size = group_size
+        self.sym = sym
+        self.backend = backend
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+    def _validate_backend(self, backend):
+        if backend not in self.VALID_BACKENDS:
+            raise ValueError(f"Invalid backend '{backend}'. Valid options are: {self.VALID_BACKENDS}")
+
+    def to_dict(self) -> dict:
+        """Serialize the config to a JSON-compatible dict.
+
+        Output: A dict containing all config fields. The `quant_method` is stored as its string value so it can be
+        round-tripped through JSON.
+        """
+        output = super().to_dict()
+        output["quant_method"] = output["quant_method"].value
+        return output
+
+    @classmethod
+    def from_dict(cls, config_dict: dict, return_unused_kwargs: bool = False, **kwargs):
+        """Instantiate an AutoRoundConfig from a dictionary.
+
+        Input: config_dict with keys like bits, group_size, sym, etc. Output: An AutoRoundConfig instance (and
+        optionally unused kwargs).
+        """
+        # Filter out keys that are not constructor parameters
+        # (e.g. quant_method is set automatically)
+        config_dict = {k: v for k, v in config_dict.items() if k != "quant_method"}
+        return super().from_dict(config_dict, return_unused_kwargs=return_unused_kwargs, **kwargs)
+
+
+class SDNQConfig(QuantizationConfigMixin):
+    """Configuration class for SDNQ (SD.Next Quantization).
+
+    The `sdnq` library ships its own diffusers-compatible config and quantizer; this class is a thin factory that
+    defers to them so that `quant_method="sdnq"` checkpoints load natively with diffusers. All arguments are forwarded
+    to `sdnq.SDNQConfig`. Requires the `sdnq` library: `pip install sdnq`.
+
+    Reference: https://github.com/Disty0/sdnq
+
+    Args:
+        weights_dtype (`str`, *optional*, defaults to `"int8"`):
+            The target dtype for the weights after quantization, e.g. `"int8"`, `"uint4"`, `"float8_e4m3fn"`. See
+            `sdnq.common.accepted_weight_dtypes` for all supported values.
+        group_size (`int`, *optional*, defaults to `0`):
+            How many elements of a tensor share the same quantization group. `0` auto-selects based on `weights_dtype`,
+            `-1` disables grouping and uses row-wise quantization.
+        use_svd (`bool`, *optional*, defaults to `False`):
+            Whether to apply the SVDQuant algorithm on top of SDNQ quantization.
+        use_quantized_matmul (`bool`, *optional*, defaults to `False`):
+            Whether to use quantized INT8 / FP8 / FP16 matmul on the forward pass instead of BF16 / FP16.
+        modules_to_not_convert (`list`, *optional*, defaults to `None`):
+            The list of modules to skip during quantization.
+        kwargs (`dict[str, Any]`, *optional*):
+            Additional keyword arguments forwarded to `sdnq.SDNQConfig` (e.g. `quantized_matmul_dtype`, `svd_rank`,
+            `use_hadamard`, `quant_conv`, `quant_embedding`, `modules_dtype_dict`).
+    """
+
+    def __new__(cls, *args, **kwargs):
+        from .sdnq.sdnq_quantizer import _check_sdnq_requirement
+
+        _check_sdnq_requirement()
+        from sdnq import SDNQConfig as SDNQLibConfig
+
+        return SDNQLibConfig(*args, **kwargs)

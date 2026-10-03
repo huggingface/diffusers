@@ -8,8 +8,8 @@ import torch
 from diffusers import StableDiffusionControlNetPipeline
 from diffusers.models import ControlNetModel
 from diffusers.models.attention import BasicTransformerBlock
+from diffusers.models.controlnets.multicontrolnet import MultiControlNetModel
 from diffusers.models.unets.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
-from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import logging
 from diffusers.utils.torch_utils import is_compiled_module, randn_tensor
@@ -37,7 +37,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
         >>> pipe = StableDiffusionControlNetReferencePipeline.from_pretrained(
-                "runwayml/stable-diffusion-v1-5",
+                "stable-diffusion-v1-5/stable-diffusion-v1-5",
                 controlnet=controlnet,
                 safety_checker=None,
                 torch_dtype=torch.float16
@@ -119,7 +119,7 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,

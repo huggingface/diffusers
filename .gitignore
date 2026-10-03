@@ -125,6 +125,9 @@ dmypy.json
 .vs
 .vscode
 
+# Cursor
+.cursor
+
 # Pycharm
 .idea
 
@@ -167,6 +170,9 @@ tags
 
 # RL pipelines may produce mp4 outputs
 *.mp4
+*.jpg
+*.jepg
+*.wav
 
 # dependencies
 /transformers
@@ -176,3 +182,7 @@ tags
 
 # wandb
 wandb
+
+# AI agent generated symlinks
+/.agents/skills
+/.claude/skills

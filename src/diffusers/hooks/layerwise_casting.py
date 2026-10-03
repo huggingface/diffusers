@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,11 +13,11 @@
 # limitations under the License.
 
 import re
-from typing import Optional, Tuple, Type, Union
+from typing import Type
 
 import torch
 
-from ..utils import get_logger, is_peft_available, is_peft_version
+from ..utils import get_logger, is_peft_available
 from ._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
 from .hooks import HookRegistry, ModelHook
 
@@ -31,7 +31,7 @@ _PEFT_AUTOCAST_DISABLE_HOOK = "peft_autocast_disable"
 DEFAULT_SKIP_MODULES_PATTERN = ("pos_embed", "patch_embed", "norm", "^proj_in$", "^proj_out$")
 # fmt: on
 
-_SHOULD_DISABLE_PEFT_INPUT_AUTOCAST = is_peft_available() and is_peft_version(">", "0.14.0")
+_SHOULD_DISABLE_PEFT_INPUT_AUTOCAST = is_peft_available()
 if _SHOULD_DISABLE_PEFT_INPUT_AUTOCAST:
     from peft.helpers import disable_input_dtype_casting
     from peft.tuners.tuners_utils import BaseTunerLayer
@@ -102,8 +102,8 @@ def apply_layerwise_casting(
     module: torch.nn.Module,
     storage_dtype: torch.dtype,
     compute_dtype: torch.dtype,
-    skip_modules_pattern: Union[str, Tuple[str, ...]] = "auto",
-    skip_modules_classes: Optional[Tuple[Type[torch.nn.Module], ...]] = None,
+    skip_modules_pattern: str | tuple[str, ...] = "auto",
+    skip_modules_classes: tuple[Type[torch.nn.Module], ...] | None = None,
     non_blocking: bool = False,
 ) -> None:
     r"""
@@ -137,12 +137,12 @@ def apply_layerwise_casting(
             The dtype to cast the module to before/after the forward pass for storage.
         compute_dtype (`torch.dtype`):
             The dtype to cast the module to during the forward pass for computation.
-        skip_modules_pattern (`Tuple[str, ...]`, defaults to `"auto"`):
+        skip_modules_pattern (`tuple[str, ...]`, defaults to `"auto"`):
             A list of patterns to match the names of the modules to skip during the layerwise casting process. If set
             to `"auto"`, the default patterns are used. If set to `None`, no modules are skipped. If set to `None`
             alongside `skip_modules_classes` being `None`, the layerwise casting is applied directly to the module
             instead of its internal submodules.
-        skip_modules_classes (`Tuple[Type[torch.nn.Module], ...]`, defaults to `None`):
+        skip_modules_classes (`tuple[Type[torch.nn.Module], ...]`, defaults to `None`):
             A list of module classes to skip during the layerwise casting process.
         non_blocking (`bool`, defaults to `False`):
             If `True`, the weight casting operations are non-blocking.
@@ -169,8 +169,8 @@ def _apply_layerwise_casting(
     module: torch.nn.Module,
     storage_dtype: torch.dtype,
     compute_dtype: torch.dtype,
-    skip_modules_pattern: Optional[Tuple[str, ...]] = None,
-    skip_modules_classes: Optional[Tuple[Type[torch.nn.Module], ...]] = None,
+    skip_modules_pattern: tuple[str, ...] | None = None,
+    skip_modules_classes: tuple[Type[torch.nn.Module], ...] | None = None,
     non_blocking: bool = False,
     _prefix: str = "",
 ) -> None:

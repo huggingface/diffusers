@@ -34,11 +34,8 @@ pip install -r requirements.txt
 pip install clip-retrieval
 ```
 
-<Tip>
-
-🤗 Accelerate is a library for helping you train on multiple GPUs/TPUs or with mixed-precision. It'll automatically configure your training setup based on your hardware and environment. Take a look at the 🤗 Accelerate [Quick tour](https://huggingface.co/docs/accelerate/quicktour) to learn more.
-
-</Tip>
+> [!TIP]
+> 🤗 Accelerate is a library for helping you train on multiple GPUs/TPUs or with mixed-precision. It'll automatically configure your training setup based on your hardware and environment. Take a look at the 🤗 Accelerate [Quick tour](https://huggingface.co/docs/accelerate/quicktour) to learn more.
 
 Initialize an 🤗 Accelerate environment:
 
@@ -62,11 +59,8 @@ write_basic_config()
 
 Lastly, if you want to train a model on your own dataset, take a look at the [Create a dataset for training](create_dataset) guide to learn how to create a dataset that works with the training script.
 
-<Tip>
-
-The following sections highlight parts of the training script that are important for understanding how to modify it, but it doesn't cover every aspect of the script in detail. If you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/blob/main/examples/custom_diffusion/train_custom_diffusion.py) and let us know if you have any questions or concerns.
-
-</Tip>
+> [!TIP]
+> The following sections highlight parts of the training script that are important for understanding how to modify it, but it doesn't cover every aspect of the script in detail. If you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/blob/main/examples/custom_diffusion/train_custom_diffusion.py) and let us know if you have any questions or concerns.
 
 ## Script parameters
 
@@ -117,11 +111,8 @@ accelerate launch train_custom_diffusion.py \
 
 ## Training script
 
-<Tip>
-
-A lot of the code in the Custom Diffusion training script is similar to the [DreamBooth](dreambooth#training-script) script. This guide instead focuses on the code that is relevant to Custom Diffusion.
-
-</Tip>
+> [!TIP]
+> A lot of the code in the Custom Diffusion training script is similar to the [DreamBooth](dreambooth#training-script) script. This guide instead focuses on the code that is relevant to Custom Diffusion.
 
 The Custom Diffusion training script has two dataset classes:
 
@@ -224,16 +215,13 @@ Set the environment variable `MODEL_NAME` to a model id on the Hub or a path to 
 
 To monitor training progress with Weights and Biases, add the `--report_to=wandb` parameter to the training command and specify a validation prompt with `--validation_prompt`. This is useful for debugging and saving intermediate results.
 
-<Tip>
-
-If you're training on human faces, the Custom Diffusion team has found the following parameters to work well:
-
-- `--learning_rate=5e-6`
-- `--max_train_steps` can be anywhere between 1000 and 2000
-- `--freeze_model=crossattn`
-- use at least 15-20 images to train with
-
-</Tip>
+> [!TIP]
+> If you're training on human faces, the Custom Diffusion team has found the following parameters to work well:
+>
+> - `--learning_rate=5e-6`
+> - `--max_train_steps` can be anywhere between 1000 and 2000
+> - `--freeze_model=crossattn`
+> - use at least 15-20 images to train with
 
 <hfoptions id="training-inference">
 <hfoption id="single concept">
@@ -317,8 +305,8 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16,
-).to("cuda")
+    "CompVis/stable-diffusion-v1-4", dtype=torch.float16,
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.unet.load_attn_procs("path-to-save-model", weight_name="pytorch_custom_diffusion_weights.bin")
 pipeline.load_textual_inversion("path-to-save-model", weight_name="<new1>.bin")
 
@@ -340,8 +328,8 @@ from huggingface_hub.repocard import RepoCard
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16,
-).to("cuda")
+    "CompVis/stable-diffusion-v1-4", dtype=torch.float16,
+).to("cuda")  # or "mps", "xpu", "cpu"
 model_id = "sayakpaul/custom-diffusion-cat-wooden-pot"
 pipeline.unet.load_attn_procs(model_id, weight_name="pytorch_custom_diffusion_weights.bin")
 pipeline.load_textual_inversion(model_id, weight_name="<new1>.bin")

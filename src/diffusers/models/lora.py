@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,8 +20,6 @@
 # (as soon as PEFT will become a required dependency for LoRA)    #
 # ----------------------------------------------------------------#
 ###################################################################
-
-from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -164,7 +162,7 @@ class PatchedLoraProjection(torch.nn.Module):
         self.w_up = None
         self.w_down = None
 
-    def forward(self, input):
+    def forward(self, input) -> torch.Tensor:
         if self.lora_scale is None:
             self.lora_scale = 1.0
         if self.lora_linear_layer is None:
@@ -198,9 +196,9 @@ class LoRALinearLayer(nn.Module):
         in_features: int,
         out_features: int,
         rank: int = 4,
-        network_alpha: Optional[float] = None,
-        device: Optional[Union[torch.device, str]] = None,
-        dtype: Optional[torch.dtype] = None,
+        network_alpha: float | None = None,
+        device: torch.device | str | None = None,
+        dtype: torch.dtype | None = None,
     ):
         super().__init__()
 
@@ -260,10 +258,10 @@ class LoRAConv2dLayer(nn.Module):
         in_features: int,
         out_features: int,
         rank: int = 4,
-        kernel_size: Union[int, Tuple[int, int]] = (1, 1),
-        stride: Union[int, Tuple[int, int]] = (1, 1),
-        padding: Union[int, Tuple[int, int], str] = 0,
-        network_alpha: Optional[float] = None,
+        kernel_size: int | tuple[int, int] = (1, 1),
+        stride: int | tuple[int, int] = (1, 1),
+        padding: int | tuple[int, int] | str = 0,
+        network_alpha: float | None = None,
     ):
         super().__init__()
 
@@ -301,14 +299,14 @@ class LoRACompatibleConv(nn.Conv2d):
     A convolutional layer that can be used with LoRA.
     """
 
-    def __init__(self, *args, lora_layer: Optional[LoRAConv2dLayer] = None, **kwargs):
+    def __init__(self, *args, lora_layer: LoRAConv2dLayer | None = None, **kwargs):
         deprecation_message = "Use of `LoRACompatibleConv` is deprecated. Please switch to PEFT backend by installing PEFT: `pip install peft`."
         deprecate("LoRACompatibleConv", "1.0.0", deprecation_message)
 
         super().__init__(*args, **kwargs)
         self.lora_layer = lora_layer
 
-    def set_lora_layer(self, lora_layer: Optional[LoRAConv2dLayer]):
+    def set_lora_layer(self, lora_layer: LoRAConv2dLayer | None):
         deprecation_message = "Use of `set_lora_layer()` is deprecated. Please switch to PEFT backend by installing PEFT: `pip install peft`."
         deprecate("set_lora_layer", "1.0.0", deprecation_message)
 
@@ -388,14 +386,14 @@ class LoRACompatibleLinear(nn.Linear):
     A Linear layer that can be used with LoRA.
     """
 
-    def __init__(self, *args, lora_layer: Optional[LoRALinearLayer] = None, **kwargs):
+    def __init__(self, *args, lora_layer: LoRALinearLayer | None = None, **kwargs):
         deprecation_message = "Use of `LoRACompatibleLinear` is deprecated. Please switch to PEFT backend by installing PEFT: `pip install peft`."
         deprecate("LoRACompatibleLinear", "1.0.0", deprecation_message)
 
         super().__init__(*args, **kwargs)
         self.lora_layer = lora_layer
 
-    def set_lora_layer(self, lora_layer: Optional[LoRALinearLayer]):
+    def set_lora_layer(self, lora_layer: LoRALinearLayer | None):
         deprecation_message = "Use of `set_lora_layer()` is deprecated. Please switch to PEFT backend by installing PEFT: `pip install peft`."
         deprecate("set_lora_layer", "1.0.0", deprecation_message)
         self.lora_layer = lora_layer

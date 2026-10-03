@@ -1,5 +1,8 @@
 [tool.ruff]
 line-length = 119
+extend-exclude = [
+    "src/diffusers/pipelines/flux2/system_messages.py",
+]
 
 [tool.ruff.lint]
 # Never enforce `E501` (line length violations).

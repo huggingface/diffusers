@@ -17,7 +17,7 @@
 from accelerate import PartialState
 from diffusers import DiffusionPipeline
 
-pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16)
+pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16)
 distributed_state = PartialState()
 pipeline.to(distributed_state.device)
 
@@ -32,9 +32,8 @@ Use the `--num_processes` argument to specify the number of GPUs to use, and cal
 accelerate launch run_distributed.py --num_processes=2
 ```
 
-<Tip>자세한 내용은 [🤗 Accelerate를 사용한 분산 추론](https://huggingface.co/docs/accelerate/en/usage_guides/distributed_inference#distributed-inference-with-accelerate) 가이드를 참조하세요.
-
-</Tip>
+> [!TIP]
+> 자세한 내용은 [🤗 Accelerate를 사용한 분산 추론](https://huggingface.co/docs/accelerate/en/usage_guides/distributed_inference#distributed-inference-with-accelerate) 가이드를 참조하세요.
 
 ## Pytoerch 분산
 
@@ -51,7 +50,7 @@ import torch.multiprocessing as mp
 
 from diffusers import DiffusionPipeline
 
-sd = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16)
+sd = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16)
 ```
 
 사용할 백엔드 유형, 현재 프로세스의 `rank`, `world_size` 또는 참여하는 프로세스 수로 분산 환경 생성을 처리하는 함수[`init_process_group`]를 만들어 추론을 실행해야 합니다.

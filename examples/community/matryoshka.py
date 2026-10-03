@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -783,7 +783,7 @@ class CrossAttnDownBlock2D(nn.Module):
         norm_type: str = "layer_norm",
         num_attention_heads: int = 1,
         cross_attention_dim: int = 1280,
-        cross_attention_norm: Optional[str] = None,
+        cross_attention_norm: str | None = None,
         output_scale_factor: float = 1.0,
         downsample_padding: int = 1,
         add_downsample: bool = True,
@@ -922,7 +922,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         num_attention_heads: int = 1,
         output_scale_factor: float = 1.0,
         cross_attention_dim: int = 1280,
-        cross_attention_norm: Optional[str] = None,
+        cross_attention_norm: str | None = None,
         dual_cross_attention: bool = False,
         use_linear_projection: bool = False,
         upcast_attention: bool = False,
@@ -1055,7 +1055,7 @@ class CrossAttnUpBlock2D(nn.Module):
         norm_type: str = "layer_norm",
         num_attention_heads: int = 1,
         cross_attention_dim: int = 1280,
-        cross_attention_norm: Optional[str] = None,
+        cross_attention_norm: str | None = None,
         output_scale_factor: float = 1.0,
         add_upsample: bool = True,
         dual_cross_attention: bool = False,
@@ -1475,11 +1475,8 @@ class MatryoshkaFusedAttnProcessor2_0:
     fused projection layers. For self-attention modules, all projection matrices (i.e., query, key, value) are fused.
     For cross-attention modules, key and value projection matrices are fused.
 
-    <Tip warning={true}>
-
-    This API is currently 🧪 experimental in nature and can change in future.
-
-    </Tip>
+    > [!WARNING]
+    > This API is currently 🧪 experimental in nature and can change in future.
     """
 
     def __init__(self):
@@ -1620,10 +1617,10 @@ def get_down_block(
     attention_pre_only: bool = False,
     resnet_skip_time_act: bool = False,
     resnet_out_scale_factor: float = 1.0,
-    cross_attention_norm: Optional[str] = None,
+    cross_attention_norm: str | None = None,
     attention_head_dim: Optional[int] = None,
     use_attention_ffn: bool = True,
-    downsample_type: Optional[str] = None,
+    downsample_type: str | None = None,
     dropout: float = 0.0,
 ):
     # If attn head dim is not defined, we default it to the number of heads
@@ -1698,7 +1695,7 @@ def get_mid_block(
     attention_type: str = "default",
     attention_pre_only: bool = False,
     resnet_skip_time_act: bool = False,
-    cross_attention_norm: Optional[str] = None,
+    cross_attention_norm: str | None = None,
     attention_head_dim: Optional[int] = 1,
     dropout: float = 0.0,
 ):
@@ -1750,10 +1747,10 @@ def get_up_block(
     attention_pre_only: bool = False,
     resnet_skip_time_act: bool = False,
     resnet_out_scale_factor: float = 1.0,
-    cross_attention_norm: Optional[str] = None,
+    cross_attention_norm: str | None = None,
     attention_head_dim: Optional[int] = None,
     use_attention_ffn: bool = True,
-    upsample_type: Optional[str] = None,
+    upsample_type: str | None = None,
     dropout: float = 0.0,
 ) -> nn.Module:
     # If attn head dim is not defined, we default it to the number of heads
@@ -1969,16 +1966,21 @@ class MatryoshkaUNet2DConditionModel(
         center_input_sample: bool = False,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
-        down_block_types: Tuple[str] = (
+        down_block_types: Tuple[str, ...] = (
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
-        mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn",
-        up_block_types: Tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
+        mid_block_type: str | None = "UNetMidBlock2DCrossAttn",
+        up_block_types: Tuple[str, ...] = (
+            "UpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+        ),
         only_cross_attention: Union[bool, Tuple[bool]] = False,
-        block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
+        block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
         layers_per_block: Union[int, Tuple[int]] = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
@@ -1991,14 +1993,14 @@ class MatryoshkaUNet2DConditionModel(
         transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
         reverse_transformer_layers_per_block: Optional[Tuple[Tuple[int]]] = None,
         encoder_hid_dim: Optional[int] = None,
-        encoder_hid_dim_type: Optional[str] = None,
+        encoder_hid_dim_type: str | None = None,
         attention_head_dim: Union[int, Tuple[int]] = 8,
         num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
         dual_cross_attention: bool = False,
         use_attention_ffn: bool = True,
         use_linear_projection: bool = False,
-        class_embed_type: Optional[str] = None,
-        addition_embed_type: Optional[str] = None,
+        class_embed_type: str | None = None,
+        addition_embed_type: str | None = None,
         addition_time_embed_dim: Optional[int] = None,
         num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
@@ -2007,8 +2009,8 @@ class MatryoshkaUNet2DConditionModel(
         resnet_out_scale_factor: float = 1.0,
         time_embedding_type: str = "positional",
         time_embedding_dim: Optional[int] = None,
-        time_embedding_act_fn: Optional[str] = None,
-        timestep_post_act: Optional[str] = None,
+        time_embedding_act_fn: str | None = None,
+        timestep_post_act: str | None = None,
         time_cond_proj_dim: Optional[int] = None,
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
@@ -2019,7 +2021,7 @@ class MatryoshkaUNet2DConditionModel(
         micro_conditioning_scale: int = None,
         class_embeddings_concat: bool = False,
         mid_block_only_cross_attention: Optional[bool] = None,
-        cross_attention_norm: Optional[str] = None,
+        cross_attention_norm: str | None = None,
         addition_embed_type_num_heads: int = 64,
         temporal_mode: bool = False,
         temporal_spatial_ds: bool = False,
@@ -2297,10 +2299,10 @@ class MatryoshkaUNet2DConditionModel(
 
     def _check_config(
         self,
-        down_block_types: Tuple[str],
-        up_block_types: Tuple[str],
+        down_block_types: Tuple[str, ...],
+        up_block_types: Tuple[str, ...],
         only_cross_attention: Union[bool, Tuple[bool]],
-        block_out_channels: Tuple[int],
+        block_out_channels: Tuple[int, ...],
         layers_per_block: Union[int, Tuple[int]],
         cross_attention_dim: Union[int, Tuple[int]],
         transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple[int]]],
@@ -2382,7 +2384,7 @@ class MatryoshkaUNet2DConditionModel(
 
     def _set_encoder_hid_proj(
         self,
-        encoder_hid_dim_type: Optional[str],
+        encoder_hid_dim_type: str | None,
         cross_attention_dim: Union[int, Tuple[int]],
         encoder_hid_dim: Optional[int],
     ):
@@ -2422,7 +2424,7 @@ class MatryoshkaUNet2DConditionModel(
 
     def _set_class_embedding(
         self,
-        class_embed_type: Optional[str],
+        class_embed_type: str | None,
         act_fn: str,
         num_class_embeds: Optional[int],
         projection_class_embeddings_input_dim: Optional[int],
@@ -2522,7 +2524,7 @@ class MatryoshkaUNet2DConditionModel(
             )
 
     @property
-    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+    def attn_processors(self) -> dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
@@ -2696,11 +2698,8 @@ class MatryoshkaUNet2DConditionModel(
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
         are fused. For cross-attention modules, key and value projection matrices are fused.
 
-        <Tip warning={true}>
-
-        This API is 🧪 experimental.
-
-        </Tip>
+        > [!WARNING]
+        > This API is 🧪 experimental.
         """
         self.original_attn_processors = None
 
@@ -2719,11 +2718,8 @@ class MatryoshkaUNet2DConditionModel(
     def unfuse_qkv_projections(self):
         """Disables the fused QKV projection if enabled.
 
-        <Tip warning={true}>
-
-        This API is 🧪 experimental.
-
-        </Tip>
+        > [!WARNING]
+        > This API is 🧪 experimental.
 
         """
         if self.original_attn_processors is not None:
@@ -3738,8 +3734,8 @@ class MatryoshkaPipeline(
                 "The configuration file of the unet has set the default `sample_size` to smaller than"
                 " 64 which seems highly unlikely. If your checkpoint is a fine-tuned version of any of the"
                 " following: \n- CompVis/stable-diffusion-v1-4 \n- CompVis/stable-diffusion-v1-3 \n-"
-                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- runwayml/stable-diffusion-v1-5"
-                " \n- runwayml/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
+                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- stable-diffusion-v1-5/stable-diffusion-v1-5"
+                " \n- stable-diffusion-v1-5/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
                 " configuration file. Please make sure to update the config accordingly as leaving `sample_size=32`"
                 " in the config might lead to incorrect results in future versions. If you have downloaded this"
                 " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
@@ -4268,7 +4264,7 @@ class MatryoshkaPipeline(
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
         ip_adapter_image_embeds: Optional[List[torch.Tensor]] = None,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,

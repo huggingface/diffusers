@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -8,8 +8,8 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...models.modeling_outputs import Transformer2DModelOutput
 from ...models.modeling_utils import ModelMixin
-from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
-from ...utils.torch_utils import maybe_allow_in_graph
+from ...utils import apply_lora_scale, logging
+from ...utils.torch_utils import maybe_adjust_dtype_for_device, maybe_allow_in_graph
 from ..attention import Attention
 from ..embeddings import TimestepEmbedding, Timesteps
 
@@ -23,7 +23,7 @@ class HiDreamImageFeedForwardSwiGLU(nn.Module):
         dim: int,
         hidden_dim: int,
         multiple_of: int = 256,
-        ffn_dim_multiplier: Optional[float] = None,
+        ffn_dim_multiplier: float | None = None,
     ):
         super().__init__()
         hidden_dim = int(2 * hidden_dim / 3)
@@ -55,7 +55,7 @@ class HiDreamImageTimestepEmbed(nn.Module):
         self.time_proj = Timesteps(num_channels=frequency_embedding_size, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.timestep_embedder = TimestepEmbedding(in_channels=frequency_embedding_size, time_embed_dim=hidden_size)
 
-    def forward(self, timesteps: torch.Tensor, wdtype: Optional[torch.dtype] = None) -> torch.Tensor:
+    def forward(self, timesteps: torch.Tensor, wdtype: torch.dtype | None = None) -> torch.Tensor:
         t_emb = self.time_proj(timesteps).to(dtype=wdtype)
         t_emb = self.timestep_embedder(t_emb)
         return t_emb
@@ -95,10 +95,7 @@ class HiDreamImagePatchEmbed(nn.Module):
 def rope(pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
     assert dim % 2 == 0, "The dimension must be even."
 
-    is_mps = pos.device.type == "mps"
-    is_npu = pos.device.type == "npu"
-
-    dtype = torch.float32 if (is_mps or is_npu) else torch.float64
+    dtype = maybe_adjust_dtype_for_device(torch.float64, pos.device)
 
     scale = torch.arange(0, dim, 2, dtype=dtype, device=pos.device) / dim
     omega = 1.0 / (theta**scale)
@@ -114,7 +111,7 @@ def rope(pos: torch.Tensor, dim: int, theta: int) -> torch.Tensor:
 
 
 class HiDreamImageEmbedND(nn.Module):
-    def __init__(self, theta: int, axes_dim: List[int]):
+    def __init__(self, theta: int, axes_dim: list[int]):
         super().__init__()
         self.theta = theta
         self.axes_dim = axes_dim
@@ -128,7 +125,7 @@ class HiDreamImageEmbedND(nn.Module):
         return emb.unsqueeze(2)
 
 
-def apply_rope(xq: torch.Tensor, xk: torch.Tensor, freqs_cis: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def apply_rope(xq: torch.Tensor, xk: torch.Tensor, freqs_cis: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     xq_ = xq.float().reshape(*xq.shape[:-1], -1, 1, 2)
     xk_ = xk.float().reshape(*xk.shape[:-1], -1, 1, 2)
     xq_out = freqs_cis[..., 0] * xq_[..., 0] + freqs_cis[..., 1] * xq_[..., 1]
@@ -205,8 +202,8 @@ class HiDreamAttnProcessor:
         self,
         attn: HiDreamAttention,
         hidden_states: torch.Tensor,
-        hidden_states_masks: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
+        hidden_states_masks: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor = None,
         *args,
         **kwargs,
@@ -298,7 +295,7 @@ class MoEGate(nn.Module):
 
         self._force_inference_output = _force_inference_output
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
         bsz, seq_len, h = hidden_states.shape
         ### compute gating score
         hidden_states = hidden_states.view(-1, h)
@@ -365,7 +362,7 @@ class MOEFeedForwardSwiGLU(nn.Module):
         )
         self.num_activated_experts = num_activated_experts
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         wtype = x.dtype
         identity = x
         orig_shape = x.shape
@@ -412,7 +409,7 @@ class TextProjection(nn.Module):
         super().__init__()
         self.linear = nn.Linear(in_features=in_features, out_features=hidden_size, bias=False)
 
-    def forward(self, caption):
+    def forward(self, caption) -> torch.Tensor:
         hidden_states = self.linear(caption)
         return hidden_states
 
@@ -458,9 +455,9 @@ class HiDreamImageSingleTransformerBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        hidden_states_masks: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
+        hidden_states_masks: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        temb: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor = None,
     ) -> torch.Tensor:
         wtype = hidden_states.dtype
@@ -530,11 +527,11 @@ class HiDreamImageTransformerBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        hidden_states_masks: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
+        hidden_states_masks: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        temb: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         wtype = hidden_states.dtype
         (
             shift_msa_i,
@@ -581,18 +578,18 @@ class HiDreamImageTransformerBlock(nn.Module):
 
 
 class HiDreamBlock(nn.Module):
-    def __init__(self, block: Union[HiDreamImageTransformerBlock, HiDreamImageSingleTransformerBlock]):
+    def __init__(self, block: HiDreamImageTransformerBlock | HiDreamImageSingleTransformerBlock):
         super().__init__()
         self.block = block
 
     def forward(
         self,
         hidden_states: torch.Tensor,
-        hidden_states_masks: Optional[torch.Tensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        temb: Optional[torch.Tensor] = None,
+        hidden_states_masks: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        temb: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor = None,
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         return self.block(
             hidden_states=hidden_states,
             hidden_states_masks=hidden_states_masks,
@@ -609,20 +606,20 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
     @register_to_config
     def __init__(
         self,
-        patch_size: Optional[int] = None,
+        patch_size: int | None = None,
         in_channels: int = 64,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         num_layers: int = 16,
         num_single_layers: int = 32,
         attention_head_dim: int = 128,
         num_attention_heads: int = 20,
-        caption_channels: List[int] = None,
+        caption_channels: list[int] = None,
         text_emb_dim: int = 2048,
         num_routed_experts: int = 4,
         num_activated_experts: int = 2,
-        axes_dims_rope: Tuple[int, int] = (32, 32),
-        max_resolution: Tuple[int, int] = (128, 128),
-        llama_layers: List[int] = None,
+        axes_dims_rope: tuple[int, int] = (32, 32),
+        max_resolution: tuple[int, int] = (128, 128),
+        llama_layers: list[int] = None,
         force_inference_output: bool = False,
     ):
         super().__init__()
@@ -681,7 +678,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
 
         self.gradient_checkpointing = False
 
-    def unpatchify(self, x: torch.Tensor, img_sizes: List[Tuple[int, int]], is_training: bool) -> List[torch.Tensor]:
+    def unpatchify(self, x: torch.Tensor, img_sizes: list[tuple[int, int]], is_training: bool) -> list[torch.Tensor]:
         if is_training and not self.config.force_inference_output:
             B, S, F = x.shape
             C = F // (self.config.patch_size * self.config.patch_size)
@@ -773,6 +770,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
 
         return hidden_states, hidden_states_masks, img_sizes, img_ids
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -780,48 +778,50 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         encoder_hidden_states_t5: torch.Tensor = None,
         encoder_hidden_states_llama3: torch.Tensor = None,
         pooled_embeds: torch.Tensor = None,
-        img_ids: Optional[torch.Tensor] = None,
-        img_sizes: Optional[List[Tuple[int, int]]] = None,
-        hidden_states_masks: Optional[torch.Tensor] = None,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        img_ids: torch.Tensor | None = None,
+        img_sizes: list[tuple[int, int]] | None = None,
+        hidden_states_masks: torch.Tensor | None = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-        **kwargs,
-    ) -> Union[Tuple[torch.Tensor], Transformer2DModelOutput]:
-        encoder_hidden_states = kwargs.get("encoder_hidden_states", None)
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
+        """
+        The [`HiDreamImageTransformer2DModel`] forward method.
 
-        if encoder_hidden_states is not None:
-            deprecation_message = "The `encoder_hidden_states` argument is deprecated. Please use `encoder_hidden_states_t5` and `encoder_hidden_states_llama3` instead."
-            deprecate("encoder_hidden_states", "0.35.0", deprecation_message)
-            encoder_hidden_states_t5 = encoder_hidden_states[0]
-            encoder_hidden_states_llama3 = encoder_hidden_states[1]
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, in_channels, height, width)` or `(batch_size, patch_height * patch_width, patch_size * patch_size * channels)`):
+                Input `hidden_states`.
+            timesteps (`torch.LongTensor`):
+                Used to indicate denoising step.
+            encoder_hidden_states_t5 (`torch.Tensor`):
+                Conditional embeddings computed from the T5 text encoder.
+            encoder_hidden_states_llama3 (`torch.Tensor`):
+                Conditional embeddings computed from the Llama3 text encoder.
+            pooled_embeds (`torch.Tensor`):
+                Pooled text embeddings used for additional conditioning.
+            img_ids (`torch.Tensor`, *optional*):
+                Image position ids for the patched hidden states.
+            img_sizes (`list` of `tuple` of `int`, *optional*):
+                Per-sample patch grid sizes used to unpatchify the output.
+            hidden_states_masks (`torch.Tensor`, *optional*):
+                Mask over patched `hidden_states`.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
 
-        if img_ids is not None and img_sizes is not None and hidden_states_masks is None:
-            deprecation_message = (
-                "Passing `img_ids` and `img_sizes` with unpachified `hidden_states` is deprecated and will be ignored."
-            )
-            deprecate("img_ids", "0.35.0", deprecation_message)
-
+        Returns:
+            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
+        """
         if hidden_states_masks is not None and (img_ids is None or img_sizes is None):
             raise ValueError("if `hidden_states_masks` is passed, `img_ids` and `img_sizes` must also be passed.")
         elif hidden_states_masks is not None and hidden_states.ndim != 3:
             raise ValueError(
                 "if `hidden_states_masks` is passed, `hidden_states` must be a 3D tensors with shape (batch_size, patch_height * patch_width, patch_size * patch_size * channels)"
             )
-
-        if attention_kwargs is not None:
-            attention_kwargs = attention_kwargs.copy()
-            lora_scale = attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
-
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
-                )
 
         # spatial forward
         batch_size = hidden_states.shape[0]
@@ -866,10 +866,16 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
 
         # 2. Blocks
         block_id = 0
-        initial_encoder_hidden_states = torch.cat([encoder_hidden_states[-1], encoder_hidden_states[-2]], dim=1)
+        initial_encoder_hidden_states = torch.cat(
+            [
+                encoder_hidden_states[-1].to(hidden_states.device),
+                encoder_hidden_states[-2].to(hidden_states.device),
+            ],
+            dim=1,
+        )
         initial_encoder_hidden_states_seq_len = initial_encoder_hidden_states.shape[1]
         for bid, block in enumerate(self.double_stream_blocks):
-            cur_llama31_encoder_hidden_states = encoder_hidden_states[block_id]
+            cur_llama31_encoder_hidden_states = encoder_hidden_states[block_id].to(hidden_states.device)
             cur_encoder_hidden_states = torch.cat(
                 [initial_encoder_hidden_states, cur_llama31_encoder_hidden_states], dim=1
             )
@@ -905,7 +911,7 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
             hidden_states_masks = torch.cat([hidden_states_masks, encoder_attention_mask_ones], dim=1)
 
         for bid, block in enumerate(self.single_stream_blocks):
-            cur_llama31_encoder_hidden_states = encoder_hidden_states[block_id]
+            cur_llama31_encoder_hidden_states = encoder_hidden_states[block_id].to(hidden_states.device)
             hidden_states = torch.cat([hidden_states, cur_llama31_encoder_hidden_states], dim=1)
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(
@@ -932,10 +938,6 @@ class HiDreamImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         output = self.unpatchify(output, img_sizes, self.training)
         if hidden_states_masks is not None:
             hidden_states_masks = hidden_states_masks[:, :image_tokens_seq_len]
-
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)

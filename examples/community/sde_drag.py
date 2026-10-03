@@ -73,7 +73,7 @@ class SdeDragPipeline(DiffusionPipeline):
         image_scale: Optional[float] = 0.3,
         adapt_radius: Optional[int] = 5,
         min_lora_scale: Optional[float] = 0.5,
-        generator: Optional[torch.Generator] = None,
+        generator: torch.Generator | None = None,
     ):
         r"""
         Function invoked when calling the pipeline for image editing.
@@ -114,7 +114,7 @@ class SdeDragPipeline(DiffusionPipeline):
         >>> from diffusers import DDIMScheduler, DiffusionPipeline
 
         >>> # Load the pipeline
-        >>> model_path = "runwayml/stable-diffusion-v1-5"
+        >>> model_path = "stable-diffusion-v1-5/stable-diffusion-v1-5"
         >>> scheduler = DDIMScheduler.from_pretrained(model_path, subfolder="scheduler")
         >>> pipe = DiffusionPipeline.from_pretrained(model_path, scheduler=scheduler, custom_pipeline="sde_drag")
         >>> pipe.to('cuda')

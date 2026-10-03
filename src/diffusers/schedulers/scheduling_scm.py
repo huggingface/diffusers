@@ -16,7 +16,6 @@
 # and https://github.com/hojonathanho/diffusion
 
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -46,7 +45,7 @@ class SCMSchedulerOutput(BaseOutput):
     """
 
     prev_sample: torch.Tensor
-    pred_original_sample: Optional[torch.Tensor] = None
+    pred_original_sample: torch.Tensor | None = None
 
 
 class SCMScheduler(SchedulerMixin, ConfigMixin):
@@ -56,11 +55,11 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
     documentation for the generic methods the library implements for all schedulers such as loading and saving.
 
     Args:
-        num_train_timesteps (`int`, defaults to 1000):
+        num_train_timesteps (`int`, defaults to `1000`):
             The number of diffusion steps to train the model.
         prediction_type (`str`, defaults to `trigflow`):
             Prediction type of the scheduler function. Currently only supports "trigflow".
-        sigma_data (`float`, defaults to 0.5):
+        sigma_data (`float`, defaults to `0.5`):
             The standard deviation of the noise added during multi-step inference.
     """
 
@@ -78,11 +77,11 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
         Initialize the SCM scheduler.
 
         Args:
-            num_train_timesteps (`int`, defaults to 1000):
+            num_train_timesteps (`int`, defaults to `1000`):
                 The number of diffusion steps to train the model.
             prediction_type (`str`, defaults to `trigflow`):
                 Prediction type of the scheduler function. Currently only supports "trigflow".
-            sigma_data (`float`, defaults to 0.5):
+            sigma_data (`float`, defaults to `0.5`):
                 The standard deviation of the noise added during multi-step inference.
         """
         # standard deviation of the initial noise distribution
@@ -96,11 +95,25 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = None
 
     @property
-    def step_index(self):
+    def step_index(self) -> int:
+        """
+        The index counter for current timestep. It will increase by 1 after each scheduler step.
+
+        Returns:
+            `int` or `None`:
+                The current step index, or `None` if not initialized.
+        """
         return self._step_index
 
     @property
-    def begin_index(self):
+    def begin_index(self) -> int:
+        """
+        The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
+
+        Returns:
+            `int` or `None`:
+                The begin index for the scheduler, or `None` if not set.
+        """
         return self._begin_index
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
@@ -109,7 +122,7 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
         Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
 
         Args:
-            begin_index (`int`):
+            begin_index (`int`, defaults to `0`):
                 The begin index for the scheduler.
         """
         self._begin_index = begin_index
@@ -117,10 +130,10 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(
         self,
         num_inference_steps: int,
-        timesteps: torch.Tensor = None,
-        device: Union[str, torch.device] = None,
-        max_timesteps: float = 1.57080,
-        intermediate_timesteps: float = 1.3,
+        timesteps: list[float] | torch.Tensor | None = None,
+        device: str | torch.device | None = None,
+        max_timesteps: float | None = 1.57080,
+        intermediate_timesteps: float | None = 1.3,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -128,11 +141,13 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
         Args:
             num_inference_steps (`int`):
                 The number of diffusion steps used when generating samples with a pre-trained model.
-            timesteps (`torch.Tensor`, *optional*):
+            timesteps (`list[float]` or `torch.Tensor`, *optional*):
                 Custom timesteps to use for the denoising process.
-            max_timesteps (`float`, defaults to 1.57080):
+            device (`str` or `torch.device`, *optional*):
+                The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+            max_timesteps (`float`, *optional*, defaults to `1.57080`):
                 The maximum timestep value used in the SCM scheduler.
-            intermediate_timesteps (`float`, *optional*, defaults to 1.3):
+            intermediate_timesteps (`float`, *optional*, defaults to `1.3`):
                 The intermediate timestep value used in SCM scheduler (only used when num_inference_steps=2).
         """
         if num_inference_steps > self.config.num_train_timesteps:
@@ -173,7 +188,14 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = None
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
-    def _init_step_index(self, timestep):
+    def _init_step_index(self, timestep: float | torch.Tensor) -> None:
+        """
+        Initialize the step index for the scheduler based on the given timestep.
+
+        Args:
+            timestep (`float` or `torch.Tensor`):
+                The current timestep to initialize the step index from.
+        """
         if self.begin_index is None:
             if isinstance(timestep, torch.Tensor):
                 timestep = timestep.to(self.timesteps.device)
@@ -182,7 +204,23 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
             self._step_index = self._begin_index
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
-    def index_for_timestep(self, timestep, schedule_timesteps=None):
+    def index_for_timestep(
+        self, timestep: float | torch.Tensor, schedule_timesteps: torch.Tensor | None = None
+    ) -> int:
+        """
+        Find the index of a given timestep in the timestep schedule.
+
+        Args:
+            timestep (`float` or `torch.Tensor`):
+                The timestep value to find in the schedule.
+            schedule_timesteps (`torch.Tensor`, *optional*):
+                The timestep schedule to search in. If `None`, uses `self.timesteps`.
+
+        Returns:
+            `int`:
+                The index of the timestep in the schedule. For the very first step, returns the second index if
+                multiple matches exist to avoid skipping a sigma when starting mid-schedule (e.g., for image-to-image).
+        """
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
 
@@ -201,9 +239,9 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: float,
         sample: torch.FloatTensor,
-        generator: torch.Generator = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> Union[SCMSchedulerOutput, Tuple]:
+    ) -> SCMSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -215,10 +253,13 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
                 The current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 A current instance of a sample created by the diffusion process.
+            generator (`torch.Generator`, *optional*):
+                A random number generator for reproducible sampling.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~schedulers.scheduling_scm.SCMSchedulerOutput`] or `tuple`.
+
         Returns:
-            [`~schedulers.scheduling_utils.SCMSchedulerOutput`] or `tuple`:
+            [`~schedulers.scheduling_scm.SCMSchedulerOutput`] or `tuple`:
                 If return_dict is `True`, [`~schedulers.scheduling_scm.SCMSchedulerOutput`] is returned, otherwise a
                 tuple is returned where the first element is the sample tensor.
         """
@@ -260,5 +301,5 @@ class SCMScheduler(SchedulerMixin, ConfigMixin):
 
         return SCMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_x0)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.config.num_train_timesteps

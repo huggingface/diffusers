@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,12 +13,12 @@
 # limitations under the License.
 
 import os
-from typing import Optional, Union
 
 from huggingface_hub.utils import validate_hf_hub_args
 
 from ..configuration_utils import ConfigMixin
-from ..utils import logging
+from ..utils import DIFFUSERS_LOAD_ID_FIELDS, _resolve_revision, logging
+from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
 
 
 logger = logging.get_logger(__name__)
@@ -30,13 +30,131 @@ class AutoModel(ConfigMixin):
     def __init__(self, *args, **kwargs):
         raise EnvironmentError(
             f"{self.__class__.__name__} is designed to be instantiated "
-            f"using the `{self.__class__.__name__}.from_pretrained(pretrained_model_name_or_path)` or "
+            f"using the `{self.__class__.__name__}.from_pretrained(pretrained_model_name_or_path)`, "
+            f"`{self.__class__.__name__}.from_config(config)`, or "
             f"`{self.__class__.__name__}.from_pipe(pipeline)` methods."
         )
 
     @classmethod
+    def from_config(cls, pretrained_model_name_or_path_or_dict: str | os.PathLike | dict | None = None, **kwargs):
+        r"""
+        Instantiate a model from a config dictionary or a pretrained model configuration file with random weights (no
+        pretrained weights are loaded).
+
+        Parameters:
+            pretrained_model_name_or_path_or_dict (`str`, `os.PathLike`, or `dict`):
+                Can be either:
+
+                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model
+                      configuration hosted on the Hub.
+                    - A path to a *directory* (for example `./my_model_directory`) containing a model configuration
+                      file.
+                    - A config dictionary.
+
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
+                is not used.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model configuration, overriding the cached version if
+                it exists.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint.
+            local_files_only(`bool`, *optional*, defaults to `False`):
+                Whether to only load local model configuration files or not.
+            token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files.
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use.
+            trust_remote_code (`bool`, *optional*, defaults to `False`):
+                Whether to trust remote code.
+            subfolder (`str`, *optional*, defaults to `""`):
+                The subfolder location of a model file within a larger model repository on the Hub or locally.
+
+        Returns:
+            A model object instantiated from the config with random weights.
+
+        Example:
+
+        ```py
+        from diffusers import AutoModel
+
+        model = AutoModel.from_config("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="unet")
+        ```
+        """
+        subfolder = kwargs.pop("subfolder", None)
+        trust_remote_code = kwargs.pop("trust_remote_code", False)
+
+        hub_kwargs_names = [
+            "cache_dir",
+            "force_download",
+            "local_files_only",
+            "proxies",
+            "revision",
+            "token",
+        ]
+        hub_kwargs = {name: kwargs.pop(name, None) for name in hub_kwargs_names}
+
+        if pretrained_model_name_or_path_or_dict is None:
+            raise ValueError(
+                "Please provide a `pretrained_model_name_or_path_or_dict` as the first positional argument."
+            )
+
+        if isinstance(pretrained_model_name_or_path_or_dict, (str, os.PathLike)):
+            pretrained_model_name_or_path = pretrained_model_name_or_path_or_dict
+            config = cls.load_config(pretrained_model_name_or_path, subfolder=subfolder, **hub_kwargs)
+        else:
+            config = pretrained_model_name_or_path_or_dict
+            pretrained_model_name_or_path = config.get("_name_or_path", None)
+
+        has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
+        trust_remote_code = resolve_trust_remote_code(
+            trust_remote_code, pretrained_model_name_or_path, has_remote_code
+        )
+
+        if has_remote_code and trust_remote_code:
+            class_ref = config["auto_map"][cls.__name__]
+            module_file, class_name = class_ref.split(".")
+            module_file = module_file + ".py"
+            model_cls = get_class_from_dynamic_module(
+                pretrained_model_name_or_path,
+                subfolder=subfolder,
+                module_file=module_file,
+                class_name=class_name,
+                trust_remote_code=trust_remote_code,
+                **hub_kwargs,
+            )
+        else:
+            if "_class_name" in config:
+                class_name = config["_class_name"]
+                library = "diffusers"
+            elif "model_type" in config:
+                class_name = "AutoModel"
+                library = "transformers"
+            else:
+                raise ValueError(
+                    f"Couldn't find a model class associated with the config: {config}. Make sure the config "
+                    "contains a `_class_name` or `model_type` key."
+                )
+
+            from ..pipelines.pipeline_loading_utils import ALL_IMPORTABLE_CLASSES, get_class_obj_and_candidates
+
+            model_cls, _ = get_class_obj_and_candidates(
+                library_name=library,
+                class_name=class_name,
+                importable_classes=ALL_IMPORTABLE_CLASSES,
+                pipelines=None,
+                is_pipeline_module=False,
+                trust_remote_code=trust_remote_code,
+            )
+
+        if model_cls is None:
+            raise ValueError(f"AutoModel can't find a model linked to {class_name}.")
+
+        return model_cls.from_config(config, **kwargs)
+
+    @classmethod
     @validate_hf_hub_args
-    def from_pretrained(cls, pretrained_model_or_path: Optional[Union[str, os.PathLike]] = None, **kwargs):
+    def from_pretrained(cls, pretrained_model_or_path: str | os.PathLike | None = None, **kwargs):
         r"""
         Instantiate a pretrained PyTorch model from a pretrained model configuration.
 
@@ -52,15 +170,15 @@ class AutoModel(ConfigMixin):
                     - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
                       with [`~ModelMixin.save_pretrained`].
 
-            cache_dir (`Union[str, os.PathLike]`, *optional*):
+            cache_dir (`str | os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
-            torch_dtype (`torch.dtype`, *optional*):
+            dtype (`torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-            proxies (`Dict[str, str]`, *optional*):
+            proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info (`bool`, *optional*, defaults to `False`):
@@ -74,15 +192,13 @@ class AutoModel(ConfigMixin):
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
-            from_flax (`bool`, *optional*, defaults to `False`):
-                Load the model weights from a Flax checkpoint save file.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             mirror (`str`, *optional*):
                 Mirror source to resolve accessibility issues if you're downloading a model in China. We do not
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
                 information.
-            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+            device_map (`str` or `dict[str, int | str | torch.device]`, *optional*):
                 A map that specifies where each submodule should go. It doesn't need to be defined for each
                 parameter/buffer name; once a given module name is inside, every submodule of it will be sent to the
                 same device. Defaults to `None`, meaning that the model will be loaded on CPU.
@@ -105,8 +221,7 @@ class AutoModel(ConfigMixin):
                 Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
                 argument to `True` will raise an error.
             variant (`str`, *optional*):
-                Load weights from a specified `variant` filename such as `"fp16"` or `"ema"`. This is ignored when
-                loading `from_flax`.
+                Load weights from a specified `variant` filename such as `"fp16"` or `"ema"`.
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If set to `None`, the `safetensors` weights are downloaded if they're available **and** if the
                 `safetensors` library is installed. If set to `True`, the model is forcibly loaded from `safetensors`
@@ -114,48 +229,55 @@ class AutoModel(ConfigMixin):
             disable_mmap ('bool', *optional*, defaults to 'False'):
                 Whether to disable mmap when loading a Safetensors model. This option can perform better when the model
                 is on a network mount or hard drive, which may not handle the seeky-ness of mmap very well.
+            trust_remote_cocde (`bool`, *optional*, defaults to `False`):
+                Whether to trust remote code
 
-        <Tip>
-
-        To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with `hf
-        auth login`. You can also activate the special
-        ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use this method in a
+        > [!TIP] > To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in
+        with `hf > auth login`. You can also activate the special >
+        ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use this method in a >
         firewalled environment.
-
-        </Tip>
 
         Example:
 
         ```py
         from diffusers import AutoModel
 
-        unet = AutoModel.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="unet")
+        unet = AutoModel.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="unet")
         ```
 
         If you get the error message below, you need to finetune the weights for your downstream task:
 
         ```bash
-        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at runwayml/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
+        Some weights of UNet2DConditionModel were not initialized from the model checkpoint at stable-diffusion-v1-5/stable-diffusion-v1-5 and are newly initialized because the shapes did not match:
         - conv_in.weight: found shape torch.Size([320, 4, 3, 3]) in the checkpoint and torch.Size([320, 9, 3, 3]) in the model instantiated
         You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
         ```
         """
-        cache_dir = kwargs.pop("cache_dir", None)
-        force_download = kwargs.pop("force_download", False)
-        proxies = kwargs.pop("proxies", None)
-        token = kwargs.pop("token", None)
-        local_files_only = kwargs.pop("local_files_only", False)
-        revision = kwargs.pop("revision", None)
         subfolder = kwargs.pop("subfolder", None)
+        trust_remote_code = kwargs.pop("trust_remote_code", False)
 
-        load_config_kwargs = {
-            "cache_dir": cache_dir,
-            "force_download": force_download,
-            "proxies": proxies,
-            "token": token,
-            "local_files_only": local_files_only,
-            "revision": revision,
-        }
+        hub_kwargs_names = [
+            "cache_dir",
+            "force_download",
+            "local_files_only",
+            "proxies",
+            "revision",
+            "token",
+        ]
+        hub_kwargs = {name: kwargs.pop(name, None) for name in hub_kwargs_names}
+
+        # Resolve the revision only once
+        revision = hub_kwargs["revision"]
+        hub_kwargs["revision"] = _resolve_revision(
+            pretrained_model_or_path,
+            revision=revision,
+            cache_dir=hub_kwargs["cache_dir"],
+            local_files_only=hub_kwargs["local_files_only"],
+            token=hub_kwargs["token"],
+        )
+
+        # load_config_kwargs uses the same hub kwargs minus subfolder and resume_download
+        load_config_kwargs = {k: v for k, v in hub_kwargs.items() if k not in ["subfolder"]}
 
         library = None
         orig_class_name = None
@@ -189,18 +311,46 @@ class AutoModel(ConfigMixin):
             else:
                 raise ValueError(f"Couldn't find model associated with the config file at {pretrained_model_or_path}.")
 
-        from ..pipelines.pipeline_loading_utils import ALL_IMPORTABLE_CLASSES, get_class_obj_and_candidates
+        has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
+        trust_remote_code = resolve_trust_remote_code(trust_remote_code, pretrained_model_or_path, has_remote_code)
+        if not has_remote_code and trust_remote_code:
+            raise ValueError(
+                "Selected model repository does not appear to have any custom code or does not have a valid `config.json` file."
+            )
 
-        model_cls, _ = get_class_obj_and_candidates(
-            library_name=library,
-            class_name=orig_class_name,
-            importable_classes=ALL_IMPORTABLE_CLASSES,
-            pipelines=None,
-            is_pipeline_module=False,
-        )
+        if has_remote_code and trust_remote_code:
+            class_ref = config["auto_map"][cls.__name__]
+            module_file, class_name = class_ref.split(".")
+            module_file = module_file + ".py"
+            model_cls = get_class_from_dynamic_module(
+                pretrained_model_or_path,
+                subfolder=subfolder,
+                module_file=module_file,
+                class_name=class_name,
+                trust_remote_code=trust_remote_code,
+                **hub_kwargs,
+            )
+        else:
+            from ..pipelines.pipeline_loading_utils import ALL_IMPORTABLE_CLASSES, get_class_obj_and_candidates
+
+            model_cls, _ = get_class_obj_and_candidates(
+                library_name=library,
+                class_name=orig_class_name,
+                importable_classes=ALL_IMPORTABLE_CLASSES,
+                pipelines=None,
+                is_pipeline_module=False,
+            )
 
         if model_cls is None:
             raise ValueError(f"AutoModel can't find a model linked to {orig_class_name}.")
 
         kwargs = {**load_config_kwargs, **kwargs}
-        return model_cls.from_pretrained(pretrained_model_or_path, **kwargs)
+        model = model_cls.from_pretrained(pretrained_model_or_path, **kwargs)
+
+        # the load id records the revision the user asked for, not the commit it was resolved to
+        load_id_kwargs = {"pretrained_model_name_or_path": pretrained_model_or_path, **kwargs, "revision": revision}
+        parts = [load_id_kwargs.get(field, "null") for field in DIFFUSERS_LOAD_ID_FIELDS]
+        load_id = "|".join("null" if p is None else p for p in parts)
+        model._diffusers_load_id = load_id
+
+        return model

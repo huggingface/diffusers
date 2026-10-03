@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import math
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any
 
 import torch
 
@@ -36,10 +38,10 @@ class AutoGuidance(BaseGuidance):
             The scale parameter for classifier-free guidance. Higher values result in stronger conditioning on the text
             prompt, while lower values allow for more freedom in generation. Higher values may lead to saturation and
             deterioration of image quality.
-        auto_guidance_layers (`int` or `List[int]`, *optional*):
+        auto_guidance_layers (`int` or `list[int]`, *optional*):
             The layer indices to apply skip layer guidance to. Can be a single integer or a list of integers. If not
             provided, `skip_layer_config` must be provided.
-        auto_guidance_config (`LayerSkipConfig` or `List[LayerSkipConfig]`, *optional*):
+        auto_guidance_config (`LayerSkipConfig` or `list[LayerSkipConfig]`, *optional*):
             The configuration for the skip layer guidance. Can be a single `LayerSkipConfig` or a list of
             `LayerSkipConfig`. If not provided, `skip_layer_guidance_layers` must be provided.
         dropout (`float`, *optional*):
@@ -65,15 +67,16 @@ class AutoGuidance(BaseGuidance):
     def __init__(
         self,
         guidance_scale: float = 7.5,
-        auto_guidance_layers: Optional[Union[int, List[int]]] = None,
-        auto_guidance_config: Union[LayerSkipConfig, List[LayerSkipConfig], Dict[str, Any]] = None,
-        dropout: Optional[float] = None,
+        auto_guidance_layers: int | list[int] | None = None,
+        auto_guidance_config: LayerSkipConfig | list[LayerSkipConfig] | dict[str, Any] = None,
+        dropout: float | None = None,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
         start: float = 0.0,
         stop: float = 1.0,
+        enabled: bool = True,
     ):
-        super().__init__(start, stop)
+        super().__init__(start, stop, enabled)
 
         self.guidance_scale = guidance_scale
         self.auto_guidance_layers = auto_guidance_layers
@@ -132,20 +135,25 @@ class AutoGuidance(BaseGuidance):
                 registry = HookRegistry.check_if_exists_or_initialize(denoiser)
                 registry.remove_hook(name, recurse=True)
 
-    def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
-    ) -> List["BlockState"]:
-        if input_fields is None:
-            input_fields = self._input_fields
-
+    def prepare_inputs(self, data: dict[str, tuple[torch.Tensor, torch.Tensor]]) -> list["BlockState"]:
         tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
         data_batches = []
-        for i in range(self.num_conditions):
-            data_batch = self._prepare_batch(input_fields, data, tuple_indices[i], self._input_predictions[i])
+        for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
+            data_batch = self._prepare_batch(data, tuple_idx, input_prediction)
             data_batches.append(data_batch)
         return data_batches
 
-    def forward(self, pred_cond: torch.Tensor, pred_uncond: Optional[torch.Tensor] = None) -> GuiderOutput:
+    def prepare_inputs_from_block_state(
+        self, data: "BlockState", input_fields: dict[str, str | tuple[str, str]]
+    ) -> list["BlockState"]:
+        tuple_indices = [0] if self.num_conditions == 1 else [0, 1]
+        data_batches = []
+        for tuple_idx, input_prediction in zip(tuple_indices, self._input_predictions):
+            data_batch = self._prepare_batch_from_block_state(input_fields, data, tuple_idx, input_prediction)
+            data_batches.append(data_batch)
+        return data_batches
+
+    def forward(self, pred_cond: torch.Tensor, pred_uncond: torch.Tensor | None = None) -> GuiderOutput:
         pred = None
 
         if not self._is_ag_enabled():

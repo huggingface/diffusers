@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,15 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import os
-import unittest
+import warnings
 
 import pytest
+import torch
 
 from diffusers import __version__
-from diffusers.utils import deprecate
+from diffusers.utils import deprecate, torch_utils
+from diffusers.utils.torch_utils import TorchDeviceBackend, empty_device_cache, get_device
 
-from ..testing_utils import Expectations, str_to_bool
+from ..testing_utils import CaptureLogger, Expectations, str_to_bool
 
 
 # Used to test the hub
@@ -32,19 +35,19 @@ ENDPOINT_STAGING = "https://hub-ci.huggingface.co"
 TOKEN = "hf_94wBhPGp6KrrTH3KDchhKpRxZwd6dmHWLL"
 
 
-class DeprecateTester(unittest.TestCase):
+class TestDeprecate:
     higher_version = ".".join([str(int(__version__.split(".")[0]) + 1)] + __version__.split(".")[1:])
     lower_version = "0.0.1"
 
     def test_deprecate_function_arg(self):
         kwargs = {"deprecated_arg": 4}
 
-        with self.assertWarns(FutureWarning) as warning:
+        with pytest.warns(FutureWarning) as warning:
             output = deprecate("deprecated_arg", self.higher_version, "message", take_from=kwargs)
 
         assert output == 4
         assert (
-            str(warning.warning)
+            str(warning[0].message)
             == f"The `deprecated_arg` argument is deprecated and will be removed in version {self.higher_version}."
             " message"
         )
@@ -52,19 +55,19 @@ class DeprecateTester(unittest.TestCase):
     def test_deprecate_function_arg_tuple(self):
         kwargs = {"deprecated_arg": 4}
 
-        with self.assertWarns(FutureWarning) as warning:
+        with pytest.warns(FutureWarning) as warning:
             output = deprecate(("deprecated_arg", self.higher_version, "message"), take_from=kwargs)
 
         assert output == 4
         assert (
-            str(warning.warning)
+            str(warning[0].message)
             == f"The `deprecated_arg` argument is deprecated and will be removed in version {self.higher_version}."
             " message"
         )
 
     def test_deprecate_function_args(self):
         kwargs = {"deprecated_arg_1": 4, "deprecated_arg_2": 8}
-        with self.assertWarns(FutureWarning) as warning:
+        with pytest.warns(FutureWarning) as warning:
             output_1, output_2 = deprecate(
                 ("deprecated_arg_1", self.higher_version, "Hey"),
                 ("deprecated_arg_2", self.higher_version, "Hey"),
@@ -73,47 +76,45 @@ class DeprecateTester(unittest.TestCase):
         assert output_1 == 4
         assert output_2 == 8
         assert (
-            str(warning.warnings[0].message)
-            == "The `deprecated_arg_1` argument is deprecated and will be removed in version"
+            str(warning[0].message) == "The `deprecated_arg_1` argument is deprecated and will be removed in version"
             f" {self.higher_version}. Hey"
         )
         assert (
-            str(warning.warnings[1].message)
-            == "The `deprecated_arg_2` argument is deprecated and will be removed in version"
+            str(warning[1].message) == "The `deprecated_arg_2` argument is deprecated and will be removed in version"
             f" {self.higher_version}. Hey"
         )
 
     def test_deprecate_function_incorrect_arg(self):
         kwargs = {"deprecated_arg": 4}
 
-        with self.assertRaises(TypeError) as error:
+        with pytest.raises(TypeError) as error:
             deprecate(("wrong_arg", self.higher_version, "message"), take_from=kwargs)
 
-        assert "test_deprecate_function_incorrect_arg in" in str(error.exception)
-        assert "line" in str(error.exception)
-        assert "got an unexpected keyword argument `deprecated_arg`" in str(error.exception)
+        assert "test_deprecate_function_incorrect_arg in" in str(error.value)
+        assert "line" in str(error.value)
+        assert "got an unexpected keyword argument `deprecated_arg`" in str(error.value)
 
     def test_deprecate_arg_no_kwarg(self):
-        with self.assertWarns(FutureWarning) as warning:
+        with pytest.warns(FutureWarning) as warning:
             deprecate(("deprecated_arg", self.higher_version, "message"))
 
         assert (
-            str(warning.warning)
+            str(warning[0].message)
             == f"`deprecated_arg` is deprecated and will be removed in version {self.higher_version}. message"
         )
 
     def test_deprecate_args_no_kwarg(self):
-        with self.assertWarns(FutureWarning) as warning:
+        with pytest.warns(FutureWarning) as warning:
             deprecate(
                 ("deprecated_arg_1", self.higher_version, "Hey"),
                 ("deprecated_arg_2", self.higher_version, "Hey"),
             )
         assert (
-            str(warning.warnings[0].message)
+            str(warning[0].message)
             == f"`deprecated_arg_1` is deprecated and will be removed in version {self.higher_version}. Hey"
         )
         assert (
-            str(warning.warnings[1].message)
+            str(warning[1].message)
             == f"`deprecated_arg_2` is deprecated and will be removed in version {self.higher_version}. Hey"
         )
 
@@ -121,12 +122,12 @@ class DeprecateTester(unittest.TestCase):
         class Args:
             arg = 5
 
-        with self.assertWarns(FutureWarning) as warning:
+        with pytest.warns(FutureWarning) as warning:
             arg = deprecate(("arg", self.higher_version, "message"), take_from=Args())
 
         assert arg == 5
         assert (
-            str(warning.warning)
+            str(warning[0].message)
             == f"The `arg` attribute is deprecated and will be removed in version {self.higher_version}. message"
         )
 
@@ -135,7 +136,7 @@ class DeprecateTester(unittest.TestCase):
             arg = 5
             foo = 7
 
-        with self.assertWarns(FutureWarning) as warning:
+        with pytest.warns(FutureWarning) as warning:
             arg_1, arg_2 = deprecate(
                 ("arg", self.higher_version, "message"),
                 ("foo", self.higher_version, "message"),
@@ -146,45 +147,189 @@ class DeprecateTester(unittest.TestCase):
         assert arg_1 == 5
         assert arg_2 == 7
         assert (
-            str(warning.warning)
+            str(warning[0].message)
             == f"The `arg` attribute is deprecated and will be removed in version {self.higher_version}. message"
         )
         assert (
-            str(warning.warnings[0].message)
-            == f"The `arg` attribute is deprecated and will be removed in version {self.higher_version}. message"
-        )
-        assert (
-            str(warning.warnings[1].message)
+            str(warning[1].message)
             == f"The `foo` attribute is deprecated and will be removed in version {self.higher_version}. message"
         )
 
     def test_deprecate_incorrect_version(self):
         kwargs = {"deprecated_arg": 4}
 
-        with self.assertRaises(ValueError) as error:
+        with pytest.raises(ValueError) as error:
             deprecate(("wrong_arg", self.lower_version, "message"), take_from=kwargs)
 
         assert (
-            str(error.exception)
+            str(error.value)
             == "The deprecation tuple ('wrong_arg', '0.0.1', 'message') should be removed since diffusers' version"
             f" {__version__} is >= {self.lower_version}"
         )
 
     def test_deprecate_incorrect_no_standard_warn(self):
-        with self.assertWarns(FutureWarning) as warning:
+        with pytest.warns(FutureWarning) as warning:
             deprecate(("deprecated_arg", self.higher_version, "This message is better!!!"), standard_warn=False)
 
-        assert str(warning.warning) == "This message is better!!!"
+        assert str(warning[0].message) == "This message is better!!!"
 
     def test_deprecate_stacklevel(self):
-        with self.assertWarns(FutureWarning) as warning:
+        with pytest.warns(FutureWarning) as warning:
             deprecate(("deprecated_arg", self.higher_version, "This message is better!!!"), standard_warn=False)
-        assert str(warning.warning) == "This message is better!!!"
-        assert "diffusers/tests/others/test_utils.py" in warning.filename
+        assert str(warning[0].message) == "This message is better!!!"
+        assert "diffusers/tests/others/test_utils.py" in warning[0].filename
+
+    def test_deprecate_testing_utils_module(self):
+        import diffusers.utils.testing_utils
+
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("always")
+            importlib.reload(diffusers.utils.testing_utils)
+
+        deprecation_warnings = [w for w in caught_warnings if issubclass(w.category, FutureWarning)]
+        assert len(deprecation_warnings) >= 1, "Expected at least one FutureWarning from diffusers.utils.testing_utils"
+
+        messages = [str(w.message) for w in deprecation_warnings]
+        assert any("diffusers.utils.testing_utils" in msg for msg in messages), (
+            f"Expected a deprecation warning mentioning 'diffusers.utils.testing_utils', got: {messages}"
+        )
+        assert any(
+            "diffusers.utils.testing_utils is deprecated and will be removed in a future version." in msg
+            for msg in messages
+        ), f"Expected deprecation message substring not found, got: {messages}"
+
+
+class TestFourierFilter:
+    """Tests for :func:`diffusers.utils.torch_utils.fourier_filter` (FreeU helper)."""
+
+    def _run_without_complexhalf_warning(self, dtype):
+        import torch
+
+        from diffusers.utils.torch_utils import fourier_filter
+
+        x = torch.randn(1, 4, 32, 32, dtype=dtype)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            out = fourier_filter(x, threshold=1, scale=0.5)
+
+        messages = [str(w.message) for w in caught]
+        assert not any("ComplexHalf" in m for m in messages), (
+            f"Unexpected ComplexHalf warning emitted by fourier_filter: {messages}"
+        )
+        return out
+
+    def test_fourier_filter_float16_no_complexhalf_warning(self):
+        import torch
+
+        out = self._run_without_complexhalf_warning(torch.float16)
+        assert out.dtype == torch.float16
+
+    def test_fourier_filter_bfloat16_no_complexhalf_warning(self):
+        import torch
+
+        out = self._run_without_complexhalf_warning(torch.bfloat16)
+        assert out.dtype == torch.bfloat16
+
+    def test_fourier_filter_preserves_dtype_and_shape(self):
+        import torch
+
+        from diffusers.utils.torch_utils import fourier_filter
+
+        for dtype in (torch.float32, torch.float16, torch.bfloat16):
+            x = torch.randn(2, 3, 16, 16, dtype=dtype)
+            out = fourier_filter(x, threshold=1, scale=0.5)
+            assert out.dtype == dtype
+            assert out.shape == x.shape
+
+
+class TestRandnTensor:
+    """Tests for :func:`diffusers.utils.torch_utils.randn_tensor`."""
+
+    def test_mps_suppresses_cpu_generator_info_log(self):
+        import torch
+
+        from diffusers.utils import logging as diffusers_logging
+        from diffusers.utils import torch_utils
+
+        from ..testing_utils import CaptureLogger
+
+        gen = torch.Generator(device="cpu")
+        diffusers_logging.set_verbosity_info()
+
+        def _capture(target_device):
+            with CaptureLogger(torch_utils.logger) as cl:
+                try:
+                    torch_utils.randn_tensor((1, 2), generator=gen, device=target_device, dtype=torch.float32)
+                except (AssertionError, RuntimeError):
+                    pass
+            return cl.out
+
+        mps_out = _capture("mps")
+        assert "moved to" not in mps_out, f"MPS target should not emit the CPU-fallback info log, got: {mps_out}"
+
+        cuda_out = _capture("cuda")
+        assert "moved to" in cuda_out, f"Non-MPS target should still emit the CPU-fallback info log, got: {cuda_out}"
+
+
+class TestTorchDeviceBackend:
+    """Tests for :class:`diffusers.utils.torch_utils.TorchDeviceBackend` on the CPU backend."""
+
+    def test_module_resolves_from_str_and_torch_device(self):
+        assert TorchDeviceBackend("cpu").module is torch.cpu, "str device type should resolve to torch.cpu"
+        assert TorchDeviceBackend(torch.device("cpu")).module is torch.cpu, "torch.device should resolve to torch.cpu"
+        assert TorchDeviceBackend("cuda:1").module is torch.cuda, "device index should be ignored for the module"
+
+    def test_get_device_matches_torch_accelerator(self):
+        expected = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
+        assert get_device() == expected, "get_device() should report what torch.accelerator reports"
+
+    def test_default_device_is_the_detected_accelerator(self):
+        backend = TorchDeviceBackend()
+        assert backend.device == torch.device(get_device()), "no-arg backend should target get_device()"
+        assert backend.module is getattr(torch, get_device()), "module should be the torch namespace of that device"
+
+    def test_unknown_backend_raises_instead_of_falling_back_to_cuda(self):
+        with pytest.raises(RuntimeError, match="does not have a corresponding module"):
+            TorchDeviceBackend("privateuseone")
+
+    def test_cpu_operations_without_a_caching_allocator(self):
+        empty_device_cache("cpu")
+        backend = TorchDeviceBackend("cpu")
+        backend.empty_cache()
+        backend.manual_seed(1234)
+        assert torch.initial_seed() == 1234, "cpu manual_seed should fall back to torch.manual_seed"
+
+    def test_function_style_backend_helpers_on_cpu(self):
+        torch_utils.backend_manual_seed("cpu", 0)
+        torch_utils.backend_synchronize("cpu")
+        torch_utils.backend_empty_cache("cpu")
+        assert isinstance(torch_utils.backend_device_count("cpu"), int)
+        assert torch_utils.backend_supports_training("cpu") is True
+        assert torch_utils.backend_supports_training("mps") is False
+
+    def test_unsupported_operations_raise_naming_the_backend(self):
+        backend = TorchDeviceBackend("cpu")
+        with pytest.raises(NotImplementedError, match="torch.cpu"):
+            backend.mem_get_info()
+        assert backend.Stream is torch.cpu.Stream, "undefined attributes forward to the backend module"
+        backend.synchronize()
+        with pytest.raises(AttributeError, match="Stream"):
+            TorchDeviceBackend("mps").Stream()
+        with CaptureLogger(torch_utils.logger) as cl:
+            backend.reset_peak_memory_stats()
+            assert backend.max_memory_allocated() == 0, "cpu keeps no memory statistics"
+        assert "no memory statistics" in cl.out, f"no-op memory calls should warn, got: {cl.out}"
+
+    def test_memory_statistics_on_the_host_accelerator(self):
+        if get_device() == "cpu":
+            pytest.skip("memory statistics need an accelerator")
+        backend = TorchDeviceBackend()
+        backend.reset_peak_memory_stats()
+        assert backend.max_memory_allocated() >= 0
 
 
 # Copied from https://github.com/huggingface/transformers/blob/main/tests/utils/test_expectations.py
-class ExpectationsTester(unittest.TestCase):
+class TestExpectations:
     def test_expectations(self):
         expectations = Expectations(
             {
@@ -211,7 +356,7 @@ class ExpectationsTester(unittest.TestCase):
         check(2, ("cuda", 2))
 
         expectations = Expectations({("cuda", 8): 1})
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             expectations.find_expectation(("xpu", None))
 
 
@@ -241,6 +386,6 @@ def is_staging_test(test_case):
     Those tests will run using the staging environment of huggingface.co instead of the real model hub.
     """
     if not _run_staging:
-        return unittest.skip("test is staging test")(test_case)
+        return pytest.mark.skip("test is staging test")(test_case)
     else:
         return pytest.mark.is_staging_test()(test_case)

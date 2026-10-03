@@ -41,15 +41,12 @@ The Stage C model operates on the small 24 x 24 latents and denoises the latents
 
 The Stage B and Stage A models are used with the `StableCascadeDecoderPipeline` and are responsible for generating the final image given the small 24 x 24 latents.
 
-<Tip warning={true}>
-
-There are some restrictions on data types that can be used with the Stable Cascade models. The official checkpoints for the  `StableCascadePriorPipeline` do not support the `torch.float16` data type. Please use `torch.bfloat16` instead.
-
-In order to use the `torch.bfloat16` data type with the `StableCascadeDecoderPipeline` you need to have PyTorch 2.2.0 or higher installed. This also means that using the `StableCascadeCombinedPipeline` with `torch.bfloat16` requires PyTorch 2.2.0 or higher, since it calls the `StableCascadeDecoderPipeline` internally.
-
-If it is not possible to install PyTorch 2.2.0 or higher in your environment, the `StableCascadeDecoderPipeline` can be used on its own with the `torch.float16` data type. You can download the full precision or `bf16` variant weights for the pipeline and cast the weights to `torch.float16`.
-
-</Tip>
+> [!WARNING]
+> There are some restrictions on data types that can be used with the Stable Cascade models. The official checkpoints for the  `StableCascadePriorPipeline` do not support the `torch.float16` data type. Please use `torch.bfloat16` instead.
+>
+> In order to use the `torch.bfloat16` data type with the `StableCascadeDecoderPipeline` you need to have PyTorch 2.2.0 or higher installed. This also means that using the `StableCascadeCombinedPipeline` with `torch.bfloat16` requires PyTorch 2.2.0 or higher, since it calls the `StableCascadeDecoderPipeline` internally.
+>
+> If it is not possible to install PyTorch 2.2.0 or higher in your environment, the `StableCascadeDecoderPipeline` can be used on its own with the `torch.float16` data type. You can download the full precision or `bf16` variant weights for the pipeline and cast the weights to `torch.float16`.
 
 ## Usage example
 
@@ -60,8 +57,8 @@ from diffusers import StableCascadeDecoderPipeline, StableCascadePriorPipeline
 prompt = "an image of a shiba inu, donning a spacesuit and helmet"
 negative_prompt = ""
 
-prior = StableCascadePriorPipeline.from_pretrained("stabilityai/stable-cascade-prior", variant="bf16", torch_dtype=torch.bfloat16)
-decoder = StableCascadeDecoderPipeline.from_pretrained("stabilityai/stable-cascade", variant="bf16", torch_dtype=torch.float16)
+prior = StableCascadePriorPipeline.from_pretrained("stabilityai/stable-cascade-prior", variant="bf16", dtype=torch.bfloat16)
+decoder = StableCascadeDecoderPipeline.from_pretrained("stabilityai/stable-cascade", variant="bf16", dtype=torch.float16)
 
 prior.enable_model_cpu_offload()
 prior_output = prior(
@@ -145,15 +142,15 @@ negative_prompt = ""
 
 prior_unet = StableCascadeUNet.from_single_file(
     "https://huggingface.co/stabilityai/stable-cascade/resolve/main/stage_c_bf16.safetensors",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 decoder_unet = StableCascadeUNet.from_single_file(
     "https://huggingface.co/stabilityai/stable-cascade/blob/main/stage_b_bf16.safetensors",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 
-prior = StableCascadePriorPipeline.from_pretrained("stabilityai/stable-cascade-prior", prior=prior_unet, torch_dtype=torch.bfloat16)
-decoder = StableCascadeDecoderPipeline.from_pretrained("stabilityai/stable-cascade", decoder=decoder_unet, torch_dtype=torch.bfloat16)
+prior = StableCascadePriorPipeline.from_pretrained("stabilityai/stable-cascade-prior", prior=prior_unet, dtype=torch.bfloat16)
+decoder = StableCascadeDecoderPipeline.from_pretrained("stabilityai/stable-cascade", decoder=decoder_unet, dtype=torch.bfloat16)
 
 prior.enable_model_cpu_offload()
 prior_output = prior(

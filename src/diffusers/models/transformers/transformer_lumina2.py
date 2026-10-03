@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...loaders.single_file_model import FromOriginalModelMixin
-from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import apply_lora_scale, logging
 from ..attention import LuminaFeedForward
 from ..attention_processor import Attention
 from ..embeddings import TimestepEmbedding, Timesteps, apply_rotary_emb, get_1d_rotary_pos_embed
@@ -58,7 +58,7 @@ class Lumina2CombinedTimestepCaptionEmbedding(nn.Module):
 
     def forward(
         self, hidden_states: torch.Tensor, timestep: torch.Tensor, encoder_hidden_states: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         timestep_proj = self.time_proj(timestep).type_as(hidden_states)
         time_embed = self.timestep_embedder(timestep_proj)
         caption_embed = self.caption_embedder(encoder_hidden_states)
@@ -80,9 +80,9 @@ class Lumina2AttnProcessor2_0:
         attn: Attention,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        image_rotary_emb: Optional[torch.Tensor] = None,
-        base_sequence_length: Optional[int] = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
+        base_sequence_length: int | None = None,
     ) -> torch.Tensor:
         batch_size, sequence_length, _ = hidden_states.shape
 
@@ -202,7 +202,7 @@ class Lumina2TransformerBlock(nn.Module):
         hidden_states: torch.Tensor,
         attention_mask: torch.Tensor,
         image_rotary_emb: torch.Tensor,
-        temb: Optional[torch.Tensor] = None,
+        temb: torch.Tensor | None = None,
     ) -> torch.Tensor:
         if self.modulation:
             norm_hidden_states, gate_msa, scale_mlp, gate_mlp = self.norm1(hidden_states, temb)
@@ -231,7 +231,7 @@ class Lumina2TransformerBlock(nn.Module):
 
 
 class Lumina2RotaryPosEmbed(nn.Module):
-    def __init__(self, theta: int, axes_dim: List[int], axes_lens: List[int] = (300, 512, 512), patch_size: int = 2):
+    def __init__(self, theta: int, axes_dim: list[int], axes_lens: list[int] = (300, 512, 512), patch_size: int = 2):
         super().__init__()
         self.theta = theta
         self.axes_dim = axes_dim
@@ -240,7 +240,7 @@ class Lumina2RotaryPosEmbed(nn.Module):
 
         self.freqs_cis = self._precompute_freqs_cis(axes_dim, axes_lens, theta)
 
-    def _precompute_freqs_cis(self, axes_dim: List[int], axes_lens: List[int], theta: int) -> List[torch.Tensor]:
+    def _precompute_freqs_cis(self, axes_dim: list[int], axes_lens: list[int], theta: int) -> list[torch.Tensor]:
         freqs_cis = []
         freqs_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
         for i, (d, e) in enumerate(zip(axes_dim, axes_lens)):
@@ -260,7 +260,9 @@ class Lumina2RotaryPosEmbed(nn.Module):
             result.append(torch.gather(freqs.unsqueeze(0).repeat(index.shape[0], 1, 1), dim=1, index=index))
         return torch.cat(result, dim=-1).to(device)
 
-    def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor):
+    def forward(
+        self, hidden_states: torch.Tensor, attention_mask: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, list[int], list[int]]:
         batch_size, channels, height, width = hidden_states.shape
         p = self.patch_size
         post_patch_height, post_patch_width = height // p, width // p
@@ -368,18 +370,18 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         sample_size: int = 128,
         patch_size: int = 2,
         in_channels: int = 16,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         hidden_size: int = 2304,
         num_layers: int = 26,
         num_refiner_layers: int = 2,
         num_attention_heads: int = 24,
         num_kv_heads: int = 8,
         multiple_of: int = 256,
-        ffn_dim_multiplier: Optional[float] = None,
+        ffn_dim_multiplier: float | None = None,
         norm_eps: float = 1e-5,
         scaling_factor: float = 1.0,
-        axes_dim_rope: Tuple[int, int, int] = (32, 32, 32),
-        axes_lens: Tuple[int, int, int] = (300, 512, 512),
+        axes_dim_rope: tuple[int, int, int] = (32, 32, 32),
+        axes_lens: tuple[int, int, int] = (300, 512, 512),
         cap_feat_dim: int = 1024,
     ) -> None:
         super().__init__()
@@ -455,30 +457,40 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
 
         self.gradient_checkpointing = False
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_attention_mask: torch.Tensor,
-        attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
-        if attention_kwargs is not None:
-            attention_kwargs = attention_kwargs.copy()
-            lora_scale = attention_kwargs.pop("scale", 1.0)
-        else:
-            lora_scale = 1.0
+    ) -> torch.Tensor | Transformer2DModelOutput:
+        """
+        The [`Lumina2Transformer2DModel`] forward method.
 
-        if USE_PEFT_BACKEND:
-            # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_lora_layers(self, lora_scale)
-        else:
-            if attention_kwargs is not None and attention_kwargs.get("scale", None) is not None:
-                logger.warning(
-                    "Passing `scale` via `attention_kwargs` when not using the PEFT backend is ineffective."
-                )
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, in_channels, height, width)`):
+                Input `hidden_states`.
+            timestep (`torch.LongTensor`):
+                Used to indicate denoising step.
+            encoder_hidden_states (`torch.Tensor` of shape `(batch_size, sequence_len, embed_dims)`):
+                Conditional embeddings (embeddings computed from the input conditions such as prompts) to use.
+            encoder_attention_mask (`torch.Tensor`):
+                Mask applied to `encoder_hidden_states` during attention.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
+                tuple.
 
+        Returns:
+            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
+        """
         # 1. Condition, positional & patch embedding
         batch_size, _, height, width = hidden_states.shape
 
@@ -538,10 +550,6 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
                 .flatten(1, 2)
             )
         output = torch.stack(output, dim=0)
-
-        if USE_PEFT_BACKEND:
-            # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (output,)

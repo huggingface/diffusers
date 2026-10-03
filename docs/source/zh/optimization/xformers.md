@@ -17,16 +17,10 @@ http://www.apache.org/licenses/LICENSE-2.0
 pip install xformers
 ```
 
-<Tip>
-
-xFormers的`pip`安装包需要最新版本的PyTorch。如需使用旧版PyTorch，建议[从源码安装xFormers](https://github.com/facebookresearch/xformers#installing-xformers)。
-
-</Tip>
+> [!TIP]
+> xFormers的`pip`安装包需要最新版本的PyTorch。如需使用旧版PyTorch，建议[从源码安装xFormers](https://github.com/facebookresearch/xformers#installing-xformers)。
 
 安装完成后，您可调用`enable_xformers_memory_efficient_attention()`来实现更快的推理速度和更低的内存占用，具体用法参见[此章节](memory#memory-efficient-attention)。
 
-<Tip warning={true}>
-
-根据[此问题](https://github.com/huggingface/diffusers/issues/2234#issuecomment-1416931212)反馈，xFormers `v0.0.16`版本在某些GPU上无法用于训练（微调或DreamBooth）。如遇此问题，请按照该issue评论区指引安装开发版本。
-
-</Tip>
+> [!WARNING]
+> 根据[此问题](https://github.com/huggingface/diffusers/issues/2234#issuecomment-1416931212)反馈，xFormers `v0.0.16`版本在某些GPU上无法用于训练（微调或DreamBooth）。如遇此问题，请按照该issue评论区指引安装开发版本。

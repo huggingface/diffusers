@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,13 +16,13 @@ PEFT utilities: Utilities related to peft library
 """
 
 import collections
+import functools
 import importlib
-from typing import Optional
 
 from packaging import version
 
 from . import logging
-from .import_utils import is_peft_available, is_peft_version, is_torch_available
+from .import_utils import is_peft_available, is_torch_available
 from .torch_utils import empty_device_cache
 
 
@@ -123,7 +123,7 @@ def scale_lora_layers(model, weight):
             module.scale_layer(weight)
 
 
-def unscale_lora_layers(model, weight: Optional[float] = None):
+def unscale_lora_layers(model, weight: float | None = None):
     """
     Removes the previously passed weight given to the LoRA layers of the model.
 
@@ -156,6 +156,7 @@ def get_peft_kwargs(
     rank_pattern = {}
     alpha_pattern = {}
     r = lora_alpha = list(rank_dict.values())[0]
+    has_alphas = network_alpha_dict is not None and len(network_alpha_dict) > 0
 
     if len(set(rank_dict.values())) > 1:
         # get the rank occurring the most number of times
@@ -164,6 +165,13 @@ def get_peft_kwargs(
         # for modules with rank different from the most occurring rank, add it to the `rank_pattern`
         rank_pattern = dict(filter(lambda x: x[1] != r, rank_dict.items()))
         rank_pattern = {k.split(".lora_B.")[0]: v for k, v in rank_pattern.items()}
+
+        if not has_alphas:
+            # No alpha data in the checkpoint: the diffusers/PEFT convention is
+            # `W_eff = W + lora_B @ lora_A`, i.e. alpha == rank per module (scale 1.0).
+            # Mirror the ranks into the alphas so every module keeps scale 1.0.
+            lora_alpha = r
+            alpha_pattern = dict(rank_pattern)
 
     if network_alpha_dict is not None and len(network_alpha_dict) > 0:
         if len(set(network_alpha_dict.values())) > 1:
@@ -275,6 +283,72 @@ def set_weights_and_activate_adapters(model, adapter_names, weights):
                 module.set_scale(adapter_name, get_module_weight(weight, module_name))
 
 
+def apply_lora_scale(kwargs_name: str = "joint_attention_kwargs"):
+    """
+    Decorator to automatically handle LoRA layer scaling/unscaling in forward methods.
+
+    This decorator extracts the `lora_scale` from the specified kwargs parameter, applies scaling before the forward
+    pass, and ensures unscaling happens after, even if an exception occurs.
+
+    Args:
+        kwargs_name (`str`, defaults to `"joint_attention_kwargs"`):
+            The name of the keyword argument that contains the LoRA scale. Common values include
+            "joint_attention_kwargs", "attention_kwargs", "cross_attention_kwargs", etc.
+    """
+
+    def decorator(forward_fn):
+        @functools.wraps(forward_fn)
+        def wrapper(self, *args, **kwargs):
+            from . import USE_PEFT_BACKEND
+
+            lora_scale = 1.0
+            attention_kwargs = kwargs.get(kwargs_name)
+
+            if attention_kwargs is not None:
+                attention_kwargs = attention_kwargs.copy()
+                kwargs[kwargs_name] = attention_kwargs
+                lora_scale = attention_kwargs.pop("scale", 1.0)
+
+                if not USE_PEFT_BACKEND and lora_scale != 1.0:
+                    logger.warning(
+                        f"Passing `scale` via `{kwargs_name}` when not using the PEFT backend is ineffective."
+                    )
+
+            # Apply LoRA scaling if using PEFT backend
+            if USE_PEFT_BACKEND:
+                scale_lora_layers(self, lora_scale)
+
+            try:
+                # Execute the forward pass
+                result = forward_fn(self, *args, **kwargs)
+                return result
+            finally:
+                # Always unscale, even if forward pass raises an exception
+                if USE_PEFT_BACKEND:
+                    unscale_lora_layers(self, lora_scale)
+
+        return wrapper
+
+    return decorator
+
+
+def require_peft_backend(fn):
+    """
+    Decorator marking a method that needs the PEFT backend, i.e. compatible `peft` and `transformers` installations.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        from . import USE_PEFT_BACKEND
+
+        if not USE_PEFT_BACKEND:
+            raise ValueError(f"PEFT backend is required for `{fn.__name__}()`.")
+
+        return fn(*args, **kwargs)
+
+    return wrapper
+
+
 def check_peft_version(min_version: str) -> None:
     r"""
     Checks if the version of PEFT is compatible.
@@ -286,12 +360,11 @@ def check_peft_version(min_version: str) -> None:
     if not is_peft_available():
         raise ValueError("PEFT is not installed. Please install it with `pip install peft`")
 
-    is_peft_version_compatible = version.parse(importlib.metadata.version("peft")) > version.parse(min_version)
+    is_peft_version_compatible = version.parse(importlib.metadata.version("peft")) >= version.parse(min_version)
 
     if not is_peft_version_compatible:
         raise ValueError(
-            f"The version of PEFT you are using is not compatible, please use a version that is greater"
-            f" than {min_version}"
+            f"The version of PEFT you are using is not compatible, please use a version that is at least {min_version}"
         )
 
 
@@ -312,50 +385,19 @@ def _create_lora_config(
             adapter_name=adapter_name,
         )
 
-    _maybe_raise_error_for_ambiguous_keys(lora_config_kwargs)
-
-    # Version checks for DoRA and lora_bias
-    if "use_dora" in lora_config_kwargs and lora_config_kwargs["use_dora"]:
-        if is_peft_version("<", "0.9.0"):
-            raise ValueError("DoRA requires PEFT >= 0.9.0. Please upgrade.")
-
-    if "lora_bias" in lora_config_kwargs and lora_config_kwargs["lora_bias"]:
-        if is_peft_version("<=", "0.13.2"):
-            raise ValueError("lora_bias requires PEFT >= 0.14.0. Please upgrade.")
-
     try:
         return LoraConfig(**lora_config_kwargs)
     except TypeError as e:
         raise TypeError("`LoraConfig` class could not be instantiated.") from e
 
 
-def _maybe_raise_error_for_ambiguous_keys(config):
-    rank_pattern = config["rank_pattern"].copy()
-    target_modules = config["target_modules"]
-
-    for key in list(rank_pattern.keys()):
-        # try to detect ambiguity
-        # `target_modules` can also be a str, in which case this loop would loop
-        # over the chars of the str. The technically correct way to match LoRA keys
-        # in PEFT is to use LoraModel._check_target_module_exists (lora_config, key).
-        # But this cuts it for now.
-        exact_matches = [mod for mod in target_modules if mod == key]
-        substring_matches = [mod for mod in target_modules if key in mod and mod != key]
-
-        if exact_matches and substring_matches:
-            if is_peft_version("<", "0.14.1"):
-                raise ValueError(
-                    "There are ambiguous keys present in this LoRA. To load it, please update your `peft` installation - `pip install -U peft`."
-                )
-
-
-def _maybe_warn_for_unhandled_keys(incompatible_keys, adapter_name):
+def _maybe_warn_for_unhandled_keys(incompatible_keys, adapter_name: str) -> None:
     warn_msg = ""
     if incompatible_keys is not None:
         # Check only for unexpected keys.
         unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
         if unexpected_keys:
-            lora_unexpected_keys = [k for k in unexpected_keys if "lora_" in k and adapter_name in k]
+            lora_unexpected_keys = [k for k in unexpected_keys if ".lora_" in k]
             if lora_unexpected_keys:
                 warn_msg = (
                     f"Loading adapter weights from state_dict led to unexpected keys found in the model:"
@@ -365,7 +407,7 @@ def _maybe_warn_for_unhandled_keys(incompatible_keys, adapter_name):
         # Filter missing keys specific to the current adapter.
         missing_keys = getattr(incompatible_keys, "missing_keys", None)
         if missing_keys:
-            lora_missing_keys = [k for k in missing_keys if "lora_" in k and adapter_name in k]
+            lora_missing_keys = [k for k in missing_keys if ".lora_" in k and adapter_name in k]
             if lora_missing_keys:
                 warn_msg += (
                     f"Loading adapter weights from state_dict led to missing keys in the model:"

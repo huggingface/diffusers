@@ -22,12 +22,10 @@ from array import array
 from collections import OrderedDict, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, List, Optional, Union
 from zipfile import is_zipfile
 
 import safetensors
 import torch
-from huggingface_hub import DDUFEntry
 from huggingface_hub.utils import EntryNotFoundError
 
 from ..quantizers import DiffusersQuantizer
@@ -47,6 +45,7 @@ from ..utils import (
     is_torch_version,
     logging,
 )
+from ..utils.distributed_utils import is_torch_dist_rank_zero
 
 
 logger = logging.get_logger(__name__)
@@ -135,7 +134,7 @@ def _fetch_remapped_cls_from_config(config, old_class):
         return old_class
 
 
-def _determine_param_device(param_name: str, device_map: Optional[Dict[str, Union[int, str, torch.device]]]):
+def _determine_param_device(param_name: str, device_map: dict[str, int | str | torch.device] | None):
     """
     Find the device of param_name from the device_map.
     """
@@ -153,10 +152,9 @@ def _determine_param_device(param_name: str, device_map: Optional[Dict[str, Unio
 
 
 def load_state_dict(
-    checkpoint_file: Union[str, os.PathLike],
-    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
+    checkpoint_file: str | os.PathLike,
     disable_mmap: bool = False,
-    map_location: Union[str, torch.device] = "cpu",
+    map_location: str | torch.device = "cpu",
 ):
     """
     Reads a checkpoint file, returning properly formatted errors if they arise.
@@ -167,10 +165,6 @@ def load_state_dict(
     try:
         file_extension = os.path.basename(checkpoint_file).split(".")[-1]
         if file_extension == SAFETENSORS_FILE_EXTENSION:
-            if dduf_entries:
-                # tensors are loaded on cpu
-                with dduf_entries[checkpoint_file].as_mmap() as mm:
-                    return safetensors.torch.load(mm)
             if disable_mmap:
                 return safetensors.torch.load(open(checkpoint_file, "rb").read())
             else:
@@ -213,17 +207,17 @@ def load_state_dict(
 def load_model_dict_into_meta(
     model,
     state_dict: OrderedDict,
-    dtype: Optional[Union[str, torch.dtype]] = None,
-    model_name_or_path: Optional[str] = None,
-    hf_quantizer: Optional[DiffusersQuantizer] = None,
-    keep_in_fp32_modules: Optional[List] = None,
-    device_map: Optional[Dict[str, Union[int, str, torch.device]]] = None,
-    unexpected_keys: Optional[List[str]] = None,
-    offload_folder: Optional[Union[str, os.PathLike]] = None,
-    offload_index: Optional[Dict] = None,
-    state_dict_index: Optional[Dict] = None,
-    state_dict_folder: Optional[Union[str, os.PathLike]] = None,
-) -> List[str]:
+    dtype: str | torch.dtype | None = None,
+    model_name_or_path: str | None = None,
+    hf_quantizer: DiffusersQuantizer | None = None,
+    keep_in_fp32_modules: list | None = None,
+    device_map: dict[str, int | str | torch.device] | None = None,
+    unexpected_keys: list[str] | None = None,
+    offload_folder: str | os.PathLike | None = None,
+    offload_index: dict | None = None,
+    state_dict_index: dict | None = None,
+    state_dict_folder: str | os.PathLike | None = None,
+) -> list[str]:
     """
     This is somewhat similar to `_load_state_dict_into_model`, but deals with a model that has some or all of its
     params on a `meta` device. It replaces the model params with the data from the `state_dict`
@@ -345,7 +339,6 @@ def _load_shard_file(
     dtype=None,
     hf_quantizer=None,
     keep_in_fp32_modules=None,
-    dduf_entries=None,
     loaded_keys=None,
     unexpected_keys=None,
     offload_index=None,
@@ -354,8 +347,12 @@ def _load_shard_file(
     state_dict_folder=None,
     ignore_mismatched_sizes=False,
     low_cpu_mem_usage=False,
+    disable_mmap=False,
 ):
-    state_dict = load_state_dict(shard_file, dduf_entries=dduf_entries)
+    state_dict = load_state_dict(shard_file, disable_mmap=disable_mmap)
+    if hf_quantizer is not None:
+        state_dict = hf_quantizer.maybe_update_state_dict(state_dict)
+
     mismatched_keys = _find_mismatched_keys(
         state_dict,
         model_state_dict,
@@ -384,6 +381,99 @@ def _load_shard_file(
     return offload_index, state_dict_index, mismatched_keys, error_msgs
 
 
+def _load_shard_file_tp(
+    shard_file,
+    model,
+    model_state_dict,
+    tp_shard_specs,
+    tp_config,
+    dtype=None,
+    keep_in_fp32_modules=None,
+    unexpected_keys=None,
+    ignore_mismatched_sizes=False,
+):
+    """Load one safetensors shard, reading only this rank's slice of each tensor-parallel parameter.
+
+    The counterpart of `_load_shard_file` for a model being sharded by `_tp_plan`, with the same return contract so it
+    can be swapped in as `load_fn`. Parameters covered by `tp_shard_specs` are sliced while still on disk and placed as
+    `DTensor`s; everything else is read whole and replicated on every rank, exactly as tensor parallelism requires.
+
+    Slicing before the dtype cast is the point of the whole exercise: `load_model_dict_into_meta` casts the full tensor
+    first, which would materialize it in full on every rank.
+    """
+    from safetensors import safe_open
+    from torch.distributed.tensor import DTensor, Replicate, Shard
+
+    from ..hooks.tensor_parallel import _local_shard
+
+    tp_mesh = tp_config._mesh
+    # `TensorParallelConfig._device` is derived from the default accelerator, which is not meaningful on
+    # Neuron; resolve it the way the Neuron pre-shard backend does.
+    if tp_mesh.device_type == "neuron":
+        device = torch.neuron.current_device()
+    else:
+        device = tp_config._device
+
+    mismatched_keys = []
+
+    # The slices are lazy views over the file, so every read has to happen inside this block.
+    with safe_open(shard_file, framework="pt", device="cpu") as f:
+        for key in f.keys():
+            if key not in model_state_dict:
+                unexpected_keys.append(key)
+                continue
+
+            checkpoint_slice = f.get_slice(key)
+            expected_shape = model_state_dict[key].shape
+            if tuple(checkpoint_slice.get_shape()) != tuple(expected_shape):
+                # Checkpoints always hold full tensors, so the comparison is against the unsharded shape.
+                if not ignore_mismatched_sizes:
+                    raise ValueError(
+                        f"Cannot load {key} because it has shape {tuple(checkpoint_slice.get_shape())} in the "
+                        f"checkpoint but shape {tuple(expected_shape)} in {model.__class__.__name__}. Pass "
+                        "`ignore_mismatched_sizes=True` to skip it and keep the randomly initialized weight."
+                    )
+                mismatched_keys.append((key, tuple(checkpoint_slice.get_shape()), tuple(expected_shape)))
+                continue
+
+            spec = tp_shard_specs.get(key)
+            if spec is None or spec.dim is None:
+                param = checkpoint_slice[...]
+            else:
+                param = _local_shard(checkpoint_slice, spec.dim, spec.block_sizes, tp_mesh)
+
+            # Mirror `load_model_dict_into_meta`: only floating point weights are cast, and modules held
+            # in fp32 override the requested dtype.
+            if dtype is not None and torch.is_floating_point(param):
+                if keep_in_fp32_modules is not None and any(
+                    module_to_keep_in_fp32 in key.split(".") for module_to_keep_in_fp32 in keep_in_fp32_modules
+                ):
+                    param = param.to(torch.float32)
+                else:
+                    param = param.to(dtype)
+
+            if spec is None:
+                set_module_tensor_to_device(model, key, device, value=param)
+                continue
+
+            path, _, param_name = key.rpartition(".")
+            module = model.get_submodule(path)
+            # A rowwise bias is added after the all-reduce, so it stays replicated. It still has to be a
+            # DTensor: a plain tensor next to a sharded weight fails the `addmm` dispatch.
+            placement = Replicate() if spec.dim is None else Shard(spec.dim)
+            module.register_parameter(
+                param_name,
+                torch.nn.Parameter(
+                    DTensor.from_local(param.to(device), tp_mesh, [placement], run_check=False),
+                    requires_grad=getattr(module, param_name).requires_grad,
+                ),
+            )
+
+    # `offload_index` / `state_dict_index` are always None here: offloading and tensor parallelism are
+    # rejected as a combination by `from_pretrained`.
+    return None, None, mismatched_keys, []
+
+
 def _load_shard_files_with_threadpool(
     shard_files,
     model,
@@ -392,7 +482,6 @@ def _load_shard_files_with_threadpool(
     dtype=None,
     hf_quantizer=None,
     keep_in_fp32_modules=None,
-    dduf_entries=None,
     loaded_keys=None,
     unexpected_keys=None,
     offload_index=None,
@@ -401,6 +490,7 @@ def _load_shard_files_with_threadpool(
     state_dict_folder=None,
     ignore_mismatched_sizes=False,
     low_cpu_mem_usage=False,
+    disable_mmap=False,
 ):
     # Do not spawn anymore workers than you need
     num_workers = min(len(shard_files), DEFAULT_HF_PARALLEL_LOADING_WORKERS)
@@ -418,7 +508,6 @@ def _load_shard_files_with_threadpool(
         dtype=dtype,
         hf_quantizer=hf_quantizer,
         keep_in_fp32_modules=keep_in_fp32_modules,
-        dduf_entries=dduf_entries,
         loaded_keys=loaded_keys,
         unexpected_keys=unexpected_keys,
         offload_index=offload_index,
@@ -427,10 +516,15 @@ def _load_shard_files_with_threadpool(
         state_dict_folder=state_dict_folder,
         ignore_mismatched_sizes=ignore_mismatched_sizes,
         low_cpu_mem_usage=low_cpu_mem_usage,
+        disable_mmap=disable_mmap,
     )
 
+    tqdm_kwargs = {"total": len(shard_files), "desc": "Loading checkpoint shards"}
+    if not is_torch_dist_rank_zero():
+        tqdm_kwargs["disable"] = True
+
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        with logging.tqdm(total=len(shard_files), desc="Loading checkpoint shards") as pbar:
+        with logging.tqdm(**tqdm_kwargs) as pbar:
             futures = [executor.submit(load_one, shard_file) for shard_file in shard_files]
             for future in as_completed(futures):
                 result = future.result()
@@ -442,31 +536,9 @@ def _load_shard_files_with_threadpool(
     return offload_index, state_dict_index, mismatched_keys, error_msgs
 
 
-def _find_mismatched_keys(
-    state_dict,
-    model_state_dict,
-    loaded_keys,
-    ignore_mismatched_sizes,
-):
-    mismatched_keys = []
-    if ignore_mismatched_sizes:
-        for checkpoint_key in loaded_keys:
-            model_key = checkpoint_key
-            # If the checkpoint is sharded, we may not have the key here.
-            if checkpoint_key not in state_dict:
-                continue
-
-            if model_key in model_state_dict and state_dict[checkpoint_key].shape != model_state_dict[model_key].shape:
-                mismatched_keys.append(
-                    (checkpoint_key, state_dict[checkpoint_key].shape, model_state_dict[model_key].shape)
-                )
-                del state_dict[checkpoint_key]
-    return mismatched_keys
-
-
 def _load_state_dict_into_model(
     model_to_load, state_dict: OrderedDict, assign_to_params_buffers: bool = False
-) -> List[str]:
+) -> list[str]:
     # Convert old format to new format if needed from a PyTorch state_dict
     # copy state_dict so _load_from_state_dict can modify it
     state_dict = state_dict.copy()
@@ -505,7 +577,6 @@ def _fetch_index_file(
     revision,
     user_agent,
     commit_hash,
-    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
 ):
     if is_local:
         index_file = Path(
@@ -531,10 +602,8 @@ def _fetch_index_file(
                 subfolder=None,
                 user_agent=user_agent,
                 commit_hash=commit_hash,
-                dduf_entries=dduf_entries,
             )
-            if not dduf_entries:
-                index_file = Path(index_file)
+            index_file = Path(index_file)
         except (EntryNotFoundError, EnvironmentError):
             index_file = None
 
@@ -555,7 +624,6 @@ def _fetch_index_file_legacy(
     revision,
     user_agent,
     commit_hash,
-    dduf_entries: Optional[Dict[str, DDUFEntry]] = None,
 ):
     if is_local:
         index_file = Path(
@@ -596,7 +664,6 @@ def _fetch_index_file_legacy(
                     subfolder=None,
                     user_agent=user_agent,
                     commit_hash=commit_hash,
-                    dduf_entries=dduf_entries,
                 )
                 index_file = Path(index_file)
                 deprecation_message = f"This serialization format is now deprecated to standardize the serialization format between `transformers` and `diffusers`. We recommend you to remove the existing files associated with the current variant ({variant}) and re-obtain them by running a `save_pretrained()`."
@@ -714,7 +781,7 @@ def _expand_device_map(device_map, param_names):
 
 # Adapted from: https://github.com/huggingface/transformers/blob/0687d481e2c71544501ef9cb3eef795a6e79b1de/src/transformers/modeling_utils.py#L5859
 def _caching_allocator_warmup(
-    model, expanded_device_map: Dict[str, torch.device], dtype: torch.dtype, hf_quantizer: Optional[DiffusersQuantizer]
+    model, expanded_device_map: dict[str, torch.device], dtype: torch.dtype, hf_quantizer: DiffusersQuantizer | None
 ) -> None:
     """
     This function warm-ups the caching allocator based on the size of the model tensors that will reside on each

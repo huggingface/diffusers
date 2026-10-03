@@ -12,17 +12,23 @@ specific language governing permissions and limitations under the License.
 
 # Distributed inference
 
-On distributed setups, you can run inference across multiple GPUs with 🤗 [Accelerate](https://huggingface.co/docs/accelerate/index) or [PyTorch Distributed](https://pytorch.org/tutorials/beginner/dist_overview.html), which is useful for generating with multiple prompts in parallel.
+Distributed inference splits the workload across multiple GPUs. It a useful technique for fitting larger models in memory and can process multiple prompts for higher throughput.
 
-This guide will show you how to use 🤗 Accelerate and PyTorch Distributed for distributed inference.
+This guide will show you how to use [Accelerate](https://huggingface.co/docs/accelerate/index) and [PyTorch Distributed](https://pytorch.org/tutorials/beginner/dist_overview.html) for distributed inference.
 
-## 🤗 Accelerate
+## Accelerate
 
-🤗 [Accelerate](https://huggingface.co/docs/accelerate/index) is a library designed to make it easy to train or run inference across distributed setups. It simplifies the process of setting up the distributed environment, allowing you to focus on your PyTorch code.
+Accelerate is a library designed to simplify inference and training on multiple accelerators by handling the setup, allowing users to focus on their PyTorch code.
 
-To begin, create a Python file and initialize an [`accelerate.PartialState`] to create a distributed environment; your setup is automatically detected so you don't need to explicitly define the `rank` or `world_size`. Move the [`DiffusionPipeline`] to `distributed_state.device` to assign a GPU to each process.
+Install Accelerate with the following command.
 
-Now use the [`~accelerate.PartialState.split_between_processes`] utility as a context manager to automatically distribute the prompts between the number of processes.
+```bash
+uv pip install accelerate
+```
+
+Initialize a [`accelerate.PartialState`] class in a Python file to create a distributed environment. The [`accelerate.PartialState`] class manages process management, device control and distribution, and process coordination.
+
+Move the [`DiffusionPipeline`] to [`accelerate.PartialState.device`] to assign a GPU to each process.
 
 ```py
 import torch
@@ -30,33 +36,34 @@ from accelerate import PartialState
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+    "Qwen/Qwen-Image", dtype=torch.float16
 )
 distributed_state = PartialState()
 pipeline.to(distributed_state.device)
+```
 
+Use the [`~accelerate.PartialState.split_between_processes`] utility as a context manager to automatically distribute the prompts between the number of processes.
+
+```py
 with distributed_state.split_between_processes(["a dog", "a cat"]) as prompt:
     result = pipeline(prompt).images[0]
     result.save(f"result_{distributed_state.process_index}.png")
 ```
 
-Use the `--num_processes` argument to specify the number of GPUs to use, and call `accelerate launch` to run the script:
+Call `accelerate launch` to run the script and use the `--num_processes` argument to set the number of GPUs to use.
 
 ```bash
 accelerate launch run_distributed.py --num_processes=2
 ```
 
-<Tip>
-
-Refer to this minimal example [script](https://gist.github.com/sayakpaul/cfaebd221820d7b43fae638b4dfa01ba) for running inference across multiple GPUs. To learn more, take a look at the [Distributed Inference with 🤗 Accelerate](https://huggingface.co/docs/accelerate/en/usage_guides/distributed_inference#distributed-inference-with-accelerate) guide.
-
-</Tip>
+> [!TIP]
+> Refer to this minimal example [script](https://gist.github.com/sayakpaul/cfaebd221820d7b43fae638b4dfa01ba) for running inference across multiple GPUs. To learn more, take a look at the [Distributed Inference with 🤗 Accelerate](https://huggingface.co/docs/accelerate/en/usage_guides/distributed_inference#distributed-inference-with-accelerate) guide.
 
 ## PyTorch Distributed
 
-PyTorch supports [`DistributedDataParallel`](https://pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html) which enables data parallelism.
+PyTorch [DistributedDataParallel](https://pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html) enables [data parallelism](https://huggingface.co/spaces/nanotron/ultrascale-playbook?section=data_parallelism), which replicates the same model on each device, to process different batches of data in parallel.
 
-To start, create a Python file and import `torch.distributed` and `torch.multiprocessing` to set up the distributed process group and to spawn the processes for inference on each GPU. You should also initialize a [`DiffusionPipeline`]:
+Import `torch.distributed` and `torch.multiprocessing` into a Python file to set up the distributed process group and to spawn the processes for inference on each GPU.
 
 ```py
 import torch
@@ -65,20 +72,20 @@ import torch.multiprocessing as mp
 
 from diffusers import DiffusionPipeline
 
-sd = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+pipeline = DiffusionPipeline.from_pretrained(
+    "Qwen/Qwen-Image", dtype=torch.float16,
 )
 ```
 
-You'll want to create a function to run inference; [`init_process_group`](https://pytorch.org/docs/stable/distributed.html?highlight=init_process_group#torch.distributed.init_process_group) handles creating a distributed environment with the type of backend to use, the `rank` of the current process, and the `world_size` or the number of processes participating. If you're running inference in parallel over 2 GPUs, then the `world_size` is 2.
+Create a function for inference with [init_process_group](https://pytorch.org/docs/stable/distributed.html?highlight=init_process_group#torch.distributed.init_process_group). This method creates a distributed environment with the backend type, the `rank` of the current process, and the `world_size` or number of processes participating (for example, 2 GPUs would be `world_size=2`).
 
-Move the [`DiffusionPipeline`] to `rank` and use `get_rank` to assign a GPU to each process, where each process handles a different prompt:
+Move the pipeline to `rank` and use `get_rank` to assign a GPU to each process. Each process handles a different prompt.
 
 ```py
 def run_inference(rank, world_size):
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
-    sd.to(rank)
+    pipeline.to(rank)
 
     if torch.distributed.get_rank() == 0:
         prompt = "a dog"
@@ -89,7 +96,7 @@ def run_inference(rank, world_size):
     image.save(f"./{'_'.join(prompt)}.png")
 ```
 
-To run the distributed inference, call [`mp.spawn`](https://pytorch.org/docs/stable/multiprocessing.html#torch.multiprocessing.spawn) to run the `run_inference` function on the number of GPUs defined in `world_size`:
+Use [mp.spawn](https://pytorch.org/docs/stable/multiprocessing.html#torch.multiprocessing.spawn) to create the number of processes defined in `world_size`.
 
 ```py
 def main():
@@ -101,31 +108,26 @@ if __name__ == "__main__":
     main()
 ```
 
-Once you've completed the inference script, use the `--nproc_per_node` argument to specify the number of GPUs to use and call `torchrun` to run the script:
+Call `torchrun` to run the inference script and use the `--nproc_per_node` argument to set the number of GPUs to use.
 
 ```bash
-torchrun run_distributed.py --nproc_per_node=2
+torchrun --nproc_per_node=2 run_distributed.py
 ```
 
-> [!TIP]
-> You can use `device_map` within a [`DiffusionPipeline`] to distribute its model-level components on multiple devices. Refer to the [Device placement](../tutorials/inference_with_big_models#device-placement) guide to learn more.
+## device_map
 
-## Model sharding
+The `device_map` argument enables distributed inference by automatically placing model components on separate GPUs. This is especially useful when a model doesn't fit on a single GPU. You can use `device_map` to selectively load and unload the required model components at a given stage as shown in the example below (assumes two GPUs are available).
 
-Modern diffusion systems such as [Flux](../api/pipelines/flux) are very large and have multiple models. For example, [Flux.1-Dev](https://hf.co/black-forest-labs/FLUX.1-dev) is made up of two text encoders - [T5-XXL](https://hf.co/google/t5-v1_1-xxl) and [CLIP-L](https://hf.co/openai/clip-vit-large-patch14) - a [diffusion transformer](../api/models/flux_transformer), and a [VAE](../api/models/autoencoderkl). With a model this size, it can be challenging to run inference on consumer GPUs.
-
-Model sharding is a technique that distributes models across GPUs when the models don't fit on a single GPU. The example below assumes two 16GB GPUs are available for inference.
-
-Start by computing the text embeddings with the text encoders. Keep the text encoders on two GPUs by setting `device_map="balanced"`. The `balanced` strategy evenly distributes the model on all available GPUs. Use the `max_memory` parameter to allocate the maximum amount of memory for each text encoder on each GPU.
-
-> [!TIP]
-> **Only** load the text encoders for this step! The diffusion transformer and VAE are loaded in a later step to preserve memory.
+Set `device_map="balanced"` to evenly distributes the text encoders on all available GPUs. You can use the `max_memory` argument to allocate a maximum amount of memory for each text encoder. Don't load any other pipeline components to avoid memory usage.
 
 ```py
 from diffusers import FluxPipeline
 import torch
 
-prompt = "a photo of a dog with cat-like look"
+prompt = """
+cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
+highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain
+"""
 
 pipeline = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
@@ -133,7 +135,7 @@ pipeline = FluxPipeline.from_pretrained(
     vae=None,
     device_map="balanced",
     max_memory={0: "16GB", 1: "16GB"},
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 with torch.no_grad():
     print("Encoding prompts.")
@@ -142,7 +144,7 @@ with torch.no_grad():
     )
 ```
 
-Once the text embeddings are computed, remove them from the GPU to make space for the diffusion transformer.
+After the text embeddings are computed, remove them from the GPU to make space for the diffusion transformer.
 
 ```py
 import gc 
@@ -162,7 +164,7 @@ del pipeline
 flush()
 ```
 
-Load the diffusion transformer next which has 12.5B parameters. This time, set `device_map="auto"` to automatically distribute the model across two 16GB GPUs. The `auto` strategy is backed by [Accelerate](https://hf.co/docs/accelerate/index) and available as a part of the [Big Model Inference](https://hf.co/docs/accelerate/concept_guides/big_model_inference) feature. It starts by distributing a model across the fastest device first (GPU) before moving to slower devices like the CPU and hard drive if needed. The trade-off of storing model parameters on slower devices is slower inference latency.
+Set `device_map="auto"` to automatically distribute the model on the two GPUs. This strategy places a model on the fastest device first before placing a model on a slower device like a CPU or hard drive if needed. The trade-off of storing model parameters on slower devices is slower inference latency.
 
 ```py
 from diffusers import AutoModel
@@ -172,14 +174,14 @@ transformer = AutoModel.from_pretrained(
     "black-forest-labs/FLUX.1-dev", 
     subfolder="transformer",
     device_map="auto",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 ```
 
 > [!TIP]
-> At any point, you can try `print(pipeline.hf_device_map)` to see how the various models are distributed across devices. This is useful for tracking the device placement of the models. You can also try `print(transformer.hf_device_map)` to see how the transformer model is sharded across devices.
+> Run `pipeline.hf_device_map` to see how the various models are distributed across devices. This is useful for tracking model device placement. You can also call `hf_device_map` on the transformer model to see how it is distributed.
 
-Add the transformer model to the pipeline for denoising, but set the other model-level components like the text encoders and VAE to `None` because you don't need them yet.
+Add the transformer model to the pipeline and set the `output_type="latent"` to generate the latents.
 
 ```py
 pipeline = FluxPipeline.from_pretrained(
@@ -190,7 +192,7 @@ pipeline = FluxPipeline.from_pretrained(
     tokenizer_2=None,
     vae=None,
     transformer=transformer,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 
 print("Running denoising.")
@@ -206,23 +208,14 @@ latents = pipeline(
 ).images
 ```
 
-Remove the pipeline and transformer from memory as they're no longer needed.
+Remove the pipeline and transformer from memory and load a VAE to decode the latents. The VAE is typically small enough to be loaded on a single device.
 
 ```py
-del pipeline.transformer
-del pipeline
-
-flush()
-```
-
-Finally, decode the latents with the VAE into an image. The VAE is typically small enough to be loaded on a single GPU.
-
-```py
+import torch
 from diffusers import AutoencoderKL
 from diffusers.image_processor import VaeImageProcessor
-import torch 
 
-vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="vae", torch_dtype=torch.bfloat16).to("cuda")
+vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="vae", dtype=torch.bfloat16).to("cuda")  # or "mps", "xpu", "cpu"
 vae_scale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
 image_processor = VaeImageProcessor(vae_scale_factor=vae_scale_factor)
 
@@ -237,3 +230,351 @@ with torch.no_grad():
 ```
 
 By selectively loading and unloading the models you need at a given stage and sharding the largest models across multiple GPUs, it is possible to run inference with large models on consumer GPUs.
+
+## Context parallelism
+
+[Context parallelism](https://huggingface.co/spaces/nanotron/ultrascale-playbook?section=context_parallelism) splits input sequences across multiple GPUs to reduce memory usage. Each GPU processes its own slice of the sequence.
+
+Use [`~ModelMixin.set_attention_backend`] to switch to a more optimized attention backend. Refer to this [table](../optimization/attention_backends#available-backends) for a complete list of available backends.
+
+Most attention backends are compatible with context parallelism. Open an [issue](https://github.com/huggingface/diffusers/issues/new) if a backend is not compatible.
+
+### Ring Attention
+
+Key (K) and value (V) representations communicate between devices using [Ring Attention](https://huggingface.co/papers/2310.01889). This ensures each split sees every other token's K/V. Each GPU computes attention for its local K/V and passes it to the next GPU in the ring. No single GPU holds the full sequence, which reduces communication latency.
+
+Pass a [`ContextParallelConfig`] to the `parallel_config` argument of the transformer model. The config supports the `ring_degree` argument that determines how many devices to use for Ring Attention.
+
+```py
+import torch
+from torch import distributed as dist
+from diffusers import DiffusionPipeline, ContextParallelConfig
+
+def setup_distributed():
+    if not dist.is_initialized():
+        dist.init_process_group(backend="nccl")
+    rank = dist.get_rank()
+    device = torch.device(f"cuda:{rank}")
+    torch.cuda.set_device(device)
+    return device
+
+def main():
+    device = setup_distributed()
+    world_size = dist.get_world_size()
+
+    pipeline = DiffusionPipeline.from_pretrained(
+        "black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16
+    ).to(device)
+    pipeline.transformer.set_attention_backend("_native_cudnn")
+
+    cp_config = ContextParallelConfig(ring_degree=world_size)
+    pipeline.transformer.enable_parallelism(config=cp_config)
+
+    prompt = """
+    cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
+    highly detailed, high budget hollywood movie, cinemascope, moody, epic, gorgeous, film grain
+    """
+
+    # Must specify generator so all ranks start with same latents (or pass your own)
+    generator = torch.Generator().manual_seed(42)
+    image = pipeline(
+        prompt,
+        guidance_scale=3.5,
+        num_inference_steps=50,
+        generator=generator,
+    ).images[0]
+
+    if dist.get_rank() == 0:
+        image.save(f"output.png")
+
+    if dist.is_initialized():
+        dist.destroy_process_group()
+
+
+if __name__ == "__main__":
+    main()
+```
+
+The script above needs to be run with a distributed launcher, such as [torchrun](https://docs.pytorch.org/docs/stable/elastic/run.html), that is compatible with PyTorch. `--nproc-per-node` is set to the number of GPUs available.
+
+```shell
+torchrun --nproc-per-node 2 above_script.py
+```
+
+### Ulysses Attention
+
+[Ulysses Attention](https://huggingface.co/papers/2309.14509) splits a sequence across GPUs and performs an *all-to-all* communication (every device sends/receives data to every other device). Each GPU ends up with all tokens for only a subset of attention heads. Each GPU computes attention locally on all tokens for its head, then performs another all-to-all to regroup results by tokens for the next layer.
+
+[`ContextParallelConfig`] supports Ulysses Attention through the `ulysses_degree` argument. This determines how many devices to use for Ulysses Attention.
+
+Pass the [`ContextParallelConfig`] to [`~ModelMixin.enable_parallelism`].
+
+```py
+# Depending on the number of GPUs available.
+pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2))
+```
+
+### Unified Attention
+
+[Unified Sequence Parallelism](https://huggingface.co/papers/2405.07719) combines Ring Attention and Ulysses Attention into a single approach for efficient long-sequence processing. It applies Ulysses's *all-to-all* communication first to redistribute heads and sequence tokens, then uses Ring Attention to process the redistributed data, and finally reverses the *all-to-all* to restore the original layout.
+
+This hybrid approach leverages the strengths of both methods:
+- **Ulysses Attention** efficiently parallelizes across attention heads
+- **Ring Attention** handles very long sequences with minimal memory overhead
+- Together, they enable 2D parallelization across both heads and sequence dimensions
+
+[`ContextParallelConfig`] supports Unified Attention by specifying both `ulysses_degree` and `ring_degree`. The total number of devices used is `ulysses_degree * ring_degree`, arranged in a 2D grid where Ulysses and Ring groups are orthogonal (non-overlapping).
+Pass the [`ContextParallelConfig`] with both `ulysses_degree` and `ring_degree` set to bigger than 1 to [`~ModelMixin.enable_parallelism`].
+
+```py
+pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2, ring_degree=2))
+```
+
+> [!TIP]
+> Unified Attention is to be used when there are enough devices to arrange in a 2D grid (at least 4 devices).
+
+We ran a benchmark with Ulysess, Ring, and Unified Attention with [this script](https://github.com/huggingface/diffusers/pull/12693#issuecomment-3694727532) on a node of 4 H100 GPUs. The results are summarized as follows:
+
+| CP Backend         | Time / Iter (ms) | Steps / Sec | Peak Memory (GB) |
+|--------------------|------------------|-------------|------------------|
+| ulysses            | 6670.789         | 7.50        | 33.85            |
+| ring               | 13076.492        | 3.82        | 56.02            |
+| unified_balanced   | 11068.705        | 4.52        | 33.85            |
+
+From the above table, it's clear that Ulysses provides better throughput, but the number of devices it can use remains limited to the number of attention heads, a limitation that is solved by unified attention.
+
+
+### Ulysses Anything Attention
+
+The default Ulysses Attention mechanism requires that the sequence length of hidden states must be divisible by the number of devices. This imposes significant limitations on the practical application of Ulysses Attention. [Ulysses Anything Attention](https://github.com/huggingface/diffusers/pull/12996) is a variant of Ulysses Attention that supports arbitrary sequence lengths and arbitrary numbers of attention heads, thereby enhancing the versatility of Ulysses Attention in practical use.
+
+[`ContextParallelConfig`] supports Ulysses Anything Attention by specifying both `ulysses_degree` and `ulysses_anything`. Please note that Ulysses Anything Attention is not currently supported by Unified Attention. Pass the [`ContextParallelConfig`] with both `ulysses_degree` set to bigger than 1 and `ulysses_anything=True` to [`~ModelMixin.enable_parallelism`].
+
+```py
+pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2, ulysses_anything=True))
+```
+
+> [!TIP] To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **gloo** backend in `init_process_group`. This will significantly reduce communication latency.
+
+We ran a benchmark for FLUX.1-dev with Ulysses, Ring, Unified Attention and Ulysses Anything Attention with [this script](https://github.com/huggingface/diffusers/pull/12996#issuecomment-3797695999) on a node of 4 L20 GPUs. The results are summarized as follows:
+
+| CP Backend         | Time / Iter (ms) | Steps / Sec | Peak Memory (GB) | Shape (HxW)|
+|--------------------|------------------|-------------|------------------|------------|
+| ulysses            |   281.07         |    3.56     |     37.11        | 1024x1024  |
+| ring               |   351.34         |    2.85     |     37.01        | 1024x1024  |
+| unified_balanced   |   324.37         |    3.08     |     37.16        | 1024x1024  |
+| ulysses_anything   |   280.94         |    3.56     |     37.11        | 1024x1024  |
+| ulysses            |   failed         |    failed   |     failed       | 1008x1008  |
+| ring               |   failed         |    failed   |     failed       | 1008x1008  |
+| unified_balanced   |   failed         |    failed   |     failed       | 1008x1008  |
+| ulysses_anything   |   278.40         |    3.59     |     36.99        | 1008x1008  |
+
+From the above table, it is clear that Ulysses Anything Attention offers better compatibility with arbitrary sequence lengths while maintaining the same performance as the standard Ulysses Attention.
+
+
+### Ring Anything Attention
+
+The default [Ring Attention](https://huggingface.co/papers/2310.01889) requires the sequence length of hidden states to be evenly divisible across the ring degree. [Ring Anything Attention](https://github.com/huggingface/diffusers/pull/13545#issuecomment-4302195582) is a variant of Ring Attention that supports arbitrary (non-evenly divisible) sequence lengths. It pads each rank's local KV to the global maximum sequence length, all-gathers the padded KV buffer, and slices back to each rank's true length before running attention.
+
+Ring Anything Attention is not supported by Unified Attention. Set `ring_degree > 1` and `ring_anything=True` to enable Ring Anything Attention.
+
+```py
+pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ring_degree=2, ring_anything=True))
+```
+
+> [!TIP]
+> Add the `gloo` backend to [init_process_group](https://docs.pytorch.org/docs/stable/distributed.html#torch.distributed.init_process_group) to avoid multiple forced CUDA syncs from H2D and D2H transfers.
+
+```py
+import torch.distributed as dist
+
+dist.init_process_group(backend="cpu:gloo,cuda:nccl")
+```
+
+> [!NOTE]
+> Ring Anything Attention only currently supports inference and non-`None` attention masks aren't supported. `attn_mask` must be `None`.
+
+See the FLUX.1-dev benchmarks below on a node of 4 RTX 4090 (48GB) GPUs.
+
+| CP Backend         | Time / Iter (ms) | Steps / Sec | Peak Memory (GB) | Shape (HxW)|
+|--------------------|------------------|-------------|------------------|------------|
+| ulysses            |   259.07         |    3.86     |     33.83        | 1024x1024  |
+| ring               |   338.98         |    2.95     |     33.83        | 1024x1024  |
+| unified_balanced   |   321.54         |    3.11     |     33.83        | 1024x1024  |
+| ulysses_anything   |   259.07         |    3.86     |     33.83        | 1024x1024  |
+| ring_anything      |   340.14         |    2.94     |     33.83        | 1024x1024  |
+| ulysses            |   failed         |    failed   |     failed       | 1008x1008  |
+| ring               |   failed         |    failed   |     failed       | 1008x1008  |
+| unified_balanced   |   failed         |    failed   |     failed       | 1008x1008  |
+| ulysses_anything   |   253.16         |    3.95     |     33.75        | 1008x1008  |
+| ring_anything      |   335.57         |    2.98     |     33.75        | 1008x1008  |
+
+From the above table, Ring Anything Attention offers compatibility with arbitrary sequence lengths while maintaining performance comparable to the standard Ring Attention.
+For more details on the motivation and trade-offs for Ring Anything Attention, see [this comment](https://github.com/huggingface/diffusers/pull/13545#issuecomment-4304104462).
+
+### parallel_config
+
+Pass `parallel_config` during model initialization to enable context parallelism.
+
+```py
+CKPT_ID = "black-forest-labs/FLUX.1-dev"
+
+cp_config = ContextParallelConfig(ring_degree=2)
+transformer = AutoModel.from_pretrained(
+    CKPT_ID, 
+    subfolder="transformer", 
+    dtype=torch.bfloat16,
+    parallel_config=cp_config
+)
+
+pipeline = DiffusionPipeline.from_pretrained(
+    CKPT_ID, transformer=transformer, dtype=torch.bfloat16,
+).to(device)
+```
+
+## Tensor parallelism
+
+[Tensor parallelism](https://huggingface.co/spaces/nanotron/ultrascale-playbook?section=tensor_parallelism) shards the weight matrices of a model across devices. Each device holds a column-wise (`"colwise"`) or row-wise (`"rowwise"`) slice of each layer, computes a partial result, and an `AllReduce`/`AllGather` at the layer boundary reconstructs the full output. Unlike context parallelism, it reduces the per-device *weight* memory, which is useful for models that do not fit on a single device.
+
+Pass a [`TensorParallelConfig`] to the `parallel_config` argument of the model's [`~ModelMixin.from_pretrained`]. `tp_degree` is the number of devices to shard across and must divide the model's number of attention heads. The model must define a `_tp_plan` (a flat mapping of module-name globs to a `"colwise"`/`"rowwise"` style).
+
+Loading this way shards the checkpoint *while reading it*: each rank reads only its own slice of each sharded weight and places it straight onto its own device. Nothing full-size is ever materialized, so per-rank memory falls as `tp_degree` rises.
+
+Compared to loading the full model and then calling [`~ModelMixin.enable_parallelism`], it loads faster and uses less CPU memory per rank, with the gap growing as `tp_degree` rises. Numbers below are for [black-forest-labs/FLUX.2-dev](https://huggingface.co/black-forest-labs/FLUX.2-dev) (transformer only, 32B params, bf16) on 4x A10G (23GB).
+
+| tp_degree | method | load time | peak CPU/rank |
+|---|---|---|---|
+| 4 | `from_pretrained(parallel_config=...)` | 12.5s | 6.8GB |
+| 4 | `from_pretrained` + `enable_parallelism` | 30.4s | 64.1GB |
+
+```py
+import torch
+from torch import distributed as dist
+from diffusers import DiffusionPipeline, Flux2Transformer2DModel, TensorParallelConfig
+
+def main():
+    dist.init_process_group(backend="nccl")
+    rank, world_size = dist.get_rank(), dist.get_world_size()
+    device = torch.device(f"cuda:{rank}")
+    torch.cuda.set_device(device)
+
+    # Each rank reads only its own shard of every planned weight, straight onto `cuda:rank`.
+    transformer = Flux2Transformer2DModel.from_pretrained(
+        "black-forest-labs/FLUX.2-dev",
+        subfolder="transformer",
+        torch_dtype=torch.bfloat16,
+        parallel_config=TensorParallelConfig(tp_degree=world_size),
+    )
+
+    pipeline = DiffusionPipeline.from_pretrained(
+        "black-forest-labs/FLUX.2-dev", transformer=transformer, torch_dtype=torch.bfloat16
+    )
+    # The transformer is already on its device; move the remaining components individually. Do not call
+    # `pipeline.to(device)` — that would move every rank's shards onto the same device.
+    pipeline.text_encoder.to(device)
+    pipeline.vae.to(device)
+
+    generator = torch.Generator().manual_seed(42)
+    image = pipeline(prompt="a cat holding a sign that says hello", generator=generator).images[0]
+    if rank == 0:
+        image.save("output.png")
+    dist.destroy_process_group()
+
+if __name__ == "__main__":
+    main()
+```
+
+```shell
+torchrun --nproc-per-node 4 tensor_parallel_flux.py
+```
+
+`tp_degree` is taken from `world_size` above, so `--nproc-per-node 4` shards the transformer across 4 devices.
+
+> [!CAUTION]
+> Loading with a tensor-parallel `parallel_config` isn't supported yet with `device_map`, `quantization_config`, `low_cpu_mem_usage=False`, `use_flashpack=True`, or non-safetensors weights; each raises rather than quietly falling back to loading the full checkpoint.
+>
+> Combining tensor parallelism with quantization, offloading, or LoRA adapters isn't supported yet either, so those raise however the model is sharded.
+>
+> To shard a model that is already in memory, call [`~ModelMixin.enable_parallelism`] with the same config instead — that loads everything first and reshards it, so it costs full checkpoint memory on every rank.
+
+Saving a tensor-parallel model isn't supported yet, and [`~ModelMixin.save_pretrained`] raises on one. Save the model before sharding it.
+
+### Writing a tensor parallelism plan
+
+Tensor parallelism only works on models that define a `_tp_plan`, a flat class attribute mapping module-name globs to a sharding style. Writing one is mostly a matter of pairing each projection that *expands* the hidden dimension with the projection that *contracts* it back.
+
+Each key may contain **at most one `*`**, and the prefix before it must resolve to an [`nn.ModuleList`](https://pytorch.org/docs/stable/generated/torch.nn.ModuleList.html) so a single entry covers every block. A key without a `*` applies to the model itself. Paths are relative to the model.
+
+#### Colwise and rowwise
+
+| Style | Shards | Each rank | Use for |
+|---|---|---|---|
+| `"colwise"` | output features (`weight` dim 0) | computes a slice of the output | `to_q`, `to_k`, `to_v`, FFN in-projection |
+| `"rowwise"` | input features (`weight` dim 1) | computes a partial sum | `to_out.0`, FFN out-projection |
+
+Always pair them in that order. A `"colwise"` projection leaves its output sharded, the following `"rowwise"` projection consumes that shard directly, and a single `AllReduce` at the block boundary reconstructs the result. Sharding the pair any other way forces a gather in the middle and communicates far more.
+
+For attention this means each rank owns a subset of heads, which is why `tp_degree` must divide the head count. Encoder-stream duplicates (`add_q_proj`, `to_add_out`, `ff_context`) follow the same pattern as their image-stream counterparts.
+
+#### Fused projections
+
+When one `Linear` packs several logical tensors along the dimension being sharded, plain `"colwise"`/`"rowwise"` slices straight across the concatenation and misaligns the pieces. Use `PackedColwiseParallel`/`PackedRowwiseParallel` instead, which shard each packed block independently.
+
+```py
+# in src/diffusers/models/transformers/your_model.py
+from ...hooks.tensor_parallel import PackedColwiseParallel, PackedRowwiseParallel
+```
+
+`blocks` is a list of proportional integers whose sum divides the packed dimension — `[1, 1]` for a SwiGLU gate+up projection of equal halves, or `[1, 1, 1, 3, 3]` for a fused Q+K+V+gate+up projection with `mlp_ratio=3`.
+
+```py
+"transformer_blocks.*.ff.linear_in": PackedColwiseParallel([1, 1]),
+```
+
+When the block sizes are only known from the config, omit the argument and store the absolute sizes on the `Linear` during `__init__` instead, as `_tp_packed_col_blocks` or `_tp_packed_row_blocks`.
+
+```py
+# in the attention module's __init__
+self.to_out._tp_packed_row_blocks = [self.inner_dim, self.mlp_hidden_dim]
+```
+
+```py
+# in the model's _tp_plan
+"single_transformer_blocks.*.attn.to_out": PackedRowwiseParallel(),
+```
+
+Both forms appear in one plan in [`transformer_flux2.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux2.py): the double-stream SwiGLU pair passes `blocks` literally, while the fused single-stream QKV+MLP projection stores its sizes on the `Linear` in `Flux2ParallelSelfAttention.__init__` because they depend on `mlp_ratio` and `mlp_mult_factor`.
+
+#### What to leave out
+
+Anything absent from the plan stays replicated on every rank, which is the right choice for normalization layers, AdaLN modulation (`img_mod`/`txt_mod`), patch and text embeddings, and the final `norm_out`/`proj_out`. These are small, so sharding them saves little memory while adding communication.
+
+#### Constraints and verification
+
+- `tp_degree` must divide `config.num_attention_heads`.
+- Every packed block must *individually* be divisible by `tp_degree`, not just their sum.
+
+Both are validated by [`~ModelMixin.from_pretrained`] and [`~ModelMixin.enable_parallelism`] before any weight is loaded or sharded.
+
+Validate a new plan numerically rather than by eye: generate with a fixed seed on a single device, then again under tensor parallelism, and compare the outputs. A misplaced `"colwise"`/`"rowwise"` usually still runs and produces a plausible but wrong image.
+
+> [!TIP]
+> Start from an existing plan for a similar architecture. [`QwenImageTransformer2DModel`] is fully unfused and every entry is plain `"colwise"`/`"rowwise"`, [`FluxTransformer2DModel`] adds a single packed row-wise projection, and [`Flux2Transformer2DModel`] covers both packed styles — see [`transformer_qwenimage.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_qwenimage.py), [`transformer_flux.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux.py), and [`transformer_flux2.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux2.py) respectively.
+
+## Choosing a strategy
+
+The strategies above solve different problems, and the useful question is not which is fastest in the abstract but what you are running out of.
+
+| Strategy | Splits | Reduces | Latency for one prompt | Best when |
+|---|---|---|---|---|
+| [Accelerate](#accelerate) / [DDP](#pytorch-distributed) | prompts across replicas | nothing — each device holds a full copy | unchanged | the model already fits and you have many prompts |
+| [`device_map`](#devicemap) | components across devices | weight memory | slightly worse | the model doesn't fit and the interconnect is slow |
+| [Context parallelism](#context-parallelism) | the input sequence | activation memory | lower | sequences are long — high resolution or video |
+| [Tensor parallelism](#tensor-parallelism) | weight matrices | weight memory | lower | one component's weights don't fit and the interconnect is fast |
+
+Some practical guidance:
+
+- **Throughput on many prompts, model already fits.** Use data parallelism. It is the only strategy here that scales throughput linearly without touching the model, and it leaves single-prompt latency alone.
+- **A single component's weights don't fit.** Reach for tensor parallelism first, since it lowers both memory and latency. It communicates at every block boundary, so it wants a fast interconnect like NVLink; over PCIe that per-layer traffic can outweigh the compute it saves, and `device_map` becomes the better choice. `device_map` also handles the case where the components are individually fine but collectively too large.
+- **Activations, not weights, are the problem.** This is the long-sequence regime — large images, many frames — and context parallelism is the direct answer. Pick a backend from the [Ulysses/Ring benchmarks](#ulysses-attention) above.
+- **Both weights and sequence are too large.** Combine tensor and context parallelism. [`TensorParallelConfig`] accepts a `mesh` argument so both can share one device mesh. This combination is not yet validated, so treat it as experimental.

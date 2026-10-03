@@ -1,4 +1,4 @@
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,57 +12,59 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 import torch
 
 from diffusers import WanTransformer3DModel
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import (
-    enable_full_determinism,
-    torch_device,
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import (
+    AttentionTesterMixin,
+    BaseModelTesterConfig,
+    BitsAndBytesTesterMixin,
+    GGUFCompileTesterMixin,
+    GGUFTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    SeaCacheTesterMixin,
+    SingleFileTesterMixin,
+    TorchAoTesterMixin,
+    TorchCompileTesterMixin,
+    TrainingTesterMixin,
 )
-from ..test_modeling_common import ModelTesterMixin, TorchCompileTesterMixin
 
 
 enable_full_determinism()
 
 
-class WanTransformer3DTests(ModelTesterMixin, unittest.TestCase):
-    model_class = WanTransformer3DModel
-    main_input_name = "hidden_states"
-    uses_custom_attn_processor = True
+class WanTransformer3DTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return WanTransformer3DModel
 
     @property
-    def dummy_input(self):
-        batch_size = 1
-        num_channels = 4
-        num_frames = 2
-        height = 16
-        width = 16
-        text_encoder_embedding_dim = 16
-        sequence_length = 12
+    def pretrained_model_name_or_path(self):
+        return "hf-internal-testing/tiny-wan22-transformer"
 
-        hidden_states = torch.randn((batch_size, num_channels, num_frames, height, width)).to(torch_device)
-        timestep = torch.randint(0, 1000, size=(batch_size,)).to(torch_device)
-        encoder_hidden_states = torch.randn((batch_size, sequence_length, text_encoder_embedding_dim)).to(torch_device)
+    @property
+    def output_shape(self) -> tuple[int, ...]:
+        return (4, 2, 16, 16)
 
+    @property
+    def input_shape(self) -> tuple[int, ...]:
+        return (4, 2, 16, 16)
+
+    @property
+    def main_input_name(self) -> str:
+        return "hidden_states"
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict[str, int | list[int] | tuple | str | bool]:
         return {
-            "hidden_states": hidden_states,
-            "encoder_hidden_states": encoder_hidden_states,
-            "timestep": timestep,
-        }
-
-    @property
-    def input_shape(self):
-        return (4, 1, 16, 16)
-
-    @property
-    def output_shape(self):
-        return (4, 1, 16, 16)
-
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
             "patch_size": (1, 2, 2),
             "num_attention_heads": 2,
             "attention_head_dim": 12,
@@ -76,16 +78,196 @@ class WanTransformer3DTests(ModelTesterMixin, unittest.TestCase):
             "qk_norm": "rms_norm_across_heads",
             "rope_max_seq_len": 32,
         }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
+
+    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:
+        batch_size = 1
+        num_channels = 4
+        num_frames = 2
+        height = 16
+        width = 16
+        text_encoder_embedding_dim = 16
+        sequence_length = 12
+
+        return {
+            "hidden_states": randn_tensor(
+                (batch_size, num_channels, num_frames, height, width),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (batch_size, sequence_length, text_encoder_embedding_dim),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
+            ),
+            "timestep": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(torch_device),
+        }
+
+
+class TestWanTransformer3D(WanTransformer3DTesterConfig, ModelTesterMixin):
+    """Core model tests for Wan Transformer 3D."""
+
+
+class TestWanTransformer3DSeaCache(WanTransformer3DTesterConfig, SeaCacheTesterMixin):
+    cache_input_key = "hidden_states"
+
+
+class TestWanTransformer3DMemory(WanTransformer3DTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for Wan Transformer 3D."""
+
+
+class TestWanTransformer3DTraining(WanTransformer3DTesterConfig, TrainingTesterMixin):
+    """Training tests for Wan Transformer 3D."""
 
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"WanTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
-class WanTransformerCompileTests(TorchCompileTesterMixin, unittest.TestCase):
-    model_class = WanTransformer3DModel
+class TestWanTransformer3DAttention(WanTransformer3DTesterConfig, AttentionTesterMixin):
+    """Attention processor tests for Wan Transformer 3D."""
 
-    def prepare_init_args_and_inputs_for_common(self):
-        return WanTransformer3DTests().prepare_init_args_and_inputs_for_common()
+
+class TestWanTransformer3DCompile(WanTransformer3DTesterConfig, TorchCompileTesterMixin):
+    """Torch compile tests for Wan Transformer 3D."""
+
+
+class TestWanTransformer3DBitsAndBytes(WanTransformer3DTesterConfig, BitsAndBytesTesterMixin):
+    """BitsAndBytes quantization tests for Wan Transformer 3D."""
+
+    @property
+    def torch_dtype(self):
+        return torch.float16
+
+    def get_dummy_inputs(self):
+        """Override to provide inputs matching the tiny Wan model dimensions."""
+        return {
+            "hidden_states": randn_tensor(
+                (1, 36, 2, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
+        }
+
+
+class TestWanTransformer3DTorchAo(WanTransformer3DTesterConfig, TorchAoTesterMixin):
+    """TorchAO quantization tests for Wan Transformer 3D."""
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
+    def get_dummy_inputs(self):
+        """Override to provide inputs matching the tiny Wan model dimensions."""
+        return {
+            "hidden_states": randn_tensor(
+                (1, 36, 2, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
+        }
+
+
+class TestWanTransformer3DGGUF(WanTransformer3DTesterConfig, GGUFTesterMixin):
+    """GGUF quantization tests for Wan Transformer 3D."""
+
+    @property
+    def gguf_filename(self):
+        return "https://huggingface.co/QuantStack/Wan2.2-I2V-A14B-GGUF/blob/main/LowNoise/Wan2.2-I2V-A14B-LowNoise-Q2_K.gguf"
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
+    def _create_quantized_model(self, config_kwargs=None, **extra_kwargs):
+        return super()._create_quantized_model(
+            config_kwargs, config="Wan-AI/Wan2.2-I2V-A14B-Diffusers", subfolder="transformer", **extra_kwargs
+        )
+
+    def get_dummy_inputs(self):
+        """Override to provide inputs matching the real Wan I2V model dimensions.
+
+        Wan 2.2 I2V: in_channels=36, text_dim=4096
+        """
+        return {
+            "hidden_states": randn_tensor(
+                (1, 36, 2, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
+        }
+
+
+class TestWanTransformer3DGGUFCompile(WanTransformer3DTesterConfig, GGUFCompileTesterMixin):
+    """GGUF + compile tests for Wan Transformer 3D."""
+
+    @property
+    def gguf_filename(self):
+        return "https://huggingface.co/QuantStack/Wan2.2-I2V-A14B-GGUF/blob/main/LowNoise/Wan2.2-I2V-A14B-LowNoise-Q2_K.gguf"
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
+    def _create_quantized_model(self, config_kwargs=None, **extra_kwargs):
+        return super()._create_quantized_model(
+            config_kwargs, config="Wan-AI/Wan2.2-I2V-A14B-Diffusers", subfolder="transformer", **extra_kwargs
+        )
+
+    def get_dummy_inputs(self):
+        """Override to provide inputs matching the real Wan I2V model dimensions.
+
+        Wan 2.2 I2V: in_channels=36, text_dim=4096
+        """
+        return {
+            "hidden_states": randn_tensor(
+                (1, 36, 2, 64, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (1, 512, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+            ),
+            "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
+        }
+
+
+class TestWanTransformer3DLoRA(WanTransformer3DTesterConfig, LoraTesterMixin):
+    pass
+
+
+class TestWanTransformer3DText2VideoSingleFile(WanTransformer3DTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/diffusion_models/wan2.1_t2v_1.3B_bf16.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
+
+
+class TestWanTransformer3DImage2VideoSingleFile(WanTransformer3DTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/blob/main/split_files/diffusion_models/wan2.1_i2v_480p_14B_fp8_e4m3fn.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "Wan-AI/Wan2.1-I2V-14B-480P-Diffusers"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
+
+    @property
+    def torch_dtype(self):
+        return torch.float8_e4m3fn

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 from PIL import Image
@@ -40,8 +39,8 @@ class VisualClozeProcessor(VaeImageProcessor):
         self.resolution = resolution
 
     def preprocess_image(
-        self, input_images: List[List[Optional[Image.Image]]], vae_scale_factor: int
-    ) -> Tuple[List[List[torch.Tensor]], List[List[List[int]]], List[int]]:
+        self, input_images: list[list[Image.Image | None]], vae_scale_factor: int
+    ) -> tuple[list[list[torch.Tensor]], list[list[list[int]]], list[int]]:
         """
         Preprocesses input images for the VisualCloze pipeline.
 
@@ -52,7 +51,7 @@ class VisualClozeProcessor(VaeImageProcessor):
         4. Tracking image sizes and positions of target images
 
         Args:
-            input_images (List[List[Optional[Image.Image]]]):
+            input_images (list[list[Image.Image | None]]):
                 A nested list of PIL Images where:
                 - Outer list represents different samples, including in-context examples and the query
                 - Inner list contains images for the task
@@ -61,17 +60,17 @@ class VisualClozeProcessor(VaeImageProcessor):
                 The scale factor used by the VAE for resizing images
 
         Returns:
-            Tuple containing:
-            - List[List[torch.Tensor]]: Preprocessed images in tensor format
-            - List[List[List[int]]]: Dimensions of each processed image [height, width]
-            - List[int]: Target positions indicating which images are to be generated
+            tuple containing:
+            - list[list[torch.Tensor]]: Preprocessed images in tensor format
+            - list[list[list[int]]]: Dimensions of each processed image [height, width]
+            - list[int]: Target positions indicating which images are to be generated
         """
         n_samples, n_task_images = len(input_images), len(input_images[0])
         divisible = 2 * vae_scale_factor
 
-        processed_images: List[List[Image.Image]] = [[] for _ in range(n_samples)]
-        resize_size: List[Optional[Tuple[int, int]]] = [None for _ in range(n_samples)]
-        target_position: List[int] = []
+        processed_images: list[list[Image.Image]] = [[] for _ in range(n_samples)]
+        resize_size: list[tuple[int, int] | None] = [None for _ in range(n_samples)]
+        target_position: list[int] = []
 
         # Process each sample
         for i in range(n_samples):
@@ -125,19 +124,19 @@ class VisualClozeProcessor(VaeImageProcessor):
         return processed_images, image_sizes, target_position
 
     def preprocess_mask(
-        self, input_images: List[List[Image.Image]], target_position: List[int]
-    ) -> List[List[torch.Tensor]]:
+        self, input_images: list[list[Image.Image]], target_position: list[int]
+    ) -> list[list[torch.Tensor]]:
         """
         Generate masks for the VisualCloze pipeline.
 
         Args:
-            input_images (List[List[Image.Image]]):
+            input_images (list[list[Image.Image]]):
                 Processed images from preprocess_image
-            target_position (List[int]):
+            target_position (list[int]):
                 Binary list marking the positions of target images (1 for target, 0 for condition)
 
         Returns:
-            List[List[torch.Tensor]]:
+            list[list[torch.Tensor]]:
                 A nested list of mask tensors (1 for target positions, 0 for condition images)
         """
         mask = []
@@ -155,10 +154,10 @@ class VisualClozeProcessor(VaeImageProcessor):
 
     def preprocess_image_upsampling(
         self,
-        input_images: List[List[Image.Image]],
+        input_images: list[list[Image.Image]],
         height: int,
         width: int,
-    ) -> Tuple[List[List[Image.Image]], List[List[List[int]]]]:
+    ) -> tuple[list[list[Image.Image]], list[list[list[int]]]]:
         """Process images for the upsampling stage in the VisualCloze pipeline.
 
         Args:
@@ -167,7 +166,7 @@ class VisualClozeProcessor(VaeImageProcessor):
             width: Target width
 
         Returns:
-            Tuple of processed image and its size
+            tuple of processed image and its size
         """
         image = self.resize(input_images[0][0], height, width)
         image = self.pil_to_numpy(image)  # to np
@@ -178,10 +177,10 @@ class VisualClozeProcessor(VaeImageProcessor):
         image_sizes = [[[height, width]]]
         return input_images, image_sizes
 
-    def preprocess_mask_upsampling(self, input_images: List[List[Image.Image]]) -> List[List[torch.Tensor]]:
+    def preprocess_mask_upsampling(self, input_images: list[list[Image.Image]]) -> list[list[torch.Tensor]]:
         return [[torch.ones((1, 1, input_images[0][0].shape[2], input_images[0][0].shape[3]))]]
 
-    def get_layout_prompt(self, size: Tuple[int, int]) -> str:
+    def get_layout_prompt(self, size: tuple[int, int]) -> str:
         layout_instruction = (
             f"A grid layout with {size[0]} rows and {size[1]} columns, displaying {size[0] * size[1]} images arranged side by side.",
         )
@@ -189,26 +188,26 @@ class VisualClozeProcessor(VaeImageProcessor):
 
     def preprocess(
         self,
-        task_prompt: Union[str, List[str]],
-        content_prompt: Union[str, List[str]],
-        input_images: Optional[List[List[List[Optional[str]]]]] = None,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        task_prompt: str | list[str],
+        content_prompt: str | list[str],
+        input_images: list[list[list[str | None]]] | None = None,
+        height: int | None = None,
+        width: int | None = None,
         upsampling: bool = False,
         vae_scale_factor: int = 16,
-    ) -> Dict:
+    ) -> dict:
         """Process visual cloze inputs.
 
         Args:
             task_prompt: Task description(s)
             content_prompt: Content description(s)
-            input_images: List of images or None for the target images
+            input_images: list of images or None for the target images
             height: Optional target height for upsampling stage
             width: Optional target width for upsampling stage
             upsampling: Whether this is in the upsampling processing stage
 
         Returns:
-            Dictionary containing processed images, masks, prompts and metadata
+            dictionary containing processed images, masks, prompts and metadata
         """
         if isinstance(task_prompt, str):
             task_prompt = [task_prompt]

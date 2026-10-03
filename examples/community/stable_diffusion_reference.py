@@ -46,7 +46,7 @@ EXAMPLE_DOC_STRING = """
         >>> input_image = load_image("https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png")
 
         >>> pipe = StableDiffusionReferencePipeline.from_pretrained(
-                "runwayml/stable-diffusion-v1-5",
+                "stable-diffusion-v1-5/stable-diffusion-v1-5",
                 safety_checker=None,
                 torch_dtype=torch.float16
                 ).to('cuda:0')
@@ -112,7 +112,7 @@ class StableDiffusionReferencePipeline(
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
+            Please, refer to the [model card](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) for details.
         feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
@@ -194,8 +194,8 @@ class StableDiffusionReferencePipeline(
                 "The configuration file of the unet has set the default `sample_size` to smaller than"
                 " 64 which seems highly unlikely .If you're checkpoint is a fine-tuned version of any of the"
                 " following: \n- CompVis/stable-diffusion-v1-4 \n- CompVis/stable-diffusion-v1-3 \n-"
-                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- runwayml/stable-diffusion-v1-5"
-                " \n- runwayml/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
+                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- stable-diffusion-v1-5/stable-diffusion-v1-5"
+                " \n- stable-diffusion-v1-5/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
                 " configuration file. Please make sure to update the config accordingly as leaving `sample_size=32`"
                 " in the config might lead to incorrect results in future versions. If you have downloaded this"
                 " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
@@ -276,7 +276,7 @@ class StableDiffusionReferencePipeline(
         height: int,
         width: int,
         callback_steps: Optional[int],
-        negative_prompt: Optional[str] = None,
+        negative_prompt: str | None = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         ip_adapter_image: Optional[torch.Tensor] = None,
@@ -291,7 +291,7 @@ class StableDiffusionReferencePipeline(
             height (int): The height of the input image.
             width (int): The width of the input image.
             callback_steps (Optional[int]): The number of steps to perform the callback on.
-            negative_prompt (Optional[str]): The negative prompt text.
+            negative_prompt (str | None): The negative prompt text.
             prompt_embeds (Optional[torch.Tensor]): The prompt embeddings.
             negative_prompt_embeds (Optional[torch.Tensor]): The negative prompt embeddings.
             ip_adapter_image (Optional[torch.Tensor]): The input adapter image.
@@ -411,11 +411,11 @@ class StableDiffusionReferencePipeline(
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Optional[str],
+        prompt: str | None,
         device: torch.device,
         num_images_per_prompt: int,
         do_classifier_free_guidance: bool,
-        negative_prompt: Optional[str] = None,
+        negative_prompt: str | None = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         lora_scale: Optional[float] = None,
@@ -642,7 +642,7 @@ class StableDiffusionReferencePipeline(
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(
         self, generator: Union[torch.Generator, List[torch.Generator]], eta: float
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         r"""
         Prepare extra keyword arguments for the scheduler step.
 
@@ -834,7 +834,7 @@ class StableDiffusionReferencePipeline(
         latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: str | None = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.Tensor], None]] = None,
         callback_steps: int = 1,

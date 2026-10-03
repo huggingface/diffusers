@@ -21,16 +21,13 @@ To get started, use the [`DiffusionPipeline`] to load the [anton-l/ddpm-butterfl
 ```py
 from diffusers import DiffusionPipeline
 
-generator = DiffusionPipeline.from_pretrained("anton-l/ddpm-butterflies-128").to("cuda")
+generator = DiffusionPipeline.from_pretrained("anton-l/ddpm-butterflies-128").to("cuda")  # or "mps", "xpu", "cpu"
 image = generator().images[0]
 image
 ```
 
-<Tip>
-
-Want to generate images of something else? Take a look at the training [guide](../training/unconditional_training) to learn how to train a model to generate your own images.
-
-</Tip>
+> [!TIP]
+> Want to generate images of something else? Take a look at the training [guide](../training/unconditional_training) to learn how to train a model to generate your own images.
 
 The output image is a [`PIL.Image`](https://pillow.readthedocs.io/en/stable/reference/Image.html?highlight=image#the-image-class) object that can be saved:
 

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,93 +14,50 @@
 # limitations under the License.
 
 import random
-import unittest
 from typing import Any, Dict
 
 import numpy as np
 import torch
 from PIL import Image
 
-from diffusers import (
-    ClassifierFreeGuidance,
-    StableDiffusionXLAutoBlocks,
-    StableDiffusionXLModularPipeline,
-)
+from diffusers import ClassifierFreeGuidance, StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
 from diffusers.loaders import ModularIPAdapterMixin
 
-from ...models.unets.test_models_unet_2d_condition import (
-    create_ip_adapter_state_dict,
-)
-from ...testing_utils import (
-    enable_full_determinism,
-    floats_tensor,
-    torch_device,
-)
-from ..test_modular_pipelines_common import (
+from ...models.unets.test_models_unet_2d_condition import create_ip_adapter_state_dict
+from ...testing_utils import enable_full_determinism, floats_tensor, is_ip_adapter, torch_device
+from ..testing_utils import (
+    BaseModularPipelineOutputMixin,
+    BaseModularPipelineTesterConfig,
+    ModularGuiderTesterMixin,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
     ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
 )
 
 
 enable_full_determinism()
 
 
-class SDXLModularTests:
+class SDXLModularTesterMixin(BaseModularPipelineOutputMixin):
     """
     This mixin defines method to create pipeline, base input and base test across all SDXL modular tests.
     """
 
-    pipeline_class = StableDiffusionXLModularPipeline
-    pipeline_blocks_class = StableDiffusionXLAutoBlocks
-    repo = "hf-internal-testing/tiny-sdxl-modular"
-    params = frozenset(
-        [
-            "prompt",
-            "height",
-            "width",
-            "negative_prompt",
-            "cross_attention_kwargs",
-            "image",
-            "mask_image",
-        ]
-    )
-    batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
-
-    def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
-        pipeline = self.pipeline_blocks_class().init_pipeline(self.repo, components_manager=components_manager)
-        pipeline.load_components(torch_dtype=torch_dtype)
-        return pipeline
-
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
-            "prompt": "A painting of a squirrel eating a burger",
-            "generator": generator,
-            "num_inference_steps": 2,
-            "output_type": "np",
-        }
-        return inputs
-
     def _test_stable_diffusion_xl_euler(self, expected_image_shape, expected_slice, expected_max_diff=1e-2):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        sd_pipe = self.get_pipeline()
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        sd_pipe = self.get_pipeline().to(torch_device)
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         image = sd_pipe(**inputs, output="images")
-        image_slice = image[0, -3:, -3:, -1]
+        image_slice = image[0, -3:, -3:, -1].cpu()
 
         assert image.shape == expected_image_shape
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < expected_max_diff, (
-            "Image Slice does not match expected slice"
-        )
+        max_diff = torch.abs(image_slice.flatten() - expected_slice).max()
+        assert max_diff < expected_max_diff, f"Image slice does not match expected slice. Max Difference: {max_diff}"
 
 
-class SDXLModularIPAdapterTests:
+@is_ip_adapter
+class SDXLModularIPAdapterTesterMixin:
     """
     This mixin is designed to test IP Adapter.
     """
@@ -139,7 +96,7 @@ class SDXLModularIPAdapterTests:
         if "image" in parameters and "strength" in parameters:
             inputs["num_inference_steps"] = 4
 
-        inputs["output_type"] = "np"
+        inputs["output_type"] = "pt"
         return inputs
 
     def test_ip_adapter(self, expected_max_diff: float = 1e-4, expected_pipe_slice=None):
@@ -157,14 +114,14 @@ class SDXLModularIPAdapterTests:
 
         blocks = self.pipeline_blocks_class()
         _ = blocks.sub_blocks.pop("ip_adapter")
-        pipe = blocks.init_pipeline(self.repo)
-        pipe.load_components(torch_dtype=torch.float32)
+        pipe = blocks.init_pipeline(self.pretrained_model_name_or_path)
+        pipe.load_components(dtype=torch.float32)
         pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+
         cross_attention_dim = pipe.unet.config.get("cross_attention_dim")
 
         # forward pass without ip adapter
-        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs())
         if expected_pipe_slice is None:
             output_without_adapter = pipe(**inputs, output="images")
         else:
@@ -175,7 +132,7 @@ class SDXLModularIPAdapterTests:
         pipe.unet._load_ip_adapter_weights(adapter_state_dict)
 
         # forward pass with single ip adapter, but scale=0 which should have no effect
-        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs())
         inputs["ip_adapter_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
         inputs["negative_ip_adapter_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
         pipe.set_ip_adapter_scale(0.0)
@@ -184,7 +141,7 @@ class SDXLModularIPAdapterTests:
             output_without_adapter_scale = output_without_adapter_scale[0, -3:, -3:, -1].flatten()
 
         # forward pass with single ip adapter, but with scale of adapter weights
-        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs())
         inputs["ip_adapter_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
         inputs["negative_ip_adapter_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
         pipe.set_ip_adapter_scale(42.0)
@@ -192,8 +149,8 @@ class SDXLModularIPAdapterTests:
         if expected_pipe_slice is not None:
             output_with_adapter_scale = output_with_adapter_scale[0, -3:, -3:, -1].flatten()
 
-        max_diff_without_adapter_scale = np.abs(output_without_adapter_scale - output_without_adapter).max()
-        max_diff_with_adapter_scale = np.abs(output_with_adapter_scale - output_without_adapter).max()
+        max_diff_without_adapter_scale = torch.abs(output_without_adapter_scale - output_without_adapter).max()
+        max_diff_with_adapter_scale = torch.abs(output_with_adapter_scale - output_without_adapter).max()
 
         assert max_diff_without_adapter_scale < expected_max_diff, (
             "Output without ip-adapter must be same as normal inference"
@@ -206,7 +163,7 @@ class SDXLModularIPAdapterTests:
         pipe.unet._load_ip_adapter_weights([adapter_state_dict_1, adapter_state_dict_2])
 
         # forward pass with multi ip adapter, but scale=0 which should have no effect
-        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs())
         inputs["ip_adapter_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)] * 2
         inputs["negative_ip_adapter_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)] * 2
         pipe.set_ip_adapter_scale([0.0, 0.0])
@@ -215,7 +172,7 @@ class SDXLModularIPAdapterTests:
             output_without_multi_adapter_scale = output_without_multi_adapter_scale[0, -3:, -3:, -1].flatten()
 
         # forward pass with multi ip adapter, but with scale of adapter weights
-        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs())
         inputs["ip_adapter_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)] * 2
         inputs["negative_ip_adapter_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)] * 2
         pipe.set_ip_adapter_scale([42.0, 42.0])
@@ -223,10 +180,10 @@ class SDXLModularIPAdapterTests:
         if expected_pipe_slice is not None:
             output_with_multi_adapter_scale = output_with_multi_adapter_scale[0, -3:, -3:, -1].flatten()
 
-        max_diff_without_multi_adapter_scale = np.abs(
+        max_diff_without_multi_adapter_scale = torch.abs(
             output_without_multi_adapter_scale - output_without_adapter
         ).max()
-        max_diff_with_multi_adapter_scale = np.abs(output_with_multi_adapter_scale - output_without_adapter).max()
+        max_diff_with_multi_adapter_scale = torch.abs(output_with_multi_adapter_scale - output_without_adapter).max()
         assert max_diff_without_multi_adapter_scale < expected_max_diff, (
             "Output without multi-ip-adapter must be same as normal inference"
         )
@@ -235,7 +192,7 @@ class SDXLModularIPAdapterTests:
         )
 
 
-class SDXLModularControlNetTests:
+class SDXLModularControlNetTesterMixin(BaseModularPipelineOutputMixin):
     """
     This mixin is designed to test ControlNet.
     """
@@ -269,29 +226,29 @@ class SDXLModularControlNetTests:
         # compare against static slices and that can be shaky (with a VVVV low probability).
         expected_max_diff = 9e-4 if torch_device == "cpu" else expected_max_diff
 
-        pipe = self.get_pipeline()
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         # forward pass without controlnet
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs()
         output_without_controlnet = pipe(**inputs, output="images")
         output_without_controlnet = output_without_controlnet[0, -3:, -3:, -1].flatten()
 
         # forward pass with single controlnet, but scale=0 which should have no effect
-        inputs = self._modify_inputs_for_controlnet_test(self.get_dummy_inputs(torch_device))
+        inputs = self._modify_inputs_for_controlnet_test(self.get_dummy_inputs())
         inputs["controlnet_conditioning_scale"] = 0.0
         output_without_controlnet_scale = pipe(**inputs, output="images")
         output_without_controlnet_scale = output_without_controlnet_scale[0, -3:, -3:, -1].flatten()
 
         # forward pass with single controlnet, but with scale of adapter weights
-        inputs = self._modify_inputs_for_controlnet_test(self.get_dummy_inputs(torch_device))
+        inputs = self._modify_inputs_for_controlnet_test(self.get_dummy_inputs())
         inputs["controlnet_conditioning_scale"] = 42.0
         output_with_controlnet_scale = pipe(**inputs, output="images")
         output_with_controlnet_scale = output_with_controlnet_scale[0, -3:, -3:, -1].flatten()
 
-        max_diff_without_controlnet_scale = np.abs(output_without_controlnet_scale - output_without_controlnet).max()
-        max_diff_with_controlnet_scale = np.abs(output_with_controlnet_scale - output_without_controlnet).max()
+        max_diff_without_controlnet_scale = torch.abs(
+            output_without_controlnet_scale - output_without_controlnet
+        ).max()
+        max_diff_with_controlnet_scale = torch.abs(output_with_controlnet_scale - output_without_controlnet).max()
 
         assert max_diff_without_controlnet_scale < expected_max_diff, (
             "Output without controlnet must be same as normal inference"
@@ -299,76 +256,118 @@ class SDXLModularControlNetTests:
         assert max_diff_with_controlnet_scale > 1e-2, "Output with controlnet must be different from normal inference"
 
     def test_controlnet_cfg(self):
-        pipe = self.get_pipeline()
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         # forward pass with CFG not applied
         guider = ClassifierFreeGuidance(guidance_scale=1.0)
         pipe.update_components(guider=guider)
 
-        inputs = self._modify_inputs_for_controlnet_test(self.get_dummy_inputs(torch_device))
+        inputs = self._modify_inputs_for_controlnet_test(self.get_dummy_inputs())
         out_no_cfg = pipe(**inputs, output="images")
 
         # forward pass with CFG applied
         guider = ClassifierFreeGuidance(guidance_scale=7.5)
         pipe.update_components(guider=guider)
-        inputs = self._modify_inputs_for_controlnet_test(self.get_dummy_inputs(torch_device))
+        inputs = self._modify_inputs_for_controlnet_test(self.get_dummy_inputs())
         out_cfg = pipe(**inputs, output="images")
 
         assert out_cfg.shape == out_no_cfg.shape
-        max_diff = np.abs(out_cfg - out_no_cfg).max()
+        max_diff = torch.abs(out_cfg - out_no_cfg).max()
         assert max_diff > 1e-2, "Output with CFG must be different from normal inference"
 
 
-class SDXLModularGuiderTests:
-    def test_guider_cfg(self):
-        pipe = self.get_pipeline()
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+TEXT2IMAGE_WORKFLOWS = {
+    "text2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLPrepareAdditionalConditioningStep"),
+        ("denoise.denoise", "StableDiffusionXLDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+    "controlnet_text2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLPrepareAdditionalConditioningStep"),
+        ("denoise.controlnet_input", "StableDiffusionXLControlNetInputStep"),
+        ("denoise.denoise", "StableDiffusionXLControlNetDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+    "controlnet_union_text2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLPrepareAdditionalConditioningStep"),
+        ("denoise.controlnet_input", "StableDiffusionXLControlNetUnionInputStep"),
+        ("denoise.denoise", "StableDiffusionXLControlNetDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+    "ip_adapter_text2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("ip_adapter", "StableDiffusionXLIPAdapterStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLPrepareAdditionalConditioningStep"),
+        ("denoise.denoise", "StableDiffusionXLDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+    "ip_adapter_controlnet_text2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("ip_adapter", "StableDiffusionXLIPAdapterStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLPrepareAdditionalConditioningStep"),
+        ("denoise.controlnet_input", "StableDiffusionXLControlNetInputStep"),
+        ("denoise.denoise", "StableDiffusionXLControlNetDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+}
 
-        # forward pass with CFG not applied
-        guider = ClassifierFreeGuidance(guidance_scale=1.0)
-        pipe.update_components(guider=guider)
 
-        inputs = self.get_dummy_inputs(torch_device)
-        out_no_cfg = pipe(**inputs, output="images")
+class SDXLModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
+    """Shared configuration for the Stable Diffusion XL text-to-image modular pipeline tests."""
 
-        # forward pass with CFG applied
-        guider = ClassifierFreeGuidance(guidance_scale=7.5)
-        pipe.update_components(guider=guider)
-        inputs = self.get_dummy_inputs(torch_device)
-        out_cfg = pipe(**inputs, output="images")
+    pipeline_class = StableDiffusionXLModularPipeline
+    pipeline_blocks_class = StableDiffusionXLAutoBlocks
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-sdxl-modular"
+    params = frozenset(
+        [
+            "prompt",
+            "height",
+            "width",
+            "negative_prompt",
+            "cross_attention_kwargs",
+        ]
+    )
+    batch_params = frozenset(["prompt", "negative_prompt"])
+    expected_image_output_shape = (1, 3, 64, 64)
 
-        assert out_cfg.shape == out_no_cfg.shape
-        max_diff = np.abs(out_cfg - out_no_cfg).max()
-        assert max_diff > 1e-2, "Output with CFG must be different from normal inference"
+    expected_workflow_blocks = TEXT2IMAGE_WORKFLOWS
+
+    def get_dummy_inputs(self, seed=0):
+        generator = self.get_generator(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "output_type": "pt",
+        }
+        return inputs
 
 
-class SDXLModularPipelineFastTests(
-    SDXLModularTests,
-    SDXLModularIPAdapterTests,
-    SDXLModularControlNetTests,
-    SDXLModularGuiderTests,
-    ModularPipelineTesterMixin,
-    unittest.TestCase,
-):
-    """Test cases for Stable Diffusion XL modular pipeline fast tests."""
-
+class TestSDXLModularPipelineFast(SDXLModularPipelineTesterConfig, SDXLModularTesterMixin, ModularPipelineTesterMixin):
     def test_stable_diffusion_xl_euler(self):
         self._test_stable_diffusion_xl_euler(
-            expected_image_shape=(1, 64, 64, 3),
-            expected_slice=[
-                0.5966781,
-                0.62939394,
-                0.48465094,
-                0.51573336,
-                0.57593524,
-                0.47035995,
-                0.53410417,
-                0.51436996,
-                0.47313565,
-            ],
+            expected_image_shape=self.expected_image_output_shape,
+            expected_slice=torch.tensor(
+                [0.3886, 0.4685, 0.4953, 0.4217, 0.4317, 0.3945, 0.4847, 0.4704, 0.4731],
+            ),
             expected_max_diff=1e-2,
         )
 
@@ -376,39 +375,134 @@ class SDXLModularPipelineFastTests(
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
 
-class SDXLImg2ImgModularPipelineFastTests(
-    SDXLModularTests,
-    SDXLModularIPAdapterTests,
-    SDXLModularControlNetTests,
-    SDXLModularGuiderTests,
-    ModularPipelineTesterMixin,
-    unittest.TestCase,
-):
-    """Test cases for Stable Diffusion XL image-to-image modular pipeline fast tests."""
+class TestSDXLModularPipelineIPAdapter(SDXLModularPipelineTesterConfig, SDXLModularIPAdapterTesterMixin):
+    pass
 
-    def get_dummy_inputs(self, device, seed=0):
-        inputs = super().get_dummy_inputs(device, seed)
-        image = floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device)
-        image = image / 2 + 0.5
-        inputs["image"] = image
-        inputs["strength"] = 0.8
+
+class TestSDXLModularPipelineControlNet(SDXLModularPipelineTesterConfig, SDXLModularControlNetTesterMixin):
+    pass
+
+
+class TestSDXLModularPipelineGuider(SDXLModularPipelineTesterConfig, ModularGuiderTesterMixin):
+    pass
+
+
+class TestSDXLModularPipelineLoading(SDXLModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestSDXLModularPipelineWorkflow(SDXLModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestSDXLModularPipelineMemory(SDXLModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
+
+
+IMAGE2IMAGE_WORKFLOWS = {
+    "image2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("vae_encoder", "StableDiffusionXLVaeEncoderStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLImg2ImgPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("denoise.denoise", "StableDiffusionXLDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+    "controlnet_image2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("vae_encoder", "StableDiffusionXLVaeEncoderStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLImg2ImgPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("denoise.controlnet_input", "StableDiffusionXLControlNetInputStep"),
+        ("denoise.denoise", "StableDiffusionXLControlNetDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+    "controlnet_union_image2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("vae_encoder", "StableDiffusionXLVaeEncoderStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLImg2ImgPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("denoise.controlnet_input", "StableDiffusionXLControlNetUnionInputStep"),
+        ("denoise.denoise", "StableDiffusionXLControlNetDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+    "ip_adapter_image2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("ip_adapter", "StableDiffusionXLIPAdapterStep"),
+        ("vae_encoder", "StableDiffusionXLVaeEncoderStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLImg2ImgPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("denoise.denoise", "StableDiffusionXLDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+    "ip_adapter_controlnet_image2image": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("ip_adapter", "StableDiffusionXLIPAdapterStep"),
+        ("vae_encoder", "StableDiffusionXLVaeEncoderStep"),
+        ("denoise.input", "StableDiffusionXLInputStep"),
+        ("denoise.before_denoise.set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("denoise.before_denoise.prepare_latents", "StableDiffusionXLImg2ImgPrepareLatentsStep"),
+        ("denoise.before_denoise.prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("denoise.controlnet_input", "StableDiffusionXLControlNetInputStep"),
+        ("denoise.denoise", "StableDiffusionXLControlNetDenoiseStep"),
+        ("decode", "StableDiffusionXLDecodeStep"),
+    ],
+}
+
+
+class SDXLImg2ImgModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
+    """Shared configuration for the Stable Diffusion XL image-to-image modular pipeline tests."""
+
+    pipeline_class = StableDiffusionXLModularPipeline
+    pipeline_blocks_class = StableDiffusionXLAutoBlocks
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-sdxl-modular"
+    params = frozenset(
+        [
+            "prompt",
+            "height",
+            "width",
+            "negative_prompt",
+            "cross_attention_kwargs",
+            "image",
+        ]
+    )
+    batch_params = frozenset(["prompt", "negative_prompt", "image"])
+    expected_image_output_shape = (1, 3, 64, 64)
+    expected_workflow_blocks = IMAGE2IMAGE_WORKFLOWS
+
+    def get_dummy_inputs(self, seed=0):
+        generator = self.get_generator(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 4,
+            "output_type": "pt",
+        }
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(torch_device)
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((64, 64))
+
+        inputs["image"] = init_image
+        inputs["strength"] = 0.5
 
         return inputs
 
+
+class TestSDXLImg2ImgModularPipelineFast(
+    SDXLImg2ImgModularPipelineTesterConfig, SDXLModularTesterMixin, ModularPipelineTesterMixin
+):
     def test_stable_diffusion_xl_euler(self):
         self._test_stable_diffusion_xl_euler(
-            expected_image_shape=(1, 64, 64, 3),
-            expected_slice=[
-                0.56943184,
-                0.4702148,
-                0.48048905,
-                0.6235963,
-                0.551138,
-                0.49629188,
-                0.60031277,
-                0.5688907,
-                0.43996853,
-            ],
+            expected_image_shape=self.expected_image_output_shape,
+            expected_slice=torch.tensor([0.5246, 0.4466, 0.444, 0.3246, 0.4443, 0.5108, 0.5225, 0.559, 0.5147]),
             expected_max_diff=1e-2,
         )
 
@@ -416,21 +510,131 @@ class SDXLImg2ImgModularPipelineFastTests(
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
 
+class TestSDXLImg2ImgModularPipelineIPAdapter(SDXLImg2ImgModularPipelineTesterConfig, SDXLModularIPAdapterTesterMixin):
+    pass
+
+
+class TestSDXLImg2ImgModularPipelineControlNet(
+    SDXLImg2ImgModularPipelineTesterConfig, SDXLModularControlNetTesterMixin
+):
+    pass
+
+
+class TestSDXLImg2ImgModularPipelineGuider(SDXLImg2ImgModularPipelineTesterConfig, ModularGuiderTesterMixin):
+    pass
+
+
+class TestSDXLImg2ImgModularPipelineLoading(SDXLImg2ImgModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestSDXLImg2ImgModularPipelineWorkflow(SDXLImg2ImgModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestSDXLImg2ImgModularPipelineMemory(SDXLImg2ImgModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
+
+
+INPAINTING_WORKFLOWS = {
+    "inpainting": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("vae_encoder", "StableDiffusionXLInpaintVaeEncoderStep"),
+        ("input", "StableDiffusionXLInputStep"),
+        ("set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("prepare_latents", "StableDiffusionXLInpaintPrepareLatentsStep"),
+        ("prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("denoise", "StableDiffusionXLInpaintDenoiseStep"),
+        ("decode", "StableDiffusionXLInpaintDecodeStep"),
+    ],
+    "controlnet_inpainting": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("vae_encoder", "StableDiffusionXLInpaintVaeEncoderStep"),
+        ("input", "StableDiffusionXLInputStep"),
+        ("set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("prepare_latents", "StableDiffusionXLInpaintPrepareLatentsStep"),
+        ("prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("controlnet_input", "StableDiffusionXLControlNetInputStep"),
+        ("denoise", "StableDiffusionXLInpaintControlNetDenoiseStep"),
+        ("decode", "StableDiffusionXLInpaintDecodeStep"),
+    ],
+    "controlnet_union_inpainting": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("vae_encoder", "StableDiffusionXLInpaintVaeEncoderStep"),
+        ("input", "StableDiffusionXLInputStep"),
+        ("set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("prepare_latents", "StableDiffusionXLInpaintPrepareLatentsStep"),
+        ("prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("controlnet_input", "StableDiffusionXLControlNetUnionInputStep"),
+        ("denoise", "StableDiffusionXLInpaintControlNetDenoiseStep"),
+        ("decode", "StableDiffusionXLInpaintDecodeStep"),
+    ],
+    "ip_adapter_inpainting": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("ip_adapter", "StableDiffusionXLIPAdapterStep"),
+        ("vae_encoder", "StableDiffusionXLInpaintVaeEncoderStep"),
+        ("input", "StableDiffusionXLInputStep"),
+        ("set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("prepare_latents", "StableDiffusionXLInpaintPrepareLatentsStep"),
+        ("prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("denoise", "StableDiffusionXLInpaintDenoiseStep"),
+        ("decode", "StableDiffusionXLInpaintDecodeStep"),
+    ],
+    "ip_adapter_controlnet_inpainting": [
+        ("text_encoder", "StableDiffusionXLTextEncoderStep"),
+        ("ip_adapter", "StableDiffusionXLIPAdapterStep"),
+        ("vae_encoder", "StableDiffusionXLInpaintVaeEncoderStep"),
+        ("input", "StableDiffusionXLInputStep"),
+        ("set_timesteps", "StableDiffusionXLImg2ImgSetTimestepsStep"),
+        ("prepare_latents", "StableDiffusionXLInpaintPrepareLatentsStep"),
+        ("prepare_add_cond", "StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep"),
+        ("controlnet_input", "StableDiffusionXLControlNetInputStep"),
+        ("denoise", "StableDiffusionXLInpaintControlNetDenoiseStep"),
+        ("decode", "StableDiffusionXLInpaintDecodeStep"),
+    ],
+}
+
+
 class SDXLInpaintingModularPipelineFastTests(
-    SDXLModularTests,
-    SDXLModularIPAdapterTests,
-    SDXLModularControlNetTests,
-    SDXLModularGuiderTests,
+    BaseModularPipelineTesterConfig,
+    SDXLModularTesterMixin,
+    SDXLModularIPAdapterTesterMixin,
+    SDXLModularControlNetTesterMixin,
+    ModularGuiderTesterMixin,
     ModularPipelineTesterMixin,
-    unittest.TestCase,
 ):
     """Test cases for Stable Diffusion XL inpainting modular pipeline fast tests."""
 
+    pipeline_class = StableDiffusionXLModularPipeline
+    pipeline_blocks_class = StableDiffusionXLAutoBlocks
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-sdxl-modular"
+    params = frozenset(
+        [
+            "prompt",
+            "height",
+            "width",
+            "negative_prompt",
+            "cross_attention_kwargs",
+            "image",
+            "mask_image",
+        ]
+    )
+    batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
+    expected_image_output_shape = (1, 3, 64, 64)
+    expected_workflow_blocks = INPAINTING_WORKFLOWS
+
     def get_dummy_inputs(self, device, seed=0):
-        inputs = super().get_dummy_inputs(device, seed)
+        generator = self.get_generator(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 4,
+            "output_type": "pt",
+        }
         image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
         image = image.cpu().permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((64, 64))
+
         # create mask
         image[8:, 8:, :] = 255
         mask_image = Image.fromarray(np.uint8(image)).convert("L").resize((64, 64))
@@ -443,18 +647,21 @@ class SDXLInpaintingModularPipelineFastTests(
 
     def test_stable_diffusion_xl_euler(self):
         self._test_stable_diffusion_xl_euler(
-            expected_image_shape=(1, 64, 64, 3),
-            expected_slice=[
-                0.40872607,
-                0.38842705,
-                0.34893104,
-                0.47837183,
-                0.43792963,
-                0.5332134,
-                0.3716843,
-                0.47274873,
-                0.45000193,
-            ],
+            expected_image_shape=self.expected_image_output_shape,
+            expected_slice=torch.tensor(
+                [
+                    0.40872607,
+                    0.38842705,
+                    0.34893104,
+                    0.47837183,
+                    0.43792963,
+                    0.5332134,
+                    0.3716843,
+                    0.47274873,
+                    0.45000193,
+                ],
+                device=torch_device,
+            ),
             expected_max_diff=1e-2,
         )
 

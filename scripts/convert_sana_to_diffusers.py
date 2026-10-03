@@ -20,7 +20,7 @@ from diffusers import (
     SanaTransformer2DModel,
     SCMScheduler,
 )
-from diffusers.models.modeling_utils import load_model_dict_into_meta
+from diffusers.models.model_loading_utils import load_model_dict_into_meta
 from diffusers.utils.import_utils import is_accelerate_available
 
 

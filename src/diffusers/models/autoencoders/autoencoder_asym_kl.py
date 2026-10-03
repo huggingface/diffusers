@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional, Tuple, Union
-
 import torch
 import torch.nn as nn
 
@@ -20,10 +18,10 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils.accelerate_utils import apply_forward_hook
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
-from .vae import DecoderOutput, DiagonalGaussianDistribution, Encoder, MaskConditionDecoder
+from .vae import AutoencoderMixin, DecoderOutput, DiagonalGaussianDistribution, Encoder, MaskConditionDecoder
 
 
-class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
+class AsymmetricAutoencoderKL(ModelMixin, AutoencoderMixin, ConfigMixin):
     r"""
     Designing a Better Asymmetric VQGAN for StableDiffusion https://huggingface.co/papers/2306.04632 . A VAE model with
     KL loss for encoding images into latents and decoding latent representations into images.
@@ -34,16 +32,16 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
     Parameters:
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
-            Tuple of downsample block types.
-        down_block_out_channels (`Tuple[int]`, *optional*, defaults to `(64,)`):
-            Tuple of down block output channels.
+        down_block_types (`tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
+            tuple of downsample block types.
+        down_block_out_channels (`tuple[int]`, *optional*, defaults to `(64,)`):
+            tuple of down block output channels.
         layers_per_down_block (`int`, *optional*, defaults to `1`):
             Number layers for down block.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
-            Tuple of upsample block types.
-        up_block_out_channels (`Tuple[int]`, *optional*, defaults to `(64,)`):
-            Tuple of up block output channels.
+        up_block_types (`tuple[str]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
+            tuple of upsample block types.
+        up_block_out_channels (`tuple[int]`, *optional*, defaults to `(64,)`):
+            tuple of up block output channels.
         layers_per_up_block (`int`, *optional*, defaults to `1`):
             Number layers for up block.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
@@ -67,11 +65,11 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str, ...] = ("DownEncoderBlock2D",),
-        down_block_out_channels: Tuple[int, ...] = (64,),
+        down_block_types: tuple[str, ...] = ("DownEncoderBlock2D",),
+        down_block_out_channels: tuple[int, ...] = (64,),
         layers_per_down_block: int = 1,
-        up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D",),
-        up_block_out_channels: Tuple[int, ...] = (64,),
+        up_block_types: tuple[str, ...] = ("UpDecoderBlock2D",),
+        up_block_out_channels: tuple[int, ...] = (64,),
         layers_per_up_block: int = 1,
         act_fn: str = "silu",
         latent_channels: int = 4,
@@ -107,14 +105,11 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
         self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)
         self.post_quant_conv = nn.Conv2d(latent_channels, latent_channels, 1)
 
-        self.use_slicing = False
-        self.use_tiling = False
-
         self.register_to_config(block_out_channels=up_block_out_channels)
         self.register_to_config(force_upcast=False)
 
     @apply_forward_hook
-    def encode(self, x: torch.Tensor, return_dict: bool = True) -> Union[AutoencoderKLOutput, Tuple[torch.Tensor]]:
+    def encode(self, x: torch.Tensor, return_dict: bool = True) -> AutoencoderKLOutput | tuple[torch.Tensor]:
         h = self.encoder(x)
         moments = self.quant_conv(h)
         posterior = DiagonalGaussianDistribution(moments)
@@ -127,10 +122,10 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
     def _decode(
         self,
         z: torch.Tensor,
-        image: Optional[torch.Tensor] = None,
-        mask: Optional[torch.Tensor] = None,
+        image: torch.Tensor | None = None,
+        mask: torch.Tensor | None = None,
         return_dict: bool = True,
-    ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         z = self.post_quant_conv(z)
         dec = self.decoder(z, image, mask)
 
@@ -143,11 +138,11 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
     def decode(
         self,
         z: torch.Tensor,
-        generator: Optional[torch.Generator] = None,
-        image: Optional[torch.Tensor] = None,
-        mask: Optional[torch.Tensor] = None,
+        generator: torch.Generator | None = None,
+        image: torch.Tensor | None = None,
+        mask: torch.Tensor | None = None,
         return_dict: bool = True,
-    ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         decoded = self._decode(z, image, mask).sample
 
         if not return_dict:
@@ -158,11 +153,11 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
     def forward(
         self,
         sample: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
+        mask: torch.Tensor | None = None,
         sample_posterior: bool = False,
         return_dict: bool = True,
-        generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, Tuple[torch.Tensor]]:
+        generator: torch.Generator | None = None,
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.
@@ -171,6 +166,13 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
                 Whether to sample from the posterior.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+            generator (`torch.Generator`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make sampling
+                deterministic.
+
+        Returns:
+            [`DecoderOutput`] or `tuple`:
+                If `return_dict` is True, a [`DecoderOutput`] is returned, otherwise a plain `tuple` is returned.
         """
         x = sample
         posterior = self.encode(x).latent_dist

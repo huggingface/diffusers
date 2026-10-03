@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Union
+from typing import TYPE_CHECKING, Any
 
 from ...utils import (
     get_module_from_name,
@@ -27,7 +27,7 @@ logger = logging.get_logger(__name__)
 
 class NVIDIAModelOptQuantizer(DiffusersQuantizer):
     r"""
-    Diffusers Quantizer for TensorRT Model Optimizer
+    Diffusers Quantizer for Nvidia-Model Optimizer
     """
 
     use_keep_in_fp32_modules = True
@@ -61,7 +61,7 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
         model: "ModelMixin",
         param_value: "torch.Tensor",
         param_name: str,
-        state_dict: Dict[str, Any],
+        state_dict: dict[str, Any],
         **kwargs,
     ):
         # ModelOpt imports diffusers internally. This is here to prevent circular imports
@@ -69,7 +69,11 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
 
         module, tensor_name = get_module_from_name(model, param_name)
         if self.pre_quantized:
-            return True
+            # ModelOpt restoration recreates quantizer state such as `_amax` and
+            # `_scale` as buffers. Let the regular low-memory loader materialize
+            # those buffers on their target device. Only parameters need the
+            # wrapper-aware assignment below.
+            return tensor_name in module._parameters
         elif is_quantized(module) and "weight" in tensor_name:
             return True
         return False
@@ -92,6 +96,8 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
         dtype = kwargs.get("dtype", torch.float32)
         module, tensor_name = get_module_from_name(model, param_name)
         if self.pre_quantized:
+            if tensor_name not in module._parameters:
+                raise ValueError(f"Expected {param_name} to be a parameter in the restored ModelOpt graph.")
             module._parameters[tensor_name] = torch.nn.Parameter(param_value.to(device=target_device))
         else:
             set_module_tensor_to_device(model, param_name, target_device, param_value, dtype)
@@ -101,7 +107,7 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
             mtq.compress(module)
             module.weight.requires_grad = False
 
-    def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
+    def adjust_max_memory(self, max_memory: dict[str, int | str]) -> dict[str, int | str]:
         max_memory = {key: val * 0.90 for key, val in max_memory.items()}
         return max_memory
 
@@ -116,7 +122,7 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
             torch_dtype = torch.float32
         return torch_dtype
 
-    def get_conv_param_names(self, model: "ModelMixin") -> List[str]:
+    def get_conv_param_names(self, model: "ModelMixin") -> list[str]:
         """
         Get parameter names for all convolutional layers in a HuggingFace ModelMixin. Includes Conv1d/2d/3d and
         ConvTranspose1d/2d/3d.
@@ -142,7 +148,7 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
         self,
         model: "ModelMixin",
         device_map,
-        keep_in_fp32_modules: List[str] = [],
+        keep_in_fp32_modules: list[str] = [],
         **kwargs,
     ):
         # ModelOpt imports diffusers internally. This is here to prevent circular imports

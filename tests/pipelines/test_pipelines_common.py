@@ -4,17 +4,13 @@ import json
 import os
 import tempfile
 import unittest
-import uuid
-from typing import Any, Callable, Dict, Union
+from typing import Any, Callable, Dict
 
 import numpy as np
 import PIL.Image
 import pytest
 import torch
 import torch.nn as nn
-from huggingface_hub import ModelCard, delete_repo
-from huggingface_hub.utils import is_jinja_available
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 import diffusers
 from diffusers import (
@@ -22,7 +18,6 @@ from diffusers import (
     AutoencoderKL,
     AutoencoderTiny,
     ConsistencyDecoderVAE,
-    DDIMScheduler,
     DiffusionPipeline,
     FasterCacheConfig,
     KolorsPipeline,
@@ -35,7 +30,9 @@ from diffusers import (
 from diffusers.hooks import apply_group_offloading
 from diffusers.hooks.faster_cache import FasterCacheBlockHook, FasterCacheDenoiserHook
 from diffusers.hooks.first_block_cache import FirstBlockCacheConfig
+from diffusers.hooks.mag_cache import MagCacheConfig
 from diffusers.hooks.pyramid_attention_broadcast import PyramidAttentionBroadcastHook
+from diffusers.hooks.taylorseer_cache import TaylorSeerCacheConfig
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FluxIPAdapterMixin, IPAdapterMixin
 from diffusers.models.attention import AttentionModuleMixin
@@ -61,17 +58,14 @@ from ..models.unets.test_models_unet_2d_condition import (
     create_ip_adapter_faceid_state_dict,
     create_ip_adapter_state_dict,
 )
-from ..others.test_utils import TOKEN, USER, is_staging_test
 from ..testing_utils import (
     CaptureLogger,
     backend_empty_cache,
     numpy_cosine_similarity_distance,
     require_accelerate_version_greater,
     require_accelerator,
-    require_hf_hub_version_greater,
     require_torch,
     require_torch_accelerator,
-    require_transformers_version_greater,
     skip_mps,
     torch_device,
 )
@@ -103,7 +97,7 @@ def check_qkv_fusion_processors_exist(model):
 def check_qkv_fused_layers_exist(model, layer_names):
     is_fused_submodules = []
     for submodule in model.modules():
-        if not isinstance(submodule, AttentionModuleMixin):
+        if not isinstance(submodule, AttentionModuleMixin) or not submodule._supports_qkv_fusion:
             continue
         is_fused_attribute_set = submodule.fused_projections
         is_fused_layer = True
@@ -135,7 +129,7 @@ class SDFunctionTesterMixin:
         output_1 = pipe(**inputs)
 
         # make sure sliced vae decode yields the same result
-        pipe.enable_vae_slicing()
+        pipe.vae.enable_slicing()
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * image_count
         if "image" in inputs:
@@ -162,7 +156,7 @@ class SDFunctionTesterMixin:
         output_1 = pipe(**inputs)[0]
 
         # make sure tiled vae decode yields the same result
-        pipe.enable_vae_tiling()
+        pipe.vae.enable_tiling()
         inputs = self.get_dummy_inputs(torch_device)
         inputs["return_dict"] = False
         output_2 = pipe(**inputs)[0]
@@ -832,7 +826,7 @@ class PipelineFromPipeTesterMixin:
 
     def test_from_pipe_consistent_config(self):
         if self.original_pipeline_class == StableDiffusionPipeline:
-            original_repo = "hf-internal-testing/tiny-stable-diffusion-pipe"
+            original_repo = "hf-internal-testing/tiny-stable-diffusion-torch"
             original_kwargs = {"requires_safety_checker": False}
         elif self.original_pipeline_class == StableDiffusionXLPipeline:
             original_repo = "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
@@ -1062,7 +1056,10 @@ class PipelineTesterMixin:
     test_xformers_attention = True
     test_layerwise_casting = False
     test_group_offloading = False
-    supports_dduf = True
+
+    # Components that cannot be offloaded at leaf level. See `BasePipelineTesterConfig` in
+    # `tests/pipelines/testing_utils/common.py`, which declares the same attribute, for the rationale.
+    group_offloading_leaf_level_exclude_modules = []
 
     def get_generator(self, seed):
         device = torch_device if torch_device != "mps" else "cpu"
@@ -1070,7 +1067,7 @@ class PipelineTesterMixin:
         return generator
 
     @property
-    def pipeline_class(self) -> Union[Callable, DiffusionPipeline]:
+    def pipeline_class(self) -> Callable | DiffusionPipeline:
         raise NotImplementedError(
             "You need to set the attribute `pipeline_class = ClassNameOfPipeline` in the child test class. "
             "See existing pipeline tests for reference."
@@ -1155,6 +1152,9 @@ class PipelineTesterMixin:
 
     def test_save_load_local(self, expected_max_difference=5e-4):
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
@@ -1293,6 +1293,9 @@ class PipelineTesterMixin:
         additional_params_copy_to_batched_inputs=["num_inference_steps"],
     ):
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         for components in pipe.components.values():
             if hasattr(components, "set_default_attn_processor"):
@@ -1343,6 +1346,9 @@ class PipelineTesterMixin:
 
     def test_dict_tuple_outputs_equivalent(self, expected_slice=None, expected_max_difference=1e-4):
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
@@ -1422,8 +1428,33 @@ class PipelineTesterMixin:
     def test_save_load_float16(self, expected_max_diff=1e-2):
         components = self.get_dummy_components()
         for name, module in components.items():
-            if hasattr(module, "half"):
+            # Account for components with _keep_in_fp32_modules
+            if hasattr(module, "_keep_in_fp32_modules") and module._keep_in_fp32_modules is not None:
+                for name, param in module.named_parameters():
+                    if any(
+                        module_to_keep_in_fp32 in name.split(".")
+                        for module_to_keep_in_fp32 in module._keep_in_fp32_modules
+                    ):
+                        param.data = param.data.to(torch_device).to(torch.float32)
+                    else:
+                        param.data = param.data.to(torch_device).to(torch.float16)
+                for name, buf in module.named_buffers():
+                    if not buf.is_floating_point():
+                        buf.data = buf.data.to(torch_device)
+                    elif any(
+                        module_to_keep_in_fp32 in name.split(".")
+                        for module_to_keep_in_fp32 in module._keep_in_fp32_modules
+                    ):
+                        buf.data = buf.data.to(torch_device).to(torch.float32)
+                    else:
+                        buf.data = buf.data.to(torch_device).to(torch.float16)
+
+            elif hasattr(module, "half"):
                 components[name] = module.to(torch_device).half()
+
+        for key, component in components.items():
+            if hasattr(component, "eval"):
+                component.eval()
 
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
@@ -1437,7 +1468,7 @@ class PipelineTesterMixin:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe.save_pretrained(tmpdir)
-            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, torch_dtype=torch.float16)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, dtype=torch.float16)
             for component in pipe_loaded.components.values():
                 if hasattr(component, "set_default_attn_processor"):
                     component.set_default_attn_processor()
@@ -1461,7 +1492,12 @@ class PipelineTesterMixin:
     def test_save_load_optional_components(self, expected_max_difference=1e-4):
         if not hasattr(self.pipeline_class, "_optional_components"):
             return
+        if not self.pipeline_class._optional_components:
+            return
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
@@ -1507,14 +1543,18 @@ class PipelineTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         pipe.to("cpu")
-        model_devices = [component.device.type for component in components.values() if hasattr(component, "device")]
+        model_devices = [
+            component.device.type for component in components.values() if getattr(component, "device", None)
+        ]
         self.assertTrue(all(device == "cpu" for device in model_devices))
 
         output_cpu = pipe(**self.get_dummy_inputs("cpu"))[0]
         self.assertTrue(np.isnan(output_cpu).sum() == 0)
 
         pipe.to(torch_device)
-        model_devices = [component.device.type for component in components.values() if hasattr(component, "device")]
+        model_devices = [
+            component.device.type for component in components.values() if getattr(component, "device", None)
+        ]
         self.assertTrue(all(device == torch_device for device in model_devices))
 
         output_device = pipe(**self.get_dummy_inputs(torch_device))[0]
@@ -1525,11 +1565,11 @@ class PipelineTesterMixin:
         pipe = self.pipeline_class(**components)
         pipe.set_progress_bar_config(disable=None)
 
-        model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
+        model_dtypes = [component.dtype for component in components.values() if getattr(component, "dtype", None)]
         self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
 
         pipe.to(dtype=torch.float16)
-        model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
+        model_dtypes = [component.dtype for component in components.values() if getattr(component, "dtype", None)]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
     def test_attention_slicing_forward_pass(self, expected_max_diff=1e-3):
@@ -1542,6 +1582,9 @@ class PipelineTesterMixin:
             return
 
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
@@ -2050,7 +2093,16 @@ class PipelineTesterMixin:
             for component_name in model_components_pipe:
                 pipe_component = model_components_pipe[component_name]
                 pipe_loaded_component = model_components_pipe_loaded[component_name]
-                for p1, p2 in zip(pipe_component.parameters(), pipe_loaded_component.parameters()):
+
+                model_loaded_params = dict(pipe_loaded_component.named_parameters())
+                model_original_params = dict(pipe_component.named_parameters())
+
+                for name, p1 in model_original_params.items():
+                    # Skip tied weights that aren't saved with variants (transformers v5 behavior)
+                    if name not in model_loaded_params:
+                        continue
+
+                    p2 = model_loaded_params[name]
                     # nan check for luminanext (mps).
                     if not (is_nan(p1) and is_nan(p2)):
                         self.assertTrue(torch.equal(p1, p2))
@@ -2074,6 +2126,9 @@ class PipelineTesterMixin:
             return
 
         components = self.get_dummy_components()
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
 
         # We initialize the pipeline with only text encoders and tokenizers,
         # mimicking a real-world scenario.
@@ -2196,39 +2251,11 @@ class PipelineTesterMixin:
             )
         )
 
-    @require_hf_hub_version_greater("0.26.5")
-    @require_transformers_version_greater("4.47.1")
-    def test_save_load_dduf(self, atol=1e-4, rtol=1e-4):
-        if not self.supports_dduf:
-            return
-
-        from huggingface_hub import export_folder_as_dduf
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device="cpu")
-        inputs.pop("generator")
-        inputs["generator"] = torch.manual_seed(0)
-
-        pipeline_out = pipe(**inputs)[0]
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            dduf_filename = os.path.join(tmpdir, f"{pipe.__class__.__name__.lower()}.dduf")
-            pipe.save_pretrained(tmpdir, safe_serialization=True)
-            export_folder_as_dduf(dduf_filename, folder_path=tmpdir)
-            loaded_pipe = self.pipeline_class.from_pretrained(tmpdir, dduf_file=dduf_filename).to(torch_device)
-
-        inputs["generator"] = torch.manual_seed(0)
-        loaded_pipeline_out = loaded_pipe(**inputs)[0]
-
-        if isinstance(pipeline_out, np.ndarray) and isinstance(loaded_pipeline_out, np.ndarray):
-            assert np.allclose(pipeline_out, loaded_pipeline_out, atol=atol, rtol=rtol)
-        elif isinstance(pipeline_out, torch.Tensor) and isinstance(loaded_pipeline_out, torch.Tensor):
-            assert torch.allclose(pipeline_out, loaded_pipeline_out, atol=atol, rtol=rtol)
-
+    @pytest.mark.xfail(
+        condition=torch_device == "mps",
+        reason="MPS does not support float8 casting.",
+        strict=True,
+    )
     def test_layerwise_casting_inference(self):
         if not self.test_layerwise_casting:
             return
@@ -2318,7 +2345,7 @@ class PipelineTesterMixin:
         self.assertTrue(np.allclose(output_without_group_offloading, output_with_group_offloading1, atol=1e-4))
         self.assertTrue(np.allclose(output_without_group_offloading, output_with_group_offloading2, atol=1e-4))
 
-    def test_torch_dtype_dict(self):
+    def test_dtype_dict(self):
         components = self.get_dummy_components()
         if not components:
             self.skipTest("No dummy components defined.")
@@ -2328,21 +2355,42 @@ class PipelineTesterMixin:
 
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
             pipe.save_pretrained(tmpdirname, safe_serialization=False)
-            torch_dtype_dict = {specified_key: torch.bfloat16, "default": torch.float16}
-            loaded_pipe = self.pipeline_class.from_pretrained(tmpdirname, torch_dtype=torch_dtype_dict)
+            dtype_dict = {specified_key: torch.bfloat16, "default": torch.float16}
+            loaded_pipe = self.pipeline_class.from_pretrained(tmpdirname, dtype=dtype_dict)
 
         for name, component in loaded_pipe.components.items():
             if isinstance(component, torch.nn.Module) and hasattr(component, "dtype"):
-                expected_dtype = torch_dtype_dict.get(name, torch_dtype_dict.get("default", torch.float32))
+                expected_dtype = dtype_dict.get(name, dtype_dict.get("default", torch.float32))
                 self.assertEqual(
                     component.dtype,
                     expected_dtype,
                     f"Component '{name}' has dtype {component.dtype} but expected {expected_dtype}",
                 )
 
-    @require_torch_accelerator
+    def test_dtype_alias(self):
+        # `torch_dtype` is deprecated in favor of `dtype` in `from_pretrained`.
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdirname:
+            pipe.save_pretrained(tmpdirname, safe_serialization=False)
+            loaded_pipe = self.pipeline_class.from_pretrained(tmpdirname, dtype=torch.float16)
+
+        for name, component in loaded_pipe.components.items():
+            if isinstance(component, torch.nn.Module) and hasattr(component, "dtype"):
+                self.assertEqual(
+                    component.dtype,
+                    torch.float16,
+                    f"Component '{name}' has dtype {component.dtype} but expected {torch.float16}",
+                )
+
     def test_pipeline_with_accelerator_device_map(self, expected_max_difference=1e-4):
         components = self.get_dummy_components()
+        # Set text encoders to eval mode to match from_pretrained behavior
+        # This ensures deterministic outputs when models are loaded with device_map
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -2391,7 +2439,11 @@ class PipelineTesterMixin:
             if name not in [exclude_module_name] and isinstance(component, torch.nn.Module):
                 # `component.device` prints the `onload_device` type. We should probably override the
                 # `device` property in `ModelMixin`.
-                component_device = next(component.parameters())[0].device
+                # Skip modules with no parameters (e.g., dummy safety checkers with only buffers)
+                params = list(component.parameters())
+                if not params:
+                    continue
+                component_device = params[0].device
                 self.assertTrue(torch.device(component_device).type == torch.device(offload_device).type)
 
     @require_torch_accelerator
@@ -2422,6 +2474,7 @@ class PipelineTesterMixin:
             onload_device=torch_device,
             offload_device=offload_device,
             offload_type="leaf_level",
+            exclude_modules=self.group_offloading_leaf_level_exclude_modules,
         )
         pipe.set_progress_bar_config(disable=None)
         inputs["generator"] = torch.manual_seed(0)
@@ -2429,141 +2482,6 @@ class PipelineTesterMixin:
 
         max_diff = np.abs(to_np(out) - to_np(out_offload)).max()
         self.assertLess(max_diff, expected_max_difference)
-
-
-@is_staging_test
-class PipelinePushToHubTester(unittest.TestCase):
-    identifier = uuid.uuid4()
-    repo_id = f"test-pipeline-{identifier}"
-    org_repo_id = f"valid_org/{repo_id}-org"
-
-    def get_pipeline_components(self):
-        unet = UNet2DConditionModel(
-            block_out_channels=(32, 64),
-            layers_per_block=2,
-            sample_size=32,
-            in_channels=4,
-            out_channels=4,
-            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
-            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
-            cross_attention_dim=32,
-        )
-
-        scheduler = DDIMScheduler(
-            beta_start=0.00085,
-            beta_end=0.012,
-            beta_schedule="scaled_linear",
-            clip_sample=False,
-            set_alpha_to_one=False,
-        )
-
-        vae = AutoencoderKL(
-            block_out_channels=[32, 64],
-            in_channels=3,
-            out_channels=3,
-            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
-            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
-            latent_channels=4,
-        )
-
-        text_encoder_config = CLIPTextConfig(
-            bos_token_id=0,
-            eos_token_id=2,
-            hidden_size=32,
-            intermediate_size=37,
-            layer_norm_eps=1e-05,
-            num_attention_heads=4,
-            num_hidden_layers=5,
-            pad_token_id=1,
-            vocab_size=1000,
-        )
-        text_encoder = CLIPTextModel(text_encoder_config)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            dummy_vocab = {"<|startoftext|>": 0, "<|endoftext|>": 1, "!": 2}
-            vocab_path = os.path.join(tmpdir, "vocab.json")
-            with open(vocab_path, "w") as f:
-                json.dump(dummy_vocab, f)
-
-            merges = "Ġ t\nĠt h"
-            merges_path = os.path.join(tmpdir, "merges.txt")
-            with open(merges_path, "w") as f:
-                f.writelines(merges)
-            tokenizer = CLIPTokenizer(vocab_file=vocab_path, merges_file=merges_path)
-
-        components = {
-            "unet": unet,
-            "scheduler": scheduler,
-            "vae": vae,
-            "text_encoder": text_encoder,
-            "tokenizer": tokenizer,
-            "safety_checker": None,
-            "feature_extractor": None,
-        }
-        return components
-
-    def test_push_to_hub(self):
-        components = self.get_pipeline_components()
-        pipeline = StableDiffusionPipeline(**components)
-        pipeline.push_to_hub(self.repo_id, token=TOKEN)
-
-        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/{self.repo_id}", subfolder="unet")
-        unet = components["unet"]
-        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
-            self.assertTrue(torch.equal(p1, p2))
-
-        # Reset repo
-        delete_repo(token=TOKEN, repo_id=self.repo_id)
-
-        # Push to hub via save_pretrained
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            pipeline.save_pretrained(tmp_dir, repo_id=self.repo_id, push_to_hub=True, token=TOKEN)
-
-        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/{self.repo_id}", subfolder="unet")
-        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
-            self.assertTrue(torch.equal(p1, p2))
-
-        # Reset repo
-        delete_repo(self.repo_id, token=TOKEN)
-
-    def test_push_to_hub_in_organization(self):
-        components = self.get_pipeline_components()
-        pipeline = StableDiffusionPipeline(**components)
-        pipeline.push_to_hub(self.org_repo_id, token=TOKEN)
-
-        new_model = UNet2DConditionModel.from_pretrained(self.org_repo_id, subfolder="unet")
-        unet = components["unet"]
-        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
-            self.assertTrue(torch.equal(p1, p2))
-
-        # Reset repo
-        delete_repo(token=TOKEN, repo_id=self.org_repo_id)
-
-        # Push to hub via save_pretrained
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            pipeline.save_pretrained(tmp_dir, push_to_hub=True, token=TOKEN, repo_id=self.org_repo_id)
-
-        new_model = UNet2DConditionModel.from_pretrained(self.org_repo_id, subfolder="unet")
-        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
-            self.assertTrue(torch.equal(p1, p2))
-
-        # Reset repo
-        delete_repo(self.org_repo_id, token=TOKEN)
-
-    @unittest.skipIf(
-        not is_jinja_available(),
-        reason="Model card tests cannot be performed without Jinja installed.",
-    )
-    def test_push_to_hub_library_name(self):
-        components = self.get_pipeline_components()
-        pipeline = StableDiffusionPipeline(**components)
-        pipeline.push_to_hub(self.repo_id, token=TOKEN)
-
-        model_card = ModelCard.load(f"{USER}/{self.repo_id}", token=TOKEN).data
-        assert model_card.library_name == "diffusers"
-
-        # Reset repo
-        delete_repo(self.repo_id, token=TOKEN)
 
 
 class PyramidAttentionBroadcastTesterMixin:
@@ -2662,6 +2580,9 @@ class PyramidAttentionBroadcastTesterMixin:
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         num_layers = 2
         components = self.get_dummy_components(num_layers=num_layers)
+        for key in components:
+            if "text_encoder" in key and hasattr(components[key], "eval"):
+                components[key].eval()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
@@ -2908,6 +2829,110 @@ class FirstBlockCacheTesterMixin:
         )
         assert np.allclose(original_image_slice, image_slice_fbc_disabled, atol=1e-4), (
             "Outputs from normal inference and after disabling cache should not differ."
+        )
+
+
+class TaylorSeerCacheTesterMixin:
+    taylorseer_cache_config = TaylorSeerCacheConfig(
+        cache_interval=5,
+        disable_cache_before_step=10,
+        max_order=1,
+        taylor_factors_dtype=torch.bfloat16,
+        use_lite_mode=True,
+    )
+
+    def test_taylorseer_cache_inference(self, expected_atol: float = 0.1):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        def create_pipe():
+            torch.manual_seed(0)
+            num_layers = 2
+            components = self.get_dummy_components(num_layers=num_layers)
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(device)
+            pipe.set_progress_bar_config(disable=None)
+            return pipe
+
+        def run_forward(pipe):
+            torch.manual_seed(0)
+            inputs = self.get_dummy_inputs(device)
+            inputs["num_inference_steps"] = 50
+            return pipe(**inputs)[0]
+
+        # Run inference without TaylorSeerCache
+        pipe = create_pipe()
+        output = run_forward(pipe).flatten()
+        original_image_slice = np.concatenate((output[:8], output[-8:]))
+
+        # Run inference with TaylorSeerCache enabled
+        pipe = create_pipe()
+        pipe.transformer.enable_cache(self.taylorseer_cache_config)
+        output = run_forward(pipe).flatten()
+        image_slice_fbc_enabled = np.concatenate((output[:8], output[-8:]))
+
+        # Run inference with TaylorSeerCache disabled
+        pipe.transformer.disable_cache()
+        output = run_forward(pipe).flatten()
+        image_slice_fbc_disabled = np.concatenate((output[:8], output[-8:]))
+
+        assert np.allclose(original_image_slice, image_slice_fbc_enabled, atol=expected_atol), (
+            "TaylorSeerCache outputs should not differ much."
+        )
+        assert np.allclose(original_image_slice, image_slice_fbc_disabled, atol=1e-4), (
+            "Outputs from normal inference and after disabling cache should not differ."
+        )
+
+
+class MagCacheTesterMixin:
+    mag_cache_config = MagCacheConfig(
+        threshold=0.06,
+        max_skip_steps=3,
+        retention_ratio=0.2,
+        num_inference_steps=50,
+        mag_ratios=torch.ones(50),
+    )
+
+    def test_mag_cache_inference(self, expected_atol: float = 0.1):
+        device = "cpu"
+
+        def create_pipe():
+            torch.manual_seed(0)
+            num_layers = 2
+            components = self.get_dummy_components(num_layers=num_layers)
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(device)
+            pipe.set_progress_bar_config(disable=None)
+            return pipe
+
+        def run_forward(pipe):
+            torch.manual_seed(0)
+            inputs = self.get_dummy_inputs(device)
+            # Match the config steps
+            inputs["num_inference_steps"] = 50
+            return pipe(**inputs)[0]
+
+        # 1. Run inference without MagCache (Baseline)
+        pipe = create_pipe()
+        output = run_forward(pipe).flatten()
+        original_image_slice = np.concatenate((output[:8], output[-8:]))
+
+        # 2. Run inference with MagCache ENABLED
+        pipe = create_pipe()
+        pipe.transformer.enable_cache(self.mag_cache_config)
+        output = run_forward(pipe).flatten()
+        image_slice_enabled = np.concatenate((output[:8], output[-8:]))
+
+        # 3. Run inference with MagCache DISABLED
+        pipe.transformer.disable_cache()
+        output = run_forward(pipe).flatten()
+        image_slice_disabled = np.concatenate((output[:8], output[-8:]))
+
+        assert np.allclose(original_image_slice, image_slice_enabled, atol=expected_atol), (
+            "MagCache outputs should not differ too much from baseline."
+        )
+
+        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-4), (
+            "Outputs after disabling cache should match original inference exactly."
         )
 
 

@@ -13,8 +13,6 @@
 # limitations under the License.
 
 
-from typing import List, Optional, Union
-
 import torch
 from PIL import Image
 from transformers import (
@@ -36,6 +34,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
+from ...utils.torch_utils import get_module_execution_device
 from ..pipeline_utils import DiffusionPipeline
 from .modeling_flux import ReduxImageEncoder
 from .pipeline_output import FluxPriorReduxPipelineOutput
@@ -174,12 +173,18 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
             raise ValueError(
                 "If `prompt_embeds` are provided, `pooled_prompt_embeds` also have to be passed. Make sure to generate `pooled_prompt_embeds` from the same text encoder that was used to generate `prompt_embeds`."
             )
-        if isinstance(prompt_embeds_scale, list) and (
-            isinstance(image, list) and len(prompt_embeds_scale) != len(image)
+        image_batch_size = (
+            image.shape[0] if isinstance(image, torch.Tensor) else len(image) if isinstance(image, list) else 1
+        )
+        for scale_name, scale in (
+            ("prompt_embeds_scale", prompt_embeds_scale),
+            ("pooled_prompt_embeds_scale", pooled_prompt_embeds_scale),
         ):
-            raise ValueError(
-                f"number of weights must be equal to number of images, but {len(prompt_embeds_scale)} weights were provided and {len(image)} images"
-            )
+            if isinstance(scale, list) and len(scale) != image_batch_size:
+                raise ValueError(
+                    f"number of weights in `{scale_name}` must be equal to number of images, but "
+                    f"{len(scale)} weights were provided and {image_batch_size} images"
+                )
 
     def encode_image(self, image, device, num_images_per_prompt):
         dtype = next(self.image_encoder.parameters()).dtype
@@ -196,11 +201,11 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._get_t5_prompt_embeds
     def _get_t5_prompt_embeds(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: str | list[str] = None,
         num_images_per_prompt: int = 1,
         max_sequence_length: int = 512,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         device = device or self._execution_device
         dtype = dtype or self.text_encoder.dtype
@@ -230,7 +235,8 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 f" {max_sequence_length} tokens: {removed_text}"
             )
 
-        prompt_embeds = self.text_encoder_2(text_input_ids.to(device), output_hidden_states=False)[0]
+        model_device = get_module_execution_device(self.text_encoder_2)
+        prompt_embeds = self.text_encoder_2(text_input_ids.to(model_device), output_hidden_states=False)[0]
 
         dtype = self.text_encoder_2.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
@@ -246,9 +252,9 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline._get_clip_prompt_embeds
     def _get_clip_prompt_embeds(
         self,
-        prompt: Union[str, List[str]],
+        prompt: str | list[str],
         num_images_per_prompt: int = 1,
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
     ):
         device = device or self._execution_device
 
@@ -276,7 +282,8 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
                 f" {self.tokenizer_max_length} tokens: {removed_text}"
             )
-        prompt_embeds = self.text_encoder(text_input_ids.to(device), output_hidden_states=False)
+        model_device = get_module_execution_device(self.text_encoder)
+        prompt_embeds = self.text_encoder(text_input_ids.to(model_device), output_hidden_states=False)
 
         # Use pooled output of CLIPTextModel
         prompt_embeds = prompt_embeds.pooler_output
@@ -291,21 +298,21 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
     # Copied from diffusers.pipelines.flux.pipeline_flux.FluxPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
-        prompt_2: Optional[Union[str, List[str]]] = None,
-        device: Optional[torch.device] = None,
+        prompt: str | list[str],
+        prompt_2: str | list[str] | None = None,
+        device: torch.device | None = None,
         num_images_per_prompt: int = 1,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds: torch.FloatTensor | None = None,
+        pooled_prompt_embeds: torch.FloatTensor | None = None,
         max_sequence_length: int = 512,
-        lora_scale: Optional[float] = None,
+        lora_scale: float | None = None,
     ):
         r"""
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 prompt to be encoded
-            prompt_2 (`str` or `List[str]`, *optional*):
+            prompt_2 (`str` or `list[str]`, *optional*):
                 The prompt or prompts to be sent to the `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
                 used in all text-encoders
             device: (`torch.device`):
@@ -373,33 +380,39 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
     def __call__(
         self,
         image: PipelineImageInput,
-        prompt: Union[str, List[str]] = None,
-        prompt_2: Optional[Union[str, List[str]]] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
-        pooled_prompt_embeds_scale: Optional[Union[float, List[float]]] = 1.0,
+        prompt: str | list[str] = None,
+        prompt_2: str | list[str] | None = None,
+        prompt_embeds: torch.FloatTensor | None = None,
+        pooled_prompt_embeds: torch.FloatTensor | None = None,
+        prompt_embeds_scale: float | list[float] | None = 1.0,
+        pooled_prompt_embeds_scale: float | list[float] | None = 1.0,
         return_dict: bool = True,
-    ):
+    ) -> FluxPriorReduxPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
         Args:
-            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
+            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, or `list[np.ndarray]`):
                 `Image`, numpy array or tensor representing an image batch to be used as the starting point. For both
                 numpy array and pytorch tensor, the expected value range is between `[0, 1]` If it's a tensor or a list
                 or tensors, the expected shape should be `(B, C, H, W)` or `(C, H, W)`. If it is a numpy array or a
                 list of arrays, the expected shape should be `(B, H, W, C)` or `(H, W, C)`
-            prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide the image generation. **experimental feature**: to use this feature,
                 make sure to explicitly load text encoders to the pipeline. Prompts will be ignored if text encoders
                 are not loaded.
-            prompt_2 (`str` or `List[str]`, *optional*):
+            prompt_2 (`str` or `list[str]`, *optional*):
                 The prompt or prompts to be sent to the `tokenizer_2` and `text_encoder_2`.
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
             pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated pooled text embeddings.
+            prompt_embeds_scale (`float` or `list[float]`, *optional*, defaults to 1.0):
+                Scale factor (or per-image list of scale factors) applied to the redux prompt embeddings before they
+                are returned.
+            pooled_prompt_embeds_scale (`float` or `list[float]`, *optional*, defaults to 1.0):
+                Scale factor (or per-image list of scale factors) applied to the redux pooled prompt embeddings before
+                they are returned.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.flux.FluxPriorReduxPipelineOutput`] instead of a plain tuple.
 

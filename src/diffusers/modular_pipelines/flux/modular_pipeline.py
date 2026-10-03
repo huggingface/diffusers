@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,12 +25,9 @@ class FluxModularPipeline(ModularPipeline, FluxLoraLoaderMixin, TextualInversion
     """
     A ModularPipeline for Flux.
 
-    <Tip warning={true}>
-
-        This is an experimental feature and is likely to change in the future.
-
-    </Tip>
     """
+
+    default_blocks_name = "FluxAutoBlocks"
 
     @property
     def default_height(self):
@@ -57,3 +54,12 @@ class FluxModularPipeline(ModularPipeline, FluxLoraLoaderMixin, TextualInversion
         if getattr(self, "transformer", None):
             num_channels_latents = self.transformer.config.in_channels // 4
         return num_channels_latents
+
+
+class FluxKontextModularPipeline(FluxModularPipeline):
+    """
+    A ModularPipeline for Flux Kontext.
+
+    """
+
+    default_blocks_name = "FluxKontextAutoBlocks"

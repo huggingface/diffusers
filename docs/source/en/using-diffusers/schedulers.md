@@ -10,200 +10,264 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Load schedulers and models
+# Schedulers
 
-[[open-in-colab]]
+A scheduler tells the denoising loop how much noise to remove at each step. Different schedulers trade speed for quality.
 
-Diffusion pipelines are a collection of interchangeable schedulers and models that can be mixed and matched to tailor a pipeline to a specific use case. The scheduler encapsulates the entire denoising process such as the number of denoising steps and the algorithm for finding the denoised sample. A scheduler is not parameterized or trained so they don't take very much memory. The model is usually only concerned with the forward pass of going from a noisy input to a less noisy sample.
+This guide shows how to load a scheduler and customize its timestep schedule, spacing, and sigmas.
 
-This guide will show you how to load schedulers and models to customize a pipeline. You'll use the [stable-diffusion-v1-5/stable-diffusion-v1-5](https://hf.co/stable-diffusion-v1-5/stable-diffusion-v1-5) checkpoint throughout this guide, so let's load it first.
+## Choosing a scheduler
+
+Start from the checkpoint default. Swap only if you need a different speed or quality tradeoff.
+
+- DPM++ 2M SDE Karras is a strong all-purpose option for many latent diffusion checkpoints.
+- [`TCDScheduler`] works well for distilled models.
+- Use [`FlowMatchEulerDiscreteScheduler`] or [`FlowMatchHeunDiscreteScheduler`] for FlowMatch models (Qwen-Image, Flux, and similar).
+- [`EulerDiscreteScheduler`] or [`EulerAncestralDiscreteScheduler`] often work well for anime-style images.
+- [`LCMScheduler`] with an LCM UNet or LoRA for few-step generation when the checkpoint supports it.
+
+## Loading schedulers
+
+> [!TIP]
+> Flow-matching models such as Qwen-Image and Flux ship [`FlowMatchEulerDiscreteScheduler`] as their default. Keep that scheduler unless you are intentionally experimenting. Swap with [`~ConfigMixin.from_config`] only when the replacement is compatible with the checkpoint.
+
+Schedulers are config-only and they do not ship weight tensors. Access the `.scheduler` attribute on a pipeline to inspect the loaded config.
 
 ```py
 import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
-).to("cuda")
-```
-
-You can see what scheduler this pipeline uses with the `pipeline.scheduler` attribute.
-
-```py
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, device_map="cuda"  # or "mps", "xpu", "cpu"
+)
 pipeline.scheduler
-PNDMScheduler {
-  "_class_name": "PNDMScheduler",
-  "_diffusers_version": "0.21.4",
-  "beta_end": 0.012,
-  "beta_schedule": "scaled_linear",
-  "beta_start": 0.00085,
-  "clip_sample": false,
-  "num_train_timesteps": 1000,
-  "set_alpha_to_one": false,
-  "skip_prk_steps": true,
-  "steps_offset": 1,
-  "timestep_spacing": "leading",
-  "trained_betas": null
-}
 ```
 
-## Load a scheduler
-
-Schedulers are defined by a configuration file that can be used by a variety of schedulers. Load a scheduler with the [`SchedulerMixin.from_pretrained`] method, and specify the `subfolder` parameter to load the configuration file into the correct subfolder of the pipeline repository.
-
-For example, to load the [`DDIMScheduler`]:
-
-```py
-from diffusers import DDIMScheduler, DiffusionPipeline
-
-ddim = DDIMScheduler.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="scheduler")
-```
-
-Then you can pass the newly loaded scheduler to the pipeline.
-
-```python
-pipeline = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", scheduler=ddim, torch_dtype=torch.float16, use_safetensors=True
-).to("cuda")
-```
-
-## Compare schedulers
-
-Schedulers have their own unique strengths and weaknesses, making it difficult to quantitatively compare which scheduler works best for a pipeline. You typically have to make a trade-off between denoising speed and denoising quality. We recommend trying out different schedulers to find one that works best for your use case. Call the `pipeline.scheduler.compatibles` attribute to see what schedulers are compatible with a pipeline.
-
-Let's compare the [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`], [`EulerAncestralDiscreteScheduler`], and the [`DPMSolverMultistepScheduler`] on the following prompt and seed.
-
-```py
-import torch
-from diffusers import DiffusionPipeline
-
-pipeline = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
-).to("cuda")
-
-prompt = "A photograph of an astronaut riding a horse on Mars, high resolution, high definition."
-generator = torch.Generator(device="cuda").manual_seed(8)
-```
-
-To change the pipelines scheduler, use the [`~ConfigMixin.from_config`] method to load a different scheduler's `pipeline.scheduler.config` into the pipeline.
-
-<hfoptions id="schedulers">
-<hfoption id="LMSDiscreteScheduler">
-
-[`LMSDiscreteScheduler`] typically generates higher quality images than the default scheduler.
-
-```py
-from diffusers import LMSDiscreteScheduler
-
-pipeline.scheduler = LMSDiscreteScheduler.from_config(pipeline.scheduler.config)
-image = pipeline(prompt, generator=generator).images[0]
-image
-```
-
-</hfoption>
-<hfoption id="EulerDiscreteScheduler">
-
-[`EulerDiscreteScheduler`] can generate higher quality images in just 30 steps.
-
-```py
-from diffusers import EulerDiscreteScheduler
-
-pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
-image = pipeline(prompt, generator=generator).images[0]
-image
-```
-
-</hfoption>
-<hfoption id="EulerAncestralDiscreteScheduler">
-
-[`EulerAncestralDiscreteScheduler`] can generate higher quality images in just 30 steps.
-
-```py
-from diffusers import EulerAncestralDiscreteScheduler
-
-pipeline.scheduler = EulerAncestralDiscreteScheduler.from_config(pipeline.scheduler.config)
-image = pipeline(prompt, generator=generator).images[0]
-image
-```
-
-</hfoption>
-<hfoption id="DPMSolverMultistepScheduler">
-
-[`DPMSolverMultistepScheduler`] provides a balance between speed and quality and can generate higher quality images in just 20 steps.
+To swap schedulers on a loaded pipeline, use [`~ConfigMixin.from_config`] with the existing scheduler config so `num_train_timesteps` and related fields stay aligned. For FlowMatch checkpoints (Qwen-Image, Flux, and similar), keep [`FlowMatchEulerDiscreteScheduler`] unless you are intentionally experimenting with a compatible replacement.
 
 ```py
 from diffusers import DPMSolverMultistepScheduler
 
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
-image = pipeline(prompt, generator=generator).images[0]
+```
+
+You can also load a scheduler config from the Hub with [`~SchedulerMixin.from_pretrained`] and pass it into [`~DiffusionPipeline.from_pretrained`] through `scheduler`.
+
+```py
+from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
+
+dpm = DPMSolverMultistepScheduler.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0", subfolder="scheduler"
+)
+pipeline = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    scheduler=dpm,
+    dtype=torch.float16,
+    device_map="cuda",  # or "mps", "xpu", "cpu"
+)
+pipeline.scheduler
+```
+
+## Timestep schedules
+
+Timestep or noise schedule decides how noise is distributed over the denoising process. The schedule can be linear or more concentrated toward the beginning or end. It is a precomputed sequence of noise levels generated from the scheduler's default configuration, but it can be customized to use other schedules.
+
+```text
+linear (even steps)                 AYS (denser where it matters)
+noise                               noise
+  ^                                   ^
+  | *                                 | *
+  |  *                                |   *
+  |   *                               |    **
+  |    *                              |     ***
+  |     *                             |      **
+  |      *                            |        *
+  |       *                           |          *
+  +-----------------> step            +-----------------> step
+```
+
+> [!TIP]
+> Custom `timesteps` only work if that scheduler’s `set_timesteps` accepts the argument (pipelines check the signature via `retrieve_timesteps` and raise `ValueError` otherwise). Check the scheduler’s API page or `set_timesteps` signature before passing them.
+
+The example below uses the [Align Your Steps (AYS)](https://research.nvidia.com/labs/toronto-ai/AlignYourSteps/) schedule which can generate a high-quality image in 10 steps, significantly speeding up generation and reducing computation time.
+
+Import the schedule and pass it to the `timesteps` argument in the pipeline.
+
+```py
+import torch
+from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
+from diffusers.schedulers import AysSchedules
+
+sampling_schedule = AysSchedules["StableDiffusionXLTimesteps"]
+print(sampling_schedule)
+# [999, 845, 730, 587, 443, 310, 193, 116, 53, 13]
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "SG161222/RealVisXL_V4.0",
+    dtype=torch.float16,
+    device_map="cuda"  # or "mps", "xpu", "cpu"
+)
+pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
+  pipeline.scheduler.config, algorithm_type="sde-dpmsolver++"
+)
+
+prompt = "A cinematic shot of a cute little rabbit wearing a jacket and doing a thumbs up"
+image = pipeline(
+    prompt=prompt,
+    negative_prompt="",
+    timesteps=sampling_schedule,
+).images[0]
+```
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ays.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">AYS timestep schedule 10 steps</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/10.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">Linearly-spaced timestep schedule 10 steps</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/25.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">Linearly-spaced timestep schedule 25 steps</figcaption>
+  </div>
+</div>
+
+For v-prediction/zero-SNR rescaling on older checkpoints, see [Legacy checkpoints](./legacy_checkpoints#rescaling-schedules).
+
+## Timestep spacing
+
+Timestep spacing refers to the specific steps *t* to sample from the schedule. Diffusers provides three spacing types as shown below.
+
+| spacing strategy | spacing calculation | example timesteps |
+|---|---|---|
+| `leading` | evenly spaced steps | `[900, 800, 700, ..., 100, 0]` |
+| `linspace` | include first and last steps and evenly divide remaining intermediate steps | `[1000, 888.89, 777.78, ..., 111.11, 0]` |
+| `trailing` | include last step and evenly divide remaining intermediate steps beginning from the end | `[999, 899, 799, 699, 599, 499, 399, 299, 199, 99]` |
+
+Pass the spacing strategy to the `timestep_spacing` argument in the scheduler.
+
+> [!TIP]
+> The `trailing` strategy typically produces higher quality images with more details with fewer steps, but the difference in quality is not as obvious for more standard step values.
+
+```py
+import torch
+from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "SG161222/RealVisXL_V4.0",
+    dtype=torch.float16,
+    device_map="cuda"  # or "mps", "xpu", "cpu"
+)
+pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
+  pipeline.scheduler.config, timestep_spacing="trailing"
+)
+
+prompt = "A cinematic shot of a cute little black cat sitting on a pumpkin at night"
+image = pipeline(
+    prompt=prompt,
+    negative_prompt="",
+    num_inference_steps=5,
+).images[0]
 image
 ```
 
-</hfoption>
-</hfoptions>
-
 <div class="flex gap-4">
   <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/diffusers_docs/astronaut_lms.png" />
-    <figcaption class="mt-2 text-center text-sm text-gray-500">LMSDiscreteScheduler</figcaption>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/stevhliu/testing-images/resolve/main/trailing_spacing.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">trailing spacing after 5 steps</figcaption>
   </div>
   <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/diffusers_docs/astronaut_euler_discrete.png" />
-    <figcaption class="mt-2 text-center text-sm text-gray-500">EulerDiscreteScheduler</figcaption>
-  </div>
-</div>
-<div class="flex gap-4">
-  <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/diffusers_docs/astronaut_euler_ancestral.png" />
-    <figcaption class="mt-2 text-center text-sm text-gray-500">EulerAncestralDiscreteScheduler</figcaption>
-  </div>
-  <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/diffusers_docs/astronaut_dpm.png" />
-    <figcaption class="mt-2 text-center text-sm text-gray-500">DPMSolverMultistepScheduler</figcaption>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/stevhliu/testing-images/resolve/main/leading_spacing.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">leading spacing after 5 steps</figcaption>
   </div>
 </div>
 
-Most images look very similar and are comparable in quality. Again, it often comes down to your specific use case so a good approach is to run multiple different schedulers and compare the results.
+## Sigmas
 
-## Models
+Sigmas is a measure of how noisy a sample is at a certain step as defined by the schedule. When using custom `sigmas`, the `timesteps` are calculated from these values instead of the default scheduler configuration.
 
-Models are loaded from the [`ModelMixin.from_pretrained`] method, which downloads and caches the latest version of the model weights and configurations. If the latest files are available in the local cache, [`~ModelMixin.from_pretrained`] reuses files in the cache instead of re-downloading them.
-
-Models can be loaded from a subfolder with the `subfolder` argument. For example, the model weights for [stable-diffusion-v1-5/stable-diffusion-v1-5](https://hf.co/stable-diffusion-v1-5/stable-diffusion-v1-5) are stored in the [unet](https://hf.co/stable-diffusion-v1-5/stable-diffusion-v1-5/tree/main/unet) subfolder.
-
-```python
-from diffusers import UNet2DConditionModel
-
-unet = UNet2DConditionModel.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="unet", use_safetensors=True)
+```text
+step:   0    1    2    3    4
+sigma:  σ0 > σ1 > σ2 > σ3 > σ4 ≈ 0
+        high noise  --->  clean sample
 ```
 
-They can also be directly loaded from a [repository](https://huggingface.co/google/ddpm-cifar10-32/tree/main).
+> [!TIP]
+> Custom `sigmas` only work if that scheduler’s `set_timesteps` accepts the argument (pipelines check the signature via `retrieve_timesteps` and raise `ValueError` otherwise). Check the scheduler’s API page or `set_timesteps` signature before passing them.
 
-```python
-from diffusers import UNet2DModel
-
-unet = UNet2DModel.from_pretrained("google/ddpm-cifar10-32", use_safetensors=True)
-```
-
-To load and save model variants, specify the `variant` argument in [`ModelMixin.from_pretrained`] and [`ModelMixin.save_pretrained`].
-
-```python
-from diffusers import UNet2DConditionModel
-
-unet = UNet2DConditionModel.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", subfolder="unet", variant="non_ema", use_safetensors=True
-)
-unet.save_pretrained("./local-unet", variant="non_ema")
-```
-
-Use the `torch_dtype` argument in [`~ModelMixin.from_pretrained`] to specify the dtype to load a model in.
+Pass the custom sigmas to the `sigmas` argument in the pipeline. The example below uses the [sigmas](https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_utils.py) from the 10-step AYS schedule.
 
 ```py
-from diffusers import AutoModel
+import torch
+from diffusers import DiffusionPipeline, EulerDiscreteScheduler
+from diffusers.schedulers import AysSchedules
 
-unet = AutoModel.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", subfolder="unet", torch_dtype=torch.float16
+pipeline = DiffusionPipeline.from_pretrained(
+    "SG161222/RealVisXL_V4.0",
+    dtype=torch.float16,
+    device_map="cuda",  # or "mps", "xpu", "cpu"
 )
+pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
+
+sigmas = AysSchedules["StableDiffusionXLSigmas"]
+prompt = "A cinematic shot of a cute little rabbit wearing a jacket and doing a thumbs up"
+image = pipeline(
+    prompt=prompt,
+    negative_prompt="",
+    sigmas=sigmas,
+).images[0]
 ```
 
-You can also use the [torch.Tensor.to](https://docs.pytorch.org/docs/stable/generated/torch.Tensor.to.html) method to convert to the specified dtype on the fly. It converts *all* weights unlike the `torch_dtype` argument that respects the `_keep_in_fp32_modules`. This is important for models whose layers must remain in fp32 for numerical stability and best generation quality (see example [here](https://github.com/huggingface/diffusers/blob/f864a9a352fa4a220d860bfdd1782e3e5af96382/src/diffusers/models/transformers/transformer_wan.py#L374)).
+### Karras sigmas
+
+[Karras sigmas](https://huggingface.co/papers/2206.00364) resamples the noise schedule for more efficient sampling by clustering sigmas more densely in the middle of the sequence where structure reconstruction is critical, while using fewer sigmas at the beginning and end where noise changes have less impact. This can increase the level of details in a generated image.
+
+```text
+default σ:  *  *  *  *  *  *  *  *     even-ish
+Karras σ:   *   * * * * *   *          denser mid, sparser ends
+            |---structure---|
+```
+
+Set `use_karras_sigmas=True` in the scheduler to enable it.
+
+```py
+import torch
+from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "SG161222/RealVisXL_V4.0",
+    dtype=torch.float16,
+    device_map="cuda"  # or "mps", "xpu", "cpu"
+)
+pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
+  pipeline.scheduler.config,
+  algorithm_type="sde-dpmsolver++",
+  use_karras_sigmas=True,
+)
+
+prompt = "A cinematic shot of a cute little rabbit wearing a jacket and doing a thumbs up"
+image = pipeline(
+    prompt=prompt,
+    negative_prompt="",
+    num_inference_steps=20,
+).images[0]
+```
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/stevhliu/testing-images/resolve/main/karras_sigmas_true.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">Karras sigmas enabled</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/stevhliu/testing-images/resolve/main/karras_sigmas_false.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">Karras sigmas disabled</figcaption>
+  </div>
+</div>
+
+Refer to the scheduler API [overview](../api/schedulers/overview) for a list of schedulers that support Karras sigmas. It should only be used for models trained with Karras sigmas.
+
+## Next steps
+
+- Read the [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) paper for more details about rescaling the noise schedule to enforce zero SNR.

@@ -66,7 +66,7 @@ TRANSFORMER_KEYS_RENAME_DICT = {
 TRANSFORMER_SPECIAL_KEYS_REMAP = {}
 
 
-def update_state_dict_(state_dict: Dict[str, Any], old_key: str, new_key: str) -> Dict[str, Any]:
+def update_state_dict_(state_dict: Dict[str, Any], old_key: str, new_key: str) -> dict[str, Any]:
     state_dict[new_key] = state_dict.pop(old_key)
 
 
@@ -81,7 +81,7 @@ def load_sharded_safetensors(dir: pathlib.Path):
     return state_dict
 
 
-def get_transformer_config(model_type: str) -> Dict[str, Any]:
+def get_transformer_config(model_type: str) -> dict[str, Any]:
     if model_type == "SkyReels-V2-DF-1.3B-540P":
         config = {
             "model_id": "Skywork/SkyReels-V2-DF-1.3B-540P",

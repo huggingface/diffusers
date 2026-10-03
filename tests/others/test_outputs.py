@@ -1,7 +1,5 @@
 import pickle as pkl
-import unittest
 from dataclasses import dataclass
-from typing import List, Union
 
 import numpy as np
 import PIL.Image
@@ -13,10 +11,10 @@ from ..testing_utils import require_torch
 
 @dataclass
 class CustomOutput(BaseOutput):
-    images: Union[List[PIL.Image.Image], np.ndarray]
+    images: list[PIL.Image.Image] | np.ndarray
 
 
-class ConfigTester(unittest.TestCase):
+class TestOutputs:
     def test_outputs_single_attribute(self):
         outputs = CustomOutput(images=np.random.rand(1, 3, 4, 4))
 
@@ -81,14 +79,14 @@ class ConfigTester(unittest.TestCase):
 
         data = np.random.rand(1, 3, 4, 4)
         x = CustomOutput(images=data)
-        self.assertFalse(torch.utils._pytree._is_leaf(x))
+        assert not torch.utils._pytree._is_leaf(x)
 
         expected_flat_outs = [data]
         expected_tree_spec = torch.utils._pytree.TreeSpec(CustomOutput, ["images"], [torch.utils._pytree.LeafSpec()])
 
         actual_flat_outs, actual_tree_spec = torch.utils._pytree.tree_flatten(x)
-        self.assertEqual(expected_flat_outs, actual_flat_outs)
-        self.assertEqual(expected_tree_spec, actual_tree_spec)
+        assert expected_flat_outs == actual_flat_outs
+        assert expected_tree_spec == actual_tree_spec
 
         unflattened_x = torch.utils._pytree.tree_unflatten(actual_flat_outs, actual_tree_spec)
-        self.assertEqual(x, unflattened_x)
+        assert x == unflattened_x

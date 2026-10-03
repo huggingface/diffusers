@@ -1,4 +1,6 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 from ..base import DiffusersQuantizer
 
@@ -16,6 +18,7 @@ from ...utils import (
     is_torch_available,
     logging,
 )
+from ...utils.torch_utils import get_device
 
 
 if is_torch_available() and is_gguf_available():
@@ -27,6 +30,7 @@ if is_torch_available() and is_gguf_available():
         _dequantize_gguf_and_restore_linear,
         _quant_shape_from_byte_shape,
         _replace_with_gguf_linear,
+        dequantize_gguf_tensor,
     )
 
 
@@ -41,7 +45,7 @@ class GGUFQuantizer(DiffusersQuantizer):
 
         self.compute_dtype = quantization_config.compute_dtype
         self.pre_quantized = quantization_config.pre_quantized
-        self.modules_to_not_convert = quantization_config.modules_to_not_convert
+        self.modules_to_not_convert = quantization_config.modules_to_not_convert or []
 
         if not isinstance(self.modules_to_not_convert, list):
             self.modules_to_not_convert = [self.modules_to_not_convert]
@@ -57,7 +61,7 @@ class GGUFQuantizer(DiffusersQuantizer):
             )
 
     # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.adjust_max_memory
-    def adjust_max_memory(self, max_memory: Dict[str, Union[int, str]]) -> Dict[str, Union[int, str]]:
+    def adjust_max_memory(self, max_memory: dict[str, int | str]) -> dict[str, int | str]:
         # need more space for buffers that are created during quantization
         max_memory = {key: val * 0.90 for key, val in max_memory.items()}
         return max_memory
@@ -82,7 +86,8 @@ class GGUFQuantizer(DiffusersQuantizer):
         inferred_shape = _quant_shape_from_byte_shape(loaded_param_shape, type_size, block_size)
         if inferred_shape != current_param_shape:
             raise ValueError(
-                f"{param_name} has an expected quantized shape of: {inferred_shape}, but received shape: {loaded_param_shape}"
+                f"{param_name} has an expected shape of: {current_param_shape}, but the loaded GGUF weight decodes "
+                f"to shape: {inferred_shape}"
             )
 
         return True
@@ -90,9 +95,9 @@ class GGUFQuantizer(DiffusersQuantizer):
     def check_if_quantized_param(
         self,
         model: "ModelMixin",
-        param_value: Union["GGUFParameter", "torch.Tensor"],
+        param_value: "GGUFParameter" | "torch.Tensor",
         param_name: str,
-        state_dict: Dict[str, Any],
+        state_dict: dict[str, Any],
         **kwargs,
     ) -> bool:
         if isinstance(param_value, GGUFParameter):
@@ -103,16 +108,32 @@ class GGUFQuantizer(DiffusersQuantizer):
     def create_quantized_param(
         self,
         model: "ModelMixin",
-        param_value: Union["GGUFParameter", "torch.Tensor"],
+        param_value: "GGUFParameter" | "torch.Tensor",
         param_name: str,
         target_device: "torch.device",
-        state_dict: Optional[Dict[str, Any]] = None,
-        unexpected_keys: Optional[List[str]] = None,
+        state_dict: dict[str, Any] | None = None,
+        unexpected_keys: list[str] | None = None,
         **kwargs,
     ):
         module, tensor_name = get_module_from_name(model, param_name)
         if tensor_name not in module._parameters and tensor_name not in module._buffers:
             raise ValueError(f"{module} does not have a parameter or a buffer named {tensor_name}.")
+
+        # If the GGUFParameter should not be quantized (for example, it is a submodule of any excluded module),
+        # dequantize it and set the (dequantized) parameter to the proper dtype.
+        if isinstance(param_value, GGUFParameter) and any(
+            m in param_name.split(".") for m in self.modules_to_not_convert
+        ):
+            keep_in_fp32 = getattr(self, "keep_in_fp32_modules", [])
+            param_should_be_fp32 = any(m in param_name.split(".") for m in keep_in_fp32)
+            target_dtype = torch.float32 if param_should_be_fp32 else self.compute_dtype
+            if param_should_be_fp32:
+                logger.warning(f"Quantized parameter {param_name} is required to remain in FP32, dequantizing now.")
+            else:
+                logger.warning(
+                    f"Quantized parameter {param_name} is excluded by `modules_to_not_convert`, dequantizing now."
+                )
+            param_value = dequantize_gguf_tensor(param_value).to(target_dtype)
 
         if tensor_name in module._parameters:
             module._parameters[tensor_name] = param_value.to(target_device)
@@ -123,12 +144,13 @@ class GGUFQuantizer(DiffusersQuantizer):
         self,
         model: "ModelMixin",
         device_map,
-        keep_in_fp32_modules: List[str] = [],
+        keep_in_fp32_modules: list[str] = [],
         **kwargs,
     ):
         state_dict = kwargs.get("state_dict", None)
 
-        self.modules_to_not_convert.extend(keep_in_fp32_modules)
+        self.keep_in_fp32_modules = [module for module in keep_in_fp32_modules if module is not None]
+        self.modules_to_not_convert.extend(self.keep_in_fp32_modules)
         self.modules_to_not_convert = [module for module in self.modules_to_not_convert if module is not None]
 
         _replace_with_gguf_linear(
@@ -156,12 +178,7 @@ class GGUFQuantizer(DiffusersQuantizer):
             logger.info(
                 "Model was found to be on CPU (could happen as a result of `enable_model_cpu_offload()`). So, moving it to accelerator. After dequantization, will move the model back to CPU again to preserve the previous device."
             )
-            device = (
-                torch.accelerator.current_accelerator()
-                if hasattr(torch, "accelerator")
-                else torch.cuda.current_device()
-            )
-            model.to(device)
+            model.to(get_device())
 
         model = _dequantize_gguf_and_restore_linear(model, self.modules_to_not_convert)
         if is_model_on_cpu:

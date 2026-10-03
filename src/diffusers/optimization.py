@@ -16,7 +16,6 @@
 
 import math
 from enum import Enum
-from typing import Optional, Union
 
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
@@ -121,7 +120,12 @@ def get_piecewise_constant_schedule(optimizer: Optimizer, step_rules: str, last_
 
 
 def get_linear_schedule_with_warmup(
-    optimizer: Optimizer, num_warmup_steps: int, num_training_steps: int, last_epoch: int = -1
+    optimizer: Optimizer,
+    num_warmup_steps: int,
+    num_training_steps: int,
+    last_epoch: int = -1,
+    f_min: float = 0.0,
+    f_max: float = 1.0,
 ) -> LambdaLR:
     """
     Create a schedule with a learning rate that decreases linearly from the initial lr set in the optimizer to 0, after
@@ -136,6 +140,10 @@ def get_linear_schedule_with_warmup(
             The total number of training steps.
         last_epoch (`int`, *optional*, defaults to -1):
             The index of the last epoch when resuming training.
+        f_min (`float`, *optional*, defaults to 0.0):
+            Minimum lr multiplier (floor of the linear decay). The lr will not fall below `f_min * initial_lr`.
+        f_max (`float`, *optional*, defaults to 1.0):
+            Maximum lr multiplier (peak reached after warmup). The lr peaks at `f_max * initial_lr`.
 
     Return:
         `torch.optim.lr_scheduler.LambdaLR` with the appropriate schedule.
@@ -143,10 +151,9 @@ def get_linear_schedule_with_warmup(
 
     def lr_lambda(current_step: int):
         if current_step < num_warmup_steps:
-            return float(current_step) / float(max(1, num_warmup_steps))
-        return max(
-            0.0, float(num_training_steps - current_step) / float(max(1, num_training_steps - num_warmup_steps))
-        )
+            return f_max * float(current_step) / float(max(1, num_warmup_steps))
+        progress = float(num_training_steps - current_step) / float(max(1, num_training_steps - num_warmup_steps))
+        return f_min + (f_max - f_min) * max(0.0, progress)
 
     return LambdaLR(optimizer, lr_lambda, last_epoch)
 
@@ -166,7 +173,7 @@ def get_cosine_schedule_with_warmup(
             The number of steps for the warmup phase.
         num_training_steps (`int`):
             The total number of training steps.
-        num_periods (`float`, *optional*, defaults to 0.5):
+        num_cycles (`float`, *optional*, defaults to 0.5):
             The number of periods of the cosine function in a schedule (the default is to just decrease from the max
             value to 0 following a half-cosine).
         last_epoch (`int`, *optional*, defaults to -1):
@@ -287,11 +294,11 @@ TYPE_TO_SCHEDULER_FUNCTION = {
 
 
 def get_scheduler(
-    name: Union[str, SchedulerType],
+    name: str | SchedulerType,
     optimizer: Optimizer,
-    step_rules: Optional[str] = None,
-    num_warmup_steps: Optional[int] = None,
-    num_training_steps: Optional[int] = None,
+    step_rules: str | None = None,
+    num_warmup_steps: int | None = None,
+    num_training_steps: int | None = None,
     num_cycles: int = 1,
     power: float = 1.0,
     last_epoch: int = -1,

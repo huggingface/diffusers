@@ -25,7 +25,7 @@ A pipeline is a quick and easy way to run a model for inference, requiring no mo
 ```py
 >>> from diffusers import DDPMPipeline
 
->>> ddpm = DDPMPipeline.from_pretrained("google/ddpm-cat-256", use_safetensors=True).to("cuda")
+>>> ddpm = DDPMPipeline.from_pretrained("google/ddpm-cat-256", use_safetensors=True).to("cuda")  # or "mps", "xpu", "cpu"
 >>> image = ddpm(num_inference_steps=25).images[0]
 >>> image
 ```
@@ -46,7 +46,7 @@ To recreate the pipeline with the model and scheduler separately, let's write ou
 >>> from diffusers import DDPMScheduler, UNet2DModel
 
 >>> scheduler = DDPMScheduler.from_pretrained("google/ddpm-cat-256")
->>> model = UNet2DModel.from_pretrained("google/ddpm-cat-256", use_safetensors=True).to("cuda")
+>>> model = UNet2DModel.from_pretrained("google/ddpm-cat-256", use_safetensors=True).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 2. Set the number of timesteps to run the denoising process for:
@@ -71,7 +71,7 @@ tensor([980, 960, 940, 920, 900, 880, 860, 840, 820, 800, 780, 760, 740, 720,
 >>> import torch
 
 >>> sample_size = model.config.sample_size
->>> noise = torch.randn((1, 3, sample_size, sample_size), device="cuda")
+>>> noise = torch.randn((1, 3, sample_size, sample_size), device="cuda")  # or "mps", "xpu", "cpu"
 ```
 
 5. Now write a loop to iterate over the timesteps. At each timestep, the model does a [`UNet2DModel.forward`] pass and returns the noisy residual. The scheduler's [`~DDPMScheduler.step`] method takes the noisy residual, timestep, and input and it predicts the image at the previous timestep. This output becomes the next input to the model in the denoising loop, and it'll repeat until it reaches the end of the `timesteps` array.
@@ -110,11 +110,8 @@ Stable Diffusion is a text-to-image *latent diffusion* model. It is called a lat
 
 As you can see, this is already more complex than the DDPM pipeline which only contains a UNet model. The Stable Diffusion model has three separate pretrained models.
 
-<Tip>
-
-💡 Read the [How does Stable Diffusion work?](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work) blog for more details about how the VAE, UNet, and text encoder models work.
-
-</Tip>
+> [!TIP]
+> 💡 Read the [How does Stable Diffusion work?](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work) blog for more details about how the VAE, UNet, and text encoder models work.
 
 Now that you know what you need for the Stable Diffusion pipeline, load all these components with the [`~ModelMixin.from_pretrained`] method. You can find them in the pretrained [`stable-diffusion-v1-5/stable-diffusion-v1-5`](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5) checkpoint, and each component is stored in a separate subfolder:
 
@@ -145,7 +142,7 @@ Instead of the default [`PNDMScheduler`], exchange it for the [`UniPCMultistepSc
 To speed up inference, move the models to a GPU since, unlike the scheduler, they have trainable weights:
 
 ```py
->>> torch_device = "cuda"
+>>> torch_device = "cuda"  # or "mps", "xpu", "cpu"
 >>> vae.to(torch_device)
 >>> text_encoder.to(torch_device)
 >>> unet.to(torch_device)
@@ -155,11 +152,8 @@ To speed up inference, move the models to a GPU since, unlike the scheduler, the
 
 The next step is to tokenize the text to generate embeddings. The text is used to condition the UNet model and steer the diffusion process towards something that resembles the input prompt.
 
-<Tip>
-
-💡 The `guidance_scale` parameter determines how much weight should be given to the prompt when generating an image.
-
-</Tip>
+> [!TIP]
+> 💡 The `guidance_scale` parameter determines how much weight should be given to the prompt when generating an image.
 
 Feel free to choose any prompt you like if you want to generate something else!
 
@@ -202,15 +196,12 @@ Let's concatenate the conditional and unconditional embeddings into a batch to a
 
 Next, generate some initial random noise as a starting point for the diffusion process. This is the latent representation of the image, and it'll be gradually denoised. At this point, the `latent` image is smaller than the final image size but that's okay though because the model will transform it into the final 512x512 image dimensions later.
 
-<Tip>
-
-💡 The height and width are divided by 8 because the `vae` model has 3 down-sampling layers. You can check by running the following:
-
-```py
-2 ** (len(vae.config.block_out_channels) - 1) == 8
-```
-
-</Tip>
+> [!TIP]
+> 💡 The height and width are divided by 8 because the `vae` model has 3 down-sampling layers. You can check by running the following:
+>
+> ```py
+> 2 ** (len(vae.config.block_out_channels) - 1) == 8
+> ```
 
 ```py
 >>> latents = torch.randn(
@@ -289,5 +280,5 @@ This is really what 🧨 Diffusers is designed for: to make it intuitive and eas
 
 For your next steps, feel free to:
 
-* Learn how to [build and contribute a pipeline](../using-diffusers/contribute_pipeline) to 🧨 Diffusers. We can't wait and see what you'll come up with!
+* Learn how to [build and contribute a pipeline](../conceptual/contribution) to 🧨 Diffusers. We can't wait and see what you'll come up with!
 * Explore [existing pipelines](../api/pipelines/overview) in the library, and see if you can deconstruct and build a pipeline from scratch using the models and schedulers separately.

@@ -16,7 +16,7 @@ The model can be loaded with the following code snippet.
 ```python
 from diffusers import QwenImageTransformer2DModel
 
-transformer = QwenImageTransformer2DModel.from_pretrained("Qwen/QwenImage-20B", subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer = QwenImageTransformer2DModel.from_pretrained("Qwen/QwenImage-20B", subfolder="transformer", dtype=torch.bfloat16)
 ```
 
 ## QwenImageTransformer2DModel

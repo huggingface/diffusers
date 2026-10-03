@@ -1,0 +1,131 @@
+# coding=utf-8
+# Copyright 2024 HuggingFace Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import torch
+
+from diffusers import AutoencoderVidTok
+from diffusers.utils.torch_utils import randn_tensor
+
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import (
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    TrainingTesterMixin,
+    run_nondeterministic,
+)
+from .testing_utils import AutoencoderTesterMixin
+
+
+enable_full_determinism()
+
+
+class AutoencoderVidTokTesterConfig(BaseModelTesterConfig):
+    @property
+    def model_class(self):
+        return AutoencoderVidTok
+
+    @property
+    def main_input_name(self) -> str:
+        return "sample"
+
+    @property
+    def output_shape(self) -> tuple:
+        return (3, 16, 32, 32)
+
+    @property
+    def generator(self):
+        return torch.Generator("cpu").manual_seed(0)
+
+    def get_init_dict(self) -> dict:
+        return {
+            "is_causal": False,
+            "in_channels": 3,
+            "out_channels": 3,
+            "ch": 128,
+            "ch_mult": [1, 2, 4, 4, 4],
+            "z_channels": 6,
+            "double_z": False,
+            "num_res_blocks": 2,
+            "regularizer": "fsq",
+            "codebook_size": 262144,
+        }
+
+    def get_dummy_inputs(self) -> dict:
+        batch_size = 4
+        num_frames = 16
+        num_channels = 3
+        sizes = (32, 32)
+        image = randn_tensor(
+            (batch_size, num_channels, num_frames, *sizes), generator=self.generator, device=torch_device
+        )
+        return {"sample": image}
+
+
+class TestAutoencoderVidTok(AutoencoderVidTokTesterConfig, ModelTesterMixin):
+    def test_outputs_equivalence(self):
+        super().test_outputs_equivalence()
+
+
+class TestAutoencoderVidTokTraining(AutoencoderVidTokTesterConfig, TrainingTesterMixin):
+    """Training tests for AutoencoderVidTok."""
+
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"VidTokEncoder3D", "VidTokDecoder3D"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+    # avg_pool3d_backward_cuda has no deterministic CUDA implementation, so every test with a backward pass runs
+    # with determinism relaxed.
+    def test_training(self):
+        run_nondeterministic(super().test_training)
+
+    def test_training_with_ema(self):
+        run_nondeterministic(super().test_training_with_ema)
+
+    def test_mixed_precision_training(self):
+        run_nondeterministic(super().test_mixed_precision_training)
+
+    def test_gradient_checkpointing_equivalence(self):
+        run_nondeterministic(super().test_gradient_checkpointing_equivalence)
+
+
+class TestAutoencoderVidTokMemory(AutoencoderVidTokTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for AutoencoderVidTok."""
+
+    # avg_pool3d_backward_cuda has no deterministic CUDA implementation, so every test with a backward pass runs
+    # with determinism relaxed.
+    def test_layerwise_casting_training(self):
+        run_nondeterministic(super().test_layerwise_casting_training)
+
+
+class TestAutoencoderVidTokSlicingTiling(AutoencoderVidTokTesterConfig, AutoencoderTesterMixin):
+    """Slicing and tiling tests for AutoencoderVidTok."""
+
+    def test_forward_with_norm_groups(self):
+        """VidTok uses layernorm instead of groupnorm."""
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+            if isinstance(output, dict):
+                output = output.to_tuple()[0]
+
+        assert output is not None
+        expected_shape = inputs_dict["sample"].shape
+        assert output.shape == expected_shape, "Input and output shapes do not match"

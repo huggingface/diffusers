@@ -12,15 +12,12 @@ specific language governing permissions and limitations under the License.
 
 # 文生图
 
-<Tip warning={true}>
-
-文生图训练脚本目前处于实验阶段，容易出现过拟合和灾难性遗忘等问题。建议尝试不同超参数以获得最佳数据集适配效果。
-
-</Tip>
+> [!WARNING]
+> 文生图训练脚本目前处于实验阶段，容易出现过拟合和灾难性遗忘等问题。建议尝试不同超参数以获得最佳数据集适配效果。
 
 Stable Diffusion 等文生图模型能够根据文本提示生成对应图像。
 
-模型训练对硬件要求较高，但启用 `gradient_checkpointing` 和 `mixed_precision` 后，可在单块24GB显存GPU上完成训练。如需更大批次或更快训练速度，建议使用30GB以上显存的GPU设备。通过启用 [xFormers](../optimization/xformers) 内存高效注意力机制可降低显存占用。JAX/Flax 训练方案也支持TPU/GPU高效训练，但不支持梯度检查点、梯度累积和xFormers。使用Flax训练时建议配备30GB以上显存GPU或TPU v3。
+模型训练对硬件要求较高，但启用 `gradient_checkpointing` 和 `mixed_precision` 后，可在单块24GB显存GPU上完成训练。如需更大批次或更快训练速度，建议使用30GB以上显存的GPU设备。通过启用 [xFormers](../optimization/xformers) 内存高效注意力机制可降低显存占用。
 
 本指南将详解 [train_text_to_image.py](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image.py) 训练脚本，助您掌握其原理并适配自定义需求。
 
@@ -41,19 +38,10 @@ cd examples/text_to_image
 pip install -r requirements.txt
 ```
 </hfoption>
-<hfoption id="Flax">
-```bash
-cd examples/text_to_image
-pip install -r requirements_flax.txt
-```
-</hfoption>
 </hfoptions>
 
-<Tip>
-
-🤗 Accelerate 是支持多GPU/TPU训练和混合精度的工具库，能根据硬件环境自动配置训练参数。参阅 🤗 Accelerate [快速入门](https://huggingface.co/docs/accelerate/quicktour) 了解更多。
-
-</Tip>
+> [!TIP]
+> 🤗 Accelerate 是支持多GPU/TPU训练和混合精度的工具库，能根据硬件环境自动配置训练参数。参阅 🤗 Accelerate [快速入门](https://huggingface.co/docs/accelerate/quicktour) 了解更多。
 
 初始化 🤗 Accelerate 环境：
 
@@ -79,11 +67,8 @@ write_basic_config()
 
 ## 脚本参数
 
-<Tip>
-
-以下重点介绍脚本中影响训练效果的关键参数，如需完整参数说明可查阅 [脚本源码](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image.py)。如有疑问欢迎反馈。
-
-</Tip>
+> [!TIP]
+> 以下重点介绍脚本中影响训练效果的关键参数，如需完整参数说明可查阅 [脚本源码](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image.py)。如有疑问欢迎反馈。
 
 训练脚本提供丰富参数供自定义训练流程，所有参数及说明详见 [`parse_args()`](https://github.com/huggingface/diffusers/blob/8959c5b9dec1c94d6ba482c94a58d2215c5fd026/examples/text_to_image/train_text_to_image.py#L193) 函数。该函数为每个参数提供默认值（如批次大小、学习率等），也可通过命令行参数覆盖。
 
@@ -106,7 +91,7 @@ accelerate launch train_text_to_image.py \
 
 ### Min-SNR加权策略
 
-[Min-SNR](https://huggingface.co/papers/2303.09556) 加权策略通过重新平衡损失函数加速模型收敛。训练脚本支持预测 `epsilon`（噪声）或 `v_prediction`，而Min-SNR兼容两种预测类型。该策略仅限PyTorch版本，Flax训练脚本不支持。
+[Min-SNR](https://huggingface.co/papers/2303.09556) 加权策略通过重新平衡损失函数加速模型收敛。训练脚本支持预测 `epsilon`（噪声）或 `v_prediction`，而Min-SNR兼容两种预测类型。
 
 添加 `--snr_gamma` 参数并设为推荐值5.0：
 
@@ -160,11 +145,8 @@ def preprocess_train(examples):
 
 以 [火影忍者BLIP标注数据集](https://huggingface.co/datasets/lambdalabs/naruto-blip-captions) 为例训练生成火影角色。设置环境变量 `MODEL_NAME` 和 `dataset_name` 指定模型和数据集（Hub或本地路径）。多GPU训练需在 `accelerate launch` 命令中添加 `--multi_gpu` 参数。
 
-<Tip>
-
-使用本地数据集时，设置 `TRAIN_DIR` 和 `OUTPUT_DIR` 环境变量为数据集路径和模型保存路径。
-
-</Tip>
+> [!TIP]
+> 使用本地数据集时，设置 `TRAIN_DIR` 和 `OUTPUT_DIR` 环境变量为数据集路径和模型保存路径。
 
 ```bash
 export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
@@ -188,35 +170,6 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
 ```
 
 </hfoption>
-<hfoption id="Flax">
-
-Flax训练方案在TPU/GPU上效率更高（由 [@duongna211](https://github.com/duongna21) 实现），TPU性能更优但GPU表现同样出色。
-
-设置环境变量 `MODEL_NAME` 和 `dataset_name` 指定模型和数据集（Hub或本地路径）。
-
-<Tip>
-
-使用本地数据集时，设置 `TRAIN_DIR` 和 `OUTPUT_DIR` 环境变量为数据集路径和模型保存路径。
-
-</Tip>
-
-```bash
-export MODEL_NAME="stable-diffusion-v1-5/stable-diffusion-v1-5"
-export dataset_name="lambdalabs/naruto-blip-captions"
-
-python train_text_to_image_flax.py \
-  --pretrained_model_name_or_path=$MODEL_NAME \
-  --dataset_name=$dataset_name \
-  --resolution=512 --center_crop --random_flip \
-  --train_batch_size=1 \
-  --max_train_steps=15000 \
-  --learning_rate=1e-05 \
-  --max_grad_norm=1 \
-  --output_dir="sd-naruto-model" \
-  --push_to_hub
-```
-
-</hfoption>
 </hfoptions>
 
 训练完成后，即可使用新模型进行推理：
@@ -228,39 +181,9 @@ python train_text_to_image_flax.py \
 from diffusers import StableDiffusionPipeline
 import torch
 
-pipeline = StableDiffusionPipeline.from_pretrained("path/to/saved_model", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+pipeline = StableDiffusionPipeline.from_pretrained("path/to/saved_model", dtype=torch.float16, use_safetensors=True).to("cuda")
 
 image = pipeline(prompt="yoda").images[0]
-image.save("yoda-naruto.png")
-```
-
-</hfoption>
-<hfoption id="Flax">
-
-```py
-import jax
-import numpy as np
-from flax.jax_utils import replicate
-from flax.training.common_utils import shard
-from diffusers import FlaxStableDiffusionPipeline
-
-pipeline, params = FlaxStableDiffusionPipeline.from_pretrained("path/to/saved_model", dtype=jax.numpy.bfloat16)
-
-prompt = "yoda naruto"
-prng_seed = jax.random.PRNGKey(0)
-num_inference_steps = 50
-
-num_samples = jax.device_count()
-prompt = num_samples * [prompt]
-prompt_ids = pipeline.prepare_inputs(prompt)
-
-# 分片输入和随机数
-params = replicate(params)
-prng_seed = jax.random.split(prng_seed, jax.device_count())
-prompt_ids = shard(prompt_ids)
-
-images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
-images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 image.save("yoda-naruto.png")
 ```
 

@@ -1,5 +1,5 @@
 import os
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable
 
 import torch
 from torch import nn
@@ -21,32 +21,69 @@ class MultiControlNetUnionModel(ModelMixin):
     be compatible with `ControlNetUnionModel`.
 
     Args:
-        controlnets (`List[ControlNetUnionModel]`):
+        controlnets (`list[ControlNetUnionModel]`):
             Provides additional conditioning to the unet during the denoising process. You must set multiple
             `ControlNetUnionModel` as a list.
     """
 
-    def __init__(self, controlnets: Union[List[ControlNetUnionModel], Tuple[ControlNetUnionModel]]):
+    def __init__(self, controlnets: list[ControlNetUnionModel] | tuple[ControlNetUnionModel]):
         super().__init__()
         self.nets = nn.ModuleList(controlnets)
 
     def forward(
         self,
         sample: torch.Tensor,
-        timestep: Union[torch.Tensor, float, int],
+        timestep: torch.Tensor | float | int,
         encoder_hidden_states: torch.Tensor,
-        controlnet_cond: List[torch.tensor],
-        control_type: List[torch.Tensor],
-        control_type_idx: List[List[int]],
-        conditioning_scale: List[float],
-        class_labels: Optional[torch.Tensor] = None,
-        timestep_cond: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        controlnet_cond: list[torch.tensor],
+        control_type: list[torch.Tensor],
+        control_type_idx: list[list[int]],
+        conditioning_scale: list[float],
+        class_labels: torch.Tensor | None = None,
+        timestep_cond: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        added_cond_kwargs: dict[str, torch.Tensor] | None = None,
+        cross_attention_kwargs: dict[str, Any] | None = None,
         guess_mode: bool = False,
         return_dict: bool = True,
-    ) -> Union[ControlNetOutput, Tuple]:
+    ) -> ControlNetOutput | tuple:
+        r"""
+        Args:
+            sample (`torch.Tensor`):
+                The noisy input tensor.
+            timestep (`torch.Tensor`, `float`, or `int`):
+                The number of timesteps to denoise an input.
+            encoder_hidden_states (`torch.Tensor`):
+                The encoder hidden states.
+            controlnet_cond (`list` of `torch.Tensor`):
+                A list of conditional input tensors, one per ControlNet.
+            control_type (`list` of `torch.Tensor`):
+                A list of control type tensors, one per ControlNet, indicating the active control types.
+            control_type_idx (`list` of `list` of `int`):
+                Per-ControlNet list of control type indices corresponding to `controlnet_cond`.
+            conditioning_scale (`list` of `float`):
+                A list of scale factors applied to the ControlNet outputs.
+            class_labels (`torch.Tensor`, *optional*):
+                Optional class labels for conditioning.
+            timestep_cond (`torch.Tensor`, *optional*):
+                Additional conditional embeddings for timestep.
+            attention_mask (`torch.Tensor`, *optional*):
+                Attention mask applied to `encoder_hidden_states`.
+            added_cond_kwargs (`dict`, *optional*):
+                Additional conditions for the Stable Diffusion XL UNet.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttnProcessor`.
+            guess_mode (`bool`, *optional*, defaults to `False`):
+                In this mode, the ControlNet encoder tries its best to recognize the input content even if you remove
+                all prompts.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`ControlNetOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.controlnets.controlnet.ControlNetOutput`] or `tuple`:
+                If `return_dict` is True, a [`~models.controlnets.controlnet.ControlNetOutput`] is returned, otherwise
+                a plain `tuple` is returned.
+        """
         down_block_res_samples, mid_block_res_sample = None, None
         for i, (image, ctype, ctype_idx, scale, controlnet) in enumerate(
             zip(controlnet_cond, control_type, control_type_idx, conditioning_scale, self.nets)
@@ -86,11 +123,11 @@ class MultiControlNetUnionModel(ModelMixin):
     # Copied from diffusers.models.controlnets.multicontrolnet.MultiControlNetModel.save_pretrained with ControlNet->ControlNetUnion
     def save_pretrained(
         self,
-        save_directory: Union[str, os.PathLike],
+        save_directory: str | os.PathLike,
         is_main_process: bool = True,
         save_function: Callable = None,
         safe_serialization: bool = True,
-        variant: Optional[str] = None,
+        variant: str | None = None,
     ):
         """
         Save a model and its configuration file to a directory, so that it can be re-loaded using the
@@ -124,7 +161,7 @@ class MultiControlNetUnionModel(ModelMixin):
 
     @classmethod
     # Copied from diffusers.models.controlnets.multicontrolnet.MultiControlNetModel.from_pretrained with ControlNet->ControlNetUnion
-    def from_pretrained(cls, pretrained_model_path: Optional[Union[str, os.PathLike]], **kwargs):
+    def from_pretrained(cls, pretrained_model_path: str | os.PathLike | None, **kwargs):
         r"""
         Instantiate a pretrained MultiControlNetUnion model from multiple pre-trained controlnet models.
 
@@ -143,11 +180,11 @@ class MultiControlNetUnionModel(ModelMixin):
                 A path to a *directory* containing model weights saved using
                 [`~models.controlnets.multicontrolnet.MultiControlNetUnionModel.save_pretrained`], e.g.,
                 `./my_model_directory/controlnet`.
-            torch_dtype (`torch.dtype`, *optional*):
+            dtype (`torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model under this dtype.
             output_loading_info(`bool`, *optional*, defaults to `False`):
                 Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
-            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+            device_map (`str` or `dict[str, int | str | torch.device]`, *optional*):
                 A map that specifies where each submodule should go. It doesn't need to be refined to each
                 parameter/buffer name, once a given module name is inside, every submodule of it will be sent to the
                 same device.
@@ -164,8 +201,7 @@ class MultiControlNetUnionModel(ModelMixin):
                 model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
                 setting this argument to `True` will raise an error.
             variant (`str`, *optional*):
-                If specified load weights from `variant` filename, *e.g.* pytorch_model.<variant>.bin. `variant` is
-                ignored when using `from_flax`.
+                If specified load weights from `variant` filename, *e.g.* pytorch_model.<variant>.bin.
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If set to `None`, the `safetensors` weights will be downloaded if they're available **and** if the
                 `safetensors` library is installed. If set to `True`, the model will be forcibly loaded from

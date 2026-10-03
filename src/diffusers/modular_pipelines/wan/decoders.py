@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, List, Tuple, Union
+from typing import Any
 
 import numpy as np
 import PIL
@@ -24,16 +24,51 @@ from ...utils import logging
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .modular_pipeline import WanModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class WanDecodeStep(ModularPipelineBlocks):
+class WanVaceTrimReferenceLatentsStep(ModularPipelineBlocks):
+    model_name = "wan-vace"
+
+    @property
+    def description(self) -> str:
+        return "Step that removes the prepended reference image frames from the denoised latents before decoding"
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The denoised latents from the denoising step",
+            ),
+            InputParam(
+                "num_reference_images",
+                type_hint=int,
+                default=0,
+                description="Number of reference image frames to remove from the front of the latents. Can be generated in vace_encoder step.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components, state: PipelineState) -> tuple[WanModularPipeline, PipelineState]:
+        block_state = self.get_block_state(state)
+
+        block_state.latents = block_state.latents[:, :, block_state.num_reference_images :]
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class WanVaeDecoderStep(ModularPipelineBlocks):
     model_name = "wan"
 
     @property
-    def expected_components(self) -> List[ComponentSpec]:
+    def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKLWan),
             ComponentSpec(
@@ -49,56 +84,49 @@ class WanDecodeStep(ModularPipelineBlocks):
         return "Step that decodes the denoised latents into images"
 
     @property
-    def inputs(self) -> List[Tuple[str, Any]]:
-        return [
-            InputParam("output_type", default="pil"),
-        ]
-
-    @property
-    def intermediate_inputs(self) -> List[str]:
+    def inputs(self) -> list[tuple[str, Any]]:
         return [
             InputParam(
                 "latents",
                 required=True,
                 type_hint=torch.Tensor,
                 description="The denoised latents from the denoising step",
-            )
+            ),
+            InputParam(
+                "output_type", default="np", type_hint=str, description="The output type of the decoded videos"
+            ),
         ]
 
     @property
-    def intermediate_outputs(self) -> List[str]:
+    def intermediate_outputs(self) -> list[str]:
         return [
             OutputParam(
                 "videos",
-                type_hint=Union[List[List[PIL.Image.Image]], List[torch.Tensor], List[np.ndarray]],
+                type_hint=list[list[PIL.Image.Image]] | list[torch.Tensor] | list[np.ndarray],
                 description="The generated videos, can be a PIL.Image.Image, torch.Tensor or a numpy array",
             )
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[WanModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         vae_dtype = components.vae.dtype
 
-        if not block_state.output_type == "latent":
-            latents = block_state.latents
-            latents_mean = (
-                torch.tensor(components.vae.config.latents_mean)
-                .view(1, components.vae.config.z_dim, 1, 1, 1)
-                .to(latents.device, latents.dtype)
-            )
-            latents_std = 1.0 / torch.tensor(components.vae.config.latents_std).view(
-                1, components.vae.config.z_dim, 1, 1, 1
-            ).to(latents.device, latents.dtype)
-            latents = latents / latents_std + latents_mean
-            latents = latents.to(vae_dtype)
-            block_state.videos = components.vae.decode(latents, return_dict=False)[0]
-        else:
-            block_state.videos = block_state.latents
-
-        block_state.videos = components.video_processor.postprocess_video(
-            block_state.videos, output_type=block_state.output_type
+        latents = block_state.latents
+        latents_mean = (
+            torch.tensor(components.vae.config.latents_mean)
+            .view(1, components.vae.config.z_dim, 1, 1, 1)
+            .to(latents.device, latents.dtype)
         )
+        latents_std = 1.0 / torch.tensor(components.vae.config.latents_std).view(
+            1, components.vae.config.z_dim, 1, 1, 1
+        ).to(latents.device, latents.dtype)
+        latents = latents / latents_std + latents_mean
+        latents = latents.to(vae_dtype)
+        block_state.videos = components.vae.decode(latents, return_dict=False)[0]
+
+        output_type = getattr(block_state, "output_type", "np")
+        block_state.videos = components.video_processor.postprocess_video(block_state.videos, output_type=output_type)
 
         self.set_block_state(state, block_state)
 

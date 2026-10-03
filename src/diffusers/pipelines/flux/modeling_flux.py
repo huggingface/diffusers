@@ -14,7 +14,6 @@
 
 
 from dataclasses import dataclass
-from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -26,7 +25,7 @@ from ...utils import BaseOutput
 
 @dataclass
 class ReduxImageEncoderOutput(BaseOutput):
-    image_embeds: Optional[torch.Tensor] = None
+    image_embeds: torch.Tensor | None = None
 
 
 class ReduxImageEncoder(ModelMixin, ConfigMixin):

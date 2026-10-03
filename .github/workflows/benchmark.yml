@@ -5,16 +5,21 @@ on:
   schedule:
     - cron: "30 1 1,15 * *" # every 2 weeks on the 1st and the 15th of every month at 1:30 AM
 
+
 env:
   DIFFUSERS_IS_CI: yes
-  HF_HUB_ENABLE_HF_TRANSFER: 1
+  HF_XET_HIGH_PERFORMANCE: 1
   HF_HOME: /mnt/cache
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
   BASE_PATH: benchmark_outputs
 
+permissions: {}
+
 jobs:
   torch_models_cuda_benchmark_tests:
+    permissions:
+      contents: read
     env:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_BENCHMARK }}
     name: Torch Core Models CUDA Benchmarking Tests
@@ -28,7 +33,7 @@ jobs:
       options: --shm-size "16gb" --ipc host --gpus all
     steps:
       - name: Checkout diffusers
-        uses: actions/checkout@v3
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 2
       - name: NVIDIA-SMI
@@ -38,12 +43,11 @@ jobs:
         run: |
           apt update
           apt install -y libpq-dev postgresql-client
-          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-          python -m uv pip install -e [quality,test]
-          python -m uv pip install -r benchmarks/requirements.txt
+          uv pip install -e ".[quality]"
+          uv pip install -r benchmarks/requirements.txt
       - name: Environment
         run: |
-          python utils/print_env.py
+          diffusers-cli env
       - name: Diffusers Benchmarking
         env:
           HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
@@ -59,24 +63,10 @@ jobs:
 
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
         with:
           name: benchmark_test_reports
           path: benchmarks/${{ env.BASE_PATH }}
-      
-      # TODO: enable this once the connection problem has been resolved.
-      - name: Update benchmarking results to DB
-        env:
-          PGDATABASE: metrics
-          PGHOST: ${{ secrets.DIFFUSERS_BENCHMARKS_PGHOST }}
-          PGUSER: transformers_benchmarks
-          PGPASSWORD: ${{ secrets.DIFFUSERS_BENCHMARKS_PGPASSWORD }}
-          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
-        run: |
-          git config --global --add safe.directory /__w/diffusers/diffusers
-          commit_id=$GITHUB_SHA
-          commit_msg=$(git show -s --format=%s "$commit_id" | cut -c1-70)
-          cd benchmarks && python populate_into_db.py "$BRANCH_NAME" "$commit_id" "$commit_msg"
 
       - name: Report success status
         if: ${{ success() }}

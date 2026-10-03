@@ -36,6 +36,8 @@ repo-consistency:
 	python utils/check_dummies.py
 	python utils/check_repo.py
 	python utils/check_inits.py
+	python utils/check_forward_call_docstrings.py
+	python utils/check_return_annotations.py
 
 # this target runs checks on all files
 
@@ -44,6 +46,7 @@ quality:
 	ruff format --check $(check_dirs) setup.py
 	doc-builder style src/diffusers docs/source --max_len 119 --check_only
 	python utils/check_doc_toc.py
+	python utils/check_ai.py
 
 # Format source code automatically and check is there are any problems left that need manual fixing
 
@@ -70,6 +73,18 @@ fix-copies:
 	python utils/check_copies.py --fix_and_overwrite
 	python utils/check_dummies.py --fix_and_overwrite
 
+# Auto docstrings in modular blocks
+modular-autodoctrings:
+	python utils/modular_auto_docstring.py
+
+# Verify forward() / __call__() arguments are documented in their docstrings
+check-forward-call-docstrings:
+	python utils/check_forward_call_docstrings.py
+
+# Verify forward() / __call__() have return type annotations
+check-return-annotations:
+	python utils/check_return_annotations.py
+
 # Run tests for the library
 
 test:
@@ -94,3 +109,4 @@ post-release:
 
 post-patch:
 	python utils/release.py --post_release --patch
+

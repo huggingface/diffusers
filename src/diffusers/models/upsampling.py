@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -44,7 +42,7 @@ class Upsample1D(nn.Module):
         channels: int,
         use_conv: bool = False,
         use_conv_transpose: bool = False,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         name: str = "conv",
     ):
         super().__init__()
@@ -94,9 +92,9 @@ class Upsample2D(nn.Module):
         channels: int,
         use_conv: bool = False,
         use_conv_transpose: bool = False,
-        out_channels: Optional[int] = None,
+        out_channels: int | None = None,
         name: str = "conv",
-        kernel_size: Optional[int] = None,
+        kernel_size: int | None = None,
         padding=1,
         norm_type=None,
         eps=None,
@@ -139,7 +137,7 @@ class Upsample2D(nn.Module):
         else:
             self.Conv2d_0 = conv
 
-    def forward(self, hidden_states: torch.Tensor, output_size: Optional[int] = None, *args, **kwargs) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, output_size: int | None = None, *args, **kwargs) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -208,10 +206,10 @@ class FirUpsample2D(nn.Module):
 
     def __init__(
         self,
-        channels: Optional[int] = None,
-        out_channels: Optional[int] = None,
+        channels: int | None = None,
+        out_channels: int | None = None,
         use_conv: bool = False,
-        fir_kernel: Tuple[int, int, int, int] = (1, 3, 3, 1),
+        fir_kernel: tuple[int, int, int, int] = (1, 3, 3, 1),
     ):
         super().__init__()
         out_channels = out_channels if out_channels else channels
@@ -224,8 +222,8 @@ class FirUpsample2D(nn.Module):
     def _upsample_2d(
         self,
         hidden_states: torch.Tensor,
-        weight: Optional[torch.Tensor] = None,
-        kernel: Optional[torch.Tensor] = None,
+        weight: torch.Tensor | None = None,
+        kernel: torch.Tensor | None = None,
         factor: int = 2,
         gain: float = 1,
     ) -> torch.Tensor:
@@ -302,14 +300,14 @@ class FirUpsample2D(nn.Module):
 
             output = upfirdn2d_native(
                 inverse_conv,
-                torch.tensor(kernel, device=inverse_conv.device),
+                kernel.to(device=inverse_conv.device, dtype=inverse_conv.dtype),
                 pad=((pad_value + 1) // 2 + factor - 1, pad_value // 2 + 1),
             )
         else:
             pad_value = kernel.shape[0] - factor
             output = upfirdn2d_native(
                 hidden_states,
-                torch.tensor(kernel, device=hidden_states.device),
+                kernel.to(device=hidden_states.device, dtype=hidden_states.dtype),
                 up=factor,
                 pad=((pad_value + 1) // 2 + factor - 1, pad_value // 2),
             )
@@ -425,7 +423,7 @@ def upfirdn2d_native(
     kernel: torch.Tensor,
     up: int = 1,
     down: int = 1,
-    pad: Tuple[int, int] = (0, 0),
+    pad: tuple[int, int] = (0, 0),
 ) -> torch.Tensor:
     up_x = up_y = up
     down_x = down_y = down
@@ -472,7 +470,7 @@ def upfirdn2d_native(
 
 def upsample_2d(
     hidden_states: torch.Tensor,
-    kernel: Optional[torch.Tensor] = None,
+    kernel: torch.Tensor | None = None,
     factor: int = 2,
     gain: float = 1,
 ) -> torch.Tensor:
@@ -510,7 +508,7 @@ def upsample_2d(
     pad_value = kernel.shape[0] - factor
     output = upfirdn2d_native(
         hidden_states,
-        kernel.to(device=hidden_states.device),
+        kernel.to(device=hidden_states.device, dtype=hidden_states.dtype),
         up=factor,
         pad=((pad_value + 1) // 2 + factor - 1, pad_value // 2),
     )

@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,8 @@
 # limitations under the License.
 
 import functools
-from typing import Any, Dict, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any
 
 import torch
 
@@ -31,29 +32,64 @@ class BaseState:
         )
 
 
+@dataclass(frozen=True)
+class CacheContext:
+    """Information a pipeline attaches to a denoising call for the cache hooks, via `cache_context`.
+
+    `name` identifies the call (usually `"cond"` or `"uncond"`) and keys the per-context hook state; the remaining
+    fields describe where the denoising loop is. Fields default to `None`.
+    """
+
+    name: str
+    step_index: int | None = None
+    num_inference_steps: int | None = None
+    timestep: float | torch.Tensor | None = None
+    sigma: float | None = None
+
+
+def _set_cache_context(module: torch.nn.Module, context: CacheContext | None) -> None:
+    """Set (or clear, with `None`) the cache context on every stateful hook's `StateManager` under `module`."""
+    registry = HookRegistry.check_if_exists_or_initialize(module)
+    for child in (registry, *registry._get_child_registries()):
+        for hook_name in reversed(child._hook_order):
+            hook = child.hooks[hook_name]
+            if not hook._is_stateful:
+                continue
+            for attr in vars(hook).values():
+                if isinstance(attr, StateManager):
+                    attr.set_context(context)
+
+
 class StateManager:
     def __init__(self, state_cls: BaseState, init_args=None, init_kwargs=None):
         self._state_cls = state_cls
         self._init_args = init_args if init_args is not None else ()
         self._init_kwargs = init_kwargs if init_kwargs is not None else {}
         self._state_cache = {}
-        self._current_context = None
+        self._context: CacheContext | None = None
+
+    @property
+    def context(self) -> CacheContext:
+        if self._context is None:
+            raise ValueError(
+                "No cache context is set. Wrap the denoiser call in `model.cache_context(name, ...)` before calling it."
+            )
+        return self._context
 
     def get_state(self):
-        if self._current_context is None:
-            raise ValueError("No context is set. Please set a context before retrieving the state.")
-        if self._current_context not in self._state_cache.keys():
-            self._state_cache[self._current_context] = self._state_cls(*self._init_args, **self._init_kwargs)
-        return self._state_cache[self._current_context]
+        name = self.context.name
+        if name not in self._state_cache.keys():
+            self._state_cache[name] = self._state_cls(*self._init_args, **self._init_kwargs)
+        return self._state_cache[name]
 
-    def set_context(self, name: str) -> None:
-        self._current_context = name
+    def set_context(self, context: CacheContext | None) -> None:
+        self._context = context
 
     def reset(self, *args, **kwargs) -> None:
         for name, state in list(self._state_cache.items()):
             state.reset(*args, **kwargs)
             self._state_cache.pop(name)
-        self._current_context = None
+        self._context = None
 
 
 class ModelHook:
@@ -86,19 +122,19 @@ class ModelHook:
         """
         return module
 
-    def pre_forward(self, module: torch.nn.Module, *args, **kwargs) -> Tuple[Tuple[Any], Dict[str, Any]]:
+    def pre_forward(self, module: torch.nn.Module, *args, **kwargs) -> tuple[tuple[Any], dict[str, Any]]:
         r"""
         Hook that is executed just before the forward method of the model.
 
         Args:
             module (`torch.nn.Module`):
                 The module whose forward pass will be executed just after this event.
-            args (`Tuple[Any]`):
+            args (`tuple[Any]`):
                 The positional arguments passed to the module.
-            kwargs (`Dict[Str, Any]`):
+            kwargs (`dict[Str, Any]`):
                 The keyword arguments passed to the module.
         Returns:
-            `Tuple[Tuple[Any], Dict[Str, Any]]`:
+            `tuple[tuple[Any], dict[Str, Any]]`:
                 A tuple with the treated `args` and `kwargs`.
         """
         return args, kwargs
@@ -132,14 +168,6 @@ class ModelHook:
             raise NotImplementedError("This hook is stateful and needs to implement the `reset_state` method.")
         return module
 
-    def _set_context(self, module: torch.nn.Module, name: str) -> None:
-        # Iterate over all attributes of the hook to see if any of them have the type `StateManager`. If so, call `set_context` on them.
-        for attr_name in dir(self):
-            attr = getattr(self, attr_name)
-            if isinstance(attr, StateManager):
-                attr.set_context(name)
-        return module
-
 
 class HookFunctionReference:
     def __init__(self) -> None:
@@ -168,7 +196,7 @@ class HookRegistry:
     def __init__(self, module_ref: torch.nn.Module) -> None:
         super().__init__()
 
-        self.hooks: Dict[str, ModelHook] = {}
+        self.hooks: dict[str, ModelHook] = {}
 
         self._module_ref = module_ref
         self._hook_order = []
@@ -205,8 +233,10 @@ class HookRegistry:
             )
 
         rewritten_forward = create_new_forward(fn_ref)
+        # Wrap from the original `forward` so `inspect.signature` follows `__wrapped__` to the real
+        # signature instead of the generic `(module, *args, **kwargs)`, which breaks `torch.export`.
         self._module_ref.forward = functools.update_wrapper(
-            functools.partial(rewritten_forward, self._module_ref), rewritten_forward
+            functools.partial(rewritten_forward, self._module_ref), forward
         )
 
         hook.fn_ref = fn_ref
@@ -214,7 +244,7 @@ class HookRegistry:
         self._hook_order.append(name)
         self._fn_refs.append(fn_ref)
 
-    def get_hook(self, name: str) -> Optional[ModelHook]:
+    def get_hook(self, name: str) -> ModelHook | None:
         return self.hooks.get(name, None)
 
     def remove_hook(self, name: str, recurse: bool = True) -> None:
@@ -265,18 +295,42 @@ class HookRegistry:
             module._diffusers_hook = cls(module)
         return module._diffusers_hook
 
-    def _set_context(self, name: Optional[str] = None) -> None:
-        for hook_name in reversed(self._hook_order):
-            hook = self.hooks[hook_name]
-            if hook._is_stateful:
-                hook._set_context(self._module_ref, name)
+    def invalidate_child_registries_cache(self) -> None:
+        """Invalidate the cached child-registry list across this module's tree.
 
+        `_get_child_registries` caches the registries it finds by walking `named_modules()`, keyed on the registry that
+        built it. Registering or removing hooks on descendant modules (e.g. block hooks added by `enable_cache`)
+        changes which modules carry a `_diffusers_hook`, which stales that cache. Call this after any operation that
+        adds or removes hooks in the subtree so the list is rebuilt on next use. Clears the cache on every registry in
+        the tree, since the same registries appear in ancestor caches.
+        """
+        for _, module in unwrap_module(self._module_ref).named_modules():
+            module = unwrap_module(module)
+            if hasattr(module, "_diffusers_hook"):
+                module._diffusers_hook._child_registries_cache = None
+
+    def _get_child_registries(self) -> list["HookRegistry"]:
+        """Return registries of child modules, using a cached list when available.
+
+        The cache is built on first call and reused for subsequent calls. This avoids the cost of walking the full
+        module tree via named_modules() on every cache context update, which is significant for large models (e.g.
+        ~2.7ms per call on Flux2).
+        """
+        if not hasattr(self, "_child_registries_cache"):
+            self._child_registries_cache = None
+
+        if self._child_registries_cache is not None:
+            return self._child_registries_cache
+
+        registries = []
         for module_name, module in unwrap_module(self._module_ref).named_modules():
             if module_name == "":
                 continue
             module = unwrap_module(module)
             if hasattr(module, "_diffusers_hook"):
-                module._diffusers_hook._set_context(name)
+                registries.append(module._diffusers_hook)
+        self._child_registries_cache = registries
+        return registries
 
     def __repr__(self) -> str:
         registry_repr = ""

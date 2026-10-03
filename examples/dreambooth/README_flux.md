@@ -268,12 +268,11 @@ provide a simple script for LoRA fine-tuning Kontext in [train_dreambooth_lora_f
 **important**
 
 > [!NOTE] 
-> To make sure you can successfully run the latest version of the kontext example script, we highly recommend installing from source, specifically from the commit mentioned below.
+> To make sure you can successfully run the latest version of the kontext example script, we highly recommend installing from source.
 > To do this, execute the following steps in a new virtual environment:
 > ```
 > git clone https://github.com/huggingface/diffusers
 > cd diffusers
-> git checkout 05e7a854d0a5661f5b433f6dd5954c224b104f0b
 > pip install -e .
 > ```
 

@@ -1,6 +1,5 @@
 import gc
 import tempfile
-import unittest
 
 import torch
 
@@ -29,7 +28,7 @@ enable_full_determinism()
 
 @slow
 @require_torch_accelerator
-class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SDSingleFileTesterMixin):
+class TestStableDiffusionControlNetPipelineSingleFileSlow(SDSingleFileTesterMixin):
     pipeline_class = StableDiffusionControlNetPipeline
     ckpt_path = (
         "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"
@@ -39,13 +38,11 @@ class StableDiffusionControlNetPipelineSingleFileSlowTests(unittest.TestCase, SD
     )
     repo_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 
-    def setUp(self):
-        super().setUp()
+    def setup_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
-        super().tearDown()
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 

@@ -35,11 +35,8 @@ image = pipe(prompt).images[0]
 image
 ```
 
-<Tip warning={true}>
-
-PyTorch [mps](https://pytorch.org/docs/stable/notes/mps.html) 后端不支持大小超过 `2**32` 的 NDArray。如果您遇到此问题，请提交 [Issue](https://github.com/huggingface/diffusers/issues/new/choose) 以便我们调查。
-
-</Tip>
+> [!WARNING]
+> PyTorch [mps](https://pytorch.org/docs/stable/notes/mps.html) 后端不支持大小超过 `2**32` 的 NDArray。如果您遇到此问题，请提交 [Issue](https://github.com/huggingface/diffusers/issues/new/choose) 以便我们调查。
 
 如果您使用 **PyTorch 1.13**，您需要通过管道进行一次额外的"预热"传递。这是一个临时解决方法，用于解决首次推理传递产生的结果与后续传递略有不同的问题。您只需要执行此传递一次，并且在仅进行一次推理步骤后可以丢弃结果。
 
@@ -71,7 +68,7 @@ M1/M2 性能对内存压力非常敏感。当发生这种情况时，系统会�
 from diffusers import DiffusionPipeline
 import torch
 
-pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True).to("mps")
+pipeline = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16", use_safetensors=True).to("mps")
 pipeline.enable_attention_slicing()
 ```
 

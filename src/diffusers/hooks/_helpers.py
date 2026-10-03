@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Type
+from typing import Any, Callable, Type
 
 
 @dataclass
@@ -26,9 +26,11 @@ class AttentionProcessorMetadata:
 class TransformerBlockMetadata:
     return_hidden_states_index: int = None
     return_encoder_hidden_states_index: int = None
+    hidden_states_argument_name: str = "hidden_states"
+    encoder_hidden_states_argument_name: str = "encoder_hidden_states"
 
     _cls: Type = None
-    _cached_parameter_indices: Dict[str, int] = None
+    _cached_parameter_indices: dict[str, int] = None
 
     def _get_parameter_from_args_kwargs(self, identifier: str, args=(), kwargs=None):
         kwargs = kwargs or {}
@@ -108,8 +110,10 @@ def _register_attention_processors_metadata():
     from ..models.attention_processor import AttnProcessor2_0
     from ..models.transformers.transformer_cogview4 import CogView4AttnProcessor
     from ..models.transformers.transformer_flux import FluxAttnProcessor
+    from ..models.transformers.transformer_hunyuanimage import HunyuanImageAttnProcessor
     from ..models.transformers.transformer_qwenimage import QwenDoubleStreamAttnProcessor2_0
     from ..models.transformers.transformer_wan import WanAttnProcessor2_0
+    from ..models.transformers.transformer_z_image import ZSingleStreamAttnProcessor
 
     # AttnProcessor2_0
     AttentionProcessorRegistry.register(
@@ -149,12 +153,29 @@ def _register_attention_processors_metadata():
         ),
     )
 
+    # HunyuanImageAttnProcessor
+    AttentionProcessorRegistry.register(
+        model_class=HunyuanImageAttnProcessor,
+        metadata=AttentionProcessorMetadata(
+            skip_processor_output_fn=_skip_proc_output_fn_Attention_HunyuanImageAttnProcessor,
+        ),
+    )
+
+    # ZSingleStreamAttnProcessor
+    AttentionProcessorRegistry.register(
+        model_class=ZSingleStreamAttnProcessor,
+        metadata=AttentionProcessorMetadata(
+            skip_processor_output_fn=_skip_proc_output_fn_Attention_ZSingleStreamAttnProcessor,
+        ),
+    )
+
 
 def _register_transformer_blocks_metadata():
-    from ..models.attention import BasicTransformerBlock
+    from ..models.attention import BasicTransformerBlock, JointTransformerBlock
     from ..models.transformers.cogvideox_transformer_3d import CogVideoXBlock
     from ..models.transformers.transformer_bria import BriaTransformerBlock
     from ..models.transformers.transformer_cogview4 import CogView4TransformerBlock
+    from ..models.transformers.transformer_cosmos3 import Cosmos3VLTextMoTDecoderLayer
     from ..models.transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
     from ..models.transformers.transformer_hunyuan_video import (
         HunyuanVideoSingleTransformerBlock,
@@ -162,10 +183,20 @@ def _register_transformer_blocks_metadata():
         HunyuanVideoTokenReplaceTransformerBlock,
         HunyuanVideoTransformerBlock,
     )
+    from ..models.transformers.transformer_hunyuanimage import (
+        HunyuanImageSingleTransformerBlock,
+        HunyuanImageTransformerBlock,
+    )
+    from ..models.transformers.transformer_kandinsky import Kandinsky5TransformerDecoderBlock
     from ..models.transformers.transformer_ltx import LTXVideoTransformerBlock
     from ..models.transformers.transformer_mochi import MochiTransformerBlock
+    from ..models.transformers.transformer_motif_video import (
+        MotifVideoSingleTransformerBlock,
+        MotifVideoTransformerBlock,
+    )
     from ..models.transformers.transformer_qwenimage import QwenImageTransformerBlock
     from ..models.transformers.transformer_wan import WanTransformerBlock
+    from ..models.transformers.transformer_z_image import ZImageTransformerBlock
 
     # BasicTransformerBlock
     TransformerBlockRegistry.register(
@@ -198,6 +229,17 @@ def _register_transformer_blocks_metadata():
         metadata=TransformerBlockMetadata(
             return_hidden_states_index=0,
             return_encoder_hidden_states_index=1,
+        ),
+    )
+
+    # Cosmos 3
+    TransformerBlockRegistry.register(
+        model_class=Cosmos3VLTextMoTDecoderLayer,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=1,
+            return_encoder_hidden_states_index=0,
+            hidden_states_argument_name="gen_seq",
+            encoder_hidden_states_argument_name="und_seq",
         ),
     )
 
@@ -265,6 +307,22 @@ def _register_transformer_blocks_metadata():
         ),
     )
 
+    # MotifVideo
+    TransformerBlockRegistry.register(
+        model_class=MotifVideoTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=1,
+        ),
+    )
+    TransformerBlockRegistry.register(
+        model_class=MotifVideoSingleTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=1,
+        ),
+    )
+
     # Wan
     TransformerBlockRegistry.register(
         model_class=WanTransformerBlock,
@@ -280,6 +338,49 @@ def _register_transformer_blocks_metadata():
         metadata=TransformerBlockMetadata(
             return_hidden_states_index=1,
             return_encoder_hidden_states_index=0,
+        ),
+    )
+
+    # HunyuanImage2.1
+    TransformerBlockRegistry.register(
+        model_class=HunyuanImageTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=1,
+        ),
+    )
+    TransformerBlockRegistry.register(
+        model_class=HunyuanImageSingleTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=1,
+        ),
+    )
+
+    # ZImage
+    TransformerBlockRegistry.register(
+        model_class=ZImageTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=None,
+        ),
+    )
+
+    TransformerBlockRegistry.register(
+        model_class=JointTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=1,
+            return_encoder_hidden_states_index=0,
+        ),
+    )
+
+    # Kandinsky 5.0 (Kandinsky5TransformerDecoderBlock)
+    TransformerBlockRegistry.register(
+        model_class=Kandinsky5TransformerDecoderBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=None,
+            hidden_states_argument_name="visual_embed",
         ),
     )
 
@@ -308,4 +409,6 @@ _skip_proc_output_fn_Attention_WanAttnProcessor2_0 = _skip_attention___ret___hid
 # not sure what this is yet.
 _skip_proc_output_fn_Attention_FluxAttnProcessor = _skip_attention___ret___hidden_states
 _skip_proc_output_fn_Attention_QwenDoubleStreamAttnProcessor2_0 = _skip_attention___ret___hidden_states
+_skip_proc_output_fn_Attention_HunyuanImageAttnProcessor = _skip_attention___ret___hidden_states
+_skip_proc_output_fn_Attention_ZSingleStreamAttnProcessor = _skip_attention___ret___hidden_states
 # fmt: on

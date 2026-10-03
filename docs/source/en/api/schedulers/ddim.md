@@ -28,11 +28,8 @@ The original codebase of this paper can be found at [ermongroup/ddim](https://gi
 
 The paper [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) claims that a mismatch between the training and inference settings leads to suboptimal inference generation results for Stable Diffusion. To fix this, the authors propose:
 
-<Tip warning={true}>
-
-🧪 This is an experimental feature!
-
-</Tip>
+> [!WARNING]
+> 🧪 This is an experimental feature!
 
 1. rescale the noise schedule to enforce zero terminal signal-to-noise ratio (SNR)
 
@@ -64,11 +61,11 @@ For example:
 from diffusers import DiffusionPipeline, DDIMScheduler
 import torch
 
-pipe = DiffusionPipeline.from_pretrained("ptx0/pseudo-journey-v2", torch_dtype=torch.float16)
+pipe = DiffusionPipeline.from_pretrained("ptx0/pseudo-journey-v2", dtype=torch.float16)
 pipe.scheduler = DDIMScheduler.from_config(
     pipe.scheduler.config, rescale_betas_zero_snr=True, timestep_spacing="trailing"
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "A lion in galaxies, spirals, nebulae, stars, smoke, iridescent, intricate detail, octane render, 8k"
 image = pipe(prompt, guidance_rescale=0.7).images[0]

@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Literal
 
 import numpy as np
 import torch
@@ -41,15 +41,15 @@ class UnCLIPSchedulerOutput(BaseOutput):
     """
 
     prev_sample: torch.Tensor
-    pred_original_sample: Optional[torch.Tensor] = None
+    pred_original_sample: torch.Tensor | None = None
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
 def betas_for_alpha_bar(
-    num_diffusion_timesteps,
-    max_beta=0.999,
-    alpha_transform_type="cosine",
-):
+    num_diffusion_timesteps: int,
+    max_beta: float = 0.999,
+    alpha_transform_type: Literal["cosine", "exp", "laplace"] = "cosine",
+) -> torch.Tensor:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
@@ -57,21 +57,29 @@ def betas_for_alpha_bar(
     Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
     to that part of the diffusion process.
 
-
     Args:
-        num_diffusion_timesteps (`int`): the number of betas to produce.
-        max_beta (`float`): the maximum beta to use; use values lower than 1 to
-                     prevent singularities.
-        alpha_transform_type (`str`, *optional*, default to `cosine`): the type of noise schedule for alpha_bar.
-                     Choose from `cosine` or `exp`
+        num_diffusion_timesteps (`int`):
+            The number of betas to produce.
+        max_beta (`float`, defaults to `0.999`):
+            The maximum beta to use; use values lower than 1 to avoid numerical instability.
+        alpha_transform_type (`str`, defaults to `"cosine"`):
+            The type of noise schedule for `alpha_bar`. Choose from `cosine`, `exp`, or `laplace`.
 
     Returns:
-        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
+        `torch.Tensor`:
+            The betas used by the scheduler to step the model outputs.
     """
     if alpha_transform_type == "cosine":
 
         def alpha_bar_fn(t):
             return math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2
+
+    elif alpha_transform_type == "laplace":
+
+        def alpha_bar_fn(t):
+            lmb = -0.5 * math.copysign(1, 0.5 - t) * math.log(1 - 2 * math.fabs(0.5 - t) + 1e-6)
+            snr = math.exp(lmb)
+            return math.sqrt(snr / (1 + snr))
 
     elif alpha_transform_type == "exp":
 
@@ -104,30 +112,32 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
     See [`~DDPMScheduler`] for more information on DDPM scheduling
 
     Args:
-        num_train_timesteps (`int`): number of diffusion steps used to train the model.
-        variance_type (`str`):
-            options to clip the variance used when adding noise to the denoised sample. Choose from `fixed_small_log`
-            or `learned_range`.
-        clip_sample (`bool`, default `True`):
-            option to clip predicted sample between `-clip_sample_range` and `clip_sample_range` for numerical
+        num_train_timesteps (`int`, defaults to `1000`):
+            The number of diffusion steps used to train the model.
+        variance_type (`"fixed_small_log"` or `"learned_range"`, defaults to `"fixed_small_log"`):
+            The variance type used when adding noise to the denoised sample.
+        clip_sample (`bool`, defaults to `True`):
+            Whether to clip the predicted sample between `-clip_sample_range` and `clip_sample_range` for numerical
             stability.
-        clip_sample_range (`float`, default `1.0`):
+        clip_sample_range (`float`, defaults to `1.0`):
             The range to clip the sample between. See `clip_sample`.
-        prediction_type (`str`, default `epsilon`, optional):
-            prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion process)
-            or `sample` (directly predicting the noisy sample`)
+        prediction_type (`"epsilon"` or `"sample"`, defaults to `"epsilon"`):
+            The prediction type of the scheduler function. Choose `epsilon` to predict the noise of the diffusion
+            process or `sample` to directly predict the noisy sample.
+        beta_schedule (`"squaredcos_cap_v2"`, defaults to `"squaredcos_cap_v2"`):
+            The beta schedule used to generate the beta values. Only `squaredcos_cap_v2` is supported.
     """
 
     @register_to_config
     def __init__(
         self,
         num_train_timesteps: int = 1000,
-        variance_type: str = "fixed_small_log",
+        variance_type: Literal["fixed_small_log", "learned_range"] = "fixed_small_log",
         clip_sample: bool = True,
-        clip_sample_range: Optional[float] = 1.0,
-        prediction_type: str = "epsilon",
-        beta_schedule: str = "squaredcos_cap_v2",
-    ):
+        clip_sample_range: float = 1.0,
+        prediction_type: Literal["epsilon", "sample"] = "epsilon",
+        beta_schedule: Literal["squaredcos_cap_v2"] = "squaredcos_cap_v2",
+    ) -> None:
         if beta_schedule != "squaredcos_cap_v2":
             raise ValueError("UnCLIPScheduler only supports `beta_schedule`: 'squaredcos_cap_v2'")
 
@@ -146,21 +156,24 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
 
         self.variance_type = variance_type
 
-    def scale_model_input(self, sample: torch.Tensor, timestep: Optional[int] = None) -> torch.Tensor:
+    def scale_model_input(self, sample: torch.Tensor, timestep: int | None = None) -> torch.Tensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
 
         Args:
-            sample (`torch.Tensor`): input sample
-            timestep (`int`, optional): current timestep
+            sample (`torch.Tensor`):
+                The input sample.
+            timestep (`int`, *optional*):
+                The current timestep in the diffusion chain.
 
         Returns:
-            `torch.Tensor`: scaled input sample
+            `torch.Tensor`:
+                A scaled input sample.
         """
         return sample
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device | None = None) -> None:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -170,14 +183,22 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
 
         Args:
             num_inference_steps (`int`):
-                the number of diffusion steps used when generating samples with a pre-trained model.
+                The number of diffusion steps used when generating samples with a pre-trained model.
+            device (`str` or `torch.device`, *optional*):
+                The device to which the timesteps are moved. If `None`, the timesteps are not moved.
         """
         self.num_inference_steps = num_inference_steps
         step_ratio = (self.config.num_train_timesteps - 1) / (self.num_inference_steps - 1)
         timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
-    def _get_variance(self, t, prev_timestep=None, predicted_variance=None, variance_type=None):
+    def _get_variance(
+        self,
+        t: int,
+        prev_timestep: int | None = None,
+        predicted_variance: torch.Tensor | None = None,
+        variance_type: Literal["fixed_small_log", "learned_range"] | None = None,
+    ) -> torch.Tensor:
         if prev_timestep is None:
             prev_timestep = t - 1
 
@@ -218,29 +239,33 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.Tensor,
         timestep: int,
         sample: torch.Tensor,
-        prev_timestep: Optional[int] = None,
-        generator=None,
+        prev_timestep: int | None = None,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> Union[UnCLIPSchedulerOutput, Tuple]:
+    ) -> UnCLIPSchedulerOutput | tuple:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            model_output (`torch.Tensor`): direct output from learned diffusion model.
-            timestep (`int`): current discrete timestep in the diffusion chain.
+            model_output (`torch.Tensor`):
+                The direct output from the learned diffusion model.
+            timestep (`int`):
+                The current discrete timestep in the diffusion chain.
             sample (`torch.Tensor`):
-                current instance of sample being created by diffusion process.
-            prev_timestep (`int`, *optional*): The previous timestep to predict the previous sample at.
-                Used to dynamically compute beta. If not given, `t-1` is used and the pre-computed beta is used.
-            generator: random number generator.
-            return_dict (`bool`): option for returning tuple rather than UnCLIPSchedulerOutput class
+                A current instance of a sample created by the diffusion process.
+            prev_timestep (`int`, *optional*):
+                The previous timestep for which to predict the previous sample. It is used to dynamically compute beta.
+                If `None`, `t-1` and the precomputed beta are used.
+            generator (`torch.Generator`, *optional*):
+                A random number generator.
+            return_dict (`bool`, defaults to `True`):
+                Whether to return an [`~schedulers.scheduling_unclip.UnCLIPSchedulerOutput`] or a `tuple`.
 
         Returns:
-            [`~schedulers.scheduling_utils.UnCLIPSchedulerOutput`] or `tuple`:
-            [`~schedulers.scheduling_utils.UnCLIPSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is the sample tensor.
-
+            [`~schedulers.scheduling_unclip.UnCLIPSchedulerOutput`] or `tuple`:
+                If `return_dict` is `True`, an [`~schedulers.scheduling_unclip.UnCLIPSchedulerOutput`] is returned;
+                otherwise, a tuple is returned where the first element is the sample tensor.
         """
         t = timestep
 
@@ -334,6 +359,22 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.Tensor,
         timesteps: torch.IntTensor,
     ) -> torch.Tensor:
+        """
+        Add noise to the original samples according to the noise magnitude at each timestep (this is the forward
+        diffusion process).
+
+        Args:
+            original_samples (`torch.Tensor`):
+                The original samples to which noise will be added.
+            noise (`torch.Tensor`):
+                The noise to add to the samples.
+            timesteps (`torch.IntTensor`):
+                The timesteps indicating the noise level for each sample.
+
+        Returns:
+            `torch.Tensor`:
+                The noisy samples.
+        """
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
         # Move the self.alphas_cumprod to device to avoid redundant CPU to GPU data movement
         # for the subsequent add_noise calls

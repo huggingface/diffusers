@@ -18,11 +18,8 @@ specific language governing permissions and limitations under the License.
 
 이 가이드에서는 DreamBooth, textual inversion 및 LoRA 가중치를 불러오는 방법을 설명합니다.
 
-<Tip>
-
-사용할 체크포인트와 임베딩은 [Stable Diffusion Conceptualizer](https://huggingface.co/spaces/sd-concepts-library/stable-diffusion-conceptualizer), [LoRA the Explorer](https://huggingface.co/spaces/multimodalart/LoraTheExplorer), [Diffusers Models Gallery](https://huggingface.co/spaces/huggingface-projects/diffusers-gallery)에서 찾아보시기 바랍니다.
-
-</Tip>
+> [!TIP]
+> 사용할 체크포인트와 임베딩은 [Stable Diffusion Conceptualizer](https://huggingface.co/spaces/sd-concepts-library/stable-diffusion-conceptualizer), [LoRA the Explorer](https://huggingface.co/spaces/multimodalart/LoraTheExplorer), [Diffusers Models Gallery](https://huggingface.co/spaces/huggingface-projects/diffusers-gallery)에서 찾아보시기 바랍니다.
 
 ## DreamBooth
 
@@ -34,7 +31,7 @@ Hergé가 그린 단 10개의 이미지로 학습된 [herge_style](https://huggi
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("sd-dreambooth-library/herge-style", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("sd-dreambooth-library/herge-style", dtype=torch.float16).to("cuda")
 prompt = "A cute herge_style brown bear eating a slice of pizza, stunning color scheme, masterpiece, illustration"
 image = pipeline(prompt).images[0]
 image
@@ -54,7 +51,7 @@ Textual inversion은 임베딩을 생성하기 때문에 DreamBooth처럼 단독
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to("cuda")
 ```
 
 이제 [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] 메서드를 사용하여 textual inversion 임베딩을 불러와 이미지를 생성할 수 있습니다. [sd-concepts-library/gta5-artwork](https://huggingface.co/sd-concepts-library/gta5-artwork) 임베딩을 불러와 보겠습니다. 이를 트리거하려면 프롬프트에 특수 단어 `<gta5-artwork>`를 포함시켜야 합니다:
@@ -101,11 +98,8 @@ image
 
 [Low-Rank Adaptation (LoRA)](https://huggingface.co/papers/2106.09685)은 속도가 빠르고 파일 크기가 (수백 MB로) 작기 때문에 널리 사용되는 학습 기법입니다. 이 가이드의 다른 방법과 마찬가지로, LoRA는 몇 장의 이미지만으로 새로운 스타일을 학습하도록 모델을 학습시킬 수 있습니다. 이는 diffusion 모델에 새로운 가중치를 삽입한 다음 전체 모델 대신 새로운 가중치만 학습시키는 방식으로 작동합니다. 따라서 LoRA를 더 빠르게 학습시키고 더 쉽게 저장할 수 있습니다.
 
-<Tip>
-
-LoRA는 다른 학습 방법과 함께 사용할 수 있는 매우 일반적인 학습 기법입니다. 예를 들어, DreamBooth와 LoRA로 모델을 학습하는 것이 일반적입니다. 또한 새롭고 고유한 이미지를 생성하기 위해 여러 개의 LoRA를 불러오고 병합하는 것이 점점 더 일반화되고 있습니다. 병합은 이 불러오기 가이드의 범위를 벗어나므로 자세한 내용은 심층적인 [LoRA 병합](merge_loras) 가이드에서 확인할 수 있습니다.
-
-</Tip>
+> [!TIP]
+> LoRA는 다른 학습 방법과 함께 사용할 수 있는 매우 일반적인 학습 기법입니다. 예를 들어, DreamBooth와 LoRA로 모델을 학습하는 것이 일반적입니다. 또한 새롭고 고유한 이미지를 생성하기 위해 여러 개의 LoRA를 불러오고 병합하는 것이 점점 더 일반화되고 있습니다. 병합은 이 불러오기 가이드의 범위를 벗어나므로 자세한 내용은 심층적인 [LoRA 병합](merge_loras) 가이드에서 확인할 수 있습니다.
 
 LoRA는 다른 모델과 함께 사용해야 합니다:
 
@@ -113,7 +107,7 @@ LoRA는 다른 모델과 함께 사용해야 합니다:
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16).to("cuda")
 ```
 
 그리고 [`~loaders.LoraLoaderMixin.load_lora_weights`] 메서드를 사용하여 [ostris/super-cereal-sdxl-lora](https://huggingface.co/ostris/super-cereal-sdxl-lora) 가중치를 불러오고 리포지토리에서 가중치 파일명을 지정합니다:
@@ -140,7 +134,7 @@ image
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16).to("cuda")
 pipeline.unet.load_attn_procs("jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors")
 
 # 프롬프트에서 cnmt를 사용하여 LoRA를 트리거합니다.
@@ -184,11 +178,8 @@ pipe.set_adapters("my_adapter", scales)
 
 이는 여러 어댑터에서도 작동합니다. 방법은 [이 가이드](https://huggingface.co/docs/diffusers/tutorials/using_peft_for_inference#customize-adapters-strength)를 참조하세요.
 
-<Tip warning={true}>
-
-현재 [`~loaders.LoraLoaderMixin.set_adapters`]는 어텐션 가중치의 스케일링만 지원합니다. LoRA에 다른 부분(예: resnets or down-/upsamplers)이 있는 경우 1.0의 스케일을 유지합니다.
-
-</Tip>
+> [!WARNING]
+> 현재 [`~loaders.LoraLoaderMixin.set_adapters`]는 어텐션 가중치의 스케일링만 지원합니다. LoRA에 다른 부분(예: resnets or down-/upsamplers)이 있는 경우 1.0의 스케일을 유지합니다.
 
 ### Kohya와 TheLastBen
 
@@ -209,7 +200,7 @@ LoRA 체크포인트를 [`~loaders.LoraLoaderMixin.load_lora_weights`] 메서드
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16).to("cuda")
 pipeline.load_lora_weights("path/to/weights", weight_name="blueprintify-sd-xl-10.safetensors")
 ```
 
@@ -222,14 +213,11 @@ image = pipeline(prompt).images[0]
 image
 ```
 
-<Tip warning={true}>
-
-Kohya LoRA를 🤗 Diffusers와 함께 사용할 때 몇 가지 제한 사항이 있습니다:
-
-- [여기](https://github.com/huggingface/diffusers/pull/4287/#issuecomment-1655110736)에 설명된 여러 가지 이유로 인해 이미지가 ComfyUI와 같은 UI에서 생성된 이미지와 다르게 보일 수 있습니다.
-- [LyCORIS 체크포인트](https://github.com/KohakuBlueleaf/LyCORIS)가 완전히 지원되지 않습니다. [`~loaders.LoraLoaderMixin.load_lora_weights`] 메서드는 LoRA 및 LoCon 모듈로 LyCORIS 체크포인트를 불러올 수 있지만, Hada 및 LoKR은 지원되지 않습니다.
-
-</Tip>
+> [!WARNING]
+> Kohya LoRA를 🤗 Diffusers와 함께 사용할 때 몇 가지 제한 사항이 있습니다:
+>
+> - [여기](https://github.com/huggingface/diffusers/pull/4287/#issuecomment-1655110736)에 설명된 여러 가지 이유로 인해 이미지가 ComfyUI와 같은 UI에서 생성된 이미지와 다르게 보일 수 있습니다.
+> - [LyCORIS 체크포인트](https://github.com/KohakuBlueleaf/LyCORIS)가 완전히 지원되지 않습니다. [`~loaders.LoraLoaderMixin.load_lora_weights`] 메서드는 LoRA 및 LoCon 모듈로 LyCORIS 체크포인트를 불러올 수 있지만, Hada 및 LoKR은 지원되지 않습니다.
 
 </hfoption>
 <hfoption id="TheLastBen">
@@ -240,7 +228,7 @@ TheLastBen에서 체크포인트를 불러오는 방법은 매우 유사합니�
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16).to("cuda")
 pipeline.load_lora_weights("TheLastBen/William_Eggleston_Style_SDXL", weight_name="wegg.safetensors")
 
 # LoRA를 트리거하기 위해 william eggleston를 프롬프트에 사용
@@ -269,7 +257,7 @@ from diffusers import AutoPipelineForText2Image
 import torch
 from diffusers.utils import load_image
 
-pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to("cuda")
 ```
 
 그런 다음 IP-Adapter 가중치를 불러와 [`~loaders.IPAdapterMixin.load_ip_adapter`] 메서드를 사용하여 파이프라인에 추가합니다.
@@ -309,13 +297,13 @@ from transformers import CLIPVisionModelWithProjection
 image_encoder = CLIPVisionModelWithProjection.from_pretrained(
     "h94/IP-Adapter",
     subfolder="models/image_encoder",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 )
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     image_encoder=image_encoder,
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to("cuda")
 
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter-plus_sdxl_vit-h.safetensors")
@@ -326,14 +314,13 @@ pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name=
 IP-Adapter FaceID 모델은 CLIP 이미지 임베딩 대신 `insightface`에서 생성한 이미지 임베딩을 사용하는 실험적인 IP Adapter입니다. 이러한 모델 중 일부는 LoRA를 사용하여 ID 일관성을 개선하기도 합니다.
 이러한 모델을 사용하려면 `insightface`와 해당 요구 사항을 모두 설치해야 합니다.
 
-<Tip warning={true}>
-InsightFace 사전학습된 모델은 비상업적 연구 목적으로만 사용할 수 있으므로, IP-Adapter-FaceID 모델은 연구 목적으로만 릴리즈되었으며 상업적 용도로는 사용할 수 없습니다.
-</Tip>
+> [!WARNING]
+> InsightFace 사전학습된 모델은 비상업적 연구 목적으로만 사용할 수 있으므로, IP-Adapter-FaceID 모델은 연구 목적으로만 릴리즈되었으며 상업적 용도로는 사용할 수 없습니다.
 
 ```py
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to("cuda")
 
 pipeline.load_ip_adapter("h94/IP-Adapter-FaceID", subfolder=None, weight_name="ip-adapter-faceid_sdxl.bin", image_encoder_folder=None)
@@ -346,13 +333,13 @@ from transformers import CLIPVisionModelWithProjection
 
 image_encoder = CLIPVisionModelWithProjection.from_pretrained(
     "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
     image_encoder=image_encoder,
-    torch_dtype=torch.float16
+    dtype=torch.float16
 ).to("cuda")
 
 pipeline.load_ip_adapter("h94/IP-Adapter-FaceID", subfolder=None, weight_name="ip-adapter-faceid-plus_sd15.bin")

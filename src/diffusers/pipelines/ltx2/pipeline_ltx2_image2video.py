@@ -1,0 +1,1760 @@
+# Copyright 2025 Lightricks and The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import copy
+import inspect
+from typing import Any, Callable
+
+import numpy as np
+import PIL.Image
+import torch
+from transformers import (
+    Gemma3ForConditionalGeneration,
+    Gemma4ForConditionalGeneration,
+    Gemma4UnifiedForConditionalGeneration,
+    GemmaTokenizer,
+    GemmaTokenizerFast,
+    ProcessorMixin,
+)
+
+from ...callbacks import MultiPipelineCallbacks, PipelineCallback
+from ...image_processor import PipelineImageInput
+from ...loaders import FromSingleFileMixin, LTX2LoraLoaderMixin
+from ...models.autoencoders import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
+from ...models.transformers import LTX2VideoTransformer3DModel
+from ...schedulers import FlowMatchEulerDiscreteScheduler
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
+from ...utils.torch_utils import randn_tensor
+from ...video_processor import VideoProcessor
+from ..pipeline_utils import DiffusionPipeline
+from .connectors import LTX2TextConnectors
+from .duration_head import LTX2DurationHead
+from .pipeline_output import LTX2PipelineOutput
+from .prompt_enhancement import (
+    _pad_inputs_for_attention_alignment,
+    _prepare_enhance_image,
+    clean_response,
+)
+from .utils import (
+    GEMMA3_PROMPT_ENHANCEMENT_CONFIG,
+    GEMMA4_PROMPT_ENHANCEMENT_CONFIG,
+    LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT,
+    apply_image_conditioning_crf,
+    resolve_default_image_crf,
+)
+from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
+
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import torch
+        >>> from diffusers import LTX2ImageToVideoPipeline
+        >>> from diffusers.utils import encode_video
+        >>> from diffusers.utils import load_image
+
+        >>> pipe = LTX2ImageToVideoPipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch.bfloat16)
+        >>> pipe.enable_model_cpu_offload()
+
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/a-r-r-o-w/tiny-meme-dataset-captioned/resolve/main/images/8.png"
+        ... )
+        >>> prompt = "A young girl stands calmly in the foreground, looking directly at the camera, as a house fire rages in the background."
+        >>> negative_prompt = "worst quality, inconsistent motion, blurry, jittery, distorted"
+
+        >>> frame_rate = 24.0
+        >>> video, audio = pipe(
+        ...     image=image,
+        ...     prompt=prompt,
+        ...     negative_prompt=negative_prompt,
+        ...     width=768,
+        ...     height=512,
+        ...     num_frames=121,
+        ...     frame_rate=frame_rate,
+        ...     num_inference_steps=30,
+        ...     guidance_scale=3.0,
+        ...     output_type="np",
+        ...     return_dict=False,
+        ... )
+
+        >>> encode_video(
+        ...     video[0],
+        ...     fps=frame_rate,
+        ...     audio=audio[0].float().cpu(),
+        ...     audio_sample_rate=pipe.vocoder.config.output_sampling_rate,  # should be 24000
+        ...     output_path="video.mp4",
+        ... )
+        ```
+"""
+
+
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: torch.Generator | None = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
+# Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
+def calculate_shift(
+    image_seq_len,
+    base_seq_len: int = 256,
+    max_seq_len: int = 4096,
+    base_shift: float = 0.5,
+    max_shift: float = 1.15,
+):
+    m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
+    b = base_shift - m * base_seq_len
+    mu = image_seq_len * m + b
+    return mu
+
+
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
+def retrieve_timesteps(
+    scheduler,
+    num_inference_steps: int | None = None,
+    device: str | torch.device | None = None,
+    timesteps: list[int] | None = None,
+    sigmas: list[float] | None = None,
+    **kwargs,
+):
+    r"""
+    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
+    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
+
+    Args:
+        scheduler (`SchedulerMixin`):
+            The scheduler to get timesteps from.
+        num_inference_steps (`int`):
+            The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
+            must be `None`.
+        device (`str` or `torch.device`, *optional*):
+            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+        timesteps (`list[int]`, *optional*):
+            Custom timesteps used to override the timestep spacing strategy of the scheduler. If `timesteps` is passed,
+            `num_inference_steps` and `sigmas` must be `None`.
+        sigmas (`list[float]`, *optional*):
+            Custom sigmas used to override the timestep spacing strategy of the scheduler. If `sigmas` is passed,
+            `num_inference_steps` and `timesteps` must be `None`.
+
+    Returns:
+        `tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        second element is the number of inference steps.
+    """
+    if timesteps is not None and sigmas is not None:
+        raise ValueError("Only one of `timesteps` or `sigmas` can be passed. Please choose one to set custom values")
+    if timesteps is not None:
+        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accepts_timesteps:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" timestep schedules. Please check whether you are using the correct scheduler."
+            )
+        scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
+    elif sigmas is not None:
+        accept_sigmas = "sigmas" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accept_sigmas:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" sigmas schedules. Please check whether you are using the correct scheduler."
+            )
+        scheduler.set_timesteps(sigmas=sigmas, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
+    else:
+        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+    return timesteps, num_inference_steps
+
+
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
+def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
+    r"""
+    Rescales `noise_cfg` tensor based on `guidance_rescale` to improve image quality and fix overexposure. Based on
+    Section 3.4 from [Common Diffusion Noise Schedules and Sample Steps are
+    Flawed](https://huggingface.co/papers/2305.08891).
+
+    Args:
+        noise_cfg (`torch.Tensor`):
+            The predicted noise tensor for the guided diffusion process.
+        noise_pred_text (`torch.Tensor`):
+            The predicted noise tensor for the text-guided diffusion process.
+        guidance_rescale (`float`, *optional*, defaults to 0.0):
+            A rescale factor applied to the noise predictions.
+
+    Returns:
+        noise_cfg (`torch.Tensor`): The rescaled noise prediction tensor.
+    """
+    std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
+    std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
+    # rescale the results from guidance (fixes overexposure)
+    noise_pred_rescaled = noise_cfg * (std_text / std_cfg)
+    # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
+    noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
+    return noise_cfg
+
+
+class LTX2ImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
+    r"""
+    Pipeline for image-to-video generation.
+
+    Reference: https://github.com/Lightricks/LTX-Video
+
+    TODO
+    """
+
+    model_cpu_offload_seq = (
+        "prompt_enhancer->text_encoder->connectors->duration_head->transformer->vae->audio_vae->vocoder"
+    )
+    _optional_components = ["processor", "prompt_enhancer", "duration_head"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
+
+    def __init__(
+        self,
+        scheduler: FlowMatchEulerDiscreteScheduler,
+        vae: AutoencoderKLLTX2Video,
+        audio_vae: AutoencoderKLLTX2Audio,
+        text_encoder: Gemma3ForConditionalGeneration | Gemma4UnifiedForConditionalGeneration,
+        tokenizer: GemmaTokenizer | GemmaTokenizerFast,
+        connectors: LTX2TextConnectors,
+        transformer: LTX2VideoTransformer3DModel,
+        vocoder: LTX2Vocoder | LTX2VocoderWithBWE,
+        processor: ProcessorMixin | None = None,
+        prompt_enhancer: Gemma4ForConditionalGeneration | None = None,
+        duration_head: LTX2DurationHead | None = None,
+    ):
+        super().__init__()
+
+        self.register_modules(
+            vae=vae,
+            audio_vae=audio_vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            connectors=connectors,
+            transformer=transformer,
+            vocoder=vocoder,
+            scheduler=scheduler,
+            processor=processor,
+            prompt_enhancer=prompt_enhancer,
+            duration_head=duration_head,
+        )
+
+        self.vae_spatial_compression_ratio = (
+            self.vae.spatial_compression_ratio if getattr(self, "vae", None) is not None else 32
+        )
+        self.vae_temporal_compression_ratio = (
+            self.vae.temporal_compression_ratio if getattr(self, "vae", None) is not None else 8
+        )
+        # TODO: check whether the MEL compression ratio logic here is correct
+        self.audio_vae_mel_compression_ratio = (
+            self.audio_vae.mel_compression_ratio if getattr(self, "audio_vae", None) is not None else 4
+        )
+        self.audio_vae_temporal_compression_ratio = (
+            self.audio_vae.temporal_compression_ratio if getattr(self, "audio_vae", None) is not None else 4
+        )
+        self.transformer_spatial_patch_size = (
+            self.transformer.config.patch_size if getattr(self, "transformer", None) is not None else 1
+        )
+        self.transformer_temporal_patch_size = (
+            self.transformer.config.patch_size_t if getattr(self, "transformer") is not None else 1
+        )
+
+        self.audio_sampling_rate = (
+            self.audio_vae.config.sample_rate if getattr(self, "audio_vae", None) is not None else 16000
+        )
+        self.audio_hop_length = (
+            self.audio_vae.config.mel_hop_length if getattr(self, "audio_vae", None) is not None else 160
+        )
+
+        self.video_processor = VideoProcessor(vae_scale_factor=self.vae_spatial_compression_ratio, resample="bilinear")
+        self.tokenizer_max_length = (
+            self.tokenizer.model_max_length if getattr(self, "tokenizer", None) is not None else 1024
+        )
+
+    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._get_gemma_prompt_embeds
+    def _get_gemma_prompt_embeds(
+        self,
+        prompt: str | list[str],
+        num_videos_per_prompt: int = 1,
+        max_sequence_length: int = 1024,
+        scale_factor: int = 8,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ):
+        r"""
+        Encodes the prompt into text encoder hidden states.
+
+        Args:
+            prompt (`str` or `list[str]`, *optional*):
+                prompt to be encoded
+            device: (`str` or `torch.device`):
+                torch device to place the resulting embeddings on
+            dtype: (`torch.dtype`):
+                torch dtype to cast the prompt embeds to
+            max_sequence_length (`int`, defaults to 1024): Maximum sequence length to use for the prompt.
+        """
+        device = device or self._execution_device
+        dtype = dtype or self.text_encoder.dtype
+
+        prompt = [prompt] if isinstance(prompt, str) else prompt
+        batch_size = len(prompt)
+
+        if getattr(self, "tokenizer", None) is not None:
+            # Gemma expects left padding for chat-style prompts
+            self.tokenizer.padding_side = "left"
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+
+        prompt = [p.strip() for p in prompt]
+        text_inputs = self.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=max_sequence_length,
+            truncation=True,
+            add_special_tokens=True,
+            return_tensors="pt",
+        )
+        text_input_ids = text_inputs.input_ids
+        prompt_attention_mask = text_inputs.attention_mask
+        text_input_ids = text_input_ids.to(device)
+        prompt_attention_mask = prompt_attention_mask.to(device)
+
+        text_encoder_outputs = self.text_encoder(
+            input_ids=text_input_ids, attention_mask=prompt_attention_mask, output_hidden_states=True
+        )
+        text_encoder_hidden_states = text_encoder_outputs.hidden_states
+        text_encoder_hidden_states = torch.stack(text_encoder_hidden_states, dim=-1)
+        prompt_embeds = text_encoder_hidden_states.flatten(2, 3).to(dtype=dtype)  # Pack to 3D
+
+        # duplicate text embeddings for each generation per prompt, using mps friendly method
+        _, seq_len, _ = prompt_embeds.shape
+        prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
+
+        prompt_attention_mask = prompt_attention_mask.view(batch_size, -1)
+        prompt_attention_mask = prompt_attention_mask.repeat(num_videos_per_prompt, 1)
+
+        return prompt_embeds, prompt_attention_mask
+
+    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline.encode_prompt
+    def encode_prompt(
+        self,
+        prompt: str | list[str],
+        negative_prompt: str | list[str] | None = None,
+        do_classifier_free_guidance: bool = True,
+        num_videos_per_prompt: int = 1,
+        prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
+        max_sequence_length: int = 1024,
+        scale_factor: int = 8,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ):
+        r"""
+        Encodes the prompt into text encoder hidden states.
+
+        Args:
+            prompt (`str` or `list[str]`, *optional*):
+                prompt to be encoded
+            negative_prompt (`str` or `list[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
+            do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
+                Whether to use classifier free guidance or not.
+            num_videos_per_prompt (`int`, *optional*, defaults to 1):
+                Number of videos that should be generated per prompt. torch device to place the resulting embeddings on
+            prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings will be generated from `prompt` input argument.
+            negative_prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
+                argument.
+            device: (`torch.device`, *optional*):
+                torch device
+            dtype: (`torch.dtype`, *optional*):
+                torch dtype
+        """
+        device = device or self._execution_device
+
+        prompt = [prompt] if isinstance(prompt, str) else prompt
+        if prompt is not None:
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
+
+        if prompt_embeds is None:
+            prompt_embeds, prompt_attention_mask = self._get_gemma_prompt_embeds(
+                prompt=prompt,
+                num_videos_per_prompt=num_videos_per_prompt,
+                max_sequence_length=max_sequence_length,
+                scale_factor=scale_factor,
+                device=device,
+                dtype=dtype,
+            )
+
+        if do_classifier_free_guidance and negative_prompt_embeds is None:
+            negative_prompt = negative_prompt or ""
+            negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
+
+            if prompt is not None and type(prompt) is not type(negative_prompt):
+                raise TypeError(
+                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f" {type(prompt)}."
+                )
+            elif batch_size != len(negative_prompt):
+                raise ValueError(
+                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+                    " the batch size of `prompt`."
+                )
+
+            negative_prompt_embeds, negative_prompt_attention_mask = self._get_gemma_prompt_embeds(
+                prompt=negative_prompt,
+                num_videos_per_prompt=num_videos_per_prompt,
+                max_sequence_length=max_sequence_length,
+                scale_factor=scale_factor,
+                device=device,
+                dtype=dtype,
+            )
+
+        return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
+
+    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline.check_inputs
+    def check_inputs(
+        self,
+        prompt,
+        height,
+        width,
+        callback_on_step_end_tensor_inputs=None,
+        prompt_embeds=None,
+        negative_prompt_embeds=None,
+        prompt_attention_mask=None,
+        negative_prompt_attention_mask=None,
+        spatio_temporal_guidance_blocks=None,
+        stg_scale=None,
+        audio_stg_scale=None,
+        system_prompt=None,
+        enable_prompt_enhancement=None,
+        num_frames=None,
+        min_seconds=1.0,
+        max_seconds=20.0,
+        image=None,
+        image_crf=None,
+        latents=None,
+        audio_latents=None,
+    ):
+        if height % 32 != 0 or width % 32 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 32 but are {height} and {width}.")
+
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt is None and prompt_embeds is None:
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if prompt_embeds is not None and prompt_attention_mask is None:
+            raise ValueError("Must provide `prompt_attention_mask` when specifying `prompt_embeds`.")
+
+        if negative_prompt_embeds is not None and negative_prompt_attention_mask is None:
+            raise ValueError("Must provide `negative_prompt_attention_mask` when specifying `negative_prompt_embeds`.")
+
+        if prompt_embeds is not None and negative_prompt_embeds is not None:
+            if prompt_embeds.shape != negative_prompt_embeds.shape:
+                raise ValueError(
+                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
+                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
+                    f" {negative_prompt_embeds.shape}."
+                )
+            if prompt_attention_mask.shape != negative_prompt_attention_mask.shape:
+                raise ValueError(
+                    "`prompt_attention_mask` and `negative_prompt_attention_mask` must have the same shape when passed directly, but"
+                    f" got: `prompt_attention_mask` {prompt_attention_mask.shape} != `negative_prompt_attention_mask`"
+                    f" {negative_prompt_attention_mask.shape}."
+                )
+
+        if latents is not None and latents.ndim != 5:
+            raise ValueError(
+                f"Only unpacked (5D) video latents of shape `[batch_size, latent_channels, latent_frames,"
+                f" latent_height, latent_width] are supported, but got {latents.ndim} dims. If you have packed (3D)"
+                f" latents, please unpack them (e.g. using the `_unpack_latents` method)."
+            )
+        if audio_latents is not None and audio_latents.ndim != 4:
+            raise ValueError(
+                f"Only unpacked (4D) audio latents of shape `[batch_size, num_channels, audio_length, mel_bins] are"
+                f" supported, but got {audio_latents.ndim} dims. If you have packed (3D) latents, please unpack them"
+                f" (e.g. using the `_unpack_audio_latents` method)."
+            )
+
+        if ((stg_scale > 0.0) or (audio_stg_scale > 0.0)) and not spatio_temporal_guidance_blocks:
+            raise ValueError(
+                "Spatio-Temporal Guidance (STG) is specified but no STG blocks are supplied. Please supply a list of"
+                "block indices at which to apply STG in `spatio_temporal_guidance_blocks`"
+            )
+
+        if (
+            enable_prompt_enhancement
+            and prompt is not None
+            and system_prompt is None
+            and getattr(self, "prompt_enhancer", None) is None
+        ):
+            raise ValueError(
+                "`system_prompt` must be supplied to enable prompt enhancement when no dedicated "
+                "`prompt_enhancer` component is configured (LTX-2.0/2.3)."
+            )
+
+        if min_seconds >= max_seconds:
+            raise ValueError(
+                f"`min_seconds` ({min_seconds}) must be less than `max_seconds` ({max_seconds})."
+                " A collapsed range leaves no room for a prediction, and cannot generally be satisfied by a frame"
+                " count on the VAE's temporal grid."
+            )
+
+        # Auto-duration path: `num_frames` omitted on a pipeline that has a `duration_head`.
+        if num_frames is None and getattr(self, "duration_head", None) is not None:
+            num_prompts = len(prompt) if isinstance(prompt, list) else 1 if prompt is not None else len(prompt_embeds)
+            if num_prompts > 1:
+                raise ValueError(
+                    f"`num_frames` was omitted so the duration head would auto-predict, but {num_prompts} prompts were"
+                    " supplied. The duration head predicts one duration, and prompts with different natural lengths"
+                    " cannot share a single frame count. Call the pipeline once per prompt, or pass `num_frames` as an"
+                    " integer."
+                )
+
+        if latents is None and image is not None:
+            crf = image_crf if image_crf is not None else resolve_default_image_crf(self.text_encoder)
+            if crf != 0 and not isinstance(image, PIL.Image.Image):
+                raise ValueError(
+                    f"`image_crf` re-compression requires a `PIL.Image.Image` input, got {type(image)}. "
+                    "Pass a PIL image, or set `image_crf=0` to skip re-compression."
+                )
+
+    @torch.no_grad()
+    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline.enhance_prompt
+    def enhance_prompt(
+        self,
+        prompt: str,
+        system_prompt: str,
+        max_new_tokens: int | None = None,
+        seed: int = 10,
+        generator: torch.Generator | None = None,
+        generation_kwargs: dict[str, Any] | None = None,
+        device: str | torch.device | None = None,
+        image: PipelineImageInput | None = None,
+    ):
+        """
+        Enhances the supplied `prompt` by generating a new prompt using the prompt enhancer (a Gemma
+        conditional-generation model) from it and a system prompt. When `image` is supplied, the enhancer is also
+        conditioned on that reference frame (I2V / keyframe-style enhancement). Uses the dedicated `prompt_enhancer`
+        component if one is configured (e.g. LTX-2.5, whose text encoder isn't trained for enhancement), otherwise
+        falls back to the main `text_encoder` (LTX-2.0/2.3, which double as their own enhancer).
+
+        Message templates, decoding kwargs, response cleaning, and image long-side prep match `ltx-core` /
+        `ltx-pipelines` (`enhance_t2v` / `enhance_i2v` / `generate_enhanced_prompt`).
+        """
+        device = device or self._execution_device
+        using_dedicated_enhancer = getattr(self, "prompt_enhancer", None) is not None
+        enhancer = self.prompt_enhancer if using_dedicated_enhancer else self.text_encoder
+        config = GEMMA4_PROMPT_ENHANCEMENT_CONFIG if using_dedicated_enhancer else GEMMA3_PROMPT_ENHANCEMENT_CONFIG
+
+        generation_kwargs = (
+            dict(generation_kwargs) if generation_kwargs is not None else dict(config.generation_kwargs)
+        )
+        if max_new_tokens is None:
+            max_new_tokens = config.max_new_tokens
+
+        # Templates match ltx-core `LTXGemmaTextEncoder.enhance_t2v` / `enhance_i2v` for both Gemma 3 and 4.
+        if image is None:
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"user prompt: {prompt}"},
+            ]
+            enhance_image = None
+        else:
+            enhance_image = _prepare_enhance_image(image)
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image"},
+                        {"type": "text", "text": f"User Raw Input Prompt: {prompt}."},
+                    ],
+                },
+            ]
+
+        template = self.processor.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        model_inputs = self.processor(text=template, images=enhance_image, return_tensors="pt").to(device)
+        pad_token_id = (
+            self.processor.tokenizer.pad_token_id if self.processor.tokenizer.pad_token_id is not None else 0
+        )
+        model_inputs = _pad_inputs_for_attention_alignment(model_inputs, pad_token_id=pad_token_id)
+        enhancer.to(device)
+
+        # `transformers.GenerationMixin.generate` does not support using a `torch.Generator` to control randomness,
+        # so manually apply a seed for reproducible generation.
+        if generator is not None:
+            seed = generator.initial_seed() if not isinstance(generator, list) else generator[0].initial_seed()
+        torch.manual_seed(seed)
+        generated_sequences = enhancer.generate(
+            **model_inputs,
+            max_new_tokens=max_new_tokens,
+            **generation_kwargs,
+        )  # tensor of shape [batch_size, seq_len]
+
+        generated_ids = [seq[len(model_inputs.input_ids[i]) :] for i, seq in enumerate(generated_sequences)]
+        enhanced_prompt = self.processor.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+        return [clean_response(text) for text in enhanced_prompt]
+
+    @staticmethod
+    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._pack_latents
+    def _pack_latents(latents: torch.Tensor, patch_size: int = 1, patch_size_t: int = 1) -> torch.Tensor:
+        # Unpacked latents of shape are [B, C, F, H, W] are patched into tokens of shape [B, C, F // p_t, p_t, H // p, p, W // p, p].
+        # The patch dimensions are then permuted and collapsed into the channel dimension of shape:
+        # [B, F // p_t * H // p * W // p, C * p_t * p * p] (an ndim=3 tensor).
+        # dim=0 is the batch size, dim=1 is the effective video sequence length, dim=2 is the effective number of input features
+        batch_size, num_channels, num_frames, height, width = latents.shape
+        post_patch_num_frames = num_frames // patch_size_t
+        post_patch_height = height // patch_size
+        post_patch_width = width // patch_size
+        latents = latents.reshape(
+            batch_size,
+            -1,
+            post_patch_num_frames,
+            patch_size_t,
+            post_patch_height,
+            patch_size,
+            post_patch_width,
+            patch_size,
+        )
+        latents = latents.permute(0, 2, 4, 6, 1, 3, 5, 7).flatten(4, 7).flatten(1, 3)
+        return latents
+
+    @staticmethod
+    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._unpack_latents
+    def _unpack_latents(
+        latents: torch.Tensor, num_frames: int, height: int, width: int, patch_size: int = 1, patch_size_t: int = 1
+    ) -> torch.Tensor:
+        # Packed latents of shape [B, S, D] (S is the effective video sequence length, D is the effective feature dimensions)
+        # are unpacked and reshaped into a video tensor of shape [B, C, F, H, W]. This is the inverse operation of
+        # what happens in the `_pack_latents` method.
+        batch_size = latents.size(0)
+        latents = latents.reshape(batch_size, num_frames, height, width, -1, patch_size_t, patch_size, patch_size)
+        latents = latents.permute(0, 4, 1, 5, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(2, 3)
+        return latents
+
+    @staticmethod
+    def _normalize_latents(
+        latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor, scaling_factor: float = 1.0
+    ) -> torch.Tensor:
+        # Normalize latents across the channel dimension [B, C, F, H, W]
+        latents_mean = latents_mean.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
+        latents_std = latents_std.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
+        latents = (latents - latents_mean) * scaling_factor / latents_std
+        return latents
+
+    @staticmethod
+    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._denormalize_latents
+    def _denormalize_latents(
+        latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor, scaling_factor: float = 1.0
+    ) -> torch.Tensor:
+        # Denormalize latents across the channel dimension [B, C, F, H, W]
+        latents_mean = latents_mean.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
+        latents_std = latents_std.view(1, -1, 1, 1, 1).to(latents.device, latents.dtype)
+        latents = latents * latents_std / scaling_factor + latents_mean
+        return latents
+
+    @staticmethod
+    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._create_noised_state
+    def _create_noised_state(
+        latents: torch.Tensor, noise_scale: float | torch.Tensor, generator: torch.Generator | None = None
+    ):
+        noise = randn_tensor(latents.shape, generator=generator, device=latents.device, dtype=latents.dtype)
+        noised_latents = noise_scale * noise + (1 - noise_scale) * latents
+        return noised_latents
+
+    @staticmethod
+    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._pack_audio_latents
+    def _pack_audio_latents(
+        latents: torch.Tensor, patch_size: int | None = None, patch_size_t: int | None = None
+    ) -> torch.Tensor:
+        # Audio latents shape: [B, C, L, M], where L is the latent audio length and M is the number of mel bins
+        if patch_size is not None and patch_size_t is not None:
+            # Packs the latents into a patch sequence of shape [B, L // p_t * M // p, C * p_t * p] (a ndim=3 tnesor).
+            # dim=1 is the effective audio sequence length and dim=2 is the effective audio input feature size.
+            batch_size, num_channels, latent_length, latent_mel_bins = latents.shape
+            post_patch_latent_length = latent_length / patch_size_t
+            post_patch_mel_bins = latent_mel_bins / patch_size
+            latents = latents.reshape(
+                batch_size, -1, post_patch_latent_length, patch_size_t, post_patch_mel_bins, patch_size
+            )
+            latents = latents.permute(0, 2, 4, 1, 3, 5).flatten(3, 5).flatten(1, 2)
+        else:
+            # Packs the latents into a patch sequence of shape [B, L, C * M]. This implicitly assumes a (mel)
+            # patch_size of M (all mel bins constitutes a single patch) and a patch_size_t of 1.
+            latents = latents.transpose(1, 2).flatten(2, 3)  # [B, C, L, M] --> [B, L, C * M]
+        return latents
+
+    @staticmethod
+    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._unpack_audio_latents
+    def _unpack_audio_latents(
+        latents: torch.Tensor,
+        latent_length: int,
+        num_mel_bins: int,
+        patch_size: int | None = None,
+        patch_size_t: int | None = None,
+    ) -> torch.Tensor:
+        # Unpacks an audio patch sequence of shape [B, S, D] into a latent spectrogram tensor of shape [B, C, L, M],
+        # where L is the latent audio length and M is the number of mel bins.
+        if patch_size is not None and patch_size_t is not None:
+            batch_size = latents.size(0)
+            latents = latents.reshape(batch_size, latent_length, num_mel_bins, -1, patch_size_t, patch_size)
+            latents = latents.permute(0, 3, 1, 4, 2, 5).flatten(4, 5).flatten(2, 3)
+        else:
+            # Assume [B, S, D] = [B, L, C * M], which implies that patch_size = M and patch_size_t = 1.
+            latents = latents.unflatten(2, (-1, num_mel_bins)).transpose(1, 2)
+        return latents
+
+    @staticmethod
+    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._normalize_audio_latents
+    def _normalize_audio_latents(latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor):
+        latents_mean = latents_mean.to(latents.device, latents.dtype)
+        latents_std = latents_std.to(latents.device, latents.dtype)
+        return (latents - latents_mean) / latents_std
+
+    @staticmethod
+    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline._denormalize_audio_latents
+    def _denormalize_audio_latents(latents: torch.Tensor, latents_mean: torch.Tensor, latents_std: torch.Tensor):
+        latents_mean = latents_mean.to(latents.device, latents.dtype)
+        latents_std = latents_std.to(latents.device, latents.dtype)
+        return (latents * latents_std) + latents_mean
+
+    def prepare_latents(
+        self,
+        image: torch.Tensor | None = None,
+        batch_size: int = 1,
+        num_channels_latents: int = 128,
+        height: int = 512,
+        width: int = 704,
+        num_frames: int = 161,
+        noise_scale: float = 0.0,
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+        generator: torch.Generator | None = None,
+        latents: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        height = height // self.vae_spatial_compression_ratio
+        width = width // self.vae_spatial_compression_ratio
+        num_frames = (num_frames - 1) // self.vae_temporal_compression_ratio + 1
+
+        shape = (batch_size, num_channels_latents, num_frames, height, width)
+        mask_shape = (batch_size, 1, num_frames, height, width)
+
+        if latents is not None:
+            if latents.ndim == 5:
+                # conditioning_mask needs to the same shape as latents in two stages generation.
+                batch_size, _, num_frames, height, width = latents.shape
+                mask_shape = (batch_size, 1, num_frames, height, width)
+                conditioning_mask = latents.new_zeros(mask_shape)
+                conditioning_mask[:, :, 0] = 1.0
+
+                latents = self._normalize_latents(
+                    latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
+                )
+                latents = self._create_noised_state(latents, noise_scale * (1 - conditioning_mask), generator)
+                # latents are of shape [B, C, F, H, W], need to be packed
+                latents = self._pack_latents(
+                    latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
+                )
+            else:
+                conditioning_mask = latents.new_zeros(mask_shape)
+                conditioning_mask[:, :, 0] = 1.0
+            conditioning_mask = self._pack_latents(
+                conditioning_mask, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
+            ).squeeze(-1)
+            if latents.ndim != 3 or latents.shape[:2] != conditioning_mask.shape:
+                raise ValueError(
+                    f"Provided `latents` tensor has shape {latents.shape}, but the expected shape is {conditioning_mask.shape + (num_channels_latents,)}."
+                )
+            return latents.to(device=device, dtype=dtype), conditioning_mask
+
+        if isinstance(generator, list):
+            if len(generator) != batch_size:
+                raise ValueError(
+                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                )
+
+            init_latents = [
+                retrieve_latents(self.vae.encode(image[i].unsqueeze(0).unsqueeze(2)), generator[i], "argmax")
+                for i in range(batch_size)
+            ]
+        else:
+            init_latents = [
+                retrieve_latents(self.vae.encode(img.unsqueeze(0).unsqueeze(2)), generator, "argmax") for img in image
+            ]
+
+        init_latents = torch.cat(init_latents, dim=0).to(dtype)
+        init_latents = self._normalize_latents(init_latents, self.vae.latents_mean, self.vae.latents_std)
+        init_latents = init_latents.repeat(1, 1, num_frames, 1, 1)
+
+        # First condition is image latents and those should be kept clean.
+        conditioning_mask = torch.zeros(mask_shape, device=device, dtype=dtype)
+        conditioning_mask[:, :, 0] = 1.0
+
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        # Interpolation.
+        latents = init_latents * conditioning_mask + noise * (1 - conditioning_mask)
+
+        conditioning_mask = self._pack_latents(
+            conditioning_mask, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
+        ).squeeze(-1)
+        latents = self._pack_latents(
+            latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
+        )
+
+        return latents, conditioning_mask
+
+    # Copied from diffusers.pipelines.ltx2.pipeline_ltx2.LTX2Pipeline.prepare_audio_latents
+    def prepare_audio_latents(
+        self,
+        batch_size: int = 1,
+        num_channels_latents: int = 8,
+        audio_latent_length: int = 1,  # 1 is just a dummy value
+        num_mel_bins: int = 64,
+        noise_scale: float = 0.0,
+        dtype: torch.dtype | None = None,
+        device: torch.device | None = None,
+        generator: torch.Generator | None = None,
+        latents: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        if latents is not None:
+            if latents.ndim == 4:
+                # latents are of shape [B, C, L, M], need to be packed
+                latents = self._pack_audio_latents(latents)
+            if latents.ndim != 3:
+                raise ValueError(
+                    f"Provided `latents` tensor has shape {latents.shape}, but the expected shape is [batch_size, num_seq, num_features]."
+                )
+            latents = self._normalize_audio_latents(latents, self.audio_vae.latents_mean, self.audio_vae.latents_std)
+            latents = self._create_noised_state(latents, noise_scale, generator)
+            return latents.to(device=device, dtype=dtype)
+
+        latent_mel_bins = num_mel_bins // self.audio_vae_mel_compression_ratio
+
+        shape = (batch_size, num_channels_latents, audio_latent_length, latent_mel_bins)
+
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
+        latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        latents = self._pack_audio_latents(latents)
+        return latents
+
+    def convert_velocity_to_x0(
+        self, sample: torch.Tensor, denoised_output: torch.Tensor, step_idx: int, scheduler: Any | None = None
+    ) -> torch.Tensor:
+        if scheduler is None:
+            scheduler = self.scheduler
+
+        sample_x0 = sample - denoised_output * scheduler.sigmas[step_idx]
+        return sample_x0
+
+    def convert_x0_to_velocity(
+        self, sample: torch.Tensor, denoised_output: torch.Tensor, step_idx: int, scheduler: Any | None = None
+    ) -> torch.Tensor:
+        if scheduler is None:
+            scheduler = self.scheduler
+
+        sample_v = (sample - denoised_output) / scheduler.sigmas[step_idx]
+        return sample_v
+
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def guidance_rescale(self):
+        return self._guidance_rescale
+
+    @property
+    def stg_scale(self):
+        return self._stg_scale
+
+    @property
+    def modality_scale(self):
+        return self._modality_scale
+
+    @property
+    def audio_guidance_scale(self):
+        return self._audio_guidance_scale
+
+    @property
+    def audio_guidance_rescale(self):
+        return self._audio_guidance_rescale
+
+    @property
+    def audio_stg_scale(self):
+        return self._audio_stg_scale
+
+    @property
+    def audio_modality_scale(self):
+        return self._audio_modality_scale
+
+    @property
+    def do_classifier_free_guidance(self):
+        return (self._guidance_scale > 1.0) or (self._audio_guidance_scale > 1.0)
+
+    @property
+    def do_spatio_temporal_guidance(self):
+        return (self._stg_scale > 0.0) or (self._audio_stg_scale > 0.0)
+
+    @property
+    def do_modality_isolation_guidance(self):
+        return (self._modality_scale > 1.0) or (self._audio_modality_scale > 1.0)
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
+
+    @property
+    def current_timestep(self):
+        return self._current_timestep
+
+    @property
+    def attention_kwargs(self):
+        return self._attention_kwargs
+
+    @property
+    def interrupt(self):
+        return self._interrupt
+
+    @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
+    def __call__(
+        self,
+        image: PipelineImageInput = None,
+        prompt: str | list[str] = None,
+        negative_prompt: str | list[str] | None = None,
+        height: int = 512,
+        width: int = 768,
+        num_frames: int | None = None,
+        min_seconds: float = 1.0,
+        max_seconds: float = 20.0,
+        frame_rate: float = 24.0,
+        num_inference_steps: int = 30,
+        sigmas: list[float] | None = None,
+        timesteps: list[int] | None = None,
+        guidance_scale: float = 3.0,
+        stg_scale: float = 1.0,
+        modality_scale: float = 3.0,
+        guidance_rescale: float = 0.7,
+        audio_guidance_scale: float | None = 7.0,
+        audio_stg_scale: float | None = 1.0,
+        audio_modality_scale: float | None = 3.0,
+        audio_guidance_rescale: float | None = 0.7,
+        spatio_temporal_guidance_blocks: list[int] | None = [28],
+        noise_scale: float = 0.0,
+        num_videos_per_prompt: int = 1,
+        generator: torch.Generator | list[torch.Generator] | None = None,
+        latents: torch.Tensor | None = None,
+        audio_latents: torch.Tensor | None = None,
+        prompt_embeds: torch.Tensor | None = None,
+        prompt_attention_mask: torch.Tensor | None = None,
+        negative_prompt_embeds: torch.Tensor | None = None,
+        negative_prompt_attention_mask: torch.Tensor | None = None,
+        decode_timestep: float | list[float] = 0.0,
+        decode_noise_scale: float | list[float] | None = None,
+        use_cross_timestep: bool = True,
+        system_prompt: str | None = None,
+        enable_prompt_enhancement: bool = False,
+        prompt_max_new_tokens: int | None = None,
+        prompt_enhancement_kwargs: dict[str, Any] | None = None,
+        prompt_enhancement_seed: int = 10,
+        image_crf: int | None = None,
+        output_type: str = "pil",
+        return_dict: bool = True,
+        attention_kwargs: dict[str, Any] | None = None,
+        callback_on_step_end: Callable[[int, int], None] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
+        max_sequence_length: int = 1024,
+    ) -> LTX2PipelineOutput | tuple:
+        r"""
+        Function invoked when calling the pipeline for generation.
+
+        Args:
+            image (`PipelineImageInput`):
+                The input image to condition the generation on. Must be an image, a list of images or a `torch.Tensor`.
+            prompt (`str` or `list[str]`, *optional*):
+                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
+                instead.
+            negative_prompt (`str` or `list[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
+            height (`int`, *optional*, defaults to `512`):
+                The height in pixels of the generated image. This is set to 480 by default for the best results.
+            width (`int`, *optional*, defaults to `768`):
+                The width in pixels of the generated image. This is set to 848 by default for the best results.
+            num_frames (`int`, *optional*):
+                The number of video frames to generate. If not supplied, defaults to an auto-predicted duration when
+                this pipeline has a `duration_head` component (LTX-2.5 checkpoints and later), and to `121` otherwise.
+                Pass an integer to set the length explicitly. Auto-predicted counts are snapped to the VAE's causal
+                temporal grid, so the realized duration is quantized (roughly 0.33s at 24 fps).
+            min_seconds (`float`, *optional*, defaults to `1.0`):
+                Lower bound on the auto-predicted duration when `num_frames` is omitted and a `duration_head` is
+                present. Ignored when `num_frames` is set explicitly.
+            max_seconds (`float`, *optional*, defaults to `20.0`):
+                Upper bound on the auto-predicted duration when `num_frames` is omitted and a `duration_head` is
+                present. Ignored when `num_frames` is set explicitly. Must be strictly greater than `min_seconds`.
+            frame_rate (`float`, *optional*, defaults to `24.0`):
+                The frames per second (FPS) of the generated video.
+            num_inference_steps (`int`, *optional*, defaults to 30):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
+            sigmas (`List[float]`, *optional*):
+                Custom sigmas to use for the denoising process with schedulers which support a `sigmas` argument in
+                their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is passed
+                will be used.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
+                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
+                passed will be used. Must be in descending order.
+            guidance_scale (`float`, *optional*, defaults to `4.0`):
+                Guidance scale as defined in [Classifier-Free Diffusion
+                Guidance](https://huggingface.co/papers/2207.12598). `guidance_scale` is defined as `w` of equation 2.
+                of [Imagen Paper](https://huggingface.co/papers/2205.11487). Guidance scale is enabled by setting
+                `guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked to
+                the text `prompt`, usually at the expense of lower image quality. Used for the video modality (there is
+                a separate value `audio_guidance_scale` for the audio modality).
+            stg_scale (`float`, *optional*, defaults to `0.0`):
+                Video guidance scale for Spatio-Temporal Guidance (STG), proposed in [Spatiotemporal Skip Guidance for
+                Enhanced Video Diffusion Sampling](https://arxiv.org/abs/2411.18664). STG uses a CFG-like estimate
+                where we move the sample away from a weak sample from a perturbed version of the denoising model.
+                Enabling STG will result in an additional denoising model forward pass; the default value of `0.0`
+                means that STG is disabled.
+            modality_scale (`float`, *optional*, defaults to `1.0`):
+                Video guidance scale for LTX-2.X modality isolation guidance, where we move the sample away from a
+                weaker sample generated by the denoising model withy cross-modality (audio-to-video and video-to-audio)
+                cross attention disabled using a CFG-like estimate. Enabling modality guidance will result in an
+                additional denoising model forward pass; the default value of `1.0` means that modality guidance is
+                disabled.
+            guidance_rescale (`float`, *optional*, defaults to 0.0):
+                Guidance rescale factor proposed by [Common Diffusion Noise Schedules and Sample Steps are
+                Flawed](https://huggingface.co/papers/2305.08891) `guidance_scale` is defined as `φ` in equation 16. of
+                [Common Diffusion Noise Schedules and Sample Steps are
+                Flawed](https://huggingface.co/papers/2305.08891). Guidance rescale factor should fix overexposure when
+                using zero terminal SNR. Used for the video modality.
+            audio_guidance_scale (`float`, *optional* defaults to `None`):
+                Audio guidance scale for CFG with respect to the negative prompt. The CFG update rule is the same for
+                video and audio, but they can use different values for the guidance scale. The LTX-2.X authors suggest
+                that the `audio_guidance_scale` should be higher relative to the video `guidance_scale` (e.g. for
+                LTX-2.3 they suggest 3.0 for video and 7.0 for audio). If `None`, defaults to the video value
+                `guidance_scale`.
+            audio_stg_scale (`float`, *optional*, defaults to `None`):
+                Audio guidance scale for STG. As with CFG, the STG update rule is otherwise the same for video and
+                audio. For LTX-2.3, a value of 1.0 is suggested for both video and audio. If `None`, defaults to the
+                video value `stg_scale`.
+            audio_modality_scale (`float`, *optional*, defaults to `None`):
+                Audio guidance scale for LTX-2.X modality isolation guidance. As with CFG, the modality guidance rule
+                is otherwise the same for video and audio. For LTX-2.3, a value of 3.0 is suggested for both video and
+                audio. If `None`, defaults to the video value `modality_scale`.
+            audio_guidance_rescale (`float`, *optional*, defaults to `None`):
+                A separate guidance rescale factor for the audio modality. If `None`, defaults to the video value
+                `guidance_rescale`.
+            spatio_temporal_guidance_blocks (`list[int]`, *optional*, defaults to `None`):
+                The zero-indexed transformer block indices at which to apply STG. Must be supplied if STG is used
+                (`stg_scale` or `audio_stg_scale` is greater than `0`). A value of `[29]` is recommended for LTX-2.0
+                and `[28]` is recommended for LTX-2.3.
+            noise_scale (`float`, *optional*, defaults to `0.0`):
+                The interpolation factor between random noise and denoised latents at each timestep. Applying noise to
+                the `latents` and `audio_latents` before continue denoising.
+            num_videos_per_prompt (`int`, *optional*, defaults to 1):
+                The number of videos to generate per prompt.
+            generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
+            latents (`torch.Tensor`, *optional*):
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for video
+                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
+                tensor will be generated by sampling using the supplied random `generator`.
+            audio_latents (`torch.Tensor`, *optional*):
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for audio
+                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
+                tensor will be generated by sampling using the supplied random `generator`.
+            prompt_embeds (`torch.Tensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings will be generated from `prompt` input argument.
+            prompt_attention_mask (`torch.Tensor`, *optional*):
+                Pre-generated attention mask for text embeddings.
+            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings. For PixArt-Sigma this negative prompt should be "". If not
+                provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
+            negative_prompt_attention_mask (`torch.FloatTensor`, *optional*):
+                Pre-generated attention mask for negative text embeddings.
+            decode_timestep (`float`, defaults to `0.0`):
+                The timestep at which generated video is decoded.
+            decode_noise_scale (`float`, defaults to `None`):
+                The interpolation factor between random noise and denoised latents at the decode timestep.
+            use_cross_timestep (`bool` *optional*, defaults to `True`):
+                Whether to use the cross modality (audio is the cross modality of video, and vice versa) sigma when
+                calculating the cross attention modulation parameters. `True` is the LTX-2.3/2.5 behavior; `False` is
+                the legacy LTX-2.0 behavior.
+            system_prompt (`str`, *optional*, defaults to `None`):
+                Optional system prompt to use for prompt enhancement. The system prompt will be used by the prompt
+                enhancer (a Gemma conditional-generation model -- the dedicated `prompt_enhancer` component if one is
+                configured, otherwise the main `text_encoder`) to generate an enhanced prompt from the original
+                `prompt` and the first `image` to condition generation. If not supplied and a dedicated
+                `prompt_enhancer` is configured (LTX-2.5), defaults to `LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT` (from
+                `diffusers.pipelines.ltx2.utils`) -- see `enable_prompt_enhancement`.
+            enable_prompt_enhancement (`bool`, *optional*, defaults to `False`):
+                Whether to run prompt enhancement. Opt-in, matching the Lightricks reference pipelines. When `True` and
+                `system_prompt` is omitted, LTX-2.5 uses `LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT` if a dedicated
+                `prompt_enhancer` is configured; LTX-2.0/2.3 require an explicit `system_prompt`.
+            prompt_max_new_tokens (`int`, *optional*, defaults to `None`):
+                The maximum number of new tokens to generate when performing prompt enhancement. If not supplied, uses
+                600 for a dedicated Gemma 4 `prompt_enhancer` (LTX-2.5) or 512 for the Gemma 3 `text_encoder` fallback
+                (LTX-2.0/2.3).
+            prompt_enhancement_kwargs (`dict[str, Any]`, *optional*, defaults to `None`):
+                Keyword arguments for the prompt enhancer's `.generate` call. If not supplied, always matches whichever
+                model is doing the enhancing: `do_sample=False, no_repeat_ngram_size=3` (greedy) when using a dedicated
+                `prompt_enhancer` (LTX-2.5), or `do_sample=True, temperature=0.7` for the `text_encoder` fallback
+                (LTX-2.0/2.3). See
+                https://huggingface.co/docs/transformers/main/en/main_classes/text_generation#transformers.GenerationMixin.generate
+                for more details.
+            prompt_enhancement_seed (`int`, *optional*, defaults to `10`):
+                Random seed for any random operations during prompt enhancement.
+            image_crf (`int`, *optional*, defaults to `None`):
+                H.264 CRF used to re-compress the conditioning `image` before VAE encode, matching the compression the
+                model was trained against. `None` means "use the model default" (33 through LTX-2.3, 18 for LTX-2.5).
+                Pass `0` to skip re-compression. Requires a `PIL.Image.Image` when re-compression runs.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generate image. Choose between
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.ltx.LTX2PipelineOutput`] instead of a plain tuple.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            callback_on_step_end (`Callable`, *optional*):
+                A function that calls at the end of each denoising steps during the inference. The function is called
+                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
+                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
+                `callback_on_step_end_tensor_inputs`.
+            callback_on_step_end_tensor_inputs (`List`, *optional*):
+                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
+                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
+                `._callback_tensor_inputs` attribute of your pipeline class.
+            max_sequence_length (`int`, *optional*, defaults to `1024`):
+                Maximum sequence length to use with the `prompt`.
+
+        Examples:
+
+        Returns:
+            [`~pipelines.ltx.LTX2PipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.ltx.LTX2PipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated images.
+        """
+
+        if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+
+        audio_guidance_scale = audio_guidance_scale or guidance_scale
+        audio_stg_scale = audio_stg_scale or stg_scale
+        audio_modality_scale = audio_modality_scale or modality_scale
+        audio_guidance_rescale = audio_guidance_rescale or guidance_rescale
+
+        # 1. Check inputs. Raise error if not correct
+        self.check_inputs(
+            prompt=prompt,
+            height=height,
+            width=width,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            prompt_attention_mask=prompt_attention_mask,
+            negative_prompt_attention_mask=negative_prompt_attention_mask,
+            spatio_temporal_guidance_blocks=spatio_temporal_guidance_blocks,
+            stg_scale=stg_scale,
+            audio_stg_scale=audio_stg_scale,
+            system_prompt=system_prompt,
+            enable_prompt_enhancement=enable_prompt_enhancement,
+            num_frames=num_frames,
+            min_seconds=min_seconds,
+            max_seconds=max_seconds,
+            image=image,
+            image_crf=image_crf,
+            latents=latents,
+        )
+
+        # Per-modality guidance scales (video, audio)
+        self._guidance_scale = guidance_scale
+        self._stg_scale = stg_scale
+        self._modality_scale = modality_scale
+        self._guidance_rescale = guidance_rescale
+        self._audio_guidance_scale = audio_guidance_scale
+        self._audio_stg_scale = audio_stg_scale
+        self._audio_modality_scale = audio_modality_scale
+        self._audio_guidance_rescale = audio_guidance_rescale
+
+        self._attention_kwargs = attention_kwargs
+        self._interrupt = False
+        self._current_timestep = None
+
+        # 2. Define call parameters
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
+
+        device = self._execution_device
+
+        # 3. Prepare text embeddings
+        auto_duration = num_frames is None and getattr(self, "duration_head", None) is not None
+        if num_frames is None and not auto_duration:
+            # Legacy fixed default for checkpoints without a duration_head (LTX-2.0/2.3).
+            num_frames = 121
+
+        if enable_prompt_enhancement and prompt is not None:
+            if system_prompt is None:
+                system_prompt = LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT
+            prompt = self.enhance_prompt(
+                image=image,
+                prompt=prompt,
+                system_prompt=system_prompt,
+                max_new_tokens=prompt_max_new_tokens,
+                seed=prompt_enhancement_seed,
+                generator=generator,
+                generation_kwargs=prompt_enhancement_kwargs,
+                device=device,
+            )
+
+        (
+            prompt_embeds,
+            prompt_attention_mask,
+            negative_prompt_embeds,
+            negative_prompt_attention_mask,
+        ) = self.encode_prompt(
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            do_classifier_free_guidance=self.do_classifier_free_guidance,
+            num_videos_per_prompt=num_videos_per_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            prompt_attention_mask=prompt_attention_mask,
+            negative_prompt_attention_mask=negative_prompt_attention_mask,
+            max_sequence_length=max_sequence_length,
+            device=device,
+        )
+        if self.do_classifier_free_guidance:
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+            prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
+
+        tokenizer_padding_side = "left"  # Padding side for default Gemma3-12B text encoder
+        if getattr(self, "tokenizer", None) is not None:
+            tokenizer_padding_side = getattr(self.tokenizer, "padding_side", "left")
+        connector_prompt_embeds, connector_audio_prompt_embeds, connector_attention_mask = self.connectors(
+            prompt_embeds, prompt_attention_mask, padding_side=tokenizer_padding_side
+        )
+
+        if auto_duration:
+            video_tokens, audio_tokens = connector_prompt_embeds, connector_audio_prompt_embeds
+            if self.do_classifier_free_guidance:
+                # The connectors ran on the concatenated [negative, positive] batch; predict from the positive half.
+                video_tokens = video_tokens.chunk(2, dim=0)[1]
+                audio_tokens = audio_tokens.chunk(2, dim=0)[1]
+            # Rows past the first are `num_videos_per_prompt` duplicates of the same prompt.
+            num_frames = self.duration_head.predict_num_frames(
+                video_tokens[:1],
+                audio_tokens[:1],
+                frame_rate=frame_rate,
+                temporal_compression_ratio=self.vae_temporal_compression_ratio,
+                min_seconds=min_seconds,
+                max_seconds=max_seconds,
+            )
+
+        # 4. Prepare latent variables
+        latent_num_frames = (num_frames - 1) // self.vae_temporal_compression_ratio + 1
+        latent_height = height // self.vae_spatial_compression_ratio
+        latent_width = width // self.vae_spatial_compression_ratio
+        if latents is not None:
+            if latents.ndim == 5:
+                logger.info(
+                    "Got latents of shape [batch_size, latent_dim, latent_frames, latent_height, latent_width], `latent_num_frames`, `latent_height`, `latent_width` will be inferred."
+                )
+                _, _, latent_num_frames, latent_height, latent_width = latents.shape  # [B, C, F, H, W]
+            elif latents.ndim == 3:
+                logger.warning(
+                    f"You have supplied packed `latents` of shape {latents.shape}, so the latent dims cannot be"
+                    f" inferred. Make sure the supplied `height`, `width`, and `num_frames` are correct."
+                )
+            else:
+                raise ValueError(
+                    f"Provided `latents` tensor has shape {latents.shape}, but the expected shape is either [batch_size, seq_len, num_features] or [batch_size, latent_dim, latent_frames, latent_height, latent_width]."
+                )
+        # video_sequence_length = latent_num_frames * latent_height * latent_width
+
+        if latents is None:
+            # H.264 re-compress before resize/normalize (ltx-pipelines `load_image_and_preprocess`).
+            # PIL requirement is validated in `check_inputs` when CRF re-compression will run.
+            crf = image_crf if image_crf is not None else resolve_default_image_crf(self.text_encoder)
+            if crf != 0:
+                image = PIL.Image.fromarray(apply_image_conditioning_crf(np.array(image.convert("RGB")), crf))
+            image = self.video_processor.preprocess(image, height=height, width=width)
+            image = image.to(device=device, dtype=prompt_embeds.dtype)
+
+        num_channels_latents = self.transformer.config.in_channels
+        latents, conditioning_mask = self.prepare_latents(
+            image,
+            batch_size * num_videos_per_prompt,
+            num_channels_latents,
+            height,
+            width,
+            num_frames,
+            noise_scale,
+            torch.float32,
+            device,
+            generator,
+            latents,
+        )
+        if self.do_classifier_free_guidance:
+            conditioning_mask = torch.cat([conditioning_mask, conditioning_mask])
+
+        duration_s = num_frames / frame_rate
+        audio_latents_per_second = (
+            self.audio_sampling_rate / self.audio_hop_length / float(self.audio_vae_temporal_compression_ratio)
+        )
+        audio_num_frames = round(duration_s * audio_latents_per_second)
+        if audio_latents is not None:
+            if audio_latents.ndim == 4:
+                logger.info(
+                    "Got audio_latents of shape [batch_size, num_channels, audio_length, mel_bins], `audio_num_frames` will be inferred."
+                )
+                _, _, audio_num_frames, _ = audio_latents.shape  # [B, C, L, M]
+            elif audio_latents.ndim == 3:
+                logger.warning(
+                    f"You have supplied packed `audio_latents` of shape {audio_latents.shape}, so the latent dims"
+                    f" cannot be inferred. Make sure the supplied `num_frames` and `frame_rate` are correct."
+                )
+            else:
+                raise ValueError(
+                    f"Provided `audio_latents` tensor has shape {audio_latents.shape}, but the expected shape is either [batch_size, seq_len, num_features] or [batch_size, num_channels, audio_length, mel_bins]."
+                )
+
+        num_mel_bins = self.audio_vae.config.mel_bins if getattr(self, "audio_vae", None) is not None else 64
+        latent_mel_bins = num_mel_bins // self.audio_vae_mel_compression_ratio
+        num_channels_latents_audio = (
+            self.audio_vae.config.latent_channels if getattr(self, "audio_vae", None) is not None else 8
+        )
+        audio_latents = self.prepare_audio_latents(
+            batch_size * num_videos_per_prompt,
+            num_channels_latents=num_channels_latents_audio,
+            audio_latent_length=audio_num_frames,
+            num_mel_bins=num_mel_bins,
+            noise_scale=noise_scale,
+            dtype=torch.float32,
+            device=device,
+            generator=generator,
+            latents=audio_latents,
+        )
+
+        # 5. Prepare timesteps
+        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
+        mu = calculate_shift(
+            latents.shape[1],
+            self.scheduler.config.get("base_image_seq_len", 1024),
+            self.scheduler.config.get("max_image_seq_len", 4096),
+            self.scheduler.config.get("base_shift", 0.95),
+            self.scheduler.config.get("max_shift", 2.05),
+        )
+
+        # For now, duplicate the scheduler for use with the audio latents
+        audio_scheduler = copy.deepcopy(self.scheduler)
+        _, _ = retrieve_timesteps(
+            audio_scheduler,
+            num_inference_steps,
+            device,
+            timesteps,
+            sigmas=sigmas,
+            mu=mu,
+        )
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler,
+            num_inference_steps,
+            device,
+            timesteps,
+            sigmas=sigmas,
+            mu=mu,
+        )
+        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+        self._num_timesteps = len(timesteps)
+
+        # 6. Prepare micro-conditions
+        # Pre-compute video and audio positional ids as they will be the same at each step of the denoising loop
+        video_coords = self.transformer.rope.prepare_video_coords(
+            latents.shape[0], latent_num_frames, latent_height, latent_width, latents.device, fps=frame_rate
+        )
+        audio_coords = self.transformer.audio_rope.prepare_audio_coords(
+            audio_latents.shape[0], audio_num_frames, audio_latents.device
+        )
+        # Duplicate the positional ids as well if using CFG
+        if self.do_classifier_free_guidance:
+            video_coords = video_coords.repeat((2,) + (1,) * (video_coords.ndim - 1))  # Repeat twice in batch dim
+            audio_coords = audio_coords.repeat((2,) + (1,) * (audio_coords.ndim - 1))
+
+        # 7. Denoising loop
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                if self.interrupt:
+                    continue
+
+                self._current_timestep = t
+
+                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                latent_model_input = latent_model_input.to(prompt_embeds.dtype)
+                audio_latent_model_input = (
+                    torch.cat([audio_latents] * 2) if self.do_classifier_free_guidance else audio_latents
+                )
+                audio_latent_model_input = audio_latent_model_input.to(prompt_embeds.dtype)
+
+                timestep = t.expand(latent_model_input.shape[0])
+                video_timestep = timestep.unsqueeze(-1) * (1 - conditioning_mask)
+
+                with self.transformer.cache_context("cond_uncond"):
+                    noise_pred_video, noise_pred_audio = self.transformer(
+                        hidden_states=latent_model_input,
+                        audio_hidden_states=audio_latent_model_input,
+                        encoder_hidden_states=connector_prompt_embeds,
+                        audio_encoder_hidden_states=connector_audio_prompt_embeds,
+                        timestep=video_timestep,
+                        audio_timestep=timestep,
+                        sigma=timestep,  # Used by LTX-2.3
+                        encoder_attention_mask=connector_attention_mask,
+                        audio_encoder_attention_mask=connector_attention_mask,
+                        num_frames=latent_num_frames,
+                        height=latent_height,
+                        width=latent_width,
+                        fps=frame_rate,
+                        audio_num_frames=audio_num_frames,
+                        video_coords=video_coords,
+                        audio_coords=audio_coords,
+                        isolate_modalities=False,
+                        spatio_temporal_guidance_blocks=None,
+                        perturbation_mask=None,
+                        use_cross_timestep=use_cross_timestep,
+                        attention_kwargs=attention_kwargs,
+                        return_dict=False,
+                    )
+                noise_pred_video = noise_pred_video.float()
+                noise_pred_audio = noise_pred_audio.float()
+
+                if self.do_classifier_free_guidance:
+                    noise_pred_video_uncond_text, noise_pred_video = noise_pred_video.chunk(2)
+                    noise_pred_video = self.convert_velocity_to_x0(latents, noise_pred_video, i, self.scheduler)
+                    noise_pred_video_uncond_text = self.convert_velocity_to_x0(
+                        latents, noise_pred_video_uncond_text, i, self.scheduler
+                    )
+                    # Use delta formulation as it works more nicely with multiple guidance terms
+                    video_cfg_delta = (self.guidance_scale - 1) * (noise_pred_video - noise_pred_video_uncond_text)
+
+                    noise_pred_audio_uncond_text, noise_pred_audio = noise_pred_audio.chunk(2)
+                    noise_pred_audio = self.convert_velocity_to_x0(audio_latents, noise_pred_audio, i, audio_scheduler)
+                    noise_pred_audio_uncond_text = self.convert_velocity_to_x0(
+                        audio_latents, noise_pred_audio_uncond_text, i, audio_scheduler
+                    )
+                    audio_cfg_delta = (self.audio_guidance_scale - 1) * (
+                        noise_pred_audio - noise_pred_audio_uncond_text
+                    )
+
+                    # Get positive values from merged CFG inputs in case we need to do other DiT forward passes
+                    if self.do_spatio_temporal_guidance or self.do_modality_isolation_guidance:
+                        if i == 0:
+                            # Only split values that remain constant throughout the loop once
+                            video_prompt_embeds = connector_prompt_embeds.chunk(2, dim=0)[1]
+                            audio_prompt_embeds = connector_audio_prompt_embeds.chunk(2, dim=0)[1]
+                            prompt_attn_mask = connector_attention_mask.chunk(2, dim=0)[1]
+
+                            video_pos_ids = video_coords.chunk(2, dim=0)[0]
+                            audio_pos_ids = audio_coords.chunk(2, dim=0)[0]
+
+                        # Split values that vary each denoising loop iteration
+                        timestep = timestep.chunk(2, dim=0)[0]
+                        video_timestep = video_timestep.chunk(2, dim=0)[0]
+                else:
+                    video_cfg_delta = audio_cfg_delta = 0
+
+                    video_prompt_embeds = connector_prompt_embeds
+                    audio_prompt_embeds = connector_audio_prompt_embeds
+                    prompt_attn_mask = connector_attention_mask
+
+                    video_pos_ids = video_coords
+                    audio_pos_ids = audio_coords
+
+                    noise_pred_video = self.convert_velocity_to_x0(latents, noise_pred_video, i, self.scheduler)
+                    noise_pred_audio = self.convert_velocity_to_x0(audio_latents, noise_pred_audio, i, audio_scheduler)
+
+                if self.do_spatio_temporal_guidance:
+                    with self.transformer.cache_context("uncond_stg"):
+                        noise_pred_video_uncond_stg, noise_pred_audio_uncond_stg = self.transformer(
+                            hidden_states=latents.to(dtype=prompt_embeds.dtype),
+                            audio_hidden_states=audio_latents.to(dtype=prompt_embeds.dtype),
+                            encoder_hidden_states=video_prompt_embeds,
+                            audio_encoder_hidden_states=audio_prompt_embeds,
+                            timestep=video_timestep,
+                            audio_timestep=timestep,
+                            sigma=timestep,  # Used by LTX-2.3
+                            encoder_attention_mask=prompt_attn_mask,
+                            audio_encoder_attention_mask=prompt_attn_mask,
+                            num_frames=latent_num_frames,
+                            height=latent_height,
+                            width=latent_width,
+                            fps=frame_rate,
+                            audio_num_frames=audio_num_frames,
+                            video_coords=video_pos_ids,
+                            audio_coords=audio_pos_ids,
+                            isolate_modalities=False,
+                            # Use STG at given blocks to perturb model
+                            spatio_temporal_guidance_blocks=spatio_temporal_guidance_blocks,
+                            perturbation_mask=None,
+                            use_cross_timestep=use_cross_timestep,
+                            attention_kwargs=attention_kwargs,
+                            return_dict=False,
+                        )
+                    noise_pred_video_uncond_stg = noise_pred_video_uncond_stg.float()
+                    noise_pred_audio_uncond_stg = noise_pred_audio_uncond_stg.float()
+                    noise_pred_video_uncond_stg = self.convert_velocity_to_x0(
+                        latents, noise_pred_video_uncond_stg, i, self.scheduler
+                    )
+                    noise_pred_audio_uncond_stg = self.convert_velocity_to_x0(
+                        audio_latents, noise_pred_audio_uncond_stg, i, audio_scheduler
+                    )
+
+                    video_stg_delta = self.stg_scale * (noise_pred_video - noise_pred_video_uncond_stg)
+                    audio_stg_delta = self.audio_stg_scale * (noise_pred_audio - noise_pred_audio_uncond_stg)
+                else:
+                    video_stg_delta = audio_stg_delta = 0
+
+                if self.do_modality_isolation_guidance:
+                    with self.transformer.cache_context("uncond_modality"):
+                        noise_pred_video_uncond_modality, noise_pred_audio_uncond_modality = self.transformer(
+                            hidden_states=latents.to(dtype=prompt_embeds.dtype),
+                            audio_hidden_states=audio_latents.to(dtype=prompt_embeds.dtype),
+                            encoder_hidden_states=video_prompt_embeds,
+                            audio_encoder_hidden_states=audio_prompt_embeds,
+                            timestep=video_timestep,
+                            audio_timestep=timestep,
+                            sigma=timestep,  # Used by LTX-2.3
+                            encoder_attention_mask=prompt_attn_mask,
+                            audio_encoder_attention_mask=prompt_attn_mask,
+                            num_frames=latent_num_frames,
+                            height=latent_height,
+                            width=latent_width,
+                            fps=frame_rate,
+                            audio_num_frames=audio_num_frames,
+                            video_coords=video_pos_ids,
+                            audio_coords=audio_pos_ids,
+                            # Turn off A2V and V2A cross attn to isolate video and audio modalities
+                            isolate_modalities=True,
+                            spatio_temporal_guidance_blocks=None,
+                            perturbation_mask=None,
+                            use_cross_timestep=use_cross_timestep,
+                            attention_kwargs=attention_kwargs,
+                            return_dict=False,
+                        )
+                    noise_pred_video_uncond_modality = noise_pred_video_uncond_modality.float()
+                    noise_pred_audio_uncond_modality = noise_pred_audio_uncond_modality.float()
+                    noise_pred_video_uncond_modality = self.convert_velocity_to_x0(
+                        latents, noise_pred_video_uncond_modality, i, self.scheduler
+                    )
+                    noise_pred_audio_uncond_modality = self.convert_velocity_to_x0(
+                        audio_latents, noise_pred_audio_uncond_modality, i, audio_scheduler
+                    )
+
+                    video_modality_delta = (self.modality_scale - 1) * (
+                        noise_pred_video - noise_pred_video_uncond_modality
+                    )
+                    audio_modality_delta = (self.audio_modality_scale - 1) * (
+                        noise_pred_audio - noise_pred_audio_uncond_modality
+                    )
+                else:
+                    video_modality_delta = audio_modality_delta = 0
+
+                # Now apply all guidance terms
+                noise_pred_video_g = noise_pred_video + video_cfg_delta + video_stg_delta + video_modality_delta
+                noise_pred_audio_g = noise_pred_audio + audio_cfg_delta + audio_stg_delta + audio_modality_delta
+
+                # Apply LTX-2.X guidance rescaling
+                if self.guidance_rescale > 0:
+                    noise_pred_video = rescale_noise_cfg(
+                        noise_pred_video_g, noise_pred_video, guidance_rescale=self.guidance_rescale
+                    )
+                else:
+                    noise_pred_video = noise_pred_video_g
+
+                if self.audio_guidance_rescale > 0:
+                    noise_pred_audio = rescale_noise_cfg(
+                        noise_pred_audio_g, noise_pred_audio, guidance_rescale=self.audio_guidance_rescale
+                    )
+                else:
+                    noise_pred_audio = noise_pred_audio_g
+
+                # compute the previous noisy sample x_t -> x_t-1
+                noise_pred_video = self._unpack_latents(
+                    noise_pred_video,
+                    latent_num_frames,
+                    latent_height,
+                    latent_width,
+                    self.transformer_spatial_patch_size,
+                    self.transformer_temporal_patch_size,
+                )
+                latents = self._unpack_latents(
+                    latents,
+                    latent_num_frames,
+                    latent_height,
+                    latent_width,
+                    self.transformer_spatial_patch_size,
+                    self.transformer_temporal_patch_size,
+                )
+
+                # Convert back to velocity for scheduler
+                noise_pred_video = self.convert_x0_to_velocity(latents, noise_pred_video, i, self.scheduler)
+                noise_pred_audio = self.convert_x0_to_velocity(audio_latents, noise_pred_audio, i, audio_scheduler)
+
+                noise_pred_video = noise_pred_video[:, :, 1:]
+                noise_latents = latents[:, :, 1:]
+                pred_latents = self.scheduler.step(noise_pred_video, t, noise_latents, return_dict=False)[0]
+
+                latents = torch.cat([latents[:, :, :1], pred_latents], dim=2)
+                latents = self._pack_latents(
+                    latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
+                )
+
+                # NOTE: for now duplicate scheduler for audio latents in case self.scheduler sets internal state in
+                # the step method (such as _step_index)
+                audio_latents = audio_scheduler.step(noise_pred_audio, t, audio_latents, return_dict=False)[0]
+
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                    latents = callback_outputs.pop("latents", latents)
+                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+
+                # call the callback, if provided
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
+
+        latents = self._unpack_latents(
+            latents,
+            latent_num_frames,
+            latent_height,
+            latent_width,
+            self.transformer_spatial_patch_size,
+            self.transformer_temporal_patch_size,
+        )
+
+        audio_latents = self._denormalize_audio_latents(
+            audio_latents, self.audio_vae.latents_mean, self.audio_vae.latents_std
+        )
+        audio_latents = self._unpack_audio_latents(audio_latents, audio_num_frames, num_mel_bins=latent_mel_bins)
+
+        if output_type == "latent":
+            latents = self._denormalize_latents(
+                latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
+            )
+            video = latents
+            audio = audio_latents
+        else:
+            latents = latents.to(prompt_embeds.dtype)
+
+            if not self.vae.config.timestep_conditioning:
+                timestep = None
+            else:
+                noise = randn_tensor(latents.shape, generator=generator, device=device, dtype=latents.dtype)
+                if not isinstance(decode_timestep, list):
+                    decode_timestep = [decode_timestep] * batch_size
+                if decode_noise_scale is None:
+                    decode_noise_scale = decode_timestep
+                elif not isinstance(decode_noise_scale, list):
+                    decode_noise_scale = [decode_noise_scale] * batch_size
+
+                timestep = torch.tensor(decode_timestep, device=device, dtype=latents.dtype)
+                decode_noise_scale = torch.tensor(decode_noise_scale, device=device, dtype=latents.dtype)[
+                    :, None, None, None, None
+                ]
+                latents = (1 - decode_noise_scale) * latents + decode_noise_scale * noise
+
+            latents = self._denormalize_latents(
+                latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
+            )
+
+            latents = latents.to(self.vae.dtype)
+            video = self.vae.decode(latents, timestep, return_dict=False)[0]
+            video = self.video_processor.postprocess_video(video, output_type=output_type)
+
+            audio_latents = audio_latents.to(self.audio_vae.dtype)
+            generated_mel_spectrograms = self.audio_vae.decode(audio_latents, return_dict=False)[0]
+            audio = self.vocoder(generated_mel_spectrograms)
+
+        # Offload all models
+        self.maybe_free_model_hooks()
+
+        if not return_dict:
+            return (video, audio)
+
+        return LTX2PipelineOutput(frames=video, audio=audio)

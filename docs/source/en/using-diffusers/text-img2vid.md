@@ -30,9 +30,9 @@ from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
 from transformers import UMT5EncoderModel
 
-text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
-vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
-transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", dtype=torch.bfloat16)
+vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", dtype=torch.float32)
+transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", dtype=torch.bfloat16)
 
 # group-offloading
 onload_device = torch.device("cuda")
@@ -55,9 +55,9 @@ pipeline = WanPipeline.from_pretrained(
     vae=vae,
     transformer=transformer,
     text_encoder=text_encoder,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = """
 The camera rushes from far to near in a low-angle shot, 
@@ -104,7 +104,7 @@ pipeline_quant_config = PipelineQuantizationConfig(
 pipeline = HunyuanVideoPipeline.from_pretrained(
     "hunyuanvideo-community/HunyuanVideo",
     quantization_config=pipeline_quant_config,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 
 # model-offloading and tiling
@@ -129,13 +129,13 @@ from diffusers.utils import export_to_video
 transformer = AutoModel.from_pretrained(
     "Lightricks/LTX-Video",
     subfolder="transformer",
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
 transformer.enable_layerwise_casting(
     storage_dtype=torch.float8_e4m3fn, compute_dtype=torch.bfloat16
 )
 
-pipeline = LTXPipeline.from_pretrained("Lightricks/LTX-Video", transformer=transformer, torch_dtype=torch.bfloat16)
+pipeline = LTXPipeline.from_pretrained("Lightricks/LTX-Video", transformer=transformer, dtype=torch.bfloat16)
 
 # group-offloading
 onload_device = torch.device("cuda")
@@ -186,8 +186,8 @@ from diffusers import LTXPipeline
 from diffusers.utils import export_to_video
 
 pipeline = LTXPipeline.from_pretrained(
-    "Lightricks/LTX-Video", torch_dtype=torch.bfloat16
-).to("cuda")
+    "Lightricks/LTX-Video", dtype=torch.bfloat16
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = """
 A woman with long brown hair and light skin smiles at another woman with long blonde hair. The woman 
@@ -221,8 +221,8 @@ from diffusers.utils import export_to_video
 
 pipeline = CogVideoXPipeline.from_pretrained(
   "THUDM/CogVideoX-2b",
-  torch_dtype=torch.float16
-).to("cuda")
+  dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = """
 A detailed wooden toy ship with intricately carved masts and sails is seen gliding smoothly over
@@ -253,15 +253,15 @@ from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepSchedu
 from diffusers.utils import export_to_video
 
 vae = AutoencoderKLWan.from_pretrained(
-  "Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32
+  "Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", dtype=torch.float32
 )
 pipeline = WanPipeline.from_pretrained(
-  "Wan-AI/Wan2.1-T2V-14B-Diffusers", vae=vae, torch_dtype=torch.bfloat16
+  "Wan-AI/Wan2.1-T2V-14B-Diffusers", vae=vae, dtype=torch.bfloat16
 )
 pipeline.scheduler = UniPCMultistepScheduler.from_config(
   pipeline.scheduler.config, flow_shift=5.0
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 pipeline.load_lora_weights("benjamin-paine/steamboat-willie-14b", adapter_name="steamboat-willie")
 pipeline.set_adapters("steamboat-willie")
@@ -303,9 +303,9 @@ from diffusers.hooks.group_offloading import apply_group_offloading
 from diffusers.utils import export_to_video, load_image
 from transformers import UMT5EncoderModel
 
-text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", torch_dtype=torch.bfloat16)
-vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32)
-transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+text_encoder = UMT5EncoderModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="text_encoder", dtype=torch.bfloat16)
+vae = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", dtype=torch.float32)
+transformer = AutoModel.from_pretrained("Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="transformer", dtype=torch.bfloat16)
 
 # group-offloading
 onload_device = torch.device("cuda")
@@ -328,9 +328,9 @@ pipeline = WanPipeline.from_pretrained(
     vae=vae,
     transformer=transformer,
     text_encoder=text_encoder,
-    torch_dtype=torch.bfloat16
+    dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = """
 The camera rushes from far to near in a low-angle shot, 
@@ -377,15 +377,15 @@ pipeline_quant_config = PipelineQuantizationConfig(
 )
 
 vae = AutoModel.from_pretrained(
-  "Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", torch_dtype=torch.float32
+  "Wan-AI/Wan2.1-T2V-14B-Diffusers", subfolder="vae", dtype=torch.float32
 )
 pipeline = WanPipeline.from_pretrained(
-  "Wan-AI/Wan2.1-T2V-14B-Diffusers", vae=vae, quantization_config=pipeline_quant_config, torch_dtype=torch.bfloat16
+  "Wan-AI/Wan2.1-T2V-14B-Diffusers", vae=vae, quantization_config=pipeline_quant_config, dtype=torch.bfloat16
 )
 pipeline.scheduler = UniPCMultistepScheduler.from_config(
   pipeline.scheduler.config, flow_shift=5.0
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 pipeline.load_lora_weights("benjamin-paine/steamboat-willie-14b", adapter_name="steamboat-willie")
 pipeline.set_adapters("steamboat-willie")
@@ -422,8 +422,8 @@ from diffusers.utils import export_to_video
 
 pipeline = CogVideoXPipeline.from_pretrained(
   "THUDM/CogVideoX-2b",
-  torch_dtype=torch.float16
-).to("cuda")
+  dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 # torch.compile
 pipeline.transformer.to(memory_format=torch.channels_last)

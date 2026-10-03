@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import math
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any
 
 import torch
 
@@ -58,10 +60,10 @@ class PerturbedAttentionGuidance(BaseGuidance):
             The fraction of the total number of denoising steps after which perturbed attention guidance starts.
         perturbed_guidance_stop (`float`, defaults to `0.2`):
             The fraction of the total number of denoising steps after which perturbed attention guidance stops.
-        perturbed_guidance_layers (`int` or `List[int]`, *optional*):
+        perturbed_guidance_layers (`int` or `list[int]`, *optional*):
             The layer indices to apply perturbed attention guidance to. Can be a single integer or a list of integers.
             If not provided, `perturbed_guidance_config` must be provided.
-        perturbed_guidance_config (`LayerSkipConfig` or `List[LayerSkipConfig]`, *optional*):
+        perturbed_guidance_config (`LayerSkipConfig` or `list[LayerSkipConfig]`, *optional*):
             The configuration for the perturbed attention guidance. Can be a single `LayerSkipConfig` or a list of
             `LayerSkipConfig`. If not provided, `perturbed_guidance_layers` must be provided.
         guidance_rescale (`float`, defaults to `0.0`):
@@ -92,14 +94,15 @@ class PerturbedAttentionGuidance(BaseGuidance):
         perturbed_guidance_scale: float = 2.8,
         perturbed_guidance_start: float = 0.01,
         perturbed_guidance_stop: float = 0.2,
-        perturbed_guidance_layers: Optional[Union[int, List[int]]] = None,
-        perturbed_guidance_config: Union[LayerSkipConfig, List[LayerSkipConfig], Dict[str, Any]] = None,
+        perturbed_guidance_layers: int | list[int] | None = None,
+        perturbed_guidance_config: LayerSkipConfig | list[LayerSkipConfig] | dict[str, Any] = None,
         guidance_rescale: float = 0.0,
         use_original_formulation: bool = False,
         start: float = 0.0,
         stop: float = 1.0,
+        enabled: bool = True,
     ):
-        super().__init__(start, stop)
+        super().__init__(start, stop, enabled)
 
         self.guidance_scale = guidance_scale
         self.skip_layer_guidance_scale = perturbed_guidance_scale
@@ -168,12 +171,7 @@ class PerturbedAttentionGuidance(BaseGuidance):
                 registry.remove_hook(hook_name, recurse=True)
 
     # Copied from diffusers.guiders.skip_layer_guidance.SkipLayerGuidance.prepare_inputs
-    def prepare_inputs(
-        self, data: "BlockState", input_fields: Optional[Dict[str, Union[str, Tuple[str, str]]]] = None
-    ) -> List["BlockState"]:
-        if input_fields is None:
-            input_fields = self._input_fields
-
+    def prepare_inputs(self, data: dict[str, tuple[torch.Tensor, torch.Tensor]]) -> list["BlockState"]:
         if self.num_conditions == 1:
             tuple_indices = [0]
             input_predictions = ["pred_cond"]
@@ -186,8 +184,28 @@ class PerturbedAttentionGuidance(BaseGuidance):
             tuple_indices = [0, 1, 0]
             input_predictions = ["pred_cond", "pred_uncond", "pred_cond_skip"]
         data_batches = []
-        for i in range(self.num_conditions):
-            data_batch = self._prepare_batch(input_fields, data, tuple_indices[i], input_predictions[i])
+        for tuple_idx, input_prediction in zip(tuple_indices, input_predictions):
+            data_batch = self._prepare_batch(data, tuple_idx, input_prediction)
+            data_batches.append(data_batch)
+        return data_batches
+
+    def prepare_inputs_from_block_state(
+        self, data: "BlockState", input_fields: dict[str, str | tuple[str, str]]
+    ) -> list["BlockState"]:
+        if self.num_conditions == 1:
+            tuple_indices = [0]
+            input_predictions = ["pred_cond"]
+        elif self.num_conditions == 2:
+            tuple_indices = [0, 1]
+            input_predictions = (
+                ["pred_cond", "pred_uncond"] if self._is_cfg_enabled() else ["pred_cond", "pred_cond_skip"]
+            )
+        else:
+            tuple_indices = [0, 1, 0]
+            input_predictions = ["pred_cond", "pred_uncond", "pred_cond_skip"]
+        data_batches = []
+        for tuple_idx, input_prediction in zip(tuple_indices, input_predictions):
+            data_batch = self._prepare_batch_from_block_state(input_fields, data, tuple_idx, input_prediction)
             data_batches.append(data_batch)
         return data_batches
 
@@ -195,8 +213,8 @@ class PerturbedAttentionGuidance(BaseGuidance):
     def forward(
         self,
         pred_cond: torch.Tensor,
-        pred_uncond: Optional[torch.Tensor] = None,
-        pred_cond_skip: Optional[torch.Tensor] = None,
+        pred_uncond: torch.Tensor | None = None,
+        pred_cond_skip: torch.Tensor | None = None,
     ) -> GuiderOutput:
         pred = None
 

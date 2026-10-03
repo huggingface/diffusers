@@ -14,11 +14,9 @@
 
 from dataclasses import dataclass
 from math import pi
-from typing import Optional
 
 import torch
 import torch.nn as nn
-import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.modeling_utils import ModelMixin
@@ -58,9 +56,9 @@ class StableAudioProjectionModelOutput(BaseOutput):
             Sequence of hidden-states obtained by linearly projecting the audio end hidden states.
     """
 
-    text_hidden_states: Optional[torch.Tensor] = None
-    seconds_start_hidden_states: Optional[torch.Tensor] = None
-    seconds_end_hidden_states: Optional[torch.Tensor] = None
+    text_hidden_states: torch.Tensor | None = None
+    seconds_start_hidden_states: torch.Tensor | None = None
+    seconds_end_hidden_states: torch.Tensor | None = None
 
 
 class StableAudioNumberConditioner(nn.Module):
@@ -83,7 +81,7 @@ class StableAudioNumberConditioner(nn.Module):
         number_embedding_dim,
         min_value,
         max_value,
-        internal_dim: Optional[int] = 256,
+        internal_dim: int | None = 256,
     ):
         super().__init__()
         self.time_positional_embedding = nn.Sequential(
@@ -139,9 +137,9 @@ class StableAudioProjectionModel(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        text_hidden_states: Optional[torch.Tensor] = None,
-        start_seconds: Optional[torch.Tensor] = None,
-        end_seconds: Optional[torch.Tensor] = None,
+        text_hidden_states: torch.Tensor | None = None,
+        start_seconds: torch.Tensor | None = None,
+        end_seconds: torch.Tensor | None = None,
     ):
         text_hidden_states = (
             text_hidden_states if text_hidden_states is None else self.text_projection(text_hidden_states)

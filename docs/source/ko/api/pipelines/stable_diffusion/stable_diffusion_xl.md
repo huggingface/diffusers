@@ -67,7 +67,7 @@ from diffusers import StableDiffusionXLPipeline
 import torch
 
 pipe = StableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipe.to("cuda")
 
@@ -85,7 +85,7 @@ from diffusers import StableDiffusionXLImg2ImgPipeline
 from diffusers.utils import load_image
 
 pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stabilityai/stable-diffusion-xl-refiner-1.0", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipe = pipe.to("cuda")
 url = "https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/aa_xl/000000009.png"
@@ -105,7 +105,7 @@ from diffusers import StableDiffusionXLInpaintPipeline
 from diffusers.utils import load_image
 
 pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipe.to("cuda")
 
@@ -154,7 +154,7 @@ from diffusers import DiffusionPipeline
 import torch
 
 base = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipe.to("cuda")
 
@@ -162,7 +162,7 @@ refiner = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0",
     text_encoder_2=base.text_encoder_2,
     vae=base.vae,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     use_safetensors=True,
     variant="fp16",
 )
@@ -207,11 +207,8 @@ image = refiner(
 
 동일한 40 단계에서 base 모델을 실행한다면, 이미지의 디테일(예: 사자의 눈과 코)이 떨어졌을 것입니다:
 
-<Tip>
-
-앙상블 방식은 사용 가능한 모든 스케줄러에서 잘 작동합니다!
-
-</Tip>
+> [!TIP]
+> 앙상블 방식은 사용 가능한 모든 스케줄러에서 잘 작동합니다!
 
 #### 2.) 노이즈가 완전히 제거된 기본 이미지에서 이미지 출력을 정제하기
 
@@ -224,7 +221,7 @@ from diffusers import DiffusionPipeline
 import torch
 
 pipe = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipe.to("cuda")
 
@@ -232,7 +229,7 @@ refiner = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0",
     text_encoder_2=pipe.text_encoder_2,
     vae=pipe.vae,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     use_safetensors=True,
     variant="fp16",
 )
@@ -248,11 +245,8 @@ image = refiner(prompt=prompt, image=image[None, :]).images[0]
 |---|---|
 | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/init_image.png) | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/refined_image.png) |
 
-<Tip>
-
-refiner는 또한 인페인팅 설정에 잘 사용될 수 있습니다. 아래에 보여지듯이 [`StableDiffusionXLInpaintPipeline`] 클래스를 사용해서 만들어보세요.
-
-</Tip>
+> [!TIP]
+> refiner는 또한 인페인팅 설정에 잘 사용될 수 있습니다. 아래에 보여지듯이 [`StableDiffusionXLInpaintPipeline`] 클래스를 사용해서 만들어보세요.
 
 Denoiser 앙상블 설정에서 인페인팅에 refiner를 사용하려면 다음을 수행하면 됩니다:
 
@@ -261,7 +255,7 @@ from diffusers import StableDiffusionXLInpaintPipeline
 from diffusers.utils import load_image
 
 pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipe.to("cuda")
 
@@ -269,7 +263,7 @@ refiner = StableDiffusionXLInpaintPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0",
     text_encoder_2=pipe.text_encoder_2,
     vae=pipe.vae,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     use_safetensors=True,
     variant="fp16",
 )
@@ -313,12 +307,12 @@ from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipelin
 import torch
 
 pipe = StableDiffusionXLPipeline.from_single_file(
-    "./sd_xl_base_1.0.safetensors", torch_dtype=torch.float16
+    "./sd_xl_base_1.0.safetensors", dtype=torch.float16
 )
 pipe.to("cuda")
 
 refiner = StableDiffusionXLImg2ImgPipeline.from_single_file(
-    "./sd_xl_refiner_1.0.safetensors", torch_dtype=torch.float16
+    "./sd_xl_refiner_1.0.safetensors", dtype=torch.float16
 )
 refiner.to("cuda")
 ```
@@ -388,7 +382,7 @@ from diffusers import StableDiffusionXLPipeline
 import torch
 
 pipe = StableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-0.9", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stabilityai/stable-diffusion-xl-base-0.9", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipe.to("cuda")
 

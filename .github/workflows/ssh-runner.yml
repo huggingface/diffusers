@@ -15,6 +15,7 @@ on:
         description: 'Name of the Docker image'
         required: true
 
+
 env:
   IS_GITHUB_CI: "1"
   HF_HUB_READ_TOKEN: ${{ secrets.HF_HUB_READ_TOKEN }}
@@ -24,8 +25,12 @@ env:
   MKL_NUM_THREADS: 8
   RUN_SLOW: yes
 
+permissions: {}
+
 jobs:
   ssh_runner:
+    permissions:
+      contents: read
     name: "SSH"
     runs-on:
       group: "${{ github.event.inputs.runner_type }}"
@@ -35,7 +40,7 @@ jobs:
 
     steps:
       - name: Checkout diffusers
-        uses: actions/checkout@v3
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 2
 
