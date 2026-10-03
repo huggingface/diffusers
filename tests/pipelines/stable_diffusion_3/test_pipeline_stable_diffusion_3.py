@@ -13,6 +13,7 @@ from transformers import (
 )
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, SD3Transformer2DModel, StableDiffusion3Pipeline
+from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback, SD3CFGCutoffCallback
 
 from ...testing_utils import (
     assert_tensors_close,
@@ -204,6 +205,34 @@ class TestStableDiffusion3Pipeline(StableDiffusion3PipelineTesterConfig, Pipelin
 
         assert not torch.allclose(output_full, output_skip, atol=1e-5), "Outputs should differ when layers are skipped"
         assert output_full.shape == output_skip.shape, "Outputs should have the same shape"
+
+    def test_cfg_cutoff_callback(self):
+        # after the cutoff the callback must keep one conditional embedding per sample, not only the last row
+        cutoff_callback = SD3CFGCutoffCallback(cutoff_step_ratio=None, cutoff_step_index=1)
+
+        class CheckBatchCallback(PipelineCallback):
+            tensor_inputs = ["latents", "prompt_embeds"]
+
+            def callback_fn(self, pipeline, step_index, timestep, callback_kwargs):
+                if step_index >= 1:
+                    assert callback_kwargs["prompt_embeds"].shape[0] == callback_kwargs["latents"].shape[0]
+                return callback_kwargs
+
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
+        inputs["prompt"] = [inputs["prompt"], "a different prompt"]
+        inputs["num_inference_steps"] = 3
+        inputs["callback_on_step_end"] = MultiPipelineCallbacks([cutoff_callback, CheckBatchCallback()])
+        image = pipe(**inputs).images
+
+        assert image.shape == (2, *self.output_shape)
+        assert pipe.guidance_scale == 0.0
+
+        # without CFG there is no negative batch to drop
+        inputs["guidance_scale"] = 1.0
+        image = pipe(**inputs).images
+
+        assert image.shape == (2, *self.output_shape)
 
 
 class TestStableDiffusion3PipelineMemory(StableDiffusion3PipelineTesterConfig, MemoryTesterMixin):
