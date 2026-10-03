@@ -492,7 +492,8 @@ class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
         if not isinstance(compute_dtype, torch.dtype):
             raise ValueError("Nunchaku compute_dtype must be a string or a torch.dtype.")
         self.compute_dtype = compute_dtype
-        self.pre_quantized = True
+        self.pre_quantized = kwargs.pop("pre_quantized", True)
+        self.exclude_targets = kwargs.pop("exclude_targets", None)
         self.svdq_w4a4 = svdq_w4a4
         self.awq_w4a16 = awq_w4a16
 
@@ -503,6 +504,11 @@ class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
             raise ValueError(
                 "Nunchaku compact quantization config must include `svdq_w4a4.targets` or `awq_w4a16.targets`."
             )
+        if not self.pre_quantized and self.awq_w4a16 is not None:
+            raise NotImplementedError(
+                "Data-free quantization (`pre_quantized=False`) only supports `svdq_w4a4` targets; "
+                "remove the `awq_w4a16` section or load a pre-quantized checkpoint."
+            )
 
         for op, raw in (("svdq_w4a4", self.svdq_w4a4), ("awq_w4a16", self.awq_w4a16)):
             if raw is None:
@@ -510,8 +516,13 @@ class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
             if not isinstance(raw, dict):
                 raise ValueError(f"Nunchaku compact config section {op!r} must be a JSON object.")
 
+            # In data-free mode (`pre_quantized=False`) `targets` may be omitted;
+            # the quantizer infers them from the model at load time.
+            targets_optional = op == "svdq_w4a4" and not self.pre_quantized
             for key, expected_type in (("precision", str), ("group_size", int), ("targets", list)):
                 if key not in raw:
+                    if key == "targets" and targets_optional:
+                        continue
                     raise ValueError(f"Nunchaku compact config section {op!r} is missing required field {key!r}.")
                 if not isinstance(raw[key], expected_type):
                     raise ValueError(
@@ -520,15 +531,16 @@ class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
 
             precision = raw["precision"]
             group_size = raw["group_size"]
-            targets = raw["targets"]
+            targets = raw.get("targets")
             if precision not in ("int4", "nvfp4"):
                 raise ValueError(f"Unsupported Nunchaku precision {precision!r} for {op!r}.")
             if group_size <= 0:
                 raise ValueError(f"Nunchaku compact config section {op!r} must have positive group_size.")
-            if not targets:
-                raise ValueError(f"Nunchaku compact config section {op!r} must contain at least one target.")
-            if not all(isinstance(target, str) for target in targets):
-                raise ValueError(f"Nunchaku compact config section {op!r} targets must be strings.")
+            if targets is not None or not targets_optional:
+                if not targets:
+                    raise ValueError(f"Nunchaku compact config section {op!r} must contain at least one target.")
+                if not all(isinstance(target, str) for target in targets):
+                    raise ValueError(f"Nunchaku compact config section {op!r} targets must be strings.")
 
             if op == "svdq_w4a4":
                 if "rank" not in raw:
@@ -543,6 +555,17 @@ class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
                         f"Nunchaku SVDQ config with precision={precision!r} requires "
                         f"group_size={expected_group_size}, got {group_size}."
                     )
+                if "smooth_exponent" in raw:
+                    smooth_exponent = raw["smooth_exponent"]
+                    if self.pre_quantized:
+                        raise ValueError(
+                            "'smooth_exponent' only applies to data-free quantization (`pre_quantized=False`); "
+                            "a pre-quantized checkpoint already has its smoothing baked in."
+                        )
+                    if not isinstance(smooth_exponent, (int, float)) or isinstance(smooth_exponent, bool):
+                        raise ValueError(f"Nunchaku compact config section {op!r} field 'smooth_exponent' must be a number.")
+                    if not 0.0 <= smooth_exponent <= 1.0:
+                        raise ValueError(f"'smooth_exponent' must be in [0, 1], got {smooth_exponent}.")
             elif precision != "int4":
                 raise ValueError("Nunchaku AWQ target requires precision='int4'.")
 
