@@ -95,7 +95,6 @@ class HunyuanDiTPipelineTesterConfig(BasePipelineTesterConfig):
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
             "use_resolution_binning": False,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 

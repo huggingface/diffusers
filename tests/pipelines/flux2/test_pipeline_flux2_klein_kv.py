@@ -93,7 +93,6 @@ class Flux2KleinKVPipelineTesterConfig(BasePipelineTesterConfig):
             "width": 8,
             "max_sequence_length": 64,
             "text_encoder_out_layers": (1,),
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
         return inputs
