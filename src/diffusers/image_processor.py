@@ -75,7 +75,7 @@ def is_valid_image_imagelist(images):
     elif is_valid_image(images):
         return True
     elif isinstance(images, list):
-        return all(is_valid_image(image) for image in images)
+        return len(images) > 0 and all(is_valid_image(image) for image in images)
     return False
 
 
@@ -659,14 +659,14 @@ class VaeImageProcessor(ConfigMixin):
                 else:
                     image = np.expand_dims(image, axis=-1)
 
-        if isinstance(image, list) and isinstance(image[0], np.ndarray) and image[0].ndim == 4:
+        if isinstance(image, list) and len(image) > 0 and isinstance(image[0], np.ndarray) and image[0].ndim == 4:
             warnings.warn(
                 "Passing `image` as a list of 4d np.ndarray is deprecated."
                 "Please concatenate the list along the batch dimension and pass it as a single 4d np.ndarray",
                 FutureWarning,
             )
             image = np.concatenate(image, axis=0)
-        if isinstance(image, list) and isinstance(image[0], torch.Tensor) and image[0].ndim == 4:
+        if isinstance(image, list) and len(image) > 0 and isinstance(image[0], torch.Tensor) and image[0].ndim == 4:
             warnings.warn(
                 "Passing `image` as a list of 4d torch.Tensor is deprecated."
                 "Please concatenate the list along the batch dimension and pass it as a single 4d torch.Tensor",

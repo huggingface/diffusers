@@ -54,14 +54,14 @@ class VideoProcessor(VaeImageProcessor):
             `torch.Tensor` of shape `(batch_size, num_channels, num_frames, height, width)`:
                 A 5D tensor holding the batched channels-first video(s).
         """
-        if isinstance(video, list) and isinstance(video[0], np.ndarray) and video[0].ndim == 5:
+        if isinstance(video, list) and len(video) > 0 and isinstance(video[0], np.ndarray) and video[0].ndim == 5:
             warnings.warn(
                 "Passing `video` as a list of 5d np.ndarray is deprecated."
                 "Please concatenate the list along the batch dimension and pass it as a single 5d np.ndarray",
                 FutureWarning,
             )
             video = np.concatenate(video, axis=0)
-        if isinstance(video, list) and isinstance(video[0], torch.Tensor) and video[0].ndim == 5:
+        if isinstance(video, list) and len(video) > 0 and isinstance(video[0], torch.Tensor) and video[0].ndim == 5:
             warnings.warn(
                 "Passing `video` as a list of 5d torch.Tensor is deprecated."
                 "Please concatenate the list along the batch dimension and pass it as a single 5d torch.Tensor",
@@ -74,9 +74,9 @@ class VideoProcessor(VaeImageProcessor):
         # - if it is a single video, it is converted to a list of one video.
         if isinstance(video, (np.ndarray, torch.Tensor)) and video.ndim == 5:
             video = list(video)
-        elif isinstance(video, list) and is_valid_image(video[0]) or is_valid_image_imagelist(video):
+        elif isinstance(video, list) and len(video) > 0 and is_valid_image(video[0]) or is_valid_image_imagelist(video):
             video = [video]
-        elif isinstance(video, list) and is_valid_image_imagelist(video[0]):
+        elif isinstance(video, list) and len(video) > 0 and is_valid_image_imagelist(video[0]):
             video = video
         else:
             raise ValueError(
