@@ -174,6 +174,10 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             Processor that builds the chat template and tokenizes prompt and condition images.
         transformer ([`QwenImage21Transformer2DModel`]):
             The single-stream block-causal transformer that denoises the latents.
+        sample_sigmas (`list[float]`, *optional*):
+            Default sampling sigmas, excluding the terminal sigma. When provided, their length determines the number of
+            denoising steps unless `sigmas` is passed to `__call__`. For a fixed distilled sampling grid, configure the
+            scheduler with `shift=1.0`, no dynamic shifting, no terminal stretching, and no sigma conversions.
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
@@ -186,6 +190,7 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         text_encoder: Qwen3VLForConditionalGeneration,
         processor: Qwen3VLProcessor,
         transformer: QwenImage21Transformer2DModel,
+        sample_sigmas: list[float] | None = None,
     ):
         super().__init__()
 
@@ -196,6 +201,7 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             transformer=transformer,
             scheduler=scheduler,
         )
+        self.register_to_config(sample_sigmas=sample_sigmas)
         # The VAE compresses 16x spatially and the transformer consumes latents unpatched, so one token covers a 16x16
         # pixel tile.
         self.vae_scale_factor = 16
@@ -547,9 +553,11 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
             width (`int`, *optional*):
                 Width in pixels of the generated image. Derived from the condition image's aspect ratio if omitted.
             num_inference_steps (`int`, *optional*, defaults to 40):
-                Number of denoising steps.
+                Number of denoising steps. Ignored when `sigmas` or the pipeline's configured `sample_sigmas` is used;
+                the length of that schedule determines the number of steps.
             sigmas (`list[float]`, *optional*):
-                Custom sigmas for the denoising schedule.
+                Custom sigmas for the denoising schedule, overriding the pipeline's configured `sample_sigmas`. The
+                scheduler applies its configured shifting and sigma conversions to these values.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 Number of images generated per prompt.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
@@ -720,7 +728,10 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         ] * batch_size
 
         # 4. Prepare timesteps
-        sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
+        if sigmas is None:
+            sigmas = self.config.sample_sigmas
+            if sigmas is None:
+                sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps)
         mu = calculate_shift(
             latents.shape[1],
             self.scheduler.config.get("base_image_seq_len", 256),

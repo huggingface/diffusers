@@ -77,6 +77,43 @@ pipe = QwenImage21Pipeline.from_pretrained("Qwen/Qwen-Image-2.1", transformer=tr
 )
 ```
 
+## Fixed sampling grids
+
+For a distilled checkpoint trained with a fixed sampling grid, store `sample_sigmas` in the pipeline config
+(`model_index.json`). Use the sigma values prescribed by that checkpoint, excluding the terminal sigma. Passing
+`sample_sigmas` to `from_pretrained` overrides the saved pipeline config.
+
+```python
+from diffusers import FlowMatchEulerDiscreteScheduler, QwenImage21Pipeline
+
+checkpoint = "/path/to/distilled-checkpoint"
+scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
+    checkpoint,
+    subfolder="scheduler",
+    use_dynamic_shifting=False,
+    shift=1.0,
+    shift_terminal=None,
+    use_karras_sigmas=False,
+    use_exponential_sigmas=False,
+    use_beta_sigmas=False,
+)
+pipe = QwenImage21Pipeline.from_pretrained(
+    checkpoint,
+    scheduler=scheduler,
+    sample_sigmas=[1.0, 0.978453, 0.954180, 0.926626, 0.895080, 0.845148, 0.704534, 0.414568],
+)
+pipe.save_pretrained("/path/to/configured-checkpoint")
+```
+
+The list above illustrates an eight-step grid; it is not a recommended schedule for arbitrary checkpoints.
+`save_pretrained` writes `sample_sigmas` to `model_index.json` and the scheduler settings to
+`scheduler/scheduler_config.json`. Subsequent loads restore both configurations.
+
+At inference, explicit `sigmas` take precedence over `sample_sigmas`. Either list determines the number of steps,
+overriding `num_inference_steps`. If neither is set, the pipeline uses its original step-count-based schedule.
+All sigma values pass through the scheduler's normal processing, so the scheduler settings above are required to
+preserve a fixed grid without shifting or conversion. Explicit sigma overrides use those same scheduler settings.
+
 ## QwenImage21Pipeline
 
 [[autodoc]] QwenImage21Pipeline
