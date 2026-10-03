@@ -734,7 +734,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         dtype = self.transformer.dtype
 
         # 3. Encode input prompt
-        if expand_prompts and prompt is not None:
+        if expand_prompts:
             prompt = self.expand_prompts(
                 prompt, image=image, max_sequence_length=max_sequence_length, generator=generator
             )
