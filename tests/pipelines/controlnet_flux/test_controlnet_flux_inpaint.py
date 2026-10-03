@@ -167,6 +167,66 @@ class TestFluxControlNetInpaintPipeline(FluxControlNetInpaintPipelineTesterConfi
             "Changing `controlnet_conditioning_scale` should change the output."
         )
 
+    def test_flux_controlnet_inpaint_true_cfg(self):
+        pipe = self.get_pipeline().to(torch_device)
+
+        inputs = self.get_dummy_inputs()
+        inputs.pop("generator")
+        no_true_cfg_out = pipe(**inputs, generator=torch.manual_seed(0)).images[0]
+
+        inputs["negative_prompt"] = "bad quality"
+        inputs["true_cfg_scale"] = 2.0
+        true_cfg_out = pipe(**inputs, generator=torch.manual_seed(0)).images[0]
+
+        assert not torch.allclose(no_true_cfg_out, true_cfg_out), (
+            "Outputs should be different when true_cfg_scale is set."
+        )
+
+    def test_flux_controlnet_inpaint_true_cfg_requires_negative_prompt(self):
+        # `true_cfg_scale` alone must stay a no-op: true CFG only kicks in once a negative prompt
+        # (or precomputed negative embeddings) is supplied.
+        pipe = self.get_pipeline().to(torch_device)
+
+        inputs = self.get_dummy_inputs()
+        inputs.pop("generator")
+        baseline_out = pipe(**inputs, generator=torch.manual_seed(0)).images[0]
+
+        inputs["true_cfg_scale"] = 2.0
+        no_negative_prompt_out = pipe(**inputs, generator=torch.manual_seed(0)).images[0]
+
+        assert torch.allclose(baseline_out, no_negative_prompt_out), (
+            "`true_cfg_scale` should be ignored when no negative prompt is provided."
+        )
+
+    def test_flux_controlnet_inpaint_true_cfg_with_negative_embeds(self):
+        pipe = self.get_pipeline().to(torch_device)
+
+        inputs = self.get_dummy_inputs()
+        inputs.pop("generator")
+        prompt = inputs.pop("prompt")
+
+        prompt_embeds, pooled_prompt_embeds, _ = pipe.encode_prompt(
+            prompt=prompt, prompt_2=None, device=torch_device, num_images_per_prompt=1, max_sequence_length=48
+        )
+        negative_prompt_embeds, negative_pooled_prompt_embeds, _ = pipe.encode_prompt(
+            prompt="bad quality", prompt_2=None, device=torch_device, num_images_per_prompt=1, max_sequence_length=48
+        )
+        inputs.update(
+            prompt_embeds=prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
+        )
+
+        inputs["true_cfg_scale"] = 1.0
+        cfg_off = pipe(**inputs, generator=torch.manual_seed(0)).images[0]
+        inputs["true_cfg_scale"] = 2.0
+        cfg_on = pipe(**inputs, generator=torch.manual_seed(0)).images[0]
+
+        assert not torch.allclose(cfg_off, cfg_on), (
+            "Precomputed negative embeds should enable true CFG when negative_prompt is None."
+        )
+
     def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=3e-3):
         super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
