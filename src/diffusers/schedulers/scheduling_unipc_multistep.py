@@ -903,7 +903,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             rks.append(rk)
             D1s.append((mi - m0) / rk)
 
-        rks.append(torch.ones((), device=device))
+        rks.append(torch.ones_like(h))
         rks = torch.stack(rks)
 
         R = []
@@ -1038,7 +1038,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             rks.append(rk)
             D1s.append((mi - m0) / rk)
 
-        rks.append(torch.ones((), device=device))
+        rks.append(torch.ones_like(h))
         rks = torch.stack(rks)
 
         R = []
