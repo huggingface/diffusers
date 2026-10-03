@@ -22,6 +22,7 @@ import importlib
 from packaging import version
 
 from . import logging
+from .constants import USE_PEFT_BACKEND
 from .import_utils import is_peft_available, is_torch_available
 from .torch_utils import empty_device_cache
 
@@ -206,6 +207,29 @@ def get_peft_kwargs(
     }
 
     return lora_config_kwargs
+
+
+def has_unmerged_lora(module):
+    """
+    Whether any LoRA layer under `module` contributes to its output without already being merged into the base layer's
+    weights.
+
+    A merged (`fuse_lora`) or disabled adapter contributes nothing at forward time, so the base weights alone are a
+    faithful description of the layer. An unmerged, enabled one is not: anything that rewrites the base weights, such
+    as QKV projection fusion, would silently drop the adapter.
+    """
+    if not USE_PEFT_BACKEND:
+        return False
+
+    from peft.tuners.tuners_utils import BaseTunerLayer
+
+    for submodule in module.modules():
+        if not isinstance(submodule, BaseTunerLayer) or submodule.disable_adapters:
+            continue
+        merged = set(submodule.merged_adapters)
+        if any(adapter_name not in merged for adapter_name in submodule.active_adapters):
+            return True
+    return False
 
 
 def get_adapter_name(model):

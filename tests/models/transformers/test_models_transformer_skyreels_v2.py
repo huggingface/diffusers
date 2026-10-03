@@ -20,6 +20,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
+    AttentionTesterMixin,
     BaseModelTesterConfig,
     ModelTesterMixin,
     TrainingTesterMixin,
@@ -98,6 +99,10 @@ class TestSkyReelsV2Transformer(SkyReelsV2TransformerTesterConfig, ModelTesterMi
         super().test_from_save_pretrained_dtype_inference(
             tmp_path, dtype, atol=3e-2 if dtype == torch.bfloat16 else 1e-2
         )
+
+
+class TestSkyReelsV2TransformerAttention(SkyReelsV2TransformerTesterConfig, AttentionTesterMixin):
+    """Attention processor tests for SkyReels V2 Transformer 3D."""
 
 
 class TestSkyReelsV2TransformerTraining(SkyReelsV2TransformerTesterConfig, TrainingTesterMixin):
