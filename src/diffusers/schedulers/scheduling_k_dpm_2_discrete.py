@@ -323,8 +323,12 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         sigmas = torch.from_numpy(sigmas).to(device=device)
 
-        # interpolate sigmas
-        sigmas_interpol = sigmas.log().lerp(sigmas.roll(1).log(), 0.5).exp()
+        # interpolate sigmas: the geometric mean of each sigma and its predecessor.
+        # Computed directly rather than as exp(lerp(log, log)), because the schedule always
+        # ends in a zero sigma and log(0) = -inf makes that lerp return NaN. torch resolves
+        # the -inf differently on CPU and MPS (pytorch#111374), so the NaN landed on a dead
+        # entry on CPU but on live entries on MPS, where it propagated into the sample.
+        sigmas_interpol = (sigmas * sigmas.roll(1)).sqrt()
 
         self.sigmas = torch.cat([sigmas[:1], sigmas[1:].repeat_interleave(2), sigmas[-1:]])
         self.sigmas_interpol = torch.cat(
