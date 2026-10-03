@@ -895,11 +895,13 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
                 self._num_timesteps = len(timesteps)
 
                 gt_velocity = (latents - cond_latent) * cond_mask
+                # read timesteps on the host; a device scalar would sync every step
+                timesteps_cpu = timesteps.tolist()
                 for i, t in enumerate(timesteps):
                     if self.interrupt:
                         continue
 
-                    self._current_timestep = t.cpu().item()
+                    self._current_timestep = timesteps_cpu[i]
 
                     # NOTE: assumes sigma(t) \in [0, 1]
                     sigma_t = (
