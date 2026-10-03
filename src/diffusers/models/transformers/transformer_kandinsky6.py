@@ -21,12 +21,11 @@ from typing import Any
 
 import torch
 from torch import Tensor, nn
-from torch.nn.attention.flex_attention import BlockMask
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
-from ..attention_dispatch import AttentionBackendName, dispatch_attention_fn
+from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin, get_parameter_dtype
@@ -70,55 +69,6 @@ def apply_rotary(x: Tensor, rope: Tensor) -> Tensor:
     """RoPE apply in fp32 (rope tables are fp32), cast back to ``x.dtype``."""
     x_ = x.reshape(*x.shape[:-1], -1, 1, 2).float()
     return (rope.float() * x_).sum(dim=-1).reshape(*x.shape).to(dtype=x.dtype)
-
-
-def _local_patch(x: Tensor, shape: tuple, group_size: tuple, dim: int = 0) -> Tensor:
-    T, H, W = shape
-    g1, g2, g3 = group_size
-    x = x.reshape(*x.shape[:dim], T // g1, g1, H // g2, g2, W // g3, g3, *x.shape[dim + 3 :])
-    d = len(x.shape[:dim])
-    x = x.permute(*range(d), d, d + 2, d + 4, d + 1, d + 3, d + 5, *range(d + 6, len(x.shape)))
-    return x.flatten(dim, dim + 2).flatten(dim + 1, dim + 3)
-
-
-def _local_merge(x: Tensor, shape: tuple, group_size: tuple, dim: int = 0) -> Tensor:
-    T, H, W = shape
-    g1, g2, g3 = group_size
-    x = x.reshape(*x.shape[:dim], T // g1, H // g2, W // g3, g1, g2, g3, *x.shape[dim + 2 :])
-    d = len(x.shape[:dim])
-    x = x.permute(*range(d), d, d + 3, d + 1, d + 4, d + 2, d + 5, *range(d + 6, len(x.shape)))
-    return x.flatten(dim, dim + 1).flatten(dim + 1, dim + 2).flatten(dim + 2, dim + 3)
-
-
-def nabla_block_mask(
-    q: Tensor,
-    k: Tensor,
-    sta: Tensor,
-    thr: float = 0.9,
-    block_size: int = 64,
-) -> BlockMask:
-    """Build a dynamic NABLA block mask from query/key statistics and an STA (Sliding-Tile Attention, see
-    https://huggingface.co/papers/2502.04507) prior."""
-    B, h, S, D = q.shape
-    s1 = S // block_size
-    qa = q.reshape(B, h, s1, block_size, D).mean(-2)
-    ka = k.reshape(B, h, s1, block_size, D).mean(-2).transpose(-2, -1)
-    attn_map = torch.softmax((qa @ ka) / math.sqrt(D), dim=-1)
-
-    vals, inds = attn_map.sort(-1)
-    mask = (vals.cumsum_(-1) >= 1 - thr).int().gather(-1, inds.argsort(-1))
-    mask = torch.logical_or(mask, sta)
-
-    kv_nb = mask.sum(-1).to(torch.int32)
-    kv_inds = mask.argsort(dim=-1, descending=True).to(torch.int32)
-    return BlockMask.from_kv_blocks(
-        torch.zeros_like(kv_nb),
-        kv_inds,
-        kv_nb,
-        kv_inds,
-        BLOCK_SIZE=block_size,
-        mask_mod=None,
-    )
 
 
 class Kandinsky6RoPE1D(nn.Module):
@@ -191,11 +141,7 @@ class Kandinsky6RoPE3D(nn.Module):
 
 
 class Kandinsky6AttnProcessor:
-    """Diffusers attention processor used by the TI2VA transformer.
-
-    The NABLA sparse branch always dispatches on the `flex` backend, regardless of `_attention_backend`, since its
-    `BlockMask` only the `flex` backend can consume.
-    """
+    """Diffusers attention processor used by the TI2VA transformer."""
 
     _attention_backend = None
     _parallel_config = None
@@ -211,7 +157,6 @@ class Kandinsky6AttnProcessor:
         encoder_hidden_states: Tensor | None = None,
         rotary_emb: Tensor | None = None,
         rotary_emb_kv: Tensor | None = None,
-        sparse_params: dict[str, Any] | None = None,
         attn_mask: Tensor | None = None,
     ) -> Tensor:
         query = attn.to_query(hidden_states)
@@ -233,32 +178,14 @@ class Kandinsky6AttnProcessor:
         if rotary_emb_kv is not None:
             key = apply_rotary(key, rotary_emb_kv).to(dtype=key.dtype)
 
-        if sparse_params is not None:
-            # The block statistics are computed from the `(B, heads, S, D)` layout the mask builder expects; the
-            # resulting `BlockMask` only runs on the flex backend.
-            block_mask = nabla_block_mask(
-                query.transpose(1, 2),
-                key.transpose(1, 2),
-                sparse_params["sta_mask"],
-                thr=sparse_params["P"],
-            )
-            output = dispatch_attention_fn(
-                query,
-                key,
-                value,
-                attn_mask=block_mask,
-                backend=AttentionBackendName.FLEX,
-                parallel_config=self._parallel_config,
-            )
-        else:
-            output = dispatch_attention_fn(
-                query,
-                key,
-                value,
-                attn_mask=attn_mask,
-                backend=self._attention_backend,
-                parallel_config=self._parallel_config,
-            )
+        output = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attn_mask,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
 
         return attn.out_layer(output.flatten(-2, -1))
 
@@ -313,14 +240,12 @@ class Kandinsky6VisualEmbeddings(nn.Module):
 
 
 class Kandinsky6Modulation(nn.Module):
-    """Zero-initialized AdaLN modulation projection."""
+    """AdaLN modulation projection."""
 
     def __init__(self, time_dim: int, model_dim: int, num_params: int):
         super().__init__()
         self.activation = nn.SiLU()
         self.out_layer = nn.Linear(time_dim, num_params * model_dim)
-        nn.init.zeros_(self.out_layer.weight)
-        nn.init.zeros_(self.out_layer.bias)
 
     def forward(self, x: Tensor) -> Tensor:
         return self.out_layer(self.activation(x.to(get_parameter_dtype(self.out_layer))))
@@ -358,13 +283,11 @@ class Kandinsky6Attention(nn.Module, AttentionModuleMixin):
         encoder_hidden_states: Tensor | None = None,
         attn_mask: Tensor | None = None,
         rotary_emb: Tensor | None = None,
-        sparse_params: dict[str, Any] | None = None,
         rope_q: Tensor | None = None,
         rope_kv: Tensor | None = None,
     ) -> Tensor:
-        # Native K6 blocks pass ``(hidden, rope, mask_or_sparse)`` for
-        # self-attention. Keep that call shape while exposing Diffusers'
-        # encoder_hidden_states/rotary_emb keyword boundary.
+        # Native K6 blocks pass ``(hidden, rope, mask)`` for self-attention. Keep that call shape while exposing
+        # Diffusers' encoder_hidden_states/rotary_emb keyword boundary.
         rotary_emb = rope_q if rope_q is not None else rotary_emb
         rotary_emb_kv = rope_kv if rope_kv is not None else rotary_emb
         return self.processor(
@@ -373,7 +296,6 @@ class Kandinsky6Attention(nn.Module, AttentionModuleMixin):
             encoder_hidden_states=encoder_hidden_states,
             rotary_emb=rotary_emb,
             rotary_emb_kv=rotary_emb_kv,
-            sparse_params=sparse_params,
             attn_mask=attn_mask,
         )
 
@@ -549,7 +471,6 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
         time_embed: tuple[Tensor, Tensor],
         vis_rope: Tensor | None,
         aud_rope: Tensor | None,
-        sparse_params: dict | None,
         attn_mask=None,
     ) -> tuple[Tensor | None, Tensor | None]:
         t_v, t_a = time_embed
@@ -561,7 +482,6 @@ class Kandinsky6FusedTransformerDecoderBlock(nn.Module):
                 self.video_dec_block.self_attention(
                     apply_scale_shift(self.video_dec_block.self_attention_norm(vis.float()), vis, scale, shift),
                     rotary_emb=vis_rope,
-                    sparse_params=sparse_params,
                 ),
                 gate,
             ).type_as(vis)
@@ -809,7 +729,6 @@ class Kandinsky6Transformer3DModel(
         visual_rope_pos: tuple[Tensor, Tensor, Tensor] | None = None,
         encoder_attention_mask: Tensor | None = None,
         visual_token_type_ids: Tensor | None = None,
-        sparse_params: dict | None = None,
         return_dict: bool = True,
     ) -> AudioVisualModelOutput | tuple[Tensor, ...]:
         r"""
@@ -834,13 +753,6 @@ class Kandinsky6Transformer3DModel(
             visual_token_type_ids (`torch.Tensor` of shape `(batch_size, num_frames)`, *optional*):
                 Per-frame token type ids, embedded through `visual_token_type_embeddings`. Requires
                 `visual_token_type_num_embeddings > 0`.
-            sparse_params (`dict`, *optional*):
-                NABLA sparse-attention configuration for the video self-attention, dispatched through the `flex`
-                attention backend regardless of `transformer.set_attention_backend(...)`. This trades the regular SDPA
-                backend's dense attention for a block-sparse pattern that scales better to longer sequences, at the
-                cost of FlexAttention's one-time kernel-autotuning overhead on the first call. None of the currently
-                released checkpoints were trained with NABLA; this is forward-looking support for a future,
-                longer-duration (e.g. 10s) model.
             return_dict (`bool`, defaults to `True`):
                 Whether to return an [`AudioVisualModelOutput`] instead of a plain tuple.
 
@@ -882,13 +794,8 @@ class Kandinsky6Transformer3DModel(
         if visual_rope_pos is None:
             visual_rope_pos = tuple(torch.arange(size, device=device) for size in visual_shape)
         visual_rope = self.visual_rope_embeddings(visual_rope_pos, self.scale_factor)
-        to_fractal = bool(sparse_params and sparse_params.get("to_fractal"))
-        if to_fractal:
-            visual_embed = _local_patch(visual_embed, visual_shape, (1, 8, 8), dim=1).flatten(1, 2)
-            visual_rope = _local_patch(visual_rope, visual_shape, (1, 8, 8), dim=0).flatten(0, 1)
-        else:
-            visual_embed = visual_embed.flatten(1, 3)
-            visual_rope = visual_rope.flatten(0, 2)
+        visual_embed = visual_embed.flatten(1, 3)
+        visual_rope = visual_rope.flatten(0, 2)
 
         # 4. Embed the audio latents and build their rotary embeddings
         audio_embed = audio_rope = None
@@ -906,21 +813,12 @@ class Kandinsky6Transformer3DModel(
                 (video_temb, audio_temb),
                 visual_rope,
                 audio_rope,
-                sparse_params,
                 encoder_attention_mask,
             )
             visual_embed, audio_embed = self._gradient_checkpointing_func(block, *args) if checkpoint else block(*args)
 
         # 6. Project back to the latent space
-        if to_fractal:
-            visual_embed = _local_merge(
-                visual_embed.reshape(visual_embed.shape[0], -1, 64, visual_embed.shape[-1]),
-                visual_shape,
-                (1, 8, 8),
-                dim=1,
-            )
-        else:
-            visual_embed = visual_embed.reshape(-1, *visual_shape, visual_embed.shape[-1])
+        visual_embed = visual_embed.reshape(-1, *visual_shape, visual_embed.shape[-1])
         video_out = self.out_layer(visual_embed, video_temb)
         audio_out = self.audio_out_layer(audio_embed, audio_temb) if audio_embed is not None else None
 

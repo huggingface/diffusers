@@ -259,8 +259,15 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         )
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
+    @staticmethod
     def _get_prompt_embeds(
-        self, prompt: list[str], max_sequence_length: int, device: torch.device
+        prompt: list[str],
+        tokenizer,
+        text_encoder,
+        tokenizer_2,
+        text_encoder_2,
+        max_sequence_length: int,
+        device: torch.device,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
         """Encode prompts with Qwen2.5-VL (token embeddings) and CLIP (pooled embedding).
 
@@ -268,7 +275,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         in the batch is padded (a mask without padding carries no information, and dropping it keeps every attention
         backend available).
         """
-        inputs = self.tokenizer(
+        inputs = tokenizer(
             text=[_PROMPT_TEMPLATE.format(item) for item in prompt],
             images=None,
             videos=None,
@@ -277,7 +284,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             return_tensors="pt",
             padding="max_length",
         ).to(device)
-        qwen_output = self.text_encoder(
+        qwen_output = text_encoder(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
             return_dict=True,
@@ -288,7 +295,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         if prompt_attention_mask.all():
             prompt_attention_mask = None
 
-        clip_inputs = self.tokenizer_2(
+        clip_inputs = tokenizer_2(
             prompt,
             max_length=_CLIP_MAX_LENGTH,
             truncation=True,
@@ -296,7 +303,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             padding="max_length",
             return_tensors="pt",
         ).to(device)
-        pooled_prompt_embeds = self.text_encoder_2(**clip_inputs)["pooler_output"]
+        pooled_prompt_embeds = text_encoder_2(**clip_inputs)["pooler_output"]
         return prompt_embeds, pooled_prompt_embeds, prompt_attention_mask
 
     def encode_prompt(
@@ -351,14 +358,28 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
 
         if prompt_embeds is None:
             prompt_embeds, pooled_prompt_embeds, prompt_attention_mask = self._get_prompt_embeds(
-                prompt, max_sequence_length, device
+                prompt,
+                self.tokenizer,
+                self.text_encoder,
+                self.tokenizer_2,
+                self.text_encoder_2,
+                max_sequence_length,
+                device,
             )
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = negative_prompt or self._DEFAULT_NEGATIVE_PROMPT
             negative_prompt = [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
             negative_prompt = negative_prompt * len(prompt) if len(negative_prompt) == 1 else negative_prompt
             negative_prompt_embeds, negative_pooled_prompt_embeds, negative_prompt_attention_mask = (
-                self._get_prompt_embeds(negative_prompt, max_sequence_length, device)
+                self._get_prompt_embeds(
+                    negative_prompt,
+                    self.tokenizer,
+                    self.text_encoder,
+                    self.tokenizer_2,
+                    self.text_encoder_2,
+                    max_sequence_length,
+                    device,
+                )
             )
 
         prompt_embeds = prompt_embeds.to(device=device, dtype=dtype).repeat_interleave(num_videos_per_prompt, dim=0)
@@ -388,20 +409,30 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             negative_prompt_attention_mask,
         )
 
+    @staticmethod
     def expand_prompts(
-        self,
         prompt: str | list[str],
+        tokenizer,
+        text_encoder,
+        device: torch.device,
         image: PIL.Image.Image | list[PIL.Image.Image] | None = None,
         max_sequence_length: int = 1024,
         generator: torch.Generator | list[torch.Generator] | None = None,
     ) -> str | list[str]:
         r"""
         Rewrites short prompts into detailed video+audio prompts with the Qwen2.5-VL text encoder, grounding them on
-        the reference image when one is given.
+        the reference image when one is given. A `staticmethod` so it can be used standalone, before running the
+        pipeline.
 
         Args:
             prompt (`str` or `list[str]`):
                 Prompt or prompts to expand.
+            tokenizer:
+                The Qwen2.5-VL processor, e.g. `pipe.tokenizer`.
+            text_encoder:
+                The Qwen2.5-VL model, e.g. `pipe.text_encoder`.
+            device (`torch.device`):
+                Device to run the text encoder on.
             image (`PIL.Image.Image` or `list[PIL.Image.Image]`, *optional*):
                 Reference image(s) of an image-to-video call.
             max_sequence_length (`int`, defaults to `1024`):
@@ -418,8 +449,14 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             images = image if isinstance(image, list) else [image] * len(prompt)
             generators = generator if isinstance(generator, list) else [generator] * len(prompt)
             return [
-                self.expand_prompts(
-                    item, image=item_image, max_sequence_length=max_sequence_length, generator=item_generator
+                Kandinsky6TI2VAPipeline.expand_prompts(
+                    item,
+                    tokenizer,
+                    text_encoder,
+                    device,
+                    image=item_image,
+                    max_sequence_length=max_sequence_length,
+                    generator=item_generator,
                 )
                 for item, item_image, item_generator in zip(prompt, images, generators, strict=True)
             ]
@@ -431,21 +468,21 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         )
         content = [{"type": "image", "image": image}] if image is not None else []
         content.append({"type": "text", "text": instruction})
-        text = self.tokenizer.apply_chat_template(
+        text = tokenizer.apply_chat_template(
             [{"role": "user", "content": content}], tokenize=False, add_generation_prompt=True
         )
-        inputs = self.tokenizer(
+        inputs = tokenizer(
             text=[text],
             images=[image] if image is not None else None,
             videos=None,
             padding=True,
             return_tensors="pt",
-        ).to(self._execution_device)
+        ).to(device)
         if generator is not None:
             torch.manual_seed(generator.initial_seed())
-        generated = self.text_encoder.generate(**inputs, max_new_tokens=max_sequence_length)
+        generated = text_encoder.generate(**inputs, max_new_tokens=max_sequence_length)
         generated = generated[:, inputs["input_ids"].shape[1] :]
-        return self.tokenizer.batch_decode(generated, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+        return tokenizer.batch_decode(generated, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
 
     def check_inputs(
         self,
@@ -456,6 +493,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         num_frames,
         image,
         sample_audio,
+        expand_prompts,
         prompt_embeds=None,
         pooled_prompt_embeds=None,
         negative_prompt_embeds=None,
@@ -488,6 +526,8 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        if expand_prompts and prompt_embeds is not None:
+            raise ValueError("`expand_prompts=True` requires `prompt`; it cannot be used with `prompt_embeds`.")
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
                 f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
@@ -624,7 +664,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         pooled_prompt_embeds: torch.Tensor | None = None,
         negative_prompt_embeds: torch.Tensor | None = None,
         negative_pooled_prompt_embeds: torch.Tensor | None = None,
-        sample_audio: bool | None = None,
+        sample_audio: bool = True,
         expand_prompts: bool = False,
         max_sequence_length: int = 1024,
         output_type: str = "pil",
@@ -675,9 +715,8 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
                 Pre-generated negative Qwen2.5-VL text embeddings.
             negative_pooled_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated negative CLIP pooled text embeddings.
-            sample_audio (`bool`, *optional*):
-                Whether to generate synchronized audio. Defaults to `True` when the pipeline has an `audio_vae` and a
-                `vocoder`, `False` otherwise; `True` requires both.
+            sample_audio (`bool`, defaults to `True`):
+                Whether to generate synchronized audio. Requires the pipeline to have an `audio_vae` and a `vocoder`.
             expand_prompts (`bool`, defaults to `False`):
                 Whether to rewrite the prompts with [`~Kandinsky6TI2VAPipeline.expand_prompts`] before encoding.
             max_sequence_length (`int`, defaults to `1024`):
@@ -699,8 +738,6 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
                 The generated video and audio; a `(frames, audio)` tuple when `return_dict=False`.
         """
         # 1. Check inputs. Raise error if not correct
-        if sample_audio is None:
-            sample_audio = getattr(self, "audio_vae", None) is not None and getattr(self, "vocoder", None) is not None
         self.check_inputs(
             prompt=prompt,
             negative_prompt=negative_prompt,
@@ -709,6 +746,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
             num_frames=num_frames,
             image=image,
             sample_audio=sample_audio,
+            expand_prompts=expand_prompts,
             prompt_embeds=prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
@@ -734,9 +772,15 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         dtype = self.transformer.dtype
 
         # 3. Encode input prompt
-        if expand_prompts and prompt is not None:
+        if expand_prompts:
             prompt = self.expand_prompts(
-                prompt, image=image, max_sequence_length=max_sequence_length, generator=generator
+                prompt,
+                self.tokenizer,
+                self.text_encoder,
+                device,
+                image=image,
+                max_sequence_length=max_sequence_length,
+                generator=generator,
             )
         (
             prompt_embeds,

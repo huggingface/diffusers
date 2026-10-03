@@ -26,7 +26,7 @@ from torch.nn.attention.flex_attention import BlockMask
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
-from ..attention_dispatch import dispatch_attention_fn
+from ..attention_dispatch import AttentionBackendName, dispatch_attention_fn
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
@@ -79,7 +79,6 @@ def apply_rotary(x: Tensor, rope: Tensor) -> Tensor:
     return (rope.float() * x_).sum(dim=-1).reshape(*x.shape).to(dtype=x.dtype)
 
 
-# Copied from diffusers.models.transformers.transformer_kandinsky6._local_patch
 def _local_patch(x: Tensor, shape: tuple, group_size: tuple, dim: int = 0) -> Tensor:
     T, H, W = shape
     g1, g2, g3 = group_size
@@ -89,7 +88,6 @@ def _local_patch(x: Tensor, shape: tuple, group_size: tuple, dim: int = 0) -> Te
     return x.flatten(dim, dim + 2).flatten(dim + 1, dim + 3)
 
 
-# Copied from diffusers.models.transformers.transformer_kandinsky6._local_merge
 def _local_merge(x: Tensor, shape: tuple, group_size: tuple, dim: int = 0) -> Tensor:
     T, H, W = shape
     g1, g2, g3 = group_size
@@ -99,7 +97,6 @@ def _local_merge(x: Tensor, shape: tuple, group_size: tuple, dim: int = 0) -> Te
     return x.flatten(dim, dim + 1).flatten(dim + 1, dim + 2).flatten(dim + 2, dim + 3)
 
 
-# Copied from diffusers.models.transformers.transformer_kandinsky6.nabla_block_mask
 def nabla_block_mask(
     q: Tensor,
     k: Tensor,
@@ -153,15 +150,12 @@ def sliding_tile_mask(
 class Kandinsky6SRAttnProcessor:
     """Self-attention processor of the SR transformer: dense by default, NABLA sparse when `sparse_params` is set.
 
-    Like [`Kandinsky5AttnProcessor`], the attention backend is chosen through the usual `_attention_backend`
-    (`set_attention_backend`), even in the NABLA sparse branch. Its sparsity is expressed as a `BlockMask`, which only
-    the `flex` backend can consume, so sparse checkpoints require `set_attention_backend("flex")`. That backend also
-    needs to run under `torch.compile` (e.g. `transformer.compile_repeated_blocks()`): uncompiled, PyTorch's flex
-    attention falls back to an eager implementation that materializes the full attention matrix, which does not fit in
-    memory at video resolutions.
+    Always dispatches on the `flex` backend: NABLA's sparsity is expressed as a `BlockMask`, which only `flex` can
+    consume. That backend also needs to run under `torch.compile` (e.g. `transformer.compile_repeated_blocks()`):
+    uncompiled, PyTorch's flex attention falls back to an eager implementation that materializes the full attention
+    matrix, which does not fit in memory at video resolutions.
     """
 
-    _attention_backend = None
     _parallel_config = None
 
     def __call__(
@@ -182,9 +176,7 @@ class Kandinsky6SRAttnProcessor:
         if sparse_params is None:
             attn_mask = None
         else:
-            # The block statistics are computed from the `(B, heads, S, D)` layout the mask builder expects; the
-            # resulting `BlockMask` only runs on the flex backend, so sparse checkpoints need
-            # `set_attention_backend("flex")` (see the class docstring).
+            # The block statistics are computed from the `(B, heads, S, D)` layout the mask builder expects.
             attn_mask = nabla_block_mask(
                 query.transpose(1, 2),
                 key.transpose(1, 2),
@@ -196,7 +188,7 @@ class Kandinsky6SRAttnProcessor:
             key,
             value,
             attn_mask=attn_mask,
-            backend=self._attention_backend,
+            backend=AttentionBackendName.FLEX,
             parallel_config=self._parallel_config,
         )
         return attn.out_layer(hidden_states.flatten(2, 3))
@@ -271,14 +263,12 @@ class Kandinsky6SRVisualEmbeddings(nn.Module):
 
 # Copied from diffusers.models.transformers.transformer_kandinsky6.Kandinsky6Modulation with Kandinsky6->Kandinsky6SR
 class Kandinsky6SRModulation(nn.Module):
-    """Zero-initialized AdaLN modulation projection."""
+    """AdaLN modulation projection."""
 
     def __init__(self, time_dim: int, model_dim: int, num_params: int):
         super().__init__()
         self.activation = nn.SiLU()
         self.out_layer = nn.Linear(time_dim, num_params * model_dim)
-        nn.init.zeros_(self.out_layer.weight)
-        nn.init.zeros_(self.out_layer.bias)
 
     def forward(self, x: Tensor) -> Tensor:
         return self.out_layer(self.activation(x.to(get_parameter_dtype(self.out_layer))))

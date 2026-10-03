@@ -117,17 +117,6 @@ class Kandinsky6SRLatentUpscalerOutputHead(nn.Module):
         return self.conv(self.activation(self.norm(hidden_states, zq)))
 
 
-def _residual_stack(num_blocks: int, in_channels: int, out_channels: int, zq_channels: int) -> nn.ModuleList:
-    """`num_blocks` residual blocks; the first one narrows `in_channels` to `out_channels`."""
-    widths = [in_channels] + [out_channels] * num_blocks
-    return nn.ModuleList(
-        [
-            Kandinsky6SRLatentUpscalerResidualBlock(widths[index], widths[index + 1], zq_channels)
-            for index in range(num_blocks)
-        ]
-    )
-
-
 class Kandinsky6SRLatentUpscalerX2Branch(nn.Module):
     """The x2 upscaler tail: adapter blocks and a finisher on the input grid, then one 2x stage."""
 
@@ -141,13 +130,27 @@ class Kandinsky6SRLatentUpscalerX2Branch(nn.Module):
     ) -> None:
         super().__init__()
         width_1, width_2, width_3 = stage_channels
-        self.adapter = _residual_stack(num_adapter_blocks, width_1, width_1, in_channels)
+        self.adapter = nn.ModuleList(
+            [Kandinsky6SRLatentUpscalerResidualBlock(width_1, width_1, in_channels) for _ in range(num_adapter_blocks)]
+        )
         self.finisher = nn.Module()
         self.finisher.spatial_conv = nn.Conv3d(width_1, width_1, kernel_size=(1, 3, 3), padding=(0, 1, 1))
         self.finisher.linear = nn.Conv3d(width_1, width_1, kernel_size=1)
-        self.mid_blocks = _residual_stack(num_mid_blocks, width_1, width_2, in_channels)
+        mid_widths = [width_1] + [width_2] * num_mid_blocks
+        self.mid_blocks = nn.ModuleList(
+            [
+                Kandinsky6SRLatentUpscalerResidualBlock(mid_widths[index], mid_widths[index + 1], in_channels)
+                for index in range(num_mid_blocks)
+            ]
+        )
         self.upsample = Kandinsky6SRLatentUpscalerUpsample(width_2)
-        self.blocks = _residual_stack(num_post_blocks, width_2, width_3, in_channels)
+        post_widths = [width_2] + [width_3] * num_post_blocks
+        self.blocks = nn.ModuleList(
+            [
+                Kandinsky6SRLatentUpscalerResidualBlock(post_widths[index], post_widths[index + 1], in_channels)
+                for index in range(num_post_blocks)
+            ]
+        )
         self.output_proj = Kandinsky6SRLatentUpscalerOutputHead(width_3, in_channels, in_channels)
 
     def forward(self, hidden_states: Tensor, zq: Tensor) -> Tensor:
@@ -166,17 +169,17 @@ class Kandinsky6SRLatentUpscaler(nn.Module):
     """One latent upscaler of the bank: a two-stage 2x+2x cascade for `scale=4`, or its single-stage x2 variant.
 
     Both share the same widths and the same `input_proj -> pre_blocks -> upsample_1 -> mid_blocks -> upsample_2 ->
-    post_blocks -> output_proj` backbone (plus an auxiliary `mid_output_head`, a deep-supervision head the
-    checkpoint trains with zero loss weight -- see below). The x2 model additionally runs the
+    post_blocks -> output_proj` backbone (plus an auxiliary `mid_output_head`, a deep-supervision head the checkpoint
+    trains with zero loss weight -- see below). The x2 model additionally runs the
     [`Kandinsky6SRLatentUpscalerX2Branch`] tail; the x4 model's `forward` is just its backbone.
 
-    Released checkpoints train the x2 entry's backbone jointly with its [`Kandinsky6SRLatentUpscalerX2Branch`]
-    tail (the `x2_adapter_sources` config field names which backbone activations the tail's `adapter` reads from),
-    but `forward` here only runs the tail, matching this class's behavior before the backbone was known to exist:
-    the backbone and `mid_output_head` are declared so their trained weights load from the checkpoint instead of
-    raising "unused weights"/leaving parameters meta/randomly-initialized, but neither is wired into `forward`, so
-    numerically this is unchanged from before. Wiring the backbone into the x2 tail's forward pass needs the
-    original training code to confirm the exact tap points first -- guessing would risk silently wrong output.
+    Released checkpoints train the x2 entry's backbone jointly with its [`Kandinsky6SRLatentUpscalerX2Branch`] tail
+    (the `x2_adapter_sources` config field names which backbone activations the tail's `adapter` reads from), but
+    `forward` here only runs the tail, matching this class's behavior before the backbone was known to exist: the
+    backbone and `mid_output_head` are declared so their trained weights load from the checkpoint instead of raising
+    "unused weights"/leaving parameters meta/randomly-initialized, but neither is wired into `forward`, so numerically
+    this is unchanged from before. Wiring the backbone into the x2 tail's forward pass needs the original training code
+    to confirm the exact tap points first -- guessing would risk silently wrong output.
     """
 
     def __init__(
@@ -196,16 +199,30 @@ class Kandinsky6SRLatentUpscaler(nn.Module):
         width_1, width_2, width_3 = stage_channels
 
         self.input_proj = nn.Sequential(Kandinsky6SRLatentUpscalerConv3d(in_channels, width_1, kernel_size=3))
-        self.pre_blocks = _residual_stack(num_pre_blocks, width_1, width_1, in_channels)
+        self.pre_blocks = nn.ModuleList(
+            [Kandinsky6SRLatentUpscalerResidualBlock(width_1, width_1, in_channels) for _ in range(num_pre_blocks)]
+        )
         self.upsample_1 = Kandinsky6SRLatentUpscalerUpsample(width_1)
-        self.mid_blocks = _residual_stack(num_mid_blocks, width_1, width_2, in_channels)
+        mid_widths = [width_1] + [width_2] * num_mid_blocks
+        self.mid_blocks = nn.ModuleList(
+            [
+                Kandinsky6SRLatentUpscalerResidualBlock(mid_widths[index], mid_widths[index + 1], in_channels)
+                for index in range(num_mid_blocks)
+            ]
+        )
         self.mid_output_head = nn.Sequential(
             Kandinsky6SRLatentUpscalerRMSNorm(width_2),
             nn.SiLU(),
             Kandinsky6SRLatentUpscalerConv3d(width_2, in_channels, kernel_size=3),
         )
         self.upsample_2 = Kandinsky6SRLatentUpscalerUpsample(width_2)
-        self.post_blocks = _residual_stack(num_post_blocks, width_2, width_3, in_channels)
+        post_widths = [width_2] + [width_3] * num_post_blocks
+        self.post_blocks = nn.ModuleList(
+            [
+                Kandinsky6SRLatentUpscalerResidualBlock(post_widths[index], post_widths[index + 1], in_channels)
+                for index in range(num_post_blocks)
+            ]
+        )
         self.output_proj = Kandinsky6SRLatentUpscalerOutputHead(width_3, in_channels, in_channels)
 
         if scale == 2:

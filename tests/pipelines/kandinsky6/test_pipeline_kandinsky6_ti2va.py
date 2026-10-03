@@ -14,6 +14,7 @@
 
 import numpy as np
 import PIL.Image
+import pytest
 import torch
 from transformers import (
     AutoProcessor,
@@ -33,7 +34,7 @@ from diffusers import (
     MMAudioVocoder,
 )
 
-from ...testing_utils import torch_device
+from ...testing_utils import assert_tensors_close, torch_device
 from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
@@ -208,6 +209,44 @@ class Kandinsky6TI2VAPipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestKandinsky6TI2VAPipeline(Kandinsky6TI2VAPipelineTesterConfig, PipelineTesterMixin):
+    def test_save_load_optional_components(self, tmp_path, expected_max_difference=1e-4):
+        # Dropping the optional `audio_vae`/`vocoder` components also drops the pipeline's ability to sample
+        # audio, so `sample_audio` must be turned off explicitly instead of relying on its default.
+        if not getattr(self.pipeline_class, "_optional_components", None):
+            pytest.skip(f"Skipping test because {self.pipeline_class} has no `_optional_components`.")
+
+        pipe = self.get_pipeline().to(torch_device)
+
+        for optional_component in pipe._optional_components:
+            setattr(pipe, optional_component, None)
+
+        inputs = self.get_dummy_inputs()
+        inputs["sample_audio"] = False
+        torch.manual_seed(0)
+        output = pipe(**inputs)[0]
+
+        pipe.save_pretrained(tmp_path, safe_serialization=False)
+        pipe_loaded = self.pipeline_class.from_pretrained(tmp_path)
+        pipe_loaded.to(torch_device)
+        pipe_loaded.set_progress_bar_config(disable=None)
+
+        for optional_component in pipe._optional_components:
+            assert getattr(pipe_loaded, optional_component) is None, (
+                f"`{optional_component}` did not stay set to None after loading."
+            )
+
+        inputs = self.get_dummy_inputs()
+        inputs["sample_audio"] = False
+        torch.manual_seed(0)
+        output_loaded = pipe_loaded(**inputs)[0]
+
+        assert_tensors_close(
+            output_loaded,
+            output,
+            atol=expected_max_difference,
+            msg="Output changed after dropping optional components.",
+        )
+
     def test_kandinsky6_ti2va_audio_output(self):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         output = pipe(**self.get_dummy_inputs())
