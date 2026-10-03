@@ -359,8 +359,10 @@ class FlowMatchLCMScheduler(SchedulerMixin, ConfigMixin):
         else:
             sigmas = self.shift * sigmas / (1 + (self.shift - 1) * sigmas)  # type: ignore
 
-        # 3. If required, stretch the sigmas schedule to terminate at the configured `shift_terminal` value
-        if self.config.shift_terminal:
+        # 3. If required, stretch the sigmas schedule to terminate at the configured `shift_terminal` value.
+        # With a single step, the lone sigma is both the first and last point of the schedule, so
+        # `stretch_shift_to_terminal` divides 0 by 0 and produces nan. Skip stretching in that case.
+        if self.config.shift_terminal and len(sigmas) > 1:
             sigmas = self.stretch_shift_to_terminal(sigmas)  # type: ignore
 
         # 4. If required, convert sigmas to one of karras, exponential, or beta sigma schedules
