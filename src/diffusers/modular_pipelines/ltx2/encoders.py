@@ -50,6 +50,7 @@ from ...utils import logging
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .modular_pipeline import LTX2ModularPipeline
 
 
 logger = logging.get_logger(__name__)
@@ -221,7 +222,7 @@ class LTX2PromptEnhancerStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         if not block_state.enable_prompt_enhancement:
@@ -318,7 +319,7 @@ class LTX2ImageToVideoPromptEnhancerStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         if not block_state.enable_prompt_enhancement:
@@ -427,7 +428,7 @@ class LTX2ConditionPromptEnhancerStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         if not block_state.enable_prompt_enhancement:
@@ -543,7 +544,7 @@ class LTX2TextEncoderStep(ModularPipelineBlocks):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(block_state.prompt)}")
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
 
@@ -631,7 +632,7 @@ class LTX2TextConnectorStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         padding_side = components.tokenizer.padding_side
 
@@ -721,7 +722,7 @@ class LTX2DurationStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         if getattr(components, "duration_head", None) is None:
@@ -887,7 +888,7 @@ class LTX2VaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -1006,7 +1007,7 @@ class LTX2ConditionEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -1228,7 +1229,7 @@ class LTX2ReferenceEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 

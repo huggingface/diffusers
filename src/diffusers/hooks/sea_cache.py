@@ -64,8 +64,9 @@ class SeaCacheConfig:
         power_exp (`float`, defaults to `3.0`):
             Exponent of the SEA clean-signal power prior. SeaCache uses `3.0` for video features.
         raw_vision_callback (`Callable`, *optional*):
-            Advanced model adapter returning raw vision latents with shape `(C, T, H, W)`. When omitted, a built-in
-            adapter is used if one is available.
+            Advanced model adapter returning the visual latents forming the generated output, each with shape `(C, T,
+            H, W)`. Include clean conditioning frames within the output trajectory, but exclude separate visual hints
+            that are not part of the output. When omitted, a built-in adapter is used if one is available.
 
     Example:
         ```python
@@ -326,7 +327,6 @@ def _prepare_cosmos3_raw_vision_metadata(
         return None
 
     raw_vision = []
-    has_noisy_vision = False
     for latent, noisy_frame_indexes in zip(vision_tokens, vision_noisy_frame_indexes):
         if not isinstance(latent, torch.Tensor) or not isinstance(noisy_frame_indexes, torch.Tensor):
             return None
@@ -340,10 +340,12 @@ def _prepare_cosmos3_raw_vision_metadata(
         noisy_frame_indexes = noisy_frame_indexes.flatten().to(device=latent.device, dtype=torch.long)
         if torch.any(noisy_frame_indexes < 0) or torch.any(noisy_frame_indexes >= latent.shape[1]):
             return None
-        has_noisy_vision = has_noisy_vision or noisy_frame_indexes.numel() > 0
-        raw_vision.append(latent)
+        # A sequence with noisy frames belongs to the generated output. Keep that sequence whole so clean conditioning
+        # frames remain in the indicator, but exclude separate clean hints that are not part of the output.
+        if noisy_frame_indexes.numel() > 0:
+            raw_vision.append(latent)
 
-    return raw_vision if raw_vision and has_noisy_vision else None
+    return raw_vision or None
 
 
 def _prepare_wan_t2v_raw_vision_metadata(

@@ -106,7 +106,7 @@ class Flux2LoopDenoiser(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(
         self, components: Flux2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
-    ) -> PipelineState:
+    ) -> tuple[Flux2ModularPipeline, BlockState]:
         latents = block_state.latents
         latent_model_input = latents.to(components.transformer.dtype)
         img_ids = block_state.latent_ids
@@ -195,7 +195,7 @@ class Flux2KleinLoopDenoiser(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(
         self, components: Flux2KleinModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
-    ) -> PipelineState:
+    ) -> tuple[Flux2KleinModularPipeline, BlockState]:
         latents = block_state.latents
         latent_model_input = latents.to(components.transformer.dtype)
         img_ids = block_state.latent_ids
@@ -310,7 +310,7 @@ class Flux2KleinBaseLoopDenoiser(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(
         self, components: Flux2KleinModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
-    ) -> PipelineState:
+    ) -> tuple[Flux2KleinModularPipeline, BlockState]:
         latents = block_state.latents
         latent_model_input = latents.to(components.transformer.dtype)
         img_ids = block_state.latent_ids
@@ -379,7 +379,9 @@ class Flux2LoopAfterDenoiser(ModularPipelineBlocks):
         return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
 
     @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Flux2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Flux2ModularPipeline, BlockState]:
         latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(
             block_state.noise_pred,
@@ -430,7 +432,9 @@ class Flux2DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2ModularPipeline, state: PipelineState
+    ) -> tuple[Flux2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.num_warmup_steps = max(
