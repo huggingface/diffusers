@@ -1146,7 +1146,7 @@ class MiniMaxH3SetTimestepsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("num_inference_steps", required=True),
+            InputParam.template("num_inference_steps"),
             InputParam(
                 name="video_indices",
                 type_hint=torch.Tensor,
