@@ -276,6 +276,69 @@ class TestModelUtils:
 
         SD3Transformer2DModel._keep_in_fp32_modules = fp32_modules
 
+    @pytest.mark.parametrize("variant", [None, "ema"])
+    def test_save_pretrained_removes_superseded_checkpoints(self, variant):
+        r"""
+        Re-saving a checkpoint with a different container must not leave the previous files behind.
+        `from_pretrained` prefers safetensors and sharded checkpoints, so leftovers would shadow the
+        freshly written weights and be loaded silently.
+        """
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model = UNet2DConditionModel(
+                block_out_channels=(4, 8),
+                norm_num_groups=4,
+                down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+                up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+                cross_attention_dim=8,
+                attention_head_dim=2,
+                sample_size=8,
+                in_channels=4,
+                out_channels=4,
+                layers_per_block=1,
+            )
+            kwargs = {"variant": variant} if variant is not None else {}
+
+            model.save_pretrained(tmpdirname, safe_serialization=True, **kwargs)
+            expected_stem = "diffusion_pytorch_model" + (f".{variant}" if variant else "")
+            assert f"{expected_stem}.safetensors" in os.listdir(tmpdirname)
+
+            # Re-save with the other container: the safetensors file must not survive.
+            model.save_pretrained(tmpdirname, safe_serialization=False, **kwargs)
+            files = os.listdir(tmpdirname)
+            assert f"{expected_stem}.bin" in files
+            assert f"{expected_stem}.safetensors" not in files
+
+            # And the reloaded weights must come from the freshly written file.
+            reloaded = UNet2DConditionModel.from_pretrained(tmpdirname, **kwargs)
+            for key, value in model.state_dict().items():
+                assert torch.equal(value, reloaded.state_dict()[key])
+
+    def test_save_pretrained_preserves_other_variants(self):
+        r"""
+        Cleaning up superseded checkpoints must stay scoped to the variant being saved: a plain
+        save and a `variant="ema"` save coexist in the same directory.
+        """
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model = UNet2DConditionModel(
+                block_out_channels=(4, 8),
+                norm_num_groups=4,
+                down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+                up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+                cross_attention_dim=8,
+                attention_head_dim=2,
+                sample_size=8,
+                in_channels=4,
+                out_channels=4,
+                layers_per_block=1,
+            )
+
+            model.save_pretrained(tmpdirname, safe_serialization=True)
+            model.save_pretrained(tmpdirname, safe_serialization=True, variant="ema")
+
+            files = os.listdir(tmpdirname)
+            assert "diffusion_pytorch_model.safetensors" in files
+            assert "diffusion_pytorch_model.ema.safetensors" in files
+
 
 class UNetTesterMixin:
     @staticmethod
