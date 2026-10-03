@@ -347,7 +347,8 @@ class MagCacheBlockHook(ModelHook):
                 if diff == 0:
                     residual = out_hidden - in_hidden
                 else:
-                    residual = out_hidden - in_hidden  # Fallback to matching tail
+                    # The tail returned the fused text+image sequence (e.g. Flux2); the image tokens sit at the end.
+                    residual = out_hidden[:, -in_hidden.shape[1] :] - in_hidden
             else:
                 # Fallback for completely mismatched shapes
                 residual = out_hidden
