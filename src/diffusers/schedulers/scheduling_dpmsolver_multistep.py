@@ -482,7 +482,10 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas)
-        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.int64)
+        if self.config.beta_schedule == "squaredcos_cap_v2":
+            self.timesteps = torch.from_numpy(timesteps.astype(np.float32)).to(device=device)
+        else:
+            self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.int64)
 
         self.num_inference_steps = len(timesteps)
 
