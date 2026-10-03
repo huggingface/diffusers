@@ -783,7 +783,7 @@ class IFInpaintingPipeline(DiffusionPipeline, StableDiffusionLoraLoaderMixin):
         callback_steps: int = 1,
         clean_caption: bool = True,
         cross_attention_kwargs: dict[str, Any] | None = None,
-    ):
+    ) -> IFPipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 
