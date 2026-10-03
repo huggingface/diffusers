@@ -319,8 +319,6 @@ class Kandinsky6Modulation(nn.Module):
         super().__init__()
         self.activation = nn.SiLU()
         self.out_layer = nn.Linear(time_dim, num_params * model_dim)
-        nn.init.zeros_(self.out_layer.weight)
-        nn.init.zeros_(self.out_layer.bias)
 
     def forward(self, x: Tensor) -> Tensor:
         return self.out_layer(self.activation(x.to(get_parameter_dtype(self.out_layer))))
