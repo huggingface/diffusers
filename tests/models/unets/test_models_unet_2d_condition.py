@@ -500,7 +500,7 @@ class TestUNet2DCondition(UNet2DConditionTesterConfig, ModelTesterMixin, UNetTes
     # since the use-case (somebody passes in a too-short cross-attn mask) is pretty small,
     # maybe it's fine that this only works for the unclip use-case.
     @mark.skip(
-        reason="we currently pad mask by target_length tokens (what unclip needs), whereas stable-diffusion's cross-attn needs to instead pad by remaining_length."
+        reason="we currently pad mask by target_length tokens (what unclip needs), whereas stable-diffusion's cross-attn needs to instead pad by target_length."
     )
     def test_model_xattn_padding(self):
         init_dict = self.get_init_dict()
