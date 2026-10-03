@@ -413,7 +413,7 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             cond_kwargs = {name: getattr(batch, name) for name in self._guider_input_fields}
             cond_kwargs["spatio_temporal_guidance_blocks"] = batch.spatio_temporal_guidance_blocks
             cond_kwargs["isolate_modalities"] = batch.isolate_modalities
-            with components.transformer.cache_context(getattr(batch, identifier_key)):
+            with components.transformer.cache_context(getattr(batch, identifier_key), timestep=t):
                 noise_pred_video, noise_pred_audio = components.transformer(
                     hidden_states=block_state.latent_model_input,
                     audio_hidden_states=block_state.audio_latent_model_input,
