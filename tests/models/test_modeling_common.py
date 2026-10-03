@@ -276,6 +276,35 @@ class TestModelUtils:
 
         SD3Transformer2DModel._keep_in_fp32_modules = fp32_modules
 
+    @pytest.mark.parametrize("variant", ["ema", None])
+    def test_save_pretrained_preserves_other_variant_shards(self, variant):
+        """Saving default weights into a directory that holds a sharded checkpoint must not
+        delete that checkpoint's shards or leave a stale index behind. Regression for
+        prefix-based cleanup matching another variant's shards / a formerly-sharded default."""
+        from diffusers import UNet2DModel
+
+        def build():
+            return UNet2DModel(
+                sample_size=32,
+                in_channels=3,
+                out_channels=3,
+                block_out_channels=(4, 8),
+                norm_num_groups=2,
+                down_block_types=("DownBlock2D", "AttnDownBlock2D"),
+                up_block_types=("AttnUpBlock2D", "UpBlock2D"),
+            )
+
+        model = build()
+        with tempfile.TemporaryDirectory() as path:
+            model.save_pretrained(path, variant=variant, max_shard_size="50KB")
+            UNet2DModel.from_pretrained(path, variant=variant)
+            # A subsequent default (unsharded) save must leave the first checkpoint reloadable.
+            model.save_pretrained(path, max_shard_size="100MB")
+            reloaded = UNet2DModel.from_pretrained(path, variant=variant)
+            assert all(
+                torch.equal(p1, p2) for p1, p2 in zip(model.parameters(), reloaded.parameters())
+            )
+
 
 class UNetTesterMixin:
     @staticmethod
