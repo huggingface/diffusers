@@ -51,11 +51,13 @@ else:
         "WanBlocks",
         "Wan22Blocks",
         "WanImage2VideoAutoBlocks",
+        "WanVideoToVideoBlocks",
         "Wan22Image2VideoBlocks",
         "Wan22VaceBlocks",
         "WanModularPipeline",
         "Wan22ModularPipeline",
         "WanImage2VideoModularPipeline",
+        "WanVideoToVideoModularPipeline",
         "Wan22Image2VideoModularPipeline",
         "Wan22VaceModularPipeline",
     ]
@@ -234,6 +236,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WanImage2VideoAutoBlocks,
             WanImage2VideoModularPipeline,
             WanModularPipeline,
+            WanVideoToVideoBlocks,
+            WanVideoToVideoModularPipeline,
         )
         from .wan_animate_2 import (
             WanAnimate2Blocks,
