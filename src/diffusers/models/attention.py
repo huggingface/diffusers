@@ -469,18 +469,16 @@ class AttentionModuleMixin:
 
         current_length: int = attention_mask.shape[-1]
         if current_length != target_length:
-            if attention_mask.device.type == "mps":
-                # HACK: MPS: Does not support padding by greater than dimension of input tensor.
-                # Instead, we can manually construct the padding tensor.
-                padding_shape = (attention_mask.shape[0], attention_mask.shape[1], target_length)
-                padding = torch.zeros(padding_shape, dtype=attention_mask.dtype, device=attention_mask.device)
-                attention_mask = torch.cat([attention_mask, padding], dim=2)
-            else:
-                # TODO: for pipelines such as stable-diffusion, padding cross-attn mask:
-                #       we want to instead pad by (0, remaining_length), where remaining_length is:
-                #       remaining_length: int = target_length - current_length
-                # TODO: re-enable tests/models/test_models_unet_2d_condition.py#test_model_xattn_padding
-                attention_mask = F.pad(attention_mask, (0, target_length), value=0.0)
+            remaining_length = target_length - current_length
+            if remaining_length > 0:
+                if attention_mask.device.type == "mps":
+                    # HACK: MPS: Does not support padding by greater than dimension of input tensor.
+                    # Instead, we can manually construct the padding tensor.
+                    padding_shape = (attention_mask.shape[0], attention_mask.shape[1], remaining_length)
+                    padding = torch.zeros(padding_shape, dtype=attention_mask.dtype, device=attention_mask.device)
+                    attention_mask = torch.cat([attention_mask, padding], dim=2)
+                else:
+                    attention_mask = F.pad(attention_mask, (0, remaining_length), value=0.0)
 
         if out_dim == 3:
             if attention_mask.shape[0] < batch_size * head_size:
