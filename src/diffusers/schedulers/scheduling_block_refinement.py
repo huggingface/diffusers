@@ -15,40 +15,42 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional, Union
 
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
-from .scheduling_utils import SchedulerMixin
+from ..utils import deprecate
+from .scheduling_utils import DiscreteSchedulerOutput, SchedulerMixin
 
 
 @dataclass
-class BlockRefinementSchedulerOutput(BaseOutput):
+class BlockRefinementSchedulerOutput(DiscreteSchedulerOutput):
     """
-    Output class for block refinement scheduling.
+    Deprecated output class for [`BlockRefinementScheduler`], kept for one release.
 
-    Args:
-        prev_sample (`torch.LongTensor` of shape `(batch_size, block_length)`):
-            Updated block tokens after the current refinement step.
-        transfer_index (`torch.BoolTensor` of shape `(batch_size, block_length)`):
-            Boolean mask indicating which tokens were committed (mask-filling).
-        editing_transfer_index (`torch.BoolTensor` of shape `(batch_size, block_length)`):
-            Boolean mask indicating which tokens were edited (non-mask replacement).
-        sampled_tokens (`torch.LongTensor` of shape `(batch_size, block_length)`):
-            Sampled token IDs from the model logits.
-        sampled_probs (`torch.Tensor` of shape `(batch_size, block_length)`):
-            Probabilities of the sampled tokens.
-        pred_logits (`torch.Tensor` of shape `(batch_size, block_length, vocab_size)`):
-            The denoiser logits, passed through for self-conditioning the next step.
+    It is now a [`DiscreteSchedulerOutput`] with two deprecated aliases: `transfer_index` for `committed_mask` and
+    `editing_transfer_index` for `edited_mask`. The aliases resolve on attribute access only — `BaseOutput.__getitem__`
+    and iteration see dataclass fields, so `output["transfer_index"]` will not work.
     """
 
-    prev_sample: torch.LongTensor
-    transfer_index: torch.BoolTensor
-    editing_transfer_index: torch.BoolTensor
-    sampled_tokens: torch.LongTensor
-    sampled_probs: torch.Tensor
-    pred_logits: torch.Tensor
+    @property
+    def transfer_index(self) -> torch.BoolTensor:
+        deprecate(
+            "transfer_index",
+            "1.0.0",
+            "`transfer_index` is deprecated; use `committed_mask`, which every discrete scheduler now returns.",
+        )
+        return self.committed_mask
+
+    @property
+    def editing_transfer_index(self) -> torch.BoolTensor | None:
+        deprecate(
+            "editing_transfer_index",
+            "1.0.0",
+            "`editing_transfer_index` is deprecated; use `edited_mask`, which every discrete scheduler now returns.",
+        )
+        return self.edited_mask
 
 
 class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
@@ -61,6 +63,34 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
 
     Optionally supports editing: after all mask tokens are resolved, tokens can be replaced if the model predicts a
     different token with confidence above a positive `editing_threshold` (`None`, `0.0`, or negative disables editing).
+
+    This scheduler models the absorbing (masked) corruption process. For the uniform process, where every position
+    always holds a real token and there is no mask token, use [`UniformRefinementScheduler`].
+
+    Args:
+        block_length (`int`, defaults to 32):
+            The block size this scheduler is configured for. Pipelines read it as their default block size; the commit
+            quota itself is taken from the width of `sample`.
+        num_inference_steps (`int`, defaults to 32):
+            The number of refinement steps the commit quota is spread across.
+        mask_token_id (`int`, *optional*):
+            Token ID marking an undecided position. Required by [`~BlockRefinementScheduler.step`]; it lives in the
+            config because it is a property of the tokenizer, matching [`AmusedScheduler`].
+        temperature (`float`, defaults to 0.0):
+            Sampling temperature applied to the logits when drawing candidates. `0.0` takes the argmax. The confidence
+            driving the quota is measured on the unscaled distribution, so `threshold` and `editing_threshold` do not
+            move with this value.
+        top_p (`float`, *optional*):
+            Nucleus sampling cutoff.
+        top_k (`int`, *optional*):
+            Top-k sampling cutoff.
+        sampling_method (`str`, defaults to `"auto"`):
+            One of `"auto"`, `"greedy"`, `"multinomial"`. `"auto"` draws multinomially when `temperature != 0`.
+        threshold (`float`, defaults to 0.95):
+            Confidence above which a masked position commits even if the quota is already met.
+        editing_threshold (`float`, *optional*):
+            Confidence above which an already-resolved position is overwritten with a different predicted token. Must
+            be positive to enable editing; `None`, `0.0`, or negative disables it.
     """
 
     order = 1
@@ -70,37 +100,134 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         self,
         block_length: int = 32,
         num_inference_steps: int = 32,
+        mask_token_id: int | None = None,
+        temperature: float = 0.0,
+        top_p: float | None = None,
+        top_k: int | None = None,
+        sampling_method: str = "auto",
         threshold: float = 0.95,
         editing_threshold: float | None = None,
-        minimal_topk: int = 1,
     ):
-        self.num_inference_steps = num_inference_steps
-        self.timesteps = torch.arange(self.num_inference_steps - 1, -1, -1, dtype=torch.long)
-        self._transfer_schedule: torch.LongTensor | None = None
-        # committed positions for the uniform corruption mode (no mask token); reset at the start of each block
-        self._committed: torch.BoolTensor | None = None
+        if sampling_method not in {"auto", "greedy", "multinomial"}:
+            raise ValueError(
+                f"`sampling_method` must be one of {{'auto', 'greedy', 'multinomial'}}, got {sampling_method!r}."
+            )
+        if threshold < 0.0:
+            raise ValueError(f"`threshold` must be >= 0 (use > 1 to commit on quota alone), got {threshold}.")
+        self._step_index = None
+        self._begin_index = None
+        self.set_timesteps(num_inference_steps)
 
-    def set_timesteps(
-        self,
-        num_inference_steps: int,
-        device: str | torch.device | None = None,
-        block_length: int | None = None,
-    ) -> None:
+    @property
+    def step_index(self):
+        """
+        The index counter for current timestep. It will increase 1 after each scheduler step.
+        """
+        return self._step_index
+
+    @property
+    def begin_index(self):
+        """
+        The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
+        """
+        return self._begin_index
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
+    def set_begin_index(self, begin_index: int = 0):
+        """
+        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
+
+        Args:
+            begin_index (`int`, defaults to `0`):
+                The begin index for the scheduler.
+        """
+        self._begin_index = begin_index
+
+    def set_timesteps(self, num_inference_steps: int, device: str | torch.device | None = None, **kwargs) -> None:
+        """
+        Set the discrete timestep grid, as the decreasing corruption level `t` in `[0, 1]`.
+
+        The grid matches [`~DiscreteDDIMScheduler.set_timesteps`] — `1.0` down to `1 / num_inference_steps` — so the
+        discrete schedulers are interchangeable in a pipeline loop. `timesteps` is the public loop variable; the commit
+        quota is derived from the integer `step_index` so it stays exact for any `num_inference_steps`.
+
+        Args:
+            num_inference_steps (`int`):
+                The number of refinement steps.
+            device (`str` or `torch.device`, *optional*):
+                The device the timesteps should be moved to.
+        """
+        if kwargs.pop("block_length", None) is not None:
+            deprecate(
+                "block_length",
+                "1.0.0",
+                "Passing `block_length` to `set_timesteps` is deprecated and has no effect: the commit quota is now "
+                "taken from the width of `sample` on each `step`.",
+            )
+        if kwargs:
+            raise TypeError(f"Unexpected keyword arguments: {sorted(kwargs)}.")
         if num_inference_steps <= 0:
             raise ValueError(f"`num_inference_steps` must be > 0, got {num_inference_steps}.")
-        if block_length is None:
-            block_length = self.config.block_length
-        elif block_length <= 0:
-            raise ValueError(f"`block_length` must be > 0, got {block_length}.")
         self.num_inference_steps = num_inference_steps
-        self.timesteps = torch.arange(self.num_inference_steps - 1, -1, -1, device=device, dtype=torch.long)
-        self._transfer_schedule = self.get_num_transfer_tokens(block_length, self.num_inference_steps).to(
-            device=device if device is not None else "cpu"
+        self.timesteps = (
+            1.0 - torch.arange(num_inference_steps, device=device, dtype=torch.float32) / num_inference_steps
         )
-        self._committed = None
+        self._step_index = None
+        self._begin_index = None
+
+    # Copied from diffusers.schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteScheduler.index_for_timestep
+    def index_for_timestep(
+        self,
+        timestep: Union[float, torch.FloatTensor],
+        schedule_timesteps: Optional[torch.FloatTensor] = None,
+    ) -> int:
+        """
+        Get the index for the given timestep.
+
+        Args:
+            timestep (`float` or `torch.FloatTensor`):
+                The timestep to find the index for.
+            schedule_timesteps (`torch.FloatTensor`, *optional*):
+                The schedule timesteps to validate against. If `None`, the scheduler's timesteps are used.
+
+        Returns:
+            `int`:
+                The index of the timestep.
+        """
+        if schedule_timesteps is None:
+            schedule_timesteps = self.timesteps
+
+        indices = (schedule_timesteps == timestep).nonzero()
+
+        # The sigma index that is taken for the **very** first `step`
+        # is always the second index (or the last index if there is only 1)
+        # This way we can ensure we don't accidentally skip a sigma in
+        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
+        pos = 1 if len(indices) > 1 else 0
+
+        return indices[pos].item()
+
+    # Copied from diffusers.schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteScheduler._init_step_index
+    def _init_step_index(self, timestep: Union[float, torch.FloatTensor]) -> None:
+        if self.begin_index is None:
+            if isinstance(timestep, torch.Tensor):
+                timestep = timestep.to(self.timesteps.device)
+            self._step_index = self.index_for_timestep(timestep)
+        else:
+            self._step_index = self._begin_index
 
     def get_num_transfer_tokens(self, block_length: int, num_inference_steps: int) -> torch.LongTensor:
-        """Evenly distribute `block_length` token commits across `num_inference_steps` steps."""
+        """
+        Evenly distribute `block_length` token commits across `num_inference_steps` steps.
+
+        Deprecated: the per-step quota is now computed inline in [`~BlockRefinementScheduler.step`] from `step_index`,
+        so there is no schedule tensor to build.
+        """
+        deprecate(
+            "get_num_transfer_tokens",
+            "1.0.0",
+            "`get_num_transfer_tokens` is deprecated; the per-step commit quota is computed inline in `step`.",
+        )
         if num_inference_steps <= 0:
             return torch.zeros((0,), dtype=torch.long)
         base = block_length // num_inference_steps
@@ -158,9 +285,12 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
 
         vocab_size = logits.shape[-1]
         flat_logits = logits.reshape(-1, vocab_size)
+        # Confidence is always read off the unmodified distribution, so `threshold` and `editing_threshold`
+        # keep their meaning under any `temperature` / `top_k` / `top_p` (the `sampled_probs` contract of
+        # `DiscreteSchedulerOutput`).
+        probs = torch.softmax(flat_logits.float(), dim=-1)
 
         if temperature == 0.0 or not use_multinomial:
-            probs = torch.softmax(flat_logits.float(), dim=-1)
             token = flat_logits.argmax(dim=-1, keepdim=True)
             token_prob = torch.gather(probs, -1, token)
             return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
@@ -172,143 +302,146 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         filtered = BlockRefinementScheduler._top_k_filtering(scaled, top_k=top_k)
         filtered = BlockRefinementScheduler._top_p_filtering(filtered, top_p=top_p)
 
-        probs = torch.softmax(filtered.float(), dim=-1)
-        token = torch.multinomial(probs, num_samples=1, generator=generator)
+        draw_probs = torch.softmax(filtered.float(), dim=-1)
+        token = torch.multinomial(draw_probs, num_samples=1, generator=generator)
         token_prob = torch.gather(probs, -1, token)
 
         return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
 
-    def step(
-        self,
-        model_output: torch.Tensor,
-        timestep: int | torch.Tensor,
-        sample: torch.LongTensor,
-        *,
-        mask_token_id: int | None = None,
-        temperature: float = 0.0,
-        top_p: float | None = None,
-        top_k: int | None = None,
-        sampling_method: str = "auto",
-        threshold: float | None = None,
-        editing_threshold: float | None = None,
-        minimal_topk: int | None = None,
-        prompt_mask: torch.BoolTensor | None = None,
-        generator: torch.Generator | None = None,
-        return_dict: bool = True,
-    ) -> (
-        BlockRefinementSchedulerOutput
-        | tuple[torch.LongTensor, torch.BoolTensor, torch.BoolTensor, torch.LongTensor, torch.Tensor]
-    ):
+    def _pop_deprecated_step_kwargs(self, kwargs: dict) -> dict:
         """
-        Perform a single refinement step: sample from logits, commit confident tokens, and optionally edit existing
-        ones.
+        Accept the pre-1.0 per-call `step` arguments for one release, honouring them with a warning.
 
-        Args:
-            model_output (`torch.Tensor` of shape `(batch_size, block_length, vocab_size)`):
-                Raw logits from the model for the current block.
-            timestep (`int` or `torch.Tensor`):
-                Current step index within the block's refinement schedule.
-            sample (`torch.LongTensor` of shape `(batch_size, block_length)`):
-                Current block token IDs (contains mask tokens for uncommitted positions in the mask-based mode).
-            mask_token_id (`int`, *optional*):
-                Token ID used for masked positions. When `None`, the scheduler runs in uniform corruption mode: it
-                tracks committed positions internally (resetting at `timestep == 0`) and renoises the uncommitted ones
-                with uniformly random tokens, matching DiffusionGemma's block refinement sampler.
-            temperature (`float`):
-                Sampling temperature.
-            top_p (`float`, *optional*):
-                Nucleus sampling cutoff.
-            top_k (`int`, *optional*):
-                Top-k sampling cutoff.
-            sampling_method (`str`):
-                Sampling method (`auto`, `greedy`, `multinomial`).
-            threshold (`float`, *optional*):
-                Confidence threshold for committing tokens. Defaults to config value.
-            editing_threshold (`float`, *optional*):
-                Confidence threshold for editing non-mask tokens; must be positive to enable editing. Defaults to
-                config value.
-            minimal_topk (`int`, *optional*):
-                Minimum tokens to commit per step. Defaults to config value.
-            prompt_mask (`torch.BoolTensor`, *optional*):
-                Boolean mask of shape `(block_length,)` where `True` marks prompt (non-editable) positions.
-            generator (`torch.Generator`, *optional*):
-                RNG for sampling.
-            return_dict (`bool`):
-                Whether to return a `BlockRefinementSchedulerOutput` or a tuple.
+        They moved to the config (D6: the scheduler owns logit shaping), except `prompt_mask`, whose job moved to the
+        pipeline — restoring frozen positions after the step, the way inpainting pipelines blend by mask.
         """
-        if threshold is None:
-            threshold = float(self.config.threshold)
-        if editing_threshold is None:
-            editing_threshold = self.config.editing_threshold
-        if minimal_topk is None:
-            minimal_topk = self.config.minimal_topk
+        moved_to_config = ("mask_token_id", "temperature", "top_p", "top_k", "sampling_method", "threshold")
+        overrides = {}
+        for name in moved_to_config:
+            if name in kwargs:
+                value = kwargs.pop(name)
+                if value is not None:
+                    deprecate(
+                        name,
+                        "1.0.0",
+                        f"Passing `{name}` to `step` is deprecated; set it on the scheduler config instead, e.g. "
+                        f"`BlockRefinementScheduler.from_config(scheduler.config, {name}=...)`.",
+                    )
+                    overrides[name] = value
+        for name in ("editing_threshold", "prompt_mask"):
+            if name in kwargs:
+                value = kwargs.pop(name)
+                if value is not None:
+                    hint = (
+                        "set it on the scheduler config instead"
+                        if name == "editing_threshold"
+                        else "restore frozen positions in the pipeline after `step` instead"
+                    )
+                    deprecate(name, "1.0.0", f"Passing `{name}` to `step` is deprecated; {hint}.")
+                    overrides[name] = value
+        if "minimal_topk" in kwargs:
+            kwargs.pop("minimal_topk")
+            deprecate(
+                "minimal_topk",
+                "1.0.0",
+                "`minimal_topk` is deprecated and has no effect; it was read from the config but never used.",
+            )
+        if kwargs:
+            raise TypeError(f"Unexpected keyword arguments: {sorted(kwargs)}.")
+        return overrides
 
-        # Sample from logits
+    def _draw(self, model_output: torch.Tensor, overrides: dict, generator: torch.Generator | None):
+        """Sample candidate tokens using the configured shaping, with any deprecated per-call overrides applied."""
+        temperature = float(overrides.get("temperature", self.config.temperature))
+        sampling_method = overrides.get("sampling_method", self.config.sampling_method)
         use_multinomial = sampling_method == "multinomial" or (sampling_method == "auto" and temperature != 0.0)
-        sampled_tokens, sampled_probs = self._sample_from_logits(
+        return self._sample_from_logits(
             model_output,
             temperature=temperature,
-            top_k=top_k,
-            top_p=top_p,
+            top_k=overrides.get("top_k", self.config.top_k),
+            top_p=overrides.get("top_p", self.config.top_p),
             generator=generator,
             use_multinomial=use_multinomial,
         )
 
-        batch_size, block_length = sample.shape
+    def _edited_mask(
+        self,
+        sampled_tokens: torch.LongTensor,
+        sampled_probs: torch.Tensor,
+        sample: torch.LongTensor,
+        resolved: torch.BoolTensor,
+        editing_threshold: float | None,
+        prompt_mask: torch.BoolTensor | None,
+    ) -> torch.BoolTensor:
+        """Positions that overwrite an already-resolved token with a different, confident prediction."""
+        edited = torch.zeros_like(sampled_tokens, dtype=torch.bool)
+        if editing_threshold is None or editing_threshold <= 0.0:
+            return edited
+        editable = resolved
+        if prompt_mask is not None:
+            editable = editable & (~prompt_mask.unsqueeze(0))
+        editing_conf = torch.where(
+            editable,
+            sampled_probs.to(dtype=torch.float32),
+            torch.full_like(sampled_probs, -torch.inf, dtype=torch.float32),
+        )
+        return (editing_conf > float(editing_threshold)) & (sampled_tokens != sample) & editable
 
-        if isinstance(timestep, torch.Tensor):
-            step_index = int(timestep.item())
-        else:
-            step_index = int(timestep)
+    def step(
+        self,
+        model_output: torch.Tensor,
+        timestep: float | torch.Tensor,
+        sample: torch.LongTensor,
+        *,
+        generator: torch.Generator | None = None,
+        return_dict: bool = True,
+        **kwargs,
+    ) -> BlockRefinementSchedulerOutput | tuple:
+        """
+        Perform a single refinement step: sample from logits, commit confident masked positions, and optionally edit
+        already-resolved ones.
 
-        # --- Uniform corruption mode (DiffusionGemma): no mask token, committed positions tracked as state ---
+        Args:
+            model_output (`torch.Tensor` of shape `(batch_size, block_length, vocab_size)`):
+                Raw logits from the model for the current block.
+            timestep (`float` or `torch.Tensor`):
+                The current corruption level, one entry of [`~BlockRefinementScheduler.timesteps`].
+            sample (`torch.LongTensor` of shape `(batch_size, block_length)`):
+                Current block token IDs, with `mask_token_id` at the positions still undecided.
+            generator (`torch.Generator`, *optional*):
+                RNG for sampling.
+            return_dict (`bool`):
+                Whether to return a [`DiscreteSchedulerOutput`] or a plain tuple.
+        """
+        overrides = self._pop_deprecated_step_kwargs(kwargs)
+        mask_token_id = overrides.get("mask_token_id", self.config.mask_token_id)
         if mask_token_id is None:
-            if step_index == 0 or self._committed is None or self._committed.shape != sample.shape:
-                self._committed = torch.zeros_like(sample, dtype=torch.bool)
-            committed = self._committed
-            confidence = sampled_probs.to(dtype=torch.float32)
-
-            # Cumulative quota: evenly distribute the block across the steps, commit what is still owed
-            steps_done = step_index + 1
-            target = (steps_done * block_length + self.num_inference_steps - 1) // self.num_inference_steps
-            needed = (target - committed.sum(dim=-1)).clamp(min=0)
-
-            masked_confidence = confidence.masked_fill(committed, float("-inf"))
-            ranks = masked_confidence.argsort(dim=-1, descending=True).argsort(dim=-1)
-            transfer_index = ~committed & ((ranks < needed[:, None]) | (confidence > threshold))
-
-            editing_transfer_index = torch.zeros_like(transfer_index)
-            if editing_threshold is not None:
-                editing_transfer_index = (
-                    committed & (sampled_tokens != sample) & (confidence > float(editing_threshold))
-                )
-
-            prev_sample = torch.where(transfer_index | editing_transfer_index, sampled_tokens, sample)
-            self._committed = committed | transfer_index
-            random_tokens = torch.randint(
-                low=0, high=model_output.shape[-1], size=sample.shape, device=sample.device, generator=generator
+            raise ValueError(
+                "`mask_token_id` is required. Set it on the scheduler config, e.g. "
+                "`BlockRefinementScheduler.from_config(scheduler.config, mask_token_id=tokenizer.mask_token_id)`. "
+                "For the uniform corruption process, which has no mask token, use `UniformRefinementScheduler`."
             )
-            prev_sample = torch.where(self._committed, prev_sample, random_tokens)
+        if self.step_index is None:
+            self._init_step_index(timestep)
 
-            if not return_dict:
-                return prev_sample, transfer_index, editing_transfer_index, sampled_tokens, sampled_probs, model_output
-            return BlockRefinementSchedulerOutput(
-                prev_sample=prev_sample,
-                transfer_index=transfer_index,
-                editing_transfer_index=editing_transfer_index,
-                sampled_tokens=sampled_tokens,
-                sampled_probs=sampled_probs,
-                pred_logits=model_output,
-            )
+        threshold = float(overrides.get("threshold", self.config.threshold))
+        editing_threshold = overrides.get("editing_threshold", self.config.editing_threshold)
 
+        sampled_tokens, sampled_probs = self._draw(model_output, overrides, generator)
+
+        batch_size, block_length = sample.shape
         active_block = sample == mask_token_id
         masks_remaining = active_block.any()
 
         # --- Mask-filling transfer ---
-        transfer_index = torch.zeros_like(sampled_tokens, dtype=torch.bool)
-        if masks_remaining and self._transfer_schedule is not None:
-            clamped_step = min(step_index, len(self._transfer_schedule) - 1)
-            num_to_transfer = int(self._transfer_schedule[clamped_step].item())
+        committed_mask = torch.zeros_like(sampled_tokens, dtype=torch.bool)
+        if masks_remaining:
+            # Per-step quota: `block_length` commits spread evenly over the schedule, remainder on the first steps.
+            # Integer arithmetic off `step_index`, and clamped so a schedule overrun keeps the final step's quota
+            # (matching the previous `_transfer_schedule` lookup).
+            quota_step = min(self.step_index, self.num_inference_steps - 1)
+            base, remainder = divmod(block_length, self.num_inference_steps)
+            num_to_transfer = base + (1 if quota_step < remainder else 0)
 
             confidence = torch.where(
                 active_block,
@@ -319,44 +452,97 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
             for b in range(batch_size):
                 high_conf = confidence[b] > threshold
                 if high_conf.sum().item() >= num_to_transfer:
-                    transfer_index[b] = high_conf
+                    committed_mask[b] = high_conf
                 else:
                     k = min(num_to_transfer, int(active_block[b].sum().item()))
                     if k > 0:
                         _, idx = torch.topk(confidence[b], k=k)
-                        transfer_index[b, idx] = True
+                        committed_mask[b, idx] = True
 
-        # --- Editing transfer (non-mask, non-prompt positions) ---
-        editing_enabled = editing_threshold is not None and editing_threshold > 0.0
-        editing_transfer_index = torch.zeros_like(sampled_tokens, dtype=torch.bool)
-        if editing_enabled:
-            if prompt_mask is None:
-                prompt_mask = torch.zeros(block_length, device=sample.device, dtype=torch.bool)
-            editable = (~active_block) & (~prompt_mask.unsqueeze(0))
-            editing_conf = torch.where(
-                editable,
-                sampled_probs.to(dtype=torch.float32),
-                torch.full_like(sampled_probs, -torch.inf, dtype=torch.float32),
-            )
-            high_conf_edit = editing_conf > float(editing_threshold)
-            token_changed = sampled_tokens != sample
-            editing_transfer_index = high_conf_edit & token_changed & editable
+        # --- Editing transfer (already-resolved, non-prompt positions) ---
+        edited_mask = self._edited_mask(
+            sampled_tokens,
+            sampled_probs,
+            sample,
+            ~active_block,
+            editing_threshold,
+            overrides.get("prompt_mask"),
+        )
 
-        # Apply transfers
-        final_transfer = transfer_index | editing_transfer_index
         prev_sample = sample.clone()
+        final_transfer = committed_mask | edited_mask
         if final_transfer.any():
             prev_sample[final_transfer] = sampled_tokens[final_transfer]
 
+        self._step_index += 1
+
         if not return_dict:
-            return prev_sample, transfer_index, editing_transfer_index, sampled_tokens, sampled_probs, model_output
+            return prev_sample, sampled_tokens, sampled_probs, model_output, committed_mask, edited_mask
         return BlockRefinementSchedulerOutput(
             prev_sample=prev_sample,
-            transfer_index=transfer_index,
-            editing_transfer_index=editing_transfer_index,
-            sampled_tokens=sampled_tokens,
+            pred_original_sample=sampled_tokens,
             sampled_probs=sampled_probs,
             pred_logits=model_output,
+            committed_mask=committed_mask,
+            edited_mask=edited_mask,
+        )
+
+    def step_edit(
+        self,
+        model_output: torch.Tensor,
+        sample: torch.LongTensor,
+        *,
+        generator: torch.Generator | None = None,
+        return_dict: bool = True,
+    ) -> BlockRefinementSchedulerOutput | tuple:
+        """
+        Overwrite already-resolved positions whose prediction is both different and confident.
+
+        This is the post-mask refinement phase: once no `mask_token_id` remains there is nothing left to unmask, so the
+        step is a confidence-thresholded overwrite rather than a diffusion step and takes **no** `timestep`. It also
+        does not advance `step_index`, so a pipeline can run as many sweeps as it likes after exhausting the schedule.
+
+        Args:
+            model_output (`torch.Tensor` of shape `(batch_size, block_length, vocab_size)`):
+                Raw logits from the model for the current block.
+            sample (`torch.LongTensor` of shape `(batch_size, block_length)`):
+                Current block token IDs, with every position resolved.
+            generator (`torch.Generator`, *optional*):
+                RNG for sampling.
+            return_dict (`bool`):
+                Whether to return a [`DiscreteSchedulerOutput`] or a plain tuple.
+        """
+        mask_token_id = self.config.mask_token_id
+        if mask_token_id is None:
+            raise ValueError(
+                "`mask_token_id` is required. Set it on the scheduler config, e.g. "
+                "`BlockRefinementScheduler.from_config(scheduler.config, mask_token_id=tokenizer.mask_token_id)`."
+            )
+
+        sampled_tokens, sampled_probs = self._draw(model_output, {}, generator)
+        edited_mask = self._edited_mask(
+            sampled_tokens,
+            sampled_probs,
+            sample,
+            ~(sample == mask_token_id),
+            self.config.editing_threshold,
+            None,
+        )
+
+        prev_sample = sample.clone()
+        if edited_mask.any():
+            prev_sample[edited_mask] = sampled_tokens[edited_mask]
+
+        committed_mask = torch.zeros_like(edited_mask)
+        if not return_dict:
+            return prev_sample, sampled_tokens, sampled_probs, model_output, committed_mask, edited_mask
+        return BlockRefinementSchedulerOutput(
+            prev_sample=prev_sample,
+            pred_original_sample=sampled_tokens,
+            sampled_probs=sampled_probs,
+            pred_logits=model_output,
+            committed_mask=committed_mask,
+            edited_mask=edited_mask,
         )
 
     @staticmethod
@@ -391,6 +577,12 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         Returns:
             `torch.BoolTensor`: Updated finished flags.
         """
+        deprecate(
+            "check_eos_finished",
+            "1.0.0",
+            "`check_eos_finished` is deprecated and moves to the pipeline: it is denoising-loop control, not "
+            "scheduling, and requiring it on the scheduler prevents swapping in another discrete scheduler.",
+        )
         batch_size = cur_x.shape[0]
         for b in range(batch_size):
             if finished[b]:
@@ -441,6 +633,12 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         Returns:
             `bool`: `True` if refinement should continue, `False` to break.
         """
+        deprecate(
+            "check_block_should_continue",
+            "1.0.0",
+            "`check_block_should_continue` is deprecated and moves to the pipeline: it is denoising-loop control, "
+            "not scheduling, and requiring it on the scheduler prevents swapping in another discrete scheduler.",
+        )
         if finished.all():
             return False
         if not masks_remaining and not editing_enabled:
@@ -456,65 +654,61 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
     def add_noise(
         self,
         original_samples: torch.LongTensor,
-        attention_mask: torch.LongTensor,
+        timesteps: float | torch.Tensor,
         *,
-        prompt_length: int,
-        block_length: int,
-        mask_token_id: int,
         generator: torch.Generator | None = None,
-    ) -> tuple[torch.LongTensor, torch.LongTensor, torch.BoolTensor, torch.BoolTensor]:
+        **kwargs,
+    ) -> tuple[torch.LongTensor, torch.BoolTensor]:
         """
-        Apply the forward (noising) process for semi-autoregressive block masking.
+        Apply the forward (noising) process: replace each position with `mask_token_id` with probability `timesteps`.
 
-        For each block after the prompt, a random fraction of valid (non-padding) tokens are replaced with
-        `mask_token_id`. Two complementary views are returned: `noisy` and `noisy_rev`, where the masked positions in
-        one are the unmasked positions in the other.
+        `timesteps` is the corruption level in `[0, 1]`, so it *is* the expected masking fraction — `1` masks
+        everything, `0` masks nothing. The caller chooses it, matching every other `add_noise` in the library.
 
         Args:
             original_samples (`torch.LongTensor` of shape `(batch_size, seq_len)`):
                 Clean token IDs.
-            attention_mask (`torch.LongTensor` of shape `(batch_size, seq_len)`):
-                Padding mask (1 for valid, 0 for padding).
-            prompt_length (`int`):
-                Number of leading prompt tokens to keep unmasked.
-            block_length (`int`):
-                Block size for masking.
-            mask_token_id (`int`):
-                Token ID to use for masked positions.
+            timesteps (`float` or `torch.Tensor`):
+                Masking probability. A scalar applies to the whole batch; a tensor of shape `(batch_size,)` or
+                `(batch_size, 1)` gives a per-example rate.
             generator (`torch.Generator`, *optional*):
                 RNG for reproducibility.
 
         Returns:
-            `tuple[torch.LongTensor, torch.LongTensor, torch.BoolTensor, torch.BoolTensor]`:
-                `(noisy, noisy_rev, masked, masked_rev)` — the two complementary noisy sequences and their
-                corresponding boolean masks.
+            `tuple[torch.LongTensor, torch.BoolTensor]`: the noisy tokens and the boolean mask of noised positions.
         """
-        batch_size, seq_len = original_samples.shape
-        device = original_samples.device
+        if any(key in kwargs for key in ("attention_mask", "prompt_length", "block_length", "mask_token_id")):
+            raise ValueError(
+                "`add_noise` no longer takes `attention_mask`/`prompt_length`/`block_length`/`mask_token_id`, and "
+                "its second positional argument is now `timesteps` (the masking probability) rather than "
+                "`attention_mask`. It returns `(noisy, mask)` instead of `(noisy, noisy_rev, masked, masked_rev)`; "
+                "build the complementary view in the caller as `~mask & valid`. This is a hard break rather than a "
+                "deprecation because the meaning of the second positional argument changed, so a shim would "
+                "silently corrupt data."
+            )
+        if kwargs:
+            raise TypeError(f"Unexpected keyword arguments: {sorted(kwargs)}.")
 
-        noisy = original_samples.clone()
-        noisy_rev = original_samples.clone()
-        masked = torch.zeros_like(original_samples, dtype=torch.bool)
-        masked_rev = torch.zeros_like(original_samples, dtype=torch.bool)
+        mask_token_id = self.config.mask_token_id
+        if mask_token_id is None:
+            raise ValueError(
+                "`mask_token_id` is required. Set it on the scheduler config, e.g. "
+                "`BlockRefinementScheduler.from_config(scheduler.config, mask_token_id=tokenizer.mask_token_id)`."
+            )
 
-        valid = attention_mask.to(dtype=torch.bool)
-        for block_start in range(prompt_length, seq_len, block_length):
-            block_end = min(seq_len, block_start + block_length)
-            seg_len = block_end - block_start
-            if seg_len <= 0:
-                continue
+        if not isinstance(timesteps, torch.Tensor):
+            timesteps = torch.full(
+                (original_samples.shape[0], 1), float(timesteps), device=original_samples.device, dtype=torch.float32
+            )
+        else:
+            timesteps = timesteps.to(device=original_samples.device, dtype=torch.float32)
+            if timesteps.ndim == 1:
+                timesteps = timesteps[:, None]
 
-            p_mask = torch.rand((batch_size, 1), device=device, generator=generator)
-            seg = torch.rand((batch_size, seg_len), device=device, generator=generator) < p_mask
-            seg = seg & valid[:, block_start:block_end]
-            seg_rev = (~seg) & valid[:, block_start:block_end]
-
-            masked[:, block_start:block_end] = seg
-            masked_rev[:, block_start:block_end] = seg_rev
-
-        noisy = torch.where(masked, torch.full_like(noisy, mask_token_id), noisy)
-        noisy_rev = torch.where(masked_rev, torch.full_like(noisy_rev, mask_token_id), noisy_rev)
-        return noisy, noisy_rev, masked, masked_rev
+        draw = torch.rand(original_samples.shape, device=original_samples.device, generator=generator)
+        mask = draw < timesteps
+        noisy = torch.where(mask, torch.full_like(original_samples, mask_token_id), original_samples)
+        return noisy, mask
 
 
 __all__ = ["BlockRefinementScheduler", "BlockRefinementSchedulerOutput"]
