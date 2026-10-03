@@ -19,9 +19,18 @@ consumes unchanged, so latents are interchangeable between the convolutional dec
 itself a diffusion model it is driven by [`LTX2VideoDiffusionDecodePipeline`] rather than being passed as a
 pipeline's `vae`: run any LTX-2 pipeline with `output_type="latent"`, then decode.
 
+`forward` is a single denoising step, like any other denoiser in the library. The loop over steps, the scheduler
+that drives it, and the tiling wrapped around it live in [`LTX2VideoDiffusionDecodePipeline`], so this model is not
+called directly in normal use — the two `encode_context_*` methods build the conditioning the step consumes.
+
 ```python
 import torch
-from diffusers import LTX2Pipeline, LTX2VideoDiffusionDecodePipeline, LTX2VideoDiffusionDecoderModel
+from diffusers import (
+    FlowMatchEulerDiscreteScheduler,
+    LTX2Pipeline,
+    LTX2VideoDiffusionDecodePipeline,
+    LTX2VideoDiffusionDecoderModel,
+)
 
 pipe = LTX2Pipeline.from_pretrained("Lightricks/LTX-2.5-Diffusers", dtype=torch.bfloat16).to("cuda")  # or "mps", "xpu", "cpu"
 latents = pipe(prompt="a potter shaping a clay vase", output_type="latent").frames
@@ -29,7 +38,12 @@ latents = pipe(prompt="a potter shaping a clay vase", output_type="latent").fram
 decoder = LTX2VideoDiffusionDecoderModel.from_pretrained(
     "Lightricks/LTX-2.5-Diffusers", subfolder="diffusion_decoder", dtype=torch.bfloat16
 ).to("cuda")
-decode_pipe = LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=pipe.scheduler)
+# The decoder's own scheduler, not `pipe.scheduler`: the transformer's is resolution-shifted and would need
+# a `mu` this pipeline does not compute.
+scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
+    "Lightricks/LTX-2.5-Diffusers", subfolder="diffusion_decoder_scheduler"
+)
+decode_pipe = LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=scheduler)
 
 # `denormalize=False`: `output_type="latent"` already applied the latent statistics, so applying them
 # again here would scale every channel by its std a second time.
@@ -71,18 +85,20 @@ accepts the `BlockMask`. Use the NATTEN processor above instead.
 
 ## Tiling
 
-`decoder.enable_tiling()` decodes in overlapping tiles that are blended back together, bounding peak memory by the
-tile size instead of the video size. The cheap early upsampling stages still see the full latent — only the last
-upsampling stage and the diffusion stage, which dominate decode memory, run per tile — so tiling changes the output
-only near tile borders. Because the diffusion stage denoises each tile separately, a tiled decode does not
-reproduce the untiled result exactly; the default tile and overlap sizes match the reference implementation's.
-Neighborhood attention rejects any grid smaller than its kernel, so a trailing remnant tile is merged into its
-neighbor rather than decoded on its own.
+`decoder.enable_tiling()` decodes in overlapping tiles that are blended back together, bounding peak memory by the tile
+size instead of the video size. It sets the tile sizes; the decoder works out where the cuts fall, and walking them is
+[`LTX2VideoDiffusionDecodePipeline`]'s job, because tiles are cut in the *middle* of the decoder and each one runs its
+own denoising loop. Tiling engages only once the video exceeds one tile. The cheap early upsampling stages still see the
+full latent — only the last upsampling stage and the diffusion stage, which dominate decode memory, run per tile — so
+tiling changes the output only near tile borders. Because the diffusion stage denoises each tile separately, a tiled
+decode does not reproduce the untiled result exactly; the default tile and overlap sizes match the reference
+implementation's. Neighborhood attention rejects any grid smaller than its kernel, so a trailing remnant tile is merged
+into its neighbor rather than decoded on its own.
 
 ## LTX2VideoDiffusionDecoderModel
 
 [[autodoc]] LTX2VideoDiffusionDecoderModel
-    - decode
+    - forward
     - enable_tiling
     - disable_tiling
     - all
