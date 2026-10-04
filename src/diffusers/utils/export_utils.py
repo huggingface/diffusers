@@ -277,23 +277,25 @@ def _write_audio(
     import torch
 
     if samples.ndim == 1:
-        samples = samples[:, None]
+        samples = samples[None, :]
 
-    if samples.shape[1] != 2 and samples.shape[0] == 2:
+    # `samples` is documented as [audio_channels, samples]; accept the transposed form too.
+    if samples.shape[0] not in (1, 2) and samples.shape[1] in (1, 2):
         samples = samples.T
 
-    if samples.shape[1] != 2:
-        raise ValueError(f"Expected samples with 2 channels; got shape {samples.shape}.")
+    if samples.shape[0] not in (1, 2):
+        raise ValueError(f"Expected samples with 1 or 2 channels; got shape {samples.shape}.")
 
     # Convert to int16 packed for ingestion; resampler converts to the encoder format.
     if samples.dtype != torch.int16:
         samples = torch.clip(samples, -1.0, 1.0)
         samples = (samples * 32767.0).to(torch.int16)
 
+    num_channels = samples.shape[0]
     frame_in = av_module.AudioFrame.from_ndarray(
-        samples.contiguous().reshape(1, -1).cpu().numpy(),
+        samples.T.contiguous().reshape(1, -1).cpu().numpy(),
         format="s16",
-        layout="stereo",
+        layout="mono" if num_channels == 1 else "stereo",
     )
     frame_in.sample_rate = audio_sample_rate
 
