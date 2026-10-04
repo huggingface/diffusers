@@ -31,6 +31,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 CACHE_T = 2
 
 
+# Copied from diffusers.models.autoencoders.autoencoder_kl_wan.AvgDown3D with AvgDown3D->QwenImage21AvgDown3D
 class QwenImage21AvgDown3D(nn.Module):
     def __init__(
         self,
@@ -46,7 +47,6 @@ class QwenImage21AvgDown3D(nn.Module):
                 f"`in_channels` ({in_channels}) times the downsampling factor ({factor}) must be divisible by "
                 f"`out_channels` ({out_channels})."
             )
-
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.factor_t = factor_t

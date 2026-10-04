@@ -25,9 +25,7 @@ from typing import Callable, ParamSpec, TypeVar
 from . import logging
 from .import_utils import (
     is_torch_available,
-    is_torch_mlu_available,
     is_torch_neuronx_available,
-    is_torch_npu_available,
     is_torch_version,
 )
 
@@ -39,71 +37,6 @@ P = ParamSpec("P")
 if is_torch_available():
     import torch
     from torch.fft import fftn, fftshift, ifftn, ifftshift
-
-    BACKEND_SUPPORTS_TRAINING = {
-        "cuda": True,
-        "xpu": True,
-        "cpu": True,
-        "mps": False,
-        "neuron": False,
-        "default": True,
-    }
-    BACKEND_EMPTY_CACHE = {
-        "cuda": torch.cuda.empty_cache,
-        "xpu": torch.xpu.empty_cache,
-        "cpu": None,
-        "mps": torch.mps.empty_cache,
-        "neuron": None,
-        "default": None,
-    }
-    BACKEND_DEVICE_COUNT = {
-        "cuda": torch.cuda.device_count,
-        "xpu": torch.xpu.device_count,
-        "cpu": lambda: 0,
-        "mps": lambda: 0,
-        "neuron": lambda: getattr(getattr(torch, "neuron", None), "device_count", lambda: 0)(),
-        "default": 0,
-    }
-    BACKEND_MANUAL_SEED = {
-        "cuda": torch.cuda.manual_seed,
-        "xpu": torch.xpu.manual_seed,
-        "cpu": torch.manual_seed,
-        "mps": torch.mps.manual_seed,
-        "neuron": torch.manual_seed,
-        "default": torch.manual_seed,
-    }
-    BACKEND_RESET_PEAK_MEMORY_STATS = {
-        "cuda": torch.cuda.reset_peak_memory_stats,
-        "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
-        "cpu": None,
-        "mps": None,
-        "neuron": None,
-        "default": None,
-    }
-    BACKEND_RESET_MAX_MEMORY_ALLOCATED = {
-        "cuda": torch.cuda.reset_max_memory_allocated,
-        "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
-        "cpu": None,
-        "mps": None,
-        "neuron": None,
-        "default": None,
-    }
-    BACKEND_MAX_MEMORY_ALLOCATED = {
-        "cuda": torch.cuda.max_memory_allocated,
-        "xpu": getattr(torch.xpu, "max_memory_allocated", None),
-        "cpu": 0,
-        "mps": 0,
-        "neuron": 0,
-        "default": 0,
-    }
-    BACKEND_SYNCHRONIZE = {
-        "cuda": torch.cuda.synchronize,
-        "xpu": getattr(torch.xpu, "synchronize", None),
-        "cpu": None,
-        "mps": None,
-        "neuron": getattr(getattr(torch, "neuron", None), "synchronize", None),
-        "default": None,
-    }
 
     _FP64_UNSUPPORTED_DEVICES = frozenset({"mps", "npu", "neuron"})
     _INT64_UNSUPPORTED_DEVICES = frozenset({"mps", "npu", "neuron"})
@@ -118,62 +51,6 @@ except (ImportError, ModuleNotFoundError):
 
     def maybe_allow_in_graph(cls):
         return cls
-
-
-# This dispatches a defined function according to the accelerator from the function definitions.
-def _device_agnostic_dispatch(device: str, dispatch_table: dict[str, callable], *args, **kwargs):
-    if device not in dispatch_table:
-        return dispatch_table["default"](*args, **kwargs)
-
-    fn = dispatch_table[device]
-
-    # Some device agnostic functions return values. Need to guard against 'None' instead at
-    # user level
-    if not callable(fn):
-        return fn
-
-    return fn(*args, **kwargs)
-
-
-# These are callables which automatically dispatch the function specific to the accelerator
-def backend_manual_seed(device: str, seed: int):
-    return _device_agnostic_dispatch(device, BACKEND_MANUAL_SEED, seed)
-
-
-def backend_synchronize(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_SYNCHRONIZE)
-
-
-def backend_empty_cache(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_EMPTY_CACHE)
-
-
-def backend_device_count(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_DEVICE_COUNT)
-
-
-def backend_reset_peak_memory_stats(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_RESET_PEAK_MEMORY_STATS)
-
-
-def backend_reset_max_memory_allocated(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_RESET_MAX_MEMORY_ALLOCATED)
-
-
-def backend_max_memory_allocated(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_MAX_MEMORY_ALLOCATED)
-
-
-# These are callables which return boolean behaviour flags and can be used to specify some
-# device agnostic alternative where the feature is unsupported.
-def backend_supports_training(device: str):
-    if not is_torch_available():
-        return False
-
-    if device not in BACKEND_SUPPORTS_TRAINING:
-        device = "default"
-
-    return BACKEND_SUPPORTS_TRAINING[device]
 
 
 def maybe_adjust_dtype_for_device(dtype: "torch.dtype", device: "torch.device") -> "torch.dtype":
@@ -348,38 +225,136 @@ def get_torch_cuda_device_capability():
         return None
 
 
-@functools.lru_cache
-def get_device():
-    if torch.cuda.is_available():
-        return "cuda"
-    elif is_torch_npu_available():
-        return "npu"
-    elif hasattr(torch, "xpu") and torch.xpu.is_available():
-        return "xpu"
-    elif torch.backends.mps.is_available():
-        return "mps"
-    elif is_torch_mlu_available():
-        return "mlu"
-    elif is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available():
-        return "neuron"
-    else:
+class TorchDeviceBackend:
+    """
+    A proxy for the `torch.<backend>` namespace (`torch.cuda`, `torch.xpu`, `torch.mps`, ...) of one device. Attributes
+    the class does not define are the module's own (`synchronize`, `device_count`, `Stream`, `current_stream`, ...);
+    the methods defined here override the operations whose availability differs between backends and need a fallback:
+    cache clearing, seeding and memory queries. With no `device`, detects the host accelerator through
+    `torch.accelerator`. Raises if torch has no module for the backend rather than silently falling back to
+    `torch.cuda`.
+    """
+
+    def __init__(self, device: str | torch.device | None = None):
+        self.device = torch.device(self._detect_device_type() if device is None else device)
+        self.module = torch.get_device_module(self.device.type)
+
+    @staticmethod
+    @functools.lru_cache
+    def _detect_device_type() -> str:
+        if torch.accelerator.is_available():
+            return torch.accelerator.current_accelerator().type
+
+        # Neuron is XLA-based and never registers as a torch accelerator.
+        if is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available():
+            return "neuron"
         return "cpu"
+
+    def empty_cache(self) -> None:
+        # Backends without a caching allocator (cpu, neuron) have nothing to clear.
+        empty_cache = getattr(self.module, "empty_cache", None)
+        if empty_cache is not None:
+            empty_cache()
+
+    def manual_seed(self, seed: int) -> None:
+        # `torch.manual_seed` seeds every device, so it is the correct fallback for backends without their own.
+        manual_seed = getattr(self.module, "manual_seed", None)
+        if manual_seed is None:
+            torch.manual_seed(seed)
+            return
+        manual_seed(seed)
+
+    def __getattr__(self, name: str):
+        # Proxy: anything not overridden here is `torch.<backend>`'s own attribute.
+        if name == "module":
+            raise AttributeError(name)
+        return getattr(self.module, name)
+
+    def _accelerator_serves(self, min_torch_version: str) -> bool:
+        # `torch.accelerator` only serves the process accelerator, and its memory API arrived in 2.9 (statistics) and
+        # 2.10 (`get_memory_info`).
+        current = torch.accelerator.current_accelerator()
+        return is_torch_version(">=", min_torch_version) and current is not None and current.type == self.device.type
+
+    def mem_get_info(self) -> tuple[int, int]:
+        """Free and total device memory in bytes."""
+        mem_get_info = getattr(self.module, "mem_get_info", None)
+        if mem_get_info is not None:
+            return mem_get_info(self.device.index)
+        if self._accelerator_serves("2.10"):
+            return torch.accelerator.get_memory_info(self.device)
+        raise NotImplementedError(
+            f"`torch.{self.device.type}` does not implement `mem_get_info()`, and `torch.accelerator.get_memory_info()` "
+            f"cannot serve `{self.device}` on torch {torch.__version__} (requires torch>=2.10 and the current accelerator)."
+        )
+
+    def max_memory_allocated(self) -> int:
+        """Peak memory allocated on the device in bytes since the last reset; 0 where the backend keeps no statistics."""
+        max_memory_allocated = getattr(self.module, "max_memory_allocated", None)
+        if max_memory_allocated is not None:
+            return max_memory_allocated(self.device.index)
+        if self._accelerator_serves("2.9"):
+            return torch.accelerator.max_memory_allocated(self.device)
+        logger.warning(
+            f"`torch.{self.device.type}` keeps no memory statistics on torch {torch.__version__}; "
+            "`max_memory_allocated()` returns 0."
+        )
+        return 0
+
+    def reset_peak_memory_stats(self) -> None:
+        reset_peak_memory_stats = getattr(self.module, "reset_peak_memory_stats", None)
+        if reset_peak_memory_stats is not None:
+            reset_peak_memory_stats(self.device.index)
+            return
+        if self._accelerator_serves("2.9"):
+            torch.accelerator.reset_peak_memory_stats(self.device)
+            return
+        logger.warning(
+            f"`torch.{self.device.type}` keeps no memory statistics on torch {torch.__version__}; "
+            "`reset_peak_memory_stats()` is a no-op."
+        )
+
+
+def get_device() -> str:
+    return TorchDeviceBackend._detect_device_type()
 
 
 def empty_device_cache(device_type: str | None = None):
-    if device_type is None:
-        device_type = get_device()
-    if device_type in ["cpu"]:
-        return
-    device_mod = getattr(torch, device_type, torch.cuda)
-    device_mod.empty_cache()
+    TorchDeviceBackend(device_type).empty_cache()
 
 
-def device_synchronize(device_type: str | None = None):
-    if device_type is None:
-        device_type = get_device()
-    device_mod = getattr(torch, device_type, torch.cuda)
-    device_mod.synchronize()
+# Function-style spellings of `TorchDeviceBackend` for test code.
+def backend_manual_seed(device: str, seed: int):
+    TorchDeviceBackend(device).manual_seed(seed)
+
+
+def backend_synchronize(device: str):
+    TorchDeviceBackend(device).synchronize()
+
+
+def backend_empty_cache(device: str):
+    TorchDeviceBackend(device).empty_cache()
+
+
+def backend_device_count(device: str):
+    return TorchDeviceBackend(device).device_count()
+
+
+def backend_reset_peak_memory_stats(device: str):
+    TorchDeviceBackend(device).reset_peak_memory_stats()
+
+
+def backend_reset_max_memory_allocated(device: str):
+    # `reset_max_memory_allocated` is CUDA's deprecated alias of `reset_peak_memory_stats`.
+    TorchDeviceBackend(device).reset_peak_memory_stats()
+
+
+def backend_max_memory_allocated(device: str):
+    return TorchDeviceBackend(device).max_memory_allocated()
+
+
+def backend_supports_training(device: str):
+    return str(device).split(":")[0] not in ("mps", "neuron")
 
 
 def enable_full_determinism():
