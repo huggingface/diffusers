@@ -135,6 +135,20 @@ class TestCosmos2VideoToWorldPipeline(
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
         assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
+    def test_fps_does_not_change_generation(self):
+        # The released Cosmos-Predict2 checkpoints are trained without FPS RoPE modulation
+        # (`rope_enable_fps_modulation=False`), so the playback `fps` must not influence generation.
+        pipe = self.get_pipeline()
+
+        videos = []
+        for fps in (16, 24, 30):
+            inputs = self.get_dummy_inputs()
+            inputs["fps"] = fps
+            videos.append(pipe(**inputs).frames[0])
+
+        for video in videos[1:]:
+            assert (videos[0] - video).abs().max().item() == 0
+
     def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-2):
         super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
