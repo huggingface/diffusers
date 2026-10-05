@@ -63,31 +63,28 @@ call (warmup) is slow because it compiles; later calls with the same shapes reus
 > `num_inference_steps` changes, the graph is recompiled from scratch. Keep these values constant
 > across all calls after warmup, or run another warmup pass before changing them.
 
+As in eager mode, [`~DiffusionPipeline.enable_model_cpu_offload`] keeps every model, text encoders included, on the
+TPU while it runs. The offload hooks can't be traced by `torch.compile`, so compile the transformer's repeated blocks
+with [`~ModelMixin.compile_repeated_blocks`] instead of the whole model.
+
 ```python
 import torch
 import torch_tpu  # noqa: F401 — registers the "tpu" torch.compile backend
 
 from diffusers import FluxPipeline
 
-pipe = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-schnell",
-    torch_dtype=torch.bfloat16,
-)
-pipe.transformer.to("tpu")
-pipe.vae.to("tpu")
-
-pipe.transformer = torch.compile(pipe.transformer, backend="tpu", fullgraph=True, dynamic=False)
-pipe.vae = torch.compile(pipe.vae, backend="tpu", fullgraph=True, dynamic=False)
+pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
+pipe.enable_model_cpu_offload()
+pipe.transformer.compile_repeated_blocks(backend="tpu", fullgraph=True, dynamic=False)
 
 # Warmup — triggers static graph compilation.
-with torch.no_grad():
-    pipe(
-        prompt="warmup",
-        height=1024,
-        width=1024,
-        num_inference_steps=4,
-        guidance_scale=0.0,
-    )
+pipe(
+    prompt="warmup",
+    height=1024,
+    width=1024,
+    num_inference_steps=4,
+    guidance_scale=0.0,
+)
 
 # Timed inference reuses the compiled graph.
 image = pipe(
