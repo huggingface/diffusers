@@ -98,7 +98,7 @@ class AudioVisualModelOutput(BaseOutput):
     """
 
     sample: "torch.Tensor"  # noqa: F821
-    audio_sample: "torch.Tensor | None" = None  # noqa: F821
+    audio_sample: "torch.Tensor"  # noqa: F821
 
 
 class LTX2AdaLayerNormSingle(nn.Module):

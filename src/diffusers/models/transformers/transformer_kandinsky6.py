@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Any
 
 import torch
@@ -24,12 +25,28 @@ from torch import Tensor, nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
+from ...utils import BaseOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin, get_parameter_dtype
-from .transformer_ltx2 import AudioVisualModelOutput
+
+
+@dataclass
+class Kandinsky6TransformerOutput(BaseOutput):
+    r"""
+    The output of [`Kandinsky6Transformer3DModel`].
+
+    Args:
+        sample (`torch.Tensor` of shape `(batch_size, num_frames, height, width, out_visual_dim)`):
+            The predicted video velocity.
+        audio_sample (`torch.Tensor` of shape `(batch_size, audio_length, out_audio_dim)`, *optional*):
+            The predicted audio velocity, `None` when the model was called without `audio_hidden_states`.
+    """
+
+    sample: torch.Tensor
+    audio_sample: torch.Tensor | None = None
 
 
 def get_freqs(dim: int, max_period: float = 10000.0) -> Tensor:
@@ -730,7 +747,7 @@ class Kandinsky6Transformer3DModel(
         encoder_attention_mask: Tensor | None = None,
         visual_token_type_ids: Tensor | None = None,
         return_dict: bool = True,
-    ) -> AudioVisualModelOutput | tuple[Tensor, ...]:
+    ) -> Kandinsky6TransformerOutput | tuple[Tensor, ...]:
         r"""
         Args:
             hidden_states (`torch.Tensor` of shape `(batch_size, num_frames, height, width, in_channels)`):
@@ -754,10 +771,10 @@ class Kandinsky6Transformer3DModel(
                 Per-frame token type ids, embedded through `visual_token_type_embeddings`. Requires
                 `visual_token_type_num_embeddings > 0`.
             return_dict (`bool`, defaults to `True`):
-                Whether to return an [`AudioVisualModelOutput`] instead of a plain tuple.
+                Whether to return a [`Kandinsky6TransformerOutput`] instead of a plain tuple.
 
         Returns:
-            [`AudioVisualModelOutput`] or `tuple`:
+            [`Kandinsky6TransformerOutput`] or `tuple`:
                 The predicted video velocity in the `(B, T, H, W, out_visual_dim)` layout and, when
                 `audio_hidden_states` was given, the predicted audio velocity of shape `(B, audio_length,
                 out_audio_dim)`.
@@ -824,4 +841,4 @@ class Kandinsky6Transformer3DModel(
 
         if not return_dict:
             return (video_out,) if audio_out is None else (video_out, audio_out)
-        return AudioVisualModelOutput(sample=video_out, audio_sample=audio_out)
+        return Kandinsky6TransformerOutput(sample=video_out, audio_sample=audio_out)
