@@ -136,6 +136,8 @@ jobs:
 
     - name: Run fast PyTorch Pipeline CPU tests
       if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
+      env:
+        PYTEST_TIMEOUT: 300
       run: |
         pytest -n 8 --max-worker-restart=0 --dist=loadfile \
           -k "not Onnx" \
@@ -152,6 +154,8 @@ jobs:
 
     - name: Run example PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch_examples' }}
+      env:
+        PYTEST_TIMEOUT: 300
       run: |
         uv pip install ".[training]"
         pytest -n 4 --max-worker-restart=0 --dist=loadfile \
