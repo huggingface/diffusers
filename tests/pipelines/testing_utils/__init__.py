@@ -1,4 +1,5 @@
 from .cache import (
+    CacheContextTesterMixin,
     CacheTesterMixin,
     FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
@@ -37,6 +38,7 @@ __all__ = [
     "GroupOffloadTesterMixin",
     "LayerwiseCastingTesterMixin",
     "CacheTesterMixin",
+    "CacheContextTesterMixin",
     "PyramidAttentionBroadcastTesterMixin",
     "FasterCacheTesterMixin",
     "FirstBlockCacheTesterMixin",
