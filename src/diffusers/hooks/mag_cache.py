@@ -346,8 +346,10 @@ class MagCacheBlockHook(ModelHook):
                 diff = in_hidden.shape[1] - out_hidden.shape[1]
                 if diff == 0:
                     residual = out_hidden - in_hidden
+                elif diff > 0:
+                    residual = out_hidden - in_hidden[:, diff:]  # Fallback to matching tail
                 else:
-                    residual = out_hidden - in_hidden  # Fallback to matching tail
+                    residual = out_hidden[:, -diff:] - in_hidden  # Fallback to matching tail
             else:
                 # Fallback for completely mismatched shapes
                 residual = out_hidden
