@@ -139,15 +139,17 @@ class QwenImage21TemporalTimesteps(nn.Module):
     def __init__(self, timestep_dim: int, max_period: int = 10000, time_factor: float = 1000.0):
         super().__init__()
         self.timestep_dim = timestep_dim
+        self.max_period = max_period
         self.time_factor = time_factor
-
-        half = timestep_dim // 2
-        freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half)
-        self.register_buffer("freqs", freqs, persistent=False)
 
     def forward(self, timestep: torch.Tensor) -> torch.Tensor:
         timestep = self.time_factor * timestep.float()
-        args = timestep[:, None] * self.freqs[None].to(timestep.device)
+        # Build the frequencies in fp32 here rather than keeping them in a buffer: `model.to(torch.bfloat16)` would
+        # round a buffer, and with arguments up to `time_factor` rad that shifts the high-frequency channels.
+        half = self.timestep_dim // 2
+        exponent = torch.arange(start=0, end=half, dtype=torch.float32, device=timestep.device)
+        freqs = torch.exp(-math.log(self.max_period) * exponent / half)
+        args = timestep[:, None] * freqs[None]
         embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
         if self.timestep_dim % 2:
             embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
