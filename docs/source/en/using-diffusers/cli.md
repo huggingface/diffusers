@@ -287,7 +287,7 @@ diffusers-cli run -m black-forest-labs/FLUX.1-dev --dtype bf16 \
 hf sandbox kill <id>
 ```
 
-## `custom_blocks`[[custom_blocks]]
+## `custom_blocks`
 
 Package a local `ModularPipelineBlocks` subclass for upload to the Hub. Reads a Python file, AST-scans it for
 subclasses of `ModularPipelineBlocks`, instantiates the chosen one, and calls `save_pretrained` in the current
@@ -304,7 +304,7 @@ diffusers-cli custom_blocks --block_module_name my_block.py --block_class_name M
 The block class must be instantiable with zero constructor args and hardcodes defaults in `__init__` or read
 config from the pipeline `state` at call time.
 
-## `fp16_safetensors`[[fp16_safetensors]]
+## `fp16_safetensors`
 
 > [!CAUTION]
 > This command is now deprecated and will be removed in a future version.

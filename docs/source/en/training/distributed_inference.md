@@ -114,7 +114,7 @@ Call `torchrun` to run the inference script and use the `--nproc_per_node` argum
 torchrun --nproc_per_node=2 run_distributed.py
 ```
 
-## device_map[[device_map]]
+## device_map
 
 The `device_map` argument enables distributed inference by automatically placing model components on separate GPUs. This is especially useful when a model doesn't fit on a single GPU. You can use `device_map` to selectively load and unload the required model components at a given stage as shown in the example below (assumes two GPUs are available).
 

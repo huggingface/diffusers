@@ -28,7 +28,7 @@ Refer to the table below for an overview of the available attention families and
 
 This guide will show you how to set and use the different attention backends.
 
-## set_attention_backend[[set_attention_backend]]
+## set_attention_backend
 
 The [`~ModelMixin.set_attention_backend`] method iterates through all the modules in the model and sets the appropriate attention backend to use. The attention backend setting persists until [`~ModelMixin.reset_attention_backend`] is called.
 
