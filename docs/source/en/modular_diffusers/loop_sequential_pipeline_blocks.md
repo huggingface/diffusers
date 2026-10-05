@@ -49,6 +49,13 @@ class LoopWrapper(LoopSequentialPipelineBlocks):
 
 The loop wrapper can pass additional arguments, like current iteration index, to the loop blocks.
 
+Denoising loops iterate with [`~modular_pipelines.LoopSequentialPipelineBlocks.loop_over_timesteps`] instead of calling `loop_step` directly. It also stops the loop when `pipe.interrupt` is set and runs the `callback_on_step_end` passed to the pipeline. List the fields a callback may read and replace in the wrapper's `_callback_tensor_inputs`.
+
+```py
+for i, t in self.loop_over_timesteps(components, block_state, block_state.timesteps):
+    progress_bar.update()
+```
+
 ## Loop blocks
 
 A loop block is a [`~modular_pipelines.ModularPipelineBlocks`], but the `__call__` method behaves differently.

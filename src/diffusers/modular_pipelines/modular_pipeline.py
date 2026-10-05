@@ -21,7 +21,7 @@ import warnings
 from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 import torch
 from huggingface_hub import create_repo
@@ -29,6 +29,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from tqdm.auto import tqdm
 from typing_extensions import Self
 
+from ..callbacks import MultiPipelineCallbacks, PipelineCallback
 from ..configuration_utils import ConfigMixin, FrozenDict
 from ..models.auto_model import AutoModel
 from ..models.modeling_utils import ModelMixin
@@ -382,6 +383,7 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
     model_name = None
     _requirements: dict[str, str] | None = None
     _workflow_map = None
+    _callback_tensor_inputs = ()
 
     @classmethod
     def _get_signature_keys(cls, obj):
@@ -399,6 +401,14 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
     def description(self) -> str:
         """Description of the block. Must be implemented by subclasses."""
         return ""
+
+    @property
+    def callback_tensor_inputs(self) -> list[str]:
+        """Fields a step callback can read and update, including those declared by nested blocks."""
+        names = list(self._callback_tensor_inputs)
+        for block in self.sub_blocks.values():
+            names += [name for name in block.callback_tensor_inputs if name not in names]
+        return names
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
@@ -1578,6 +1588,19 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
                 raise
         return components, state
 
+    def loop_over_timesteps(self, components, block_state: BlockState, timesteps):
+        """
+        Runs `loop_step` for each timestep and yields `(i, t)` after the step-end callback. Stops early once
+        `components.interrupt` is set. Loop sub-blocks must update and return the `block_state` they receive.
+        """
+        components._validate_callback_inputs(self.callback_tensor_inputs)
+        for i, t in enumerate(timesteps):
+            if components.interrupt:
+                break
+            components, block_state = self.loop_step(components, block_state, i=i, t=t)
+            components._call_callback_on_step_end(block_state, t, self.callback_tensor_inputs)
+            yield i, t
+
     def __call__(self, components, state: PipelineState) -> tuple["ModularPipeline", PipelineState]:
         raise NotImplementedError("`__call__` method needs to be implemented by the subclass")
 
@@ -1684,6 +1707,10 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
     config_name = "modular_model_index.json"
     hf_device_map = None
     default_blocks_name = None
+    interrupt = False
+    _callback_on_step_end = None
+    _callback_on_step_end_tensor_inputs = None
+    _callback_step_index = 0
 
     # YiYi TODO: add warning for passing multiple ComponentSpec/ConfigSpec with the same name
     def __init__(
@@ -2937,11 +2964,54 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         )
 
     def set_progress_bar_config(self, **kwargs):
-        for sub_block_name, sub_block in self._blocks.sub_blocks.items():
-            if hasattr(sub_block, "set_progress_bar_config"):
-                sub_block.set_progress_bar_config(**kwargs)
+        blocks = [self._blocks]
+        while blocks:
+            block = blocks.pop()
+            if hasattr(block, "set_progress_bar_config"):
+                block.set_progress_bar_config(**kwargs)
+            blocks.extend(block.sub_blocks.values())
 
-    def __call__(self, state: PipelineState = None, output: str | list[str] = None, **kwargs):
+    @property
+    def callback_tensor_inputs(self) -> list[str]:
+        """Callback fields supported by the blocks; availability depends on the active workflow."""
+        return self._blocks.callback_tensor_inputs
+
+    def _validate_callback_inputs(self, tensor_inputs: list[str]):
+        if self._callback_on_step_end is None:
+            return
+        for name in self._callback_on_step_end_tensor_inputs:
+            if name not in tensor_inputs:
+                raise ValueError(f"Callback input '{name}' is unavailable in this denoising loop.")
+
+    def _call_callback_on_step_end(self, block_state: BlockState, timestep: torch.Tensor, tensor_inputs: list[str]):
+        callback = self._callback_on_step_end
+        if callback is None:
+            return
+        values = vars(block_state)
+        missing = [name for name in self._callback_on_step_end_tensor_inputs if name not in values]
+        if missing:
+            raise ValueError(f"Callback inputs {missing} are unavailable in this denoising loop.")
+        callback_kwargs = {name: values[name] for name in self._callback_on_step_end_tensor_inputs}
+        updates = callback(self, self._callback_step_index, timestep, callback_kwargs)
+        if not isinstance(updates, dict):
+            raise TypeError("The step callback must return a dictionary.")
+        for name, value in updates.items():
+            if name not in tensor_inputs or name not in values:
+                raise ValueError(f"Callback output '{name}' is unavailable in this denoising loop.")
+            setattr(block_state, name, value)
+            for fields in values.values():
+                if isinstance(fields, dict) and name in fields:
+                    fields[name] = value
+        self._callback_step_index += 1
+
+    def __call__(
+        self,
+        state: PipelineState = None,
+        output: str | list[str] = None,
+        callback_on_step_end: Callable | PipelineCallback | MultiPipelineCallbacks | None = None,
+        callback_on_step_end_tensor_inputs: list[str] | None = None,
+        **kwargs,
+    ):
         """
         Execute the pipeline by running the pipeline blocks with the given inputs.
 
@@ -2955,6 +3025,14 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                    - str: Returns a specific intermediate value from the state (e.g. `output="image"`)
                    - list[str]: Returns a dictionary of specific intermediate values (e.g. `output=["image",
                      "latents"]`)
+            callback_on_step_end (`Callable`, `PipelineCallback` or `MultiPipelineCallbacks`, optional):
+                Called at the end of each denoising step as `callback(pipeline, step_index, timestep,
+                callback_kwargs)`, where `step_index` counts all denoising steps of the call. It must return a dict
+                whose fields replace the loop's values for the following steps. Set `pipeline.interrupt = True` to stop
+                denoising early.
+            callback_on_step_end_tensor_inputs (`list[str]`, optional, defaults to `["latents"]`):
+                Fields passed in `callback_kwargs`. Must be in `callback_tensor_inputs` of every denoising loop that
+                runs.
 
 
         Examples:
@@ -2981,6 +3059,22 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             - If `output` is list[str]: Dictionary mapping output names to their values from the state (e.g.
               `output=["image", "latents"]`)
         """
+        self.interrupt = False
+        self._callback_step_index = 0
+        if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
+            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
+        if callback_on_step_end is not None and not callable(callback_on_step_end):
+            raise TypeError("callback_on_step_end must be callable.")
+        tensor_inputs = (
+            ["latents"] if callback_on_step_end_tensor_inputs is None else callback_on_step_end_tensor_inputs
+        )
+        if not isinstance(tensor_inputs, list) or not all(isinstance(name, str) for name in tensor_inputs):
+            raise TypeError("callback_on_step_end_tensor_inputs must be a list of field names.")
+        if callback_on_step_end is not None or callback_on_step_end_tensor_inputs is not None:
+            for name in tensor_inputs:
+                if name not in self.callback_tensor_inputs:
+                    raise ValueError(f"Callback input '{name}' is not supported by this pipeline.")
+
         if state is None:
             state = PipelineState()
         else:
@@ -3008,6 +3102,8 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         if len(passed_kwargs) > 0:
             warnings.warn(f"Unexpected input '{passed_kwargs.keys()}' provided. This input will be ignored.")
         # Run the pipeline
+        self._callback_on_step_end = callback_on_step_end
+        self._callback_on_step_end_tensor_inputs = tensor_inputs
         with torch.no_grad():
             try:
                 _, state = self._blocks(self, state)
@@ -3015,6 +3111,9 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 error_msg = f"Error in block: ({self._blocks.__class__.__name__}):\n"
                 logger.error(error_msg)
                 raise
+            finally:
+                self._callback_on_step_end = None
+                self._callback_on_step_end_tensor_inputs = None
 
         if output is None:
             return state

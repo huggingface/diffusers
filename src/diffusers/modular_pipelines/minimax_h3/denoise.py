@@ -242,6 +242,8 @@ class MiniMaxH3LoopSchedulerStep(ModularPipelineBlocks):
 
 
 class MiniMaxH3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
+    _callback_tensor_inputs = ("latents", "audio_latents", "prompt_embeds")
+
     model_name = "minimax-h3"
 
     @property
@@ -267,8 +269,7 @@ class MiniMaxH3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         with self.progress_bar(total=len(block_state.timesteps)) as progress_bar:
-            for i, t in enumerate(block_state.timesteps):
-                components, block_state = self.loop_step(components, block_state, i=i, t=t)
+            for i, t in self.loop_over_timesteps(components, block_state, block_state.timesteps):
                 progress_bar.update()
         self.set_block_state(state, block_state)
         return components, state

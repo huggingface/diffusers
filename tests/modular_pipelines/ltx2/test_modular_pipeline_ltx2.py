@@ -24,6 +24,7 @@ from diffusers import LTX2Guidance, ModularPipeline
 from diffusers.modular_pipelines import ComponentSpec, LTX2AutoBlocks, LTX2ModularPipeline
 from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
 from diffusers.pipelines.ltx2.pipeline_ltx2_ic_lora import LTX2ReferenceCondition
+from diffusers.utils.testing_utils import torch_device
 
 from ..testing_utils import (
     BaseModularPipelineTesterConfig,
@@ -166,6 +167,29 @@ class TestLTX2Text2VideoModularPipelineFast(
         num_frames = videos.shape[1]
         assert (num_frames - 1) % pipe.vae_temporal_compression_ratio == 0
         assert 0 < num_frames <= round(2.0 * inputs["frame_rate"])
+
+    def test_step_callback_audio_latents_update(self):
+        pipe = self.get_pipeline().to(torch_device)
+        observed = []
+        modified = False
+
+        def capture(module, args, kwargs):
+            if modified:
+                observed.append(kwargs["audio_hidden_states"].detach().clone())
+
+        handle = pipe.transformer.register_forward_pre_hook(capture, with_kwargs=True)
+
+        def replace(pipeline, step, timestep, tensors):
+            nonlocal modified
+            modified = True
+            return {"audio_latents": torch.zeros_like(tensors["audio_latents"])}
+
+        try:
+            self.run_pipe(pipe, callback_on_step_end=replace, callback_on_step_end_tensor_inputs=["audio_latents"])
+        finally:
+            handle.remove()
+        assert observed
+        assert all(tensor.count_nonzero() == 0 for tensor in observed)
 
 
 class TestLTX2Text2VideoModularPipelineLoading(LTX2Text2VideoModularPipelineTesterConfig, ModularLoadingTesterMixin):

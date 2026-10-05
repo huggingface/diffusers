@@ -190,6 +190,28 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
     `pretrained_model_name_or_path`, `get_dummy_inputs()` and the shared fixtures).
     """
 
+    def test_step_callback_and_interrupt(self):
+        pipe = self.get_pipeline().to(torch_device)
+        steps = []
+
+        def record(pipeline, step, timestep, tensors):
+            assert isinstance(tensors["latents"], torch.Tensor)
+            steps.append(step)
+            return tensors
+
+        self.run_pipe(pipe, callback_on_step_end=record)
+        assert steps and steps == list(range(len(steps)))
+        steps.clear()
+
+        def stop(pipeline, step, timestep, tensors):
+            steps.append(step)
+            pipeline.interrupt = True
+            return tensors
+
+        assert self.run_pipe(pipe, callback_on_step_end=stop) is not None
+        assert steps == [0]
+        assert pipe.interrupt
+
     def test_pipeline_call_signature(self):
         pipe = self.get_pipeline()
         input_parameters = pipe.blocks.input_names

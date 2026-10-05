@@ -242,6 +242,8 @@ class Krea2LoopAfterDenoiser(ModularPipelineBlocks):
 
 
 class Krea2DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
+    _callback_tensor_inputs = ("latents", "prompt_embeds", "negative_prompt_embeds")
+
     model_name = "krea2"
 
     @property
@@ -275,8 +277,7 @@ class Krea2DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         block_state = self.get_block_state(state)
 
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
-            for i, t in enumerate(block_state.timesteps):
-                components, block_state = self.loop_step(components, block_state, i=i, t=t)
+            for i, t in self.loop_over_timesteps(components, block_state, block_state.timesteps):
                 progress_bar.update()
 
         self.set_block_state(state, block_state)

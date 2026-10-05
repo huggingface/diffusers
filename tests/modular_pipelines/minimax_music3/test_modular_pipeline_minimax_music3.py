@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 import unittest
 
 import pytest
@@ -23,6 +24,7 @@ from diffusers import (
     MiniMaxMusic3ModularPipeline,
     ModularPipeline,
 )
+from diffusers.modular_pipelines.modular_pipeline import SequentialPipelineBlocks
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
@@ -133,6 +135,47 @@ class TestMiniMaxMusic3ModularPipelineFast(MiniMaxMusic3ModularPipelineTesterCon
         assert audio.shape[0] == 1
         assert audio.shape[1] == 2
         assert audio.abs().max() <= 1.0
+
+    def test_step_callback_multiple_chunks(self, monkeypatch):
+        blocks = MiniMaxMusic3Blocks()
+        blocks = SequentialPipelineBlocks.from_blocks_dict(
+            {name: block for name, block in blocks.sub_blocks.items() if name != "semantic_generator"}
+        )
+        pipe = blocks.init_pipeline(self.pretrained_model_name_or_path)
+        pipe.load_components()
+        sample_hop = math.prod(pipe.vocoder.config.upsampling_ratios)
+        monkeypatch.setattr(type(pipe), "latent_hop_length", property(lambda pipeline: sample_hop))
+        config = pipe.condition_encoder.config
+        frame_hiddens = torch.randn(1, 201, config.condition_hidden_dim * config.num_condition_layers)
+        steps = []
+
+        def record(pipeline, step, timestep, tensors):
+            steps.append(step)
+            return tensors
+
+        inputs = {"frame_hiddens": frame_hiddens, "num_inference_steps": 2, "output_type": "pt"}
+        full = pipe(
+            **inputs, generator=self.get_generator(), callback_on_step_end=record, output=["audios", "latent_chunks"]
+        )
+        assert steps == list(range(4))
+        assert len(full["latent_chunks"]) == 2
+        for stop_step in (0, 2):
+            steps.clear()
+
+            def stop(pipeline, step, timestep, tensors):
+                steps.append(step)
+                if step == stop_step:
+                    pipeline.interrupt = True
+                return tensors
+
+            partial = pipe(
+                **inputs, generator=self.get_generator(), callback_on_step_end=stop, output=["audios", "latent_chunks"]
+            )
+            assert steps == list(range(stop_step + 1))
+            assert len(partial["latent_chunks"]) == stop_step // 2 + 1
+            assert torch.isfinite(partial["audios"]).all()
+            if stop_step == 0:
+                assert 0 < partial["audios"].shape[-1] < full["audios"].shape[-1]
 
 
 class TestMiniMaxMusic3ModularPipelineLoading(MiniMaxMusic3ModularPipelineTesterConfig, ModularLoadingTesterMixin):

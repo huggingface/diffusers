@@ -164,6 +164,8 @@ class MiniMaxMusic3ChunkSetTimestepsStep(ModularPipelineBlocks):
 
 
 class MiniMaxMusic3ChunkDenoiseInner(ModularPipelineBlocks):
+    _callback_tensor_inputs = ("latents",)
+
     model_name = "minimax-music3"
 
     @property
@@ -213,6 +215,8 @@ class MiniMaxMusic3ChunkDenoiseInner(ModularPipelineBlocks):
         }
 
         for i, t in enumerate(timesteps):
+            if components.interrupt:
+                break
             if overlap > 0:
                 time_value = t.to(latents.dtype)
                 latents[..., :overlap] = (1.0 - (1.0 - 1e-6) * time_value) * block_state.noise_prompt + (
@@ -236,7 +240,9 @@ class MiniMaxMusic3ChunkDenoiseInner(ModularPipelineBlocks):
                 components.guider.cleanup_models(components.transformer)
 
             velocity = components.guider(guider_state)[0]
-            latents = components.scheduler.step(velocity, t, latents, return_dict=False)[0]
+            block_state.latents = components.scheduler.step(velocity, t, latents, return_dict=False)[0]
+            components._call_callback_on_step_end(block_state, t, self.callback_tensor_inputs)
+            latents = block_state.latents
             block_state.progress_bar.update()
 
         block_state.latents = latents
@@ -314,7 +320,10 @@ class MiniMaxMusic3ChunkLoopWrapper(LoopSequentialPipelineBlocks):
         num_chunks = len(block_state.chunk_starts)
         with self.progress_bar(total=num_chunks * block_state.num_inference_steps) as progress_bar:
             block_state.progress_bar = progress_bar
+            components._validate_callback_inputs(self.callback_tensor_inputs)
             for k in range(num_chunks):
+                if components.interrupt:
+                    break
                 components, block_state = self.loop_step(components, block_state, k=k)
         block_state.progress_bar = None
 

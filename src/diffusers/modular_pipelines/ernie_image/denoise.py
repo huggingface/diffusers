@@ -176,6 +176,8 @@ class ErnieImageLoopAfterDenoiser(ModularPipelineBlocks):
 
 
 class ErnieImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
+    _callback_tensor_inputs = ("latents", "text_bth", "negative_text_bth")
+
     model_name = "ernie-image"
 
     @property
@@ -219,8 +221,7 @@ class ErnieImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     ) -> tuple[ErnieImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
-            for i, t in enumerate(block_state.timesteps):
-                components, block_state = self.loop_step(components, block_state, i=i, t=t)
+            for i, t in self.loop_over_timesteps(components, block_state, block_state.timesteps):
                 progress_bar.update()
         self.set_block_state(state, block_state)
         return components, state

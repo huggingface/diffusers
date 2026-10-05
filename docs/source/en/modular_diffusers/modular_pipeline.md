@@ -495,3 +495,58 @@ The `config.json` file contains an `auto_map` key that tells [`ModularPipeline`]
 ```
 
 Load custom code repositories with `trust_remote_code=True` as shown in [from_pretrained](#frompretrained). See [Custom blocks](./custom_blocks) for how to create and share your own.
+
+## Step callbacks
+
+Pass `callback_on_step_end` to observe or modify the state after each denoising step. The signature matches standard
+pipeline callbacks: `callback(pipeline, step_index, timestep, callback_kwargs)`. The callback must return a dictionary;
+the returned fields replace the loop's values for the following steps. Return `callback_kwargs` unchanged to only observe.
+
+```python
+previews = []
+
+
+def preview(pipe, step_index, timestep, callback_kwargs):
+    previews.append(callback_kwargs["latents"].detach().cpu().clone())
+    return callback_kwargs
+
+
+state = pipe(prompt="A small boat on a lake", callback_on_step_end=preview)
+```
+
+By default, the callback receives `latents`. `pipe.callback_tensor_inputs` lists every field the pipeline's denoising
+loops support, such as `prompt_embeds` or LTX2's `audio_latents`; pass the ones you need with
+`callback_on_step_end_tensor_inputs`. Unlike standard pipelines, requesting or returning a field the running loop doesn't
+support raises an error instead of being ignored. Values keep the loop's native shapes, including packed latents.
+
+```python
+def edit_conditioning(pipe, step_index, timestep, callback_kwargs):
+    if step_index == 2:
+        callback_kwargs["prompt_embeds"] = replacement_prompt_embeds
+    return callback_kwargs
+
+
+state = pipe(
+    prompt="A small boat on a lake",
+    callback_on_step_end=edit_conditioning,
+    callback_on_step_end_tensor_inputs=["latents", "prompt_embeds"],
+)
+```
+
+`PipelineCallback` and `MultiPipelineCallbacks` are accepted and provide their own `tensor_inputs`. Standard CFG cutoff
+callbacks change attributes that only standard pipelines have; modular pipelines control guidance through
+the `guider` component instead.
+
+Set `pipe.interrupt = True` in a callback to stop denoising early. The pipeline still decodes what was generated so far;
+for chunked video or audio this can be shorter than requested. `step_index` counts every denoising step of the call,
+across chunks and pyramid stages, so the example below stops after ten steps however the workflow is split.
+
+```python
+def stop_after_ten_steps(pipe, step_index, timestep, callback_kwargs):
+    if step_index == 9:
+        pipe.interrupt = True
+    return callback_kwargs
+
+
+state = pipe(prompt="A small boat on a lake", callback_on_step_end=stop_after_ten_steps)
+```

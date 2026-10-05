@@ -258,6 +258,8 @@ class Ideogram4DenoiseStep(LoopSequentialPipelineBlocks):
               The denoised latents.
     """
 
+    _callback_tensor_inputs = ("latents", "prompt_embeds", "negative_prompt_embeds")
+
     model_name = "ideogram4"
     block_classes = [Ideogram4LoopBeforeDenoiser, Ideogram4LoopDenoiser, Ideogram4LoopAfterDenoiser]
     block_names = ["before_denoiser", "denoiser", "after_denoiser"]
@@ -292,8 +294,7 @@ class Ideogram4DenoiseStep(LoopSequentialPipelineBlocks):
         block_state = self.get_block_state(state)
 
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
-            for i, t in enumerate(block_state.timesteps):
-                components, block_state = self.loop_step(components, block_state, i=i, t=t)
+            for i, t in self.loop_over_timesteps(components, block_state, block_state.timesteps):
                 progress_bar.update()
 
         self.set_block_state(state, block_state)

@@ -889,6 +889,8 @@ class Cosmos3TransferChunkDenoiseStep(SequentialPipelineBlocks):
         state.set("output_chunks", [])
         state.set("previous_output", None)
         for chunk_id in range(num_chunks):
+            if components.interrupt:
+                break
             if chunk_id > 0:
                 components.transformer._reset_stateful_cache()
             state.set("chunk_id", chunk_id)

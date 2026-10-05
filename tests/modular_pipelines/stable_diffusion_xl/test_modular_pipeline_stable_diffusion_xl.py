@@ -374,6 +374,39 @@ class TestSDXLModularPipelineFast(SDXLModularPipelineTesterConfig, SDXLModularTe
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
+    def test_step_callback_conditioning_update(self):
+        pipe = self.get_pipeline().to(torch_device)
+        observed = []
+        modified = False
+
+        def capture(module, args, kwargs):
+            if modified:
+                observed.append(kwargs["encoder_hidden_states"])
+                observed.append(kwargs["added_cond_kwargs"]["text_embeds"])
+                observed.append(kwargs["added_cond_kwargs"]["time_ids"])
+
+        handle = pipe.unet.register_forward_pre_hook(capture, with_kwargs=True)
+        fields = [name for name in pipe.callback_tensor_inputs if name != "latents"]
+
+        def replace(pipeline, step, timestep, tensors):
+            nonlocal modified
+            modified = True
+            return {name: torch.zeros_like(value) for name, value in tensors.items()}
+
+        try:
+            self.run_pipe(pipe, callback_on_step_end=replace, callback_on_step_end_tensor_inputs=fields)
+        finally:
+            handle.remove()
+        assert observed
+        assert all(tensor.count_nonzero() == 0 for tensor in observed)
+
+    def test_set_progress_bar_config_reaches_nested_loop(self, capfd):
+        pipe = self.get_pipeline().to(torch_device)
+        pipe.set_progress_bar_config(disable=True)
+        capfd.readouterr()
+        self.run_pipe(pipe)
+        assert "it/s" not in capfd.readouterr().err
+
 
 class TestSDXLModularPipelineIPAdapter(SDXLModularPipelineTesterConfig, SDXLModularIPAdapterTesterMixin):
     pass

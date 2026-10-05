@@ -623,6 +623,8 @@ class LTX2ConditionLoopAfterDenoiser(ModularPipelineBlocks):
 
 
 class LTX2DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
+    _callback_tensor_inputs = ("latents", "audio_latents")
+
     model_name = "ltx2"
 
     @property
@@ -655,8 +657,7 @@ class LTX2DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         )
 
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
-            for i, t in enumerate(block_state.timesteps):
-                components, block_state = self.loop_step(components, block_state, i=i, t=t)
+            for i, t in self.loop_over_timesteps(components, block_state, block_state.timesteps):
                 if i == len(block_state.timesteps) - 1 or (
                     (i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0
                 ):

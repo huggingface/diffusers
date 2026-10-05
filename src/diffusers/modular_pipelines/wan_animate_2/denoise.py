@@ -427,6 +427,8 @@ class WanAnimate2RefExtractStep(ModularPipelineBlocks):
 
 
 class WanAnimate2SegmentDenoiseInner(ModularPipelineBlocks):
+    _callback_tensor_inputs = ("latents",)
+
     model_name = "wan-animate-2"
 
     @property
@@ -549,6 +551,8 @@ class WanAnimate2SegmentDenoiseInner(ModularPipelineBlocks):
             total=len(block_state.timesteps), desc=f"Segment {k + 1}/{block_state.num_segments}"
         ) as progress_bar:
             for i, t in enumerate(block_state.timesteps):
+                if components.interrupt:
+                    break
                 timestep = torch.stack([t])
 
                 components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
@@ -584,6 +588,7 @@ class WanAnimate2SegmentDenoiseInner(ModularPipelineBlocks):
                     generator=block_state.generator,
                 )[0]
                 block_state.latents = latents.squeeze(0)
+                components._call_callback_on_step_end(block_state, t, self.callback_tensor_inputs)
 
                 progress_bar.update()
 
@@ -740,7 +745,10 @@ class WanAnimate2SegmentLoopWrapper(LoopSequentialPipelineBlocks):
         block_state.segment_frames = []
         block_state.out_frames = None
 
+        components._validate_callback_inputs(self.callback_tensor_inputs)
         for k in range(block_state.num_segments):
+            if components.interrupt:
+                break
             components, block_state = self.loop_step(components, block_state, k=k)
 
         self.set_block_state(state, block_state)

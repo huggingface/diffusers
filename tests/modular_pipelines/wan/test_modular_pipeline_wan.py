@@ -55,6 +55,25 @@ class TestWanModularPipelineFast(WanModularPipelineTesterConfig, ModularPipeline
     def test_num_images_per_prompt(self):
         pass
 
+    def test_step_callback_guidance(self):
+        pipe = self.get_pipeline().to("cpu")
+        forwards = []
+        counts = []
+        handle = pipe.transformer.register_forward_pre_hook(lambda module, args: forwards.append(module))
+
+        def cutoff(pipeline, step, timestep, tensors):
+            counts.append(len(forwards))
+            pipeline.guider.disable()
+            return tensors
+
+        try:
+            self.run_pipe(pipe, callback_on_step_end=cutoff)
+        finally:
+            handle.remove()
+        # CFG runs two forwards in the first step and one per step after the callback disables it
+        assert counts[0] == 2
+        assert [b - a for a, b in zip(counts, counts[1:])] == [1] * (len(counts) - 1)
+
 
 class TestWanModularPipelineLoading(WanModularPipelineTesterConfig, ModularLoadingTesterMixin):
     pass

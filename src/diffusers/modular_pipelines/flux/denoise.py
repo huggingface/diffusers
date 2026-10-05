@@ -238,6 +238,8 @@ class FluxLoopAfterDenoiser(ModularPipelineBlocks):
 
 
 class FluxDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
+    _callback_tensor_inputs = ("latents", "prompt_embeds", "pooled_prompt_embeds")
+
     model_name = "flux"
 
     @property
@@ -281,8 +283,7 @@ class FluxDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
             len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order, 0
         )
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
-            for i, t in enumerate(block_state.timesteps):
-                components, block_state = self.loop_step(components, block_state, i=i, t=t)
+            for i, t in self.loop_over_timesteps(components, block_state, block_state.timesteps):
                 if i == len(block_state.timesteps) - 1 or (
                     (i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0
                 ):

@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import pytest
+import torch
 
 from diffusers.modular_pipelines import (
     HeliosAutoBlocks,
@@ -92,7 +93,43 @@ class HeliosModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
         return inputs
 
 
-class TestHeliosModularPipelineFast(HeliosModularPipelineTesterConfig, ModularPipelineTesterMixin):
+class HeliosChunkCallbackTesterMixin:
+    def test_step_callback_chunks_and_stages(self):
+        pipe = self.get_pipeline().to("cpu")
+        inputs = self.get_dummy_inputs()
+        inputs.update(num_frames=18, num_latent_frames_per_chunk=3)
+        steps_per_chunk = sum(inputs.get("pyramid_num_inference_steps_list", [inputs.get("num_inference_steps")]))
+        steps = []
+
+        def record(pipeline, step, timestep, tensors):
+            steps.append(step)
+            return tensors
+
+        full = pipe(**inputs, callback_on_step_end=record, output=["videos", "latent_chunks"])
+        assert steps == list(range(2 * steps_per_chunk))
+        assert len(full["latent_chunks"]) == 2
+        stop_steps = range(0, 2 * steps_per_chunk, 2)
+        for stop_step in stop_steps:
+            steps.clear()
+            inputs["generator"] = self.get_generator()
+
+            def stop(pipeline, step, timestep, tensors):
+                steps.append(step)
+                if step == stop_step:
+                    pipeline.interrupt = True
+                return tensors
+
+            partial = pipe(**inputs, callback_on_step_end=stop, output=["videos", "latent_chunks"])
+            assert steps == list(range(stop_step + 1))
+            chunks = stop_step // steps_per_chunk + 1
+            assert len(partial["latent_chunks"]) == chunks
+            assert partial["videos"].shape == (1, chunks * 8 + 1, 3, inputs["height"], inputs["width"])
+            assert torch.isfinite(partial["videos"]).all()
+
+
+class TestHeliosModularPipelineFast(
+    HeliosModularPipelineTesterConfig, HeliosChunkCallbackTesterMixin, ModularPipelineTesterMixin
+):
     @pytest.mark.skip(reason="num_videos_per_prompt")
     def test_num_images_per_prompt(self):
         pass
@@ -168,7 +205,9 @@ class HeliosPyramidModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
         return inputs
 
 
-class TestHeliosPyramidModularPipelineFast(HeliosPyramidModularPipelineTesterConfig, ModularPipelineTesterMixin):
+class TestHeliosPyramidModularPipelineFast(
+    HeliosPyramidModularPipelineTesterConfig, HeliosChunkCallbackTesterMixin, ModularPipelineTesterMixin
+):
     def test_inference_batch_single_identical(self):
         # Pyramid pipeline injects noise at each stage, so batch vs single can differ more
         super().test_inference_batch_single_identical(expected_max_diff=5e-1)

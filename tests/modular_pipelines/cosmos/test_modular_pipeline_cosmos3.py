@@ -257,7 +257,7 @@ class TestCosmos3OmniModularPipelineFast(Cosmos3OmniModularPipelineTesterConfig,
         block = Cosmos3TransferChunkDenoiseStep()
         child_block = mock.Mock(side_effect=lambda components, state: (components, state))
         block.sub_blocks = {"child": child_block}
-        components = mock.Mock()
+        components = mock.Mock(interrupt=False)
         state = mock.Mock()
         state.get.return_value = 3
 

@@ -483,6 +483,8 @@ class Cosmos3ActionLoopSchedulerStep(ModularPipelineBlocks):
 
 
 class Cosmos3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
+    _callback_tensor_inputs = ("latents",)
+
     model_name = "cosmos3-omni"
 
     @property
@@ -543,9 +545,12 @@ class Cosmos3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
             mixed_precision_reasoner_policy=getattr(block_state, "mixed_precision_reasoner_policy", None),
         )
         trace = []
+        components._validate_callback_inputs(self.callback_tensor_inputs)
         try:
             with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
                 for i, t in enumerate(block_state.timesteps):
+                    if components.interrupt:
+                        break
                     apply_cosmos3_mixed_precision_step(
                         components.transformer,
                         mixed_precision,
@@ -554,6 +559,7 @@ class Cosmos3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
                         trace=trace,
                     )
                     components, block_state = self.loop_step(components, block_state, i=i, t=t)
+                    components._call_callback_on_step_end(block_state, t, self.callback_tensor_inputs)
                     if i == len(block_state.timesteps) - 1 or (
                         (i + 1) > block_state.num_warmup_steps and (i + 1) % components.scheduler.order == 0
                     ):

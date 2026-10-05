@@ -82,6 +82,14 @@ def sample_block_noise(
     return noise
 
 
+def _resize_to_latent_shape(latents: torch.Tensor, latent_shape: tuple) -> torch.Tensor:
+    # An interrupted pyramid chunk stops at a lower stage resolution; resize it to the chunk's full latent shape.
+    batch_size, channels, frames, height, width = latent_shape
+    latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * frames, channels, *latents.shape[-2:])
+    latents = F.interpolate(latents, size=(height, width), mode="nearest")
+    return latents.reshape(batch_size, frames, channels, height, width).permute(0, 2, 1, 3, 4)
+
+
 # ========================================
 # Chunk Loop Leaf Blocks
 # ========================================
@@ -365,6 +373,8 @@ class HeliosChunkSchedulerResetStep(ModularPipelineBlocks):
 class HeliosChunkDenoiseInner(ModularPipelineBlocks):
     """Inner timestep loop for denoising a single chunk, using guider for guidance."""
 
+    _callback_tensor_inputs = ("latents",)
+
     model_name = "helios"
 
     @property
@@ -432,6 +442,8 @@ class HeliosChunkDenoiseInner(ModularPipelineBlocks):
 
         with tqdm(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                if components.interrupt:
+                    break
                 timestep = t.expand(latents.shape[0]).to(torch.int64)
                 latent_model_input = latents.to(transformer_dtype)
 
@@ -463,6 +475,9 @@ class HeliosChunkDenoiseInner(ModularPipelineBlocks):
                     generator=block_state.generator,
                     return_dict=False,
                 )[0]
+                block_state.latents = latents
+                components._call_callback_on_step_end(block_state, t, self.callback_tensor_inputs)
+                latents = block_state.latents
 
                 if i == len(timesteps) - 1 or (
                     (i + 1) > num_warmup_steps and (i + 1) % components.scheduler.order == 0
@@ -481,6 +496,8 @@ class HeliosPyramidChunkDenoiseInner(ModularPipelineBlocks):
     2. Compute mu from current resolution, set scheduler timesteps
     3. Run timestep denoising loop (same logic as HeliosChunkDenoiseInner)
     """
+
+    _callback_tensor_inputs = ("latents",)
 
     model_name = "helios-pyramid"
 
@@ -555,6 +572,8 @@ class HeliosPyramidChunkDenoiseInner(ModularPipelineBlocks):
         orig_zero_init_steps = getattr(components.guider, "zero_init_steps", None)
 
         for i_s in range(pyramid_num_stages):
+            if components.interrupt:
+                break
             # --- Stage setup ---
 
             # Disable zero init for stages > 0 (only stage 0 should have zero init)
@@ -624,6 +643,8 @@ class HeliosPyramidChunkDenoiseInner(ModularPipelineBlocks):
 
             with tqdm(total=num_inference_steps) as progress_bar:
                 for i, t in enumerate(timesteps):
+                    if components.interrupt:
+                        break
                     timestep = t.expand(latents.shape[0]).to(torch.int64)
                     latent_model_input = latents.to(transformer_dtype)
 
@@ -655,6 +676,9 @@ class HeliosPyramidChunkDenoiseInner(ModularPipelineBlocks):
                         generator=block_state.generator,
                         return_dict=False,
                     )[0]
+                    block_state.latents = latents
+                    components._call_callback_on_step_end(block_state, t, self.callback_tensor_inputs)
+                    latents = block_state.latents
 
                     if i == len(timesteps) - 1 or (
                         (i + 1) > num_warmup_steps and (i + 1) % components.scheduler.order == 0
@@ -664,6 +688,9 @@ class HeliosPyramidChunkDenoiseInner(ModularPipelineBlocks):
         # Restore original zero_init_steps
         if orig_zero_init_steps is not None:
             components.guider.zero_init_steps = orig_zero_init_steps
+
+        if components.interrupt:
+            latents = _resize_to_latent_shape(latents, block_state.latent_shape)
 
         block_state.latents = latents
         return components, block_state
@@ -758,7 +785,10 @@ class HeliosChunkLoopWrapper(LoopSequentialPipelineBlocks):
         if not hasattr(block_state, "image_latents"):
             block_state.image_latents = None
 
+        components._validate_callback_inputs(self.callback_tensor_inputs)
         for k in range(block_state.num_latent_chunk):
+            if components.interrupt:
+                break
             components, block_state = self.loop_step(components, block_state, k=k)
 
         self.set_block_state(state, block_state)
@@ -819,6 +849,8 @@ class HeliosPyramidDistilledChunkDenoiseInner(ModularPipelineBlocks):
     - Supports is_amplify_first_chunk (doubles first chunk's timesteps via scheduler)
     - Tracks start_point_list and passes DMD-specific args to scheduler.step()
     """
+
+    _callback_tensor_inputs = ("latents",)
 
     model_name = "helios-pyramid"
 
@@ -897,6 +929,8 @@ class HeliosPyramidDistilledChunkDenoiseInner(ModularPipelineBlocks):
         shared_kwargs["attention_kwargs"] = block_state.attention_kwargs
 
         for i_s in range(pyramid_num_stages):
+            if components.interrupt:
+                break
             # --- Stage setup ---
             patch_size = components.transformer.config.patch_size
 
@@ -965,6 +999,8 @@ class HeliosPyramidDistilledChunkDenoiseInner(ModularPipelineBlocks):
 
             with tqdm(total=num_inference_steps) as progress_bar:
                 for i, t in enumerate(timesteps):
+                    if components.interrupt:
+                        break
                     timestep = t.expand(latents.shape[0]).to(torch.int64)
                     latent_model_input = latents.to(transformer_dtype)
 
@@ -1001,11 +1037,17 @@ class HeliosPyramidDistilledChunkDenoiseInner(ModularPipelineBlocks):
                         dmd_timesteps=components.scheduler.timesteps,
                         all_timesteps=timesteps,
                     )[0]
+                    block_state.latents = latents
+                    components._call_callback_on_step_end(block_state, t, self.callback_tensor_inputs)
+                    latents = block_state.latents
 
                     if i == len(timesteps) - 1 or (
                         (i + 1) > num_warmup_steps and (i + 1) % components.scheduler.order == 0
                     ):
                         progress_bar.update()
+
+        if components.interrupt:
+            latents = _resize_to_latent_shape(latents, block_state.latent_shape)
 
         block_state.latents = latents
         return components, block_state
