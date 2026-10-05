@@ -490,7 +490,7 @@ class LongCatImagePipeline(DiffusionPipeline, FromSingleFileMixin):
         enable_cfg_renorm: bool | None = True,
         cfg_renorm_min: float | None = 0.0,
         enable_prompt_rewrite: bool | None = True,
-    ):
+    ) -> LongCatImagePipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

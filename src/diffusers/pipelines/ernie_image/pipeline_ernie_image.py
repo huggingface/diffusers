@@ -222,7 +222,7 @@ class ErnieImagePipeline(DiffusionPipeline, ErnieImageLoraLoaderMixin):
         callback_on_step_end: Optional[Callable[[int, int, dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         use_pe: bool = True,  # 默认使用PE进行改写
-    ):
+    ) -> ErnieImagePipelineOutput | tuple:
         """
         Generate images from text prompts.
 

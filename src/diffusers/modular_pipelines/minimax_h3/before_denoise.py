@@ -155,7 +155,9 @@ class MiniMaxH3NoKeyframeAnchorsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.keyframe_anchors = ()
@@ -371,7 +373,9 @@ class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
         return position_ids, token_tags, video_indices, audio_indices, text_indices, num_condition_rows, 0
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -725,7 +729,9 @@ class MiniMaxH3Ref2VAPrepareLayoutStep(ModularPipelineBlocks):
         )
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -845,7 +851,9 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         patch_size = components.patch_size
@@ -944,7 +952,9 @@ class MiniMaxH3PrepareConditionLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         patch_size = components.patch_size
@@ -1012,7 +1022,9 @@ class MiniMaxH3FL2VAPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.latents = torch.cat([block_state.condition_rows, block_state.latents])
@@ -1088,7 +1100,9 @@ class MiniMaxH3Ref2VAPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -1222,7 +1236,9 @@ class MiniMaxH3SetTimestepsStep(ModularPipelineBlocks):
         return torch.unique(row_timesteps, sorted=True, return_inverse=True)
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 

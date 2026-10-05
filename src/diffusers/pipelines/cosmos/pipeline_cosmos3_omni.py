@@ -1350,7 +1350,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         mixed_precision_first_steps: int | None = None,
         mixed_precision_last_steps: int | None = None,
         mixed_precision_reasoner_policy: str | None = None,
-    ) -> Cosmos3OmniPipelineOutput:
+    ) -> Cosmos3OmniPipelineOutput | tuple:
         r"""
         Run the Cosmos 3 omni pipeline end-to-end: encode the (optional) conditioning image/video, denoise vision and
         (optional) sound latents jointly, and decode them back into a video and audio waveform.
