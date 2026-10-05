@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
+
 import pytest
 import torch
 
@@ -22,6 +24,9 @@ from diffusers import (
     LLaDAImageTextProjectionModel,
     LLaDAImageTransformer2DModel,
 )
+from diffusers.models.transformers.transformer_llada_image import LLaDAImageTimestepEmbedder
+from diffusers.models.transformers.transformer_z_image import TimestepEmbedder
+from diffusers.training_utils import EMAModel
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import assert_tensors_close, enable_full_determinism, torch_device
@@ -138,9 +143,23 @@ class TestLLaDAImageTransformerModel(LLaDAImageTransformerTesterConfig, ModelTes
         mask = ~(torch.isnan(first) | torch.isnan(second))
         assert_tensors_close(first[mask], second[mask], atol=atol, rtol=rtol)
 
-    @pytest.mark.skip("The model returns a list so it can preserve per-sample spatial shapes.")
+    @torch.no_grad()
     def test_outputs_equivalence(self, atol=1e-5, rtol=0):
-        pass
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        inputs = self.get_dummy_inputs()
+        dict_output = model(**inputs).sample
+        tuple_output = model(**inputs, return_dict=False)[0]
+        for first, second in zip(dict_output, tuple_output):
+            torch.testing.assert_close(first, second, atol=atol, rtol=rtol)
+
+    @torch.no_grad()
+    def test_variable_spatial_shapes(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        inputs = self.get_dummy_inputs()
+        inputs["x"][1] = torch.randn(8, 1, 4, 8, device=torch_device)
+        output = model(**inputs).sample
+        assert [sample.shape for sample in output] == [sample.shape for sample in inputs["x"]]
+        assert all(torch.isfinite(sample).all() for sample in output)
 
 
 class TestLLaDAImageTransformerMemory(LLaDAImageTransformerTesterConfig, MemoryTesterMixin):
@@ -170,21 +189,57 @@ class TestLLaDAImageTransformerTraining(LLaDAImageTransformerTesterConfig, Train
     def test_gradient_checkpointing_is_applied(self):
         super().test_gradient_checkpointing_is_applied(expected_set={"LLaDAImageTransformer2DModel"})
 
-    @pytest.mark.skip("The shared training test does not support list-valued model outputs.")
     def test_training(self):
-        pass
+        model = self.model_class(**self.get_init_dict()).to(torch_device).train()
+        inputs = self.get_dummy_inputs()
+        outputs = model(**inputs).sample
+        loss = sum(torch.nn.functional.mse_loss(output, target) for output, target in zip(outputs, inputs["x"]))
+        loss.backward()
+        assert model.layers[0].attention.to_q.weight.grad is not None
+        assert torch.isfinite(model.layers[0].attention.to_q.weight.grad).all()
 
-    @pytest.mark.skip("The shared training test does not support list-valued model outputs.")
     def test_training_with_ema(self):
-        pass
+        model = self.model_class(**self.get_init_dict()).to(torch_device).train()
+        ema = EMAModel(model.parameters())
+        inputs = self.get_dummy_inputs()
+        outputs = model(**inputs).sample
+        loss = sum(output.square().mean() for output in outputs)
+        loss.backward()
+        torch.optim.SGD(model.parameters(), lr=0.01).step()
+        ema.step(model.parameters())
+        assert ema.optimization_step == 1
+        assert all(torch.isfinite(parameter).all() for parameter in ema.shadow_params)
 
-    @pytest.mark.skip("The shared mixed-precision test does not support list-valued model outputs.")
     def test_mixed_precision_training(self):
-        pass
+        model = self.model_class(**self.get_init_dict()).to(torch_device).train()
+        inputs = self.get_dummy_inputs()
+        device_type = torch.device(torch_device).type
+        with torch.amp.autocast(device_type, dtype=torch.bfloat16):
+            outputs = model(**inputs).sample
+            loss = sum(output.float().square().mean() for output in outputs)
+        loss.backward()
+        assert model.layers[0].attention.to_q.weight.grad is not None
+        assert torch.isfinite(model.layers[0].attention.to_q.weight.grad).all()
 
-    @pytest.mark.skip("The shared gradient comparison does not support list-valued model outputs.")
     def test_gradient_checkpointing_equivalence(self, loss_tolerance=1e-5, param_grad_tol=5e-5, skip=None):
-        pass
+        model = self.model_class(**self.get_init_dict()).to(torch_device).train()
+        checkpointed_model = copy.deepcopy(model)
+        checkpointed_model.enable_gradient_checkpointing()
+        inputs = self.get_dummy_inputs()
+        losses = []
+        for candidate in (model, checkpointed_model):
+            outputs = candidate(**inputs).sample
+            loss = sum(output.square().mean() for output in outputs)
+            loss.backward()
+            losses.append(loss.detach())
+        torch.testing.assert_close(losses[0], losses[1], atol=loss_tolerance, rtol=0)
+        for (name, parameter), (_, checkpointed_parameter) in zip(
+            model.named_parameters(), checkpointed_model.named_parameters()
+        ):
+            if parameter.grad is None:
+                assert checkpointed_parameter.grad is None, name
+            else:
+                torch.testing.assert_close(parameter.grad, checkpointed_parameter.grad, atol=param_grad_tol, rtol=0)
 
 
 class TestLLaDAImageTransformerAttention(LLaDAImageTransformerTesterConfig, AttentionTesterMixin):
@@ -192,6 +247,18 @@ class TestLLaDAImageTransformerAttention(LLaDAImageTransformerTesterConfig, Atte
 
 
 class TestLLaDAImageAuxiliaryModels:
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+    def test_timestep_embedding_matches_z_image(self, dtype):
+        reference = TimestepEmbedder(out_size=32, mid_size=64).to(device=torch_device, dtype=dtype)
+        embedder = LLaDAImageTimestepEmbedder(output_dim=32, hidden_dim=64).to(device=torch_device, dtype=dtype)
+        embedder.load_state_dict(reference.state_dict())
+        timestep = torch.tensor([0.0, 0.001, 0.5, 999.0], device=torch_device, dtype=dtype)
+        device_type = torch.device(torch_device).type
+        with torch.amp.autocast(device_type, dtype=torch.bfloat16, enabled=dtype == torch.bfloat16):
+            expected = reference(timestep)
+            actual = embedder(timestep, dtype)
+        torch.testing.assert_close(actual, expected, atol=1e-3, rtol=0)
+
     def test_queryformer(self):
         torch.manual_seed(0)
         model = LLaDAImageQueryFormerModel(

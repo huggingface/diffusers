@@ -20,6 +20,7 @@ import os
 import re
 import sys
 import types
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Union, get_args, get_origin, get_type_hints
@@ -94,6 +95,7 @@ from .pipeline_loading_utils import (
     LOADABLE_CLASSES,
     TRANSFORMERS_COMPONENT_AUX_FILES,
     _fetch_class_library_tuple,
+    _get_custom_component_files,
     _get_custom_components_and_folders,
     _get_custom_pipeline_class,
     _get_final_device_map,
@@ -987,21 +989,23 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # 6. device map delegation
         final_device_map = None
         if device_map is not None:
-            final_device_map = _get_final_device_map(
-                device_map=device_map,
-                pipeline_class=pipeline_class,
-                passed_class_obj=passed_class_obj,
-                init_dict=init_dict,
-                library=library,
-                max_memory=max_memory,
-                dtype=dtype,
-                cached_folder=cached_folder,
-                force_download=force_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                token=token,
-                revision=revision,
-            )
+            with pipeline_class._component_loading_context():
+                final_device_map = _get_final_device_map(
+                    device_map=device_map,
+                    pipeline_class=pipeline_class,
+                    passed_class_obj=passed_class_obj,
+                    init_dict=init_dict,
+                    library=library,
+                    max_memory=max_memory,
+                    dtype=dtype,
+                    cached_folder=cached_folder,
+                    trust_remote_code=trust_remote_code,
+                    force_download=force_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    token=token,
+                    revision=revision,
+                )
 
         # 7. Load each module in the pipeline
         current_device_map = None
@@ -1041,32 +1045,33 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 sub_model_dtype = (
                     dtype.get(name, dtype.get("default", torch.float32)) if isinstance(dtype, dict) else dtype
                 )
-                loaded_sub_model = load_sub_model(
-                    library_name=library_name,
-                    class_name=class_name,
-                    importable_classes=importable_classes,
-                    pipelines=pipelines,
-                    is_pipeline_module=is_pipeline_module,
-                    pipeline_class=pipeline_class,
-                    dtype=sub_model_dtype,
-                    provider=provider,
-                    sess_options=sess_options,
-                    device_map=current_device_map,
-                    max_memory=max_memory,
-                    offload_folder=offload_folder,
-                    offload_state_dict=offload_state_dict,
-                    model_variants=model_variants,
-                    name=name,
-                    variant=variant,
-                    low_cpu_mem_usage=low_cpu_mem_usage,
-                    cached_folder=cached_folder,
-                    use_safetensors=use_safetensors,
-                    provider_options=provider_options,
-                    disable_mmap=disable_mmap,
-                    quantization_config=quantization_config,
-                    use_flashpack=use_flashpack,
-                    trust_remote_code=trust_remote_code,
-                )
+                with pipeline_class._component_loading_context():
+                    loaded_sub_model = load_sub_model(
+                        library_name=library_name,
+                        class_name=class_name,
+                        importable_classes=importable_classes,
+                        pipelines=pipelines,
+                        is_pipeline_module=is_pipeline_module,
+                        pipeline_class=pipeline_class,
+                        dtype=sub_model_dtype,
+                        provider=provider,
+                        sess_options=sess_options,
+                        device_map=current_device_map,
+                        max_memory=max_memory,
+                        offload_folder=offload_folder,
+                        offload_state_dict=offload_state_dict,
+                        model_variants=model_variants,
+                        name=name,
+                        variant=variant,
+                        low_cpu_mem_usage=low_cpu_mem_usage,
+                        cached_folder=cached_folder,
+                        use_safetensors=use_safetensors,
+                        provider_options=provider_options,
+                        disable_mmap=disable_mmap,
+                        quantization_config=quantization_config,
+                        use_flashpack=use_flashpack,
+                        trust_remote_code=trust_remote_code,
+                    )
                 logger.info(
                     f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."
                 )
@@ -1122,6 +1127,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if quantization_config is not None:
             setattr(model, "quantization_config", quantization_config)
         return model
+
+    @classmethod
+    def _component_loading_context(cls):
+        return nullcontext()
 
     @property
     def name_or_path(self) -> str:
@@ -1735,8 +1744,15 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # allow all patterns from non-model folders
             # this enables downloading schedulers, tokenizers, ...
             allow_patterns += [f"{k}/*" for k in folder_names if k not in model_folder_names]
-            # Add custom component modules and their local Python dependencies.
-            allow_patterns += [f"{folder_name}/*.py" for folder_name in custom_components]
+            # Resolve only relative imports of each declared custom component module.
+            allow_patterns += _get_custom_component_files(
+                pretrained_model_name,
+                {k: v for k, v in custom_components.items() if k not in passed_components},
+                cache_dir=cache_dir,
+                revision=revision,
+                token=token,
+                local_files_only=local_files_only,
+            )
             # add custom pipeline file
             allow_patterns += [f"{custom_pipeline}.py"] if f"{custom_pipeline}.py" in filenames else []
             # also allow downloading config.json files with the model

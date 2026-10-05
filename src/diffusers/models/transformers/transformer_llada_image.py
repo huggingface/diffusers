@@ -53,14 +53,15 @@ class LLaDAImageTimestepEmbedder(nn.Module):
         self.frequency_embedding_dim = frequency_embedding_dim
 
     def forward(self, timestep: torch.Tensor, hidden_dtype: torch.dtype) -> torch.Tensor:
-        half_dim = self.frequency_embedding_dim // 2
-        frequencies = torch.exp(
-            -math.log(10000) * torch.arange(half_dim, dtype=torch.float32, device=timestep.device) / half_dim
-        )
-        arguments = timestep[:, None].float() * frequencies[None]
-        embedding = torch.cat([torch.cos(arguments), torch.sin(arguments)], dim=-1)
-        if self.frequency_embedding_dim % 2:
-            embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
+        with torch.amp.autocast(timestep.device.type, enabled=False):
+            half_dim = self.frequency_embedding_dim // 2
+            frequencies = torch.exp(
+                -math.log(10000) * torch.arange(half_dim, dtype=torch.float32, device=timestep.device) / half_dim
+            )
+            arguments = timestep[:, None].float() * frequencies[None]
+            embedding = torch.cat([torch.cos(arguments), torch.sin(arguments)], dim=-1)
+            if self.frequency_embedding_dim % 2:
+                embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
         return self.mlp(embedding.to(dtype=hidden_dtype))
 
 
@@ -332,7 +333,7 @@ class LLaDAImageTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
     """
 
     _supports_gradient_checkpointing = True
-    _no_split_modules = ["LLaDAImageTransformerBlock"]
+    _no_split_modules = ["LLaDAImageTransformerBlock", "LLaDAImageFinalLayer"]
     _repeated_blocks = ["LLaDAImageTransformerBlock"]
     _skip_layerwise_casting_patterns = [
         "t_embedder",
@@ -419,15 +420,9 @@ class LLaDAImageTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
             nn.Linear(semantic_feat_dim, dim, bias=True),
         )
 
-        nn.init.normal_(self.semantic_embedder[1].weight, mean=0.0, std=0.02)
-        nn.init.zeros_(self.semantic_embedder[1].bias)
-        nn.init.normal_(self.sigvq_embedder[1].weight, mean=0.0, std=0.02)
-        nn.init.zeros_(self.sigvq_embedder[1].bias)
-
         self.x_pad_token = nn.Parameter(torch.zeros(1, dim))
         self.cap_pad_token = nn.Parameter(torch.zeros(1, dim))
         self.sigvq_pad_token = nn.Parameter(torch.zeros(1, dim))
-        nn.init.normal_(self.sigvq_pad_token, mean=0.0, std=0.02)
 
         self.rope_embedder = LLaDAImageRopeEmbedder(rope_theta, axes_dims, axes_lens)
 
@@ -1245,9 +1240,6 @@ class LLaDAImageQueryAttention(nn.Module, AttentionModuleMixin):
         self.out_proj = nn.Linear(hidden_size, hidden_size, bias=True)
         self.set_processor(self._default_processor_cls())
 
-        nn.init.xavier_uniform_(self.in_proj_weight)
-        nn.init.zeros_(self.in_proj_bias)
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -1339,7 +1331,6 @@ class LLaDAImageQueryFormerModel(ModelMixin, ConfigMixin, AttentionMixin):
             )
 
         self.meta_queries = nn.Parameter(torch.zeros(num_queries, hidden_size))
-        nn.init.normal_(self.meta_queries, std=1 / math.sqrt(hidden_size))
         self.query_blocks = nn.ModuleList(
             [
                 LLaDAImageQueryFormerBlock(
@@ -1758,10 +1749,38 @@ class LLaDAImageSigVQModel(ModelMixin, ConfigMixin, AttentionMixin):
     The model contains only the GLM vision encoder, VQ quantizer, and prior token projection used during inference.
     Input images must already be RGB tensors normalized to `[-1, 1]`, have one common size, and be divisible by
     `patch_size`.
+
+    Args:
+        image_size (`int`, defaults to `2048`):
+            Image size used to initialize the learned position embeddings.
+        patch_size (`int`, defaults to `16`):
+            Spatial size of each vision patch.
+        in_channels (`int`, defaults to `3`):
+            Number of input image channels.
+        hidden_size (`int`, defaults to `1536`):
+            Vision encoder hidden dimension.
+        intermediate_size (`int`, defaults to `6144`):
+            Intermediate dimension of the vision feed-forward layers.
+        num_hidden_layers (`int`, defaults to `40`):
+            Number of vision transformer blocks.
+        num_attention_heads (`int`, defaults to `16`):
+            Number of vision attention heads.
+        attention_bias (`bool`, defaults to `True`):
+            Whether vision attention projections use bias.
+        attention_dropout (`float`, defaults to `0.0`):
+            Dropout probability for vision attention.
+        norm_eps (`float`, defaults to `1e-6`):
+            Epsilon used by vision normalization layers.
+        codebook_size (`int`, defaults to `16384`):
+            Number of discrete VQ entries.
+        codebook_embed_dim (`int`, defaults to `2048`):
+            Dimension of each quantizer codebook entry.
+        semantic_embed_dim (`int`, defaults to `4096`):
+            Dimension of the projected semantic token features.
     """
 
     _supports_gradient_checkpointing = True
-    _no_split_modules = ["LLaDAImageSigVQVisionBlock"]
+    _no_split_modules = ["LLaDAImageSigVQVisionBlock", "LLaDAImageSigVQEmbeddings", "LLaDAImageSigVQQuantizer"]
     _repeated_blocks = ["LLaDAImageSigVQVisionBlock"]
     _skip_layerwise_casting_patterns = ["patch_embed", "position_embedding", "norm", "quantize"]
 

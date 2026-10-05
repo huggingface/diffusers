@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from collections.abc import Callable
+from contextlib import contextmanager
 
 import torch
 import torch.nn.functional as F
@@ -42,14 +43,11 @@ def _default_rope_parameters(config, device=None, seq_len=None, layer_type=None)
     device = device if device is not None else torch.device("cpu")
     head_dim = getattr(config, "head_dim", None) or config.hidden_size // config.num_attention_heads
     dim = int(head_dim * getattr(config, "partial_rotary_factor", 1.0))
-    inv_freq = 1.0 / (config.rope_theta ** (torch.arange(0, dim, 2, dtype=torch.int64, device=device).float() / dim))
+    rope_theta = getattr(config, "rope_theta", None)
+    if rope_theta is None:
+        rope_theta = config.rope_parameters["rope_theta"]
+    inv_freq = 1.0 / (rope_theta ** (torch.arange(0, dim, 2, dtype=torch.int64, device=device).float() / dim))
     return inv_freq, 1.0
-
-
-# The official LLaDA2 remote model uses this Transformers 4 compatibility entry. Transformers 5 no longer
-# registers it, so make it available before DiffusionPipeline loads the custom text encoder.
-if "default" not in ROPE_INIT_FUNCTIONS:
-    ROPE_INIT_FUNCTIONS["default"] = _default_rope_parameters
 
 
 class LLaDAImagePipeline(DiffusionPipeline):
@@ -79,6 +77,19 @@ class LLaDAImagePipeline(DiffusionPipeline):
     model_cpu_offload_seq = "text_encoder->queryformer->text_projection->sigvq->transformer->vae"
     _exclude_from_cpu_offload = ["text_encoder"]
     _callback_tensor_inputs = ["latents"]
+
+    @classmethod
+    @contextmanager
+    def _component_loading_context(cls):
+        # The official LLaDA2 encoder expects the Transformers 4 default RoPE registry entry.
+        added_default = "default" not in ROPE_INIT_FUNCTIONS
+        if added_default:
+            ROPE_INIT_FUNCTIONS["default"] = _default_rope_parameters
+        try:
+            yield
+        finally:
+            if added_default:
+                del ROPE_INIT_FUNCTIONS["default"]
 
     def __init__(
         self,
@@ -114,8 +125,10 @@ class LLaDAImagePipeline(DiffusionPipeline):
             # non-persistent and is therefore not restored from the checkpoint, so materialize it after loading.
             rotary_emb = language_model.rotary_emb
             rotary_device = self.text_encoder.get_input_embeddings().weight.device
-            default_rope_init = ROPE_INIT_FUNCTIONS["default"]
-            inv_freq, attention_scaling = default_rope_init(rotary_emb.config, device=rotary_device)
+            if rotary_emb.rope_type == "default":
+                inv_freq, attention_scaling = _default_rope_parameters(rotary_emb.config, device=rotary_device)
+            else:
+                inv_freq, attention_scaling = rotary_emb.rope_init_fn(rotary_emb.config, device=rotary_device)
             rotary_emb.register_buffer("inv_freq", inv_freq, persistent=False)
             rotary_emb.original_inv_freq = inv_freq
             rotary_emb.attention_scaling = attention_scaling
@@ -250,6 +263,10 @@ class LLaDAImagePipeline(DiffusionPipeline):
         height: int,
         width: int,
     ) -> torch.Tensor:
+        if not callable(getattr(self.text_encoder, "generate_bd_image_logic", None)):
+            raise ValueError(
+                "`generation_mode='vq'` requires a LLaDA2 text encoder exposing `generate_bd_image_logic`."
+            )
         text_encoder_device = self.text_encoder.get_input_embeddings().weight.device
         execution_device = self._execution_device
         restore_text_encoder_device = text_encoder_device != execution_device
@@ -257,6 +274,7 @@ class LLaDAImagePipeline(DiffusionPipeline):
             self.text_encoder.to(execution_device)
 
         prompts = [prompt] if isinstance(prompt, str) else prompt
+        # First image VQ token ID (img_token_id) in the published LLaDA2 vocabulary.
         image_token_offset = 157184
         frontend_scale = max(max(height, width) / 512, 1.0)
         frontend_height = int(height / frontend_scale)
@@ -287,6 +305,7 @@ class LLaDAImagePipeline(DiffusionPipeline):
                         ).unsqueeze(0),
                         "uncond_ids": uncond_ids,
                     },
+                    # Published LLaDA-Image block diffusion sampling defaults.
                     block_length=32,
                     steps=8,
                     gen_length=image_token_count,
@@ -323,6 +342,10 @@ class LLaDAImagePipeline(DiffusionPipeline):
             raise ValueError("`generation_mode` must be one of 'text', 'vq', or 'editing'.")
         if generation_mode in {"text", "vq"} and image is not None:
             raise ValueError(f"`image` must be omitted when `generation_mode='{generation_mode}'`.")
+        if generation_mode == "vq" and not callable(getattr(self.text_encoder, "generate_bd_image_logic", None)):
+            raise ValueError(
+                "`generation_mode='vq'` requires a LLaDA2 text encoder exposing `generate_bd_image_logic`."
+            )
         if generation_mode == "vq" and prompt is None:
             raise ValueError("`prompt` is required when `generation_mode='vq'`.")
         if generation_mode == "editing" and image is None:
@@ -545,6 +568,7 @@ class LLaDAImagePipeline(DiffusionPipeline):
             schedule = (1 - (1 - schedule**1.17) ** 0.8) ** 1.1
             sigmas = (1 - schedule).tolist()
             self.scheduler.set_timesteps(sigmas=sigmas, device=device)
+        self.scheduler.set_begin_index(0)
         timesteps = self.scheduler.timesteps
         self._num_timesteps = len(timesteps)
 

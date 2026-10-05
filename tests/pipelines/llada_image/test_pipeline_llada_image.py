@@ -17,6 +17,8 @@ import types
 import pytest
 import torch
 from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM
+from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
+from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding
 
 from diffusers import (
     AutoencoderKLFlux2,
@@ -146,27 +148,66 @@ class TestLLaDAImagePipeline(LLaDAImagePipelineTesterConfig, PipelineTesterMixin
             pytest.skip("This regression only affects Transformers 5 and later.")
 
         components = self.get_dummy_components()
-        rotary_emb = torch.nn.Module()
-        rotary_emb.config = types.SimpleNamespace(
-            head_dim=8,
-            hidden_size=16,
-            num_attention_heads=2,
-            partial_rotary_factor=1.0,
-            rope_theta=10000.0,
-        )
-        rotary_emb.rope_type = "default"
-        rotary_emb.register_buffer("inv_freq", torch.zeros(4), persistent=False)
+        config = LlamaConfig(hidden_size=16, num_attention_heads=2, head_dim=8, rope_theta=10000.0)
+        rotary_emb = LlamaRotaryEmbedding(config, device=torch.device("meta"))
         language_model = torch.nn.Module()
         language_model.rotary_emb = rotary_emb
         components["text_encoder"].model.language_model = language_model
+        registry = ROPE_INIT_FUNCTIONS.copy()
 
         self.pipeline_class(**components)
 
         expected = torch.tensor([1.0, 0.1, 0.01, 0.001])
+        assert not rotary_emb.inv_freq.is_meta
         torch.testing.assert_close(rotary_emb.inv_freq, expected)
         torch.testing.assert_close(rotary_emb.original_inv_freq, expected)
+        hidden_states = torch.zeros(1, 2, 16)
+        position_ids = torch.tensor([[0, 1]])
+        cos, sin = rotary_emb(hidden_states, position_ids)
+        angles = torch.tensor([[[0.0] * 8, [1.0, 0.1, 0.01, 0.001] * 2]])
+        torch.testing.assert_close(cos, angles.cos())
+        torch.testing.assert_close(sin, angles.sin())
+        assert ROPE_INIT_FUNCTIONS == registry
 
-    def test_vq_conditioned(self):
+    @pytest.mark.parametrize("fail_loading", [False, True])
+    def test_rope_registry_restored_after_loading(self, fail_loading):
+        registry = ROPE_INIT_FUNCTIONS.copy()
+        try:
+            with self.pipeline_class._component_loading_context():
+                assert "default" in ROPE_INIT_FUNCTIONS
+                if fail_loading:
+                    raise RuntimeError("loading failed")
+        except RuntimeError:
+            pass
+        assert ROPE_INIT_FUNCTIONS == registry
+
+    def test_vq_requires_llada2_encoder(self):
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
+        inputs.update(generation_mode="vq", height=16, width=16)
+        with pytest.raises(ValueError, match="requires a LLaDA2 text encoder"):
+            pipe(**inputs)
+
+    @pytest.mark.parametrize("invalid_output", ["too_short", "negative", "outside_codebook"])
+    def test_invalid_vq_tokens(self, invalid_output):
+        pipe = self.get_pipeline().to(torch_device)
+
+        def generate_bd_image_logic(text_encoder, data, block_length, steps, gen_length, cfg_scale):
+            input_ids = data["input_ids"]
+            if invalid_output == "too_short":
+                return input_ids
+            token = 157183 if invalid_output == "negative" else 157184 + pipe.sigvq.config.codebook_size
+            return torch.cat([input_ids, input_ids.new_full((1, gen_length), token)], dim=1)
+
+        pipe.text_encoder.generate_bd_image_logic = types.MethodType(generate_bd_image_logic, pipe.text_encoder)
+        inputs = self.get_dummy_inputs()
+        inputs.update(generation_mode="vq", height=16, width=16, output_type="latent")
+        message = "expected 1" if invalid_output == "too_short" else "outside the SigVQ codebook"
+        with pytest.raises(ValueError, match=message):
+            pipe(**inputs)
+
+    @pytest.mark.parametrize("guidance_scale", [1.0, 5.0])
+    def test_vq_conditioned(self, guidance_scale):
         pipe = self.get_pipeline().to(torch_device)
 
         def generate_bd_image_logic(text_encoder, data, block_length, steps, gen_length, cfg_scale):
@@ -176,14 +217,15 @@ class TestLLaDAImagePipeline(LLaDAImagePipelineTesterConfig, PipelineTesterMixin
 
         pipe.text_encoder.generate_bd_image_logic = types.MethodType(generate_bd_image_logic, pipe.text_encoder)
         inputs = self.get_dummy_inputs()
-        inputs.update(generation_mode="vq", height=16, width=16, output_type="latent")
+        inputs.update(generation_mode="vq", height=16, width=16, output_type="latent", guidance_scale=guidance_scale)
         output = pipe(**inputs).images
         assert output.shape == (1, 4, 8, 8)
 
-    def test_image_editing(self):
+    @pytest.mark.parametrize("guidance_scale", [1.0, 5.0])
+    def test_image_editing(self, guidance_scale):
         pipe = self.get_pipeline().to(torch_device)
         inputs = self.get_dummy_inputs()
-        inputs.update(image=torch.rand(1, 3, 8, 8), generation_mode="editing")
+        inputs.update(image=torch.rand(1, 3, 8, 8), generation_mode="editing", guidance_scale=guidance_scale)
         output = pipe(**inputs).images
         assert output.shape == (1, *self.output_shape)
         assert not torch.isnan(output).any()
