@@ -175,9 +175,9 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         transformer ([`QwenImage21Transformer2DModel`]):
             The single-stream block-causal transformer that denoises the latents.
         sample_sigmas (`list[float]`, *optional*):
-            Default sampling sigmas, excluding the terminal sigma. When provided, their length determines the number of
-            denoising steps unless `sigmas` is passed to `__call__`. For a fixed distilled sampling grid, configure the
-            scheduler with `shift=1.0`, no dynamic shifting, no terminal stretching, and no sigma conversions.
+            Default sampling sigmas configured by the model author, excluding the terminal sigma. Their length
+            determines the number of denoising steps. To experiment with a different grid at runtime, pass `sigmas` to
+            `__call__`.
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
@@ -556,8 +556,9 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                 Number of denoising steps. Ignored when `sigmas` or the pipeline's configured `sample_sigmas` is used;
                 the length of that schedule determines the number of steps.
             sigmas (`list[float]`, *optional*):
-                Custom sigmas for the denoising schedule, overriding the pipeline's configured `sample_sigmas`. The
-                scheduler applies its configured shifting and sigma conversions to these values.
+                Sampling sigmas to try for this call, excluding the terminal sigma. Overrides the pipeline's configured
+                `sample_sigmas` and determines the number of denoising steps. The scheduler applies its configured
+                processing to these values.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 Number of images generated per prompt.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
