@@ -334,7 +334,9 @@ class StableDiffusionXLInputStep(ModularPipelineBlocks):
                     )
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusionXLModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(components, block_state)
 
@@ -482,7 +484,9 @@ class StableDiffusionXLImg2ImgSetTimestepsStep(ModularPipelineBlocks):
             return timesteps, num_inference_steps
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusionXLModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.device = components._execution_device
@@ -567,7 +571,9 @@ class StableDiffusionXLSetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusionXLModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.device = components._execution_device
@@ -823,7 +829,9 @@ class StableDiffusionXLInpaintPrepareLatentsStep(ModularPipelineBlocks):
         return mask, masked_image_latents
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusionXLModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.dtype = block_state.dtype if block_state.dtype is not None else components.vae.dtype
@@ -926,7 +934,9 @@ class StableDiffusionXLImg2ImgPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusionXLModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.dtype = block_state.dtype if block_state.dtype is not None else components.vae.dtype
@@ -1027,7 +1037,9 @@ class StableDiffusionXLPrepareLatentsStep(ModularPipelineBlocks):
         return latents
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusionXLModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         if block_state.dtype is None:
@@ -1217,7 +1229,9 @@ class StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep(ModularPipelineB
         return emb
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusionXLModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 
@@ -1395,7 +1409,9 @@ class StableDiffusionXLPrepareAdditionalConditioningStep(ModularPipelineBlocks):
         return emb
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusionXLModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 
@@ -1560,7 +1576,9 @@ class StableDiffusionXLControlNetInputStep(ModularPipelineBlocks):
         return image
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusionXLModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         # (1) prepare controlnet inputs
@@ -1789,7 +1807,9 @@ class StableDiffusionXLControlNetUnionInputStep(ModularPipelineBlocks):
         return image
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusionXLModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         controlnet = unwrap_module(components.controlnet)

@@ -546,7 +546,7 @@ class LongCatImageEditPipeline(DiffusionPipeline, FromSingleFileMixin):
         output_type: str | None = "pil",
         return_dict: bool = True,
         joint_attention_kwargs: dict[str, Any] | None = None,
-    ):
+    ) -> LongCatImagePipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

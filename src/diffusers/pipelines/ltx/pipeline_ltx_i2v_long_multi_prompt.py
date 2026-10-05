@@ -972,7 +972,7 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 128,
-    ):
+    ) -> LTXPipelineOutput | tuple:
         r"""
         Generate an image-to-video sequence via temporal sliding windows and multi-prompt scheduling.
 

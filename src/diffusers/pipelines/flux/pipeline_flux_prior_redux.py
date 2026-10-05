@@ -387,7 +387,7 @@ class FluxPriorReduxPipeline(DiffusionPipeline):
         prompt_embeds_scale: float | list[float] | None = 1.0,
         pooled_prompt_embeds_scale: float | list[float] | None = 1.0,
         return_dict: bool = True,
-    ):
+    ) -> FluxPriorReduxPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

@@ -526,7 +526,7 @@ class QwenImage21Pipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         output_resolution: int = 1024,
         use_kv_cache: bool = True,
-    ):
+    ) -> QwenImagePipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
