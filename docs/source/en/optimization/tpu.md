@@ -26,37 +26,20 @@ Follow the [TorchTPU installation guide](https://github.com/google-pytorch/torch
 
 ## Eager mode
 
+FLUX.1-schnell doesn't fit on a single v6e chip all at once, so use [`~DiffusionPipeline.enable_model_cpu_offload`] to
+move each model to the TPU only while it runs. It detects the `"tpu"` device automatically.
+
 ```python
-import gc
 import torch
 import torch_tpu  # noqa: F401
 
 from diffusers import FluxPipeline
 
 pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
+pipe.enable_model_cpu_offload()
 
-# 1. Encode on TPU.
-pipe.text_encoder.to("tpu")
-pipe.text_encoder_2.to("tpu")
-with torch.no_grad():
-    prompt_embeds, pooled_prompt_embeds, _ = pipe.encode_prompt(
-        prompt="a golden retriever surfing a wave, photorealistic",
-        prompt_2="a golden retriever surfing a wave, photorealistic",
-        device=torch.device("tpu"),
-        max_sequence_length=512,
-    )
-
-# 2. Free the text encoders — nothing below needs them.
-pipe.text_encoder = None
-pipe.text_encoder_2 = None
-gc.collect()
-
-# 3. Move the transformer and VAE in, then denoise with the precomputed embeddings.
-pipe.transformer.to("tpu")
-pipe.vae.to("tpu")
 image = pipe(
-    prompt_embeds=prompt_embeds,
-    pooled_prompt_embeds=pooled_prompt_embeds,
+    prompt="a golden retriever surfing a wave, photorealistic",
     height=1024,
     width=1024,
     num_inference_steps=4,
