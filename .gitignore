@@ -185,4 +185,4 @@ wandb
 
 # AI agent generated symlinks
 /.agents/skills
-/.claude/skillsnotebooks/
+/.claude/skills
