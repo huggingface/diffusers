@@ -368,12 +368,7 @@ class TestModelPushToHub:
         # Push to hub via save_pretrained to a separate repo. Reusing `self.org_repo_id` after
         # deleting it makes the staging server's LFS GC reject the next commit with
         # "LFS pointer pointed to a file that does not exist" when the model bytes are identical.
-        # Change the weights so the second push's bytes differ from the first; identical bytes are deduplicated
-        # against the first push's LFS object, which the same GC race can then reject.
         save_org_repo_id = f"{self.org_repo_id}-saved"
-        with torch.no_grad():
-            for p in model.parameters():
-                p.add_(1.0)
         with tempfile.TemporaryDirectory() as tmp_dir:
             model.save_pretrained(tmp_dir, push_to_hub=True, token=TOKEN, repo_id=save_org_repo_id)
 
