@@ -49,14 +49,8 @@ image = pipe(
 image.save("output.png")
 ```
 
-If the text encoder alone is too large for a single chip(eg. FLUX.2-dev's Mistral-3-Small is ~45GB),
-shard it across multiple chips with [`~diffusers.hooks.tensor_parallel.apply_tensor_parallel`], the
-same mechanism [`~ModelMixin.enable_parallelism`] uses for the transformer (see [Tensor
-parallelism](../training/distributed_inference#tensor-parallelism)). It only requires `model:
-torch.nn.Module`, so it works directly on a `transformers.PreTrainedModel` text encoder too, not
-just a diffusers `ModelMixin`. The text encoder doesn't define a `_tp_plan`, so supply one: pair
-each attention/MLP projection that expands the hidden dimension (`"colwise"`) with the one that
-contracts it back (`"rowwise"`), matching the `transformers` model's actual module names.
+If a model is too large for a single chip, or you have several chips and want lower latency, shard the models
+across chips instead. See the [Tensor parallelism](#tensor-parallelism) section.
 
 ## Compiled mode
 
@@ -109,38 +103,50 @@ image.save("output.png")
 
 ## Tensor parallelism
 
-Shard a transformer too large for one chip across several by passing a [`TensorParallelConfig`] to the `parallel_config` argument of [`~ModelMixin.from_pretrained`]. Each rank reads only its own slice of every sharded weight, so the full model is never materialized. For general TP details (`_tp_plan`, colwise/rowwise), see the [Tensor parallelism](../training/distributed_inference#tensor-parallelism) guide. On TPU, initialize the process group with `backend="tpu_dist"` and build the mesh with `DeviceMesh("tpu", ...)`.
+Shard models too large for one chip across several. FLUX.2-dev's text encoder (~48GB) and transformer (~64GB) each
+exceed a single chip, so the example below shards both:
+
+- the transformer with [`TensorParallelConfig`], passed to the `parallel_config` argument of [`~ModelMixin.from_pretrained`]. Each rank reads only its own slice of every sharded weight, so the full model is never materialized. For general TP details (`_tp_plan`, colwise/rowwise), see the [Tensor parallelism](../training/distributed_inference#tensor-parallelism) guide.
+- the text encoder with Transformers' own [tensor parallelism](https://huggingface.co/docs/transformers/perf_infer_gpu_multi), passing `tp_plan="auto"` and the same mesh.
+
+On TPU, initialize the process group with `backend="tpu_dist"` and build the mesh with `DeviceMesh("tpu", ...)`.
 
 ```python
 import torch
 import torch.distributed as dist
 import torch_tpu  # noqa: F401
 from torch.distributed.device_mesh import DeviceMesh
+from transformers import Mistral3ForConditionalGeneration
 
-from diffusers import DiffusionPipeline, Flux2Transformer2DModel, TensorParallelConfig
+from diffusers import Flux2Pipeline, Flux2Transformer2DModel, TensorParallelConfig
 
 dist.init_process_group(backend="tpu_dist")
-tp_mesh = DeviceMesh("tpu", list(range(dist.get_world_size())))
+mesh = DeviceMesh("tpu", list(range(dist.get_world_size())))
 
+repo_id = "black-forest-labs/FLUX.2-dev"
+text_encoder = Mistral3ForConditionalGeneration.from_pretrained(
+    repo_id, subfolder="text_encoder", dtype=torch.bfloat16, tp_plan="auto", device_mesh=mesh
+)
 transformer = Flux2Transformer2DModel.from_pretrained(
-    "black-forest-labs/FLUX.2-dev",
-    subfolder="transformer",
-    torch_dtype=torch.bfloat16,
-    parallel_config=TensorParallelConfig(mesh=tp_mesh),
+    repo_id, subfolder="transformer", torch_dtype=torch.bfloat16, parallel_config=TensorParallelConfig(mesh=mesh)
 )
-pipe = DiffusionPipeline.from_pretrained(
-    "black-forest-labs/FLUX.2-dev", transformer=transformer, torch_dtype=torch.bfloat16
+pipe = Flux2Pipeline.from_pretrained(
+    repo_id, text_encoder=text_encoder, transformer=transformer, torch_dtype=torch.bfloat16
 )
-# The transformer is already sharded across the chips; move the remaining components individually. The ~45GB
-# text encoder doesn't fit on one chip, so leave it on CPU (or shard it as described in the eager mode section)
-# and encode the prompt there.
 pipe.vae.to("tpu")
-with torch.no_grad():
-    prompt_embeds, _ = pipe.encode_prompt(
-        prompt="a golden retriever surfing a wave, photorealistic", device=torch.device("cpu")
-    )
 
-image = pipe(prompt_embeds=prompt_embeds.to("tpu"), num_inference_steps=28).images[0]
+image = pipe(
+    prompt="a golden retriever surfing a wave, photorealistic",
+    num_inference_steps=28,
+    generator=torch.Generator("cpu").manual_seed(0),
+).images[0]
 if dist.get_rank() == 0:
     image.save("output.png")
+```
+
+Launch one process per chip. On a single host, use all of the host's chips:
+
+```bash
+eval $(python -m torch_tpu._internal.distributed.launchers.singlehost_wrapper | sed 's/^/export /')
+torchrun --nproc_per_node=8 flux2_tp.py
 ```
