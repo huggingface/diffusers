@@ -43,9 +43,9 @@ from diffusers import Kandinsky6SRTransformer3DModel
 transformer = Kandinsky6SRTransformer3DModel.from_pretrained(
     "kandinskylab/Kandinsky-6.0-VSR-distilled2steps-5s-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16
 )
-# The transformer always runs NABLA sparse attention (`nabla_threshold`, 0.8 by default), like Kandinsky 5's `nabla`
-# checkpoints. Only the `flex` backend can execute it.
-transformer.set_attention_backend("flex")
+# The transformer always runs NABLA sparse attention (`nabla_threshold`, 0.8 by default) on the `flex` backend.
+# Compile it, otherwise flex falls back to an eager implementation that needs far more memory at video resolutions.
+transformer.compile_repeated_blocks(fullgraph=True)
 ```
 
 [[autodoc]] Kandinsky6SRTransformer3DModel
