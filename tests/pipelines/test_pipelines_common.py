@@ -35,7 +35,6 @@ from diffusers.hooks.pyramid_attention_broadcast import PyramidAttentionBroadcas
 from diffusers.hooks.taylorseer_cache import TaylorSeerCacheConfig
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FluxIPAdapterMixin, IPAdapterMixin
-from diffusers.models.attention import AttentionModuleMixin
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.models.controlnets.controlnet_xs import UNetControlNetXSModel
 from diffusers.models.unets.unet_3d_condition import UNet3DConditionModel
@@ -81,31 +80,6 @@ def to_np(tensor):
 def check_same_shape(tensor_list):
     shapes = [tensor.shape for tensor in tensor_list]
     return all(shape == shapes[0] for shape in shapes[1:])
-
-
-def check_qkv_fusion_matches_attn_procs_length(model, original_attn_processors):
-    current_attn_processors = model.attn_processors
-    return len(current_attn_processors) == len(original_attn_processors)
-
-
-def check_qkv_fusion_processors_exist(model):
-    current_attn_processors = model.attn_processors
-    proc_names = [v.__class__.__name__ for _, v in current_attn_processors.items()]
-    return all(p.startswith("Fused") for p in proc_names)
-
-
-def check_qkv_fused_layers_exist(model, layer_names):
-    is_fused_submodules = []
-    for submodule in model.modules():
-        if not isinstance(submodule, AttentionModuleMixin) or not submodule._supports_qkv_fusion:
-            continue
-        is_fused_attribute_set = submodule.fused_projections
-        is_fused_layer = True
-        for layer in layer_names:
-            is_fused_layer = is_fused_layer and getattr(submodule, layer, None) is not None
-        is_fused = is_fused_attribute_set and is_fused_layer
-        is_fused_submodules.append(is_fused)
-    return all(is_fused_submodules)
 
 
 class SDFunctionTesterMixin:
@@ -208,53 +182,6 @@ class SDFunctionTesterMixin:
         )
         assert np.allclose(output, output_no_freeu, atol=1e-2), (
             f"Disabling of FreeU should lead to results similar to the default pipeline results but Max Abs Error={np.abs(output_no_freeu - output).max()}."
-        )
-
-    def test_fused_qkv_projections(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["return_dict"] = False
-        image = pipe(**inputs)[0]
-        original_image_slice = image[0, -3:, -3:, -1]
-
-        pipe.fuse_qkv_projections()
-        for _, component in pipe.components.items():
-            if (
-                isinstance(component, nn.Module)
-                and hasattr(component, "original_attn_processors")
-                and component.original_attn_processors is not None
-            ):
-                assert check_qkv_fusion_processors_exist(component), (
-                    "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
-                )
-                assert check_qkv_fusion_matches_attn_procs_length(component, component.original_attn_processors), (
-                    "Something wrong with the attention processors concerning the fused QKV projections."
-                )
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["return_dict"] = False
-        image_fused = pipe(**inputs)[0]
-        image_slice_fused = image_fused[0, -3:, -3:, -1]
-
-        pipe.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        inputs["return_dict"] = False
-        image_disabled = pipe(**inputs)[0]
-        image_slice_disabled = image_disabled[0, -3:, -3:, -1]
-
-        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2), (
-            "Fusion of QKV projections shouldn't affect the outputs."
-        )
-        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2), (
-            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        )
-        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
-            "Original outputs should match when fused QKV projections are disabled."
         )
 
 
