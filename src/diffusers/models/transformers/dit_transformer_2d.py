@@ -152,7 +152,7 @@ class DiTTransformer2DModel(ModelMixin, ConfigMixin):
         class_labels: torch.LongTensor | None = None,
         cross_attention_kwargs: dict[str, Any] = None,
         return_dict: bool = True,
-    ):
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`DiTTransformer2DModel`] forward method.
 

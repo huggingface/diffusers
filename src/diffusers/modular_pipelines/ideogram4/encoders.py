@@ -133,7 +133,9 @@ class Ideogram4PromptUpsampleStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Ideogram4ModularPipeline, state: PipelineState
+    ) -> tuple[Ideogram4ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         if block_state.prompt_upsampling:
@@ -280,7 +282,9 @@ class Ideogram4TextEncoderStep(ModularPipelineBlocks):
         return [captured[i] for i in QWEN3_VL_ACTIVATION_LAYERS]
 
     @torch.no_grad()
-    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Ideogram4ModularPipeline, state: PipelineState
+    ) -> tuple[Ideogram4ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
