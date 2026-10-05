@@ -519,19 +519,30 @@ def _mixin_markers(bucket: str, decorators: Dict[str, str]) -> Dict[str, List[st
     return {cls: sorted(m) for cls, m in markers.items() if m}
 
 
-def _class_markers(test_file: str, mixin_markers: Dict[str, List[str]]) -> List[set]:
-    """Markers of every test class in `test_file`, derived from the marked mixins it composes."""
+def _class_markers(test_file: str, bucket: str, mixin_markers: Dict[str, List[str]]) -> List[set]:
+    """Markers of every test class in `test_file`, derived from the marked mixins it composes.
+
+    A base counts only if the file imports it from `tests/<bucket>/testing_utils`: the legacy mixins in
+    `test_pipelines_common.py` share names with the marked ones but carry no marker, and crediting them
+    would schedule a feature job that collects nothing.
+    """
     tree = ast.parse((PATH_TO_REPO / test_file).read_text(encoding="utf-8"))
+    importer_pkg = list(Path(test_file).parts[:-1])
+    imported: Dict[str, str] = {}
+    for node in _iter_module_level_imports(tree):
+        parts = _resolve_import(node.module, node.level, importer_pkg)
+        if parts is not None and parts[:3] == ["tests", bucket, "testing_utils"]:
+            imported.update({alias.asname or alias.name: alias.name for alias in node.names})
     return [
-        {m for base in _base_names(node) for m in mixin_markers.get(base, [])}
+        {m for base in _base_names(node) if base in imported for m in mixin_markers.get(imported[base], [])}
         for node in ast.walk(tree)
         if isinstance(node, ast.ClassDef)
     ]
 
 
-def _feature_groups_for(paths: List[str], mixin_markers: Dict[str, List[str]]) -> List[str]:
+def _feature_groups_for(paths: List[str], bucket: str, mixin_markers: Dict[str, List[str]]) -> List[str]:
     """Names of the feature groups (including `core`) that at least one test class in `paths` would land in."""
-    class_markers = [m for p in paths for m in _class_markers(p, mixin_markers)]
+    class_markers = [m for p in paths for m in _class_markers(p, bucket, mixin_markers)]
     non_core = NON_CORE_MARKERS
     groups = []
     if any(not m & non_core for m in class_markers):
@@ -552,7 +563,7 @@ def _matrix_entries(test_map: Dict[str, List[str]]) -> List[Dict[str, str]]:
         if bucket not in SPLIT_BY_FEATURE:
             entries.append({"name": bucket, "paths": joined, "markers": ""})
             continue
-        for group in _feature_groups_for(paths, _mixin_markers(bucket, decorators)):
+        for group in _feature_groups_for(paths, bucket, _mixin_markers(bucket, decorators)):
             expr = "core" if group == "core" else " or ".join(FEATURE_GROUPS[group])
             entries.append({"name": f"{bucket}-{group}", "paths": joined, "markers": expr})
     return entries
