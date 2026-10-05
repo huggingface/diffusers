@@ -28,6 +28,7 @@ from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import BlockState, LoopSequentialPipelineBlocks, ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .encoders import encode_vae, get_i2v_mask
+from .modular_pipeline import WanAnimate2ModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -115,7 +116,7 @@ class WanAnimate2SegmentVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, block_state: BlockState, k: int):
+    def __call__(self, components, block_state: BlockState, k: int) -> tuple[WanAnimate2ModularPipeline, BlockState]:
         device = components._execution_device
 
         latent_height, latent_width = block_state.reference_image_latents.shape[-2:]
@@ -190,7 +191,7 @@ class WanAnimate2SegmentPrevFramesStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, block_state: BlockState, k: int):
+    def __call__(self, components, block_state: BlockState, k: int) -> tuple[WanAnimate2ModularPipeline, BlockState]:
         # `block_state.out_frames` is seeded by the loop wrapper and written by the decode step of the
         # previous iteration.
         device = components._execution_device
@@ -270,7 +271,7 @@ class WanAnimate2SegmentPrepareStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, block_state: BlockState, k: int):
+    def __call__(self, components, block_state: BlockState, k: int) -> tuple[WanAnimate2ModularPipeline, BlockState]:
         device = components._execution_device
 
         block_state.latents = randn_tensor(
@@ -319,7 +320,7 @@ class WanAnimate2SegmentSchedulerResetStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, block_state: BlockState, k: int):
+    def __call__(self, components, block_state: BlockState, k: int) -> tuple[WanAnimate2ModularPipeline, BlockState]:
         device = components._execution_device
 
         components.scheduler.set_timesteps(block_state.num_inference_steps, device=device)
@@ -400,7 +401,7 @@ class WanAnimate2RefExtractStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, block_state: BlockState, k: int):
+    def __call__(self, components, block_state: BlockState, k: int) -> tuple[WanAnimate2ModularPipeline, BlockState]:
         device = components._execution_device
         transformer_dtype = components.transformer.dtype
 
@@ -527,7 +528,7 @@ class WanAnimate2SegmentDenoiseInner(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, block_state: BlockState, k: int):
+    def __call__(self, components, block_state: BlockState, k: int) -> tuple[WanAnimate2ModularPipeline, BlockState]:
         transformer_dtype = components.transformer.dtype
 
         guider_inputs = {
@@ -673,7 +674,7 @@ class WanAnimate2SegmentDecodeStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, block_state: BlockState, k: int):
+    def __call__(self, components, block_state: BlockState, k: int) -> tuple[WanAnimate2ModularPipeline, BlockState]:
         latents = block_state.latents.to(torch.float32)
         # The first latent frame is the reference image's slot, not video content.
         out_frames = decode_vae(components.vae, latents[:, 1:])
@@ -730,7 +731,7 @@ class WanAnimate2SegmentLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[WanAnimate2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         # Seed the loop-carried state: `segment_frames` collects each segment's decoded frames (the decode step

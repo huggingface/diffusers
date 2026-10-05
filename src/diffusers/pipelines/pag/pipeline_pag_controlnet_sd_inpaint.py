@@ -1003,7 +1003,7 @@ class StableDiffusionControlNetPAGInpaintPipeline(
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         pag_scale: float = 3.0,
         pag_adaptive_scale: float = 0.0,
-    ):
+    ) -> StableDiffusionPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 
