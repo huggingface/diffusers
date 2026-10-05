@@ -6,7 +6,12 @@ from transformers import AutoConfig, AutoTokenizer, CLIPTextConfig, CLIPTextMode
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, FluxInpaintPipeline, FluxTransformer2DModel
 
 from ...testing_utils import floats_tensor, torch_device
-from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+    TaylorSeerCacheTesterMixin,
+)
 from .testing_utils import FluxIPAdapterTesterMixin
 
 
@@ -18,13 +23,13 @@ class FluxInpaintPipelineTesterConfig(BasePipelineTesterConfig):
     batch_input_params = frozenset(["prompt"])
     output_shape = (3, 32, 32)
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
         transformer = FluxTransformer2DModel(
             patch_size=1,
             in_channels=8,
-            num_layers=1,
-            num_single_layers=1,
+            num_layers=num_layers,
+            num_single_layers=num_single_layers,
             attention_head_dim=16,
             num_attention_heads=2,
             joint_attention_dim=32,
@@ -146,3 +151,7 @@ class TestFluxInpaintPipelineIPAdapter(FluxInpaintPipelineTesterConfig, FluxIPAd
 
 class TestFluxInpaintPipelineMemory(FluxInpaintPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux inpaint pipeline."""
+
+
+class TestFluxInpaintPipelineTaylorSeerCache(FluxInpaintPipelineTesterConfig, TaylorSeerCacheTesterMixin):
+    """TaylorSeer cache tests for the Flux inpaint pipeline."""
