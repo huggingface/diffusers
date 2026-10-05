@@ -105,14 +105,18 @@ jobs:
 
     - name: Run all selected tests on CPU
       run: |
-        pytest -n 2 --dist=loadfile -v --make-reports=${{ matrix.modules }}_tests_cpu ${{ fromJson(needs.setup_pr_tests.outputs.test_map)[matrix.modules] }}
+        pytest -n 2 --dist=loadfile -v --make-reports=${MATRIX_MODULES}_tests_cpu ${{ fromJson(needs.setup_pr_tests.outputs.test_map)[matrix.modules] }}
+      env:
+        MATRIX_MODULES: ${{ matrix.modules }}
 
     - name: Failure short reports
       if: ${{ failure() }}
       continue-on-error: true
       run: |
-        cat reports/${{ matrix.modules }}_tests_cpu_stats.txt
-        cat reports/${{ matrix.modules }}_tests_cpu_failures_short.txt
+        cat reports/${MATRIX_MODULES}_tests_cpu_stats.txt
+        cat reports/${MATRIX_MODULES}_tests_cpu_failures_short.txt
+      env:
+        MATRIX_MODULES: ${{ matrix.modules }}
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
