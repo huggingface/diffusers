@@ -468,7 +468,7 @@ apply_layerwise_casting(
 )
 ```
 
-## torch.channels_last
+## torch.channels_last[[torchchannels_last]]
 
 [torch.channels_last](https://pytorch.org/tutorials/intermediate/memory_format_tutorial.html) flips how tensors are stored from `(batch size, channels, height, width)` to `(batch size, height, width, channels)`. This aligns the tensors with how the hardware sequentially accesses the tensors stored in memory and avoids skipping around in memory to access the pixel values.
 

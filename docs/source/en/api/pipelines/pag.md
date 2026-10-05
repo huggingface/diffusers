@@ -333,7 +333,7 @@ PAG reduces artifacts and improves the overall compposition.
 
 ## Configure parameters
 
-### pag_applied_layers
+### pag_applied_layers[[pag_applied_layers]]
 
 The `pag_applied_layers` argument allows you to specify which layers PAG is applied to. By default, it applies only to the mid blocks. Changing this setting will significantly impact the output. You can use the `set_pag_applied_layers` method to adjust the PAG layers after the pipeline is created, helping you find the optimal layers for your model.
 

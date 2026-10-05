@@ -64,8 +64,6 @@ class Kandinsky6SRTransformerTesterConfig(BaseModelTesterConfig):
             "ff_dim": 32,
             "num_visual_blocks": 2,
             "axes_dims": (4, 4, 4),
-            # NABLA needs 8x8 token blocks, far larger than these tiny grids; run dense attention.
-            "nabla_threshold": None,
         }
 
     def _build_dummy_inputs(self, batch_size: int, num_frames: int, height: int, width: int) -> dict:
@@ -81,15 +79,15 @@ class Kandinsky6SRTransformerTesterConfig(BaseModelTesterConfig):
         }
 
     def get_dummy_inputs(self) -> dict:
-        return self._build_dummy_inputs(batch_size=1, num_frames=2, height=4, width=4)
+        return self._build_dummy_inputs(batch_size=1, num_frames=2, height=16, width=16)
 
     @property
     def input_shape(self) -> tuple[int, ...]:
-        return (2, 4, 4, 2 * 4 + 1)
+        return (2, 16, 16, 2 * 4 + 1)
 
     @property
     def output_shape(self) -> tuple[int, ...]:
-        return (2, 4, 4, 8)
+        return (2, 16, 16, 8)
 
 
 class TestKandinsky6SRTransformerModel(Kandinsky6SRTransformerTesterConfig, ModelTesterMixin):
@@ -103,12 +101,13 @@ class TestKandinsky6SRTransformerMemory(Kandinsky6SRTransformerTesterConfig, Mem
 class TestKandinsky6SRTransformerTorchCompile(Kandinsky6SRTransformerTesterConfig, TorchCompileTesterMixin):
     @property
     def different_shapes_for_compilation(self):
-        return [(4, 4), (4, 8), (8, 8)]
+        return [(16, 16), (16, 32), (32, 32)]
 
-    def get_dummy_inputs(self, height: int = 4, width: int = 4) -> dict:
+    def get_dummy_inputs(self, height: int = 16, width: int = 16) -> dict:
         return self._build_dummy_inputs(batch_size=1, num_frames=2, height=height, width=width)
 
 
+@pytest.mark.skipif(torch_device == "cpu", reason="FlexAttention does not support backward on CPU.")
 class TestKandinsky6SRTransformerTraining(Kandinsky6SRTransformerTesterConfig, TrainingTesterMixin):
     pass
 

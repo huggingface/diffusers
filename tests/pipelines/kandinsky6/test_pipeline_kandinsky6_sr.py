@@ -45,11 +45,9 @@ class Kandinsky6SRPipelineTesterConfig(BasePipelineTesterConfig):
             ff_dim=32,
             num_visual_blocks=2,
             axes_dims=(4, 4, 4),
-            # NABLA needs 8x8 token blocks; the tiny tiles run dense attention.
-            nabla_threshold=None,
-            # Tiles the size of the 16x32 test video (and its transposed / square variants); every tile size must be
-            # divisible by the VAE spatial factor (4) times the largest scale (4).
-            tile_sizes=((16, 16), (16, 32), (32, 16)),
+            # Trained tile resolutions. NABLA needs each tile's latent token grid divisible by 8, so every size is a
+            # multiple of 32 (VAE spatial factor 4 times 8). The 2x route tiles the 16x32 test video at (16, 32).
+            tile_sizes=((32, 32), (32, 64), (64, 32)),
         )
 
         torch.manual_seed(0)

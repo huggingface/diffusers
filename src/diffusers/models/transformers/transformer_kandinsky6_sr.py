@@ -16,20 +16,28 @@
 
 from __future__ import annotations
 
+import functools
 import math
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import torch
 from torch import Tensor, nn
-from torch.nn.attention.flex_attention import BlockMask
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
+from ...utils import logging
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
-from ..attention_dispatch import AttentionBackendName, dispatch_attention_fn
+from ..attention_dispatch import _CAN_USE_FLEX_ATTN, AttentionBackendName, dispatch_attention_fn
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin, get_parameter_dtype
+
+
+if TYPE_CHECKING:
+    from torch.nn.attention.flex_attention import BlockMask
+
+
+logger = logging.get_logger(__name__)
 
 
 # Side of the local token block that NABLA sparse attention groups into one 64-token attention block.
@@ -106,6 +114,8 @@ def nabla_block_mask(
 ) -> BlockMask:
     """Build a dynamic NABLA block mask from query/key statistics and an STA (Sliding-Tile Attention, see
     https://huggingface.co/papers/2502.04507) prior."""
+    from torch.nn.attention.flex_attention import BlockMask
+
     B, h, S, D = q.shape
     s1 = S // block_size
     qa = q.reshape(B, h, s1, block_size, D).mean(-2)
@@ -147,8 +157,17 @@ def sliding_tile_mask(
     return near.transpose(1, 2).reshape(num_frames * height * width, num_frames * height * width)
 
 
+@functools.lru_cache(maxsize=None)
+def _warn_uncompiled_flex_attention() -> None:
+    logger.warning(
+        "Kandinsky 6 SR attention runs PyTorch's flex attention eagerly, which materializes the full attention "
+        "matrix and does not fit in memory at video resolutions. Compile the transformer, e.g. with "
+        "`transformer.compile_repeated_blocks()`."
+    )
+
+
 class Kandinsky6SRAttnProcessor:
-    """Self-attention processor of the SR transformer: dense by default, NABLA sparse when `sparse_params` is set.
+    """Self-attention processor of the SR transformer: NABLA sparse attention over the `sparse_params` block pattern.
 
     Always dispatches on the `flex` backend: NABLA's sparsity is expressed as a `BlockMask`, which only `flex` can
     consume. That backend also needs to run under `torch.compile` (e.g. `transformer.compile_repeated_blocks()`):
@@ -163,7 +182,7 @@ class Kandinsky6SRAttnProcessor:
         attn: "Kandinsky6SRAttention",
         hidden_states: Tensor,
         rotary_emb: Tensor,
-        sparse_params: dict[str, Any] | None = None,
+        sparse_params: dict[str, Any],
     ) -> Tensor:
         query = attn.to_query(hidden_states).unflatten(-1, (attn.num_heads, -1))
         key = attn.to_key(hidden_states).unflatten(-1, (attn.num_heads, -1))
@@ -173,16 +192,15 @@ class Kandinsky6SRAttnProcessor:
         query = apply_rotary(query, rotary_emb)
         key = apply_rotary(key, rotary_emb)
 
-        if sparse_params is None:
-            attn_mask = None
-        else:
-            # The block statistics are computed from the `(B, heads, S, D)` layout the mask builder expects.
-            attn_mask = nabla_block_mask(
-                query.transpose(1, 2),
-                key.transpose(1, 2),
-                sparse_params["sta_mask"],
-                thr=sparse_params["threshold"],
-            )
+        if not torch.compiler.is_compiling():
+            _warn_uncompiled_flex_attention()
+        # The block statistics are computed from the `(B, heads, S, D)` layout the mask builder expects.
+        attn_mask = nabla_block_mask(
+            query.transpose(1, 2),
+            key.transpose(1, 2),
+            sparse_params["sta_mask"],
+            thr=sparse_params["threshold"],
+        )
         hidden_states = dispatch_attention_fn(
             query,
             key,
@@ -217,7 +235,7 @@ class Kandinsky6SRAttention(nn.Module, AttentionModuleMixin):
         self,
         hidden_states: Tensor,
         rotary_emb: Tensor,
-        sparse_params: dict[str, Any] | None = None,
+        sparse_params: dict[str, Any],
     ) -> Tensor:
         return self.processor(self, hidden_states, rotary_emb, sparse_params)
 
@@ -368,7 +386,7 @@ class Kandinsky6SRTransformerBlock(nn.Module):
         hidden_states: Tensor,
         temb: Tensor,
         rotary_emb: Tensor,
-        sparse_params: dict[str, Any] | None = None,
+        sparse_params: dict[str, Any],
     ) -> Tensor:
         self_attention_params, feed_forward_params = torch.chunk(self.visual_modulation(temb), 2, dim=-1)
         shift, scale, gate = torch.chunk(self_attention_params, 3, dim=-1)
@@ -398,8 +416,9 @@ class Kandinsky6SRTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
     The model denoises tiles of the K-VAE latent video. Its input concatenates the noisy latent with the anchor latent
     and the anchor mask that condition the super-resolution (`2 * in_visual_dim + 1` channels), and its output holds
     `out_visual_dim` channels: `in_visual_dim` for a plain velocity checkpoint, or a widened `n_grid * in_visual_dim`
-    for the [`PiflowScheduler`] distilled checkpoints. Video self-attention runs dense, or through the NABLA sparse
-    block pattern when `nabla_threshold` is set.
+    for the [`PiflowScheduler`] distilled checkpoints. Video self-attention runs through the NABLA sparse block pattern
+    on the `flex` attention backend, which needs the token grid (`height` and `width` after `patch_size`) to be
+    divisible by 8.
 
     Args:
         in_visual_dim (`int`, defaults to `64`):
@@ -420,8 +439,8 @@ class Kandinsky6SRTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
             RoPE dimensions per `(t, h, w)` axis; their sum is the attention head dimension.
         scale_factor (`tuple[float, float, float]`, defaults to `(1.0, 2.0, 2.0)`):
             Per-axis RoPE frequency scaling applied to the token positions.
-        nabla_threshold (`float`, *optional*, defaults to `0.8`):
-            Cumulative-attention threshold of the NABLA block selection. `None` runs dense attention.
+        nabla_threshold (`float`, defaults to `0.8`):
+            Cumulative-attention threshold of the NABLA block selection.
         nabla_window (`tuple[int, int, int]`, defaults to `(11, 7, 7)`):
             Odd `(t, h, w)` extents of the sliding-tile prior that every 8x8 token block always attends to.
         tile_sizes (`tuple[tuple[int, int], ...]`, defaults to `((512, 512), (512, 768), (768, 512))`):
@@ -449,11 +468,16 @@ class Kandinsky6SRTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         num_visual_blocks: int = 32,
         axes_dims: tuple[int, int, int] = (16, 24, 24),
         scale_factor: tuple[float, float, float] = (1.0, 2.0, 2.0),
-        nabla_threshold: float | None = 0.8,
+        nabla_threshold: float = 0.8,
         nabla_window: tuple[int, int, int] = (11, 7, 7),
         tile_sizes: tuple[tuple[int, int], ...] = ((512, 512), (512, 768), (768, 512)),
     ) -> None:
         super().__init__()
+        if not _CAN_USE_FLEX_ATTN:
+            raise ImportError(
+                "Kandinsky6SRTransformer3DModel requires PyTorch>=2.5.0 with `torch.nn.attention.flex_attention`"
+                " for its NABLA sparse attention."
+            )
         head_dim = sum(axes_dims)
 
         self.time_embeddings = Kandinsky6SRTimeEmbeddings(model_dim, time_dim)
@@ -501,23 +525,18 @@ class Kandinsky6SRTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
         visual_rope = self.visual_rope_embeddings(visual_rope_pos, self.config.scale_factor)
 
         # 2. Flatten the grid into a token sequence; NABLA groups 8x8 spatial neighbourhoods into attention blocks
-        sparse_params = None
-        if self.config.nabla_threshold is not None:
-            num_frames, height, width = visual_shape
-            if height % FRACTAL_BLOCK_SIZE or width % FRACTAL_BLOCK_SIZE:
-                raise ValueError(
-                    f"NABLA attention needs the token grid {(height, width)} to be divisible by {FRACTAL_BLOCK_SIZE}"
-                )
-            group_size = (1, FRACTAL_BLOCK_SIZE, FRACTAL_BLOCK_SIZE)
-            visual_embed = _local_patch(visual_embed, visual_shape, group_size, dim=1).flatten(1, 2)
-            visual_rope = _local_patch(visual_rope, visual_shape, group_size, dim=0).flatten(0, 1)
-            sta_mask = sliding_tile_mask(
-                num_frames, height // FRACTAL_BLOCK_SIZE, width // FRACTAL_BLOCK_SIZE, self.config.nabla_window, device
+        num_frames, height, width = visual_shape
+        if height % FRACTAL_BLOCK_SIZE or width % FRACTAL_BLOCK_SIZE:
+            raise ValueError(
+                f"NABLA attention needs the token grid {(height, width)} to be divisible by {FRACTAL_BLOCK_SIZE}"
             )
-            sparse_params = {"sta_mask": sta_mask, "threshold": self.config.nabla_threshold}
-        else:
-            visual_embed = visual_embed.flatten(1, 3)
-            visual_rope = visual_rope.flatten(0, 2)
+        group_size = (1, FRACTAL_BLOCK_SIZE, FRACTAL_BLOCK_SIZE)
+        visual_embed = _local_patch(visual_embed, visual_shape, group_size, dim=1).flatten(1, 2)
+        visual_rope = _local_patch(visual_rope, visual_shape, group_size, dim=0).flatten(0, 1)
+        sta_mask = sliding_tile_mask(
+            num_frames, height // FRACTAL_BLOCK_SIZE, width // FRACTAL_BLOCK_SIZE, self.config.nabla_window, device
+        )
+        sparse_params = {"sta_mask": sta_mask, "threshold": self.config.nabla_threshold}
 
         # 3. Transformer blocks
         for block in self.visual_transformer_blocks:
@@ -527,15 +546,12 @@ class Kandinsky6SRTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, 
                 visual_embed = block(visual_embed, temb, visual_rope, sparse_params)
 
         # 4. Restore the grid and project back to the latent space
-        if sparse_params is not None:
-            visual_embed = _local_merge(
-                visual_embed.reshape(visual_embed.shape[0], -1, FRACTAL_BLOCK_SIZE**2, visual_embed.shape[-1]),
-                visual_shape,
-                group_size,
-                dim=1,
-            )
-        else:
-            visual_embed = visual_embed.reshape(-1, *visual_shape, visual_embed.shape[-1])
+        visual_embed = _local_merge(
+            visual_embed.reshape(visual_embed.shape[0], -1, FRACTAL_BLOCK_SIZE**2, visual_embed.shape[-1]),
+            visual_shape,
+            group_size,
+            dim=1,
+        )
         output = self.out_layer(visual_embed, temb)
 
         if not return_dict:

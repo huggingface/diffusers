@@ -443,6 +443,24 @@ class MMAudioVAE(ModelMixin, ConfigMixin):
         return_dict: bool = True,
         generator: torch.Generator | None = None,
     ) -> DecoderOutput | tuple:
+        r"""
+        Args:
+            sample (`torch.Tensor` of shape `(batch_size, num_samples)`):
+                Mono waveform in `[-1, 1]` at `sample_rate` to encode and reconstruct as a mel spectrogram.
+            sample_posterior (`bool`, *optional*, defaults to `False`):
+                Whether to sample from the latent posterior instead of using its mode.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether to return a [`~models.autoencoder_kl.DecoderOutput`] instead of a plain tuple.
+            generator (`torch.Generator`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make sampling
+                deterministic.
+
+        Returns:
+            [`~models.autoencoder_kl.DecoderOutput`] or `tuple`:
+                If `return_dict` is True, a [`~models.autoencoder_kl.DecoderOutput`] is returned, otherwise a plain
+                `tuple` is returned. Its `sample` is the reconstructed mel spectrogram of shape `(batch_size, mel_bins,
+                num_mel_frames)`.
+        """
         posterior = self.encode(sample).latent_dist
         z = posterior.sample(generator=generator) if sample_posterior else posterior.mode()
         mel = self.decode(z).sample
