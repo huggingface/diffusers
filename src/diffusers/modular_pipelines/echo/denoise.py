@@ -25,6 +25,7 @@ from ..modular_pipeline import (
     PipelineState,
 )
 from ..modular_pipeline_utils import ComponentSpec, InputParam, InsertableDict, OutputParam
+from .modular_pipeline import EchoModularPipeline
 
 
 DEFAULT_ECHO_SIGMAS = (1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0)
@@ -89,7 +90,9 @@ class EchoLoopBeforeDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, block_state: BlockState, i: int, sigma: float):
+    def __call__(
+        self, components, block_state: BlockState, i: int, sigma: float
+    ) -> tuple[EchoModularPipeline, BlockState]:
         batch_size, video_token_count = block_state.latents.shape[:2]
         audio_token_count = block_state.audio_latents.shape[1]
         scaled_sigma = float(sigma) * float(components.transformer.config.timestep_scale_multiplier)
@@ -222,7 +225,9 @@ class EchoLoopDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, block_state: BlockState, i: int, sigma: float):
+    def __call__(
+        self, components, block_state: BlockState, i: int, sigma: float
+    ) -> tuple[EchoModularPipeline, BlockState]:
         transformer_dtype = components.transformer.dtype
         video_context = block_state.connector_prompt_embeds.to(transformer_dtype)
         audio_context = block_state.connector_audio_prompt_embeds.to(transformer_dtype)
@@ -308,7 +313,9 @@ class EchoLoopAfterDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, block_state: BlockState, i: int, sigma: float):
+    def __call__(
+        self, components, block_state: BlockState, i: int, sigma: float
+    ) -> tuple[EchoModularPipeline, BlockState]:
         next_sigma = float(block_state.sigmas[i + 1])
         if next_sigma > 0:
             video_noise = randn_tensor(
