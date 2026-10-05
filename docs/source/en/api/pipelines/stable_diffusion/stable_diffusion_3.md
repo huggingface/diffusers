@@ -42,7 +42,7 @@ import torch
 from diffusers import StableDiffusion3Pipeline
 
 pipe = StableDiffusion3Pipeline.from_pretrained("stabilityai/stable-diffusion-3-medium-diffusers", dtype=torch.float16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe(
     prompt="a photo of a cat holding a sign that says hello world",
@@ -88,7 +88,7 @@ feature_extractor = SiglipImageProcessor.from_pretrained(
 image_encoder = SiglipVisionModel.from_pretrained(
     image_encoder_id,
     dtype=torch.float16
-).to( "cuda")
+).to( "cuda")  # or "mps", "xpu", "cpu"
 
 pipe = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3.5-large",
@@ -166,7 +166,7 @@ pipe = StableDiffusion3Pipeline.from_pretrained(
     tokenizer_3=None,
     dtype=torch.float16
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe(
     prompt="a photo of a cat holding a sign that says hello world",
@@ -246,7 +246,7 @@ torch._inductor.config.coordinate_descent_check_all_directions = True
 pipe = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3-medium-diffusers",
     dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipe.set_progress_bar_config(disable=True)
 
 pipe.transformer.to(memory_format=torch.channels_last)
@@ -359,7 +359,7 @@ pipe = StableDiffusion3Pipeline.from_pretrained(
     "stabilityai/stable-diffusion-3-medium-diffusers", dtype=torch.float16
 )
 pipe.vae = AutoencoderTiny.from_pretrained("madebyollin/taesd3", dtype=torch.float16)
-pipe = pipe.to("cuda")
+pipe = pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "slice of delicious New York-style berry cheesecake"
 image = pipe(prompt, num_inference_steps=25).images[0]

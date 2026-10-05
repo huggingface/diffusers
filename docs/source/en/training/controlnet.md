@@ -255,7 +255,7 @@ import torch
 controlnet = ControlNetModel.from_pretrained("path/to/controlnet", dtype=torch.float16)
 pipeline = StableDiffusionControlNetPipeline.from_pretrained(
     "path/to/base/model", controlnet=controlnet, dtype=torch.float16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 control_image = load_image("./conditioning_image_1.png")
 prompt = "pale golden rod circle with old lace background"

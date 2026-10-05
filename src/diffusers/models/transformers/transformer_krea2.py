@@ -21,7 +21,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import apply_lora_scale, logging
 from ...utils.torch_utils import maybe_adjust_dtype_for_device
 from ..attention import AttentionMixin, AttentionModuleMixin
@@ -74,10 +74,11 @@ class Krea2AttnProcessor:
             query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
             key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
 
-        # Krea 2 always attends with a text padding mask, and no fused attention kernel handles grouped-query
-        # attention together with a mask — SDPA would fall back to its math backend and materialize the full
+        # Krea 2 always attends with a text padding mask. Of torch's SDPA kernels, only math and cuDNN accept a mask
+        # together with `enable_gqa`, and when math is tried first it materializes the full
         # [batch_size, num_heads, seq_len, seq_len] attention matrix. Repeat the key/value heads here instead: the
-        # result is identical, and it keeps every attention backend usable since they all reject `enable_gqa`.
+        # result is identical, every kernel accepts it, and the context-parallel path (which rejects `enable_gqa`)
+        # keeps working.
         num_key_value_groups = attn.num_heads // attn.num_kv_heads
         if num_key_value_groups > 1:
             key = key.repeat_interleave(num_key_value_groups, dim=2)
@@ -335,7 +336,7 @@ class Krea2RotaryPosEmbed(nn.Module):
         return freqs_cos, freqs_sin
 
 
-class Krea2Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapterMixin):
+class Krea2Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapterMixin, FromOriginalModelMixin):
     r"""
     The single-stream MMDiT flow-matching backbone used by the Krea 2 pipeline.
 

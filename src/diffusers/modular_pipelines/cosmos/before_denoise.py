@@ -48,7 +48,9 @@ class Cosmos3PrepareTextSegmentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         block_state.cond_text_segment = components._prepare_text_segment(block_state.cond_input_ids, device=device)
@@ -124,10 +126,12 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
-        dtype = components.transformer.dtype
+        sampling_dtype = torch.float32
 
         x0_tokens_vision = block_state.x0_tokens_vision
         if x0_tokens_vision is None:
@@ -151,21 +155,26 @@ class Cosmos3VisionPrepareLatentsStep(ModularPipelineBlocks):
 
         block_state.fps_vision = float(block_state.fps)
         condition_frames = block_state.vision_condition_frames or []
-        block_state.vision_condition_mask = torch.zeros((x0_tokens_vision.shape[2], 1, 1), device=device, dtype=dtype)
+        block_state.vision_condition_mask = torch.zeros(
+            (x0_tokens_vision.shape[2], 1, 1), device=device, dtype=sampling_dtype
+        )
         for frame_idx in condition_frames:
             if 0 <= frame_idx < block_state.vision_condition_mask.shape[0]:
                 block_state.vision_condition_mask[frame_idx, 0, 0] = 1.0
 
         if block_state.latents is None:
             pure_noise = randn_tensor(
-                tuple(x0_tokens_vision.shape), generator=block_state.generator, device=device, dtype=dtype
+                tuple(x0_tokens_vision.shape),
+                generator=block_state.generator,
+                device=device,
+                dtype=sampling_dtype,
             )
             block_state.latents = (
-                block_state.vision_condition_mask * x0_tokens_vision.to(device=device, dtype=dtype)
+                block_state.vision_condition_mask * x0_tokens_vision.to(device=device, dtype=sampling_dtype)
                 + (1.0 - block_state.vision_condition_mask) * pure_noise
             )
         else:
-            block_state.latents = block_state.latents.to(device=device, dtype=dtype)
+            block_state.latents = block_state.latents.to(device=device, dtype=sampling_dtype)
 
         vision_condition_indexes = torch.nonzero(
             block_state.vision_condition_mask[:, 0, 0] > 0, as_tuple=False
@@ -220,10 +229,12 @@ class Cosmos3SoundPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
-        dtype = components.transformer.dtype
+        sampling_dtype = torch.float32
 
         if not components.transformer.config.sound_gen:
             raise ValueError("Sound generation requires a transformer trained with sound_gen=True.")
@@ -233,19 +244,21 @@ class Cosmos3SoundPrepareLatentsStep(ModularPipelineBlocks):
         n_audio_samples = int(block_state.num_frames / block_state.fps * components.sound_sampling_rate)
         hop_size = components.sound_hop_size
         t_sound = (n_audio_samples + hop_size - 1) // hop_size
-        x0_tokens_sound = torch.zeros(sound_dim, t_sound, device=device, dtype=dtype)
-        block_state.sound_condition_mask = torch.zeros((x0_tokens_sound.shape[1], 1), device=device, dtype=dtype)
+        x0_tokens_sound = torch.zeros(sound_dim, t_sound, device=device, dtype=sampling_dtype)
+        block_state.sound_condition_mask = torch.zeros(
+            (x0_tokens_sound.shape[1], 1), device=device, dtype=sampling_dtype
+        )
 
         if block_state.sound_latents is None:
             pure_noise = randn_tensor(
-                tuple(x0_tokens_sound.shape), generator=block_state.generator, device=device, dtype=dtype
+                tuple(x0_tokens_sound.shape), generator=block_state.generator, device=device, dtype=sampling_dtype
             )
             block_state.sound_latents = (
                 block_state.sound_condition_mask.T * x0_tokens_sound
                 + (1.0 - block_state.sound_condition_mask.T) * pure_noise
             )
         else:
-            block_state.sound_latents = block_state.sound_latents.to(device=device, dtype=dtype)
+            block_state.sound_latents = block_state.sound_latents.to(device=device, dtype=sampling_dtype)
 
         block_state.sound_scheduler = copy.deepcopy(components.scheduler)
 
@@ -317,10 +330,12 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
-        dtype = components.transformer.dtype
+        sampling_dtype = torch.float32
         action = block_state.action
 
         if not components.transformer.config.action_gen:
@@ -342,7 +357,7 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
             raw_actions = action.raw_actions
             if raw_actions is None:
                 raise ValueError("action_mode='forward_dynamics' requires an action tensor.")
-            raw_actions = raw_actions.to(device=device, dtype=dtype)
+            raw_actions = raw_actions.to(device=device, dtype=sampling_dtype)
             if raw_actions.shape[-1] > action_dim:
                 raise ValueError(
                     f"Cosmos3 action dimension {raw_actions.shape[-1]} exceeds model action_dim={action_dim}."
@@ -363,7 +378,7 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
                 raw_actions = torch.cat([raw_actions, action_padding], dim=-1)
             x0_tokens_action = raw_actions
         else:
-            x0_tokens_action = torch.zeros(action_chunk_size, action_dim, device=device, dtype=dtype)
+            x0_tokens_action = torch.zeros(action_chunk_size, action_dim, device=device, dtype=sampling_dtype)
 
         if action.domain_name not in _EMBODIMENT_TO_DOMAIN_ID:
             raise ValueError(
@@ -373,14 +388,16 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
             torch.tensor([_EMBODIMENT_TO_DOMAIN_ID[action.domain_name]], dtype=torch.long, device=device)
         ]
         condition_frames = block_state.action_condition_frame_indexes or []
-        block_state.action_condition_mask = torch.zeros((x0_tokens_action.shape[0], 1), device=device, dtype=dtype)
+        block_state.action_condition_mask = torch.zeros(
+            (x0_tokens_action.shape[0], 1), device=device, dtype=sampling_dtype
+        )
         for frame_idx in condition_frames:
             if 0 <= frame_idx < block_state.action_condition_mask.shape[0]:
                 block_state.action_condition_mask[frame_idx, 0] = 1.0
 
         if block_state.action_latents is None:
             pure_noise = randn_tensor(
-                tuple(x0_tokens_action.shape), generator=block_state.generator, device=device, dtype=dtype
+                tuple(x0_tokens_action.shape), generator=block_state.generator, device=device, dtype=sampling_dtype
             )
             block_state.action_latents = (
                 block_state.action_condition_mask * x0_tokens_action
@@ -389,7 +406,7 @@ class Cosmos3ActionPrepareLatentsStep(ModularPipelineBlocks):
             if block_state.raw_action_dim_resolved is not None:
                 block_state.action_latents[:, block_state.raw_action_dim_resolved :] = 0
         else:
-            block_state.action_latents = block_state.action_latents.to(device=device, dtype=dtype)
+            block_state.action_latents = block_state.action_latents.to(device=device, dtype=sampling_dtype)
 
         block_state.action_scheduler = copy.deepcopy(components.scheduler)
 
@@ -455,7 +472,9 @@ class Cosmos3VisionPackSequenceStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         has_image_condition = bool(block_state.vision_condition_indexes_for_pack)
@@ -547,7 +566,9 @@ class Cosmos3SoundPackSequenceStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -643,7 +664,9 @@ class Cosmos3ActionPackSequenceStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -728,7 +751,9 @@ class Cosmos3VisionDenoiseInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         block_state.cond_position_ids = torch.cat(
             [
@@ -829,7 +854,9 @@ class Cosmos3SoundDenoiseInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         block_state.cond_position_ids = torch.cat(
             [block_state.cond_position_ids, block_state.cond_sound_segment["sound_mrope_ids"]], dim=1
@@ -918,7 +945,9 @@ class Cosmos3ActionDenoiseInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         block_state.cond_position_ids = torch.cat(
             [block_state.cond_position_ids, block_state.cond_action_segment["action_mrope_ids"]], dim=1
@@ -961,7 +990,9 @@ class Cosmos3SetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         if components.config.use_native_flow_schedule:
@@ -1036,23 +1067,27 @@ class Cosmos3TransferPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
-        dtype = components.transformer.dtype
+        sampling_dtype = torch.float32
         tcf = components.vae_scale_factor_temporal
 
-        target_x0 = block_state.x0_tokens_vision.to(device=device)
+        target_x0 = block_state.x0_tokens_vision.to(device=device, dtype=sampling_dtype)
         current_conditional_frames = block_state.current_conditional_frames
 
         # Build the noisy target latents + conditioning mask from the clean target latents.
         latent_t = target_x0.shape[2]
-        condition_mask = torch.zeros((latent_t, 1, 1), device=device, dtype=dtype)
+        condition_mask = torch.zeros((latent_t, 1, 1), device=device, dtype=sampling_dtype)
         latent_condition_frames = 0
         if current_conditional_frames > 0:
             latent_condition_frames = (current_conditional_frames - 1) // tcf + 1
             condition_mask[:latent_condition_frames] = 1.0
-        noise = randn_tensor(tuple(target_x0.shape), generator=block_state.generator, device=device, dtype=dtype)
+        noise = randn_tensor(
+            tuple(target_x0.shape), generator=block_state.generator, device=device, dtype=sampling_dtype
+        )
         block_state.latents = condition_mask * target_x0 + (1.0 - condition_mask) * noise
         block_state.velocity_mask = 1.0 - condition_mask
         block_state.condition_latents = condition_mask * target_x0
@@ -1131,7 +1166,9 @@ class Cosmos3TransferPackSequenceStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         num_hints = len(block_state.control_latents)
@@ -1233,7 +1270,9 @@ class Cosmos3TransferSetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         components.scheduler.set_timesteps(block_state.num_inference_steps, device=device)
@@ -1296,7 +1335,9 @@ class Cosmos3DistilledSetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 

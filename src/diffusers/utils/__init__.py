@@ -36,6 +36,7 @@ from .constants import (
     SAFE_WEIGHTS_INDEX_NAME,
     SAFETENSORS_FILE_EXTENSION,
     SAFETENSORS_WEIGHTS_NAME,
+    TRANSFORMERS_COMPONENT_AUX_FILES,
     USE_PEFT_BACKEND,
     WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
@@ -49,6 +50,7 @@ from .hub_utils import (
     _add_variant,
     _get_checkpoint_shard_files,
     _get_model_file,
+    _resolve_revision,
     extract_commit_hash,
     http_user_agent,
 )

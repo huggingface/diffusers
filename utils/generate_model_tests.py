@@ -55,13 +55,11 @@ ATTENTION_INDICATORS = {
 OPTIONAL_TESTERS = [
     # Quantization testers
     ("BitsAndBytesTesterMixin", "bnb"),
-    ("QuantoTesterMixin", "quanto"),
     ("TorchAoTesterMixin", "torchao"),
     ("GGUFTesterMixin", "gguf"),
     ("ModelOptTesterMixin", "modelopt"),
     # Quantization compile testers
     ("BitsAndBytesCompileTesterMixin", "bnb_compile"),
-    ("QuantoCompileTesterMixin", "quanto_compile"),
     ("TorchAoCompileTesterMixin", "torchao_compile"),
     ("GGUFCompileTesterMixin", "gguf_compile"),
     ("ModelOptCompileTesterMixin", "modelopt_compile"),
@@ -373,7 +371,7 @@ def generate_test_class(model_name: str, config_class: str, tester: str) -> str:
                 "        return {}",
             ]
         )
-    elif tester in ["BitsAndBytesTesterMixin", "QuantoTesterMixin", "TorchAoTesterMixin", "ModelOptTesterMixin"]:
+    elif tester in ["BitsAndBytesTesterMixin", "TorchAoTesterMixin", "ModelOptTesterMixin"]:
         lines.extend(
             [
                 "    def get_dummy_inputs(self) -> dict[str, torch.Tensor]:",
@@ -383,7 +381,6 @@ def generate_test_class(model_name: str, config_class: str, tester: str) -> str:
         )
     elif tester in [
         "BitsAndBytesCompileTesterMixin",
-        "QuantoCompileTesterMixin",
         "TorchAoCompileTesterMixin",
         "ModelOptCompileTesterMixin",
     ]:
@@ -525,12 +522,10 @@ def main():
         default=[],
         choices=[
             "bnb",
-            "quanto",
             "torchao",
             "gguf",
             "modelopt",
             "bnb_compile",
-            "quanto_compile",
             "torchao_compile",
             "gguf_compile",
             "modelopt_compile",

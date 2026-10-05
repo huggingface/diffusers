@@ -97,7 +97,7 @@ pipe = PixArtSigmaPipeline.from_pretrained(
     "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
     text_encoder=None,
     dtype=torch.float16,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 latents = pipe(
     negative_prompt=None,

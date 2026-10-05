@@ -1,8 +1,7 @@
 import gc
 import random
-import unittest
 
-import numpy as np
+import pytest
 import torch
 from transformers import (
     CLIPImageProcessor,
@@ -16,9 +15,9 @@ from transformers import (
 from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, StableUnCLIPImg2ImgPipeline, UNet2DConditionModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
-from diffusers.utils.import_utils import is_xformers_available
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_max_memory_allocated,
@@ -33,27 +32,22 @@ from ...testing_utils import (
     torch_device,
 )
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-from ..test_pipelines_common import (
-    PipelineKarrasSchedulerTesterMixin,
-    PipelineLatentTesterMixin,
+from ..test_pipelines_common import assert_mean_pixel_difference
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
     PipelineTesterMixin,
-    assert_mean_pixel_difference,
 )
 
 
 enable_full_determinism()
 
 
-class StableUnCLIPImg2ImgPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
-):
+class StableUnCLIPImg2ImgPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableUnCLIPImg2ImgPipeline
-    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
-    image_params = frozenset(
-        []
-    )  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
-    image_latents_params = frozenset([])
+    required_input_params_in_call_signature = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
+    batch_input_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self):
         embedder_hidden_size = 32
@@ -133,7 +127,7 @@ class StableUnCLIPImg2ImgPipelineFastTests(
         torch.manual_seed(0)
         vae = AutoencoderKL()
 
-        components = {
+        return {
             # image encoding components
             "feature_extractor": feature_extractor,
             "image_encoder": image_encoder.eval(),
@@ -148,84 +142,66 @@ class StableUnCLIPImg2ImgPipelineFastTests(
             "vae": vae.eval(),
         }
 
-        return components
-
-    def get_dummy_inputs(self, device, seed=0, pil_image=True):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
-        input_image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+    def get_dummy_inputs(self, pil_image=True):
+        input_image = floats_tensor((1, 3, 32, 32), rng=random.Random(0))
 
         if pil_image:
             input_image = input_image * 0.5 + 0.5
             input_image = input_image.clamp(0, 1)
-            input_image = input_image.cpu().permute(0, 2, 3, 1).float().numpy()
+            input_image = input_image.permute(0, 2, 3, 1).float().numpy()
             input_image = DiffusionPipeline.numpy_to_pil(input_image)[0]
 
         return {
             "prompt": "An anime racoon running a marathon",
             "image": input_image,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
         }
 
+
+class TestStableUnCLIPImg2ImgPipeline(StableUnCLIPImg2ImgPipelineTesterConfig, PipelineTesterMixin):
     @skip_mps
     def test_image_embeds_none(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = StableUnCLIPImg2ImgPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         inputs.update({"image_embeds": None})
         image = sd_pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1]
+        image_slice = image[0, -1, -3:, -3:]
 
-        assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.4661, 0.8109, 0.6731, 0.4309, 0.6674, 0.7538, 0.3841, 0.4951, 0.5243])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-
-    # Overriding PipelineTesterMixin::test_attention_slicing_forward_pass
-    # because GPU undeterminism requires a looser check.
-    def test_attention_slicing_forward_pass(self):
-        test_max_difference = torch_device in ["cpu", "mps"]
-
-        self._test_attention_slicing_forward_pass(test_max_difference=test_max_difference)
+        assert image.shape == (1, *self.output_shape)
+        # fmt: off
+        expected_slice = torch.tensor([0.4661, 0.8109, 0.6731, 0.4309, 0.6674, 0.7538, 0.3841, 0.4951, 0.5243])
+        # fmt: on
+        assert_tensors_close(image_slice.flatten(), expected_slice, atol=1e-3)
 
     # Overriding PipelineTesterMixin::test_inference_batch_single_identical
     # because undeterminism requires a looser check.
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(expected_max_diff=1e-3)
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-3):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_xformers_available(),
-        reason="XFormers attention is only available with CUDA and `xformers` installed",
-    )
-    def test_xformers_attention_forwardGenerator_pass(self):
-        self._test_xformers_attention_forwardGenerator_pass(test_max_difference=False)
-
-    @unittest.skip("Test not supported at the moment.")
+    @pytest.mark.skip("Test not supported at the moment.")
     def test_encode_prompt_works_in_isolation(self):
         pass
 
 
+class TestStableUnCLIPImg2ImgPipelineMemory(StableUnCLIPImg2ImgPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the unCLIP img2img pipeline."""
+
+
 @nightly
 @require_torch_accelerator
-class StableUnCLIPImg2ImgPipelineIntegrationTests(unittest.TestCase):
-    def setUp(self):
-        # clean up the VRAM before each test
-        super().setUp()
+class TestStableUnCLIPImg2ImgPipelineIntegration:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        # clean up the VRAM before and after each test
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

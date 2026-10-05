@@ -13,44 +13,44 @@
 # limitations under the License.
 
 import gc
-import unittest
 
+import pytest
 import torch
 from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLWan, HeliosPipeline, HeliosScheduler, HeliosTransformer3DModel
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     enable_full_determinism,
     require_torch_accelerator,
     slow,
     torch_device,
 )
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
-class HeliosPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class HeliosPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = HeliosPipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "generator",
-            "latents",
-            "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
-        ]
+    required_input_params_in_call_signature = frozenset(
+        ["prompt", "height", "width", "guidance_scale", "negative_prompt", "prompt_embeds", "negative_prompt_embeds"]
     )
-    test_xformers_attention = False
+    batch_input_params = frozenset(["prompt", "negative_prompt"])
+    output_shape = (33, 3, 16, 16)
+    # Helios is a video pipeline: it exposes `num_videos_per_prompt`, not the base default `num_images_per_prompt`.
+    optional_input_params = frozenset(
+        ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
+    )
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -88,46 +88,39 @@ class HeliosPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             is_amplify_history=False,
         )
 
-        components = {
+        return {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "dance monkey",
             "negative_prompt": "negative",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 1.0,
             "height": 16,
             "width": 16,
             "num_frames": 9,
             "max_sequence_length": 16,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
-        return inputs
 
+
+class TestHeliosPipeline(HeliosPipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         video = pipe(**inputs).frames
         generated_video = video[0]
-        self.assertEqual(generated_video.shape, (33, 3, 16, 16))
+        assert generated_video.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.4529, 0.4527, 0.4499, 0.4542, 0.4528, 0.4524, 0.4531, 0.4534, 0.5328,
@@ -136,36 +129,42 @@ class HeliosPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
-    @unittest.skip("Helios uses a lot of mixed precision internally, which is not suitable for this test case")
+    @pytest.mark.skip("Helios uses a lot of mixed precision internally, which is not suitable for this test case")
     def test_save_load_float16(self):
         pass
 
-    @unittest.skip("Test not supported")
-    def test_attention_slicing_forward_pass(self):
-        pass
-
-    @unittest.skip("Optional components not applicable for Helios")
+    @pytest.mark.skip("Optional components not applicable for Helios")
     def test_save_load_optional_components(self):
         pass
 
 
+class TestHeliosPipelineMemory(HeliosPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Helios pipeline."""
+
+
+class TestHeliosPipelineLoRA(HeliosPipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the Helios pipeline."""
+
+
+class TestHeliosPipelineLoRAMemory(HeliosPipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests (group offload, CPU offload) for the Helios pipeline."""
+
+
 @slow
 @require_torch_accelerator
-class HeliosPipelineIntegrationTests(unittest.TestCase):
+class TestHeliosPipelineIntegration:
     prompt = "A painting of a squirrel eating a burger."
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
-
-    @unittest.skip("TODO: test needs to be implemented")
+    @pytest.mark.skip("TODO: test needs to be implemented")
     def test_helios(self):
         pass

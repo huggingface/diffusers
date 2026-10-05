@@ -42,7 +42,7 @@ pipe = TgatePixArtLoader(
        pipe,
        gate_step=gate_step,
        num_inference_steps=inference_step,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe.tgate(
        "An alpaca made of colorful building blocks, cyberpunk.",
@@ -75,7 +75,7 @@ pipe = TgateSDXLLoader(
        pipe,
        gate_step=gate_step,
        num_inference_steps=inference_step,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe.tgate(
        "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
@@ -108,7 +108,7 @@ pipe = TgateSDXLDeepCacheLoader(
        pipe,
        cache_interval=3,
        cache_branch_id=0,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe.tgate(
        "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",
@@ -148,7 +148,7 @@ pipe = TgateSDXLLoader(
        gate_step=gate_step,
        num_inference_steps=inference_step,
        lcm=True
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe.tgate(
        "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k.",

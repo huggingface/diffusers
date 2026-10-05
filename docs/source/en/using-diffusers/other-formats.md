@@ -10,14 +10,22 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-[[open-in-colab]]
-
 # Model formats
 
 Diffusion models are typically stored in the Diffusers format or single-file format. Model files can be stored in various file types such as safetensors or ckpt.
 
 > [!TIP]
-> Format refers to whether the weights are stored in a directory structure and file refers to the file type.
+> Format refers to whether the weights are stored in a directory structure. File type refers to how those weights are serialized, such as safetensors or ckpt.
+
+```text
+Diffusers format                    Single-file format
+model/                              model.safetensors   (or .ckpt)
+├─ model_index.json                 └─ all components in one file
+├─ unet/  (or transformer/)
+├─ text_encoder/
+├─ vae/
+└─ scheduler/
+```
 
 This guide will show you how to load pipelines and models from these formats and files.
 
@@ -32,7 +40,7 @@ The Diffusers format stores each model (UNet, transformer, text encoder) in a se
 
 ## Single file format
 
-A single-file format stores *all* the model (UNet, transformer, text encoder) weights in a single file. Benefits of single-file formats include the following.
+A single-file format stores *all* the model weights (UNet, transformer, text encoder) in a single file. Benefits of single-file formats include:
 
 - Greater compatibility with [ComfyUI](https://github.com/comfyanonymous/ComfyUI) or [Automatic1111](https://github.com/AUTOMATIC1111/stable-diffusion-webui).
 - Easier to download and share a single file.
@@ -46,7 +54,7 @@ from diffusers import StableDiffusionXLPipeline
 pipeline = StableDiffusionXLPipeline.from_single_file(
     "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors",
     dtype=torch.float16,
-    device_map="cuda"
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -63,7 +71,7 @@ pipeline = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     transformer=transformer,
     dtype=torch.bfloat16,
-    device_map="cuda"
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -81,9 +89,12 @@ ckpt_path = "https://huggingface.co/segmind/SSD-1B/blob/main/SSD-1B.safetensors"
 pipeline = StableDiffusionXLPipeline.from_single_file(ckpt_path, config="segmind/SSD-1B")
 ```
 
-Diffusers attempts to infer the pipeline components based on the signature types of the pipeline class when using `original_config` with `local_files_only=True`. It won't download the config files from a Hub repository to avoid backward breaking changes when you can't connect to the internet. This method isn't as reliable as providing a path to a local model with the `config` argument and may lead to errors. You should run the pipeline with `local_files_only=False` to download the config files to the local cache to avoid errors.
+When you pass `original_config` with `local_files_only=True`, Diffusers infers pipeline components from the pipeline class signature. It does not download config files from the Hub, which avoids breaking changes when you are offline. That path is less reliable than giving `config` a local model path, and it can error. Run once with `local_files_only=False` so the configs land in the local cache if you need them offline later.
 
 Override default configs by passing the arguments directly to [`~loaders.FromSingleFileMixin.from_single_file`]. The examples below demonstrate how to override the configs in a pipeline or model.
+
+<hfoptions id="config-options">
+<hfoption id="pipeline">
 
 ```py
 from diffusers import StableDiffusionXLInstructPix2PixPipeline
@@ -94,12 +105,18 @@ pipeline = StableDiffusionXLInstructPix2PixPipeline.from_single_file(
 )
 ```
 
+</hfoption>
+<hfoption id="model">
+
 ```py
 from diffusers import UNet2DConditionModel
 
 ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0_0.9vae.safetensors"
 model = UNet2DConditionModel.from_single_file(ckpt_path, upcast_attention=True)
 ```
+
+</hfoption>
+</hfoptions>
 
 ### Local files
 
@@ -128,7 +145,7 @@ pipeline = StableDiffusionXLPipeline.from_single_file(
 
 ### Symlink
 
-If you're working with a file system that does not support symlinking, download the checkpoint file to a local directory first with the `local_dir` parameter. Using the `local_dir` parameter automatically disables symlinks.
+If you're working with a file system that doesn't support symlinking, download the checkpoint file to a local directory first with the `local_dir` parameter. Using the `local_dir` parameter automatically disables symlinks.
 
 ```py
 from huggingface_hub import hf_hub_download, snapshot_download
@@ -136,7 +153,7 @@ from diffusers import StableDiffusionXLPipeline
 
 my_local_checkpoint_path = hf_hub_download(
     repo_id="segmind/SSD-1B",
-    filename="SSD-1B.safetensors"
+    filename="SSD-1B.safetensors",
     local_dir="my_local_checkpoints",
 )
 print("My local checkpoint: ", my_local_checkpoint_path)
@@ -170,35 +187,39 @@ Use [`~DiffusionPipeline.from_pretrained`] or [`~loaders.FromSingleFileMixin.fro
 
 ```py
 import torch
-from diffusers import DiffusionPipeline
+from diffusers import DiffusionPipeline, StableDiffusionXLPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    torch.dtype=torch.float16,
-    device_map="cuda"
+    dtype=torch.float16,
+    device_map="cuda",  # or "mps", "xpu", "cpu"
 )
 
-pipeline = DiffusionPipeline.from_single_file(
+pipeline = StableDiffusionXLPipeline.from_single_file(
     "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors",
     dtype=torch.float16,
 )
 ```
 
-If you're using a checkpoint trained with a Diffusers training script, metadata such as the LoRA configuration, is automatically saved. When the file is loaded, the metadata is parsed to correctly configure the LoRA and avoid missing or incorrect LoRA configs. Inspect the metadata of a safetensors file by clicking on the <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/safetensors/logo.png" alt="safetensors logo" style="vertical-align: middle; display: inline-block; max-height: 0.8em; max-width: 0.8em; margin: 0; padding: 0; line-height: 1;"> logo next to the file on the Hub.
+If you're using a checkpoint trained with a Diffusers training script, metadata such as the LoRA configuration is automatically saved. When the file is loaded, that metadata is parsed so the LoRA is configured correctly. Inspect the metadata of a safetensors file by clicking on the <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/safetensors/logo.png" alt="safetensors logo" style="vertical-align: middle; display: inline-block; max-height: 0.8em; max-width: 0.8em; margin: 0; padding: 0; line-height: 1;"> icon next to the file on the Hub.
 
-Save the metadata for LoRAs that aren't trained with Diffusers with either `transformer_lora_adapter_metadata` or `unet_lora_adapter_metadata` depending on your model. For the text encoder, use the `text_encoder_lora_adapter_metadata` and `text_encoder_2_lora_adapter_metadata` arguments in [`~loaders.FluxLoraLoaderMixin.save_lora_weights`]. This is only supported for safetensors files.
+Save LoRA adapter metadata for checkpoints that aren't trained with Diffusers by passing it to [`~loaders.FluxLoraLoaderMixin.save_lora_weights`]. Use `transformer_lora_adapter_metadata` for the transformer and `text_encoder_lora_adapter_metadata` for the text encoder. You must also pass `save_directory` and at least one of `transformer_lora_layers` or `text_encoder_lora_layers`. This path is only supported for safetensors files.
 
 ```py
 import torch
+from peft.utils import get_peft_model_state_dict
 from diffusers import FluxPipeline
 
 pipeline = FluxPipeline.from_pretrained(
-    "black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16
-).to("cuda")
+    "black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
+)
 pipeline.load_lora_weights("linoyts/yarn_art_Flux_LoRA")
+
+transformer_lora_layers = get_peft_model_state_dict(pipeline.transformer)
 pipeline.save_lora_weights(
-    text_encoder_lora_adapter_metadata={"r": 8, "lora_alpha": 8},
-    text_encoder_2_lora_adapter_metadata={"r": 8, "lora_alpha": 8}
+    save_directory="path/to/lora",
+    transformer_lora_layers=transformer_lora_layers,
+    transformer_lora_adapter_metadata={"r": 8, "lora_alpha": 8},
 )
 ```
 
@@ -211,18 +232,34 @@ Pickled files may be unsafe because they can be exploited to execute malicious c
 Use [`~loaders.FromSingleFileMixin.from_single_file`] to load a ckpt file.
 
 ```py
-from diffusers import DiffusionPipeline
+from diffusers import StableDiffusionPipeline
 
-pipeline = DiffusionPipeline.from_single_file(
+pipeline = StableDiffusionPipeline.from_single_file(
     "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/v1-5-pruned.ckpt"
+)
+```
+
+### GGUF
+
+GGUF stores prequantized weights in a single file. Diffusers loads GGUF through model [`~loaders.FromSingleFileMixin.from_single_file`] with [`GGUFQuantizationConfig`]. Pipeline-level GGUF loading is not supported.
+
+See [GGUF](../quantization/gguf) for install steps and full examples.
+
+```py
+import torch
+from diffusers import FluxTransformer2DModel, GGUFQuantizationConfig
+
+transformer = FluxTransformer2DModel.from_single_file(
+    "https://huggingface.co/city96/FLUX.1-dev-gguf/blob/main/flux1-dev-Q2_K.gguf",
+    quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
 )
 ```
 
 ## Converting formats and files
 
-Diffusers provides scripts and methods to convert format and files to enable broader support across the diffusion ecosystem.
+Diffusers provides scripts and methods to convert formats and files so more tools in the diffusion ecosystem can use them.
 
-Take a look at the [diffusers/scripts](https://github.com/huggingface/diffusers/tree/main/scripts) folder to find a conversion script. Scripts with `"to_diffusers` appended at the end converts a model to the Diffusers format. Each script has a specific set of arguments for configuring the conversion. Make sure you check what arguments are available.
+Take a look at the [diffusers/scripts](https://github.com/huggingface/diffusers/tree/main/scripts) folder to find a conversion script. Scripts with `"to_diffusers"` appended at the end convert a model to the Diffusers format. Each script has a specific set of arguments for configuring the conversion. Make sure you check what arguments are available.
 
 The example below converts a model stored in Diffusers format to a single-file format. Provide the path to the model to convert and where to save the converted model. You can optionally specify what file type and data type to save the model as.
 
@@ -233,16 +270,14 @@ python convert_diffusers_to_original_sdxl.py --model_path path/to/model/to/conve
 The [`~DiffusionPipeline.save_pretrained`] method also saves a model in Diffusers format and takes care of creating subfolders for each model. It saves the files as safetensor files by default.
 
 ```py
-from diffusers import DiffusionPipeline
+from diffusers import StableDiffusionXLPipeline
 
-pipeline = DiffusionPipeline.from_single_file(
+pipeline = StableDiffusionXLPipeline.from_single_file(
     "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors",
 )
-pipeline.save_pretrained()
+pipeline.save_pretrained("path/to/save/model")
 ```
 
-Finally, you can use a Space like [SD To Diffusers](https://hf.co/spaces/diffusers/sd-to-diffusers) or [SD-XL To Diffusers](https://hf.co/spaces/diffusers/sdxl-to-diffusers) to convert models to the Diffusers format. It'll open a PR on your model repository with the converted files. This is the easiest way to convert a model, but it may fail for more complicated models. Using a conversion script is more reliable.
-
-## Resources
+## Next steps
 
 - Learn more about the design decisions and why safetensor files are preferred for saving and loading model weights in the [Safetensors audited as really safe and becoming the default](https://blog.eleuther.ai/safetensors-security-audit/) blog post.

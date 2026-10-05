@@ -5,8 +5,6 @@ on:
   schedule:
     - cron: "0 0 * * *" # every day at midnight
 
-permissions:
-  contents: read
 
 env:
   DIFFUSERS_IS_CI: yes
@@ -25,8 +23,12 @@ env:
   #     (torchvision::nms). The pinned set is (re)written into the override file per job below.
   UV_OVERRIDE: /tmp/uv-overrides.txt
 
+permissions: {}
+
 jobs:
   setup_torch_cuda_pipeline_matrix:
+    permissions:
+      contents: read
     name: Setup Torch Pipelines CUDA Slow Tests Matrix
     runs-on:
       group: aws-general-8-plus
@@ -58,6 +60,8 @@ jobs:
           path: reports
 
   run_nightly_tests_for_torch_pipelines:
+    permissions:
+      contents: read
     name: Nightly Torch Pipelines CUDA Tests
     needs: setup_torch_cuda_pipeline_matrix
     strategy:
@@ -94,7 +98,6 @@ jobs:
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
           pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-             -k "not Onnx" \
             --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
             --report-log=tests_pipeline_${{ matrix.module }}_cuda.log \
             tests/pipelines/${{ matrix.module }}
@@ -111,6 +114,8 @@ jobs:
           path: reports
 
   run_nightly_tests_for_other_torch_modules:
+    permissions:
+      contents: read
     name: Nightly Torch CUDA Tests
     runs-on:
       group: aws-g4dn-2xlarge
@@ -150,7 +155,7 @@ jobs:
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
         pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-          -k "not Onnx" \
+          -m "not compile" \
           --make-reports=tests_torch_${{ matrix.module }}_cuda \
           --report-log=tests_torch_${{ matrix.module }}_cuda.log \
           tests/${{ matrix.module }}
@@ -181,6 +186,8 @@ jobs:
         path: reports
 
   run_torch_compile_tests:
+    permissions:
+      contents: read
     name: PyTorch Compile CUDA tests
 
     runs-on:
@@ -210,9 +217,8 @@ jobs:
     - name: Run torch compile tests on GPU
       env:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
-        RUN_COMPILE: yes
       run: |
-        pytest -n 1 --max-worker-restart=0 --dist=loadfile -k "compile" --make-reports=tests_torch_compile_cuda tests/
+        pytest -n 1 --max-worker-restart=0 --dist=loadfile -m compile --make-reports=tests_torch_compile_cuda tests/
     - name: Failure short reports
       if: ${{ failure() }}
       run: cat reports/tests_torch_compile_cuda_failures_short.txt
@@ -225,6 +231,8 @@ jobs:
         path: reports
 
   run_big_gpu_torch_tests:
+    permissions:
+      contents: read
     name: Torch tests on big GPU
     strategy:
       fail-fast: false
@@ -277,6 +285,8 @@ jobs:
           path: reports
 
   torch_minimum_version_cuda_tests:
+    permissions:
+      contents: read
     name: Torch Minimum Version CUDA Tests
     runs-on:
       group: aws-g4dn-2xlarge
@@ -311,7 +321,6 @@ jobs:
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
           pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-            -k "not Onnx" \
             --make-reports=tests_torch_minimum_version_cuda \
             tests/models/test_modeling_common.py \
             tests/pipelines/test_pipelines_common.py \
@@ -335,6 +344,8 @@ jobs:
           path: reports
 
   run_nightly_quantization_tests:
+    permissions:
+      contents: read
     name: Torch quantization nightly tests
     strategy:
       fail-fast: false
@@ -350,9 +361,6 @@ jobs:
           - backend: "torchao"
             marker: "torchao"
             additional_deps: ["mslk"]
-          - backend: "optimum_quanto"
-            marker: "quanto"
-            additional_deps: []
           - backend: "nvidia_modelopt"
             marker: "modelopt"
             additional_deps: []
@@ -408,6 +416,8 @@ jobs:
           path: reports
           
   run_nightly_pipeline_level_quantization_tests:
+    permissions:
+      contents: read
     name: Torch quantization nightly tests
     strategy:
       fail-fast: false
@@ -428,7 +438,7 @@ jobs:
         run: |
           printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
-          uv pip install -U bitsandbytes optimum_quanto
+          uv pip install -U bitsandbytes
           uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
           uv pip install pytest-reportlog
       - name: Environment
@@ -459,6 +469,8 @@ jobs:
           path: reports
 
   generate_consolidated_report:
+    permissions:
+      contents: read
     name: Generate Consolidated Test Report
     needs: [
       run_nightly_tests_for_torch_pipelines,
@@ -467,7 +479,6 @@ jobs:
       run_big_gpu_torch_tests,
       run_nightly_quantization_tests,
       run_nightly_pipeline_level_quantization_tests,
-      # run_nightly_onnx_tests,
       torch_minimum_version_cuda_tests,
     ]
     if: always()

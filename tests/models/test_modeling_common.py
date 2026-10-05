@@ -119,12 +119,10 @@ class TestModelUtils:
 
     def test_local_files_only_with_sharded_checkpoint(self):
         repo_id = "hf-internal-testing/tiny-flux-sharded"
-        error_response = mock.Mock(
-            status_code=500,
-            headers={},
-            raise_for_status=mock.Mock(side_effect=HfHubHTTPError("Server down", response=mock.Mock())),
-            json=mock.Mock(return_value={}),
-        )
+        error_response = mock.Mock(status_code=500, headers={}, json=mock.Mock(return_value={}))
+        # `resolve_revision` inspects `error.response.status_code` to tell a Hub outage from a definitive answer,
+        # so the raised error has to carry the response itself.
+        error_response.raise_for_status = mock.Mock(side_effect=HfHubHTTPError("Server down", response=error_response))
         client_mock = mock.Mock()
         client_mock.get.return_value = error_response
 

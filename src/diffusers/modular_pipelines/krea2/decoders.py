@@ -92,7 +92,9 @@ class Krea2DecodeStep(ModularPipelineBlocks):
         return [OutputParam.template("images")]
 
     @torch.no_grad()
-    def __call__(self, components: Krea2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Krea2ModularPipeline, state: PipelineState
+    ) -> tuple[Krea2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         vae = components.vae

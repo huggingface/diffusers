@@ -17,10 +17,9 @@
 
 import gc
 import random
-import tempfile
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -34,7 +33,6 @@ from diffusers import (
 )
 from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.utils import load_image
-from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
@@ -47,25 +45,18 @@ from ...testing_utils import (
     slow,
     torch_device,
 )
-from ..pipeline_params import (
-    TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
-    TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
-    TEXT_TO_IMAGE_IMAGE_PARAMS,
-)
-from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
+from ..pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class ControlNetInpaintPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
-):
+class ControlNetInpaintPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableDiffusionControlNetInpaintPipeline
-    params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
-    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
-    image_params = frozenset({"control_image"})  # skip `image` and `mask` for now, only test for control_image
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    required_input_params_in_call_signature = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
+    batch_input_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
+    output_shape = (3, 64, 64)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -120,7 +111,7 @@ class ControlNetInpaintPipelineFastTests(
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        components = {
+        return {
             "unet": unet,
             "controlnet": controlnet,
             "scheduler": scheduler,
@@ -131,65 +122,63 @@ class ControlNetInpaintPipelineFastTests(
             "feature_extractor": None,
             "image_encoder": None,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
+    def get_dummy_inputs(self):
+        # The control image is drawn from the same generator that is handed to the pipeline, so the pipeline sees an
+        # already-advanced generator state — keep the order to stay comparable across runs.
+        generator = self.get_generator(0)
         controlnet_embedder_scale_factor = 2
         control_image = randn_tensor(
             (1, 3, 32 * controlnet_embedder_scale_factor, 32 * controlnet_embedder_scale_factor),
             generator=generator,
-            device=torch.device(device),
+            device=torch.device(torch_device),
         )
-        init_image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        init_image = floats_tensor((1, 3, 32, 32), rng=random.Random(0)).to(torch_device)
         init_image = init_image.cpu().permute(0, 2, 3, 1)[0]
 
         image = Image.fromarray(np.uint8(init_image)).convert("RGB").resize((64, 64))
         mask_image = Image.fromarray(np.uint8(init_image + 4)).convert("RGB").resize((64, 64))
 
-        inputs = {
+        return {
             "prompt": "A painting of a squirrel eating a burger",
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
             "image": image,
             "mask_image": mask_image,
             "control_image": control_image,
         }
 
-        return inputs
 
-    def test_attention_slicing_forward_pass(self):
-        return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
+class ControlNetInpaintPipelineTests:
+    """Tests shared by the inpaint-UNet and the plain-UNet ("simple") ControlNet inpainting configs."""
 
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_xformers_available(),
-        reason="XFormers attention is only available with CUDA and `xformers` installed",
-    )
-    def test_xformers_attention_forwardGenerator_pass(self):
-        self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=2e-3)
-
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(expected_max_diff=2e-3)
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=2e-3):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
     def test_encode_prompt_works_in_isolation(self):
         extra_required_param_value_dict = {
             "device": torch.device(torch_device).type,
-            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+            "do_classifier_free_guidance": self.get_dummy_inputs().get("guidance_scale", 1.0) > 1.0,
         }
-        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
+        super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
 
 
-class ControlNetSimpleInpaintPipelineFastTests(ControlNetInpaintPipelineFastTests):
-    pipeline_class = StableDiffusionControlNetInpaintPipeline
-    params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
-    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
-    image_params = frozenset([])
+class TestControlNetInpaintPipeline(
+    ControlNetInpaintPipelineTesterConfig, ControlNetInpaintPipelineTests, PipelineTesterMixin
+):
+    pass
+
+
+class TestControlNetInpaintPipelineMemory(ControlNetInpaintPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the ControlNet inpaint pipeline."""
+
+
+class ControlNetSimpleInpaintPipelineTesterConfig(ControlNetInpaintPipelineTesterConfig):
+    """Same contract as `ControlNetInpaintPipelineTesterConfig`, but with a plain (non-inpainting) UNet."""
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -244,7 +233,7 @@ class ControlNetSimpleInpaintPipelineFastTests(ControlNetInpaintPipelineFastTest
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        components = {
+        return {
             "unet": unet,
             "controlnet": controlnet,
             "scheduler": scheduler,
@@ -255,15 +244,19 @@ class ControlNetSimpleInpaintPipelineFastTests(ControlNetInpaintPipelineFastTest
             "feature_extractor": None,
             "image_encoder": None,
         }
-        return components
 
 
-class MultiControlNetInpaintPipelineFastTests(
-    PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
+class TestControlNetSimpleInpaintPipeline(
+    ControlNetSimpleInpaintPipelineTesterConfig, ControlNetInpaintPipelineTests, PipelineTesterMixin
 ):
+    pass
+
+
+class MultiControlNetInpaintPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableDiffusionControlNetInpaintPipeline
-    params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
-    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
+    required_input_params_in_call_signature = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
+    batch_input_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
+    output_shape = (3, 64, 64)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -339,7 +332,7 @@ class MultiControlNetInpaintPipelineFastTests(
 
         controlnet = MultiControlNetModel([controlnet1, controlnet2])
 
-        components = {
+        return {
             "unet": unet,
             "controlnet": controlnet,
             "scheduler": scheduler,
@@ -350,123 +343,94 @@ class MultiControlNetInpaintPipelineFastTests(
             "feature_extractor": None,
             "image_encoder": None,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
+    def get_dummy_inputs(self):
+        # The control images are drawn from the same generator that is handed to the pipeline, so the pipeline sees
+        # an already-advanced generator state — keep the order to stay comparable across runs.
+        generator = self.get_generator(0)
         controlnet_embedder_scale_factor = 2
-
         control_image = [
             randn_tensor(
                 (1, 3, 32 * controlnet_embedder_scale_factor, 32 * controlnet_embedder_scale_factor),
                 generator=generator,
-                device=torch.device(device),
+                device=torch.device(torch_device),
             ),
             randn_tensor(
                 (1, 3, 32 * controlnet_embedder_scale_factor, 32 * controlnet_embedder_scale_factor),
                 generator=generator,
-                device=torch.device(device),
+                device=torch.device(torch_device),
             ),
         ]
-        init_image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        init_image = floats_tensor((1, 3, 32, 32), rng=random.Random(0)).to(torch_device)
         init_image = init_image.cpu().permute(0, 2, 3, 1)[0]
 
         image = Image.fromarray(np.uint8(init_image)).convert("RGB").resize((64, 64))
         mask_image = Image.fromarray(np.uint8(init_image + 4)).convert("RGB").resize((64, 64))
 
-        inputs = {
+        return {
             "prompt": "A painting of a squirrel eating a burger",
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
             "image": image,
             "mask_image": mask_image,
             "control_image": control_image,
         }
 
-        return inputs
 
+class TestMultiControlNetInpaintPipeline(MultiControlNetInpaintPipelineTesterConfig, PipelineTesterMixin):
     def test_control_guidance_switch(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
+        pipe = self.get_pipeline().to(torch_device)
 
         scale = 10.0
         steps = 4
 
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["num_inference_steps"] = steps
-        inputs["controlnet_conditioning_scale"] = scale
-        output_1 = pipe(**inputs)[0]
+        def run(**extra):
+            inputs = self.get_dummy_inputs()
+            inputs["num_inference_steps"] = steps
+            inputs["controlnet_conditioning_scale"] = scale
+            return pipe(**inputs, **extra)[0]
 
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["num_inference_steps"] = steps
-        inputs["controlnet_conditioning_scale"] = scale
-        output_2 = pipe(**inputs, control_guidance_start=0.1, control_guidance_end=0.2)[0]
-
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["num_inference_steps"] = steps
-        inputs["controlnet_conditioning_scale"] = scale
-        output_3 = pipe(**inputs, control_guidance_start=[0.1, 0.3], control_guidance_end=[0.2, 0.7])[0]
-
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["num_inference_steps"] = steps
-        inputs["controlnet_conditioning_scale"] = scale
-        output_4 = pipe(**inputs, control_guidance_start=0.4, control_guidance_end=[0.5, 0.8])[0]
+        output_1 = run()
+        output_2 = run(control_guidance_start=0.1, control_guidance_end=0.2)
+        output_3 = run(control_guidance_start=[0.1, 0.3], control_guidance_end=[0.2, 0.7])
+        output_4 = run(control_guidance_start=0.4, control_guidance_end=[0.5, 0.8])
 
         # make sure that all outputs are different
-        assert np.sum(np.abs(output_1 - output_2)) > 1e-3
-        assert np.sum(np.abs(output_1 - output_3)) > 1e-3
-        assert np.sum(np.abs(output_1 - output_4)) > 1e-3
+        assert (output_1 - output_2).abs().sum() > 1e-3
+        assert (output_1 - output_3).abs().sum() > 1e-3
+        assert (output_1 - output_4).abs().sum() > 1e-3
 
-    def test_attention_slicing_forward_pass(self):
-        return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=2e-3):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_xformers_available(),
-        reason="XFormers attention is only available with CUDA and `xformers` installed",
-    )
-    def test_xformers_attention_forwardGenerator_pass(self):
-        self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=2e-3)
-
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(expected_max_diff=2e-3)
-
-    def test_save_pretrained_raise_not_implemented_exception(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        with tempfile.TemporaryDirectory() as tmpdir:
-            try:
-                # save_pretrained is not implemented for Multi-ControlNet
-                pipe.save_pretrained(tmpdir)
-            except NotImplementedError:
-                pass
+    def test_save_pretrained_raise_not_implemented_exception(self, tmp_path):
+        pipe = self.get_pipeline().to(torch_device)
+        try:
+            # save_pretrained is not implemented for Multi-ControlNet
+            pipe.save_pretrained(tmp_path)
+        except NotImplementedError:
+            pass
 
     def test_encode_prompt_works_in_isolation(self):
         extra_required_param_value_dict = {
             "device": torch.device(torch_device).type,
-            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+            "do_classifier_free_guidance": self.get_dummy_inputs().get("guidance_scale", 1.0) > 1.0,
         }
-        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
+        super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
 
 
 @slow
 @require_torch_accelerator
-class ControlNetInpaintPipelineSlowTests(unittest.TestCase):
-    def setUp(self):
-        super().setUp()
+class TestControlNetInpaintPipelineSlow:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

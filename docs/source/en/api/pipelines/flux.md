@@ -104,7 +104,7 @@ image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolv
 mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/cup_mask.png")
 
 repo_id = "black-forest-labs/FLUX.1-Fill-dev"
-pipe = FluxFillPipeline.from_pretrained(repo_id, dtype=torch.bfloat16).to("cuda")
+pipe = FluxFillPipeline.from_pretrained(repo_id, dtype=torch.bfloat16).to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe(
     prompt="a white paper cup",
@@ -129,7 +129,7 @@ from controlnet_aux import CannyDetector
 from diffusers import FluxControlPipeline
 from diffusers.utils import load_image
 
-pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-Canny-dev", dtype=torch.bfloat16).to("cuda")
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-Canny-dev", dtype=torch.bfloat16).to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
 control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
@@ -157,7 +157,7 @@ from controlnet_aux import CannyDetector
 from diffusers import FluxControlPipeline
 from diffusers.utils import load_image
 
-pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16).to("cuda")
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16).to("cuda")  # or "mps", "xpu", "cpu"
 pipe.load_lora_weights("black-forest-labs/FLUX.1-Canny-dev-lora")
 
 prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
@@ -188,7 +188,7 @@ from diffusers import FluxControlPipeline, FluxTransformer2DModel
 from diffusers.utils import load_image
 from image_gen_aux import DepthPreprocessor
 
-pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-Depth-dev", dtype=torch.bfloat16).to("cuda")
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-Depth-dev", dtype=torch.bfloat16).to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
 control_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")
@@ -217,7 +217,7 @@ from diffusers import FluxControlPipeline, FluxTransformer2DModel
 from diffusers.utils import load_image
 from image_gen_aux import DepthPreprocessor
 
-pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16).to("cuda")
+pipe = FluxControlPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16).to("cuda")  # or "mps", "xpu", "cpu"
 pipe.load_lora_weights("black-forest-labs/FLUX.1-Depth-dev-lora")
 
 prompt = "A robot made of exotic candies and chocolates of different kinds. The background is filled with confetti and celebratory gifts."
@@ -248,7 +248,7 @@ image.save("output.png")
 import torch
 from diffusers import FluxPriorReduxPipeline, FluxPipeline
 from diffusers.utils import load_image
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 dtype = torch.bfloat16
 
 
@@ -285,7 +285,7 @@ from diffusers.utils import load_image
 pipe = FluxKontextPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-Kontext-dev", dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yarn-art-pikachu.png").convert("RGB")
 prompt = "Make Pikachu hold a sign that says 'Black Forest Labs is awesome', yarn art style, detailed, vibrant colors"
@@ -338,7 +338,7 @@ mask = load_image(mask_url)
 pipe = FluxKontextInpaintPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-Kontext-dev", dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 image = pipe(prompt=prompt, image=source, mask_image=mask, strength=1.0).images[0]
 image.save("kontext_inpainting_normal.png")
@@ -354,7 +354,7 @@ from diffusers.utils import load_image
 pipe = FluxKontextInpaintPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-Kontext-dev", dtype=torch.bfloat16
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "Replace this ball"
 img_url = "https://images.pexels.com/photos/39362/the-ball-stadion-football-the-pitch-39362.jpeg?auto=compress&cs=tinysrgb&dpr=1&w=500"
@@ -429,7 +429,7 @@ from diffusers.utils import load_image
 
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/flux_ip_adapter_input.jpg").resize((1024, 1024))
 

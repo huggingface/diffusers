@@ -92,7 +92,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image
 from PIL import Image
 
-pipeline = AutoPipelineForInpainting.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to('cuda')
+pipeline = AutoPipelineForInpainting.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to('cuda')  # or "mps", "xpu", "cpu"
 
 mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/seashore_mask.png")
 blurred_mask = pipeline.mask_processor.blur(mask, blur_factor=33)
@@ -356,7 +356,7 @@ import torch
 from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-inpainting",
     dtype=torch.float16,
@@ -516,7 +516,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image
 from PIL import Image
 
-generator = torch.Generator(device='cuda').manual_seed(0)
+generator = torch.Generator(device='cuda').manual_seed(0)  # or "mps", "xpu", "cpu"
 pipeline = AutoPipelineForInpainting.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to('cuda')
 
 base = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/seashore.png")
