@@ -14,13 +14,13 @@
 
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 import torch
 
 from ..models.attention import AttentionModuleMixin
 from ..models.attention_processor import Attention, MochiAttention
-from ..utils import logging
+from ..utils import deprecate, logging
 from ._common import (
     _ATTENTION_CLASSES,
     _CROSS_TRANSFORMER_BLOCK_IDENTIFIERS,
@@ -83,8 +83,19 @@ class PyramidAttentionBroadcastConfig:
     temporal_attention_block_identifiers: tuple[str, ...] = _TEMPORAL_TRANSFORMER_BLOCK_IDENTIFIERS
     cross_attention_block_identifiers: tuple[str, ...] = _CROSS_TRANSFORMER_BLOCK_IDENTIFIERS
 
+    current_timestep_callback: Callable[[], int] | None = None
+
     # TODO(aryan): add PAB for MLP layers (very limited speedup from testing with original codebase
     # so not added for now)
+
+    def __post_init__(self):
+        if self.current_timestep_callback is not None:
+            depr_message = (
+                "Passing `current_timestep_callback` to `PyramidAttentionBroadcastConfig` is deprecated and will be ignored. "
+                "Please use `cache_context(name, timestep=...)` to pass the current timestep instead. "
+                "See the caching documentation for guidance: https://huggingface.co/docs/diffusers/main/en/optimization/cache."
+            )
+            deprecate("current_timestep_callback", "0.45.0", depr_message)
 
     def __repr__(self) -> str:
         return (

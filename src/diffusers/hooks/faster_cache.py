@@ -20,7 +20,7 @@ import torch
 
 from ..models.attention import AttentionModuleMixin
 from ..models.modeling_outputs import Transformer2DModelOutput
-from ..utils import logging
+from ..utils import deprecate, logging
 from ._common import _ATTENTION_CLASSES
 from .hooks import HookRegistry, ModelHook, StateManager
 
@@ -160,7 +160,18 @@ class FasterCacheConfig:
     tensor_format: str = "BCFHW"
     is_guidance_distilled: bool = False
 
+    current_timestep_callback: Callable[[], int] | None = None
+
     _unconditional_conditional_input_kwargs_identifiers: list[str] = _UNCOND_COND_INPUT_KWARGS_IDENTIFIERS
+
+    def __post_init__(self):
+        if self.current_timestep_callback is not None:
+            depr_message = (
+                "Passing `current_timestep_callback` to `FasterCacheConfig` is deprecated and will be ignored. "
+                "Please use `cache_context(name, timestep=...)` to pass the current timestep instead. "
+                "See the caching documentation for guidance: https://huggingface.co/docs/diffusers/main/en/optimization/cache."
+            )
+            deprecate("current_timestep_callback", "0.45.0", depr_message)
 
     def __repr__(self) -> str:
         return (
