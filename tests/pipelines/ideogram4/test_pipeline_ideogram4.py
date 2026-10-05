@@ -149,8 +149,6 @@ class Ideogram4PipelineTesterConfig(BasePipelineTesterConfig):
             # Ideogram4 raises (rather than truncates) on a prompt longer than `max_sequence_length`, and the
             # shared batching tests feed a deliberately long prompt, so keep room for it.
             "max_sequence_length": 256,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
-            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
             "output_type": "pt",
         }
         return inputs

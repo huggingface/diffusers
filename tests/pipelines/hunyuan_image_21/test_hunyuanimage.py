@@ -157,7 +157,6 @@ class HunyuanImagePipelineTesterConfig(BasePipelineTesterConfig):
             "num_inference_steps": 5,
             "height": 16,
             "width": 16,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 

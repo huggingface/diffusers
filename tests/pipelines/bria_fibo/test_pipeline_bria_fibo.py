@@ -101,7 +101,6 @@ class BriaFiboPipelineTesterConfig(BasePipelineTesterConfig):
             "guidance_scale": 5.0,
             "height": 32,
             "width": 32,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 
