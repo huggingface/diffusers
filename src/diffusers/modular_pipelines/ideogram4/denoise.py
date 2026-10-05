@@ -56,7 +56,9 @@ class Ideogram4LoopBeforeDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Ideogram4ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Ideogram4ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Ideogram4ModularPipeline, BlockState]:
         # Conditional packed sequence is [text-padding][image latents]; text region length = total - image tokens.
         max_text_tokens = block_state.position_ids.shape[1] - block_state.latents.shape[1]
         text_z_padding = torch.zeros(
@@ -150,7 +152,9 @@ class Ideogram4LoopDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Ideogram4ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Ideogram4ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Ideogram4ModularPipeline, BlockState]:
         transformer = components.transformer
         unconditional_transformer = components.unconditional_transformer
 
@@ -200,7 +204,9 @@ class Ideogram4LoopAfterDenoiser(ModularPipelineBlocks):
         return [OutputParam(name="latents", type_hint=torch.Tensor, description="The denoised latents.")]
 
     @torch.no_grad()
-    def __call__(self, components: Ideogram4ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Ideogram4ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Ideogram4ModularPipeline, BlockState]:
         block_state.latents = components.scheduler.step(
             block_state.noise_pred, t, block_state.latents, return_dict=False
         )[0]
@@ -280,7 +286,9 @@ class Ideogram4DenoiseStep(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Ideogram4ModularPipeline, state: PipelineState
+    ) -> tuple[Ideogram4ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
@@ -344,7 +352,9 @@ class Ideogram4AfterDenoiseStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Ideogram4ModularPipeline, state: PipelineState
+    ) -> tuple[Ideogram4ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         z = block_state.latents

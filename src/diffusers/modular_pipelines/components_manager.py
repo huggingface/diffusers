@@ -28,7 +28,7 @@ from ..utils import (
     is_accelerate_available,
     logging,
 )
-from ..utils.torch_utils import get_device
+from ..utils.torch_utils import TorchDeviceBackend, empty_device_cache, get_device
 
 
 if is_accelerate_available():
@@ -179,13 +179,7 @@ class AutoOffloadStrategy:
         except AttributeError:
             raise AttributeError(f"Do not know how to compute memory footprint of `{model.__class__.__name__}.")
 
-        device_type = execution_device.type
-        device_module = getattr(torch, device_type, torch.cuda)
-        try:
-            mem_on_device = device_module.mem_get_info(execution_device.index)[0]
-        except AttributeError:
-            raise AttributeError(f"Do not know how to obtain obtain memory info for {str(device_module)}.")
-
+        mem_on_device = TorchDeviceBackend(execution_device).mem_get_info()[0]
         mem_on_device = mem_on_device - self.memory_reserve_margin
         if current_module_size < mem_on_device:
             return []
@@ -513,10 +507,7 @@ class ComponentsManager:
             import gc
 
             gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            if torch.xpu.is_available():
-                torch.xpu.empty_cache()
+            empty_device_cache()
 
     # YiYi TODO: rename to search_components for now, may remove this method
     def search_components(
@@ -743,12 +734,8 @@ class ComponentsManager:
         if not isinstance(device, torch.device):
             device = torch.device(device)
 
-        device_type = device.type
-        device_module = getattr(torch, device_type, torch.cuda)
-        if not hasattr(device_module, "mem_get_info"):
-            raise NotImplementedError(
-                f"`enable_auto_cpu_offload() relies on the `mem_get_info()` method. It's not implemented for {str(device.type)}."
-            )
+        # Fail here rather than on the first forward: the strategy cannot run without a free-memory query.
+        TorchDeviceBackend(device).mem_get_info()
 
         if device.index is None:
             device = torch.device(f"{device.type}:{0}")

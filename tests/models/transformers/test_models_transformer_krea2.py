@@ -25,6 +25,7 @@ from ..testing_utils import (
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -159,3 +160,21 @@ class TestKrea2TransformerAttention(Krea2TransformerTesterConfig, AttentionTeste
 
 class TestKrea2TransformerLoRA(Krea2TransformerTesterConfig, LoraTesterMixin):
     pass
+
+
+class TestKrea2TransformerSingleFile(Krea2TransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/krea/Krea-2-Raw/blob/main/raw.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "krea/Krea-2-Raw"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
