@@ -195,7 +195,7 @@ ModularPipeline {
 
 If a component in your block doesn't exist in the repository, it remains `null` and is skipped during [`~ModularPipeline.load_components`].
 
-### from_pretrained[[from_pretrained]]
+### from_pretrained
 
 [`~ModularPipeline.from_pretrained`] is a convenient way to create a [`ModularPipeline`] without defining blocks yourself.
 
