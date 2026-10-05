@@ -435,12 +435,12 @@ def _print_selection_report(test_files: List[str], modified_files: List[str], di
         print(f"{test_file}\n    {reason}")
 
 
-def _tests_triggered_by(f: str, reverse_map: Dict[str, List[str]]) -> int:
-    """Number of test files a change to `f` selects, counting `f` itself when it is a test."""
+def _tests_triggered_by(f: str, reverse_map: Dict[str, List[str]]) -> set:
+    """Test files a change to `f` selects, including `f` itself when it is a test."""
     triggered = {t for t in reverse_map.get(f, []) if _is_test_file(t)}
     if _is_test_file(f):
         triggered.add(f)
-    return len(triggered)
+    return triggered
 
 
 def _write_summary(
@@ -453,18 +453,23 @@ def _write_summary(
     lines = [
         "## Test fetcher",
         "",
-        f"Selected {len(test_files)} test files from {len(modified_files)} modified Python files. "
-        "The import chain that selected each test is in the `test_fetched` artifact.",
+        f"Selected {len(test_files)} test files from {len(modified_files)} modified Python files.",
         "",
-        "| Modified file | Tests it triggers |",
+        "| Modified file | Test files it triggers |",
         "|---|---|",
     ]
-    # A modified file that pulls in nothing beyond itself adds no information; only files with reach get a row.
+    # A modified file that pulls in nothing beyond itself gets no row of its own; whatever the listed rows do
+    # not reach is modified test files running only themselves, reported as one line.
     triggered = {f: _tests_triggered_by(f, reverse_map) for f in modified_files}
-    for f in sorted(modified_files, key=lambda f: (-triggered[f], f)):
-        if triggered[f] > (1 if _is_test_file(f) else 0):
-            lines.append(f"| `{f}` | {triggered[f]} |")
-    lines.append(f"| **Distinct tests selected** | **{len(test_files)}** |")
+    covered = set()
+    for f in sorted(modified_files, key=lambda f: (-len(triggered[f]), f)):
+        if len(triggered[f]) > (1 if _is_test_file(f) else 0):
+            lines.append(f"| `{f}` | {len(triggered[f])} |")
+            covered |= triggered[f]
+    remaining = set(test_files) - covered
+    if remaining:
+        lines.append(f"| Modified test files | {len(remaining)} |")
+    lines.append(f"| **Distinct test files selected** | **{len(test_files)}** |")
 
     Path(summary_file).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
