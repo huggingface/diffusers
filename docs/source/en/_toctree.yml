@@ -375,6 +375,8 @@
         title: JoyImageEditPlusTransformer3DModel
       - local: api/models/transformer_joyimage
         title: JoyImageEditTransformer3DModel
+      - local: api/models/kandinsky6_transformer
+        title: Kandinsky 6 Transformers
       - local: api/models/krea2_transformer2d
         title: Krea2Transformer2DModel
       - local: api/models/latte_transformer3d
@@ -501,6 +503,8 @@
         title: AutoencoderSAME
       - local: api/models/consistency_decoder_vae
         title: ConsistencyDecoderVAE
+      - local: api/models/kandinsky6_vae
+        title: Kandinsky 6 VAEs
       - local: api/models/ltx2_diffusion_decoder
         title: LTX2VideoDiffusionDecoderModel
       - local: api/models/autoencoder_oobleck
@@ -725,6 +729,8 @@
         title: HunyuanVideo1.5
       - local: api/pipelines/kandinsky5_video
         title: Kandinsky 5.0 Video
+      - local: api/pipelines/kandinsky6
+        title: Kandinsky 6
       - local: api/pipelines/latte
         title: Latte
       - local: api/pipelines/ltx2
@@ -816,6 +822,8 @@
       title: LMSDiscreteScheduler
     - local: api/schedulers/minimax_h3
       title: MiniMaxH3Scheduler
+    - local: api/schedulers/piflow
+      title: PiflowScheduler
     - local: api/schedulers/pndm
       title: PNDMScheduler
     - local: api/schedulers/repaint
