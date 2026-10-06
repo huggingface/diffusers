@@ -496,17 +496,24 @@ class TensorParallelTesterMixin:
 @is_tensor_parallel
 @require_torch_tpu
 class TensorParallelTPUTesterMixin:
-    """Same check as `TensorParallelTesterMixin`, spawning one process per TPU chip."""
+    """Same check as `TensorParallelTesterMixin`, spawning one process per TPU chip.
 
-    # TPU slices come in 1, 4 or 8 chips.
+    Run these tests in their own pytest process (e.g. `-k TensorParallelTPU`): `torch.manual_seed` or a backward pass
+    in an earlier test binds every TPU chip to the pytest process, and the spawned workers then fail.
+    """
+
+    # Smallest slice every TPU generation supports, so the test is the same on any CI host.
     tp_world_size = 4
     tp_atol = 1e-3
     tp_rtol = 1e-3
 
     def test_tensor_parallel_tpu_inference(self):
         from torch_tpu._internal.distributed.launchers.singlehost_wrapper import prepare_tpu_environment
+        from torch_tpu._internal.utils import hardware
 
         world_size = self.tp_world_size
+        if hardware.get_tpu_device_count() < world_size:
+            pytest.skip(f"Needs at least {world_size} TPU chips.")
         init_dict = self.get_init_dict()
         num_heads = init_dict.get("num_attention_heads")
         if num_heads is not None and num_heads % world_size != 0:

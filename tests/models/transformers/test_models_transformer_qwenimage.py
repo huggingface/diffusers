@@ -315,6 +315,10 @@ class TestQwenImageTransformerTensorParallelTPU(QwenImageTransformerTesterConfig
     tp_atol = 2e-2
     tp_rtol = 2e-2
 
+    def get_init_dict(self):
+        # One head per chip.
+        return {**super().get_init_dict(), "num_attention_heads": self.tp_world_size}
+
 
 def make_neuron_tp_spec():
     """Model spec consumed by the generic Neuron TP worker (``_neuron_tp_worker.py``).

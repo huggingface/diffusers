@@ -281,8 +281,8 @@ class TestFluxTransformerTensorParallelTPU(FluxTransformerTesterConfig, TensorPa
     """Tensor Parallel inference test for Flux Transformer on TPU."""
 
     def get_init_dict(self):
-        # 4 heads to split across 4 chips.
-        return {**super().get_init_dict(), "num_attention_heads": 4}
+        # One head per chip.
+        return {**super().get_init_dict(), "num_attention_heads": self.tp_world_size}
 
 
 def make_neuron_tp_spec():
