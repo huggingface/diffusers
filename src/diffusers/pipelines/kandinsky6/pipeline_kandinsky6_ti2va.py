@@ -671,7 +671,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback_on_step_end: Callable[[int, int, dict], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-    ):
+    ) -> Kandinsky6TI2VAPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

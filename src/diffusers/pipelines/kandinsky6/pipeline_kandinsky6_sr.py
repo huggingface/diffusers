@@ -240,7 +240,7 @@ class Kandinsky6SRPipeline(DiffusionPipeline):
         generator: torch.Generator | list[torch.Generator] | None = None,
         output_type: str = "pil",
         return_dict: bool = True,
-    ):
+    ) -> Kandinsky6SRPipelineOutput | tuple:
         r"""
         The call function to the pipeline for super-resolution.
 

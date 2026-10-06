@@ -452,12 +452,10 @@ else:
         "Kandinsky5I2IPipeline",
     ]
     _import_structure["kandinsky6"] = [
-        "Kandinsky6SRLatentUpscalerBank",
         "Kandinsky6SRPipeline",
         "Kandinsky6SRPipelineOutput",
         "Kandinsky6TI2VAPipeline",
         "Kandinsky6TI2VAPipelineOutput",
-        "MMAudioVocoder",
     ]
     _import_structure["z_image"] = [
         "ZImageControlNetInpaintPipeline",
@@ -790,12 +788,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky5T2VPipeline,
         )
         from .kandinsky6 import (
-            Kandinsky6SRLatentUpscalerBank,
             Kandinsky6SRPipeline,
             Kandinsky6SRPipelineOutput,
             Kandinsky6TI2VAPipeline,
             Kandinsky6TI2VAPipelineOutput,
-            MMAudioVocoder,
         )
         from .krea2 import Krea2Pipeline
         from .latent_consistency_models import (
