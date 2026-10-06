@@ -320,6 +320,15 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
             ),
             InputParam(
+                "conditioning_frame_rate",
+                type_hint=float,
+                description=(
+                    "Frame rate the model is conditioned on (the time axis of the positional embeddings). Defaults "
+                    "to `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture "
+                    "rate differs from its playback rate, e.g. slow-motion LoRAs: `frame_rate / speed`."
+                ),
+            ),
+            InputParam(
                 "use_cross_timestep",
                 type_hint=bool,
                 default=True,
@@ -361,7 +370,7 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             num_frames=latent_num_frames,
             height=latent_height,
             width=latent_width,
-            fps=block_state.frame_rate,
+            fps=block_state.conditioning_frame_rate or block_state.frame_rate,
             use_cross_timestep=block_state.use_cross_timestep,
             attention_kwargs=block_state.attention_kwargs,
             perturbation_mask=None,

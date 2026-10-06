@@ -322,6 +322,10 @@ class LTX2CoreDenoiseStep(SequentialPipelineBlocks):
               Frames per second of the generated video.
           audio_latents (`Tensor`, *optional*):
               Optional pre-encoded audio latents; random noise is used when not provided.
+          conditioning_frame_rate (`float`, *optional*):
+              Frame rate the model is conditioned on (the time axis of the positional embeddings). Defaults to
+              `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture rate differs
+              from its playback rate, e.g. slow-motion LoRAs: `frame_rate / speed`.
           dtype (`dtype`):
               The dtype the model inputs are cast to.
           **denoiser_input_fields (`None`, *optional*):
@@ -424,6 +428,10 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               Frames per second of the generated video.
           audio_latents (`Tensor`, *optional*):
               Optional pre-encoded audio latents; random noise is used when not provided.
+          conditioning_frame_rate (`float`, *optional*):
+              Frame rate the model is conditioned on (the time axis of the positional embeddings). Defaults to
+              `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture rate differs
+              from its playback rate, e.g. slow-motion LoRAs: `frame_rate / speed`.
           dtype (`dtype`):
               The dtype the model inputs are cast to.
           **denoiser_input_fields (`None`, *optional*):
@@ -520,6 +528,10 @@ class LTX2ConditionCoreDenoiseStep(SequentialPipelineBlocks):
               `LTX2AutoDurationStep`).
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
+          conditioning_frame_rate (`float`, *optional*):
+              Frame rate the model is conditioned on (the time axis of the positional embeddings). Defaults to
+              `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture rate differs
+              from its playback rate, e.g. slow-motion LoRAs: `frame_rate / speed`.
           noise_scale (`float`, *optional*):
               Initial noise level for the un-conditioned tokens. `None` (default) resolves to `sigmas[0]` when custom
               `sigmas` are supplied, else 1.0.
@@ -676,6 +688,10 @@ class LTX2AutoReferenceEncoderStep(ConditionalPipelineBlocks):
               `LTX2AutoDurationStep`).
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
+          conditioning_frame_rate (`float`, *optional*):
+              Frame rate the model is conditioned on (the time axis of the positional embeddings). Defaults to
+              `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture rate differs
+              from its playback rate, e.g. slow-motion LoRAs: `frame_rate / speed`.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
 
@@ -831,6 +847,10 @@ class LTX2InContextCoreDenoiseStep(SequentialPipelineBlocks):
               `LTX2AutoDurationStep`).
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
+          conditioning_frame_rate (`float`, *optional*):
+              Frame rate the model is conditioned on (the time axis of the positional embeddings). Defaults to
+              `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture rate differs
+              from its playback rate, e.g. slow-motion LoRAs: `frame_rate / speed`.
           noise_scale (`float`, *optional*):
               Initial noise level for the un-conditioned tokens. `None` (default) resolves to `sigmas[0]` when custom
               `sigmas` are supplied, else 1.0.
@@ -962,6 +982,10 @@ class LTX2AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               `LTX2AutoDurationStep`).
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
+          conditioning_frame_rate (`float`, *optional*):
+              Frame rate the model is conditioned on (the time axis of the positional embeddings). Defaults to
+              `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture rate differs
+              from its playback rate, e.g. slow-motion LoRAs: `frame_rate / speed`.
           noise_scale (`float`, *optional*):
               Initial noise level for the un-conditioned tokens. `None` (default) resolves to `sigmas[0]` when custom
               `sigmas` are supplied, else 1.0.
@@ -1297,6 +1321,10 @@ class LTX2Blocks(SequentialPipelineBlocks):
               which keeps the provided latents.
           audio_latents (`Tensor`, *optional*):
               Optional pre-encoded audio latents; random noise is used when not provided.
+          conditioning_frame_rate (`float`, *optional*):
+              Frame rate the model is conditioned on (the time axis of the positional embeddings). Defaults to
+              `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture rate differs
+              from its playback rate, e.g. slow-motion LoRAs: `frame_rate / speed`.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           use_cross_timestep (`bool`, *optional*, defaults to True):
@@ -1412,6 +1440,10 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
               VAE-encoded reference-image latents used for image-to-video conditioning.
           audio_latents (`Tensor`, *optional*):
               Optional pre-encoded audio latents; random noise is used when not provided.
+          conditioning_frame_rate (`float`, *optional*):
+              Frame rate the model is conditioned on (the time axis of the positional embeddings). Defaults to
+              `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture rate differs
+              from its playback rate, e.g. slow-motion LoRAs: `frame_rate / speed`.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           use_cross_timestep (`bool`, *optional*, defaults to True):
@@ -1511,6 +1543,10 @@ class LTX2ConditionBlocks(SequentialPipelineBlocks):
               The number of images to generate per prompt.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
+          conditioning_frame_rate (`float`, *optional*):
+              Frame rate the model is conditioned on (the time axis of the positional embeddings). Defaults to
+              `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture rate differs
+              from its playback rate, e.g. slow-motion LoRAs: `frame_rate / speed`.
           noise_scale (`float`, *optional*):
               Initial noise level for the un-conditioned tokens. `None` (default) resolves to `sigmas[0]` when custom
               `sigmas` are supplied, else 1.0.
@@ -1633,6 +1669,10 @@ class LTX2InContextBlocks(SequentialPipelineBlocks):
               `conditioning_attention_strength`.
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
+          conditioning_frame_rate (`float`, *optional*):
+              Frame rate the model is conditioned on (the time axis of the positional embeddings). Defaults to
+              `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture rate differs
+              from its playback rate, e.g. slow-motion LoRAs: `frame_rate / speed`.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           reference_latents (`Tensor`, *optional*):
@@ -1794,6 +1834,10 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
               Optional pixel-space mask of shape (1, 1, F, H, W) with values in [0, 1] giving spatially varying
               attention strength. Downsampled to the reference's latent grid and multiplied by
               `conditioning_attention_strength`.
+          conditioning_frame_rate (`float`, *optional*):
+              Frame rate the model is conditioned on (the time axis of the positional embeddings). Defaults to
+              `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture rate differs
+              from its playback rate, e.g. slow-motion LoRAs: `frame_rate / speed`.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           condition_latents (`list`, *optional*):

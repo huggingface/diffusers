@@ -1355,6 +1355,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         min_seconds: float = 1.0,
         max_seconds: float = 20.0,
         frame_rate: float = 24.0,
+        conditioning_frame_rate: float | None = None,
         num_inference_steps: int = 30,
         sigmas: list[float] | None = None,
         timesteps: list[float] | None = None,
@@ -1420,6 +1421,11 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                 present. Ignored when `num_frames` is set explicitly. Must be strictly greater than `min_seconds`.
             frame_rate (`float`, *optional*, defaults to `24.0`):
                 The frames per second (FPS) of the generated video.
+            conditioning_frame_rate (`float`, *optional*):
+                The frame rate the model is conditioned on, i.e. the time axis of the positional embeddings. Defaults
+                to `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture rate
+                differs from its playback rate, e.g. a slow-motion LoRA at `frame_rate / speed`. Audio duration and the
+                predicted number of frames keep following `frame_rate`.
             num_inference_steps (`int`, *optional*, defaults to 30):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -1574,6 +1580,8 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         audio_modality_scale = audio_modality_scale or modality_scale
         audio_guidance_rescale = audio_guidance_rescale or guidance_rescale
 
+        conditioning_frame_rate = conditioning_frame_rate if conditioning_frame_rate is not None else frame_rate
+
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt=prompt,
@@ -1721,7 +1729,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
             height=height,
             width=width,
             num_frames=num_frames,
-            frame_rate=frame_rate,
+            frame_rate=conditioning_frame_rate,
             noise_scale=noise_scale,
             dtype=torch.float32,
             device=device,
@@ -1792,7 +1800,12 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         # 6. Prepare micro-conditions
         # Pre-compute video and audio positional ids as they will be the same at each step of the denoising loop
         video_coords = self.transformer.rope.prepare_video_coords(
-            latents.shape[0], latent_num_frames, latent_height, latent_width, latents.device, fps=frame_rate
+            latents.shape[0],
+            latent_num_frames,
+            latent_height,
+            latent_width,
+            latents.device,
+            fps=conditioning_frame_rate,
         )
         audio_coords = self.transformer.audio_rope.prepare_audio_coords(
             audio_latents.shape[0], audio_num_frames, audio_latents.device
@@ -1840,7 +1853,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                         num_frames=latent_num_frames,
                         height=latent_height,
                         width=latent_width,
-                        fps=frame_rate,
+                        fps=conditioning_frame_rate,
                         audio_num_frames=audio_num_frames,
                         video_coords=video_coords,
                         audio_coords=audio_coords,
@@ -1916,7 +1929,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                             num_frames=latent_num_frames,
                             height=latent_height,
                             width=latent_width,
-                            fps=frame_rate,
+                            fps=conditioning_frame_rate,
                             audio_num_frames=audio_num_frames,
                             video_coords=video_pos_ids,
                             audio_coords=audio_pos_ids,
@@ -1958,7 +1971,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                             num_frames=latent_num_frames,
                             height=latent_height,
                             width=latent_width,
-                            fps=frame_rate,
+                            fps=conditioning_frame_rate,
                             audio_num_frames=audio_num_frames,
                             video_coords=video_pos_ids,
                             audio_coords=audio_pos_ids,

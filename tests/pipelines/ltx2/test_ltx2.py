@@ -244,6 +244,32 @@ class TestLTX2Pipeline(LTX2PipelineTesterConfig, PipelineTesterMixin):
         with pytest.raises(ValueError, match="min_seconds"):
             pipe(**inputs)
 
+    def test_conditioning_frame_rate_changes_the_video_only(self):
+        pipe = self.get_pipeline()
+        frame_rate = self.get_dummy_inputs()["frame_rate"]
+
+        default = pipe(**self.get_dummy_inputs())
+        same = pipe(**{**self.get_dummy_inputs(), "conditioning_frame_rate": frame_rate})
+        slow = pipe(**{**self.get_dummy_inputs(), "conditioning_frame_rate": 2 * frame_rate})
+
+        # Defaulting to `frame_rate` leaves the pipeline unchanged.
+        assert_tensors_close(same.frames, default.frames, atol=1e-6, rtol=0)
+        assert_tensors_close(same.audio, default.audio, atol=1e-6, rtol=0)
+        # A different conditioning rate changes the video, not the output shapes or the audio length.
+        assert slow.frames.shape == default.frames.shape
+        assert slow.audio.shape == default.audio.shape
+        assert not torch.allclose(slow.frames, default.frames)
+
+    def test_duration_head_follows_frame_rate_not_conditioning_frame_rate(self):
+        pipe = self.get_pipeline_with_duration_head()
+        inputs = self.get_dummy_inputs()
+        inputs.pop("num_frames")
+        inputs.update(min_seconds=1.0, max_seconds=2.0)
+
+        default = pipe(**inputs).frames
+        slow = pipe(**{**inputs, "conditioning_frame_rate": 5 * inputs["frame_rate"]}).frames
+        assert slow.shape[1] == default.shape[1]
+
 
 class TestLTX2PipelineMemory(LTX2PipelineTesterConfig, LTX2MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the LTX2 pipeline."""

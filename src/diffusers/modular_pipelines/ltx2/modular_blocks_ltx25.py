@@ -290,6 +290,10 @@ class LTX25AutoBlocks(SequentialPipelineBlocks):
               Optional pixel-space mask of shape (1, 1, F, H, W) with values in [0, 1] giving spatially varying
               attention strength. Downsampled to the reference's latent grid and multiplied by
               `conditioning_attention_strength`.
+          conditioning_frame_rate (`float`, *optional*):
+              Frame rate the model is conditioned on (the time axis of the positional embeddings). Defaults to
+              `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture rate differs
+              from its playback rate, e.g. slow-motion LoRAs: `frame_rate / speed`.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           condition_latents (`list`, *optional*):

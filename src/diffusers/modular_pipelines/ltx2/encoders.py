@@ -1197,6 +1197,15 @@ class LTX2ReferenceEncoderStep(ModularPipelineBlocks):
             InputParam(
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
             ),
+            InputParam(
+                "conditioning_frame_rate",
+                type_hint=float,
+                description=(
+                    "Frame rate the model is conditioned on (the time axis of the positional embeddings). Defaults "
+                    "to `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture "
+                    "rate differs from its playback rate, e.g. slow-motion LoRAs: `frame_rate / speed`."
+                ),
+            ),
             InputParam.template("generator"),
         ]
 
@@ -1285,7 +1294,7 @@ class LTX2ReferenceEncoderStep(ModularPipelineBlocks):
                 height=ref_latent_height,
                 width=ref_latent_width,
                 device=device,
-                fps=block_state.frame_rate,
+                fps=block_state.conditioning_frame_rate or block_state.frame_rate,
             )
             if downscale_factor != 1:
                 ref_coords[:, 1, :, :] = ref_coords[:, 1, :, :] * downscale_factor
