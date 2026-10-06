@@ -15,8 +15,6 @@
 
 import os
 import socket
-import subprocess
-import sys
 
 import pytest
 import torch
@@ -44,6 +42,7 @@ from .utils import _maybe_cast_to_bf16
 DEVICE_CONFIG = {
     "cuda": {"backend": "nccl", "module": torch.cuda},
     "xpu": {"backend": "xccl", "module": torch.xpu},
+    "tpu": {"backend": "tpu_dist", "module": None},
 }
 
 
@@ -248,7 +247,15 @@ def _custom_mesh_worker(
 
 
 def _tensor_parallel_worker(
-    rank, world_size, master_port, model_class, init_dict, inputs_dict, return_dict, state_dict
+    rank,
+    world_size,
+    master_port,
+    model_class,
+    init_dict,
+    inputs_dict,
+    return_dict,
+    state_dict,
+    device_type=torch_device,
 ):
     """Worker function for tensor parallel inference testing.
 
@@ -261,16 +268,19 @@ def _tensor_parallel_worker(
         os.environ["MASTER_ADDR"] = "localhost"
         os.environ["MASTER_PORT"] = str(master_port)
         os.environ["RANK"] = str(rank)
+        os.environ["LOCAL_RANK"] = str(rank)
         os.environ["WORLD_SIZE"] = str(world_size)
 
-        device_config = DEVICE_CONFIG.get(torch_device, DEVICE_CONFIG["cuda"])
-        backend = device_config["backend"]
-        device_module = device_config["module"]
+        device_config = DEVICE_CONFIG.get(device_type, DEVICE_CONFIG["cuda"])
+        dist.init_process_group(backend=device_config["backend"], rank=rank, world_size=world_size)
 
-        dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
-
-        device_module.set_device(rank)
-        device = torch.device(f"{torch_device}:{rank}")
+        if device_type == "tpu":
+            # Each spawned process is bound to one chip. Avoid bf16 matmuls to keep the tolerance tight.
+            device = torch.device("tpu")
+            torch.set_float32_matmul_precision("highest")
+        else:
+            device_config["module"].set_device(rank)
+            device = torch.device(f"{device_type}:{rank}")
 
         model = model_class(**init_dict)
         model.load_state_dict(state_dict)
@@ -483,65 +493,61 @@ class TensorParallelTesterMixin:
         torch.testing.assert_close(reference, torch.tensor(return_dict["output"]), atol=1e-3, rtol=1e-3)
 
 
-def _run_tp_worker_subprocess(
-    worker_filename: str, spec: str, world_size: int, timeout_s: int = 900, extra_args: "list[str] | None" = None
-) -> None:
-    """Run a TP worker script from `tests/models/transformers/` under `torchrun` and assert it exits cleanly."""
-    worker = os.path.join(os.path.dirname(__file__), "..", "transformers", worker_filename)
-    cmd = [sys.executable, "-m", "torch.distributed.run", f"--nproc_per_node={world_size}", worker, spec]
-    cmd += extra_args or []
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
-    except subprocess.TimeoutExpired as e:
-        raise AssertionError(
-            f"TP worker did not finish within {timeout_s}s (likely stuck on a distributed-runtime barrier).\n"
-            f"--- stdout ---\n{e.stdout}\n--- stderr ---\n{e.stderr}"
-        ) from e
-    assert result.returncode == 0, (
-        f"TP worker failed (exit {result.returncode}).\n--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
-    )
-
-
 @is_tensor_parallel
 @require_torch_tpu
 class TensorParallelTPUTesterMixin:
-    """Tensor-parallel test on TPU: runs `_tpu_tp_worker.py` under `torchrun` with the `tpu_dist` backend.
+    """Same check as `TensorParallelTesterMixin`, spawning one process per TPU chip."""
 
-    Subclasses set `TP_SPEC`, a `module:function` returning `(model_class, init_dict, cpu_inputs)`. Needs a host with
-    exactly `WORLD_SIZE` chips and the env from:
-
-        eval $(python -m torch_tpu._internal.distributed.launchers.singlehost_wrapper | sed 's/^/export /')
-    """
-
-    WORLD_SIZE = 4
-    # Fail on a hung distributed barrier instead of stalling the run.
-    TIMEOUT_S = 900
-    TP_SPEC: str = ""
-    TP_ATOL = 1e-3
-    TP_RTOL = 1e-3
-
-    def skip_if_unsupported(self):
-        """Skip unless the host has exactly `WORLD_SIZE` chips; TPU TP can't run on a subset of a host's chips."""
-        from torch_tpu._internal.utils import hardware
-
-        try:
-            device_count = hardware.get_tpu_device_count()
-        except Exception as e:  # pragma: no cover
-            pytest.skip(f"Could not determine local TPU chip count: {e}")
-            return
-
-        if device_count != self.WORLD_SIZE:
-            pytest.skip(f"Needs exactly {self.WORLD_SIZE} TPU chips, this host has {device_count}.")
+    # TPU slices come in 1, 4 or 8 chips.
+    tp_world_size = 4
+    tp_atol = 1e-3
+    tp_rtol = 1e-3
 
     def test_tensor_parallel_tpu_inference(self):
-        self.skip_if_unsupported()
-        _run_tp_worker_subprocess(
-            "_tpu_tp_worker.py",
-            self.TP_SPEC,
-            world_size=self.WORLD_SIZE,
-            timeout_s=self.TIMEOUT_S,
-            extra_args=[f"--atol={self.TP_ATOL}", f"--rtol={self.TP_RTOL}"],
+        from torch_tpu._internal.distributed.launchers.singlehost_wrapper import prepare_tpu_environment
+
+        world_size = self.tp_world_size
+        init_dict = self.get_init_dict()
+        num_heads = init_dict.get("num_attention_heads")
+        if num_heads is not None and num_heads % world_size != 0:
+            pytest.skip(f"`num_attention_heads` ({num_heads}) is not divisible by tp_degree ({world_size}).")
+
+        # Reference on CPU: touching the TPU here would bind every chip to this process.
+        inputs_dict = self.get_dummy_inputs(device="cpu")
+        model = self.model_class(**init_dict).eval()
+        with torch.no_grad():
+            ref_output = model(**inputs_dict, return_dict=False)[0].float()
+
+        tpu_env = ("TORCH_TPU_TOPOLOGY", "TORCH_TPU_SLICEBUILDER_ADDRESSES")
+        for key in tpu_env:
+            os.environ.pop(key, None)
+        prepare_tpu_environment(world_size)
+        return_dict = mp.Manager().dict()
+        try:
+            mp.spawn(
+                _tensor_parallel_worker,
+                args=(
+                    world_size,
+                    _find_free_port(),
+                    self.model_class,
+                    init_dict,
+                    inputs_dict,
+                    return_dict,
+                    model.state_dict(),
+                    "tpu",
+                ),
+                nprocs=world_size,
+                join=True,
+            )
+        finally:
+            for key in tpu_env:
+                os.environ.pop(key, None)
+
+        assert return_dict.get("status") == "success", (
+            f"Tensor parallel inference failed: {return_dict.get('error', 'Unknown error')}"
         )
+        tp_output = torch.tensor(return_dict["output"])
+        torch.testing.assert_close(ref_output, tp_output, atol=self.tp_atol, rtol=self.tp_rtol)
 
 
 @is_context_parallel

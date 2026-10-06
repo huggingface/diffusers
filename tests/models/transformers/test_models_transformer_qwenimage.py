@@ -308,19 +308,12 @@ class TestQwenImageTransformerTensorParallel(QwenImageTransformerTesterConfig, T
     """Tensor Parallel inference tests for QwenImage Transformer (CUDA/XPU multi-accelerator)."""
 
 
-def make_tpu_tp_spec():
-    """Spec for `_tpu_tp_worker.py`."""
-    config = QwenImageTransformerTesterConfig()
-    return QwenImageTransformer2DModel, config.get_init_dict(), config.get_dummy_inputs(device="cpu")
-
-
-class TestQwenImageTransformerTensorParallelTPU(TensorParallelTPUTesterMixin):
+class TestQwenImageTransformerTensorParallelTPU(QwenImageTransformerTesterConfig, TensorParallelTPUTesterMixin):
     """Tensor Parallel inference test for QwenImage Transformer on TPU."""
 
-    TP_SPEC = "tests.models.transformers.test_models_transformer_qwenimage:make_tpu_tp_spec"
     # TPU numerics differ by ~1e-2 between sharded and unsharded QwenImage (~1e-7 on CPU).
-    TP_ATOL = 2e-2
-    TP_RTOL = 2e-2
+    tp_atol = 2e-2
+    tp_rtol = 2e-2
 
 
 def make_neuron_tp_spec():

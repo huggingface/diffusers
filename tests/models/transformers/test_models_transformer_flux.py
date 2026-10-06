@@ -277,17 +277,12 @@ class TestFluxTransformerTensorParallel(FluxTransformerTesterConfig, TensorParal
     """Tensor Parallel inference tests for Flux Transformer (CUDA/XPU multi-accelerator)."""
 
 
-def make_tpu_tp_spec():
-    """Spec for `_tpu_tp_worker.py`, with 4 heads to split across 4 chips."""
-    config = FluxTransformerTesterConfig()
-    init_dict = {**config.get_init_dict(), "num_attention_heads": 4}
-    return FluxTransformer2DModel, init_dict, config.get_dummy_inputs(device="cpu")
-
-
-class TestFluxTransformerTensorParallelTPU(TensorParallelTPUTesterMixin):
+class TestFluxTransformerTensorParallelTPU(FluxTransformerTesterConfig, TensorParallelTPUTesterMixin):
     """Tensor Parallel inference test for Flux Transformer on TPU."""
 
-    TP_SPEC = "tests.models.transformers.test_models_transformer_flux:make_tpu_tp_spec"
+    def get_init_dict(self):
+        # 4 heads to split across 4 chips.
+        return {**super().get_init_dict(), "num_attention_heads": 4}
 
 
 def make_neuron_tp_spec():
