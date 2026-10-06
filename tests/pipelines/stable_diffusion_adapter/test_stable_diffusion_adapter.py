@@ -367,13 +367,13 @@ class MultiAdapterPipelineTesterConfig(AdapterPipelineTesterConfig):
         inputs["adapter_conditioning_scale"] = [0.5, 0.5]
         return inputs
 
-    def batch_input(self, name, value, batch_size):
+    def batch_input(self, value, batch_size):
         # `image` holds one conditioning image per adapter, and the pipeline sizes the adapter state off each
         # adapter's own batch (it never expands that state to the prompt's batch size). So the batch dimension is
         # the inner list — one batch per adapter — not the outer one.
-        if name == "image":
+        if isinstance(value, list):
             return [batch_size * [image] for image in value]
-        return super().batch_input(name, value, batch_size)
+        return super().batch_input(value, batch_size)
 
 
 class TestStableDiffusionFullAdapterPipeline(FullAdapterPipelineTesterConfig, AdapterPipelineTesterMixin):

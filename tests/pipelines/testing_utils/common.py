@@ -213,7 +213,7 @@ class BasePipelineTesterConfig:
     def is_text_stack_component(self, name: str) -> bool:
         return any(key in name for key in self.text_stack_component_names)
 
-    def batch_input(self, name, value, batch_size):
+    def batch_input(self, value, batch_size):
         """Expand one `batch_input_params` entry into a batch of `batch_size`.
 
         Defaults to repeating the value, which is what a single tensor/string input needs. Override it for an input
@@ -390,7 +390,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
                     # make last batch super long
                     batched_input[name][-1] = 100 * "very long"
                 else:
-                    batched_input[name] = self.batch_input(name, value, batch_size)
+                    batched_input[name] = self.batch_input(value, batch_size)
 
             if batch_generator and "generator" in inputs:
                 batched_input["generator"] = [self.get_generator(i) for i in range(batch_size)]
@@ -431,7 +431,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
                 batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
                 batched_inputs[name][-1] = 100 * "very long"
             else:
-                batched_inputs[name] = self.batch_input(name, value, batch_size)
+                batched_inputs[name] = self.batch_input(value, batch_size)
 
         if "generator" in inputs:
             batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
@@ -626,7 +626,7 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
 
                 for key in inputs.keys():
                     if key in self.batch_input_params:
-                        inputs[key] = self.batch_input(key, inputs[key], batch_size)
+                        inputs[key] = self.batch_input(inputs[key], batch_size)
 
                 images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt)[0]
 
