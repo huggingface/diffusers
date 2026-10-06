@@ -13,19 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Generic torchrun worker: assert a model's TPU tensor-parallel output matches its single-chip reference.
+"""`torchrun` worker: check a model's TPU tensor-parallel output against its single-chip output.
 
-Model-agnostic. The model under test is supplied as a `module:function` spec reference on the command line; the
-referenced factory returns `(model_class, init_dict, inputs)` with CPU tensors, so all model-specific test data lives
-with the launching test rather than here.
-
-Launched as a subprocess by `TensorParallelTPUTesterMixin` (and runnable directly for debugging)::
-
-    eval $(python -m torch_tpu._internal.distributed.launchers.singlehost_wrapper | sed 's/^/export /')
-    torchrun --nproc_per_node=4 _tpu_tp_worker.py \\
-        tests.models.transformers.test_models_transformer_flux2:make_tpu_tp_spec
-
-Exit code 0 means the TP path is numerically equivalent to the unsharded model; non-zero means failure.
+torchrun --nproc_per_node=4 _tpu_tp_worker.py tests.models.transformers.test_models_transformer_flux2:make_tpu_tp_spec
 """
 
 import argparse
@@ -36,7 +26,7 @@ import sys
 import traceback
 
 
-# Make the in-repo `diffusers` and `tests` packages importable when run via torchrun from an arbitrary CWD.
+# Import the in-repo `diffusers` and `tests`.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "src"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -64,16 +54,14 @@ def main():
     rank = dist.get_rank()
     tp_size = dist.get_world_size()
 
-    # TPU runs fp32 matmuls in bf16 by default, which would put the reference and the TP output ~1e-2 apart and force a
-    # tolerance loose enough to hide a sharding bug. At the highest precision they agree to ~1e-7 for most models.
+    # TPU runs fp32 matmuls in bf16 by default; use full precision to keep the tolerance tight.
     torch.set_float32_matmul_precision("highest")
 
     # Identical weights on every rank (same seed).
     torch.manual_seed(0)
     model = model_class(**init_dict).eval()
 
-    # Single-chip (unsharded) reference on the TPU rather than the CPU, so the reference and the TP pass run the same
-    # kernels and only the sharding differs.
+    # Unsharded reference on TPU, so only the sharding differs.
     ref_model = copy.deepcopy(model).to("tpu")
     inputs_on_device = {k: v.to("tpu") if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
     with torch.no_grad():
@@ -108,5 +96,5 @@ if __name__ == "__main__":
         main()
     except Exception:
         traceback.print_exc()
-        # Ensure a non-zero exit so the launching pytest sees the failure.
+        # Non-zero exit so pytest sees the failure.
         os._exit(1)

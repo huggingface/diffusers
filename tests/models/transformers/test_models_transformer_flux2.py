@@ -178,7 +178,7 @@ def make_neuron_tp_spec():
 
 
 def make_tpu_tp_spec():
-    """Model spec for `_tpu_tp_worker.py`, with 4 heads so the 4 TPU ranks of `TensorParallelTPUTesterMixin` divide them."""
+    """Spec for `_tpu_tp_worker.py`, with 4 heads to split across 4 chips."""
     config = Flux2TransformerTesterConfig()
     init_dict = {**config.get_init_dict(), "num_attention_heads": 4}
     return Flux2Transformer2DModel, init_dict, config.get_dummy_inputs(device="cpu")

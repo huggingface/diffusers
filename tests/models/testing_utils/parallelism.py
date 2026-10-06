@@ -338,8 +338,7 @@ def _tensor_parallel_from_pretrained_worker(
             specs = resolve_tp_shard_specs(model, model_class._tp_plan, world_size)
             state_dict = model.state_dict()
 
-            # A planned parameter the streaming load left as a full tensor would still compute the right output, so
-            # the numerics check alone would not catch it.
+            # The numerics check alone wouldn't catch a planned parameter left unsharded.
             for name, spec in specs.items():
                 param = state_dict[name]
                 assert isinstance(param, DTensor), (
@@ -487,18 +486,7 @@ class TensorParallelTesterMixin:
 def _run_tp_worker_subprocess(
     worker_filename: str, spec: str, world_size: int, timeout_s: int = 900, extra_args: "list[str] | None" = None
 ) -> None:
-    """Launch a `torchrun` TP-correctness worker subprocess and assert it exits cleanly.
-
-    Args:
-        worker_filename: Name of the worker script, resolved relative to `tests/models/transformers/` (e.g.
-            `"_tpu_tp_worker.py"`).
-        spec: `module:function` reference forwarded to the worker, returning `(model_class, init_dict, cpu_inputs)`.
-        world_size: Number of ranks to launch (`torchrun --nproc_per_node`).
-        timeout_s: Seconds to wait for the subprocess before failing the test. The worker itself only needs a couple
-            of minutes even from a cold compile; this generously bounds it so a real hang (e.g. a distributed-runtime
-            barrier timeout) fails the test loudly instead of stalling the run.
-        extra_args: Further command-line arguments forwarded to the worker.
-    """
+    """Run a TP worker script from `tests/models/transformers/` under `torchrun` and assert it exits cleanly."""
     worker = os.path.join(os.path.dirname(__file__), "..", "transformers", worker_filename)
     cmd = [sys.executable, "-m", "torch.distributed.run", f"--nproc_per_node={world_size}", worker, spec]
     cmd += extra_args or []
@@ -517,65 +505,33 @@ def _run_tp_worker_subprocess(
 @is_tensor_parallel
 @require_torch_tpu
 class TensorParallelTPUTesterMixin:
-    """Mixin for a tensor-parallel correctness test on TPU, run via `_tpu_tp_worker.py`.
+    """Tensor-parallel test on TPU: runs `_tpu_tp_worker.py` under `torchrun` with the `tpu_dist` backend.
 
-    TPU TP runs through `torchrun` with the `"tpu_dist"` distributed backend, so — like `TestFlux2TransformerTensorParallelNeuron`
-    for Neuron — it cannot use `TensorParallelTesterMixin`'s `torch.multiprocessing.spawn`/NCCL path above and instead
-    launches a subprocess worker script and checks its exit code.
-
-    Subclasses set `TP_SPEC` to a `module:function` reference returning `(model_class, init_dict, cpu_inputs)` and,
-    only if the model spec's head count doesn't divide 4, override `WORLD_SIZE`. `TP_ATOL` / `TP_RTOL` bound the
-    difference from the single-chip reference; override them only for a model whose TPU numerics depend on the shard
-    shapes.
-
-    `WORLD_SIZE` defaults to 4 rather than an arbitrary rank count: `torch_tpu`'s per-generation topology table
-    (`torch_tpu._internal.utils.hardware`) only enumerates whole-pod-slice chip counts (1/4/8 for v6e, for example),
-    not arbitrary sub-slices of a larger single host. A rank count with no matching whole-slice topology has
-    nothing to advertise and the PJRT client never completes its start-session barrier — the test would hang for
-    the barrier's full multi-minute timeout instead of failing. 4 is the smallest whole-slice count every current
-    TPU generation defines (see `_V4_TOPOLOGY` / `_V5E_TOPOLOGY` / `_V6E_TOPOLOGY` / `_V7_TOPOLOGY` in
-    `torch_tpu._internal.utils.hardware`). `skip_if_unsupported` below still checks the actual host up front and
-    skips fast instead of hanging when it doesn't have exactly that many chips.
-
-    Requires `TORCH_TPU_TOPOLOGY` and `TORCH_TPU_SLICEBUILDER_ADDRESSES` to be set. Source them via::
+    Subclasses set `TP_SPEC`, a `module:function` returning `(model_class, init_dict, cpu_inputs)`. Needs a host with
+    exactly `WORLD_SIZE` chips and the env from:
 
         eval $(python -m torch_tpu._internal.distributed.launchers.singlehost_wrapper | sed 's/^/export /')
     """
 
     WORLD_SIZE = 4
-    # The worker itself only needs a couple of minutes even from a cold XLA compile; this generously bounds the
-    # subprocess so a real hang (e.g. a barrier timeout this skip failed to catch) fails the test loudly instead of
-    # stalling the run.
+    # Fail on a hung distributed barrier instead of stalling the run.
     TIMEOUT_S = 900
     TP_SPEC: str = ""
     TP_ATOL = 1e-3
     TP_RTOL = 1e-3
 
     def skip_if_unsupported(self):
-        """Skip unless the host has exactly `WORLD_SIZE` TPU chips.
-
-        A topology *string* existing for a chip count (`hardware.get_tpu_topology`) isn't enough to guarantee the
-        PJRT client can actually form that session: a sub-slice of a larger single host (e.g. claiming 2 of a
-        4-chip v6e-4's chips via `TORCH_TPU_TOPOLOGY`/`TORCH_TPU_SLICEBUILDER_ADDRESSES`) can still fail with a
-        low-level `START_SESSION` GRPC error, since the runtime's session setup is tied to the host's actual
-        provisioned slice, not just a topology label. The only combination verified to work is running with exactly
-        as many ranks as the host has chips.
-        """
+        """Skip unless the host has exactly `WORLD_SIZE` chips; TPU TP can't run on a subset of a host's chips."""
         from torch_tpu._internal.utils import hardware
 
         try:
             device_count = hardware.get_tpu_device_count()
-        except Exception as e:  # pragma: no cover - defensive, hardware detection is best-effort
+        except Exception as e:  # pragma: no cover
             pytest.skip(f"Could not determine local TPU chip count: {e}")
             return
 
         if device_count != self.WORLD_SIZE:
-            pytest.skip(
-                f"This host exposes {device_count} TPU chip(s), but this test requires exactly "
-                f"{self.WORLD_SIZE} (a TPU single-host tensor-parallel job must use all chips on the host; "
-                f"sub-slicing a larger host is not reliably supported by the runtime). Run this test on a host "
-                f"with exactly {self.WORLD_SIZE} TPU chips."
-            )
+            pytest.skip(f"Needs exactly {self.WORLD_SIZE} TPU chips, this host has {device_count}.")
 
     def test_tensor_parallel_tpu_inference(self):
         self.skip_if_unsupported()
