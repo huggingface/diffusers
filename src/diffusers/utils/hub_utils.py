@@ -430,6 +430,9 @@ def _get_checkpoint_shard_files(
 
     ignore_patterns = ["*.json", "*.md"]
 
+    # In offline mode the shards can only come from the cache, so behave as if `local_files_only=True`.
+    local_files_only = local_files_only or HF_HUB_OFFLINE
+
     # If the repo doesn't have the required shards, error out early even before downloading anything.
     if not local_files_only:
         model_files_info = model_info(pretrained_model_name_or_path, revision=revision, token=token)
