@@ -451,6 +451,12 @@ else:
         "Kandinsky5T2IPipeline",
         "Kandinsky5I2IPipeline",
     ]
+    _import_structure["kandinsky6"] = [
+        "Kandinsky6SRPipeline",
+        "Kandinsky6SRPipelineOutput",
+        "Kandinsky6TI2VAPipeline",
+        "Kandinsky6TI2VAPipelineOutput",
+    ]
     _import_structure["z_image"] = [
         "ZImageControlNetInpaintPipeline",
         "ZImageControlNetPipeline",
@@ -780,6 +786,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky5I2VPipeline,
             Kandinsky5T2IPipeline,
             Kandinsky5T2VPipeline,
+        )
+        from .kandinsky6 import (
+            Kandinsky6SRPipeline,
+            Kandinsky6SRPipelineOutput,
+            Kandinsky6TI2VAPipeline,
+            Kandinsky6TI2VAPipelineOutput,
         )
         from .krea2 import Krea2Pipeline
         from .latent_consistency_models import (
