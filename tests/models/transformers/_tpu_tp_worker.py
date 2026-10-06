@@ -44,13 +44,8 @@ import torch
 import torch.distributed as dist
 import torch_tpu  # noqa: F401 — registers "tpu" device and "tpu_dist" backend
 from torch.distributed.device_mesh import DeviceMesh
-from torch_tpu._internal import sync as tpu_sync
 
 from diffusers import TensorParallelConfig
-
-
-def _synchronize():
-    tpu_sync.synchronize(None, wait=True)
 
 
 def main():
@@ -83,7 +78,6 @@ def main():
     inputs_on_device = {k: v.to("tpu") if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
     with torch.no_grad():
         ref_output = ref_model(**inputs_on_device, return_dict=False)[0]
-    _synchronize()
     ref_output = ref_output.float().cpu()
     del ref_model
 
@@ -91,7 +85,6 @@ def main():
     model = model.to("tpu")
     with torch.no_grad():
         tp_output = model(**inputs_on_device, return_dict=False)[0]
-    _synchronize()
     tp_output = tp_output.float().cpu()
 
     if rank == 0:
