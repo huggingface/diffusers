@@ -62,6 +62,41 @@ pipe.transformer.set_attn_processor(QwenImage21FlexAttnProcessor())
 pipe.transformer.compile()
 ```
 
+## Loading single-file checkpoints
+
+```python
+import torch
+from diffusers import QwenImage21Pipeline, QwenImage21Transformer2DModel
+
+transformer = QwenImage21Transformer2DModel.from_single_file(
+    "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/blob/main/diffusion_models/qwen_image_2.1_bf16.safetensors",
+    dtype=torch.bfloat16,
+)
+pipe = QwenImage21Pipeline.from_pretrained("Qwen/Qwen-Image-2.1", transformer=transformer, dtype=torch.bfloat16).to(
+    "cuda"
+)
+```
+
+## Sampling sigmas
+
+Model authors can configure a default sampling grid with `sample_sigmas` in the pipeline config. When you load a
+released checkpoint, its default grid and scheduler settings are restored automatically.
+
+To experiment with a different grid at runtime, pass `sigmas` to the pipeline call:
+
+```python
+# Use the checkpoint's default sampling grid.
+image = pipe(prompt).images[0]
+
+# Override the default grid for this call.
+image = pipe(prompt, sigmas=[1.0, 0.8, 0.5, 0.2]).images[0]
+```
+
+The custom grid above illustrates the API; generation quality depends on the checkpoint and grid. Sigma lists exclude
+the terminal sigma, which the scheduler appends. Explicit `sigmas` override the configured `sample_sigmas`, and either
+list determines the number of steps instead of `num_inference_steps`. If neither is provided, the pipeline uses
+`num_inference_steps` to generate the schedule. The scheduler applies its configured processing to either grid.
+
 ## QwenImage21Pipeline
 
 [[autodoc]] QwenImage21Pipeline
