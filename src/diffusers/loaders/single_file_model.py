@@ -84,6 +84,18 @@ if is_torch_version(">=", "1.9.0") and is_accelerate_available():
 else:
     _LOW_CPU_MEM_USAGE_DEFAULT = False
 
+
+def convert_anima_text_conditioner_to_diffusers(checkpoint, **kwargs):
+    # print(kwargs)
+    converted_state_dict = {}
+    for k in list(checkpoint.keys()):
+        if "llm_adapter" in k:
+            converted_state_dict[k.removeprefix("net.").removeprefix("model.diffusion_model.").removeprefix("llm_adapter.")] = checkpoint.pop(k)
+        else:
+            _ = checkpoint.pop(k)
+    return converted_state_dict
+
+
 SINGLE_FILE_LOADABLE_CLASSES = {
     "StableCascadeUNet": {
         "checkpoint_mapping_fn": convert_stable_cascade_unet_single_file_to_diffusers,
@@ -191,6 +203,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     "CosmosTransformer3DModel": {
         "checkpoint_mapping_fn": convert_cosmos_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
+    },
+    "AnimaTextConditioner": {
+        "checkpoint_mapping_fn": convert_anima_text_conditioner_to_diffusers,
+        "default_subfolder": "text_conditioner",
     },
     "QwenImageTransformer2DModel": {
         "checkpoint_mapping_fn": lambda checkpoint, **kwargs: checkpoint,
