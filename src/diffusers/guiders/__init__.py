@@ -25,6 +25,7 @@ if is_torch_available():
     from .frequency_decoupled_guidance import FrequencyDecoupledGuidance
     from .guider_utils import BaseGuidance
     from .ltx2_guidance import LTX2Guidance
+    from .magi_classifier_free_guidance import MagiClassifierFreeGuidance
     from .magnitude_aware_guidance import MagnitudeAwareGuidance
     from .perturbed_attention_guidance import PerturbedAttentionGuidance
     from .skip_layer_guidance import SkipLayerGuidance
