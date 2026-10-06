@@ -14,6 +14,7 @@ from transformers import (
 
 from diffusers import AutoencoderKL, FlowMatchEulerDiscreteScheduler, SD3Transformer2DModel, StableDiffusion3Pipeline
 
+from ...models.testing_utils.lora import check_if_lora_correctly_set
 from ...testing_utils import (
     assert_tensors_close,
     backend_empty_cache,
@@ -24,6 +25,8 @@ from ...testing_utils import (
 )
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
 )
@@ -168,6 +171,21 @@ class TestStableDiffusion3Pipeline(StableDiffusion3PipelineTesterConfig, Pipelin
 
         assert not torch.allclose(output_full, output_skip, atol=1e-5), "Outputs should differ when layers are skipped"
         assert output_full.shape == output_skip.shape, "Outputs should have the same shape"
+
+
+class TestStableDiffusion3PipelineLoRA(StableDiffusion3PipelineTesterConfig, LoraTesterMixin):
+    @pytest.mark.parametrize("weight_name", ["lora_diffusers_format.safetensors", "lora_peft_format.safetensors"])
+    def test_sd3_lora(self, weight_name):
+        pipe = self.get_pipeline().to(torch_device)
+        pipe.load_lora_weights("hf-internal-testing/tiny-sd3-loras", weight_name=weight_name)
+        assert check_if_lora_correctly_set(pipe.transformer)
+        self.run_pipe(pipe)
+        pipe.unload_lora_weights()
+        assert not check_if_lora_correctly_set(pipe.transformer)
+
+
+class TestStableDiffusion3PipelineLoRAMemory(StableDiffusion3PipelineTesterConfig, LoraMemoryTesterMixin):
+    pass
 
 
 class TestStableDiffusion3PipelineMemory(StableDiffusion3PipelineTesterConfig, MemoryTesterMixin):
