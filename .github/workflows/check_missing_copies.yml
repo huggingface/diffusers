@@ -1,7 +1,7 @@
 name: Check for missing Copied from comments
 
 on:
-  pull_request_target:
+  pull_request:
     branches: [main]
     paths:
       - "src/diffusers/**.py"
