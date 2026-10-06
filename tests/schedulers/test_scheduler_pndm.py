@@ -58,6 +58,36 @@ class PNDMSchedulerTest(SchedulerCommonTest):
     def test_from_save_pretrained(self):
         pass
 
+    def test_pndm_low_inference_steps_prk_validation(self):
+        """
+        Tests that PNDMScheduler explicitly raises a ValueError when skip_prk_steps=False
+        and num_inference_steps < pndm_order, avoiding a cryptic NumPy broadcasting error.
+        """
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config(skip_prk_steps=False)
+            scheduler = scheduler_class(**scheduler_config)
+
+            # These should raise ValueError
+            for n in [1, 2, 3]:
+                with self.assertRaises(ValueError) as cm:
+                    scheduler.set_timesteps(n)
+                self.assertIn(f"`num_inference_steps` must be >= {scheduler.pndm_order}", str(cm.exception))
+
+            # These should NOT raise ValueError
+            try:
+                scheduler.set_timesteps(4)
+            except ValueError:
+                self.fail("set_timesteps(4) raised ValueError unexpectedly with skip_prk_steps=False")
+
+            # Control case: skip_prk_steps=True should allow n < 4
+            scheduler_config = self.get_scheduler_config(skip_prk_steps=True)
+            scheduler = scheduler_class(**scheduler_config)
+            for n in [1, 2, 3, 4]:
+                try:
+                    scheduler.set_timesteps(n)
+                except ValueError:
+                    self.fail(f"set_timesteps({n}) raised ValueError unexpectedly with skip_prk_steps=True")
+
     def check_over_forward(self, time_step=0, **forward_kwargs):
         kwargs = dict(self.forward_default_kwargs)
         num_inference_steps = kwargs.pop("num_inference_steps", None)
