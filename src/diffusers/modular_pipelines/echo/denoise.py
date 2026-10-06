@@ -411,6 +411,8 @@ class EchoDenoiseLoopStep(LoopSequentialPipelineBlocks):
               Packed clean first-frame tokens.
     """
 
+    _callback_tensor_inputs = ("latents", "audio_latents")
+
     model_name = "echo"
     block_classes = EchoDenoiseLoopBlocks.values()
     block_names = EchoDenoiseLoopBlocks.keys()
@@ -447,9 +449,13 @@ class EchoDenoiseLoopStep(LoopSequentialPipelineBlocks):
             raise ValueError("Echo `sigmas` must be monotonically non-increasing.")
         block_state.sigmas = sigmas
 
+        components._validate_callback_inputs(self.callback_tensor_inputs)
         with self.progress_bar(total=len(sigmas) - 1) as progress_bar:
             for i, sigma in enumerate(sigmas[:-1]):
+                if components.interrupt:
+                    break
                 components, block_state = self.loop_step(components, block_state, i=i, sigma=sigma)
+                components._call_callback_on_step_end(block_state, sigma, self.callback_tensor_inputs)
                 progress_bar.update()
 
         self.set_block_state(state, block_state)
