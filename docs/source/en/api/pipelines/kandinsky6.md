@@ -28,8 +28,12 @@ super-resolution model upscales the generated video tile by tile in the latent s
 
 | Model | Pipeline | Notes |
 |---|---|---|
-| [`kandinskylab/Kandinsky-6.0-Pro-sft-5s-Diffusers`](https://huggingface.co/kandinskylab/Kandinsky-6.0-Pro-sft-5s-Diffusers) | [`Kandinsky6TI2VAPipeline`] | Flow matching, `guidance_scale=5.0`, 50 steps |
-| [`kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers`](https://huggingface.co/kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers) | [`Kandinsky6TI2VAPipeline`] | Distilled, `guidance_scale=1.0`, 16 steps |
+| [`kandinskylab/Kandinsky-6.0-Pro-5s-Diffusers`](https://huggingface.co/kandinskylab/Kandinsky-6.0-Pro-5s-Diffusers) | [`Kandinsky6TI2VAPipeline`] | Flow matching, `guidance_scale=5.0`, 50 steps |
+| [`kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers`](https://huggingface.co/kandinskylab/Kandinsky-6.0-Pro-distill-5s-Diffusers) | [`Kandinsky6TI2VAPipeline`] | Distilled, `guidance_scale=1.0`, 10 steps |
+| [`kandinskylab/Kandinsky-6.0-Lite-5s-Diffusers`](https://huggingface.co/kandinskylab/Kandinsky-6.0-Lite-5s-Diffusers) | [`Kandinsky6TI2VAPipeline`] | Flow matching, `guidance_scale=5.0`, 50 steps |
+| [`kandinskylab/Kandinsky-6.0-Lite-distill-5s-Diffusers`](https://huggingface.co/kandinskylab/Kandinsky-6.0-Lite-distill-5s-Diffusers) | [`Kandinsky6TI2VAPipeline`] | Distilled, `guidance_scale=1.0`, 10 steps |
+| [`kandinskylab/Kandinsky-6.0-Pro-pretrain-5s-Diffusers`](https://huggingface.co/kandinskylab/Kandinsky-6.0-Pro-pretrain-5s-Diffusers) | [`Kandinsky6TI2VAPipeline`] | Flow matching, `guidance_scale=5.0`, 50 steps |
+| [`kandinskylab/Kandinsky-6.0-Lite-pretrain-5s-Diffusers`](https://huggingface.co/kandinskylab/Kandinsky-6.0-Lite-pretrain-5s-Diffusers) | [`Kandinsky6TI2VAPipeline`] | Flow matching, `guidance_scale=5.0`, 50 steps |
 | [`kandinskylab/Kandinsky-6.0-VSR-5s-Diffusers`](https://huggingface.co/kandinskylab/Kandinsky-6.0-VSR-5s-Diffusers) | [`Kandinsky6SRPipeline`] | Flow matching super-resolution |
 | [`kandinskylab/Kandinsky-6.0-VSR-distilled2steps-5s-Diffusers`](https://huggingface.co/kandinskylab/Kandinsky-6.0-VSR-distilled2steps-5s-Diffusers) | [`Kandinsky6SRPipeline`] | Distilled super-resolution, 2 steps |
 
@@ -50,7 +54,7 @@ output = pipe(
     height=480,
     width=864,
     num_frames=121,
-    num_inference_steps=16,
+    num_inference_steps=10,
     guidance_scale=1.0,
 )
 encode_video(
@@ -73,13 +77,17 @@ is refined at one of the tile sizes the SR transformer was trained on, and the t
 windows.
 
 ```python
+# required: lets inductor pick flex-attention tiles that fit the SR block mask
+torch._inductor.config.max_autotune = True  
+
 sr_pipe = Kandinsky6SRPipeline.from_pretrained(
     "kandinskylab/Kandinsky-6.0-VSR-distilled2steps-5s-Diffusers", torch_dtype=torch.bfloat16
 )
 # The SR transformer always runs NABLA sparse attention on the `flex` backend. Compile it, otherwise flex falls
 # back to an eager implementation that needs far more memory at video resolutions.
-sr_pipe.transformer.compile_repeated_blocks(fullgraph=True)
 sr_pipe.enable_model_cpu_offload()
+sr_pipe.transformer.set_attention_backend("flex")
+sr_pipe.transformer.compile_repeated_blocks(fullgraph=True)
 
 upscaled = sr_pipe(video=output.frames[0], resolution_scale=2.25, num_inference_steps=2).frames[0]
 ```
