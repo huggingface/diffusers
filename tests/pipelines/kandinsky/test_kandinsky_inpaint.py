@@ -36,11 +36,11 @@ from ...testing_utils import (
     require_torch_accelerator,
     torch_device,
 )
-from ..test_pipelines_common import assert_mean_pixel_difference
 from ..testing_utils import (
     BasePipelineTesterConfig,
     MemoryTesterMixin,
     PipelineTesterMixin,
+    assert_mean_pixel_difference,
 )
 
 

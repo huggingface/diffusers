@@ -160,6 +160,7 @@ CHECKPOINT_KEY_NAMES = {
         "audio_vae.per_channel_statistics.mean-of-means",
     ],
     "qwen-image-2.1": ["model.diffusion_model.txt_in.text_norm.weight", "txt_in.text_norm.weight"],
+    "krea2": ["model.diffusion_model.txtfusion.projector.weight", "txtfusion.projector.weight"],
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -245,6 +246,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "z-image-turbo-controlnet-2.1": {"pretrained_model_name_or_path": "hlky/Z-Image-Turbo-Fun-Controlnet-Union-2.1"},
     "ltx2-dev": {"pretrained_model_name_or_path": "Lightricks/LTX-2"},
     "qwen-image-2.1": {"pretrained_model_name_or_path": "Qwen/Qwen-Image-2.1"},
+    "krea2": {"pretrained_model_name_or_path": "krea/Krea-2-Raw"},
     "minimax-h3": {"pretrained_model_name_or_path": "MiniMaxAI/MiniMax-H3"},
 }
 
@@ -790,6 +792,9 @@ def infer_diffusers_model_type(checkpoint):
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["qwen-image-2.1"]):
         model_type = "qwen-image-2.1"
+
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["krea2"]):
+        model_type = "krea2"
 
     elif CHECKPOINT_KEY_NAMES["wan_vae"] in checkpoint:
         # All Wan models use the same VAE so we can use the same default model repo to fetch the config
@@ -4333,5 +4338,53 @@ def convert_qwen_image21_transformer_checkpoint_to_diffusers(checkpoint, **kwarg
             converted_state_dict[new_key.replace("gate_up", "proj")] = up
         else:
             converted_state_dict[new_key] = value
+
+    return converted_state_dict
+
+
+def convert_krea2_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    prefix_rename_dict = {
+        "first.": "img_in.",
+        "tmlp.0.": "time_embed.linear_1.",
+        "tmlp.2.": "time_embed.linear_2.",
+        "tproj.1.": "time_mod_proj.",
+        "txtmlp.0.scale": "txt_in.norm.weight",
+        "txtmlp.1.": "txt_in.linear_1.",
+        "txtmlp.3.": "txt_in.linear_2.",
+        "txtfusion.": "text_fusion.",
+        "blocks.": "transformer_blocks.",
+        "last.linear.": "final_layer.linear.",
+        "last.norm.scale": "final_layer.norm.weight",
+        "last.modulation.lin": "final_layer.scale_shift_table",
+    }
+    block_rename_dict = {
+        ".attn.wq.": ".attn.to_q.",
+        ".attn.wk.": ".attn.to_k.",
+        ".attn.wv.": ".attn.to_v.",
+        ".attn.wo.": ".attn.to_out.0.",
+        ".attn.gate.": ".attn.to_gate.",
+        ".attn.qknorm.qnorm.scale": ".attn.norm_q.weight",
+        ".attn.qknorm.knorm.scale": ".attn.norm_k.weight",
+        ".mlp.": ".ff.",
+        ".prenorm.scale": ".norm1.weight",
+        ".postnorm.scale": ".norm2.weight",
+        ".mod.lin": ".scale_shift_table",
+    }
+
+    converted_state_dict = {}
+    for key in list(checkpoint.keys()):
+        new_key = key.replace("model.diffusion_model.", "")
+        for old, new in prefix_rename_dict.items():
+            if new_key.startswith(old):
+                new_key = new + new_key[len(old) :]
+                break
+        for old, new in block_rename_dict.items():
+            new_key = new_key.replace(old, new)
+
+        value = checkpoint.pop(key)
+        # The original checkpoint stores each block's six modulation vectors flattened into one.
+        if new_key.startswith("transformer_blocks.") and new_key.endswith(".scale_shift_table"):
+            value = value.reshape(6, -1)
+        converted_state_dict[new_key] = value
 
     return converted_state_dict
