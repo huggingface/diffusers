@@ -36,6 +36,7 @@ from .single_file_utils import (
     convert_autoencoder_dc_checkpoint_to_diffusers,
     convert_chroma_transformer_checkpoint_to_diffusers,
     convert_controlnet_checkpoint,
+    convert_anima_text_conditioner_to_diffusers,
     convert_cosmos_transformer_checkpoint_to_diffusers,
     convert_ernie_image_transformer_checkpoint_to_diffusers,
     convert_flux2_transformer_checkpoint_to_diffusers,
@@ -83,18 +84,6 @@ if is_torch_version(">=", "1.9.0") and is_accelerate_available():
     _LOW_CPU_MEM_USAGE_DEFAULT = True
 else:
     _LOW_CPU_MEM_USAGE_DEFAULT = False
-
-
-def convert_anima_text_conditioner_to_diffusers(checkpoint, **kwargs):
-    # print(kwargs)
-    converted_state_dict = {}
-    for k in list(checkpoint.keys()):
-        if "llm_adapter" in k:
-            converted_state_dict[k.removeprefix("net.").removeprefix("model.diffusion_model.").removeprefix("llm_adapter.")] = checkpoint.pop(k)
-        else:
-            _ = checkpoint.pop(k)
-    return converted_state_dict
-
 
 SINGLE_FILE_LOADABLE_CLASSES = {
     "StableCascadeUNet": {
