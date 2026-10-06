@@ -220,6 +220,7 @@ _auto_round_available, _auto_round_version = _is_package_available("auto_round")
 _sdnq_available, _sdnq_version = _is_package_available("sdnq")
 _flashpack_available, _flashpack_version = _is_package_available("flashpack")
 _av_available, _av_version = _is_package_available("av")
+_openexr_available, _openexr_version = _is_package_available("OpenEXR")
 
 
 def is_torch_available():
@@ -420,6 +421,10 @@ def is_kornia_available():
 
 def is_av_available():
     return _av_available
+
+
+def is_openexr_available():
+    return _openexr_available
 
 
 # docstyle-ignore

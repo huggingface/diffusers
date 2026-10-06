@@ -97,6 +97,7 @@ from .import_utils import (
     is_nvidia_modelopt_version,
     is_onnx_available,
     is_opencv_available,
+    is_openexr_available,
     is_optimum_quanto_available,
     is_optimum_quanto_version,
     is_outlines_available,
