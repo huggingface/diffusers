@@ -55,7 +55,7 @@ class LTX2HDRPipelineTesterConfig(LTX2BaseTesterConfig):
     optional_input_params = frozenset(
         ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
     )
-    unset_components = ("audio_scheduler",)
+    unset_components = ("audio_scheduler", "diffusion_decoder")
 
     def get_dummy_inputs(self):
         generator = self.get_generator(0)
