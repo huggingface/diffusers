@@ -15,9 +15,9 @@
 
 import gc
 import time
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from huggingface_hub import hf_hub_download
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -32,6 +32,7 @@ from diffusers import (
 )
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_max_memory_allocated,
@@ -44,23 +45,24 @@ from ...testing_utils import (
     slow,
     torch_device,
 )
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
-class StableDiffusion2VPredictionPipelineFastTests(unittest.TestCase):
-    def setUp(self):
-        # clean up the VRAM before each test
-        super().setUp()
-        gc.collect()
-        backend_empty_cache(torch_device)
+class StableDiffusion2VPredictionPipelineTesterConfig(BasePipelineTesterConfig):
+    """SD2 driven by a `prediction_type="v_prediction"` scheduler."""
 
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
-        gc.collect()
-        backend_empty_cache(torch_device)
+    pipeline_class = StableDiffusionPipeline
+    required_input_params_in_call_signature = TEXT_TO_IMAGE_PARAMS
+    batch_input_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    output_shape = (3, 64, 64)
 
     @property
     def dummy_cond_unet(self):
@@ -113,167 +115,103 @@ class StableDiffusion2VPredictionPipelineFastTests(unittest.TestCase):
         )
         return CLIPTextModel(config)
 
+    def get_dummy_components(self, scheduler=None):
+        if scheduler is None:
+            scheduler = DDIMScheduler(
+                beta_start=0.00085,
+                beta_end=0.012,
+                beta_schedule="scaled_linear",
+                clip_sample=False,
+                set_alpha_to_one=False,
+                prediction_type="v_prediction",
+            )
+        return {
+            "unet": self.dummy_cond_unet,
+            "scheduler": scheduler,
+            "vae": self.dummy_vae,
+            "text_encoder": self.dummy_text_encoder,
+            "tokenizer": CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip"),
+            "safety_checker": None,
+            "feature_extractor": None,
+            "image_encoder": None,
+        }
+
+    def get_dummy_inputs(self):
+        return {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": self.get_generator(0),
+            "num_inference_steps": 2,
+            "guidance_scale": 6.0,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
+        }
+
+
+class TestStableDiffusion2VPredictionPipeline(StableDiffusion2VPredictionPipelineTesterConfig, PipelineTesterMixin):
     def test_stable_diffusion_v_pred_ddim(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        unet = self.dummy_cond_unet
-        scheduler = DDIMScheduler(
-            beta_start=0.00085,
-            beta_end=0.012,
-            beta_schedule="scaled_linear",
-            clip_sample=False,
-            set_alpha_to_one=False,
-            prediction_type="v_prediction",
-        )
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline()
 
-        vae = self.dummy_vae
-        bert = self.dummy_text_encoder
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        image = sd_pipe(**self.get_dummy_inputs()).images
+        image_slice = image[0, -1, -3:, -3:]
 
-        # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionPipeline(
-            unet=unet,
-            scheduler=scheduler,
-            vae=vae,
-            text_encoder=bert,
-            tokenizer=tokenizer,
-            safety_checker=None,
-            feature_extractor=None,
-            image_encoder=None,
-            requires_safety_checker=False,
-        )
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        prompt = "A painting of a squirrel eating a burger"
-
-        generator = torch.Generator(device=device).manual_seed(0)
-        output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
-        image = output.images
-
-        generator = torch.Generator(device=device).manual_seed(0)
-        image_from_tuple = sd_pipe(
-            [prompt],
-            generator=generator,
-            guidance_scale=6.0,
-            num_inference_steps=2,
-            output_type="np",
-            return_dict=False,
-        )[0]
-
-        image_slice = image[0, -3:, -3:, -1]
-        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
-
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.6308, 0.6095, 0.5343, 0.5073, 0.4634, 0.4632, 0.4967, 0.4885, 0.4489])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+        assert image.shape == (1, *self.output_shape)
+        # fmt: off
+        expected_slice = torch.tensor([0.6308, 0.6095, 0.5343, 0.5073, 0.4634, 0.4632, 0.4967, 0.4885, 0.4489])
+        # fmt: on
+        assert_tensors_close(image_slice.flatten(), expected_slice, atol=1e-2)
 
     def test_stable_diffusion_v_pred_k_euler(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        unet = self.dummy_cond_unet
+        # Run on CPU: the expected slice below is CPU-specific.
         scheduler = EulerDiscreteScheduler(
             beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", prediction_type="v_prediction"
         )
-        vae = self.dummy_vae
-        bert = self.dummy_text_encoder
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        sd_pipe = self.get_pipeline(**self.get_dummy_components(scheduler=scheduler))
 
-        # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionPipeline(
-            unet=unet,
-            scheduler=scheduler,
-            vae=vae,
-            text_encoder=bert,
-            tokenizer=tokenizer,
-            safety_checker=None,
-            feature_extractor=None,
-            image_encoder=None,
-            requires_safety_checker=False,
-        )
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        image = sd_pipe(**self.get_dummy_inputs()).images
+        image_slice = image[0, -1, -3:, -3:]
 
-        prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator(device=device).manual_seed(0)
-        output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
+        assert image.shape == (1, *self.output_shape)
+        # fmt: off
+        expected_slice = torch.tensor([0.5419, 0.5719, 0.5558, 0.5034, 0.4559, 0.5026, 0.4736, 0.4782, 0.4725])
+        # fmt: on
+        assert_tensors_close(image_slice.flatten(), expected_slice, atol=1e-2)
 
-        image = output.images
-
-        generator = torch.Generator(device=device).manual_seed(0)
-        image_from_tuple = sd_pipe(
-            [prompt],
-            generator=generator,
-            guidance_scale=6.0,
-            num_inference_steps=2,
-            output_type="np",
-            return_dict=False,
-        )[0]
-
-        image_slice = image[0, -3:, -3:, -1]
-        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
-
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5419, 0.5719, 0.5558, 0.5034, 0.4559, 0.5026, 0.4736, 0.4782, 0.4725])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+    def test_encode_prompt_works_in_isolation(self):
+        extra_required_param_value_dict = {
+            "device": torch.device(torch_device).type,
+            "do_classifier_free_guidance": self.get_dummy_inputs().get("guidance_scale", 1.0) > 1.0,
+        }
+        return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
 
     @require_accelerator
     def test_stable_diffusion_v_pred_fp16(self):
         """Test that stable diffusion v-prediction works with fp16"""
-        unet = self.dummy_cond_unet
-        scheduler = DDIMScheduler(
-            beta_start=0.00085,
-            beta_end=0.012,
-            beta_schedule="scaled_linear",
-            clip_sample=False,
-            set_alpha_to_one=False,
-            prediction_type="v_prediction",
-        )
-        vae = self.dummy_vae
-        bert = self.dummy_text_encoder
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        sd_pipe = self.get_pipeline().to(torch_device, torch.float16)
 
-        # put models in fp16
-        unet = unet.half()
-        vae = vae.half()
-        bert = bert.half()
+        inputs = self.get_dummy_inputs()
+        del inputs["guidance_scale"]
+        image = sd_pipe(**inputs).images
 
-        # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionPipeline(
-            unet=unet,
-            scheduler=scheduler,
-            vae=vae,
-            text_encoder=bert,
-            tokenizer=tokenizer,
-            safety_checker=None,
-            feature_extractor=None,
-            image_encoder=None,
-            requires_safety_checker=False,
-        )
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        assert image.shape == (1, *self.output_shape)
 
-        prompt = "A painting of a squirrel eating a burger"
-        generator = torch.manual_seed(0)
-        image = sd_pipe([prompt], generator=generator, num_inference_steps=2, output_type="np").images
 
-        assert image.shape == (1, 64, 64, 3)
+class TestStableDiffusion2VPredictionPipelineMemory(
+    StableDiffusion2VPredictionPipelineTesterConfig, MemoryTesterMixin
+):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the SD2 v-prediction pipeline."""
 
 
 @slow
 @require_torch_accelerator
-class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
-    def setUp(self):
-        # clean up the VRAM before each test
-        super().setUp()
+class TestStableDiffusion2VPredictionPipelineIntegration:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        # clean up the VRAM before and after each test
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

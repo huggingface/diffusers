@@ -8,12 +8,13 @@ from diffusers import (
     Flux2Transformer2DModel,
 )
 
-from ...testing_utils import assert_tensors_close, torch_device
+from ...testing_utils import torch_device
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
-    check_qkv_fused_layers_exist,
 )
 
 
@@ -123,51 +124,6 @@ class Flux2PipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestFlux2Pipeline(Flux2PipelineTesterConfig, PipelineTesterMixin):
-    def test_fused_qkv_projections(self):
-        pipe = self.get_pipeline()
-
-        inputs = self.get_dummy_inputs()
-        image = pipe(**inputs).images
-        original_image_slice = image[0, -1, -3:, -3:]
-
-        # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
-        # to the pipeline level.
-        pipe.transformer.fuse_qkv_projections()
-        assert check_qkv_fused_layers_exist(pipe.transformer, ["to_qkv"]), (
-            "Something wrong with the fused attention layers. Expected all the attention projections to be fused."
-        )
-
-        inputs = self.get_dummy_inputs()
-        image = pipe(**inputs).images
-        image_slice_fused = image[0, -1, -3:, -3:]
-
-        pipe.transformer.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs()
-        image = pipe(**inputs).images
-        image_slice_disabled = image[0, -1, -3:, -3:]
-
-        assert_tensors_close(
-            original_image_slice,
-            image_slice_fused,
-            atol=1e-3,
-            rtol=1e-3,
-            msg="Fusion of QKV projections shouldn't affect the outputs.",
-        )
-        assert_tensors_close(
-            image_slice_fused,
-            image_slice_disabled,
-            atol=1e-3,
-            rtol=1e-3,
-            msg="Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled.",
-        )
-        assert_tensors_close(
-            original_image_slice,
-            image_slice_disabled,
-            atol=1e-2,
-            rtol=1e-2,
-            msg="Original outputs should match when fused QKV projections are disabled.",
-        )
-
     def test_flux_image_output_shape(self):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
         inputs = self.get_dummy_inputs()
@@ -187,3 +143,18 @@ class TestFlux2Pipeline(Flux2PipelineTesterConfig, PipelineTesterMixin):
 
 class TestFlux2PipelineMemory(Flux2PipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux2 pipeline."""
+
+
+class TestFlux2PipelineLoRA(Flux2PipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the Flux2 pipeline."""
+
+    # The single-stream blocks fuse their QKV and MLP input projections into `to_qkv_mlp_proj`, so the default
+    # attention targets only reach the dual-stream blocks. `to_k` covers those, `to_qkv_mlp_proj` the rest.
+    denoiser_target_modules = {"transformer": ["to_qkv_mlp_proj", "to_k"]}
+
+
+class TestFlux2PipelineLoRAMemory(Flux2PipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests (group offload, CPU offload) for the Flux2 pipeline."""
+
+    # See `TestFlux2PipelineLoRA`.
+    denoiser_target_modules = {"transformer": ["to_qkv_mlp_proj", "to_k"]}

@@ -42,6 +42,7 @@ from .single_file_utils import (
     convert_flux_transformer_checkpoint_to_diffusers,
     convert_hidream_transformer_to_diffusers,
     convert_hunyuan_video_transformer_to_diffusers,
+    convert_krea2_transformer_checkpoint_to_diffusers,
     convert_ldm_unet_checkpoint,
     convert_ldm_vae_checkpoint,
     convert_ltx2_audio_vae_to_diffusers,
@@ -50,7 +51,9 @@ from .single_file_utils import (
     convert_ltx_transformer_checkpoint_to_diffusers,
     convert_ltx_vae_checkpoint_to_diffusers,
     convert_lumina2_to_diffusers,
+    convert_minimax_h3_transformer_checkpoint_to_diffusers,
     convert_mochi_transformer_checkpoint_to_diffusers,
+    convert_qwen_image21_transformer_checkpoint_to_diffusers,
     convert_sana_transformer_to_diffusers,
     convert_sd3_transformer_checkpoint_to_diffusers,
     convert_stable_cascade_unet_single_file_to_diffusers,
@@ -193,6 +196,14 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": lambda checkpoint, **kwargs: checkpoint,
         "default_subfolder": "transformer",
     },
+    "QwenImage21Transformer2DModel": {
+        "checkpoint_mapping_fn": convert_qwen_image21_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "Krea2Transformer2DModel": {
+        "checkpoint_mapping_fn": convert_krea2_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
     "Flux2Transformer2DModel": {
         "checkpoint_mapping_fn": convert_flux2_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
@@ -218,6 +229,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "MotifVideoTransformer3DModel": {
         "checkpoint_mapping_fn": lambda checkpoint, **kwargs: checkpoint,
+        "default_subfolder": "transformer",
+    },
+    "MiniMaxH3Transformer3DModel": {
+        "checkpoint_mapping_fn": convert_minimax_h3_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
 }

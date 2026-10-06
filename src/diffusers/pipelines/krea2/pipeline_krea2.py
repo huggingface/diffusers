@@ -466,7 +466,7 @@ class Krea2Pipeline(DiffusionPipeline, Krea2LoraLoaderMixin):
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         attention_kwargs: dict[str, Any] | None = None,
         max_sequence_length: int = 512,
-    ):
+    ) -> Krea2PipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

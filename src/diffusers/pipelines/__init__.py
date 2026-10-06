@@ -340,6 +340,9 @@ else:
     _import_structure["ltx2"] = [
         "LTX2Pipeline",
         "LTX2ConditionPipeline",
+        "LTX2DFRPipeline",
+        "LTX2DFRPipelineOutput",
+        "LTX2DFRTemporalRefinePipeline",
         "LTX2HDRPipeline",
         "LTX2InContextPipeline",
         "LTX2ImageToVideoPipeline",
@@ -352,8 +355,8 @@ else:
         "JoyImageEditPlusPipeline",
         "JoyImageEditPlusPipelineOutput",
     ]
-    _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
-    _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
+    _import_structure["lumina"] = ["LuminaPipeline"]
+    _import_structure["lumina2"] = ["Lumina2Pipeline"]
     _import_structure["lucy"] = ["LucyEditPipeline"]
     _import_structure["longcat_image"] = ["LongCatImagePipeline", "LongCatImageEditPipeline"]
     _import_structure["longcat_audio_dit"] = ["LongCatAudioDiTPipeline"]
@@ -464,6 +467,7 @@ else:
         "SkyReelsV2Pipeline",
     ]
     _import_structure["nucleusmoe_image"] = ["NucleusMoEImagePipeline"]
+    _import_structure["qwenimage21"] = ["QwenImage21Pipeline"]
     _import_structure["qwenimage"] = [
         "QwenImagePipeline",
         "QwenImageImg2ImgPipeline",
@@ -802,6 +806,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .ltx2 import (
             LTX2ConditionPipeline,
+            LTX2DFRPipeline,
+            LTX2DFRPipelineOutput,
+            LTX2DFRTemporalRefinePipeline,
             LTX2HDRPipeline,
             LTX2ImageToVideoPipeline,
             LTX2InContextPipeline,
@@ -810,8 +817,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTX2VideoDiffusionDecodePipeline,
         )
         from .lucy import LucyEditPipeline
-        from .lumina import LuminaPipeline, LuminaText2ImgPipeline
-        from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline
+        from .lumina import LuminaPipeline
+        from .lumina2 import Lumina2Pipeline
         from .marigold import (
             MarigoldDepthPipeline,
             MarigoldIntrinsicsPipeline,
@@ -858,6 +865,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageLayeredPipeline,
             QwenImagePipeline,
         )
+        from .qwenimage21 import QwenImage21Pipeline
         from .sana import (
             SanaControlNetPipeline,
             SanaPipeline,

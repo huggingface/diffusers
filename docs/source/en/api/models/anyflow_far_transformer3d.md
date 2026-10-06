@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # AnyFlowFARTransformer3DModel
 
-The causal (FAR) 3D Transformer used by [`AnyFlowFARPipeline`](../pipelines/anyflow#anyflowfarpipeline) —
+The causal (FAR) 3D Transformer used by [`AnyFlowFARPipeline`](../pipelines/anyflow#diffusers.AnyFlowFARPipeline) —
 the FAR variant of [AnyFlow](https://huggingface.co/papers/2605.13724). See the
 [`AnyFlowFARPipeline`](../pipelines/anyflow) page for paper, authors, and released checkpoints. It extends
 the v0.35.1 Wan2.1 backbone with three additions:

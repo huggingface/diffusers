@@ -13,6 +13,10 @@ specific language governing permissions and limitations under the License.
 
 # Quanto
 
+> [!WARNING]
+> The Quanto backend is deprecated and will be removed in version 1.0.0. Consider switching to one of the other
+> supported [quantization backends](./overview), such as [bitsandbytes](./bitsandbytes) or [torchao](./torchao).
+
 [Quanto](https://github.com/huggingface/optimum-quanto) is a PyTorch quantization backend for [Optimum](https://huggingface.co/docs/optimum/en/index). It has been designed with versatility and simplicity in mind:
 
 - All features are available in eager mode (works with non-traceable models)

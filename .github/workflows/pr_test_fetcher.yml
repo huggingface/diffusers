@@ -2,8 +2,6 @@ name: Fast tests for PRs - Test Fetcher
 
 on: workflow_dispatch
 
-permissions:
-  contents: read
 
 env:
   DIFFUSERS_IS_CI: yes
@@ -15,8 +13,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
   setup_pr_tests:
+    permissions:
+      contents: read
     name: Setup PR Tests
     runs-on:
       group: aws-general-8-plus
@@ -70,6 +72,8 @@ jobs:
         echo "Matrix: $matrix"
 
   run_pr_tests:
+    permissions:
+      contents: read
     name: ${{ matrix.name }}
     needs: setup_pr_tests
     if: needs.setup_pr_tests.outputs.matrix != '[]'
@@ -120,6 +124,8 @@ jobs:
           path: reports
 
   run_staging_tests:
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:

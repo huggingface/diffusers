@@ -52,10 +52,12 @@ else:
         "Wan22Blocks",
         "WanImage2VideoAutoBlocks",
         "Wan22Image2VideoBlocks",
+        "Wan22VaceBlocks",
         "WanModularPipeline",
         "Wan22ModularPipeline",
         "WanImage2VideoModularPipeline",
         "Wan22Image2VideoModularPipeline",
+        "Wan22VaceModularPipeline",
     ]
     _import_structure["helios"] = [
         "HeliosAutoBlocks",
@@ -113,6 +115,10 @@ else:
         "ErnieImageAutoBlocks",
         "ErnieImageModularPipeline",
     ]
+    _import_structure["echo"] = [
+        "EchoBlocks",
+        "EchoModularPipeline",
+    ]
     _import_structure["hunyuan_video1_5"] = [
         "HunyuanVideo15AutoBlocks",
         "HunyuanVideo15ModularPipeline",
@@ -156,6 +162,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Cosmos3OmniBlocks,
             Cosmos3OmniModularPipeline,
         )
+        from .echo import EchoBlocks, EchoModularPipeline
         from .ernie_image import ErnieImageAutoBlocks, ErnieImageModularPipeline
         from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline
         from .flux2 import (
@@ -226,6 +233,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Wan22Image2VideoBlocks,
             Wan22Image2VideoModularPipeline,
             Wan22ModularPipeline,
+            Wan22VaceBlocks,
+            Wan22VaceModularPipeline,
             WanBlocks,
             WanImage2VideoAutoBlocks,
             WanImage2VideoModularPipeline,

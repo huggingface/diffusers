@@ -48,8 +48,6 @@ from ..testing_utils import (
     ModelOptCompileTesterMixin,
     ModelOptTesterMixin,
     ModelTesterMixin,
-    QuantoCompileTesterMixin,
-    QuantoTesterMixin,
     SDNQCompileTesterMixin,
     SDNQTesterMixin,
     SingleFileTesterMixin,
@@ -66,7 +64,7 @@ enable_full_determinism()
 
 
 # TODO: This standalone function maintains backward compatibility with pipeline tests
-# (tests/pipelines/test_pipelines_common.py) and will be refactored.
+# (tests/pipelines/testing_utils/ip_adapter.py) and will be refactored.
 def create_flux_ip_adapter_state_dict(model) -> dict[str, dict[str, Any]]:
     """Create a dummy IP Adapter state dict for Flux transformer testing."""
     ip_cross_attn_state_dict = {}
@@ -255,6 +253,14 @@ class TestFluxTransformerAttention(FluxTransformerTesterConfig, AttentionTesterM
 class TestFluxTransformerAttentionBackend(FluxTransformerTesterConfig, AttentionBackendTesterMixin):
     """Attention backend tests for Flux Transformer."""
 
+    def get_init_dict(self) -> dict[str, int | list[int]]:
+        # `sage_blackwell_hub` runs a kernel that only accepts head dims of 64 or 128, so widen the
+        # shared dummy config's `attention_head_dim` of 16. `axes_dims_rope` has to keep summing to it.
+        init_dict = super().get_init_dict()
+        init_dict["attention_head_dim"] = 64
+        init_dict["axes_dims_rope"] = [16, 16, 32]
+        return init_dict
+
 
 class TestFluxTransformerContextParallel(FluxTransformerTesterConfig, ContextParallelTesterMixin):
     """Context Parallel inference tests for Flux Transformer"""
@@ -406,18 +412,6 @@ class TestFluxTransformerBitsAndBytes(FluxTransformerTesterConfig, BitsAndBytesT
         return {k: v.to(self.torch_dtype) if torch.is_floating_point(v) else v for k, v in inputs.items()}
 
 
-class TestFluxTransformerQuanto(FluxTransformerTesterConfig, QuantoTesterMixin):
-    """Quanto quantization tests for Flux Transformer."""
-
-    @property
-    def pretrained_model_name_or_path(self):
-        return "hf-internal-testing/tiny-flux-transformer"
-
-    @property
-    def pretrained_model_kwargs(self):
-        return {}
-
-
 class TestFluxTransformerTorchAo(FluxTransformerTesterConfig, TorchAoTesterMixin):
     """TorchAO quantization tests for Flux Transformer."""
 
@@ -471,10 +465,6 @@ class TestFluxTransformerGGUF(FluxTransformerTesterConfig, GGUFTesterMixin):
         )
         model.to(torch_device)
         model(**self.get_dummy_inputs())
-
-
-class TestFluxTransformerQuantoCompile(FluxTransformerTesterConfig, QuantoCompileTesterMixin):
-    """Quanto + compile tests for Flux Transformer."""
 
 
 class TestFluxTransformerTorchAoCompile(FluxTransformerTesterConfig, TorchAoCompileTesterMixin):
