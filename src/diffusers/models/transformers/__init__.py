@@ -45,6 +45,8 @@ if is_torch_available():
     from .transformer_joyimage import JoyImageEditTransformer3DModel
     from .transformer_joyimage_edit_plus import JoyImageEditPlusTransformer3DModel
     from .transformer_kandinsky import Kandinsky5Transformer3DModel
+    from .transformer_kandinsky6 import Kandinsky6Transformer3DModel
+    from .transformer_kandinsky6_sr import Kandinsky6SRTransformer3DModel
     from .transformer_krea2 import Krea2Transformer2DModel
     from .transformer_longcat_audio_dit import LongCatAudioDiTTransformer
     from .transformer_longcat_image import LongCatImageTransformer2DModel
@@ -60,6 +62,7 @@ if is_torch_available():
     from .transformer_ovis_image import OvisImageTransformer2DModel
     from .transformer_prx import PRXTransformer2DModel
     from .transformer_qwenimage import QwenImageTransformer2DModel
+    from .transformer_qwenimage21 import QwenImage21Transformer2DModel
     from .transformer_sana_video import SanaVideoTransformer3DModel
     from .transformer_sd3 import SD3Transformer2DModel
     from .transformer_skyreels_v2 import SkyReelsV2Transformer3DModel

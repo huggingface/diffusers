@@ -272,6 +272,21 @@ class PyramidAttentionBroadcastConfig(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class SeaCacheConfig(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class SmoothedEnergyGuidanceConfig(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -335,6 +350,10 @@ def apply_mag_cache(*args, **kwargs):
 
 def apply_pyramid_attention_broadcast(*args, **kwargs):
     requires_backends(apply_pyramid_attention_broadcast, ["torch"])
+
+
+def apply_sea_cache(*args, **kwargs):
+    requires_backends(apply_sea_cache, ["torch"])
 
 
 def apply_taylorseer_cache(*args, **kwargs):
@@ -826,6 +845,21 @@ class AutoencoderKLMochi(metaclass=DummyObject):
 
 
 class AutoencoderKLQwenImage(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class AutoencoderKLQwenImage21(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -1605,6 +1639,66 @@ class Kandinsky5Transformer3DModel(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class Kandinsky6SRLatentUpscalerBank(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class Kandinsky6SRTransformer3DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class Kandinsky6SRVAE(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class Kandinsky6Transformer3DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class Krea2Transformer2DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -1830,6 +1924,36 @@ class MiniMaxMusic3Vocoder(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class MMAudioVAE(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class MMAudioVocoder(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class MochiTransformer3DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -2011,6 +2135,21 @@ class PriorTransformer(metaclass=DummyObject):
 
 
 class PRXTransformer2DModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class QwenImage21Transformer2DModel(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -3663,6 +3802,21 @@ class LTXEulerAncestralRFScheduler(metaclass=DummyObject):
 
 
 class MiniMaxH3Scheduler(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class PiflowScheduler(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

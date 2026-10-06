@@ -88,7 +88,7 @@ class ModularLoadingTesterMixin(BaseModularPipelineOutputMixin):
         components_spec = pipe._component_specs
         components = sorted(components_spec.keys())
 
-        pipe.save_pretrained(str(tmp_path))
+        pipe.save_pretrained(str(tmp_path), overwrite_modular_index=False)
         index_file = tmp_path / "modular_model_index.json"
         assert index_file.exists()
 

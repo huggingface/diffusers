@@ -353,7 +353,7 @@ def parse_args(input_args=None):
         "--max_sequence_length",
         type=int,
         default=512,
-        help="Maximum sequence length to use with with the T5 text encoder",
+        help="Maximum sequence length to use with the T5 text encoder",
     )
     parser.add_argument(
         "--text_encoder_out_layers",

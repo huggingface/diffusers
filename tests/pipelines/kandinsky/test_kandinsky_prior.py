@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
 import torch
 from torch import nn
 from transformers import (
@@ -36,24 +35,6 @@ from ..testing_utils import (
 
 
 enable_full_determinism()
-
-
-# `PriorTransformer` keeps `positional_embedding`, `prd_embedding`, `clip_mean` and `clip_std` as parameters of the
-# model itself rather than of a submodule, so group offloading never onloads them: the forward pass then mixes
-# onloaded activations with still-offloaded weights. Reproduces at both block and leaf level.
-PIPELINE_GROUP_OFFLOAD_XFAIL_REASON = (
-    "`PriorTransformer` holds parameters directly on the model (`positional_embedding`, `prd_embedding`, "
-    "`clip_mean`, `clip_std`), which group offloading never onloads."
-)
-
-# A second, independent gap: the component-scoped test only offloads the denoiser under the names
-# `transformer`/`unet`/`controlnet`/`adapter`, and only puts `vae`/`vqvae`/`image_encoder` back on the accelerator.
-# A prior pipeline's denoiser is called `prior`, so it matches neither list and is left on CPU while the text
-# encoder is onloaded. Fixing this means widening the mixin's component lists, not changing the pipeline.
-COMPONENT_GROUP_OFFLOAD_XFAIL_REASON = (
-    "`GroupOffloadTesterMixin.test_group_offloading_inference` neither offloads nor places a component named "
-    "`prior`, so it stays on CPU while the onloaded text encoder runs on the accelerator."
-)
 
 
 class KandinskyPriorPipelineTesterConfig(BasePipelineTesterConfig):
@@ -213,13 +194,3 @@ class TestKandinskyPriorPipeline(KandinskyPriorPipelineTesterConfig, PipelineTes
 
 class TestKandinskyPriorPipelineMemory(KandinskyPriorPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Kandinsky prior pipeline."""
-
-    @pytest.mark.xfail(condition=True, reason=COMPONENT_GROUP_OFFLOAD_XFAIL_REASON, strict=True)
-    def test_group_offloading_inference(self):
-        super().test_group_offloading_inference()
-
-    @pytest.mark.xfail(condition=True, reason=PIPELINE_GROUP_OFFLOAD_XFAIL_REASON, strict=True)
-    def test_pipeline_level_group_offloading_inference(self, base_pipe_output, expected_max_difference=1e-4):
-        super().test_pipeline_level_group_offloading_inference(
-            base_pipe_output, expected_max_difference=expected_max_difference
-        )

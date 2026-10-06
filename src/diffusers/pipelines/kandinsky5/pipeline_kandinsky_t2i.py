@@ -175,8 +175,8 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             scheduler=scheduler,
         )
 
-        self.prompt_template = "<|im_start|>system\nYou are a promt engineer. Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>\n<|im_start|>user\n{}<|im_end|>"
-        self.prompt_template_encode_start_idx = 41
+        self.prompt_template = "<|im_start|>system\nYou are a prompt engineer. Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>\n<|im_start|>user\n{}<|im_end|>"
+        self.prompt_template_encode_start_idx = 40
 
         self.vae_scale_factor_spatial = 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
@@ -555,7 +555,7 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         callback_on_step_end: Callable[[int, int, None], PipelineCallback | MultiPipelineCallbacks] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
-    ):
+    ) -> KandinskyImagePipelineOutput | tuple:
         r"""
         The call function to the pipeline for text-to-image generation.
 

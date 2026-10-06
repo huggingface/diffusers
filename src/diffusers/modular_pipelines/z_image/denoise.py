@@ -63,7 +63,9 @@ class ZImageLoopBeforeDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: ZImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: ZImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[ZImageModularPipeline, BlockState]:
         latents = block_state.latents.unsqueeze(2).to(
             block_state.dtype
         )  # [batch_size, num_channels, 1, height, width]
@@ -152,7 +154,7 @@ class ZImageLoopDenoiser(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(
         self, components: ZImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
-    ) -> PipelineState:
+    ) -> tuple[ZImageModularPipeline, BlockState]:
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
 
         # The guider splits model inputs into separate batches for conditional/unconditional predictions.
@@ -219,7 +221,9 @@ class ZImageLoopAfterDenoiser(ModularPipelineBlocks):
         )
 
     @torch.no_grad()
-    def __call__(self, components: ZImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: ZImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[ZImageModularPipeline, BlockState]:
         # Perform scheduler step using the predicted output
         latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(
@@ -269,7 +273,9 @@ class ZImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: ZImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: ZImageModularPipeline, state: PipelineState
+    ) -> tuple[ZImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.num_warmup_steps = max(

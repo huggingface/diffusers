@@ -160,7 +160,9 @@ class HeliosTextEncoderStep(ModularPipelineBlocks):
                 )
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HeliosModularPipeline, state: PipelineState
+    ) -> tuple[HeliosModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         prompt = block_state.prompt
@@ -248,7 +250,9 @@ class HeliosImageVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HeliosModularPipeline, state: PipelineState
+    ) -> tuple[HeliosModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         vae = components.vae
@@ -336,7 +340,9 @@ class HeliosVideoVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HeliosModularPipeline, state: PipelineState
+    ) -> tuple[HeliosModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         vae = components.vae
