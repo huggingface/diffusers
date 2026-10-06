@@ -3722,7 +3722,6 @@ def convert_chroma_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     return converted_state_dict
 
 def convert_anima_text_conditioner_to_diffusers(checkpoint, **kwargs):
-    # print(kwargs)
     converted_state_dict = {}
     for k in list(checkpoint.keys()):
         if "llm_adapter" in k:
