@@ -79,6 +79,28 @@ reproduce the untiled result exactly; the default tile and overlap sizes match t
 Neighborhood attention rejects any grid smaller than its kernel, so a trailing remnant tile is merged into its
 neighbor rather than decoded on its own.
 
+## Keyframe-aware decoding
+
+A decode can be anchored on *keyframe planes*: single-frame latents at known pixel frames, for example the generated
+keyframe slots of the LTX-2.5 SDR-To-HDR IC-LoRA. Each plane must be the latent of a standalone one-frame clip
+(the VAE is causal, so a frame encoded inside a clip is a different latent), denormalized like the video latents.
+
+```python
+video = decoder.decode(
+    latents,  # (B, C, F, H, W)
+    generator=torch.Generator("cuda").manual_seed(0),
+    keyframe_latents=keyframe_latents,  # (B, C, P, H, W)
+    keyframe_frame_indices=torch.tensor([24, 48, 72, 96]),  # pixel frame of each plane
+).sample
+```
+
+The planes go through the same weights as the video. In every attention layer each video position also attends to
+the same spatial window on its two nearest planes, and each plane to the same window on its two nearest frames. This
+joint attention runs on a built-in PyTorch implementation whatever attention processor is set, since neither
+FlexAttention's block mask nor NATTEN expresses it. Checkpoints trained for keyframe decoding also carry a learned
+tag added to the plane latents, which `decoder_keyframe_type_embedding=True` creates as `decoder.type_emb`. With
+tiling enabled each temporal tile keeps the planes inside it plus the nearest plane on each side.
+
 ## LTX2VideoDiffusionDecoderModel
 
 [[autodoc]] LTX2VideoDiffusionDecoderModel

@@ -90,6 +90,505 @@ def _neighborhood_block_mask(
     return create_block_mask(mask_mod, B=None, H=None, Q_LEN=seq_len, KV_LEN=seq_len, device=device)
 
 
+# --------------------------------------------------------------------------------------------------------------------
+# Keyframe-aware decoding
+#
+# A keyframe decode carries a second stream through the decoder: a stack of single-frame latent *planes* `(B, P, H,
+# W, C)` whose plane axis sits in the video's temporal slot. Every weight is shared between the two streams, and they
+# only mix inside one joint neighborhood-attention softmax, where each video query also sees the same spatial window
+# on its two nearest planes and each plane query also sees its two nearest video frames.
+# --------------------------------------------------------------------------------------------------------------------
+
+# Keyframe planes visible to one video query, and video frames visible to one plane query.
+_KEYFRAME_CONTEXT_SLOTS = 2
+
+
+def _keyframe_stage_times(pixel_frame_indices: torch.Tensor, remaining_time_stride: int) -> torch.Tensor:
+    """Chunk-center position of each keyframe plane in the temporal units of one decoder stage.
+
+    A stage whose remaining temporal upsampling is `r` has cells covering `r` pixel frames each, except cell 0 which
+    covers only pixel frame 0 (the causal first frame). So `t(0) = 0` and `t(f) = (f + (r - 1) / 2) / r`, the center of
+    the cell holding `f`. In the diffusion stage `r == 1`, making the times the raw pixel indices.
+    """
+    frames = pixel_frame_indices.to(torch.float32)
+    times = (frames + (remaining_time_stride - 1) / 2) / remaining_time_stride
+    return torch.where(frames == 0, torch.zeros_like(times), times)
+
+
+def _keyframe_planes_for_tile(pixel_frame_indices: torch.Tensor, frame_lo: int, frame_hi: int) -> torch.Tensor:
+    """`(P,)` bool: the planes a tile spanning pixel frames `[frame_lo, frame_hi]` (inclusive) has to carry.
+
+    Every plane inside the span plus the nearest plane on each side outside it. The two outside planes are what keep a
+    tiled decode consistent with a whole one: a frame near a tile edge ranks its planes by temporal distance, so
+    dropping the closest plane beyond the edge would make it attend to a farther one instead.
+    """
+    indices = pixel_frame_indices.to(torch.int64)
+    keep = (indices >= frame_lo) & (indices <= frame_hi)
+    before = indices < frame_lo
+    if bool(before.any()):
+        keep[int(torch.where(before, indices, torch.full_like(indices, -1)).argmax())] = True
+    after = indices > frame_hi
+    if bool(after.any()):
+        sentinel = int(indices.max()) + 1
+        keep[int(torch.where(after, indices, torch.full_like(indices, sentinel)).argmin())] = True
+    return keep
+
+
+def _nearest_slots(query_times: torch.Tensor, candidate_times: torch.Tensor, num_slots: int) -> torch.Tensor:
+    """`(Q, num_slots)` candidate indices ranked by `(|dt|, index)`, `-1` where there are fewer candidates."""
+    distances = (query_times[:, None] - candidate_times[None, :]).abs().to(torch.float32)
+    # A stable sort breaks distance ties by ascending candidate index.
+    order = torch.argsort(distances, dim=-1, stable=True)
+    take = min(num_slots, candidate_times.shape[0])
+    chosen = order[:, :take]
+    if take < num_slots:
+        pad = torch.full((chosen.shape[0], num_slots - take), -1, dtype=chosen.dtype, device=chosen.device)
+        chosen = torch.cat([chosen, pad], dim=1)
+    return chosen
+
+
+def _upsample_keyframe_planes(upsample: nn.Module, hidden_states: torch.Tensor) -> torch.Tensor:
+    """Spatially upsample keyframe planes `(B, P, H, W, C)` with the video stream's upsampler.
+
+    Each plane goes through as its own one-frame clip with the leading frame always dropped, so a temporal stride of 2
+    expands it to two frames and takes it back to one: the plane count never changes, only `H` and `W` grow.
+    """
+    batch_size, num_planes = hidden_states.shape[:2]
+    flat = hidden_states.reshape(batch_size * num_planes, 1, *hidden_states.shape[2:])
+    upsampled = upsample(flat, drop_leading_frame=True)
+    return upsampled.reshape(batch_size, num_planes, *upsampled.shape[2:])
+
+
+# Joint neighborhood attention. Queries are grouped into `(bt, bh, bw)` bricks and many bricks share one
+# `scaled_dot_product_attention` call as its batch dimension. All queries in a brick share one gathered key slab, the
+# visible-key pattern is one mask shared by every brick, and per-key validity (outside the volume, an empty slot)
+# rides in an extra key channel that adds `_JOINT_DEAD_KEY` to the score of a dead key.
+_JOINT_DEAD_KEY = -1.0e4
+# Keep the query/key head dim a multiple of this, so SDPA can keep a fused kernel once the bias channel is added.
+_JOINT_HEAD_DIM_ALIGN = 8
+_JOINT_BRICK_QUERIES = 64
+_JOINT_BRICK_DEPTH = 4
+# Transient memory budget of one staging pass and one key/value block.
+_JOINT_WORKSPACE_BYTES = 256 * 1024**2
+# Peak-to-staging multipliers for SDPA kernels that keep the scores on chip, and for those that materialize them.
+_JOINT_STAGING_FACTOR_FUSED = 4.75
+_JOINT_STAGING_FACTOR_MATERIALIZED = 22.1
+
+
+def _joint_key_channels(head_dim: int) -> int:
+    return -(-(head_dim + 1) // _JOINT_HEAD_DIM_ALIGN) * _JOINT_HEAD_DIM_ALIGN
+
+
+def _joint_window(kernel: int) -> tuple[int, int]:
+    """`(lo, hi)` halo of one axis: a centered window of `kernel` positions."""
+    lo = kernel // 2
+    return lo, kernel - lo - 1
+
+
+class _JointGeometry:
+    """Brick decomposition of one `(H, W)` grid, plus the padding and slab extents it implies."""
+
+    def __init__(self, height: int, width: int, kernel: tuple[int, int, int], brick: tuple[int, int, int]):
+        kernel_t, kernel_h, kernel_w = kernel
+        lo_h, hi_h = _joint_window(kernel_h)
+        lo_w, hi_w = _joint_window(kernel_w)
+        self.height, self.width = height, width
+        self.brick = brick
+        self.kernel = kernel
+        self.grid = (-(-height // brick[1]), -(-width // brick[2]))
+        self.span_t = brick[0] + kernel_t - 1
+        self.span = (brick[1] + kernel_h - 1, brick[2] + kernel_w - 1)
+        self.pad_h = (lo_h, hi_h + self.grid[0] * brick[1] - height)
+        self.pad_w = (lo_w, hi_w + self.grid[1] * brick[2] - width)
+        self.pad_t = _joint_window(kernel_t)
+        self.queries = brick[0] * brick[1] * brick[2]
+        self.footprint = self.span[0] * self.span[1]
+        self.padded_height = height + sum(self.pad_h)
+        self.padded_width = width + sum(self.pad_w)
+
+    def row_extent(self, rows: int) -> int:
+        return (rows - 1) * self.brick[1] + self.span[0]
+
+
+class _JointSchedule:
+    """How the loops are cut so transient memory stays within `_JOINT_WORKSPACE_BYTES`."""
+
+    def __init__(
+        self,
+        geometry: _JointGeometry,
+        blocks: int,
+        heads: int,
+        head_dim: int,
+        axis_bricks: int,
+        element_size: int,
+        factor: float,
+    ):
+        channels = _joint_key_channels(head_dim)
+        keys = blocks * geometry.footprint
+        pair_bytes = geometry.grid[1] * heads * keys * (channels + head_dim) * element_size
+        pairs = max(1, int(_JOINT_WORKSPACE_BYTES / max(pair_bytes * factor, 1.0)))
+        if pairs >= geometry.grid[0]:
+            self.group_axis = min(axis_bricks, max(1, pairs // geometry.grid[0]))
+            self.group_rows = geometry.grid[0]
+        else:
+            self.group_axis = 1
+            self.group_rows = pairs
+        staged = geometry.padded_height * geometry.padded_width * heads * (channels + head_dim) * element_size
+        per_axis_brick = staged * geometry.brick[0]
+        self.stage_axis = min(axis_bricks, max(self.group_axis, _JOINT_WORKSPACE_BYTES // max(per_axis_brick, 1)))
+
+
+def _joint_banded(queries: int, span: int, kernel: int, device: torch.device) -> torch.Tensor:
+    key = torch.arange(span, device=device)[None, :]
+    query = torch.arange(queries, device=device)[:, None]
+    return (key >= query) & (key < query + kernel)
+
+
+def _joint_mask(geometry: _JointGeometry, num_slots: int, device: torch.device) -> torch.Tensor:
+    """`(1, 1, Nq, Nk)` visibility shared by every brick: the video slab, then `num_slots` plane slabs.
+
+    Plane keys carry no temporal condition, which is what lets a whole brick share one set of planes.
+    """
+    brick_t, brick_h, brick_w = geometry.brick
+    kernel_t, kernel_h, kernel_w = geometry.kernel
+    spatial = (
+        _joint_banded(brick_h, geometry.span[0], kernel_h, device)[:, None, :, None]
+        & _joint_banded(brick_w, geometry.span[1], kernel_w, device)[None, :, None, :]
+    ).reshape(brick_h * brick_w, geometry.footprint)
+    temporal = _joint_banded(brick_t, geometry.span_t, kernel_t, device)
+    video = (temporal[:, None, :, None] & spatial[None, :, None, :]).reshape(
+        geometry.queries, geometry.span_t * geometry.footprint
+    )
+    planes = (
+        spatial[None, :, None, :]
+        .expand(brick_t, brick_h * brick_w, num_slots, geometry.footprint)
+        .reshape(geometry.queries, num_slots * geometry.footprint)
+    )
+    return torch.cat([video, planes], dim=1)[None, None].contiguous()
+
+
+def _joint_stage(
+    x: torch.Tensor, geometry: _JointGeometry, pad_t: tuple[int, int], with_bias_channel: bool
+) -> torch.Tensor:
+    """`(B, A, H, W, heads, head_dim)` to a padded head-major `(B, heads, A + pad, Hp, Wp, C)`."""
+    batch, axis, height, width, heads, head_dim = x.shape
+    channels = _joint_key_channels(head_dim) if with_bias_channel else head_dim
+    out = x.new_zeros((batch, heads, axis + sum(pad_t), geometry.padded_height, geometry.padded_width, channels))
+    if with_bias_channel:
+        out[..., head_dim] = _JOINT_DEAD_KEY
+    live = out[
+        :,
+        :,
+        pad_t[0] : pad_t[0] + axis,
+        geometry.pad_h[0] : geometry.pad_h[0] + height,
+        geometry.pad_w[0] : geometry.pad_w[0] + width,
+    ]
+    live[..., :head_dim] = x.permute(0, 4, 1, 2, 3, 5)
+    if with_bias_channel:
+        live[..., head_dim] = 0.0
+    return out
+
+
+def _joint_slabs(
+    staged: torch.Tensor, geometry: _JointGeometry, bricks: int, rows: int, blocks: int, group_stride: int
+) -> torch.Tensor:
+    """Overlapping brick slabs as a view, `(B, bricks, rows, Gw, heads, blocks, eh, ew, C)`."""
+    batch, heads = staged.shape[0], staged.shape[1]
+    stride_b, stride_nh, stride_a, stride_h, stride_w, _ = staged.stride()
+    return staged.as_strided(
+        (batch, bricks, rows, geometry.grid[1], heads, blocks, *geometry.span, staged.shape[-1]),
+        (
+            stride_b,
+            group_stride * stride_a,
+            geometry.brick[1] * stride_h,
+            geometry.brick[2] * stride_w,
+            stride_nh,
+            stride_a,
+            stride_h,
+            stride_w,
+            1,
+        ),
+    )
+
+
+def _joint_query_bricks(x: torch.Tensor, geometry: _JointGeometry, bricks: int, rows: int) -> torch.Tensor:
+    """`(B, A, h, W, heads, head_dim)` to `(B * bricks * rows * Gw, heads, Nq, C)`, with a constant bias channel."""
+    batch, axis, height, width, heads, head_dim = x.shape
+    brick_t, brick_h, brick_w = geometry.brick
+    pad_t, pad_h, pad_w = bricks * brick_t - axis, rows * brick_h - height, geometry.grid[1] * brick_w - width
+    if pad_t or pad_h or pad_w:
+        x = F.pad(x, (0, 0, 0, 0, 0, pad_w, 0, pad_h, 0, pad_t))
+    bricked = (
+        x.reshape(batch, bricks, brick_t, rows, brick_h, geometry.grid[1], brick_w, heads, head_dim)
+        .permute(0, 1, 3, 5, 7, 2, 4, 6, 8)
+        .reshape(batch * bricks * rows * geometry.grid[1], heads, geometry.queries, head_dim)
+    )
+    out = bricked.new_zeros((*bricked.shape[:-1], _joint_key_channels(head_dim)))
+    out[..., :head_dim] = bricked
+    out[..., head_dim] = 1.0
+    return out
+
+
+def _joint_unbrick(
+    attended: torch.Tensor, geometry: _JointGeometry, batch: int, bricks: int, rows: int, extent: tuple[int, int]
+) -> torch.Tensor:
+    brick_t, brick_h, brick_w = geometry.brick
+    heads, head_dim = attended.shape[1], attended.shape[3]
+    plane = (
+        attended.reshape(batch, bricks, rows, geometry.grid[1], heads, brick_t, brick_h, brick_w, head_dim)
+        .permute(0, 1, 5, 2, 6, 3, 7, 4, 8)
+        .reshape(batch, bricks * brick_t, rows * brick_h, geometry.grid[1] * brick_w, heads, head_dim)
+    )
+    return plane[:, : extent[0], : extent[1], : geometry.width]
+
+
+def _joint_with_null(slots: torch.Tensor, null_index: int) -> torch.Tensor:
+    return torch.where(slots < 0, torch.full_like(slots, null_index), slots)
+
+
+def _joint_slot_runs(slots: torch.Tensor) -> list[tuple[int, int]]:
+    """Maximal `[start, stop)` runs of leading-axis positions whose slot row is identical."""
+    rows = slots.tolist()
+    runs = []
+    start = 0
+    for index in range(1, len(rows)):
+        if rows[index] != rows[start]:
+            runs.append((start, index))
+            start = index
+    runs.append((start, len(rows)))
+    return runs
+
+
+def _joint_attend_group(
+    query_slice: torch.Tensor,
+    key_views: tuple[torch.Tensor, ...],
+    value_views: tuple[torch.Tensor, ...],
+    geometry: _JointGeometry,
+    shape: tuple[int, int],
+    mask: torch.Tensor,
+) -> torch.Tensor:
+    """Gather one `(bricks, brick rows)` block's keys, attend, and un-brick the result."""
+    bricks, rows = shape
+    batch = query_slice.shape[0]
+    heads, head_dim = query_slice.shape[4], query_slice.shape[5]
+    blocks = sum(view.shape[5] for view in key_views)
+    channels = _joint_key_channels(head_dim)
+    keys = query_slice.new_empty((batch, bricks, rows, geometry.grid[1], heads, blocks, *geometry.span, channels))
+    values = query_slice.new_empty((batch, bricks, rows, geometry.grid[1], heads, blocks, *geometry.span, head_dim))
+    start = 0
+    for key_view, value_view in zip(key_views, value_views):
+        stop = start + key_view.shape[5]
+        keys[:, :, :, :, :, start:stop].copy_(key_view)
+        values[:, :, :, :, :, start:stop].copy_(value_view)
+        start = stop
+    count = batch * bricks * rows * geometry.grid[1]
+    # `scale=1.0`: the query is already scaled in `project_qkv`.
+    attended = F.scaled_dot_product_attention(
+        _joint_query_bricks(query_slice, geometry, bricks, rows),
+        keys.view(count, heads, blocks * geometry.footprint, channels),
+        values.view(count, heads, blocks * geometry.footprint, head_dim),
+        attn_mask=mask,
+        scale=1.0,
+    )
+    return _joint_unbrick(attended, geometry, batch, bricks, rows, (query_slice.shape[1], query_slice.shape[2]))
+
+
+def _joint_row_groups(geometry: _JointGeometry, schedule: _JointSchedule) -> list[tuple[int, slice, slice]]:
+    """`(rows, staged H slice, output H slice)` per group of brick rows."""
+    brick_h = geometry.brick[1]
+    groups = []
+    for row in range(0, geometry.grid[0], schedule.group_rows):
+        rows = min(schedule.group_rows, geometry.grid[0] - row)
+        groups.append(
+            (
+                rows,
+                slice(row * brick_h, row * brick_h + geometry.row_extent(rows)),
+                slice(row * brick_h, min((row + rows) * brick_h, geometry.height)),
+            )
+        )
+    return groups
+
+
+def _joint_video_query_pass(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    keyframe_key: torch.Tensor,
+    keyframe_value: torch.Tensor,
+    slots: torch.Tensor,
+    geometry: _JointGeometry,
+    factor: float,
+) -> torch.Tensor:
+    """Video queries: their local `Kt x Kh x Kw` window plus the same `Kh x Kw` window on their nearest planes."""
+    num_frames, heads, head_dim = query.shape[1], query.shape[4], query.shape[5]
+    brick_t = geometry.brick[0]
+    lo_t, hi_t = geometry.pad_t
+    num_slots = slots.shape[1]
+
+    plane_keys = _joint_stage(keyframe_key, geometry, (0, 0), with_bias_channel=True)
+    plane_values = _joint_stage(keyframe_value, geometry, (0, 0), with_bias_channel=False)
+    # One all-dead plane appended for empty (`-1`) slots to point at.
+    null_shape = (*plane_keys.shape[:2], 1, *plane_keys.shape[3:])
+    null_key = plane_keys.new_zeros(null_shape)
+    null_key[..., head_dim] = _JOINT_DEAD_KEY
+    plane_keys = torch.cat([plane_keys, null_key], dim=2)
+    plane_values = torch.cat([plane_values, plane_values.new_zeros((*null_shape[:-1], head_dim))], dim=2)
+    slot_table = _joint_with_null(slots, keyframe_key.shape[1])
+
+    mask = _joint_mask(geometry, num_slots, query.device)
+    schedule = _JointSchedule(
+        geometry, geometry.span_t + num_slots, heads, head_dim, -(-num_frames // brick_t), query.element_size(), factor
+    )
+    row_groups = _joint_row_groups(geometry, schedule)
+
+    out = torch.empty_like(query)
+    for run_start, run_stop in _joint_slot_runs(slot_table):
+        # Every brick inside a run sees the same planes, so they are gathered once per run.
+        planes = plane_keys.index_select(2, slot_table[run_start])
+        plane_vals = plane_values.index_select(2, slot_table[run_start])
+        run_bricks = -(-(run_stop - run_start) // brick_t)
+        for staged_brick in range(0, run_bricks, schedule.stage_axis):
+            staged_bricks = min(schedule.stage_axis, run_bricks - staged_brick)
+            first = run_start + staged_brick * brick_t
+            last = first + staged_bricks * brick_t
+            source = slice(max(0, first - lo_t), min(num_frames, last + hi_t))
+            pad_t = (max(0, lo_t - first), max(0, last + hi_t - num_frames))
+            window_keys = _joint_stage(key[:, source], geometry, pad_t, with_bias_channel=True)
+            window_values = _joint_stage(value[:, source], geometry, pad_t, with_bias_channel=False)
+
+            for brick in range(staged_brick, staged_brick + staged_bricks, schedule.group_axis):
+                count = min(schedule.group_axis, staged_brick + staged_bricks - brick)
+                start = run_start + brick * brick_t
+                stop = min(start + count * brick_t, run_stop)
+                offset = (brick - staged_brick) * brick_t
+                for rows, key_rows, out_rows in row_groups:
+                    out[:, start:stop, out_rows] = _joint_attend_group(
+                        query[:, start:stop, out_rows],
+                        (
+                            _joint_slabs(
+                                window_keys[:, :, offset:, key_rows], geometry, count, rows, geometry.span_t, brick_t
+                            ),
+                            _joint_slabs(planes[:, :, :, key_rows], geometry, count, rows, num_slots, 0),
+                        ),
+                        (
+                            _joint_slabs(
+                                window_values[:, :, offset:, key_rows], geometry, count, rows, geometry.span_t, brick_t
+                            ),
+                            _joint_slabs(plane_vals[:, :, :, key_rows], geometry, count, rows, num_slots, 0),
+                        ),
+                        geometry,
+                        (count, rows),
+                        mask,
+                    )
+    return out
+
+
+def _joint_keyframe_query_pass(
+    keyframe_query: torch.Tensor,
+    keyframe_key: torch.Tensor,
+    keyframe_value: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    slots: torch.Tensor,
+    geometry: _JointGeometry,
+    factor: float,
+) -> torch.Tensor:
+    """Plane queries: the `Kh x Kw` window on their own plane plus the same window on their nearest video frames."""
+    num_planes, heads, head_dim = keyframe_query.shape[1], keyframe_query.shape[4], keyframe_query.shape[5]
+    num_slots = slots.shape[1]
+    num_frames = key.shape[1]
+    flat = _JointGeometry(geometry.height, geometry.width, (1, *geometry.kernel[1:]), (1, *geometry.brick[1:]))
+
+    # Stage only the frames some plane points at; `unique` doubles as the remap of the slot table.
+    wanted, inverse = torch.unique(_joint_with_null(slots, num_frames).reshape(-1), return_inverse=True)
+    frame_keys = _joint_stage(
+        key.index_select(1, wanted.clamp(max=num_frames - 1)), flat, (0, 0), with_bias_channel=True
+    )
+    frame_values = _joint_stage(
+        value.index_select(1, wanted.clamp(max=num_frames - 1)), flat, (0, 0), with_bias_channel=False
+    )
+    # An empty slot was clamped onto a real frame above; kill it here.
+    frame_keys[:, :, wanted == num_frames, ..., head_dim] = _JOINT_DEAD_KEY
+    own_keys = _joint_stage(keyframe_key, flat, (0, 0), with_bias_channel=True)
+    own_values = _joint_stage(keyframe_value, flat, (0, 0), with_bias_channel=False)
+    slot_table = inverse.reshape(num_planes, num_slots)
+    mask = _joint_mask(flat, num_slots, keyframe_query.device)
+    schedule = _JointSchedule(flat, 1 + num_slots, heads, head_dim, num_planes, keyframe_query.element_size(), factor)
+    row_groups = _joint_row_groups(flat, schedule)
+
+    out = torch.empty_like(keyframe_query)
+    for start in range(0, num_planes, schedule.group_axis):
+        stop = min(start + schedule.group_axis, num_planes)
+        count = stop - start
+        picked = slot_table[start:stop].reshape(-1)
+        frames = frame_keys.index_select(2, picked)
+        frame_vals = frame_values.index_select(2, picked)
+        for rows, key_rows, out_rows in row_groups:
+            out[:, start:stop, out_rows] = _joint_attend_group(
+                keyframe_query[:, start:stop, out_rows],
+                (
+                    _joint_slabs(own_keys[:, :, start:, key_rows], flat, count, rows, 1, 1),
+                    _joint_slabs(frames[:, :, :, key_rows], flat, count, rows, num_slots, num_slots),
+                ),
+                (
+                    _joint_slabs(own_values[:, :, start:, key_rows], flat, count, rows, 1, 1),
+                    _joint_slabs(frame_vals[:, :, :, key_rows], flat, count, rows, num_slots, num_slots),
+                ),
+                flat,
+                (count, rows),
+                mask,
+            )
+    return out
+
+
+def _joint_neighborhood_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    keyframe_query: torch.Tensor,
+    keyframe_key: torch.Tensor,
+    keyframe_value: torch.Tensor,
+    keyframe_times: torch.Tensor,
+    kernel_size: tuple[int, int, int],
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Joint neighborhood attention over a video volume and a stack of keyframe planes, one softmax per query.
+
+    A video query at `(t, h, w)` attends to its `Kt x Kh x Kw` video window plus the `Kh x Kw` window at the same `(h,
+    w)` on each of its `_KEYFRAME_CONTEXT_SLOTS` nearest planes, ranked by `|t - keyframe_times|` whatever `Kt` is. A
+    plane query attends to the `Kh x Kw` window on its own plane (there is no plane-to-plane attention) plus the same
+    window on each of its nearest video frames.
+
+    Unlike [`LTX2VideoVaeNeighborhoodAttnProcessor`] and NATTEN, whose windows shift inward at the volume border, every
+    window here is centered and *clamped*: offsets that fall outside the volume are masked out. That is also why no
+    axis needs to be at least its kernel size.
+
+    Args:
+        query, key, value: `(B, T, H, W, heads, head_dim)` video stream, query already scaled.
+        keyframe_query, keyframe_key, keyframe_value: `(B, P, H, W, heads, head_dim)` keyframe stream.
+        keyframe_times: `(P,)` plane positions, in the same temporal units and origin as the video stream's RoPE.
+        kernel_size: `(Kt, Kh, Kw)`.
+
+    Returns:
+        `(video_out, keyframe_out)`, each shaped like its stream's query.
+    """
+    num_frames, height, width = query.shape[1], query.shape[2], query.shape[3]
+    keyframe_times = keyframe_times.to(device=query.device, dtype=torch.float32)
+    frame_times = torch.arange(num_frames, dtype=torch.float32, device=query.device)
+    video_slots = _nearest_slots(frame_times, keyframe_times, _KEYFRAME_CONTEXT_SLOTS)
+    keyframe_slots = _nearest_slots(keyframe_times, frame_times, _KEYFRAME_CONTEXT_SLOTS)
+
+    side = max(1, round(math.sqrt(_JOINT_BRICK_QUERIES)))
+    brick = (min(_JOINT_BRICK_DEPTH, num_frames), min(side, height), min(side, width))
+    geometry = _JointGeometry(height, width, kernel_size, brick)
+    # Only CUDA keeps the score block on chip for this broadcast mask; elsewhere SDPA materializes it.
+    factor = _JOINT_STAGING_FACTOR_FUSED if query.device.type == "cuda" else _JOINT_STAGING_FACTOR_MATERIALIZED
+    video_out = _joint_video_query_pass(query, key, value, keyframe_key, keyframe_value, video_slots, geometry, factor)
+    keyframe_out = _joint_keyframe_query_pass(
+        keyframe_query, keyframe_key, keyframe_value, key, value, keyframe_slots, geometry, factor
+    )
+    return video_out, keyframe_out
+
+
 class LTX2VideoVaeRotaryPosEmbed3D(nn.Module):
     """Absolute 3D rotary embedding for the diffusion decoder's neighborhood attention.
 
@@ -134,14 +633,21 @@ class LTX2VideoVaeRotaryPosEmbed3D(nn.Module):
         rotated = torch.stack([even * cos - odd * sin, even * sin + odd * cos], dim=-1)
         return rotated.reshape(x.shape).to(out_dtype)
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        """`hidden_states`: `(B, T, H, W, heads, head_dim)`."""
+    def forward(self, hidden_states: torch.Tensor, positions_t: torch.Tensor | None = None) -> torch.Tensor:
+        """`hidden_states`: `(B, T, H, W, heads, head_dim)`.
+
+        `positions_t` overrides the integer positions on the first axis. Keyframe planes pass their (possibly
+        fractional) times there, so that both streams of a keyframe decode share one temporal origin.
+        """
         dim_t, dim_h, _ = self.rope_dim_split
         num_frames, height, width = hidden_states.shape[1:4]
         device = hidden_states.device
         inv_t, inv_h, inv_w = (self._inv_freqs(dim, device) for dim in self.rope_dim_split)
 
-        positions_t = torch.arange(num_frames, dtype=torch.float32, device=device)
+        if positions_t is None:
+            positions_t = torch.arange(num_frames, dtype=torch.float32, device=device)
+        else:
+            positions_t = positions_t.to(device=device, dtype=torch.float32)
         positions_h = torch.arange(height, dtype=torch.float32, device=device)
         positions_w = torch.arange(width, dtype=torch.float32, device=device)
         rotated_t = self._rotate_axis(hidden_states[..., :dim_t], positions_t, inv_t, axis=1)
@@ -274,11 +780,14 @@ class LTX2VideoVaeNeighborhoodAttention(nn.Module, AttentionModuleMixin):
         self.rope = LTX2VideoVaeRotaryPosEmbed3D(head_dim, base=rope_base)
         self.set_processor(self._default_processor_cls())
 
-    def project_qkv(self, hidden_states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def project_qkv(
+        self, hidden_states: torch.Tensor, positions_t: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Q/K/V as `(B, T, H, W, heads, head_dim)`, RMS-normed, query pre-scaled, then rotated.
 
         The query carries the `1 / sqrt(head_dim)` factor here so both processors can ask their attention backend for
-        `scale=1.0` — this is the order the reference uses (norm, scale, then rotate).
+        `scale=1.0` — this is the order the reference uses (norm, scale, then rotate). `positions_t` overrides the
+        temporal RoPE positions, see [`LTX2VideoVaeRotaryPosEmbed3D`].
         """
         batch_size, num_frames, height, width, _ = hidden_states.shape
         shape = (batch_size, num_frames, height, width, self.heads, self.head_dim)
@@ -289,7 +798,7 @@ class LTX2VideoVaeNeighborhoodAttention(nn.Module, AttentionModuleMixin):
         query = self.norm_q(query)
         key = self.norm_k(key)
         query = query * self.scale
-        return self.rope(query), self.rope(key), value
+        return self.rope(query, positions_t), self.rope(key, positions_t), value
 
     def build_block_mask(self, hidden_states: torch.Tensor):
         """The flex `BlockMask` for this grid, or `None` if the processor does not read one.
@@ -314,6 +823,35 @@ class LTX2VideoVaeNeighborhoodAttention(nn.Module, AttentionModuleMixin):
                 f"(T, H, W) = ({num_frames}, {height}, {width}) with kernel_size {self.kernel_size}."
             )
         return self.processor(self, hidden_states, block_mask)
+
+    def forward_with_keyframes(
+        self, hidden_states: torch.Tensor, keyframe_hidden_states: torch.Tensor, keyframe_times: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Joint attention over the video `(B, T, H, W, C)` and the keyframe planes `(B, P, H, W, C)`.
+
+        This bypasses the attention processor: neither FlexAttention's neighborhood mask nor NATTEN expresses the joint
+        window, so a keyframe decode always runs [`_joint_neighborhood_attention`], whatever processor is set.
+        `keyframe_times` are the planes' `(P,)` temporal RoPE positions, in the video stream's tile-local origin.
+        """
+        batch_size, num_frames, height, width, channels = hidden_states.shape
+        num_planes = keyframe_hidden_states.shape[1]
+        query, key, value = self.project_qkv(hidden_states)
+        keyframe_query, keyframe_key, keyframe_value = self.project_qkv(keyframe_hidden_states, keyframe_times)
+        hidden_states, keyframe_hidden_states = _joint_neighborhood_attention(
+            query.contiguous(),
+            key.contiguous(),
+            value.contiguous(),
+            keyframe_query.contiguous(),
+            keyframe_key.contiguous(),
+            keyframe_value.contiguous(),
+            keyframe_times,
+            self.kernel_size,
+        )
+        hidden_states = self.to_out[0](hidden_states.reshape(batch_size, num_frames, height, width, channels))
+        keyframe_hidden_states = self.to_out[0](
+            keyframe_hidden_states.reshape(batch_size, num_planes, height, width, channels)
+        )
+        return hidden_states, keyframe_hidden_states
 
 
 # Tokens per tile in `LTX2VideoVaeSwiGLU`, matching the reference decoder's own default. `w_gate(x)` and
@@ -377,6 +915,19 @@ class LTX2VideoVaeNABlock(nn.Module):
         hidden_states = hidden_states + self.mlp(self.norm2(hidden_states))
         return hidden_states
 
+    def forward_with_keyframes(
+        self, hidden_states: torch.Tensor, keyframe_hidden_states: torch.Tensor, keyframe_times: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Both streams through the same weights; they only meet inside the joint attention softmax."""
+        attn_output, keyframe_attn_output = self.attn.forward_with_keyframes(
+            self.norm1(hidden_states), self.norm1(keyframe_hidden_states), keyframe_times
+        )
+        hidden_states = hidden_states + attn_output
+        keyframe_hidden_states = keyframe_hidden_states + keyframe_attn_output
+        hidden_states = hidden_states + self.mlp(self.norm2(hidden_states))
+        keyframe_hidden_states = keyframe_hidden_states + self.mlp(self.norm2(keyframe_hidden_states))
+        return hidden_states, keyframe_hidden_states
+
 
 class LTX2VideoVaeAdaLNZero(nn.Module):
     """Shared AdaLN-Zero modulation: a timestep embedding to seven `(B, 1, 1, 1, C)` chunks.
@@ -439,6 +990,35 @@ class LTX2VideoVaeDiffusionNABlock(nn.Module):
         hidden_states = hidden_states + self.mlp(self.norm2(hidden_states) * (1 + scale_mlp) + shift_mlp)
         return hidden_states
 
+    def forward_with_keyframes(
+        self,
+        hidden_states: torch.Tensor,
+        latent_context: torch.Tensor,
+        keyframe_hidden_states: torch.Tensor,
+        keyframe_latent_context: torch.Tensor,
+        modulation: tuple[torch.Tensor, ...],
+        keyframe_times: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Both streams through the same weights and the same modulation, each with its own context."""
+        scale_msa, shift_msa, _, scale_mlp, shift_mlp, _, _ = [
+            modulation[i] + self.scale_shift_table[i].view(1, 1, 1, 1, -1) for i in range(self.num_mod_params)
+        ]
+
+        hidden_states = hidden_states + self.context_proj(latent_context)
+        keyframe_hidden_states = keyframe_hidden_states + self.context_proj(keyframe_latent_context)
+        attn_output, keyframe_attn_output = self.attn.forward_with_keyframes(
+            self.norm1(hidden_states) * (1 + scale_msa) + shift_msa,
+            self.norm1(keyframe_hidden_states) * (1 + scale_msa) + shift_msa,
+            keyframe_times,
+        )
+        hidden_states = hidden_states + attn_output
+        keyframe_hidden_states = keyframe_hidden_states + keyframe_attn_output
+        hidden_states = hidden_states + self.mlp(self.norm2(hidden_states) * (1 + scale_mlp) + shift_mlp)
+        keyframe_hidden_states = keyframe_hidden_states + self.mlp(
+            self.norm2(keyframe_hidden_states) * (1 + scale_mlp) + shift_mlp
+        )
+        return hidden_states, keyframe_hidden_states
+
 
 class LTX2VideoVaePixelShuffleUpsampler(nn.Module):
     """Linear channel expansion followed by a channels-last pixel shuffle.
@@ -499,6 +1079,7 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
         timestep_scale_multiplier: float = 1000.0,
         model_output_type: str = "x0",
         default_num_inference_steps: int = 1,
+        keyframe_type_embedding: bool = False,
     ):
         super().__init__()
         if model_output_type not in ("x0", "v"):
@@ -527,6 +1108,15 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
         self.trailing_pad_latent_frames = (stage_kernels[0][0] // 2) * 2
 
         self.conv_in = nn.Linear(in_channels, stage_channels[0], bias=True)
+        # The learned tag of the keyframe stream, added to the keyframe latents right before the shared `conv_in`. It
+        # is the only keyframe-specific weight, so a checkpoint trained without keyframes simply does not have one.
+        self.type_emb = nn.Parameter(torch.zeros(in_channels)) if keyframe_type_embedding else None
+        # Temporal upsampling still to come at each stage input, plus 1 for the diffusion stage: the divisor of
+        # `_keyframe_stage_times`. (8, 8, 4, 2, 1) for the production strides.
+        self.keyframe_time_strides = tuple(
+            math.prod(stride[0] for stride in upsample_strides[stage_idx:])
+            for stage_idx in range(len(upsample_strides) + 1)
+        )
 
         self.det_stages = nn.ModuleList()
         self.upsamples = nn.ModuleList()
@@ -662,13 +1252,197 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
             x_t = (x_t_fp32 - dt * model_out).to(x_t.dtype)
         return x_t
 
+    def forward_stages_1_to_3_with_keyframes(
+        self, hidden_states: torch.Tensor, keyframe_hidden_states: torch.Tensor, keyframe_frame_indices: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Keyframe counterpart of [`forward_stages_1_to_3`], carrying both streams.
+
+        `keyframe_hidden_states` are the denormalized keyframe latents `(B, C, P, H, W)`, one latent frame per plane,
+        on the same spatial grid as `hidden_states`. They are tagged with `type_emb`, then share `conv_in` and every
+        stage with the video. The trailing ghost frames are a temporal border workaround of the video stream only. The
+        keyframe stream comes back channels-last, `(B, P, H_4, W_4, C_4)`.
+        """
+        num_pad = self.trailing_pad_latent_frames
+        if num_pad > 0:
+            trailing = hidden_states[:, :, -1:].expand(-1, -1, num_pad, -1, -1)
+            hidden_states = torch.cat([hidden_states, trailing], dim=2)
+
+        hidden_states = self.conv_in(hidden_states.permute(0, 2, 3, 4, 1))
+        keyframe_hidden_states = keyframe_hidden_states.permute(0, 2, 3, 4, 1)
+        if self.type_emb is not None:
+            keyframe_hidden_states = keyframe_hidden_states + self.type_emb.view(1, 1, 1, 1, -1)
+        keyframe_hidden_states = self.conv_in(keyframe_hidden_states)
+        for stage_idx, (blocks, upsample) in enumerate(zip(self.det_stages[:-1], self.upsamples[:-1])):
+            keyframe_times = _keyframe_stage_times(keyframe_frame_indices, self.keyframe_time_strides[stage_idx])
+            for block in blocks:
+                hidden_states, keyframe_hidden_states = block.forward_with_keyframes(
+                    hidden_states, keyframe_hidden_states, keyframe_times
+                )
+            hidden_states = upsample(hidden_states)
+            keyframe_hidden_states = _upsample_keyframe_planes(upsample, keyframe_hidden_states)
+        return hidden_states, keyframe_hidden_states
+
+    def forward_stage_4_with_keyframes(
+        self,
+        hidden_states: torch.Tensor,
+        keyframe_hidden_states: torch.Tensor,
+        keyframe_frame_indices: torch.Tensor,
+        drop_leading_frame: bool = True,
+        crop_trailing_ghost: bool = True,
+        stage_4_time_origin: float = 0.0,
+        pixel_time_origin: float = 0.0,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Keyframe counterpart of [`forward_stage_4`]. Returns the video context, the keyframe context, and the
+        planes' times in the diffusion stage.
+
+        The video stream's RoPE positions are 0-based within a tile at every stage, so the plane times are rebased on
+        the tile's first frame. That takes two origins at two scales, both taken from the tile and not derived from one
+        another (the causal first frame makes `pixel_time_origin == stride * stage_4_time_origin` an off-by-one trap):
+        `stage_4_time_origin` is the tile's first cell entering this stage, `pixel_time_origin` its first pixel frame.
+        Both are 0 for an untiled decode. `keyframe_frame_indices` stay global pixel frames.
+        """
+        keyframe_times = (
+            _keyframe_stage_times(keyframe_frame_indices, self.keyframe_time_strides[-2]) - stage_4_time_origin
+        )
+        for block in self.det_stages[-1]:
+            hidden_states, keyframe_hidden_states = block.forward_with_keyframes(
+                hidden_states, keyframe_hidden_states, keyframe_times
+            )
+        hidden_states = self.upsamples[-1](hidden_states, drop_leading_frame=drop_leading_frame)
+        keyframe_hidden_states = _upsample_keyframe_planes(self.upsamples[-1], keyframe_hidden_states)
+
+        num_pad = self.trailing_pad_latent_frames
+        if crop_trailing_ghost and num_pad > 0:
+            hidden_states = hidden_states[:, : -num_pad * self.temporal_compression_ratio]
+        keyframe_times = (
+            _keyframe_stage_times(keyframe_frame_indices, self.keyframe_time_strides[-1]) - pixel_time_origin
+        )
+        return hidden_states, keyframe_hidden_states, keyframe_times
+
+    def forward_diffusion_step_with_keyframes(
+        self,
+        latent_context: torch.Tensor,
+        x_t: torch.Tensor,
+        keyframe_latent_context: torch.Tensor,
+        keyframe_x_t: torch.Tensor,
+        timestep: torch.Tensor,
+        keyframe_times: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """One stage-5 step over both streams. Returns `(video_prediction, keyframe_prediction)` in pixel space.
+
+        The keyframe stream is a second pixel diffusion stream, one pixel frame per plane: its own noised pixels
+        through the shared `conv_in_x_t`, its own context, the same modulation. It is stepped along with the video so
+        the hidden states the joint attention reads stay at the noise level the decoder was trained on, and is then
+        discarded.
+        """
+        t_emb = self.t_embedder(
+            self.timestep_scale_multiplier * timestep,
+            resolution=None,
+            aspect_ratio=None,
+            batch_size=timestep.shape[0],
+            hidden_dtype=latent_context.dtype,
+        )
+        modulation = self.shared_adaln(t_emb)
+
+        hidden_states = self.conv_in_x_t(_patchify(x_t, self.patch_size).permute(0, 2, 3, 4, 1))
+        keyframe_hidden_states = self.conv_in_x_t(_patchify(keyframe_x_t, self.patch_size).permute(0, 2, 3, 4, 1))
+        for block in self.diff_blocks:
+            hidden_states, keyframe_hidden_states = block.forward_with_keyframes(
+                hidden_states,
+                latent_context,
+                keyframe_hidden_states,
+                keyframe_latent_context,
+                modulation,
+                keyframe_times,
+            )
+
+        outputs = []
+        for states in (hidden_states, keyframe_hidden_states):
+            states = self.conv_out(self.norm_out(states))
+            outputs.append(_unpatchify(states.permute(0, 4, 1, 2, 3).contiguous(), self.patch_size))
+        return outputs[0], outputs[1]
+
+    def denoise_with_keyframes(
+        self,
+        latent_context: torch.Tensor,
+        x_t: torch.Tensor,
+        keyframe_latent_context: torch.Tensor,
+        keyframe_x_t: torch.Tensor,
+        keyframe_times: torch.Tensor,
+        num_inference_steps: int,
+    ) -> torch.Tensor:
+        """Keyframe counterpart of [`denoise`]: both streams through the same Euler loop, only the video returned."""
+        batch_size = latent_context.shape[0]
+        timesteps = torch.linspace(
+            1.0, 1.0 / num_inference_steps, num_inference_steps, device=latent_context.device, dtype=torch.float32
+        )
+
+        if num_inference_steps == 1 and self.model_output_type == "x0":
+            return self.forward_diffusion_step_with_keyframes(
+                latent_context,
+                x_t,
+                keyframe_latent_context,
+                keyframe_x_t,
+                timesteps[:1].expand(batch_size),
+                keyframe_times,
+            )[0]
+
+        for step_idx in range(num_inference_steps):
+            t_now = timesteps[step_idx].expand(batch_size)
+            t_next = timesteps[step_idx + 1] if step_idx + 1 < num_inference_steps else torch.zeros_like(t_now)
+            model_outputs = self.forward_diffusion_step_with_keyframes(
+                latent_context, x_t, keyframe_latent_context, keyframe_x_t, t_now, keyframe_times
+            )
+            sigma = t_now.view(-1, *([1] * (x_t.ndim - 1)))
+            dt = (t_now - t_next).view(-1, *([1] * (x_t.ndim - 1)))
+            updated = []
+            for sample, model_out in zip((x_t, keyframe_x_t), model_outputs):
+                sample_fp32, model_out = sample.float(), model_out.float()
+                if self.model_output_type == "x0":
+                    model_out = (sample_fp32 - model_out) / sigma
+                updated.append((sample_fp32 - dt * model_out).to(sample.dtype))
+            x_t, keyframe_x_t = updated
+        return x_t
+
+    def _decode_with_keyframes(
+        self,
+        hidden_states: torch.Tensor,
+        keyframe_hidden_states: torch.Tensor,
+        keyframe_frame_indices: torch.Tensor,
+        generator: torch.Generator | None,
+        num_inference_steps: int,
+    ) -> torch.Tensor:
+        features, keyframe_features = self.forward_stages_1_to_3_with_keyframes(
+            hidden_states, keyframe_hidden_states, keyframe_frame_indices
+        )
+        latent_context, keyframe_latent_context, keyframe_times = self.forward_stage_4_with_keyframes(
+            features, keyframe_features, keyframe_frame_indices
+        )
+        batch_size, num_frames, height, width = latent_context.shape[:4]
+        pixel_shape = (batch_size, self.out_channels, num_frames, height * self.patch_size, width * self.patch_size)
+        x_t = randn_tensor(pixel_shape, generator=generator, device=hidden_states.device, dtype=hidden_states.dtype)
+        # The keyframe stream draws its own noise, after the video's: its planes are not part of the video canvas.
+        keyframe_shape = (*pixel_shape[:2], keyframe_latent_context.shape[1], *pixel_shape[3:])
+        keyframe_x_t = randn_tensor(
+            keyframe_shape, generator=generator, device=hidden_states.device, dtype=hidden_states.dtype
+        )
+        return self.denoise_with_keyframes(
+            latent_context, x_t, keyframe_latent_context, keyframe_x_t, keyframe_times, num_inference_steps
+        )
+
     def forward(
         self,
         hidden_states: torch.Tensor,
         generator: torch.Generator | None = None,
         num_inference_steps: int | None = None,
+        keyframe_hidden_states: torch.Tensor | None = None,
+        keyframe_frame_indices: torch.Tensor | None = None,
     ) -> torch.Tensor:
         num_inference_steps = num_inference_steps or self.default_num_inference_steps
+        if keyframe_hidden_states is not None:
+            return self._decode_with_keyframes(
+                hidden_states, keyframe_hidden_states, keyframe_frame_indices, generator, num_inference_steps
+            )
         latent_context = self.forward_stage_4(self.forward_stages_1_to_3(hidden_states))
         # The context grid is the stage-5 token grid, so the pixel canvas is its shape times the patch size —
         # temporally that is the causal (T - 1) * ratio + 1 mapping of the LTX-2 latent space.
@@ -712,6 +1486,12 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
     The latent statistics are carried here as buffers so the decode pipeline can denormalize without loading a second
     autoencoder just for two vectors.
 
+    Decoding can be anchored on *keyframe planes*: single-frame latents at known pixel frames, each encoded as a
+    standalone one-frame clip, passed as `keyframe_latents` / `keyframe_frame_indices` to [`decode`]. Every video
+    position then also attends to the same spatial window on its two nearest planes. Checkpoints trained for it carry a
+    learned tag added to the plane latents, `decoder.type_emb`, which `decoder_keyframe_type_embedding=True` creates;
+    without it the planes are decoded untagged.
+
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
     """
@@ -741,6 +1521,7 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
         decoder_num_inference_steps: int = 1,
         spatial_compression_ratio: int = 32,
         temporal_compression_ratio: int = 8,
+        decoder_keyframe_type_embedding: bool = False,
     ) -> None:
         super().__init__()
 
@@ -760,6 +1541,7 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
             timestep_scale_multiplier=decoder_timestep_scale_multiplier,
             model_output_type=decoder_model_output_type,
             default_num_inference_steps=decoder_num_inference_steps,
+            keyframe_type_embedding=decoder_keyframe_type_embedding,
         )
 
         self.spatial_compression_ratio = spatial_compression_ratio
@@ -857,6 +1639,8 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
         z: torch.Tensor,
         generator: torch.Generator | None = None,
         num_inference_steps: int | None = None,
+        keyframe_latents: torch.Tensor | None = None,
+        keyframe_frame_indices: torch.Tensor | None = None,
     ) -> torch.Tensor:
         r"""Decode a batch of latents with the last deterministic stage and the diffusion stage running per tile.
 
@@ -865,7 +1649,13 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
         px spatially and 2 frames temporally for the production config). Temporal tiles follow the causal frame
         mapping: the tile containing t=0 drops the temporal upsample's duplicate leading frame and only the tile
         containing the video end carries the NATTEN border padding.
+
+        With keyframe planes, each temporal tile carries the planes inside its pixel-frame span plus the nearest one on
+        each side of it, with their times rebased on the tile's first cell and first pixel frame, and each spatial tile
+        crops the planes with the same slices as the video.
         """
+        if keyframe_latents is not None:
+            keyframe_frame_indices = self._check_keyframes(z, keyframe_latents, keyframe_frame_indices)
         decoder = self.decoder
         num_inference_steps = num_inference_steps or decoder.default_num_inference_steps
         batch_size = z.shape[0]
@@ -890,7 +1680,12 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
             )
         ]
 
-        features = decoder.forward_stages_1_to_3(z)
+        if keyframe_latents is None:
+            features = decoder.forward_stages_1_to_3(z)
+        else:
+            features, keyframe_features = decoder.forward_stages_1_to_3_with_keyframes(
+                z, keyframe_latents, keyframe_frame_indices
+            )
         # The trailing ghost frames replicate through the earlier stages' temporal upsamples, whose composed
         # mapping is affine with slope equal to the product of their strides.
         ghost_frames = decoder.trailing_pad_latent_frames * math.prod(up.stride[0] for up in decoder.upsamples[:-1])
@@ -923,15 +1718,34 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
             is_trailing = t1 == num_frames
             # The tile containing the video end takes the ghost frames with it into stage 4.
             feature_t1 = features.shape[1] if is_trailing else t1
+            # A non-origin tile keeps the duplicate leading frame, placing its first cell one pixel frame earlier
+            # than `t0 * scale_t` — the causal 1-then-`scale_t` frame mapping.
+            pixel_t0 = t0 * scale_t - (1 if not is_origin and scale_t == 2 else 0)
+            if keyframe_latents is not None:
+                tile_pixel_frames = (t1 - t0) * scale_t - (1 if is_origin and scale_t == 2 else 0)
+                keep = _keyframe_planes_for_tile(keyframe_frame_indices, pixel_t0, pixel_t0 + tile_pixel_frames - 1)
+                tile_keyframe_features = keyframe_features[:, keep.to(keyframe_features.device)]
+                tile_keyframe_indices = keyframe_frame_indices[keep]
             rows = []
             for h0, h1 in height_tiles:
                 row = []
                 for w0, w1 in width_tiles:
-                    context = decoder.forward_stage_4(
-                        features[:, t0:feature_t1, h0:h1, w0:w1],
-                        drop_leading_frame=is_origin,
-                        crop_trailing_ghost=is_trailing,
-                    )
+                    if keyframe_latents is None:
+                        context = decoder.forward_stage_4(
+                            features[:, t0:feature_t1, h0:h1, w0:w1],
+                            drop_leading_frame=is_origin,
+                            crop_trailing_ghost=is_trailing,
+                        )
+                    else:
+                        context, keyframe_context, keyframe_times = decoder.forward_stage_4_with_keyframes(
+                            features[:, t0:feature_t1, h0:h1, w0:w1],
+                            tile_keyframe_features[:, :, h0:h1, w0:w1],
+                            tile_keyframe_indices,
+                            drop_leading_frame=is_origin,
+                            crop_trailing_ghost=is_trailing,
+                            stage_4_time_origin=float(t0),
+                            pixel_time_origin=float(pixel_t0),
+                        )
                     tile_pixel_shape = (
                         batch_size,
                         decoder.out_channels,
@@ -942,9 +1756,6 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
                     if single_step_x0:
                         x_t = randn_tensor(tile_pixel_shape, generator=generator, device=z.device, dtype=z.dtype)
                     else:
-                        # A non-origin tile keeps the duplicate leading frame, placing its first cell one pixel
-                        # frame earlier than `t0 * scale_t` — the causal 1-then-`scale_t` frame mapping.
-                        pixel_t0 = t0 * scale_t - (1 if not is_origin and scale_t == 2 else 0)
                         x_t = x_t_full[
                             :,
                             :,
@@ -952,7 +1763,21 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
                             h0 * scale_h : h0 * scale_h + tile_pixel_shape[3],
                             w0 * scale_w : w0 * scale_w + tile_pixel_shape[4],
                         ]
-                    row.append(decoder.denoise(context, x_t, num_inference_steps))
+                    if keyframe_latents is None:
+                        row.append(decoder.denoise(context, x_t, num_inference_steps))
+                        continue
+                    # The keyframe stream always draws its own noise, after the video's.
+                    keyframe_x_t = randn_tensor(
+                        (*tile_pixel_shape[:2], keyframe_context.shape[1], *tile_pixel_shape[3:]),
+                        generator=generator,
+                        device=z.device,
+                        dtype=z.dtype,
+                    )
+                    row.append(
+                        decoder.denoise_with_keyframes(
+                            context, x_t, keyframe_context, keyframe_x_t, keyframe_times, num_inference_steps
+                        )
+                    )
                 rows.append(row)
 
             result_rows = []
@@ -985,6 +1810,38 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
             result.append(group)
         return torch.cat(result, dim=2)
 
+    def _check_keyframes(
+        self, z: torch.Tensor, keyframe_latents: torch.Tensor, keyframe_frame_indices: torch.Tensor | None
+    ) -> torch.Tensor:
+        """Validate a keyframe input and return its frame indices as a 1-D int64 tensor."""
+        if keyframe_frame_indices is None:
+            raise ValueError("`keyframe_frame_indices` is required when `keyframe_latents` is passed.")
+        keyframe_frame_indices = torch.as_tensor(keyframe_frame_indices, dtype=torch.int64).cpu()
+        if keyframe_latents.ndim != 5:
+            raise ValueError(f"`keyframe_latents` must be (B, C, P, H, W), got {tuple(keyframe_latents.shape)}.")
+        num_planes = keyframe_latents.shape[2]
+        if num_planes == 0:
+            raise ValueError("`keyframe_latents` needs at least one plane; omit it for a plain decode.")
+        if keyframe_latents.shape[:2] != z.shape[:2] or keyframe_latents.shape[3:] != z.shape[3:]:
+            raise ValueError(
+                f"`keyframe_latents` {tuple(keyframe_latents.shape)} must match the batch size, channels, height and "
+                f"width of `z` {tuple(z.shape)}."
+            )
+        if keyframe_frame_indices.shape != (num_planes,):
+            raise ValueError(
+                f"`keyframe_frame_indices` must be 1-D with one pixel frame per plane ({num_planes}), got shape "
+                f"{tuple(keyframe_frame_indices.shape)}."
+            )
+        if int(keyframe_frame_indices.min()) < 0:
+            raise ValueError("`keyframe_frame_indices` must be non-negative pixel frame indices.")
+        if self.decoder.type_emb is None:
+            logger.warning(
+                "Decoding with keyframe planes on a checkpoint without a keyframe tag (`decoder.type_emb`): the planes "
+                "enter the decoder untagged. Checkpoints trained for keyframe decoding are converted with "
+                "`decoder_keyframe_type_embedding=True`."
+            )
+        return keyframe_frame_indices
+
     @apply_forward_hook
     def decode(
         self,
@@ -992,12 +1849,20 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
         generator: torch.Generator | None = None,
         num_inference_steps: int | None = None,
         return_dict: bool = True,
+        keyframe_latents: torch.Tensor | None = None,
+        keyframe_frame_indices: torch.Tensor | None = None,
     ) -> DecoderOutput | torch.Tensor:
         """Decode a batch of latents.
 
         `z` is expected to be denormalized already (the pipeline applies `latents_mean` / `latents_std`), matching
         [`AutoencoderKLLTX2Video`]. This decoder denoises, so pass `generator` for reproducibility.
+
+        `keyframe_latents` `(B, C, P, H, W)`, denormalized like `z`, anchors the decode on `P` keyframe planes at the
+        pixel frames `keyframe_frame_indices` `(P,)`. Each plane must be the latent of a standalone one-frame clip.
+        Planes may lie outside the decoded clip: they are ranked by temporal distance.
         """
+        if keyframe_latents is not None:
+            keyframe_frame_indices = self._check_keyframes(z, keyframe_latents, keyframe_frame_indices)
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
         tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
         tile_latent_min_num_frames = self.tile_sample_min_num_frames // self.temporal_compression_ratio
@@ -1006,9 +1871,21 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
             or z.shape[3] > tile_latent_min_height
             or z.shape[4] > tile_latent_min_width
         ):
-            decoded = self.tiled_decode(z, generator=generator, num_inference_steps=num_inference_steps)
+            decoded = self.tiled_decode(
+                z,
+                generator=generator,
+                num_inference_steps=num_inference_steps,
+                keyframe_latents=keyframe_latents,
+                keyframe_frame_indices=keyframe_frame_indices,
+            )
         else:
-            decoded = self.decoder(z, generator=generator, num_inference_steps=num_inference_steps)
+            decoded = self.decoder(
+                z,
+                generator=generator,
+                num_inference_steps=num_inference_steps,
+                keyframe_hidden_states=keyframe_latents,
+                keyframe_frame_indices=keyframe_frame_indices,
+            )
 
         if not return_dict:
             return (decoded,)
@@ -1020,6 +1897,8 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
         generator: torch.Generator | None = None,
         num_inference_steps: int | None = None,
         return_dict: bool = True,
+        keyframe_latents: torch.Tensor | None = None,
+        keyframe_frame_indices: torch.Tensor | None = None,
     ) -> DecoderOutput | tuple[torch.Tensor]:
         r"""
         Args:
@@ -1032,8 +1911,21 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
                 Number of denoising steps. Defaults to the decoder's `decoder_num_inference_steps` config value.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`~models.autoencoders.vae.DecoderOutput`] instead of a plain tuple.
+            keyframe_latents (`torch.Tensor`, *optional*):
+                Keyframe planes of shape `(B, C, P, H, W)`, denormalized like `z` and on its latent grid, one latent
+                frame per plane, each encoded as a standalone one-frame clip. Every video position also attends to the
+                same spatial window on its two nearest planes.
+            keyframe_frame_indices (`torch.Tensor`, *optional*):
+                The `(P,)` pixel frame of each plane in the decoded video. Required with `keyframe_latents`.
 
         Returns:
             [`~models.autoencoders.vae.DecoderOutput`] or `tuple`
         """
-        return self.decode(z, generator=generator, num_inference_steps=num_inference_steps, return_dict=return_dict)
+        return self.decode(
+            z,
+            generator=generator,
+            num_inference_steps=num_inference_steps,
+            return_dict=return_dict,
+            keyframe_latents=keyframe_latents,
+            keyframe_frame_indices=keyframe_frame_indices,
+        )

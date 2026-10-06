@@ -144,6 +144,38 @@ def resolve_canvas(num_frames: int, temporal_compression_ratio: int = 8) -> tupl
     return content_padded + 1, segment, positions
 
 
+def resolve_seam_positions(
+    num_frames: int, high_quality: bool = False, temporal_compression_ratio: int = 8
+) -> list[int]:
+    """
+    Keyframe seam positions of a clip decoded in one window: the [`resolve_canvas`] keyframes that fall inside it.
+
+    Unlike [`resolve_canvas`] the canvas is not padded: positions at or past `num_frames` are dropped, so the last
+    segment may be shorter than the others. This is where the LTX-2.5 SDR-to-HDR IC-LoRA places its seam keyframes.
+
+    Args:
+        num_frames (`int`):
+            Pixel frame count of the clip. Must satisfy `(num_frames - 1) % temporal_compression_ratio == 0`. A single
+            frame has no seam and returns `[]`, where [`resolve_canvas`] would reject it.
+        high_quality (`bool`, defaults to `False`):
+            Whether the clip runs on a frame-doubled `2 * num_frames - 1` grid. The positions are then computed on
+            `num_frames` and doubled onto that grid.
+        temporal_compression_ratio (`int`, defaults to `8`):
+            The VAE's temporal compression ratio.
+
+    Returns:
+        `list[int]`: the seam pixel frames, ascending; frame 0 is never one. 9 and 17 frames have none (the first seam
+        is at 24), 97 frames give `[32, 64, 96]` and 121 frames `[24, 48, 72, 96, 120]`.
+    """
+    if num_frames < 2:
+        return []
+    _, _, positions = resolve_canvas(num_frames, temporal_compression_ratio)
+    positions = [position for position in positions if position < num_frames]
+    if high_quality:
+        positions = [2 * position for position in positions]
+    return positions
+
+
 def pixel_to_latent_index(pixel_frame: int, temporal_compression_ratio: int = 8) -> int:
     """Map a pixel frame sitting on a latent border to its latent index."""
     if pixel_frame < 0:
