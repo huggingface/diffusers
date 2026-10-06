@@ -212,9 +212,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_unet(
             state_dict,
@@ -624,9 +622,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_unet(
             state_dict,
@@ -1053,9 +1049,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -1340,9 +1334,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -2442,9 +2434,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -2630,9 +2620,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -2824,9 +2812,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -3024,9 +3010,7 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         transformer_peft_state_dict = {
             k: v for k, v in state_dict.items() if k.startswith(f"{self.transformer_name}.")
@@ -3233,9 +3217,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -3425,9 +3407,7 @@ class HeliosLoraLoaderMixin(LoraBaseMixin):
         state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -3619,9 +3599,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -3814,9 +3792,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -4005,9 +3981,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -4250,9 +4224,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
         )
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         load_into_transformer_2 = kwargs.pop("load_into_transformer_2", False)
         if load_into_transformer_2:
@@ -4518,9 +4490,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
         )
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         load_into_transformer_2 = kwargs.pop("load_into_transformer_2", False)
         if load_into_transformer_2:
@@ -4729,9 +4699,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -4923,9 +4891,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -5120,9 +5086,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -5316,9 +5280,7 @@ class Krea2LoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -5518,9 +5480,7 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -5708,9 +5668,7 @@ class AnimaLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         transformer_state_dict = {k: v for k, v in state_dict.items() if k.startswith(f"{self.transformer_name}.")}
         text_conditioner_state_dict = {
@@ -5919,9 +5877,7 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         transformer = getattr(self, self.transformer_name) if not hasattr(self, "transformer") else self.transformer
 
@@ -5934,6 +5890,22 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
                     "This LoKr checkpoint targets fused QKV projections, which requires fusing the transformer's "
                     "QKV projections, and that is not supported on quantized models. Please load the transformer "
                     "without quantization."
+                )
+            # Fusing replaces to_q/to_k/to_v (and the add_*_proj) with a single projection, which would
+            # orphan any adapter already injected on the unfused ones.
+            from peft.tuners.tuners_utils import BaseTunerLayer
+
+            unfused_projections = {"to_q", "to_k", "to_v", "add_q_proj", "add_k_proj", "add_v_proj"}
+            adapted = [
+                name
+                for name, module in transformer.named_modules()
+                if isinstance(module, BaseTunerLayer) and name.rsplit(".", 1)[-1] in unfused_projections
+            ]
+            if adapted:
+                raise ValueError(
+                    "This LoKr checkpoint targets fused QKV projections, but an adapter is already loaded on the "
+                    f"unfused projections (e.g. `{adapted[0]}`). Unload it with `unload_lora_weights()` before "
+                    "loading this checkpoint."
                 )
             logger.info(
                 "The LoKr checkpoint targets fused QKV projections; calling `fuse_qkv_projections()` on the "
@@ -6135,9 +6107,7 @@ class Ideogram4LoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -6337,9 +6307,7 @@ class ErnieImageLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -6529,9 +6497,7 @@ class CosmosLoraLoaderMixin(LoraBaseMixin):
 
         is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError(
-                "Invalid LoRA checkpoint. Make sure all LoRA param names contain the `'lora'` or `'lokr'` substring."
-            )
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,

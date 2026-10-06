@@ -94,6 +94,30 @@ class Flux2LoKrTests(unittest.TestCase):
             delta = layer.get_delta_weight("default")
             self.assertLess((delta - expected).abs().max().item(), 1e-5, module)
 
+    def test_lokr_fused_qkv_checkpoint_refuses_when_unfused_projections_are_adapted(self):
+        # A LoRA already injected on to_q would be orphaned by fuse_qkv_projections(), so loading must refuse.
+        from peft import LoraConfig
+
+        transformer = self.get_transformer()
+        transformer.add_adapter(LoraConfig(r=2, target_modules=["to_q"]), adapter_name="plain_lora")
+        linear = dict(transformer.named_modules())["transformer_blocks.0.attn.to_q"]
+        w1, w2 = self.make_factors(3 * linear.out_features, linear.in_features)
+        state_dict = {
+            "diffusion_model.double_blocks.0.img_attn.qkv.lokr_w1": w1,
+            "diffusion_model.double_blocks.0.img_attn.qkv.lokr_w2": w2,
+            "diffusion_model.double_blocks.0.img_attn.qkv.alpha": torch.tensor(9999220736.0),
+        }
+        pipe = Flux2Pipeline(
+            scheduler=FlowMatchEulerDiscreteScheduler(),
+            vae=None,
+            text_encoder=None,
+            tokenizer=None,
+            transformer=transformer,
+        )
+        with self.assertRaisesRegex(ValueError, "already loaded on the unfused projections"):
+            pipe.load_lora_weights(state_dict, adapter_name="lokr")
+        self.assertFalse(transformer.transformer_blocks[0].attn.fused_projections)
+
     def test_lokr_lycoris_checkpoint(self):
         # LyCORIS wraps the diffusers model directly and encodes module paths with underscores under a
         # `lycoris_` prefix.
