@@ -150,6 +150,34 @@ def unscale_lora_layers(model, weight: float | None = None):
                     module.set_scale(adapter_name, 1.0)
 
 
+# Maps the LoRA weight suffix of a text-encoder network alpha key (diffusers naming)
+# to the corresponding PEFT module name suffix. PEFT's `alpha_pattern` keys must
+# match the end of the PEFT module names (see `peft.utils.get_pattern_key`), e.g.
+# the alpha key `text_model.encoder.layers.1.self_attn.to_k_lora.down.weight.alpha`
+# belongs to the module `...self_attn.k_proj` -- not its parent block.
+_TEXT_ENCODER_ALPHA_SUFFIX_TO_MODULE_SUFFIX = (
+    (".to_q_lora.down.weight.alpha", ".q_proj"),
+    (".to_k_lora.down.weight.alpha", ".k_proj"),
+    (".to_v_lora.down.weight.alpha", ".v_proj"),
+    (".to_out_lora.down.weight.alpha", ".out_proj"),
+    (".lora_linear_layer.down.weight.alpha", ""),
+    # e.g. `text_model.text_projection.alpha`
+    (".alpha", ""),
+)
+
+
+def _text_encoder_alpha_pattern_key(alpha_key: str) -> str:
+    """Derive the PEFT `alpha_pattern` key from a text-encoder network alpha key."""
+    for suffix, module_suffix in _TEXT_ENCODER_ALPHA_SUFFIX_TO_MODULE_SUFFIX:
+        if alpha_key.endswith(suffix):
+            key = alpha_key[: -len(suffix)] + module_suffix
+            # The loader strips the `text_model.` prefix for flattened text encoders,
+            # so the pattern key must not require it: `get_pattern_key` matches at the
+            # end of the module name, making the shorter key match either way.
+            return key.removeprefix("text_model.")
+    return alpha_key
+
+
 def get_peft_kwargs(
     rank_dict, network_alpha_dict, peft_state_dict, is_unet=True, model_state_dict=None, adapter_name=None
 ):
@@ -186,7 +214,7 @@ def get_peft_kwargs(
                     for k, v in alpha_pattern.items()
                 }
             else:
-                alpha_pattern = {".".join(k.split(".down.")[0].split(".")[:-1]): v for k, v in alpha_pattern.items()}
+                alpha_pattern = {_text_encoder_alpha_pattern_key(k): v for k, v in alpha_pattern.items()}
         else:
             lora_alpha = set(network_alpha_dict.values()).pop()
 
