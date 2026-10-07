@@ -55,13 +55,12 @@ across chips instead. See the [Tensor parallelism](#tensor-parallelism) section.
 ## Compiled mode
 
 TorchTPU registers `"tpu"` as a `torch.compile` backend name (`TpuBackend` under the hood), so
-components compile like any other `torch.compile` target — no diffusers-specific method needed. The first
+components compile like any other `torch.compile` target. The first
 call (warmup) is slow because it compiles; later calls with the same shapes reuse the compiled graph.
 
 > [!IMPORTANT]
-> TorchTPU requires **static shapes** — pass `dynamic=False`. Every time `height`, `width`, or
-> `num_inference_steps` changes, the graph is recompiled from scratch. Keep these values constant
-> across all calls after warmup, or run another warmup pass before changing them.
+> TorchTPU requires **static shapes**, so pass `dynamic=False`. A new `height` or `width` compiles the blocks again
+> for that shape, once; shapes already seen are reused. Changing `num_inference_steps` doesn't recompile.
 
 As in eager mode, [`~DiffusionPipeline.enable_model_cpu_offload`] keeps every model, text encoders included, on the
 TPU while it runs. The offload hooks can't be traced by `torch.compile`, so compile the transformer's repeated blocks
