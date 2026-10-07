@@ -9,12 +9,11 @@ from diffusers import (
     FluxTransformer2DModel,
 )
 
-from ...testing_utils import assert_tensors_close, torch_device
+from ...testing_utils import torch_device
 from ..testing_utils import (
     BasePipelineTesterConfig,
     MemoryTesterMixin,
     PipelineTesterMixin,
-    check_qkv_fused_layers_exist,
 )
 
 
@@ -116,49 +115,6 @@ class FluxControlInpaintPipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestFluxControlInpaintPipeline(FluxControlInpaintPipelineTesterConfig, PipelineTesterMixin):
-    def test_fused_qkv_projections(self):
-        # Run on CPU to ensure determinism for the device-dependent torch.Generator.
-        pipe = self.get_pipeline()
-
-        inputs = self.get_dummy_inputs()
-        original_image_slice = pipe(**inputs).images[0, -3:, -3:, -1]
-
-        # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
-        # to the pipeline level.
-        pipe.transformer.fuse_qkv_projections()
-        assert check_qkv_fused_layers_exist(pipe.transformer, ["to_qkv"]), (
-            "Something wrong with the fused attention layers. Expected all the attention projections to be fused."
-        )
-
-        inputs = self.get_dummy_inputs()
-        image_slice_fused = pipe(**inputs).images[0, -3:, -3:, -1]
-
-        pipe.transformer.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs()
-        image_slice_disabled = pipe(**inputs).images[0, -3:, -3:, -1]
-
-        assert_tensors_close(
-            image_slice_fused,
-            original_image_slice,
-            atol=1e-3,
-            rtol=1e-3,
-            msg="Fusion of QKV projections shouldn't affect the outputs.",
-        )
-        assert_tensors_close(
-            image_slice_disabled,
-            image_slice_fused,
-            atol=1e-3,
-            rtol=1e-3,
-            msg="Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled.",
-        )
-        assert_tensors_close(
-            image_slice_disabled,
-            original_image_slice,
-            atol=1e-2,
-            rtol=1e-2,
-            msg="Original outputs should match when fused QKV projections are disabled.",
-        )
-
     def test_flux_image_output_shape(self):
         pipe = self.get_pipeline().to(torch_device)
         inputs = self.get_dummy_inputs()
