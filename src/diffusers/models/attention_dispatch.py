@@ -3662,6 +3662,23 @@ def _native_flex_attention(
     else:
         raise ValueError("Attention mask must be either None, a BlockMask, or a 2D/4D tensor.")
 
+    # A `BlockMask`'s own block size is the sparsity granularity the caller built it around (e.g. NABLA's 64-token
+    # fractal blocks). The forward kernel's tile sizes must divide that granularity evenly; torch's autotuned
+    # defaults are only overridden when they don't already divide the mask's block size, to avoid unintended side
+    # effects from pinning tile sizes that otherwise would have been fine (e.g. the default 128x128 mask size would
+    # otherwise always force `BLOCK_N` to 128, even though 64 is a valid size).
+    kernel_options = None
+    if block_mask is not None:
+        q_block_size, kv_block_size = block_mask.BLOCK_SIZE
+        default_block_m = 64 if query.dtype == torch.float32 else 128
+        default_block_n = 64
+        kernel_options = {}
+        if q_block_size % default_block_m != 0:
+            kernel_options["BLOCK_M"] = q_block_size
+        if kv_block_size % default_block_n != 0:
+            kernel_options["BLOCK_N"] = kv_block_size
+        kernel_options = kernel_options or None
+
     query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
     out = flex_attention.flex_attention(
         query=query,
@@ -3672,6 +3689,7 @@ def _native_flex_attention(
         scale=scale,
         enable_gqa=enable_gqa,
         return_lse=return_lse,
+        kernel_options=kernel_options,
     )
     out = out.permute(0, 2, 1, 3)
     return out
