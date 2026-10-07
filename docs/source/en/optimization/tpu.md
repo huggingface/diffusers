@@ -89,9 +89,13 @@ image = pipe(
 image.save("output.png")
 ```
 
-If the pipeline doesn't fit and you use [`~DiffusionPipeline.enable_model_cpu_offload`], the offload hooks can't be
-traced by `torch.compile`. Compile only the transformer's repeated blocks instead, with
-`pipe.transformer.compile_repeated_blocks(backend="tpu", fullgraph=True, dynamic=False)`.
+If the pipeline doesn't fit on one chip:
+
+- With several chips, shard it with [tensor parallelism](#tensor-parallelism) instead. Everything stays on the TPU,
+  and `pipe.transformer.compile(...)` works the same way on the sharded transformer.
+- With [`~DiffusionPipeline.enable_model_cpu_offload`], the offload hooks can't be traced by `torch.compile`. Compile
+  only the transformer's repeated blocks instead, with
+  `pipe.transformer.compile_repeated_blocks(backend="tpu", fullgraph=True, dynamic=False)`.
 
 ## Tensor parallelism
 
