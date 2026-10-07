@@ -160,13 +160,10 @@ def apply_rotary_emb_qwen_neuron(x: torch.Tensor, freqs: torch.Tensor) -> torch.
 
 
 # RoPE application is backend-dependent: the default path multiplies by a complex exponential, which Neuron cannot
-# represent. On those backends `QwenImage21Rope` hands out rotation angles instead of complex freqs, and
-# `apply_rotary_emb_qwen_neuron` takes cos/sin on device. Callers select by `device.type`. Every other backend (CUDA,
-# CPU, TPU, …) uses the default complex path; only backends without complex dtypes are listed here.
-_ROPE_ANGLE_DEVICES = ("neuron",)
+# represent. Callers select by `device.type` and fall back to the default for any backend not listed here.
 ROPE_PER_DEVICE = {
     "cuda": functools.partial(apply_rotary_emb_qwen, use_real=False),
-    **dict.fromkeys(_ROPE_ANGLE_DEVICES, apply_rotary_emb_qwen_neuron),
+    "neuron": apply_rotary_emb_qwen_neuron,
 }
 
 
@@ -721,7 +718,7 @@ class QwenImage21Rope(nn.Module):
     def _get_device_freqs(self, device: torch.device) -> list[torch.Tensor]:
         """Return the per-axis freqs on `device`: complex exponentials, or rotation angles where complex is missing."""
         if device not in self._device_freqs:
-            if device.type in _ROPE_ANGLE_DEVICES:
+            if device.type == "neuron":
                 # `torch.angle` runs on CPU while the freqs are still complex; wrapping into (-pi, pi] is harmless
                 # because only cos/sin of the angle are used.
                 self._device_freqs[device] = [torch.angle(freq).to(device) for freq in self.freqs]
