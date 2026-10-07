@@ -13,11 +13,87 @@
 # limitations under the License.
 
 from contextlib import contextmanager
+from typing import Any
+
+import torch
+import torch.distributed as dist
 
 from ..utils.logging import get_logger
+from ._modeling_parallel import ParallelConfig, gather_size_by_comm
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def apply_kv_cache(
+    key: torch.Tensor,
+    value: torch.Tensor,
+    layer_cache,
+    cache_mode: str | None,
+    cache_write_slice: slice | None,
+    *,
+    attention_mask: Any | None = None,
+    parallel_config: ParallelConfig | None = None,
+) -> tuple[torch.Tensor, torch.Tensor, Any]:
+    if layer_cache is None:
+        return key, value, attention_mask
+
+    cp_config = None if parallel_config is None else parallel_config.context_parallel_config
+    if cp_config is not None and cp_config.ring_degree > 1:
+        raise NotImplementedError("KV caching currently supports Ulysses context parallelism only.")
+
+    if cache_mode == "extract" and cache_write_slice is not None:
+        if cp_config is None:
+            # `clone()`, not `contiguous()`: at batch size 1 the prefix slice already counts as contiguous
+            # (size-1 dims are ignored), so `contiguous()` returns the same view and the cache would pin the
+            # whole prefill K/V for every step of the denoising loop.
+            layer_cache.store(key[:, cache_write_slice].clone(), value[:, cache_write_slice].clone())
+        else:
+            group = cp_config._ulysses_mesh.get_group()
+            rank = dist.get_rank(group)
+            world_size = dist.get_world_size(group)
+            local_sizes = gather_size_by_comm(key.shape[1], group)
+            cache_start, cache_stop, cache_step = cache_write_slice.indices(sum(local_sizes))
+            if cache_step != 1:
+                raise ValueError("Context-parallel KV caching requires a slice with step 1.")
+            cache_stop = max(cache_start, cache_stop)
+            cache_size = cache_stop - cache_start
+            if not cp_config.ulysses_anything and cache_size % world_size != 0:
+                raise ValueError(
+                    "The cached sequence length must be divisible by the Ulysses degree. Enable "
+                    "`ulysses_anything=True` to cache an uneven sequence."
+                )
+            offsets = [sum(local_sizes[:index]) for index in range(world_size)]
+            starts = [min(max(cache_start - offset, 0), size) for offset, size in zip(offsets, local_sizes)]
+            stops = [min(max(cache_stop - offset, 0), size) for offset, size in zip(offsets, local_sizes)]
+            cache_sizes = [stop - start for start, stop in zip(starts, stops)]
+            max_size = max(cache_sizes)
+            cached = []
+            for tensor in (key, value):
+                local = tensor[:, starts[rank] : stops[rank]].contiguous()
+                if local.shape[1] < max_size:
+                    padding = tensor.new_zeros(tensor.shape[0], max_size - local.shape[1], *tensor.shape[2:])
+                    local = torch.cat([local, padding], dim=1)
+                gathered = [torch.empty_like(local) for _ in range(world_size)]
+                dist.all_gather(gathered, local, group=group)
+                full_cache = torch.cat([part[:, :size] for part, size in zip(gathered, cache_sizes)], dim=1)
+                cached.append(torch.tensor_split(full_cache, world_size, dim=1)[rank].clone())
+            layer_cache.store(*cached)
+    elif cache_mode == "cached":
+        cached_key, cached_value = layer_cache.get()
+        if cp_config is not None and attention_mask is not None:
+            group = cp_config._ulysses_mesh.get_group()
+            rank = dist.get_rank(group)
+            world_size = dist.get_world_size(group)
+            target_len = sum(gather_size_by_comm(key.shape[1], group))
+            prefix_len = attention_mask.shape[-1] - target_len
+            prefix_masks = torch.tensor_split(attention_mask[..., :prefix_len], world_size, dim=-1)
+            target_masks = torch.tensor_split(attention_mask[..., prefix_len:], world_size, dim=-1)
+            attention_mask = torch.cat([prefix_masks[rank], target_masks[rank]], dim=-1)
+        key = torch.cat([cached_key, key], dim=1)
+        value = torch.cat([cached_value, value], dim=1)
+
+    return key, value, attention_mask
 
 
 class CacheMixin:

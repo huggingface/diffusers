@@ -16,7 +16,6 @@ import math
 from typing import Any
 
 import torch
-import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -25,10 +24,10 @@ from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import logging
 from ...utils.peft_utils import apply_lora_scale
 from ...utils.torch_utils import maybe_allow_in_graph
-from .._modeling_parallel import ContextParallelInput, ContextParallelOutput, gather_size_by_comm
+from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin
-from ..attention_dispatch import dispatch_attention_fn
-from ..cache_utils import CacheMixin
+from ..attention_dispatch import dispatch_attention_fn, dispatch_block_causal_attention_fn
+from ..cache_utils import CacheMixin, apply_kv_cache
 from ..embeddings import TimestepEmbedding
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -326,37 +325,6 @@ def _qwenimage21_prefix_segments(image_ids: torch.Tensor, prefix_len: int) -> li
     return segments
 
 
-def _qwenimage21_dense_block_causal_mask(
-    segments: list[tuple[int, int, bool]],
-    seq_len: int,
-    key_valid: torch.Tensor | None,
-    batch_size: int,
-    device: torch.device,
-) -> torch.Tensor:
-    attention_mask = torch.ones(seq_len, seq_len, dtype=torch.bool, device=device).tril()
-    for start, end, is_text in segments:
-        if not is_text:
-            attention_mask[start:end, start:end] = True
-    prefix_len = segments[-1][1] if segments else 0
-    attention_mask[prefix_len:] = True
-    attention_mask = attention_mask.view(1, 1, seq_len, seq_len)
-    attention_mask = attention_mask.expand(batch_size, -1, -1, -1)
-    if key_valid is not None:
-        attention_mask = attention_mask & key_valid[:, None, None, :]
-    return attention_mask
-
-
-def _qwenimage21_all_gather_sequence(tensor: torch.Tensor, group: dist.ProcessGroup) -> torch.Tensor:
-    local_sizes = gather_size_by_comm(tensor.shape[1], group)
-    max_local_size = max(local_sizes)
-    if tensor.shape[1] < max_local_size:
-        padding = tensor.new_zeros(tensor.shape[0], max_local_size - tensor.shape[1], *tensor.shape[2:])
-        tensor = torch.cat([tensor, padding], dim=1)
-    gathered = [torch.empty_like(tensor) for _ in local_sizes]
-    dist.all_gather(gathered, tensor, group=group)
-    return torch.cat([value[:, :size] for value, size in zip(gathered, local_sizes)], dim=1)
-
-
 def _qwenimage21_prepare_qkv(
     attn: "QwenImage21Attention",
     hidden_states: torch.Tensor,
@@ -364,8 +332,9 @@ def _qwenimage21_prepare_qkv(
     layer_cache: QwenImage21KVLayerCache | None,
     kv_cache_mode: str | None,
     cache_write_slice: slice | None,
+    attention_mask: Any | None = None,
     parallel_config: Any | None = None,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int, Any]:
     """Shared QKV projection, norm, RoPE and KV-cache bookkeeping for both processors."""
     query = attn.to_q(hidden_states)
     key = attn.to_k(hidden_states)
@@ -382,49 +351,16 @@ def _qwenimage21_prepare_qkv(
         query = apply_rotary_emb_qwen(query, rotary_emb, use_real=False)
         key = apply_rotary_emb_qwen(key, rotary_emb, use_real=False)
 
-    if layer_cache is not None:
-        if kv_cache_mode == "extract" and cache_write_slice is not None:
-            context_parallel_config = None if parallel_config is None else parallel_config.context_parallel_config
-            if context_parallel_config is None:
-                # `clone()`, not `contiguous()`: at batch size 1 the prefix slice already counts as contiguous
-                # (size-1 dims are ignored), so `contiguous()` returns the same view and the cache would pin the
-                # whole prefill K/V for every step of the denoising loop.
-                layer_cache.store(
-                    key[:, cache_write_slice].clone(),
-                    value[:, cache_write_slice].clone(),
-                )
-            else:
-                group = context_parallel_config._ulysses_mesh.get_group()
-                rank = dist.get_rank(group)
-                world_size = dist.get_world_size(group)
-                local_seq_lens = gather_size_by_comm(key.shape[1], group)
-                local_offset = sum(local_seq_lens[:rank])
-                cache_start = 0 if cache_write_slice.start is None else cache_write_slice.start
-                cache_stop = sum(local_seq_lens) if cache_write_slice.stop is None else cache_write_slice.stop
-                local_cache_start = max(cache_start - local_offset, 0)
-                local_cache_stop = min(cache_stop - local_offset, key.shape[1])
-                local_cache_start = min(local_cache_start, key.shape[1])
-                local_cache_stop = max(local_cache_stop, local_cache_start)
-
-                cached_key = _qwenimage21_all_gather_sequence(key[:, local_cache_start:local_cache_stop], group)
-                cached_value = _qwenimage21_all_gather_sequence(value[:, local_cache_start:local_cache_stop], group)
-                if not context_parallel_config.ulysses_anything and cached_key.shape[1] % world_size != 0:
-                    raise ValueError(
-                        "The cached prefix length must be divisible by the Ulysses degree. Enable "
-                        "`ulysses_anything=True` to cache an uneven prefix."
-                    )
-                split_fn = torch.tensor_split if context_parallel_config.ulysses_anything else torch.chunk
-                layer_cache.store(
-                    split_fn(cached_key, world_size, dim=1)[rank].clone(),
-                    split_fn(cached_value, world_size, dim=1)[rank].clone(),
-                )
-        elif kv_cache_mode == "cached":
-            cached_k, cached_v = layer_cache.get()
-            key = torch.cat([cached_k, key], dim=1)
-            value = torch.cat([cached_v, value], dim=1)
-
-    seq_len_q = query.shape[1]
-    return query, key, value, seq_len_q
+    key, value, attention_mask = apply_kv_cache(
+        key,
+        value,
+        layer_cache,
+        kv_cache_mode,
+        cache_write_slice,
+        attention_mask=attention_mask,
+        parallel_config=parallel_config,
+    )
+    return query, key, value, query.shape[1], attention_mask
 
 
 class QwenImage21FlexAttnProcessor:
@@ -467,13 +403,14 @@ class QwenImage21FlexAttnProcessor:
                 "Context parallelism is not implemented for QwenImage21FlexAttnProcessor. "
                 "Use QwenImage21AttnProcessor instead."
             )
-        query, key, value, seq_len_q = _qwenimage21_prepare_qkv(
+        query, key, value, seq_len_q, attention_mask = _qwenimage21_prepare_qkv(
             attn,
             hidden_states,
             rotary_emb,
             layer_cache,
             kv_cache_mode,
             cache_write_slice,
+            attention_mask,
             self._parallel_config,
         )
 
@@ -555,34 +492,19 @@ class QwenImage21AttnProcessor:
         segments: list[tuple[int, int, bool]] | None = None,
         key_valid: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        context_parallel_config = (
-            None if self._parallel_config is None else self._parallel_config.context_parallel_config
-        )
-        if context_parallel_config is not None and context_parallel_config.ring_degree > 1:
-            raise NotImplementedError("QwenImage21AttnProcessor currently supports Ulysses context parallelism only.")
-
-        query, key, value, seq_len_q = _qwenimage21_prepare_qkv(
+        query, key, value, seq_len_q, attention_mask = _qwenimage21_prepare_qkv(
             attn,
             hidden_states,
             rotary_emb,
             layer_cache,
             kv_cache_mode,
             cache_write_slice,
+            attention_mask,
             self._parallel_config,
         )
 
         if segments is None:
             # decode: full attention over [cached prefix, target]
-            if context_parallel_config is not None and attention_mask is not None:
-                group = context_parallel_config._ulysses_mesh.get_group()
-                rank = dist.get_rank(group)
-                world_size = dist.get_world_size(group)
-                target_len = sum(gather_size_by_comm(seq_len_q, group))
-                prefix_len = attention_mask.shape[-1] - target_len
-                split_fn = torch.tensor_split if context_parallel_config.ulysses_anything else torch.chunk
-                prefix_masks = split_fn(attention_mask[..., :prefix_len], world_size, dim=-1)
-                target_masks = split_fn(attention_mask[..., prefix_len:], world_size, dim=-1)
-                attention_mask = torch.cat([prefix_masks[rank], target_masks[rank]], dim=-1)
             hidden_states = dispatch_attention_fn(
                 query,
                 key,
@@ -592,68 +514,15 @@ class QwenImage21AttnProcessor:
                 backend=self._attention_backend,
                 parallel_config=self._parallel_config,
             )
-        elif context_parallel_config is not None:
-            group = context_parallel_config._ulysses_mesh.get_group()
-            global_seq_len = sum(gather_size_by_comm(seq_len_q, group))
-            attention_mask = _qwenimage21_dense_block_causal_mask(
-                segments,
-                global_seq_len,
-                key_valid,
-                query.shape[0],
-                query.device,
-            )
-            hidden_states = dispatch_attention_fn(
+        else:
+            hidden_states = dispatch_block_causal_attention_fn(
                 query,
                 key,
                 value,
-                attn_mask=attention_mask,
-                dropout_p=0.0,
-                backend=None,
+                segments,
+                key_valid=key_valid,
                 parallel_config=self._parallel_config,
             )
-        else:
-            # prefill: every segment attends to the keys `[0, end)` (everything before it plus its own block); text
-            # segments additionally get a causal triangle over their own keys; padded text keys are dropped.
-            # `attention_mask` may hold the flex `BlockMask` of the same structure, which is not used here.
-            prefix_len = segments[-1][1] if segments else 0
-            outputs = []
-            for start, end, is_text in segments:
-                seg_mask = None
-                if is_text:
-                    seg_len = end - start
-                    seg_mask = torch.cat(
-                        [
-                            torch.ones(seg_len, start, dtype=torch.bool, device=query.device),
-                            torch.tril(torch.ones(seg_len, seg_len, dtype=torch.bool, device=query.device)),
-                        ],
-                        dim=1,
-                    )[None, None]
-                if key_valid is not None:
-                    seg_key_valid = key_valid[:, None, None, :end]
-                    seg_mask = seg_key_valid if seg_mask is None else (seg_mask & seg_key_valid)
-                outputs.append(
-                    dispatch_attention_fn(
-                        query[:, start:end],
-                        key[:, :end],
-                        value[:, :end],
-                        attn_mask=seg_mask,
-                        dropout_p=0.0,
-                        backend=None,
-                        parallel_config=self._parallel_config,
-                    )
-                )
-            outputs.append(
-                dispatch_attention_fn(
-                    query[:, prefix_len:],
-                    key,
-                    value,
-                    attn_mask=None if key_valid is None else key_valid[:, None, None, :],
-                    dropout_p=0.0,
-                    backend=None,
-                    parallel_config=self._parallel_config,
-                )
-            )
-            hidden_states = torch.cat(outputs, dim=1)
         hidden_states = hidden_states[:, :seq_len_q]
         hidden_states = hidden_states.flatten(2, 3).type_as(query)
 

@@ -449,6 +449,68 @@ def dispatch_attention_fn(
     return backend_fn(**kwargs)
 
 
+def dispatch_block_causal_attention_fn(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    segments: list[tuple[int, int, bool]],
+    *,
+    key_valid: torch.Tensor | None = None,
+    parallel_config: ParallelConfig | None = None,
+) -> torch.Tensor:
+    cp_config = None if parallel_config is None else parallel_config.context_parallel_config
+    prefix_len = segments[-1][1] if segments else 0
+    if cp_config is not None:
+        if cp_config.ring_degree > 1:
+            raise NotImplementedError("Block-causal attention currently supports Ulysses context parallelism only.")
+        group = cp_config._ulysses_mesh.get_group()
+        seq_len = sum(gather_size_by_comm(query.shape[1], group))
+        attention_mask = torch.ones(seq_len, seq_len, dtype=torch.bool, device=query.device).tril()
+        for start, end, is_causal in segments:
+            if not is_causal:
+                attention_mask[start:end, start:end] = True
+        attention_mask[prefix_len:] = True
+        attention_mask = attention_mask[None, None]
+        if key_valid is not None:
+            attention_mask = attention_mask & key_valid[:, None, None, :]
+        return dispatch_attention_fn(query, key, value, attn_mask=attention_mask, parallel_config=parallel_config)
+
+    outputs = []
+    for start, end, is_causal in segments:
+        seg_mask = None
+        if is_causal:
+            seg_len = end - start
+            seg_mask = torch.cat(
+                [
+                    torch.ones(seg_len, start, dtype=torch.bool, device=query.device),
+                    torch.tril(torch.ones(seg_len, seg_len, dtype=torch.bool, device=query.device)),
+                ],
+                dim=1,
+            )[None, None]
+        if key_valid is not None:
+            seg_key_valid = key_valid[:, None, None, :end]
+            seg_mask = seg_key_valid if seg_mask is None else (seg_mask & seg_key_valid)
+        outputs.append(
+            dispatch_attention_fn(
+                query[:, start:end],
+                key[:, :end],
+                value[:, :end],
+                attn_mask=seg_mask,
+                parallel_config=parallel_config,
+            )
+        )
+    outputs.append(
+        dispatch_attention_fn(
+            query[:, prefix_len:],
+            key,
+            value,
+            attn_mask=None if key_valid is None else key_valid[:, None, None, :],
+            parallel_config=parallel_config,
+        )
+    )
+    return torch.cat(outputs, dim=1)
+
+
 # ===== Checks =====
 # A list of very simple functions to catch common errors quickly when debugging.
 
@@ -2808,8 +2870,7 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
                 attn_mask = F.pad(attn_mask, (0, max_local - attn_mask.shape[-1]))
             mask_list = [torch.empty_like(attn_mask) for _ in range(dist.get_world_size(group=group))]
             dist.all_gather(mask_list, attn_mask, group=group)
-            attn_mask = torch.cat(mask_list, dim=-1)
-            attn_mask = attn_mask[..., : sum(mask_local_sizes)]
+            attn_mask = torch.cat([mask[..., :size] for mask, size in zip(mask_list, mask_local_sizes)], dim=-1)
 
         out = forward_op(
             ctx,
