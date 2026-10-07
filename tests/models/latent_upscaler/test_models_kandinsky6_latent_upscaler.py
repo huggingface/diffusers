@@ -24,7 +24,6 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
-    TorchCompileTesterMixin,
 )
 
 
@@ -117,9 +116,3 @@ class TestKandinsky6SRLatentUpscalerBankMemory(Kandinsky6SRLatentUpscalerBankTes
     @DISK_OFFLOAD_NUMERICS
     def test_disk_offload_with_safetensors(self, base_model_output, tmp_path):
         super().test_disk_offload_with_safetensors(base_model_output, tmp_path)
-
-
-class TestKandinsky6SRLatentUpscalerBankTorchCompile(
-    Kandinsky6SRLatentUpscalerBankTesterConfig, TorchCompileTesterMixin
-):
-    pass

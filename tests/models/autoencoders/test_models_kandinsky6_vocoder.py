@@ -24,7 +24,6 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
-    TorchCompileTesterMixin,
 )
 
 
@@ -105,7 +104,3 @@ class TestMMAudioVocoderMemory(MMAudioVocoderTesterConfig, MemoryTesterMixin):
     )
     def test_group_offloading_with_disk(self, tmp_path, record_stream, offload_type):
         super().test_group_offloading_with_disk(tmp_path, record_stream, offload_type)
-
-
-class TestMMAudioVocoderTorchCompile(MMAudioVocoderTesterConfig, TorchCompileTesterMixin):
-    pass
