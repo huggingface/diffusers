@@ -511,6 +511,9 @@ class TensorParallelTPUTesterMixin:
         from torch_tpu._internal.distributed.launchers.singlehost_wrapper import prepare_tpu_environment
         from torch_tpu._internal.utils import hardware
 
+        if getattr(self.model_class, "_tp_plan", None) is None:
+            pytest.skip("Model does not define a `_tp_plan` for tensor parallel inference.")
+
         world_size = self.tp_world_size
         if hardware.get_tpu_device_count() < world_size:
             pytest.skip(f"Needs at least {world_size} TPU chips.")
