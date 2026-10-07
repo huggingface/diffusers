@@ -212,6 +212,8 @@
     title: Training methods
   - local: training/nemo_automodel
     title: NeMo Automodel
+  - local: training/jobs
+    title: Hugging Face Jobs
   title: Train and fine-tune
 - isExpanded: false
   sections:
