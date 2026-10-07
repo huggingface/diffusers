@@ -98,6 +98,9 @@ class PyramidAttentionBroadcastConfig:
             deprecate("current_timestep_callback", "0.45.0", depr_message)
 
     def __repr__(self) -> str:
+        callback_repr = ""
+        if self.current_timestep_callback is not None:
+            callback_repr = f"  current_timestep_callback={self.current_timestep_callback},\n"
         return (
             f"PyramidAttentionBroadcastConfig(\n"
             f"  spatial_attention_block_skip_range={self.spatial_attention_block_skip_range},\n"
@@ -109,6 +112,7 @@ class PyramidAttentionBroadcastConfig:
             f"  spatial_attention_block_identifiers={self.spatial_attention_block_identifiers},\n"
             f"  temporal_attention_block_identifiers={self.temporal_attention_block_identifiers},\n"
             f"  cross_attention_block_identifiers={self.cross_attention_block_identifiers},\n"
+            f"{callback_repr}"
             ")"
         )
 

@@ -174,6 +174,9 @@ class FasterCacheConfig:
             deprecate("current_timestep_callback", "0.45.0", depr_message)
 
     def __repr__(self) -> str:
+        callback_repr = ""
+        if self.current_timestep_callback is not None:
+            callback_repr = f"  current_timestep_callback={self.current_timestep_callback},\n"
         return (
             f"FasterCacheConfig(\n"
             f"  spatial_attention_block_skip_range={self.spatial_attention_block_skip_range},\n"
@@ -189,6 +192,7 @@ class FasterCacheConfig:
             f"  spatial_attention_block_identifiers={self.spatial_attention_block_identifiers},\n"
             f"  temporal_attention_block_identifiers={self.temporal_attention_block_identifiers},\n"
             f"  tensor_format={self.tensor_format},\n"
+            f"{callback_repr}"
             f")"
         )
 
@@ -252,9 +256,9 @@ class FasterCacheDenoiserHook(ModelHook):
         self.tensor_format = tensor_format
         self.is_guidance_distilled = is_guidance_distilled
 
+        self.current_timestep_callback = current_timestep_callback
         self.low_frequency_weight_callback = low_frequency_weight_callback
         self.high_frequency_weight_callback = high_frequency_weight_callback
-        self.current_timestep_callback = current_timestep_callback
 
     def initialize_hook(self, module):
         self.state_manager = StateManager(FasterCacheDenoiserState)
