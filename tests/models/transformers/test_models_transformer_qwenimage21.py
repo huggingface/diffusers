@@ -365,7 +365,7 @@ def _qwenimage21_cached_context_parallel_worker(rank, world_size, port, ulysses_
                 torch.testing.assert_close(prefill, reference_prefill, atol=2e-5, rtol=2e-5)
                 for index in range(init_dict["num_layers"]):
                     for cached, full in zip(cache.get_layer(index).get(), reference_cache.get_layer(index).get()):
-                        expected = torch.tensor_split(full, world_size, dim=1)[rank]
+                        expected = torch.tensor_split(full, world_size, dim=2)[rank]
                         torch.testing.assert_close(cached, expected, atol=2e-5, rtol=2e-5)
                         assert cached.untyped_storage().nbytes() == cached.numel() * cached.element_size()
                 for step, reference in zip(steps[1:], references):

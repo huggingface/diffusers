@@ -26,8 +26,8 @@ from ...utils.peft_utils import apply_lora_scale
 from ...utils.torch_utils import maybe_allow_in_graph
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin
-from ..attention_dispatch import dispatch_attention_fn, dispatch_block_causal_attention_fn
-from ..cache_utils import CacheMixin, apply_kv_cache
+from ..attention_dispatch import dispatch_attention_fn
+from ..cache_utils import CacheMixin
 from ..embeddings import TimestepEmbedding
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
@@ -329,13 +329,7 @@ def _qwenimage21_prepare_qkv(
     attn: "QwenImage21Attention",
     hidden_states: torch.Tensor,
     rotary_emb: torch.Tensor | None,
-    layer_cache: QwenImage21KVLayerCache | None,
-    kv_cache_mode: str | None,
-    cache_write_slice: slice | None,
-    attention_mask: Any | None = None,
-    parallel_config: Any | None = None,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int, Any]:
-    """Shared QKV projection, norm, RoPE and KV-cache bookkeeping for both processors."""
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int]:
     query = attn.to_q(hidden_states)
     key = attn.to_k(hidden_states)
     value = attn.to_v(hidden_states)
@@ -351,16 +345,7 @@ def _qwenimage21_prepare_qkv(
         query = apply_rotary_emb_qwen(query, rotary_emb, use_real=False)
         key = apply_rotary_emb_qwen(key, rotary_emb, use_real=False)
 
-    key, value, attention_mask = apply_kv_cache(
-        key,
-        value,
-        layer_cache,
-        kv_cache_mode,
-        cache_write_slice,
-        attention_mask=attention_mask,
-        parallel_config=parallel_config,
-    )
-    return query, key, value, query.shape[1], attention_mask
+    return query, key, value, query.shape[1]
 
 
 class QwenImage21FlexAttnProcessor:
@@ -403,16 +388,7 @@ class QwenImage21FlexAttnProcessor:
                 "Context parallelism is not implemented for QwenImage21FlexAttnProcessor. "
                 "Use QwenImage21AttnProcessor instead."
             )
-        query, key, value, seq_len_q, attention_mask = _qwenimage21_prepare_qkv(
-            attn,
-            hidden_states,
-            rotary_emb,
-            layer_cache,
-            kv_cache_mode,
-            cache_write_slice,
-            attention_mask,
-            self._parallel_config,
-        )
+        query, key, value, seq_len_q = _qwenimage21_prepare_qkv(attn, hidden_states, rotary_emb)
 
         seq_len_kv = key.shape[1]
         if isinstance(attention_mask, BlockMask):
@@ -449,6 +425,9 @@ class QwenImage21FlexAttnProcessor:
                 dropout_p=0.0,
                 backend="flex",
                 parallel_config=self._parallel_config,
+                kv_cache=layer_cache,
+                kv_cache_mode=kv_cache_mode,
+                cache_write_slice=cache_write_slice,
             )
         else:
             # decode: full attention over [cached prefix, target]
@@ -460,6 +439,9 @@ class QwenImage21FlexAttnProcessor:
                 dropout_p=0.0,
                 backend=self._attention_backend,
                 parallel_config=self._parallel_config,
+                kv_cache=layer_cache,
+                kv_cache_mode=kv_cache_mode,
+                cache_write_slice=cache_write_slice,
             )
         hidden_states = hidden_states[:, :seq_len_q]
         hidden_states = hidden_states.flatten(2, 3).type_as(query)
@@ -492,37 +474,22 @@ class QwenImage21AttnProcessor:
         segments: list[tuple[int, int, bool]] | None = None,
         key_valid: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        query, key, value, seq_len_q, attention_mask = _qwenimage21_prepare_qkv(
-            attn,
-            hidden_states,
-            rotary_emb,
-            layer_cache,
-            kv_cache_mode,
-            cache_write_slice,
-            attention_mask,
-            self._parallel_config,
+        query, key, value, seq_len_q = _qwenimage21_prepare_qkv(attn, hidden_states, rotary_emb)
+        if segments is not None:
+            attention_mask = None if key_valid is None else key_valid[:, None, None, :]
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            backend=self._attention_backend if segments is None else None,
+            parallel_config=self._parallel_config,
+            kv_cache=layer_cache,
+            kv_cache_mode=kv_cache_mode,
+            cache_write_slice=cache_write_slice,
+            block_causal_segments=segments,
         )
-
-        if segments is None:
-            # decode: full attention over [cached prefix, target]
-            hidden_states = dispatch_attention_fn(
-                query,
-                key,
-                value,
-                attn_mask=attention_mask,
-                dropout_p=0.0,
-                backend=self._attention_backend,
-                parallel_config=self._parallel_config,
-            )
-        else:
-            hidden_states = dispatch_block_causal_attention_fn(
-                query,
-                key,
-                value,
-                segments,
-                key_valid=key_valid,
-                parallel_config=self._parallel_config,
-            )
         hidden_states = hidden_states[:, :seq_len_q]
         hidden_states = hidden_states.flatten(2, 3).type_as(query)
 

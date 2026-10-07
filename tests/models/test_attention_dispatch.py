@@ -24,8 +24,8 @@ import torch.nn.functional as F
 
 from diffusers.models._modeling_parallel import ContextParallelConfig, ParallelConfig
 from diffusers.models.attention_dispatch import attention_backend as attention_backend_ctx
-from diffusers.models.attention_dispatch import dispatch_attention_fn, dispatch_block_causal_attention_fn
-from diffusers.models.cache_utils import apply_kv_cache
+from diffusers.models.attention_dispatch import dispatch_attention_fn
+from diffusers.models.transformers.transformer_flux2 import Flux2KVLayerCache
 from diffusers.models.transformers.transformer_qwenimage21 import QwenImage21KVLayerCache
 
 from ..testing_utils import (
@@ -64,7 +64,13 @@ class TestBlockCausalAttention:
         expected = F.scaled_dot_product_attention(
             query.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2), attn_mask=mask
         ).transpose(1, 2)
-        output = dispatch_block_causal_attention_fn(query, key, value, segments, key_valid=key_valid)
+        output = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=None if key_valid is None else key_valid[:, None, None, :],
+            block_causal_segments=segments,
+        )
         torch.testing.assert_close(output, expected)
         expected_grads = torch.autograd.grad(expected.sum(), (query, key, value))
         grads = torch.autograd.grad(output.sum(), (query, key, value))
@@ -72,45 +78,83 @@ class TestBlockCausalAttention:
             torch.testing.assert_close(grad, expected_grad)
 
 
-def _context_parallel_kv_cache_worker(rank, world_size, port):
+def _context_parallel_kv_cache_worker(rank, world_size, port, ulysses_anything):
     dist.init_process_group("cpu:gloo", init_method=f"tcp://localhost:{port}", rank=rank, world_size=world_size)
     try:
         mesh = dist.device_mesh.init_device_mesh("cpu", (1, world_size), mesh_dim_names=("ring", "ulysses"))
-        cp = ContextParallelConfig(ulysses_degree=world_size, ulysses_anything=True)
+        cp = ContextParallelConfig(ulysses_degree=world_size, ulysses_anything=ulysses_anything)
         cp.setup(rank, world_size, torch.device("cpu"), mesh)
         parallel = ParallelConfig(context_parallel_config=cp)
         torch.manual_seed(4)
-        q, k, v = [torch.randn(2, 8, 4, 16) for _ in range(3)]
+        prefix_len = 3 if ulysses_anything else 4
+        heads = 7 if ulysses_anything else 4
+        q, k, v = [torch.randn(2, 8, heads, 16) for _ in range(3)]
 
         def shard(tensor):
             return torch.tensor_split(tensor, world_size, dim=1)[rank].contiguous()
 
-        cache = QwenImage21KVLayerCache()
-        apply_kv_cache(shard(k), shard(v), cache, "extract", slice(0, 3), parallel_config=parallel)
-        for cached, original in zip(cache.get(), (k, v)):
-            torch.testing.assert_close(cached, shard(original[:, :3]))
         valid = torch.ones(2, 8, dtype=torch.bool)
         valid[-1, 1] = False
         mask = torch.ones(8, 8, dtype=torch.bool).tril()
-        mask[3:] = True
+        mask[prefix_len:] = True
         mask = mask[None, None] & valid[:, None, None]
         ref = F.scaled_dot_product_attention(
             q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2), attn_mask=mask
         ).transpose(1, 2)
-        out = dispatch_block_causal_attention_fn(
-            shard(q), shard(k), shard(v), [(0, 3, True)], key_valid=valid, parallel_config=parallel
+        uncached = dispatch_attention_fn(shard(q), shard(k), shard(v), attn_mask=mask, parallel_config=parallel)
+        torch.testing.assert_close(uncached, shard(ref))
+        train_inputs = [shard(tensor).requires_grad_() for tensor in (q, k, v)]
+        output = dispatch_attention_fn(
+            *train_inputs,
+            attn_mask=valid[:, None, None],
+            block_causal_segments=[(0, prefix_len, True)],
+            parallel_config=parallel,
         )
-        torch.testing.assert_close(out, shard(ref))
-        qd, kd, vd = [torch.randn(2, 5, 4, 16) for _ in range(3)]
-        fullk, fullv = torch.cat([k[:, :3], kd], dim=1), torch.cat([v[:, :3], vd], dim=1)
-        ref = F.scaled_dot_product_attention(
-            qd.transpose(1, 2), fullk.transpose(1, 2), fullv.transpose(1, 2), attn_mask=valid[:, None, None]
-        ).transpose(1, 2)
-        ks, vs, mask = apply_kv_cache(
-            shard(kd), shard(vd), cache, "cached", None, attention_mask=valid[:, None, None], parallel_config=parallel
-        )
-        out = dispatch_attention_fn(shard(qd), ks, vs, attn_mask=mask, parallel_config=parallel)
-        torch.testing.assert_close(out, shard(ref))
+        if ulysses_anything:
+            with pytest.raises(NotImplementedError, match="Backward pass for Ulysses Anything"):
+                output.sum().backward()
+        else:
+            output.sum().backward()
+            ref_inputs = [tensor.detach().requires_grad_() for tensor in (q, k, v)]
+            ref_output = F.scaled_dot_product_attention(
+                *(tensor.transpose(1, 2) for tensor in ref_inputs), attn_mask=mask
+            )
+            ref_output.sum().backward()
+            for tensor, reference in zip(train_inputs, ref_inputs):
+                torch.testing.assert_close(tensor.grad, shard(reference.grad))
+        for cache_class in (QwenImage21KVLayerCache, Flux2KVLayerCache):
+            cache = cache_class()
+            out = dispatch_attention_fn(
+                shard(q),
+                shard(k),
+                shard(v),
+                attn_mask=valid[:, None, None],
+                parallel_config=parallel,
+                kv_cache=cache,
+                kv_cache_mode="extract",
+                cache_write_slice=slice(0, prefix_len),
+                block_causal_segments=[(0, prefix_len, True)],
+            )
+            torch.testing.assert_close(out, shard(ref))
+            for cached, original in zip(cache.get(), (k, v)):
+                expected = torch.tensor_split(original[:, :prefix_len], world_size, dim=2)[rank]
+                torch.testing.assert_close(cached, expected)
+                assert cached.untyped_storage().nbytes() == cached.numel() * cached.element_size()
+            qd, kd, vd = [torch.randn(2, 8 - prefix_len, heads, 16) for _ in range(3)]
+            fullk, fullv = torch.cat([k[:, :prefix_len], kd], dim=1), torch.cat([v[:, :prefix_len], vd], dim=1)
+            decode_ref = F.scaled_dot_product_attention(
+                qd.transpose(1, 2), fullk.transpose(1, 2), fullv.transpose(1, 2), attn_mask=valid[:, None, None]
+            ).transpose(1, 2)
+            out = dispatch_attention_fn(
+                shard(qd),
+                shard(kd),
+                shard(vd),
+                attn_mask=valid[:, None, None],
+                parallel_config=parallel,
+                kv_cache=cache,
+                kv_cache_mode="cached",
+            )
+            torch.testing.assert_close(out, shard(decode_ref))
     finally:
         dist.destroy_process_group()
 
@@ -119,10 +163,11 @@ def _context_parallel_kv_cache_worker(rank, world_size, port):
 @pytest.mark.skipif(not dist.is_gloo_available(), reason="Gloo is required")
 class TestContextParallelKVCache:
     @pytest.mark.parametrize("world_size", [2, 4])
-    def test_cached_attention_matches_full_attention(self, world_size):
+    @pytest.mark.parametrize("ulysses_anything", [False, True])
+    def test_cached_attention_matches_full_attention(self, world_size, ulysses_anything):
         mp.spawn(
             _context_parallel_kv_cache_worker,
-            args=(world_size, _find_free_port()),
+            args=(world_size, _find_free_port(), ulysses_anything),
             nprocs=world_size,
             join=True,
         )

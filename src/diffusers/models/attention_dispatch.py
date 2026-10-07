@@ -410,6 +410,10 @@ def dispatch_attention_fn(
     *,
     backend: AttentionBackendName | None = None,
     parallel_config: "ParallelConfig" | None = None,
+    kv_cache: Any | None = None,
+    kv_cache_mode: str | None = None,
+    cache_write_slice: slice | None = None,
+    block_causal_segments: list[tuple[int, int, bool]] | None = None,
 ) -> torch.Tensor:
     attention_kwargs = attention_kwargs or {}
 
@@ -420,6 +424,89 @@ def dispatch_attention_fn(
     else:
         backend_name = AttentionBackendName(backend)
         backend_fn = _AttentionBackendRegistry._backends.get(backend_name)
+
+    cp_config = None if parallel_config is None else parallel_config.context_parallel_config
+    if cp_config is not None and (kv_cache is not None or block_causal_segments is not None):
+        if cp_config.ring_degree > 1:
+            raise NotImplementedError("KV caching and block-causal attention currently support Ulysses only.")
+        if enable_gqa:
+            raise ValueError("GQA is not yet supported for context-parallel attention.")
+
+        def forward_op(_ctx, query, key, value, *args, **kwargs):
+            return dispatch_attention_fn(
+                query,
+                key,
+                value,
+                attn_mask=attn_mask,
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+                scale=scale,
+                enable_gqa=enable_gqa,
+                attention_kwargs=attention_kwargs,
+                backend=backend_name,
+                kv_cache=kv_cache,
+                kv_cache_mode=kv_cache_mode,
+                cache_write_slice=cache_write_slice,
+                block_causal_segments=block_causal_segments,
+            )
+
+        if cp_config.ulysses_anything:
+            return TemplatedUlyssesAnythingAttention.apply(
+                query,
+                key,
+                value,
+                None,
+                dropout_p,
+                is_causal,
+                scale,
+                enable_gqa,
+                False,
+                forward_op,
+                None,
+                parallel_config,
+            )
+        group = cp_config._ulysses_mesh.get_group()
+        query, key, value = (SeqAllToAllDim.apply(group, tensor, 2, 1) for tensor in (query, key, value))
+        hidden_states = forward_op(None, query, key, value)
+        return SeqAllToAllDim.apply(group, hidden_states, 1, 2)
+
+    if kv_cache is not None:
+        if kv_cache_mode == "extract" and cache_write_slice is not None:
+            # `clone()`, not `contiguous()`: at batch size 1 the prefix slice already counts as contiguous
+            # (size-1 dims are ignored), so `contiguous()` returns the same view and the cache would pin the
+            # whole prefill K/V for every step of the denoising loop.
+            kv_cache.store(key[:, cache_write_slice].clone(), value[:, cache_write_slice].clone())
+        elif kv_cache_mode == "cached":
+            cached_key, cached_value = kv_cache.get()
+            key = torch.cat([cached_key, key], dim=1)
+            value = torch.cat([cached_value, value], dim=1)
+
+    if block_causal_segments is not None:
+        prefix_len = block_causal_segments[-1][1] if block_causal_segments else 0
+        outputs = []
+        for start, end, is_segment_causal in [*block_causal_segments, (prefix_len, query.shape[1], False)]:
+            key_end = end if end <= prefix_len else key.shape[1]
+            segment_mask = None if attn_mask is None else attn_mask[..., :key_end]
+            if is_segment_causal:
+                positions = torch.arange(start, end, device=query.device)
+                causal_mask = positions[:, None] >= torch.arange(key_end, device=query.device)[None, :]
+                segment_mask = causal_mask if segment_mask is None else segment_mask & causal_mask
+            outputs.append(
+                dispatch_attention_fn(
+                    query[:, start:end],
+                    key[:, :key_end],
+                    value[:, :key_end],
+                    attn_mask=segment_mask,
+                    dropout_p=dropout_p,
+                    is_causal=is_causal,
+                    scale=scale,
+                    enable_gqa=enable_gqa,
+                    attention_kwargs=attention_kwargs,
+                    backend=backend_name,
+                    parallel_config=parallel_config,
+                )
+            )
+        return torch.cat(outputs, dim=1)
 
     kwargs = {
         "query": query,
@@ -447,68 +534,6 @@ def dispatch_attention_fn(
     kwargs = {k: v for k, v in kwargs.items() if k in _AttentionBackendRegistry._supported_arg_names[backend_name]}
 
     return backend_fn(**kwargs)
-
-
-def dispatch_block_causal_attention_fn(
-    query: torch.Tensor,
-    key: torch.Tensor,
-    value: torch.Tensor,
-    segments: list[tuple[int, int, bool]],
-    *,
-    key_valid: torch.Tensor | None = None,
-    parallel_config: ParallelConfig | None = None,
-) -> torch.Tensor:
-    cp_config = None if parallel_config is None else parallel_config.context_parallel_config
-    prefix_len = segments[-1][1] if segments else 0
-    if cp_config is not None:
-        if cp_config.ring_degree > 1:
-            raise NotImplementedError("Block-causal attention currently supports Ulysses context parallelism only.")
-        group = cp_config._ulysses_mesh.get_group()
-        seq_len = sum(gather_size_by_comm(query.shape[1], group))
-        attention_mask = torch.ones(seq_len, seq_len, dtype=torch.bool, device=query.device).tril()
-        for start, end, is_causal in segments:
-            if not is_causal:
-                attention_mask[start:end, start:end] = True
-        attention_mask[prefix_len:] = True
-        attention_mask = attention_mask[None, None]
-        if key_valid is not None:
-            attention_mask = attention_mask & key_valid[:, None, None, :]
-        return dispatch_attention_fn(query, key, value, attn_mask=attention_mask, parallel_config=parallel_config)
-
-    outputs = []
-    for start, end, is_causal in segments:
-        seg_mask = None
-        if is_causal:
-            seg_len = end - start
-            seg_mask = torch.cat(
-                [
-                    torch.ones(seg_len, start, dtype=torch.bool, device=query.device),
-                    torch.tril(torch.ones(seg_len, seg_len, dtype=torch.bool, device=query.device)),
-                ],
-                dim=1,
-            )[None, None]
-        if key_valid is not None:
-            seg_key_valid = key_valid[:, None, None, :end]
-            seg_mask = seg_key_valid if seg_mask is None else (seg_mask & seg_key_valid)
-        outputs.append(
-            dispatch_attention_fn(
-                query[:, start:end],
-                key[:, :end],
-                value[:, :end],
-                attn_mask=seg_mask,
-                parallel_config=parallel_config,
-            )
-        )
-    outputs.append(
-        dispatch_attention_fn(
-            query[:, prefix_len:],
-            key,
-            value,
-            attn_mask=None if key_valid is None else key_valid[:, None, None, :],
-            parallel_config=parallel_config,
-        )
-    )
-    return torch.cat(outputs, dim=1)
 
 
 # ===== Checks =====
@@ -2870,7 +2895,8 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
                 attn_mask = F.pad(attn_mask, (0, max_local - attn_mask.shape[-1]))
             mask_list = [torch.empty_like(attn_mask) for _ in range(dist.get_world_size(group=group))]
             dist.all_gather(mask_list, attn_mask, group=group)
-            attn_mask = torch.cat([mask[..., :size] for mask, size in zip(mask_list, mask_local_sizes)], dim=-1)
+            attn_mask = torch.cat(mask_list, dim=-1)
+            attn_mask = attn_mask[..., : sum(mask_local_sizes)]
 
         out = forward_op(
             ctx,
