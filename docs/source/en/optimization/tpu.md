@@ -18,11 +18,12 @@ Two execution modes are available:
 
 | Mode | Constant | How to activate | Notes |
 |---|---|---|---|
-| Strict eager (default) | `EagerMode.DEFER_NEVER` | `import torch_tpu` | Operations dispatched one at a time, asynchronous |
+| Strict eager (default) | `EagerMode.DEFER_NEVER` | `pipe.to("tpu")` | Operations dispatched one at a time, asynchronous |
 | Compile | — | `torch.compile(module, backend="tpu")` | AOT compilation with `TpuBackend` |
 
-Follow the [TorchTPU installation guide](https://github.com/google-pytorch/torch_tpu/). After installation,
-`import torch_tpu` registers the `"tpu"` device automatically.
+Follow the [TorchTPU installation guide](https://github.com/google-pytorch/torch_tpu/). Once installed, `import torch`
+loads it automatically and registers the `"tpu"` device, so `pipe.to("tpu")` is the only change needed. Add
+`import torch_tpu` only if you disabled backend autoloading with `TORCH_DEVICE_BACKEND_AUTOLOAD=0`.
 
 ## Eager mode
 
@@ -31,11 +32,10 @@ move each model to the TPU only while it runs. It detects the `"tpu"` device aut
 
 ```python
 import torch
-import torch_tpu  # noqa: F401
 
 from diffusers import FluxPipeline
 
-pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
+pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()
 
 image = pipe(
@@ -54,7 +54,7 @@ across chips instead. See the [Tensor parallelism](#tensor-parallelism) section.
 
 ## Compiled mode
 
-`import torch_tpu` registers `"tpu"` as a `torch.compile` backend name (`TpuBackend` under the hood), so
+TorchTPU registers `"tpu"` as a `torch.compile` backend name (`TpuBackend` under the hood), so
 components compile like any other `torch.compile` target — no diffusers-specific method needed. The first
 call (warmup) is slow because it compiles; later calls with the same shapes reuse the compiled graph.
 
@@ -69,11 +69,10 @@ with [`~ModelMixin.compile_repeated_blocks`] instead of the whole model.
 
 ```python
 import torch
-import torch_tpu  # noqa: F401 — registers the "tpu" torch.compile backend
 
 from diffusers import FluxPipeline
 
-pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", torch_dtype=torch.bfloat16)
+pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", dtype=torch.bfloat16)
 pipe.enable_model_cpu_offload()
 pipe.transformer.compile_repeated_blocks(backend="tpu", fullgraph=True, dynamic=False)
 
@@ -104,16 +103,15 @@ Shard models too large for one chip across several. FLUX.2-dev's text encoder (~
 exceed a single chip, so the example below shards both:
 
 - the transformer with [`TensorParallelConfig`], passed to the `parallel_config` argument of [`~ModelMixin.from_pretrained`]. Each rank reads only its own slice of every sharded weight, so the full model is never materialized. For general TP details (`_tp_plan`, colwise/rowwise), see the [Tensor parallelism](../training/distributed_inference#tensor-parallelism) guide.
-- the text encoder with Transformers' own [tensor parallelism](https://huggingface.co/docs/transformers/perf_infer_gpu_multi), passing `tp_plan="auto"` and the same mesh.
+- the text encoder with Transformers' own [tensor parallelism](https://huggingface.co/docs/transformers/perf_infer_gpu_multi), passing a [`~transformers.DistributedConfig`] and the same mesh.
 
 On TPU, initialize the process group with `backend="tpu_dist"` and build the mesh with `DeviceMesh("tpu", ...)`.
 
 ```python
 import torch
 import torch.distributed as dist
-import torch_tpu  # noqa: F401
 from torch.distributed.device_mesh import DeviceMesh
-from transformers import Mistral3ForConditionalGeneration
+from transformers import DistributedConfig, Mistral3ForConditionalGeneration
 
 from diffusers import Flux2Pipeline, Flux2Transformer2DModel, TensorParallelConfig
 
@@ -122,13 +120,17 @@ mesh = DeviceMesh("tpu", list(range(dist.get_world_size())))
 
 repo_id = "black-forest-labs/FLUX.2-dev"
 text_encoder = Mistral3ForConditionalGeneration.from_pretrained(
-    repo_id, subfolder="text_encoder", dtype=torch.bfloat16, tp_plan="auto", device_mesh=mesh
+    repo_id,
+    subfolder="text_encoder",
+    dtype=torch.bfloat16,
+    distributed_config=DistributedConfig(tp_plan="auto"),
+    device_mesh=mesh,
 )
 transformer = Flux2Transformer2DModel.from_pretrained(
-    repo_id, subfolder="transformer", torch_dtype=torch.bfloat16, parallel_config=TensorParallelConfig(mesh=mesh)
+    repo_id, subfolder="transformer", dtype=torch.bfloat16, parallel_config=TensorParallelConfig(mesh=mesh)
 )
 pipe = Flux2Pipeline.from_pretrained(
-    repo_id, text_encoder=text_encoder, transformer=transformer, torch_dtype=torch.bfloat16
+    repo_id, text_encoder=text_encoder, transformer=transformer, dtype=torch.bfloat16
 )
 pipe.vae.to("tpu")
 
