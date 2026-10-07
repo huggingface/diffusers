@@ -504,10 +504,8 @@ class TensorParallelTPUTesterMixin:
 
     # Smallest slice every TPU generation supports, so the test is the same on any CI host.
     tp_world_size = 4
-    tp_atol = 1e-3
-    tp_rtol = 1e-3
 
-    def test_tensor_parallel_tpu_inference(self):
+    def test_tensor_parallel_tpu_inference(self, atol=1e-3, rtol=1e-3):
         from torch_tpu._internal.distributed.launchers.singlehost_wrapper import prepare_tpu_environment
         from torch_tpu._internal.utils import hardware
 
@@ -557,7 +555,7 @@ class TensorParallelTPUTesterMixin:
             f"Tensor parallel inference failed: {return_dict.get('error', 'Unknown error')}"
         )
         tp_output = torch.tensor(return_dict["output"])
-        torch.testing.assert_close(ref_output, tp_output, atol=self.tp_atol, rtol=self.tp_rtol)
+        torch.testing.assert_close(ref_output, tp_output, atol=atol, rtol=rtol)
 
 
 @is_context_parallel
