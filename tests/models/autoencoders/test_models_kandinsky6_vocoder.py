@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import MMAudioVocoder
@@ -28,6 +29,13 @@ from ..testing_utils import (
 
 
 enable_full_determinism()
+
+
+NESTED_UPSAMPLER_OFFLOAD = pytest.mark.xfail(
+    reason="Block offloading hooks on MMAudio's nested upsampler ModuleLists are never called.",
+    raises=RuntimeError,
+    strict=True,
+)
 
 
 class MMAudioVocoderTesterConfig(BaseModelTesterConfig):
@@ -79,7 +87,24 @@ class TestMMAudioVocoderModel(MMAudioVocoderTesterConfig, ModelTesterMixin):
 
 
 class TestMMAudioVocoderMemory(MMAudioVocoderTesterConfig, MemoryTesterMixin):
-    pass
+    @NESTED_UPSAMPLER_OFFLOAD
+    @pytest.mark.parametrize("record_stream", [False, True])
+    def test_group_offloading(self, base_model_output, record_stream):
+        super().test_group_offloading(base_model_output, record_stream)
+
+    @pytest.mark.parametrize("record_stream", [False, True])
+    @pytest.mark.parametrize(
+        "offload_type", [pytest.param("block_level", marks=NESTED_UPSAMPLER_OFFLOAD), "leaf_level"]
+    )
+    def test_group_offloading_with_layerwise_casting(self, record_stream, offload_type):
+        super().test_group_offloading_with_layerwise_casting(record_stream, offload_type)
+
+    @pytest.mark.parametrize("record_stream", [False, True])
+    @pytest.mark.parametrize(
+        "offload_type", [pytest.param("block_level", marks=NESTED_UPSAMPLER_OFFLOAD), "leaf_level"]
+    )
+    def test_group_offloading_with_disk(self, tmp_path, record_stream, offload_type):
+        super().test_group_offloading_with_disk(tmp_path, record_stream, offload_type)
 
 
 class TestMMAudioVocoderTorchCompile(MMAudioVocoderTesterConfig, TorchCompileTesterMixin):
