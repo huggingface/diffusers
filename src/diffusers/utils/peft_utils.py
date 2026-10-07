@@ -368,6 +368,51 @@ def check_peft_version(min_version: str) -> None:
         )
 
 
+def _maybe_fuse_qkv_projections_for_lokr(model, state_dict) -> None:
+    """
+    Fuse the model's QKV projections when a peft-format LoKr state dict targets fused `to_qkv` / `to_added_qkv`
+    projections that the model does not have yet.
+
+    BFL-format Flux2 LoKr checkpoints apply LoKr to the fused QKV projections. Unlike a LoRA delta, a Kronecker product
+    delta over the fused projection cannot be split exactly into separate Q/K/V factors, so the model's projections are
+    fused instead and the adapter maps 1:1.
+    """
+    fused_targets = {
+        module
+        for module in (k.rpartition(".lokr_")[0] for k in state_dict if ".lokr_" in k)
+        if module.rsplit(".", 1)[-1] in ("to_qkv", "to_added_qkv")
+    }
+    named_modules = dict(model.named_modules())
+    if all(module in named_modules for module in fused_targets) or not hasattr(model, "fuse_qkv_projections"):
+        return
+
+    if getattr(model, "is_quantized", False):
+        raise ValueError(
+            "This LoKr checkpoint targets fused QKV projections. Fusing concatenates the Q/K/V weights into a new "
+            "`nn.Linear`, which is not possible with quantized weights. Please load the transformer without "
+            "quantization."
+        )
+
+    # Fusing replaces to_q/to_k/to_v (and the add_*_proj) with a single projection, which would orphan any adapter
+    # already injected on the unfused ones.
+    from peft.tuners.tuners_utils import BaseTunerLayer
+
+    unfused_projections = {"to_q", "to_k", "to_v", "add_q_proj", "add_k_proj", "add_v_proj"}
+    adapted = [
+        name
+        for name, module in named_modules.items()
+        if isinstance(module, BaseTunerLayer) and name.rsplit(".", 1)[-1] in unfused_projections
+    ]
+    if adapted:
+        raise ValueError(
+            "This LoKr checkpoint targets fused QKV projections, but an adapter is already loaded on the unfused "
+            f"projections (e.g. `{adapted[0]}`). Unload it with `unload_lora_weights()` before loading this checkpoint."
+        )
+
+    logger.info("The LoKr checkpoint targets fused QKV projections; calling `fuse_qkv_projections()` on the model.")
+    model.fuse_qkv_projections()
+
+
 def _create_lokr_config(state_dict, metadata):
     """
     Create a `LoKrConfig` from a peft-format LoKr state dict (keys like `{module}.lokr_w1`).

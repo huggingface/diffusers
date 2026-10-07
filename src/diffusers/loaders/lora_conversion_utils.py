@@ -2736,7 +2736,7 @@ def _convert_kohya_flux2_lora_to_diffusers(state_dict):
     return ait_sd
 
 
-def _bake_lokr_alpha(state_dict):
+def _bake_lokr_alpha_(state_dict):
     """
     Consume `.alpha` keys by baking the LyCORIS `alpha / rank` scaling into the left Kronecker factor. The scaling only
     applies when a factor is rank-decomposed (`lokr_w1_a/b` or `lokr_w2_a/b`); when both factors are stored as full
@@ -2761,7 +2761,7 @@ def _convert_non_diffusers_lokr_to_diffusers(state_dict):
     the `diffusion_model.` prefix is replaced with `transformer.` and the `.alpha` keys are consumed.
     """
     state_dict = {k.removeprefix("diffusion_model."): v for k, v in state_dict.items()}
-    _bake_lokr_alpha(state_dict)
+    _bake_lokr_alpha_(state_dict)
 
     non_lokr_keys = [k for k in state_dict if ".lokr_" not in k]
     if non_lokr_keys:
@@ -2784,14 +2784,9 @@ def _convert_non_diffusers_flux2_lokr_to_diffusers(state_dict):
     model's projections before injecting such an adapter.
     """
     original_state_dict = {k.removeprefix("diffusion_model."): v for k, v in state_dict.items()}
-    _bake_lokr_alpha(original_state_dict)
+    _bake_lokr_alpha_(original_state_dict)
 
     converted_state_dict = {}
-
-    # Some Flux2 LoKr checkpoints already store expanded diffusers block names; accept those as-is.
-    for key in list(original_state_dict.keys()):
-        if key.startswith(("single_transformer_blocks.", "transformer_blocks.")):
-            converted_state_dict[key] = original_state_dict.pop(key)
 
     num_double_layers = 0
     num_single_layers = 0
@@ -2874,24 +2869,23 @@ def _convert_lycoris_flux2_lokr_to_diffusers(state_dict):
     underscores, which are decoded through a lookup of the known block sub-paths.
     """
     state_dict = dict(state_dict)
-    _bake_lokr_alpha(state_dict)
+    _bake_lokr_alpha_(state_dict)
 
     lycoris_key_pattern = re.compile(r"^lycoris_((?:single_)?transformer_blocks)_(\d+)_(.+)\.(.+)$")
 
     converted_state_dict = {}
-    for key in list(state_dict.keys()):
+    unrecognized_keys = []
+    for key, value in state_dict.items():
         match = lycoris_key_pattern.match(key)
-        if match is None:
-            continue
-        container, block_idx, sub_path, suffix = match.groups()
-        diffusers_sub_path = _LYCORIS_FLUX2_SUBPATH_MAP.get(sub_path)
+        diffusers_sub_path = _LYCORIS_FLUX2_SUBPATH_MAP.get(match.group(3)) if match is not None else None
         if diffusers_sub_path is None:
+            unrecognized_keys.append(key)
             continue
-        diffusers_key = f"transformer.{container}.{block_idx}.{diffusers_sub_path}.{suffix}"
-        converted_state_dict[diffusers_key] = state_dict.pop(key)
+        container, block_idx, _, suffix = match.groups()
+        converted_state_dict[f"transformer.{container}.{block_idx}.{diffusers_sub_path}.{suffix}"] = value
 
-    if len(state_dict) > 0:
-        raise ValueError(f"`state_dict` should be empty at this point but has {state_dict.keys()=}.")
+    if unrecognized_keys:
+        raise ValueError(f"These keys are not LyCORIS Flux2 LoKr keys: {unrecognized_keys}.")
 
     return converted_state_dict
 

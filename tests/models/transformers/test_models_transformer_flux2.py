@@ -17,9 +17,11 @@ import os
 import subprocess
 import sys
 
+import pytest
 import torch
 
 from diffusers import Flux2Transformer2DModel
+from diffusers.loaders.lora_pipeline import Flux2LoraLoaderMixin
 from diffusers.models.transformers.transformer_flux2 import (
     Flux2KVAttnProcessor,
     Flux2KVCache,
@@ -36,6 +38,7 @@ from ..testing_utils import (
     ContextParallelTesterMixin,
     GGUFCompileTesterMixin,
     GGUFTesterMixin,
+    LoKrTesterMixin,
     LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
@@ -47,6 +50,7 @@ from ..testing_utils import (
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
+from ..testing_utils.lokr import check_lokr_deltas, make_lokr_factors
 
 
 enable_full_determinism()
@@ -200,6 +204,116 @@ class TestFlux2TransformerTensorParallelNeuron:
 
 class TestFlux2TransformerLoRA(Flux2TransformerTesterConfig, LoraTesterMixin):
     """LoRA adapter tests for Flux2 Transformer."""
+
+
+class TestFlux2TransformerLoKr(Flux2TransformerTesterConfig, LoKrTesterMixin):
+    """LoKr adapter tests for Flux2 Transformer, including the Flux2 LoKr checkpoint formats."""
+
+    # ai-toolkit stores a placeholder alpha for full-matrix factors, where LoKr applies no scaling.
+    placeholder_alpha = torch.tensor(9999220736.0)
+
+    def get_bfl_qkv_state_dict(self, model):
+        """A BFL-format LoKr state dict on the fused QKV projections of the first double block."""
+        to_q = model.transformer_blocks[0].attn.to_q
+        state_dict, expected_deltas = {}, {}
+        for bfl_path, diffusers_path in [
+            ("double_blocks.0.img_attn.qkv", "transformer_blocks.0.attn.to_qkv"),
+            ("double_blocks.0.txt_attn.qkv", "transformer_blocks.0.attn.to_added_qkv"),
+        ]:
+            factors, expected_deltas[diffusers_path] = make_lokr_factors(3 * to_q.out_features, to_q.in_features)
+            state_dict.update({f"diffusion_model.{bfl_path}.{k}": v for k, v in factors.items()})
+            state_dict[f"diffusion_model.{bfl_path}.alpha"] = self.placeholder_alpha
+        return state_dict, expected_deltas
+
+    @torch.no_grad()
+    def test_lokr_bfl_checkpoint(self):
+        # BFL checkpoints (e.g. ai-toolkit) apply LoKr to the fused QKV projections. A Kronecker product delta cannot
+        # be split exactly into Q/K/V, so loading fuses the model's projections and maps the adapter 1:1.
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
+        state_dict, expected_deltas = self.get_bfl_qkv_state_dict(model)
+        for bfl_path, diffusers_path in [
+            ("single_blocks.0.linear1", "single_transformer_blocks.0.attn.to_qkv_mlp_proj"),
+            ("double_blocks.0.img_attn.proj", "transformer_blocks.0.attn.to_out.0"),
+            ("double_blocks.0.img_mlp.0", "transformer_blocks.0.ff.linear_in"),
+        ]:
+            linear = model.get_submodule(diffusers_path)
+            factors, expected_deltas[diffusers_path] = make_lokr_factors(linear.out_features, linear.in_features)
+            state_dict.update({f"diffusion_model.{bfl_path}.{k}": v for k, v in factors.items()})
+            state_dict[f"diffusion_model.{bfl_path}.alpha"] = self.placeholder_alpha
+
+        converted = Flux2LoraLoaderMixin.lora_state_dict(state_dict)
+        model.load_lora_adapter(converted, prefix="transformer", adapter_name="default")
+
+        assert model.transformer_blocks[0].attn.fused_projections
+        check_lokr_deltas(model, expected_deltas)
+
+    def test_lokr_fused_qkv_checkpoint_refuses_when_unfused_projections_are_adapted(self):
+        # Fusing would replace to_q and orphan the adapter already injected there.
+        from peft import LoraConfig
+
+        model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
+        model.add_adapter(LoraConfig(r=2, target_modules=["to_q"]), adapter_name="lora")
+        state_dict, _ = self.get_bfl_qkv_state_dict(model)
+        converted = Flux2LoraLoaderMixin.lora_state_dict(state_dict)
+
+        with pytest.raises(ValueError, match="already loaded on the unfused projections"):
+            model.load_lora_adapter(converted, prefix="transformer", adapter_name="lokr")
+        assert not model.transformer_blocks[0].attn.fused_projections
+
+    @torch.no_grad()
+    def test_lokr_lycoris_checkpoint(self):
+        # LyCORIS wraps the diffusers model and encodes module paths with underscores under a `lycoris_` prefix.
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
+        state_dict, expected_deltas = {}, {}
+        for diffusers_path in [
+            "single_transformer_blocks.0.attn.to_qkv_mlp_proj",
+            "transformer_blocks.0.attn.to_q",
+            "transformer_blocks.0.attn.to_out.0",
+            "transformer_blocks.0.ff.linear_in",
+        ]:
+            linear = model.get_submodule(diffusers_path)
+            factors, expected_deltas[diffusers_path] = make_lokr_factors(linear.out_features, linear.in_features)
+            lycoris_path = "lycoris_" + diffusers_path.replace(".", "_")
+            state_dict.update({f"{lycoris_path}.{k}": v for k, v in factors.items()})
+            state_dict[f"{lycoris_path}.alpha"] = torch.tensor(16.0)
+
+        converted = Flux2LoraLoaderMixin.lora_state_dict(state_dict)
+        model.load_lora_adapter(converted, prefix="transformer", adapter_name="default")
+
+        check_lokr_deltas(model, expected_deltas)
+
+    def test_lokr_lycoris_checkpoint_with_unknown_keys_raises(self):
+        state_dict = {
+            "lycoris_transformer_blocks_0_attn_to_q.lokr_w1": torch.randn(4, 4),
+            "lycoris_transformer_blocks_0_attn_norm_q.lokr_w1": torch.randn(4, 4),
+        }
+        with pytest.raises(ValueError, match="lycoris_transformer_blocks_0_attn_norm_q.lokr_w1"):
+            Flux2LoraLoaderMixin.lora_state_dict(state_dict)
+
+    @torch.no_grad()
+    def test_lokr_diffusers_names_checkpoint(self):
+        # Checkpoints that store the diffusers module paths directly, with alpha keys and no prefix (e.g. SimpleTuner,
+        # `bghira/flux2-klein-9b-distillation-lokr`). Alpha scales the rank-decomposed factors only.
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
+        rank, alpha = 2, 1.0
+        state_dict, expected_deltas = {}, {}
+        for diffusers_path, factor_rank in [
+            ("single_transformer_blocks.0.attn.to_out", None),
+            ("transformer_blocks.0.attn.to_k", rank),
+        ]:
+            linear = model.get_submodule(diffusers_path)
+            factors, delta = make_lokr_factors(linear.out_features, linear.in_features, rank=factor_rank)
+            state_dict.update({f"{diffusers_path}.{k}": v for k, v in factors.items()})
+            state_dict[f"{diffusers_path}.alpha"] = torch.tensor(alpha)
+            expected_deltas[diffusers_path] = delta if factor_rank is None else (alpha / rank) * delta
+
+        converted = Flux2LoraLoaderMixin.lora_state_dict(state_dict)
+        model.load_lora_adapter(converted, prefix="transformer", adapter_name="default")
+
+        check_lokr_deltas(model, expected_deltas)
 
 
 class TestFlux2TransformerLoRAHotSwap(Flux2TransformerTesterConfig, LoraHotSwappingForModelTesterMixin):

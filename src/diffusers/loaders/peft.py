@@ -37,7 +37,12 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
-from ..utils.peft_utils import _create_lokr_config, _create_lora_config, _maybe_warn_for_unhandled_keys
+from ..utils.peft_utils import (
+    _create_lokr_config,
+    _create_lora_config,
+    _maybe_fuse_qkv_projections_for_lokr,
+    _maybe_warn_for_unhandled_keys,
+)
 from .lora_base import _fetch_state_dict, _func_optionally_disable_offloading
 from .unet_loader_utils import _maybe_expand_lora_scales
 
@@ -45,7 +50,7 @@ from .unet_loader_utils import _maybe_expand_lora_scales
 logger = logging.get_logger(__name__)
 
 _SET_ADAPTER_SCALE_FN_MAPPING = defaultdict(
-    lambda: lambda model_cls, weights: weights,
+    lambda: (lambda model_cls, weights: weights),
     {
         "UNet2DConditionModel": _maybe_expand_lora_scales,
         "UNetMotionModel": _maybe_expand_lora_scales,
@@ -217,6 +222,7 @@ class PeftAdapterMixin:
             if is_lokr:
                 if hotswap:
                     raise ValueError("Hotswapping LoKr adapters is not supported.")
+                _maybe_fuse_qkv_projections_for_lokr(self, state_dict)
                 adapter_config = _create_lokr_config(state_dict, metadata)
             else:
                 # check with first key if is not in peft format
