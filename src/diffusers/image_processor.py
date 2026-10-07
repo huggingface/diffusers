@@ -142,7 +142,7 @@ class VaeImageProcessor(ConfigMixin):
         images = (images * 255).round().astype("uint8")
         if images.shape[-1] == 1:
             # special case for grayscale (single channel) images
-            pil_images = [Image.fromarray(image.squeeze(), mode="L") for image in images]
+            pil_images = [Image.fromarray(image.squeeze(-1), mode="L") for image in images]
         else:
             pil_images = [Image.fromarray(image) for image in images]
 
@@ -1009,7 +1009,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         images = (images * 255).round().astype("uint8")
         if images.shape[-1] == 1:
             # special case for grayscale (single channel) images
-            pil_images = [Image.fromarray(image.squeeze(), mode="L") for image in images]
+            pil_images = [Image.fromarray(image.squeeze(-1), mode="L") for image in images]
         else:
             pil_images = [Image.fromarray(image[:, :, :3]) for image in images]
 
