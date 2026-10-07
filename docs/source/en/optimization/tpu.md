@@ -59,42 +59,39 @@ components compile like any other `torch.compile` target. The first
 call (warmup) is slow because it compiles; later calls with the same shapes reuse the compiled graph.
 
 > [!IMPORTANT]
-> TorchTPU requires **static shapes**, so pass `dynamic=False`. A new `height` or `width` compiles the blocks again
-> for that shape, once; shapes already seen are reused. Changing `num_inference_steps` doesn't recompile.
+> TorchTPU requires **static shapes**, so pass `dynamic=False`. A new `height` or `width` compiles again for that
+> shape, once; shapes already seen are reused. Changing `num_inference_steps` doesn't recompile.
 
-As in eager mode, [`~DiffusionPipeline.enable_model_cpu_offload`] keeps every model, text encoders included, on the
-TPU while it runs. The offload hooks can't be traced by `torch.compile`, so compile the transformer's repeated blocks
-with [`~ModelMixin.compile_repeated_blocks`] instead of the whole model.
+When the whole pipeline fits on one chip, move it to the TPU and compile the full transformer. Stable Diffusion 3.5
+Medium (~15GB in bf16) fits on a single v6e chip.
 
 ```python
 import torch
 
-from diffusers import FluxPipeline
+from diffusers import StableDiffusion3Pipeline
 
-pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-schnell", dtype=torch.bfloat16)
-pipe.enable_model_cpu_offload()
-pipe.transformer.compile_repeated_blocks(backend="tpu", fullgraph=True, dynamic=False)
+pipe = StableDiffusion3Pipeline.from_pretrained("stabilityai/stable-diffusion-3.5-medium", dtype=torch.bfloat16)
+pipe.to("tpu")
+pipe.transformer.compile(backend="tpu", fullgraph=True, dynamic=False)
 
 # Warmup — triggers static graph compilation.
-pipe(
-    prompt="warmup",
-    height=1024,
-    width=1024,
-    num_inference_steps=4,
-    guidance_scale=0.0,
-)
+pipe(prompt="warmup", height=1024, width=1024, num_inference_steps=40, guidance_scale=4.5)
 
-# Timed inference reuses the compiled graph.
+# Later calls with the same shapes reuse the compiled graph.
 image = pipe(
     prompt="a golden retriever surfing a wave, photorealistic",
     height=1024,
     width=1024,
-    num_inference_steps=4,
-    guidance_scale=0.0,
+    num_inference_steps=40,
+    guidance_scale=4.5,
 ).images[0]
 
 image.save("output.png")
 ```
+
+If the pipeline doesn't fit and you use [`~DiffusionPipeline.enable_model_cpu_offload`], the offload hooks can't be
+traced by `torch.compile`. Compile only the transformer's repeated blocks instead, with
+`pipe.transformer.compile_repeated_blocks(backend="tpu", fullgraph=True, dynamic=False)`.
 
 ## Tensor parallelism
 
