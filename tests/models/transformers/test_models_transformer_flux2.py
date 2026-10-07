@@ -58,6 +58,14 @@ class Flux2TransformerTesterConfig(BaseModelTesterConfig):
         return Flux2Transformer2DModel
 
     @property
+    def pretrained_model_name_or_path(self):
+        return "hf-internal-testing/tiny-flux2"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
+
+    @property
     def output_shape(self) -> tuple[int, int]:
         return (16, 4)
 
@@ -91,7 +99,7 @@ class Flux2TransformerTesterConfig(BaseModelTesterConfig):
             "num_single_layers": 1,
             "attention_head_dim": 16,
             "num_attention_heads": 2,
-            "joint_attention_dim": 32,
+            "joint_attention_dim": 16,
             "timestep_guidance_channels": 256,  # Hardcoded in original code
             "axes_dims_rope": [4, 4, 4, 4],
         }
@@ -101,7 +109,7 @@ class Flux2TransformerTesterConfig(BaseModelTesterConfig):
     ) -> dict[str, torch.Tensor]:
         num_latent_channels = 4
         sequence_length = 48
-        embedding_dim = 32
+        embedding_dim = 16
 
         hidden_states = randn_tensor(
             (batch_size, height * width, num_latent_channels), generator=self.generator, device=device
@@ -214,7 +222,7 @@ class TestFlux2TransformerLoRAHotSwap(Flux2TransformerTesterConfig, LoraHotSwapp
         batch_size = 1
         num_latent_channels = 4
         sequence_length = 48
-        embedding_dim = 32
+        embedding_dim = 16
 
         hidden_states = randn_tensor(
             (batch_size, height * width, num_latent_channels), generator=self.generator, device=torch_device
@@ -260,7 +268,7 @@ class TestFlux2TransformerCompile(Flux2TransformerTesterConfig, TorchCompileTest
         batch_size = 1
         num_latent_channels = 4
         sequence_length = 48
-        embedding_dim = 32
+        embedding_dim = 16
 
         hidden_states = randn_tensor(
             (batch_size, height * width, num_latent_channels), generator=self.generator, device=torch_device
@@ -491,7 +499,7 @@ class Flux2TransformerKVCacheTesterConfig(BaseModelTesterConfig):
             "num_single_layers": 1,
             "attention_head_dim": 16,
             "num_attention_heads": 2,
-            "joint_attention_dim": 32,
+            "joint_attention_dim": 16,
             "timestep_guidance_channels": 256,
             "axes_dims_rope": [4, 4, 4, 4],
         }
@@ -500,7 +508,7 @@ class Flux2TransformerKVCacheTesterConfig(BaseModelTesterConfig):
         batch_size = 1
         num_latent_channels = 4
         sequence_length = 48
-        embedding_dim = 32
+        embedding_dim = 16
         num_ref_tokens = self.num_ref_tokens
 
         ref_hidden_states = randn_tensor(
