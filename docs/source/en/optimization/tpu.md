@@ -141,7 +141,7 @@ if dist.get_rank() == 0:
     image.save("output.png")
 ```
 
-Launch one process per chip. On a single host, use all of the host's chips:
+Launch one process per chip. Set `--nproc_per_node` to use all the number of TPU chips on your host.
 
 ```bash
 eval $(python -m torch_tpu._internal.distributed.launchers.singlehost_wrapper | sed 's/^/export /')
