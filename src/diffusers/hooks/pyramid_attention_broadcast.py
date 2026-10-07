@@ -27,7 +27,7 @@ from ._common import (
     _SPATIAL_TRANSFORMER_BLOCK_IDENTIFIERS,
     _TEMPORAL_TRANSFORMER_BLOCK_IDENTIFIERS,
 )
-from .hooks import HookRegistry, ModelHook, StateManager
+from .hooks import CacheContext, HookRegistry, ModelHook, StateManager
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -91,7 +91,7 @@ class PyramidAttentionBroadcastConfig:
     def __post_init__(self):
         if self.current_timestep_callback is not None:
             depr_message = (
-                "Passing `current_timestep_callback` to `PyramidAttentionBroadcastConfig` is deprecated and will be ignored. "
+                "Passing `current_timestep_callback` to `PyramidAttentionBroadcastConfig` is deprecated. "
                 "Please use `cache_context(name, timestep=...)` to pass the current timestep instead. "
                 "See the caching documentation for guidance: https://huggingface.co/docs/diffusers/main/en/optimization/cache."
             )
@@ -148,18 +148,28 @@ class PyramidAttentionBroadcastHook(ModelHook):
 
     _is_stateful = True
 
-    def __init__(self, timestep_skip_range: tuple[int, int], block_skip_range: int) -> None:
+    def __init__(
+        self,
+        timestep_skip_range: tuple[int, int],
+        block_skip_range: int,
+        current_timestep_callback: Callable[[], int] | None = None,
+    ) -> None:
         super().__init__()
 
         self.timestep_skip_range = timestep_skip_range
         self.block_skip_range = block_skip_range
+        self.current_timestep_callback = current_timestep_callback
 
     def initialize_hook(self, module):
         self.state_manager = StateManager(PyramidAttentionBroadcastState)
         return module
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs) -> Any:
+        if self.state_manager._context is None and self.current_timestep_callback is not None:
+            self.state_manager.set_context(CacheContext(name="inference"))
         timestep = self.state_manager.context.timestep
+        if timestep is None and self.current_timestep_callback is not None:
+            timestep = self.current_timestep_callback()
         if timestep is None:
             raise ValueError("Pyramid Attention Broadcast requires `cache_context(name, timestep=...)`.")
         state = self.state_manager.get_state()
@@ -282,7 +292,9 @@ def _apply_pyramid_attention_broadcast_on_attention_class(
         return False
 
     logger.debug(f"Enabling Pyramid Attention Broadcast ({block_type}) in layer: {name}")
-    _apply_pyramid_attention_broadcast_hook(module, timestep_skip_range, block_skip_range)
+    _apply_pyramid_attention_broadcast_hook(
+        module, timestep_skip_range, block_skip_range, config.current_timestep_callback
+    )
     return True
 
 
@@ -290,6 +302,7 @@ def _apply_pyramid_attention_broadcast_hook(
     module: Attention | MochiAttention,
     timestep_skip_range: tuple[int, int],
     block_skip_range: int,
+    current_timestep_callback: Callable[[], int] | None = None,
 ):
     r"""
     Apply [Pyramid Attention Broadcast](https://huggingface.co/papers/2408.12588) to a given torch.nn.Module.
@@ -306,5 +319,5 @@ def _apply_pyramid_attention_broadcast_hook(
             attention states will be reused) before computing the new attention states again.
     """
     registry = HookRegistry.check_if_exists_or_initialize(module)
-    hook = PyramidAttentionBroadcastHook(timestep_skip_range, block_skip_range)
+    hook = PyramidAttentionBroadcastHook(timestep_skip_range, block_skip_range, current_timestep_callback)
     registry.register_hook(hook, _PYRAMID_ATTENTION_BROADCAST_HOOK)

@@ -22,7 +22,7 @@ from ..models.attention import AttentionModuleMixin
 from ..models.modeling_outputs import Transformer2DModelOutput
 from ..utils import deprecate, logging
 from ._common import _ATTENTION_CLASSES
-from .hooks import HookRegistry, ModelHook, StateManager
+from .hooks import CacheContext, HookRegistry, ModelHook, StateManager
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -167,7 +167,7 @@ class FasterCacheConfig:
     def __post_init__(self):
         if self.current_timestep_callback is not None:
             depr_message = (
-                "Passing `current_timestep_callback` to `FasterCacheConfig` is deprecated and will be ignored. "
+                "Passing `current_timestep_callback` to `FasterCacheConfig` is deprecated. "
                 "Please use `cache_context(name, timestep=...)` to pass the current timestep instead. "
                 "See the caching documentation for guidance: https://huggingface.co/docs/diffusers/main/en/optimization/cache."
             )
@@ -238,6 +238,7 @@ class FasterCacheDenoiserHook(ModelHook):
         uncond_cond_input_kwargs_identifiers: list[str],
         low_frequency_weight_callback: Callable[[torch.nn.Module], torch.Tensor],
         high_frequency_weight_callback: Callable[[torch.nn.Module], torch.Tensor],
+        current_timestep_callback: Callable[[], int] | None = None,
     ) -> None:
         super().__init__()
 
@@ -253,6 +254,7 @@ class FasterCacheDenoiserHook(ModelHook):
 
         self.low_frequency_weight_callback = low_frequency_weight_callback
         self.high_frequency_weight_callback = high_frequency_weight_callback
+        self.current_timestep_callback = current_timestep_callback
 
     def initialize_hook(self, module):
         self.state_manager = StateManager(FasterCacheDenoiserState)
@@ -265,10 +267,18 @@ class FasterCacheDenoiserHook(ModelHook):
         _, cond = input.chunk(2, dim=0)
         return cond
 
-    def new_forward(self, module: torch.nn.Module, *args, **kwargs) -> Any:
+    def _get_timestep(self):
+        if self.state_manager._context is None and self.current_timestep_callback is not None:
+            self.state_manager.set_context(CacheContext(name="inference"))
         timestep = self.state_manager.context.timestep
+        if timestep is None and self.current_timestep_callback is not None:
+            timestep = self.current_timestep_callback()
         if timestep is None:
             raise ValueError("FasterCache requires `cache_context(name, timestep=...)`.")
+        return timestep
+
+    def new_forward(self, module: torch.nn.Module, *args, **kwargs) -> Any:
+        timestep = self._get_timestep()
         state = self.state_manager.get_state()
         # Split the unconditional and conditional inputs. We only want to infer the conditional branch if the
         # requirements for skipping the unconditional branch are met as described in the paper.
@@ -381,6 +391,7 @@ class FasterCacheBlockHook(ModelHook):
         timestep_skip_range: tuple[int, int],
         is_guidance_distilled: bool,
         weight_callback: Callable[[torch.nn.Module], float],
+        current_timestep_callback: Callable[[], int] | None = None,
     ) -> None:
         super().__init__()
 
@@ -389,6 +400,7 @@ class FasterCacheBlockHook(ModelHook):
         self.is_guidance_distilled = is_guidance_distilled
 
         self.weight_callback = weight_callback
+        self.current_timestep_callback = current_timestep_callback
 
     def initialize_hook(self, module):
         self.state_manager = StateManager(FasterCacheBlockState)
@@ -410,7 +422,11 @@ class FasterCacheBlockHook(ModelHook):
         return t_output + (t_output - t_2_output) * weight
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs) -> Any:
+        if self.state_manager._context is None and self.current_timestep_callback is not None:
+            self.state_manager.set_context(CacheContext(name="inference"))
         timestep = self.state_manager.context.timestep
+        if timestep is None and self.current_timestep_callback is not None:
+            timestep = self.current_timestep_callback()
         if timestep is None:
             raise ValueError("FasterCache requires `cache_context(name, timestep=...)`.")
         state = self.state_manager.get_state()
@@ -548,7 +564,7 @@ def apply_faster_cache(module: torch.nn.Module, config: FasterCacheConfig) -> No
         def low_frequency_weight_callback(module: torch.nn.Module) -> float:
             is_within_range = (
                 config.low_frequency_weight_update_timestep_range[0]
-                < module._diffusers_hook.get_hook(_FASTER_CACHE_DENOISER_HOOK).state_manager.context.timestep
+                < module._diffusers_hook.get_hook(_FASTER_CACHE_DENOISER_HOOK)._get_timestep()
                 < config.low_frequency_weight_update_timestep_range[1]
             )
             return config.alpha_low_frequency if is_within_range else 1.0
@@ -563,7 +579,7 @@ def apply_faster_cache(module: torch.nn.Module, config: FasterCacheConfig) -> No
         def high_frequency_weight_callback(module: torch.nn.Module) -> float:
             is_within_range = (
                 config.high_frequency_weight_update_timestep_range[0]
-                < module._diffusers_hook.get_hook(_FASTER_CACHE_DENOISER_HOOK).state_manager.context.timestep
+                < module._diffusers_hook.get_hook(_FASTER_CACHE_DENOISER_HOOK)._get_timestep()
                 < config.high_frequency_weight_update_timestep_range[1]
             )
             return config.alpha_high_frequency if is_within_range else 1.0
@@ -592,6 +608,7 @@ def _apply_faster_cache_on_denoiser(module: torch.nn.Module, config: FasterCache
         config._unconditional_conditional_input_kwargs_identifiers,
         config.low_frequency_weight_callback,
         config.high_frequency_weight_callback,
+        current_timestep_callback=config.current_timestep_callback,
     )
     registry = HookRegistry.check_if_exists_or_initialize(module)
     registry.register_hook(hook, _FASTER_CACHE_DENOISER_HOOK)
@@ -635,6 +652,7 @@ def _apply_faster_cache_on_attention_class(name: str, module: AttentionModuleMix
         timestep_skip_range,
         config.is_guidance_distilled,
         config.attention_weight_callback,
+        current_timestep_callback=config.current_timestep_callback,
     )
     registry = HookRegistry.check_if_exists_or_initialize(module)
     registry.register_hook(hook, _FASTER_CACHE_BLOCK_HOOK)
