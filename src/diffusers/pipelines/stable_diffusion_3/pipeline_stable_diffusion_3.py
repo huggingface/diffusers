@@ -1066,8 +1066,10 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                # `clone()` so it isn't a view into `timesteps`, which would recompile `torch.compile` every step
-                timestep = t.expand(latent_model_input.shape[0]).clone()
+                timestep = t.expand(latent_model_input.shape[0])
+                # on TPU, a view into `timesteps` makes `torch.compile` recompile every step
+                if timestep.device.type == "tpu":
+                    timestep = timestep.clone()
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
@@ -1089,7 +1091,9 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
                         else False
                     )
                     if skip_guidance_layers is not None and should_skip_layers:
-                        timestep = t.expand(latents.shape[0]).clone()
+                        timestep = t.expand(latents.shape[0])
+                        if timestep.device.type == "tpu":
+                            timestep = timestep.clone()
                         latent_model_input = latents
                         noise_pred_skip_layers = self.transformer(
                             hidden_states=latent_model_input,
