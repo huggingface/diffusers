@@ -217,6 +217,22 @@ class TestQwenImage21Transformer(QwenImage21TransformerTesterConfig, ModelTester
         torch.testing.assert_close(outputs[0], outputs[1])
 
 
+    def test_forward_with_torch_compile(self):
+        import torch._dynamo as dynamo
+        dynamo.reset()
+
+        model_class = self.model_class
+        init_dict, inputs_dict = self.get_init_dict(), self.get_dummy_inputs()
+
+        model = model_class(**init_dict).to(torch_device).eval()
+
+        compiled_model = torch.compile(model, backend='aot_eager', fullgraph=False)
+
+        with torch.no_grad():
+            output = compiled_model(**inputs_dict)
+
+        assert output is not None
+
 class TestQwenImage21BlockCausalMask:
     """
     The mask is `(q_idx >= kv_idx) or same_image_block`: causal over the joint sequence, bidirectional inside each
