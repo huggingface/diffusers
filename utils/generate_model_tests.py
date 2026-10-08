@@ -430,7 +430,9 @@ def generate_test_class(model_name: str, config_class: str, tester: str) -> str:
 def generate_test_file(model_info: dict, model_filepath: str, include_optional: list[str], imports: set[str]) -> str:
     model_name = model_info["name"].replace("2DModel", "").replace("3DModel", "").replace("Model", "")
     testers = determine_testers(model_info, include_optional, imports)
-    tester_imports = sorted(set(testers) - {"LoraHotSwappingForModelTesterMixin"})
+    tester_imports = set(testers)
+    if "LoraTesterMixin" in testers:
+        tester_imports.add("LoraHotSwappingForModelTesterMixin")
 
     lines = [
         "# coding=utf-8",
@@ -455,9 +457,6 @@ def generate_test_file(model_info: dict, model_filepath: str, include_optional: 
         "",
         "from ...testing_utils import enable_full_determinism, torch_device",
     ]
-
-    if "LoraTesterMixin" in testers:
-        lines.append("from ..test_modeling_common import LoraHotSwappingForModelTesterMixin")
 
     lines.extend(
         [
