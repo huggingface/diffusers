@@ -296,6 +296,21 @@ class TestConfig:
         # Nevertheless "e" should still be correctly loaded to [1, 3] from SampleObject2 instead of defaulting to [1, 5]
         assert new_config_2.config.e == [1, 3]
 
+    def test_positional_args_survive_from_config_round_trip(self, tmp_path):
+        """Non-regression test for https://github.com/huggingface/diffusers/issues/14460"""
+        obj = SampleObject(10, 20)
+        assert obj.config["a"] == 10
+        assert obj.config["b"] == 20
+
+        obj.save_config(tmp_path)
+        loaded = SampleObject.from_config(SampleObject.load_config(tmp_path))
+        assert loaded.config["a"] == 10
+        assert loaded.config["b"] == 20
+
+        # Also verify positional args are not in _use_default_values
+        assert "a" not in obj.config._use_default_values
+        assert "b" not in obj.config._use_default_values
+
     def test_check_path_types(self):
         # Verify that we get a string returned from a WindowsPath or PosixPath (depending on system)
         config = SampleObjectPaths()
