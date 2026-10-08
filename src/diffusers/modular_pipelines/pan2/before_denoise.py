@@ -40,9 +40,16 @@ class PAN2TextInputStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
-            InputParam.template("prompt_embeds"),
-            InputParam.template("negative_prompt_embeds"),
+            InputParam.template(
+                "num_images_per_prompt",
+                name="num_videos_per_prompt",
+                description="The number of videos to generate per prompt.",
+            ),
+            InputParam.template("prompt_embeds", description="Text embeddings used to guide the video generation."),
+            InputParam.template(
+                "negative_prompt_embeds",
+                description="Negative text embeddings used to guide the video generation.",
+            ),
         ]
 
     @property
@@ -58,7 +65,9 @@ class PAN2TextInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: PAN2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: PAN2ModularPipeline, state: PipelineState
+    ) -> tuple[PAN2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         num_videos_per_prompt = block_state.num_videos_per_prompt
 
@@ -99,7 +108,9 @@ class PAN2SetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: PAN2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: PAN2ModularPipeline, state: PipelineState
+    ) -> tuple[PAN2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -129,16 +140,22 @@ class PAN2PrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("height", default=704),
-            InputParam.template("width", default=1248),
+            InputParam.template("height", default=704, description="The height in pixels of the generated video."),
+            InputParam.template("width", default=1248, description="The width in pixels of the generated video."),
             InputParam(
                 "num_frames",
                 type_hint=int,
                 default=313,
                 description="Number of video frames to generate, of the form `4 * n + 1`.",
             ),
-            InputParam.template("latents"),
-            InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
+            InputParam.template(
+                "latents", description="Pre-generated noisy latents to use as inputs for video generation."
+            ),
+            InputParam.template(
+                "num_images_per_prompt",
+                name="num_videos_per_prompt",
+                description="The number of videos to generate per prompt.",
+            ),
             InputParam.template("generator"),
             InputParam.template("batch_size", required=True, default=None),
         ]
@@ -162,7 +179,9 @@ class PAN2PrepareLatentsStep(ModularPipelineBlocks):
             )
 
     @torch.no_grad()
-    def __call__(self, components: PAN2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: PAN2ModularPipeline, state: PipelineState
+    ) -> tuple[PAN2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(components, block_state.height, block_state.width, block_state.num_frames)
         device = components._execution_device
@@ -220,7 +239,9 @@ class PAN2PrepareConditionLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: PAN2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: PAN2ModularPipeline, state: PipelineState
+    ) -> tuple[PAN2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         batch_size, num_channels, num_frames, height, width = block_state.latents.shape
         block_state.condition_latents = block_state.latents.new_zeros(
@@ -267,7 +288,9 @@ class PAN2Image2VideoPrepareConditionLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: PAN2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: PAN2ModularPipeline, state: PipelineState
+    ) -> tuple[PAN2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         latents = block_state.latents
         batch_size, num_channels, num_frames, height, width = latents.shape

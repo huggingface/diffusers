@@ -53,7 +53,7 @@ class PAN2VaeDecoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("latents", required=True),
+            InputParam.template("latents", required=True, description="Denoised latents to decode."),
             InputParam.template("output_type", default="np"),
         ]
 
@@ -62,7 +62,9 @@ class PAN2VaeDecoderStep(ModularPipelineBlocks):
         return [OutputParam.template("videos")]
 
     @torch.no_grad()
-    def __call__(self, components: PAN2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: PAN2ModularPipeline, state: PipelineState
+    ) -> tuple[PAN2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         if block_state.output_type == "latent":
             block_state.videos = block_state.latents

@@ -248,7 +248,7 @@ def main(args):
     from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler
 
     # PAN2 only reads text hidden states, so only the language model of Qwen3.5 is kept.
-    text_encoder = Qwen3_5ForConditionalGeneration.from_pretrained(args.text_encoder_path, torch_dtype=dtype)
+    text_encoder = Qwen3_5ForConditionalGeneration.from_pretrained(args.text_encoder_path, dtype=dtype)
     text_encoder.model.language_model.save_pretrained(
         os.path.join(args.output_path, "text_encoder"), max_shard_size="5GB"
     )
@@ -256,7 +256,7 @@ def main(args):
     tokenizer = AutoTokenizer.from_pretrained(args.text_encoder_path)
     tokenizer.save_pretrained(os.path.join(args.output_path, "tokenizer"))
 
-    vae = AutoencoderKLWan.from_pretrained(args.vae_path, subfolder="vae", torch_dtype=torch.float32)
+    vae = AutoencoderKLWan.from_pretrained(args.vae_path, subfolder="vae", dtype=torch.float32)
     vae.save_pretrained(os.path.join(args.output_path, "vae"))
 
     scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)

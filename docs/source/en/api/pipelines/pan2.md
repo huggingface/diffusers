@@ -62,7 +62,7 @@ PAN2 checks the prompt before generation and every generated video after it with
 pip install git+https://github.com/MBZUAI-IFM/PAN2-guardrail
 ```
 
-The Cosmos-Guardrail1 weights are gated: accept their license on the [Hub](https://huggingface.co/nvidia/Cosmos-Guardrail1) first. The checker waits on the CPU and moves to the pipeline device only for the checks. `enable_safety_checker(safety_checker)` uses your own checker instead (an object with `check_text_safety(prompt)` and `check_video_safety(frames)`), and `disable_safety_checker()` turns the checks off.
+The Cosmos-Guardrail1 weights are gated: accept their license on the [Hub](https://huggingface.co/nvidia/Cosmos-Guardrail1) first. The checker waits on the CPU and moves to the pipeline device only for the checks. `enable_safety_checker(safety_checker)` uses your own checker instead, and `disable_safety_checker()` turns the checks off. A custom checker needs `.to(device)`, `check_text_safety(prompt)` returning `True` for a safe prompt, and `check_video_safety(frames)` taking the uint8 `(num_frames, height, width, 3)` frames of one video and returning `None` for an unsafe video.
 
 ## Context parallelism
 

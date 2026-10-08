@@ -60,7 +60,9 @@ class PAN2LoopBeforeDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: PAN2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: PAN2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[PAN2ModularPipeline, BlockState]:
         dtype = components.transformer.dtype
         block_state.latent_model_input = torch.cat(
             [block_state.latents.to(dtype), block_state.condition_latents.to(dtype)], dim=1
@@ -101,12 +103,17 @@ class PAN2LoopDenoiser(ModularPipelineBlocks):
                 type_hint=int,
                 description="The number of denoising steps. Can be generated in set_timesteps step.",
             ),
-            InputParam.template("prompt_embeds"),
-            InputParam.template("negative_prompt_embeds"),
+            InputParam.template("prompt_embeds", description="Text embeddings used to guide the video generation."),
+            InputParam.template(
+                "negative_prompt_embeds",
+                description="Negative text embeddings used to guide the video generation.",
+            ),
         ]
 
     @torch.no_grad()
-    def __call__(self, components: PAN2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: PAN2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[PAN2ModularPipeline, BlockState]:
         dtype = components.transformer.dtype
         latent_model_input = block_state.latent_model_input
         timestep = t.expand(latent_model_input.shape[0])
@@ -158,7 +165,9 @@ class PAN2LoopAfterDenoiser(ModularPipelineBlocks):
         return [OutputParam("latents", type_hint=torch.Tensor, description="The latents after this denoising step.")]
 
     @torch.no_grad()
-    def __call__(self, components: PAN2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: PAN2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[PAN2ModularPipeline, BlockState]:
         # PAN2 keeps the latents in float32 across the loop: the scheduler returns the sample in the dtype of the
         # prediction, so it is upcast first.
         block_state.latents = components.scheduler.step(
@@ -199,7 +208,9 @@ class PAN2DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: PAN2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: PAN2ModularPipeline, state: PipelineState
+    ) -> tuple[PAN2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:

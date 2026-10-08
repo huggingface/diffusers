@@ -109,7 +109,9 @@ class PAN2TextEncoderStep(ModularPipelineBlocks):
             raise ValueError(f"`negative_prompt` must be a single string, got {type(negative_prompt)}.")
 
     @torch.no_grad()
-    def __call__(self, components: PAN2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: PAN2ModularPipeline, state: PipelineState
+    ) -> tuple[PAN2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(block_state.prompt, block_state.negative_prompt)
         device = components._execution_device
@@ -189,8 +191,8 @@ class PAN2VaeEncoderStep(ModularPipelineBlocks):
             InputParam.template(
                 "image", required=True, type_hint=PIL.Image.Image, description="The first frame, a single image."
             ),
-            InputParam.template("height", default=704),
-            InputParam.template("width", default=1248),
+            InputParam.template("height", default=704, description="The height in pixels of the generated video."),
+            InputParam.template("width", default=1248, description="The width in pixels of the generated video."),
         ]
 
     @property
@@ -210,7 +212,9 @@ class PAN2VaeEncoderStep(ModularPipelineBlocks):
             raise ValueError(f"`image` must be a single PIL image, got {type(image)}.")
 
     @torch.no_grad()
-    def __call__(self, components: PAN2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: PAN2ModularPipeline, state: PipelineState
+    ) -> tuple[PAN2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(block_state.image)
         device = components._execution_device

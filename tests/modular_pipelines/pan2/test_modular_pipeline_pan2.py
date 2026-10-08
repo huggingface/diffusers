@@ -92,10 +92,6 @@ class TestPAN2ModularPipelineFast(PAN2ModularPipelineTesterConfig, ModularPipeli
     def test_inference_batch_single_identical(self):
         pass
 
-    @pytest.mark.skip(reason="PAN2 names the per-prompt repeat `num_videos_per_prompt`.")
-    def test_num_images_per_prompt(self):
-        pass
-
     def test_num_videos_per_prompt(self):
         pipe = self.get_pipeline().to(torch_device)
         videos = pipe(**self.get_dummy_inputs(), num_videos_per_prompt=2, output=self.output_name)
@@ -164,6 +160,19 @@ class TestPAN2ModularPipelineFast(PAN2ModularPipelineTesterConfig, ModularPipeli
         pipe.enable_safety_checker(DummyPAN2SafetyChecker(video_safe=False))
         with pytest.raises(ValueError, match="unsafe content in the generated video"):
             pipe(**self.get_dummy_inputs(), output=self.output_name)
+
+    def test_latent_output_skips_decoding(self):
+        pipe = self.get_pipeline().to(torch_device)
+        safety_checker = DummyPAN2SafetyChecker(video_safe=False)
+        pipe.enable_safety_checker(safety_checker)
+        inputs = {**self.get_dummy_inputs(), "output_type": "latent"}
+        latents = pipe(**inputs, output=self.output_name)
+
+        # The denoised latents are returned as they are: no decoding, so no video to check, but the prompt is.
+        num_channels_latents = pipe.transformer.config.out_channels
+        assert latents.shape == (1, num_channels_latents, 2, 2, 2)
+        assert safety_checker.checked_prompts == [inputs["prompt"]]
+        assert safety_checker.checked_videos == []
 
     def test_disable_safety_checker(self):
         pipe = self.get_pipeline().to(torch_device)

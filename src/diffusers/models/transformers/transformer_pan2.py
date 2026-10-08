@@ -204,8 +204,8 @@ class PAN2RotaryPosEmbed(nn.Module):
         self.theta = theta
         self.temporal_scale = temporal_scale
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        batch_size, num_channels, num_frames, height, width = hidden_states.shape
+    def forward(self, hidden_states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        _, _, num_frames, height, width = hidden_states.shape
         rope_sizes = [num_frames // self.patch_size_t, height // self.patch_size, width // self.patch_size]
 
         axes_grids = []
@@ -473,7 +473,7 @@ class PAN2Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapte
                 encoder_hidden_states = self._gradient_checkpointing_func(block, encoder_hidden_states)
             else:
                 encoder_hidden_states = block(encoder_hidden_states)
-        encoder_hidden_states = encoder_hidden_states + self.context_type_embedding
+        encoder_hidden_states = encoder_hidden_states + self.context_type_embedding.to(encoder_hidden_states.device)
 
         # 3. Joint-attention blocks
         for block in self.transformer_blocks:
