@@ -294,13 +294,13 @@ def _decode_video_file(media) -> tuple[np.ndarray, float, torch.Tensor | None, i
     if not frames:
         raise ValueError(f"No video frames to decode in {media}.")
     frames = np.stack(frames)
-    # `ffmpeg` displays a frame upright by undoing the counterclockwise rotation the display matrix carries, which is
+    # `ffmpeg` displays a frame upright by applying the counterclockwise rotation the display matrix carries, which is
     # what this reproduces, snapped to the nearest quarter turn. A non-square pixel aspect ratio is left alone: the
     # reference implementation resolved a reference's canvas from its *display* geometry, so a stream that carries a
     # sample aspect ratio is conditioned on at the wrong shape, and correcting it is untested guesswork here.
     turns = round(rotation / 90.0) % 4
     if turns:
-        frames = np.ascontiguousarray(np.rot90(frames, k=-turns, axes=(1, 2)))
+        frames = np.ascontiguousarray(np.rot90(frames, k=turns, axes=(1, 2)))
     waveform, sample_rate = soundtrack if soundtrack is not None else (None, None)
     return frames, frame_rate, waveform, sample_rate
 
