@@ -921,7 +921,7 @@ class LoraBaseMixin:
 
         for component in self._lora_loadable_modules:
             model = getattr(self, component, None)
-            if model is not None and issubclass(model.__class__, ModelMixin):
+            if model is not None and issubclass(model.__class__, (ModelMixin, PreTrainedModel)):
                 for module in model.modules():
                     if isinstance(module, BaseTunerLayer):
                         active_adapters = module.active_adapters
