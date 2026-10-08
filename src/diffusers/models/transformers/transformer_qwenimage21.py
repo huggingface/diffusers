@@ -724,7 +724,7 @@ class QwenImage21Rope(nn.Module):
     def forward(
         self, img_shapes: list[tuple[int, int, int]], image_pad_mask: torch.Tensor, device: torch.device
     ) -> torch.Tensor:
-        freqs = self._get_device_freqs(torch.device(device))
+        freqs = self._get_device_freqs(device)
 
         frame_index, height_index, width_index = [], [], []
         image_height_index, image_width_index = [], []
