@@ -200,10 +200,11 @@ class ParallelConfig:
     """
     Configuration for applying different parallelisms.
 
-    Both may be set at once. The two are then applied over one device mesh with a dimension each — `("ring", "ulysses",
-    "tp")`, built by `enable_parallelism` — so their collectives stay in separate process groups. This is what lets a
-    model too large for one device (TP shards the weights) also run a sequence too long for one device's attention
-    scratchpad (CP splits the sequence): TP alone cannot divide the sequence, and CP alone cannot divide the weights.
+    Both may be set at once. The two are then applied over one device mesh with a dimension each — `("tp", "ring",
+    "ulysses")`, built by `enable_parallelism` — so their collectives stay in separate process groups. This is what
+    lets a model too large for one device (TP shards the weights) also run a sequence too long for one device's
+    attention scratchpad (CP splits the sequence): TP alone cannot divide the sequence, and CP alone cannot divide the
+    weights.
 
     Args:
         context_parallel_config (`ContextParallelConfig`, *optional*):

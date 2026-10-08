@@ -1737,17 +1737,15 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         tp_config = config.tensor_parallel_config
         if cp_config is not None and tp_config is not None:
             # One mesh, one dimension per parallelism, so `ParallelConfig.setup` can hand each config its own
-            # submesh. "tp" goes last, which makes TP ranks adjacent: its all-reduce fires twice per block, more
-            # often than the CP collectives, so it is the one that wants the closest devices. The CP dimensions are
-            # then strided, which is fine for them — on Neuron only `all_to_all` (Ulysses) constrains its replica
-            # groups to be block-aligned; `all_gather` (ring) and `all_reduce` (TP) accept any grouping.
+            # submesh. "tp" goes first so the CP dimensions vary fastest: on Neuron, `all_to_all` (Ulysses) rejects
+            # strided replica groups. TP's all-reduce accepts them, so TP is the axis that gives up contiguity.
             mesh = (
                 cp_config.mesh
                 or tp_config.mesh
                 or torch.distributed.device_mesh.init_device_mesh(
                     device_type=device_type,
-                    mesh_shape=(cp_config.ring_degree, cp_config.ulysses_degree, tp_config.tp_degree),
-                    mesh_dim_names=("ring", "ulysses", "tp"),
+                    mesh_shape=(tp_config.tp_degree, cp_config.ring_degree, cp_config.ulysses_degree),
+                    mesh_dim_names=("tp", "ring", "ulysses"),
                 )
             )
         elif cp_config is not None:

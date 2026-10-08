@@ -50,7 +50,7 @@ def _mesh_factorization_worker(rank, world_size, master_port, ulysses_degree, tp
         dist.init_process_group(backend="gloo", rank=rank, world_size=world_size)
 
         mesh = torch.distributed.device_mesh.init_device_mesh(
-            "cpu", mesh_shape=(1, ulysses_degree, tp_degree), mesh_dim_names=("ring", "ulysses", "tp")
+            "cpu", mesh_shape=(tp_degree, 1, ulysses_degree), mesh_dim_names=("tp", "ring", "ulysses")
         )
         config = ParallelConfig(
             context_parallel_config=ContextParallelConfig(ulysses_degree=ulysses_degree),
@@ -134,10 +134,10 @@ class TestCombinedParallelConfig:
     def test_mesh_is_factored_between_the_two(self):
         """Each parallelism must end up on its own process group: TP within a CP chunk, CP across the TP groups.
 
-        With `mesh_shape=(ring=1, ulysses=2, tp=2)` over four ranks, "tp" is the fastest-varying dimension, so ranks
-        {0,1} and {2,3} are the TP groups and {0,2} / {1,3} are the CP groups. A TP all-reduce must not reach a rank
-        holding a different sequence chunk, and a CP collective must not reach a rank holding a different weight
-        shard — this asserts exactly that split.
+        With the default `mesh_shape=(tp=2, ring=1, ulysses=2)` over four ranks, "ulysses" is the fastest-varying
+        dimension, so ranks {0,1} and {2,3} are the CP groups and {0,2} / {1,3} are the TP groups. A TP all-reduce
+        must not reach a rank holding a different sequence chunk, and a CP collective must not reach a rank holding a
+        different weight shard — this asserts exactly that split.
         """
         world_size = 4
         results = _spawn(_mesh_factorization_worker, world_size, 2, 2)
@@ -145,12 +145,12 @@ class TestCombinedParallelConfig:
         for rank in range(world_size):
             assert results[rank]["status"] == "success", results[rank].get("error")
 
-        assert [results[r]["tp_ranks"] for r in range(4)] == [[0, 1], [0, 1], [2, 3], [2, 3]]
-        assert [results[r]["cp_ranks"] for r in range(4)] == [[0, 2], [1, 3], [0, 2], [1, 3]]
-        assert [results[r]["ulysses_local_rank"] for r in range(4)] == [0, 0, 1, 1]
+        assert [results[r]["tp_ranks"] for r in range(4)] == [[0, 2], [1, 3], [0, 2], [1, 3]]
+        assert [results[r]["cp_ranks"] for r in range(4)] == [[0, 1], [0, 1], [2, 3], [2, 3]]
+        assert [results[r]["ulysses_local_rank"] for r in range(4)] == [0, 1, 0, 1]
         # The TP shard index is the coordinate inside the TP group, which stops tracking the global rank as soon as
         # the mesh has more than one dimension. Weight sharding keys off this, so it is the value that matters.
-        assert [results[r]["tp_local_rank"] for r in range(4)] == [0, 1, 0, 1]
+        assert [results[r]["tp_local_rank"] for r in range(4)] == [0, 0, 1, 1]
         assert all(results[r]["tp_degree"] == 2 for r in range(4))
 
     def test_mesh_without_tp_dimension_is_rejected(self):
