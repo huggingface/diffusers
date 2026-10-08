@@ -5458,6 +5458,7 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
         return out
 
     @require_peft_backend
+    # Copied from diffusers.loaders.lora_pipeline.Flux2LoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
