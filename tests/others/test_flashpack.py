@@ -15,7 +15,6 @@
 
 import pytest
 
-from diffusers import AutoPipelineForText2Image
 from diffusers.models.auto_model import AutoModel
 
 from ..testing_utils import is_torch_available, require_flashpack, require_torch_gpu
@@ -40,6 +39,8 @@ class TestFlashPack:
 
     @require_flashpack
     def test_save_load_pipeline(self, tmp_path):
+        from diffusers import AutoPipelineForText2Image
+
         pipeline = AutoPipelineForText2Image.from_pretrained(self.model_id)
         pipeline.save_pretrained(tmp_path, use_flashpack=True)
         assert (tmp_path / "transformer" / "model.flashpack").exists()
