@@ -53,14 +53,14 @@ class PackedRowwiseParallel:
 class ReplicatedInputRowwiseParallel:
     """Row-wise sharding for a Linear whose input arrives replicated instead of column-sharded.
 
-    Plain `"rowwise"` is the second half of a colwise/rowwise pair, so it expects its input to already be `Shard(-1)`
-    — which it is when the preceding Linear was colwise-sharded. A Linear that instead reads a replicated activation,
+    Plain `"rowwise"` is the second half of a colwise/rowwise pair, so it expects its input to already be `Shard(-1)` —
+    which it is when the preceding Linear was colwise-sharded. A Linear that instead reads a replicated activation,
     such as a modulation projection off the shared timestep embedding, needs its input sharded on the way in (a local
     narrow, no collective) and its partial output all-reduced on the way out.
 
     Weight and bias shard exactly as for plain `"rowwise"`: the weight over its input columns, the bias replicated and
-    added after the all-reduce. Use this to shard a large standalone projection whose output must keep the full
-    feature dimension, where colwise sharding would need an extra all-gather to rebuild it.
+    added after the all-reduce. Use this to shard a large standalone projection whose output must keep the full feature
+    dimension, where colwise sharding would need an extra all-gather to rebuild it.
     """
 
 
