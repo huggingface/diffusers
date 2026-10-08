@@ -243,7 +243,7 @@ class MiniMaxH3ModularPipeline(ModularPipeline, MiniMaxH3LoraLoaderMixin):
     @property
     def min_duration(self):
         r"""Shortest video MiniMax-H3 generates, in seconds."""
-        return 5.0
+        return 0.0
 
     @property
     def max_duration(self):

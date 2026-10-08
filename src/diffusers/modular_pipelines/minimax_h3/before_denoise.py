@@ -14,7 +14,9 @@
 
 import numpy as np
 import torch
+from PIL import Image
 
+from ...models import AutoencoderKLMiniMaxH3
 from ...schedulers import MiniMaxH3Scheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
@@ -27,6 +29,7 @@ from .modular_pipeline import (
     resolve_canvas_size,
     video_latent_num_frames,
 )
+from .encoders import encode_vae_condition
 from .references import MiniMaxH3Reference
 
 
@@ -304,6 +307,8 @@ class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
             leading video and audio rows that are conditioning rather than generated.
         """
         _, patch_h, patch_w = patch_size
+        ## how many patches can fit into one frame 
+
         rows_per_frame = (latent_height // patch_h) * (latent_width // patch_w)
         num_text_tokens = text_token_tags.shape[0]
         num_condition_rows = len(keyframe_anchors) * rows_per_frame
@@ -317,7 +322,9 @@ class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
 
         # 1. The (t, h, w) grid. Text rows sit on the time axis at their row index, and the media rows continue the time
         # axis from there, so text length shifts the whole media clock.
+        ## returns 2D of shape [sequence_length, 3]
         position_ids = torch.zeros(sequence_length, 3, dtype=torch.float64)
+        ## indexing into 
         position_ids[:num_text_tokens, 0] = torch.arange(num_text_tokens, dtype=torch.float64)
 
         frame_grid, width_grid = _frame_position_grid(latent_height, latent_width, patch_h, patch_w)
@@ -785,8 +792,17 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
             "the audio noise directly in row layout, both off the request's generator, in that order. Every "
             "workflow generates the same way, so this is the same block for all of them; a request that conditions "
             "on something noises it *before* this block — the draw order is part of what its generator reproduces — "
-            "and puts it in front of these rows after."
+            "and puts it in front of these rows after. Given an `init_video` (or its `init_latents`) and a "
+            "`strength` below 1, the video rows start from that clip noised to `t = 1 - strength` instead of from "
+            "pure noise (SDEdit); the set-timesteps step then starts the video schedule at that level."
         )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("scheduler", MiniMaxH3Scheduler),
+            ComponentSpec("vae", AutoencoderKLMiniMaxH3),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -801,6 +817,41 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
                 type_hint=int,
                 required=True,
                 description="Number of audio latents per channel.",
+            ),
+            InputParam.template("height", description="Height of the generated video in pixels."),
+            InputParam.template("width", description="Width of the generated video in pixels."),
+            InputParam(
+                name="num_frames",
+                type_hint=int,
+                description="Resolved number of generated frames, which an `init_video` must hold exactly.",
+            ),
+            InputParam(
+                name="init_video",
+                description=(
+                    "A clip to start the video rows from instead of pure noise, e.g. a frame-interpolated "
+                    "inbetween of the keyframes: a list of images, a `(num_frames, height, width, 3)` array or a "
+                    "`(num_frames, 3, height, width)` tensor, `uint8` or floating point over `[0, 1]`, holding "
+                    "exactly `num_frames` frames. It is stretched onto the canvas, VAE-encoded, and noised to "
+                    "`t = 1 - strength`."
+                ),
+            ),
+            InputParam(
+                name="init_latents",
+                type_hint=torch.Tensor,
+                description=(
+                    "The already-encoded, normalized latents of an `init_video`, of shape `(1, 24, "
+                    "num_latent_frames, latent_height, latent_width)`; takes precedence over `init_video`."
+                ),
+            ),
+            InputParam(
+                name="strength",
+                type_hint=float,
+                default=1.0,
+                description=(
+                    "How much of the schedule the video rows run, in `(0, 1]`. With an `init_video`, the rows start "
+                    "from the clip noised to `t = 1 - strength`, so `1.0` ignores the clip and `0.0` would keep it "
+                    "untouched. Without one it must stay `1.0`."
+                ),
             ),
             InputParam.template(
                 "generator",
@@ -838,11 +889,87 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
             ),
         ]
 
+    @staticmethod
+    @torch.no_grad()
+    def encode_init_video(components: MiniMaxH3ModularPipeline, block_state) -> torch.Tensor:
+        r"""
+        Put an `init_video` onto the canvas and encode it into normalized latents.
+
+        The frames are stretched onto the canvas with LANCZOS, the same way the geometry-anchor keyframe is, so a clip
+        interpolated between the keyframes at their own resolution lands on the exact pixels the anchors do. The frame
+        count must already be the resolved `num_frames`, since the temporal chunking maps `17 * n + 5` frames to the
+        `5 * n + 2` latent frames the layout reserved.
+
+        Returns:
+            `torch.Tensor`: the `(1, latent_channels, num_latent_frames, latent_height, latent_width)` latents.
+        """
+        frames = block_state.init_video
+
+        if isinstance(frames, list):
+            frames = np.stack([np.asarray(frame.convert("RGB")) for frame in frames])
+        if isinstance(frames, torch.Tensor):
+            frames = frames.movedim(-3, -1).cpu().numpy()
+        frames = np.asarray(frames)
+        if frames.dtype != np.uint8:
+            frames = (frames * 255.0).round().clip(0, 255).astype(np.uint8)
+        if frames.ndim != 4 or frames.shape[3] != 3:
+            raise ValueError(
+                f"`init_video` must be `(num_frames, height, width, 3)` RGB frames, got {tuple(frames.shape)}."
+            )
+        if block_state.num_frames is not None and frames.shape[0] != block_state.num_frames:
+            raise ValueError(
+                f"`init_video` must hold exactly the {block_state.num_frames} generated frames (the requested "
+                f"`num_frames` rounded up to `17 * n + 5`), got {frames.shape[0]}."
+            )
+        
+        height, width = block_state.height, block_state.width
+
+        if height is None or width is None:
+            raise ValueError("`init_video` needs the resolved `height` and `width` of the request.")
+        
+        if frames.shape[1:3] != (height, width):
+            frames = np.stack(
+                [np.asarray(Image.fromarray(frame).resize((width, height), Image.Resampling.LANCZOS)) for frame in frames]
+            )
+            
+        pixels = torch.from_numpy(frames).to(components._execution_device).permute(3, 0, 1, 2)[None]
+        return encode_vae_condition(
+            components.vae, pixels, components.pixel_mean, components.pixel_std, components.keyframe_encode_seed
+        )
+
     @torch.no_grad()
     def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         device = components._execution_device
         patch_size = components.patch_size
+        latent_shape = (
+            1,
+            components.vae_latent_channels,
+            block_state.num_latent_frames,
+            block_state.latent_height,
+            block_state.latent_width,
+        )
+
+        '''
+        Validations for init_latents
+        '''
+        strength = float(block_state.strength)
+        if not 0.0 < strength <= 1.0:
+            raise ValueError(f"`strength` must be in `(0, 1]`, got {strength}.")
+        init_latents = block_state.init_latents
+
+        if init_latents is None and block_state.init_video is not None:
+            init_latents = self.encode_init_video(components, block_state)
+
+        if init_latents is None and strength < 1.0:
+            raise ValueError(
+                f"`strength` is {strength}, but there is no `init_video` or `init_latents` to start from. Pass "
+                "one, or leave `strength` at 1.0 to generate from pure noise."
+            )
+        if init_latents is not None and tuple(init_latents.shape) != latent_shape:
+            raise ValueError(
+                f"`init_latents` must have shape {latent_shape} for this request, got {tuple(init_latents.shape)}."
+            )
 
         # A request draws every stream from the one generator it is given, and the order is part of what that
         # generator reproduces: any conditioning noise first (drawn before this block), then the video noise as a
@@ -850,19 +977,11 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
         # draw and shifts the ones after it.
         latents = block_state.latents
         if latents is None:
-            latents = randn_tensor(
-                (
-                    1,
-                    components.vae_latent_channels,
-                    block_state.num_latent_frames,
-                    block_state.latent_height,
-                    block_state.latent_width,
-                ),
-                generator=block_state.generator,
-                device=device,
-                dtype=torch.float32,
-            )
-        video_rows = patchify_video_latents(latents.to(device, torch.float32), patch_size)
+            latents = randn_tensor(latent_shape, generator=block_state.generator, device=device, dtype=torch.float32)
+        latents = latents.to(device, torch.float32)
+        if init_latents is not None:
+            latents = components.scheduler.scale_noise(init_latents.to(device, torch.float32), 1.0 - strength, latents)
+        video_rows = patchify_video_latents(latents, patch_size)
 
         if block_state.audio_latents is None:
             audio_rows = randn_tensor(
@@ -1113,7 +1232,9 @@ class MiniMaxH3SetTimestepsStep(ModularPipelineBlocks):
             "Initializes the two schedules — `shift = 12.0` for video, `shift = 3.0` for audio — and stages the "
             "row-to-timestep plan of every step. One forward serves every modality and every noise level at once: "
             "the generated rows step down their own schedule while the conditioning rows stay pinned at their "
-            "noise-augmentation level, and that assignment is static per step."
+            "noise-augmentation level, and that assignment is static per step. A `strength` below 1 starts the video "
+            "schedule at `sigma = strength`, where the prepare-latents step noised the `init_video` to, and gives the "
+            "audio schedule the same number of steps from pure noise."
         )
 
     @property
@@ -1127,6 +1248,16 @@ class MiniMaxH3SetTimestepsStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("num_inference_steps", required=True),
+            InputParam(
+                name="strength",
+                type_hint=float,
+                default=1.0,
+                description=(
+                    "Where the video schedule starts, in `(0, 1]`: `1.0` is the full schedule from pure noise; a "
+                    "lower value runs `num_inference_steps` sigmas over `[strength, 0]` instead, for video rows that "
+                    "start from an `init_video` noised to `t = 1 - strength`."
+                ),
+            ),
             InputParam(
                 name="video_indices",
                 type_hint=torch.Tensor,
@@ -1175,6 +1306,40 @@ class MiniMaxH3SetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @staticmethod
+    def build_video_sigmas(shift: float, num_inference_steps: int, strength: float) -> torch.Tensor:
+        r"""
+        The video sigma schedule over `[strength, 0]`.
+
+        The full schedule is `linspace(1, 0, num_inference_steps)` pushed through the exponential shift. Truncating
+        that grid at `strength` would keep only a handful of points, since the shift packs the grid near `sigma = 1`;
+        instead the base grid is laid over `[shift^-1(strength), 0]` and shifted, so the truncated schedule keeps the
+        full step count and the shift's density profile. `strength = 1.0` reproduces the scheduler's own grid.
+
+        Args:
+            shift (`float`): The scheduler's exponential shift.
+            num_inference_steps (`int`): Number of sigma grid points, terminal `0` included.
+            strength (`float`): The first sigma of the schedule, in `(0, 1]`.
+
+        Returns:
+            `torch.Tensor`: the strictly decreasing float32 sigmas, `sigmas[0] == strength` exactly and `sigmas[-1] == 0`.
+        """
+        if not 0.0 < strength <= 1.0:
+            raise ValueError(f"`strength` must be in `(0, 1]`, got {strength}.")
+        # `sigma' = s*b / (1 + (s-1)*b)` inverts to `b = sigma' / (s - (s-1)*sigma')`.
+        base_start = strength / (shift - (shift - 1.0) * strength)
+        base = torch.linspace(base_start, 0.0, int(num_inference_steps), dtype=torch.float32)
+        sigmas = shift * base / (1 + (shift - 1) * base)
+        sigmas = torch.unique_consecutive(sigmas)
+        # The round trip through the shift is not exact in float32; the first sigma has to be the `t = 1 - strength`
+        # the init latents were noised to, so pin it.
+        sigmas[0] = strength
+        if sigmas.numel() < 2 or not bool((sigmas[1:] < sigmas[:-1]).all()):
+            raise ValueError(
+                f"`num_inference_steps={num_inference_steps}` leaves no usable schedule over `[{strength}, 0]`."
+            )
+        return sigmas
+
+    @staticmethod
     def build_row_timesteps(
         video_indices: torch.Tensor,
         audio_indices: torch.Tensor,
@@ -1220,10 +1385,23 @@ class MiniMaxH3SetTimestepsStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         device = components._execution_device
 
-        components.scheduler.set_timesteps(block_state.num_inference_steps, device=device)
-        components.audio_scheduler.set_timesteps(block_state.num_inference_steps, device=device)
+        strength = float(block_state.strength)
+        if strength == 1.0:
+            components.scheduler.set_timesteps(block_state.num_inference_steps, device=device)
+            components.audio_scheduler.set_timesteps(block_state.num_inference_steps, device=device)
+        else:
+            sigmas = self.build_video_sigmas(components.scheduler.shift, block_state.num_inference_steps, strength)
+            components.scheduler.set_timesteps(sigmas=sigmas, device=device)
+            # The loop pairs the two schedules step by step. The audio has no init to start from, so it runs its own
+            # full schedule, with as many sigmas as the truncated video one holds.
+            components.audio_scheduler.set_timesteps(int(sigmas.numel()), device=device)
         block_state.timesteps = components.scheduler.timesteps
         block_state.audio_timesteps = components.audio_scheduler.timesteps
+        if block_state.timesteps.numel() != block_state.audio_timesteps.numel():
+            raise ValueError(
+                f"The video schedule holds {block_state.timesteps.numel()} steps but the audio schedule "
+                f"{block_state.audio_timesteps.numel()}; the two are stepped in lockstep, so they must match."
+            )
 
         block_state.row_timestep_plan = [
             tuple(
