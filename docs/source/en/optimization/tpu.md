@@ -12,7 +12,8 @@ specific language governing permissions and limitations under the License.
 
 # TorchTPU
 
-[TorchTPU](https://github.com/google-pytorch/torch_tpu/) is a PyTorch backend for Google's Tensor Processing Units (TPUs), which lets you run Diffusers pipelines on Cloud TPUs (v6e, v5p, etc.) with minimal code changes.
+[TorchTPU](https://github.com/google-pytorch/torch_tpu/) is a PyTorch backend for Google's Tensor Processing Units
+(TPUs), which lets you run Diffusers pipelines on Cloud TPUs (v6e, v7x) with minimal code changes.
 
 Two execution modes are available:
 
@@ -149,3 +150,8 @@ Launch one process per chip. Set `--nproc_per_node` to use all the number of TPU
 eval $(python -m torch_tpu._internal.distributed.launchers.singlehost_wrapper | sed 's/^/export /')
 torchrun --nproc_per_node=8 flux2_tp.py
 ```
+
+> [!WARNING]
+> The launch command above uses a TorchTPU internal module (`torch_tpu._internal`), not a stable API, and is expected
+> to change in a future TorchTPU release. Check the [TorchTPU repository](https://github.com/google-pytorch/torch_tpu/)
+> for the current way to launch multi-chip jobs.
