@@ -886,7 +886,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
                         cond_mask[:, -1] = 1
                     latent_model_input = torch.cat([latents, cond_latents, cond_mask], dim=-1)
 
-                with self.transformer.cache_context("cond"):
+                with self.transformer.cache_context("cond", timestep=t):
                     noise_pred = self.transformer(
                         hidden_states=latent_model_input,
                         audio_hidden_states=audio_latents,
@@ -899,7 +899,7 @@ class Kandinsky6TI2VAPipeline(DiffusionPipeline):
                         return_dict=False,
                     )
                 if self.do_classifier_free_guidance:
-                    with self.transformer.cache_context("uncond"):
+                    with self.transformer.cache_context("uncond", timestep=t):
                         noise_pred_uncond = self.transformer(
                             hidden_states=latent_model_input,
                             audio_hidden_states=audio_latents,

@@ -926,24 +926,27 @@ class GlmImagePipeline(DiffusionPipeline):
                 split_sizes = prompt_grid_thw.prod(dim=-1).tolist()
                 prior_ids_per_image = torch.split(prompt_prior_ids, split_sizes)
                 # Process each condition image for this sample
-                for condition_image, condition_image_prior_token_id in zip(prompt_images, prior_ids_per_image):
+                for condition_image_idx, (condition_image, condition_image_prior_token_id) in enumerate(
+                    zip(prompt_images, prior_ids_per_image)
+                ):
                     condition_image = condition_image.to(device=device, dtype=prompt_embeds.dtype)
                     condition_latent = retrieve_latents(
                         self.vae.encode(condition_image), generator=generator, sample_mode="argmax"
                     )
                     condition_latent = (condition_latent - latents_mean) / latents_std
 
-                    _ = self.transformer(
-                        hidden_states=condition_latent,
-                        encoder_hidden_states=torch.zeros_like(prompt_embeds)[:1, :0, ...],
-                        prior_token_id=condition_image_prior_token_id,
-                        prior_token_drop=torch.full_like(condition_image_prior_token_id, False, dtype=torch.bool),
-                        timestep=torch.zeros((1,), device=device),
-                        target_size=torch.tensor([condition_image.shape[-2:]], device=device),
-                        crop_coords=torch.zeros((1, 2), device=device),
-                        attention_kwargs=attention_kwargs,
-                        kv_caches=kv_caches,
-                    )
+                    with self.transformer.cache_context(f"reference_{prompt_idx}_{condition_image_idx}", timestep=0):
+                        _ = self.transformer(
+                            hidden_states=condition_latent,
+                            encoder_hidden_states=torch.zeros_like(prompt_embeds)[:1, :0, ...],
+                            prior_token_id=condition_image_prior_token_id,
+                            prior_token_drop=torch.full_like(condition_image_prior_token_id, False, dtype=torch.bool),
+                            timestep=torch.zeros((1,), device=device),
+                            target_size=torch.tensor([condition_image.shape[-2:]], device=device),
+                            crop_coords=torch.zeros((1, 2), device=device),
+                            attention_kwargs=attention_kwargs,
+                            kv_caches=kv_caches,
+                        )
                 # Move to next sample's cache slot
                 kv_caches.next_sample()
 
@@ -999,28 +1002,12 @@ class GlmImagePipeline(DiffusionPipeline):
                 if prior_token_image_ids_per_sample is not None:
                     kv_caches.set_mode("read")
 
-                noise_pred_cond = self.transformer(
-                    hidden_states=latent_model_input,
-                    encoder_hidden_states=prompt_embeds,
-                    prior_token_id=prior_token_ids,
-                    prior_token_drop=prior_token_drop_cond,
-                    timestep=timestep,
-                    target_size=target_size,
-                    crop_coords=crops_coords_top_left,
-                    attention_kwargs=attention_kwargs,
-                    return_dict=False,
-                    kv_caches=kv_caches,
-                )[0].float()
-
-                # perform guidance
-                if self.do_classifier_free_guidance:
-                    if prior_token_image_ids_per_sample is not None:
-                        kv_caches.set_mode("skip")
-                    noise_pred_uncond = self.transformer(
+                with self.transformer.cache_context("cond", timestep=t):
+                    noise_pred_cond = self.transformer(
                         hidden_states=latent_model_input,
-                        encoder_hidden_states=negative_prompt_embeds,
+                        encoder_hidden_states=prompt_embeds,
                         prior_token_id=prior_token_ids,
-                        prior_token_drop=prior_token_drop_uncond,
+                        prior_token_drop=prior_token_drop_cond,
                         timestep=timestep,
                         target_size=target_size,
                         crop_coords=crops_coords_top_left,
@@ -1028,6 +1015,24 @@ class GlmImagePipeline(DiffusionPipeline):
                         return_dict=False,
                         kv_caches=kv_caches,
                     )[0].float()
+
+                # perform guidance
+                if self.do_classifier_free_guidance:
+                    if prior_token_image_ids_per_sample is not None:
+                        kv_caches.set_mode("skip")
+                    with self.transformer.cache_context("uncond", timestep=t):
+                        noise_pred_uncond = self.transformer(
+                            hidden_states=latent_model_input,
+                            encoder_hidden_states=negative_prompt_embeds,
+                            prior_token_id=prior_token_ids,
+                            prior_token_drop=prior_token_drop_uncond,
+                            timestep=timestep,
+                            target_size=target_size,
+                            crop_coords=crops_coords_top_left,
+                            attention_kwargs=attention_kwargs,
+                            return_dict=False,
+                            kv_caches=kv_caches,
+                        )[0].float()
 
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_cond - noise_pred_uncond)
                 else:

@@ -119,16 +119,17 @@ class Flux2LoopDenoiser(ModularPipelineBlocks):
 
         timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-        noise_pred = components.transformer(
-            hidden_states=latent_model_input,
-            timestep=timestep / 1000,
-            guidance=block_state.guidance,
-            encoder_hidden_states=block_state.prompt_embeds,
-            txt_ids=block_state.txt_ids,
-            img_ids=img_ids,
-            joint_attention_kwargs=block_state.joint_attention_kwargs,
-            return_dict=False,
-        )[0]
+        with components.transformer.cache_context("inference", timestep=t):
+            noise_pred = components.transformer(
+                hidden_states=latent_model_input,
+                timestep=timestep / 1000,
+                guidance=block_state.guidance,
+                encoder_hidden_states=block_state.prompt_embeds,
+                txt_ids=block_state.txt_ids,
+                img_ids=img_ids,
+                joint_attention_kwargs=block_state.joint_attention_kwargs,
+                return_dict=False,
+            )[0]
 
         noise_pred = noise_pred[:, : latents.size(1)]
         block_state.noise_pred = noise_pred
@@ -208,16 +209,17 @@ class Flux2KleinLoopDenoiser(ModularPipelineBlocks):
 
         timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-        noise_pred = components.transformer(
-            hidden_states=latent_model_input,
-            timestep=timestep / 1000,
-            guidance=None,
-            encoder_hidden_states=block_state.prompt_embeds,
-            txt_ids=block_state.txt_ids,
-            img_ids=img_ids,
-            joint_attention_kwargs=block_state.joint_attention_kwargs,
-            return_dict=False,
-        )[0]
+        with components.transformer.cache_context("inference", timestep=t):
+            noise_pred = components.transformer(
+                hidden_states=latent_model_input,
+                timestep=timestep / 1000,
+                guidance=None,
+                encoder_hidden_states=block_state.prompt_embeds,
+                txt_ids=block_state.txt_ids,
+                img_ids=img_ids,
+                joint_attention_kwargs=block_state.joint_attention_kwargs,
+                return_dict=False,
+            )[0]
 
         noise_pred = noise_pred[:, : latents.size(1)]
         block_state.noise_pred = noise_pred
@@ -341,15 +343,17 @@ class Flux2KleinBaseLoopDenoiser(ModularPipelineBlocks):
             components.guider.prepare_models(components.transformer)
             cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
 
-            noise_pred = components.transformer(
-                hidden_states=latent_model_input,
-                timestep=timestep / 1000,
-                guidance=None,
-                img_ids=img_ids,
-                joint_attention_kwargs=block_state.joint_attention_kwargs,
-                return_dict=False,
-                **cond_kwargs,
-            )[0]
+            context_name = getattr(guider_state_batch, components.guider._identifier_key)
+            with components.transformer.cache_context(context_name, timestep=t):
+                noise_pred = components.transformer(
+                    hidden_states=latent_model_input,
+                    timestep=timestep / 1000,
+                    guidance=None,
+                    img_ids=img_ids,
+                    joint_attention_kwargs=block_state.joint_attention_kwargs,
+                    return_dict=False,
+                    **cond_kwargs,
+                )[0]
             guider_state_batch.noise_pred = noise_pred[:, : latents.size(1)]
             components.guider.cleanup_models(components.transformer)
 
