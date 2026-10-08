@@ -117,24 +117,14 @@
     title: Hardware-specific acceleration
   - isExpanded: false
     sections:
-    - local: optimization/pruna
-      title: Pruna
-    - local: optimization/xformers
-      title: xFormers
-    - local: optimization/tome
-      title: Token merging
-    - local: optimization/deepcache
-      title: DeepCache
     - local: optimization/cache_dit
       title: CacheDiT
-    - local: optimization/tgate
-      title: TGATE
-    - local: optimization/xdit
-      title: xDiT
     - local: optimization/para_attn
       title: ParaAttention
-    - local: using-diffusers/image_quality
-      title: FreeU
+    - local: optimization/pruna
+      title: Pruna
+    - local: optimization/xdit
+      title: xDiT
     title: Community methods
   title: Optimize and scale
 - isExpanded: false
