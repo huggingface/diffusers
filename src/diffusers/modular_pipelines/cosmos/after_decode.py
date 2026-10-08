@@ -38,7 +38,9 @@ class Cosmos3ActionOutputStep(ModularPipelineBlocks):
         return [OutputParam("action", type_hint=list[torch.Tensor], description="Generated action vectors.")]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         action_output = None
         if block_state.action_mode in {"inverse_dynamics", "policy"} and block_state.action_latents is not None:
@@ -92,7 +94,9 @@ class Cosmos3ExportStep(ModularPipelineBlocks):
         return [OutputParam("output_path", type_hint=str, description="Path of the exported video file.")]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         output_path = str(block_state.output_path)
         fps = int(round(block_state.fps))

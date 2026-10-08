@@ -158,6 +158,16 @@ class PeftAdapterMixin:
         from peft.tuners.tuners_utils import BaseTunerLayer
 
         from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
+        from ..hooks.tensor_parallel import _raise_if_tensor_parallel
+
+        # `_tp_plan` covers the base `Linear` layers only, so the injected adapter weights would stay unsharded
+        # and the sharded base layer would be added to a full-sized adapter output.
+        _raise_if_tensor_parallel(
+            self,
+            "have a LoRA adapter loaded",
+            "The adapter layers are not covered by the model's `_tp_plan`. Load the adapter before sharding the "
+            "model.",
+        )
 
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
