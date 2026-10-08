@@ -12,36 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ...utils import logging
 from ..modular_pipeline import SequentialPipelineBlocks
 from ..modular_pipeline_utils import OutputParam
 from .before_denoise import (
-    WanPrepareLatentsStep,
-    WanSetTimestepsStep,
     WanTextInputStep,
+    WanVideoToVideoPrepareLatentsStep,
+    WanVideoToVideoSetTimestepsStep,
 )
 from .decoders import WanVaeDecoderStep
-from .denoise import (
-    WanDenoiseStep,
-)
-from .encoders import (
-    WanTextEncoderStep,
-)
+from .denoise import WanDenoiseStep
+from .encoders import WanTextEncoderStep, WanVideoVaeEncoderStep
 
 
-logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-# ====================
-# 1. DENOISE
-# ====================
-
-
-# inputs(text) -> set_timesteps -> prepare_latents -> denoise
 # auto_docstring
-class WanCoreDenoiseStep(SequentialPipelineBlocks):
+class WanVideoToVideoCoreDenoiseStep(SequentialPipelineBlocks):
     """
-    denoise block that takes encoded conditions and runs the denoising process.
+    Denoise the noisy input video latents for video-to-video generation.
 
       Components:
           transformer (`WanTransformer3DModel`) scheduler (`UniPCMultistepScheduler`) guider (`ClassifierFreeGuidance`)
@@ -54,21 +40,19 @@ class WanCoreDenoiseStep(SequentialPipelineBlocks):
           negative_prompt_embeds (`Tensor`, *optional*):
               Pre-generated negative text embeddings. Can be generated from text_encoder step.
           num_inference_steps (`None`, *optional*, defaults to 50):
-              TODO: Add description.
+              The number of denoising steps.
           timesteps (`None`, *optional*):
-              TODO: Add description.
+              Custom timesteps for the denoising process.
           sigmas (`None`, *optional*):
-              TODO: Add description.
-          height (`int`, *optional*):
-              TODO: Add description.
-          width (`int`, *optional*):
-              TODO: Add description.
-          num_frames (`int`, *optional*):
-              TODO: Add description.
+              Custom sigmas for the denoising process.
+          strength (`float`, *optional*, defaults to 0.8):
+              The amount of noise added to the input video latents.
+          video_latents (`Tensor`):
+              Normalized VAE latents of the input video.
           latents (`Tensor | NoneType`, *optional*):
-              TODO: Add description.
+              Pre-generated noisy video latents to use instead of adding noise to the input video.
           generator (`None`, *optional*):
-              TODO: Add description.
+              Torch generator for deterministic noise generation.
           attention_kwargs (`None`, *optional*):
               Additional kwargs for attention processors.
 
@@ -77,38 +61,33 @@ class WanCoreDenoiseStep(SequentialPipelineBlocks):
               Denoised latents.
     """
 
-    model_name = "wan"
+    model_name = "wan-v2v"
     block_classes = [
         WanTextInputStep,
-        WanSetTimestepsStep,
-        WanPrepareLatentsStep,
+        WanVideoToVideoSetTimestepsStep,
+        WanVideoToVideoPrepareLatentsStep,
         WanDenoiseStep,
     ]
     block_names = ["input", "set_timesteps", "prepare_latents", "denoise"]
 
     @property
     def description(self):
-        return "denoise block that takes encoded conditions and runs the denoising process."
+        return "Denoise the noisy input video latents for video-to-video generation."
 
     @property
     def outputs(self):
         return [OutputParam.template("latents")]
 
 
-# ====================
-# 2. BLOCKS (Wan2.1 text2video)
-# ====================
-
-
 # auto_docstring
-class WanBlocks(SequentialPipelineBlocks):
+class WanVideoToVideoBlocks(SequentialPipelineBlocks):
     """
-    Modular pipeline blocks for Wan2.1.
+    Modular pipeline blocks for Wan video-to-video generation.
 
       Components:
-          text_encoder (`UMT5EncoderModel`) tokenizer (`AutoTokenizer`) guider (`ClassifierFreeGuidance`) transformer
-          (`WanTransformer3DModel`) scheduler (`UniPCMultistepScheduler`) vae (`AutoencoderKLWan`) video_processor
-          (`VideoProcessor`)
+          text_encoder (`UMT5EncoderModel`) tokenizer (`AutoTokenizer`) guider (`ClassifierFreeGuidance`) vae
+          (`AutoencoderKLWan`) video_processor (`VideoProcessor`) transformer (`WanTransformer3DModel`) scheduler
+          (`UniPCMultistepScheduler`)
 
       Inputs:
           prompt (`None`, *optional*):
@@ -117,24 +96,26 @@ class WanBlocks(SequentialPipelineBlocks):
               The prompt or prompts not to guide video generation.
           max_sequence_length (`None`, *optional*, defaults to 512):
               Maximum sequence length for prompt encoding.
+          video (`None`):
+              The input video to transform.
+          height (`int`, *optional*):
+              The height in pixels of the generated video.
+          width (`int`, *optional*):
+              The width in pixels of the generated video.
+          generator (`None`, *optional*):
+              Torch generator for deterministic latent generation.
           num_videos_per_prompt (`None`, *optional*, defaults to 1):
               The number of videos to generate per prompt.
           num_inference_steps (`None`, *optional*, defaults to 50):
-              TODO: Add description.
+              The number of denoising steps.
           timesteps (`None`, *optional*):
-              TODO: Add description.
+              Custom timesteps for the denoising process.
           sigmas (`None`, *optional*):
-              TODO: Add description.
-          height (`int`, *optional*):
-              TODO: Add description.
-          width (`int`, *optional*):
-              TODO: Add description.
-          num_frames (`int`, *optional*):
-              TODO: Add description.
+              Custom sigmas for the denoising process.
+          strength (`float`, *optional*, defaults to 0.8):
+              The amount of noise added to the input video latents.
           latents (`Tensor | NoneType`, *optional*):
-              TODO: Add description.
-          generator (`None`, *optional*):
-              TODO: Add description.
+              Pre-generated noisy video latents to use instead of adding noise to the input video.
           attention_kwargs (`None`, *optional*):
               Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to np):
@@ -145,17 +126,18 @@ class WanBlocks(SequentialPipelineBlocks):
               The generated videos.
     """
 
-    model_name = "wan"
+    model_name = "wan-v2v"
     block_classes = [
         WanTextEncoderStep,
-        WanCoreDenoiseStep,
+        WanVideoVaeEncoderStep,
+        WanVideoToVideoCoreDenoiseStep,
         WanVaeDecoderStep,
     ]
-    block_names = ["text_encoder", "denoise", "decode"]
+    block_names = ["text_encoder", "vae_encoder", "denoise", "decode"]
 
     @property
     def description(self):
-        return "Modular pipeline blocks for Wan2.1."
+        return "Modular pipeline blocks for Wan video-to-video generation."
 
     @property
     def outputs(self):
