@@ -10,6 +10,7 @@ Please also check out our [Community Scripts](https://github.com/huggingface/dif
 
 | Example                                                                                                                               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Code Example                                                                              | Colab                                                                                                                                                                                                              |                                                        Author |
 |:--------------------------------------------------------------------------------------------------------------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:------------------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------:|
+|Echo-Memory Wan 2.1|[Echo-Memory](https://arxiv.org/abs/2606.09803) overlays the released `context_k1` DiT fine-tune onto official Wan 2.1 1.3B after remapping original DiffSynth/Wan keys to Diffusers transformer names.|[Echo-Memory Wan 2.1](#echo-memory-wan-21)|-|[Weiyang Jin](https://github.com/WayneJin0918)|
 |Spatiotemporal Skip Guidance (STG)|[Spatiotemporal Skip Guidance for Enhanced Video Diffusion Sampling](https://huggingface.co/papers/2411.18664) (CVPR 2025) enhances video diffusion models by generating a weaker model through layer skipping and using it as guidance, improving fidelity in models like HunyuanVideo, LTXVideo, and Mochi.|[Spatiotemporal Skip Guidance](#spatiotemporal-skip-guidance)|-|[Junha Hyung](https://junhahyung.github.io/), [Kinam Kim](https://kinam0252.github.io/), and [Ednaordinary](https://github.com/Ednaordinary)|
 |Adaptive Mask Inpainting|Adaptive Mask Inpainting algorithm from [Beyond the Contact: Discovering Comprehensive Affordance for 3D Objects from Pre-trained 2D Diffusion Models](https://github.com/snuvclab/coma) (ECCV '24, Oral) provides a way to insert human inside the scene image without altering the background, by inpainting with adapting mask.|[Adaptive Mask Inpainting](#adaptive-mask-inpainting)|-|[Hyeonwoo Kim](https://sshowbiz.xyz),[Sookwan Han](https://jellyheadandrew.github.io)|
 |Flux with CFG|[Flux with CFG](https://github.com/ToTheBeginning/PuLID/blob/main/docs/pulid_for_flux.md) provides an implementation of using CFG in [Flux](https://blackforestlabs.ai/announcing-black-forest-labs/).|[Flux with CFG](#flux-with-cfg)|[Notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/flux_with_cfg.ipynb)|[Linoy Tsaban](https://github.com/linoytsaban), [Apolinário](https://github.com/apolinario), and [Sayak Paul](https://github.com/sayakpaul)|
@@ -97,6 +98,44 @@ pipe = DiffusionPipeline.from_pretrained("stable-diffusion-v1-5/stable-diffusion
 ```
 
 ## Example usages
+
+### Echo-Memory Wan 2.1
+
+**Weiyang Jin and Echo Team**
+
+[Echo-Memory](https://arxiv.org/abs/2606.09803) is a controlled study of memory in action world models on Wan 2.1 1.3B. This community pipeline loads official [`Wan-AI/Wan2.1-T2V-1.3B-Diffusers`](https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B-Diffusers) and overlays the released [`context_k1`](https://huggingface.co/Echo-Team/Echo-Memory/tree/main/context_k1) row after remapping original DiffSynth / Wan keys to Diffusers transformer names (825 / 825 official keys). Extra action-MLP / SSM slots stay in the [Echo-Memory](https://github.com/Echo-Team-Joy-Future-Academy-JD/Echo-Memory) research stack.
+
+Already-converted transformer weights: [`Wayne-King/echo-memory-diffusers`](https://huggingface.co/Wayne-King/echo-memory-diffusers) (`context_k1-diffusers/diffusion_pytorch_model.safetensors`).
+
+#### Usage example
+
+```python
+import torch
+from diffusers import DiffusionPipeline
+from diffusers.utils import export_to_video
+
+pipe = DiffusionPipeline.from_pretrained(
+    "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
+    custom_pipeline="pipeline_echo_memory",
+    torch_dtype=torch.bfloat16,
+)
+pipe.load_echo_memory_weights()
+# or: pipe.load_converted_echo_memory_weights()
+pipe.to("cuda")
+
+frames = pipe(
+    prompt="A golden retriever running across a sunny green field, cinematic camera follow.",
+    negative_prompt="blurry, static, low quality, deformed",
+    height=480,
+    width=832,
+    num_frames=33,
+    num_inference_steps=30,
+    guidance_scale=5.0,
+).frames[0]
+export_to_video(frames, "echo_memory_context_k1.mp4", fps=16)
+```
+
+The same pipeline class is also hosted at [`Wayne-King/echo-memory-diffusers`](https://huggingface.co/Wayne-King/echo-memory-diffusers) for `custom_pipeline="Wayne-King/echo-memory-diffusers"` with `trust_remote_code=True`.
 
 ### Spatiotemporal Skip Guidance
 
