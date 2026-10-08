@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 
 from ..utils import logging
-from .hooks import HookRegistry, ModelHook, StateManager
+from .hooks import CacheContext, HookRegistry, ModelHook, StateManager
 
 
 logger = logging.get_logger(__name__)
@@ -226,6 +226,9 @@ class TaylorSeerCacheHook(ModelHook):
 
     @torch.compiler.disable
     def _measure_should_compute(self) -> bool:
+        if self.state_manager._context is None:
+            self.state_manager.set_context(CacheContext(name="cond_uncond"))
+
         state: TaylorSeerState = self.state_manager.get_state()
         state.current_step += 1
         current_step = state.current_step
