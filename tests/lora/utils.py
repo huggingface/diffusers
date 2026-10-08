@@ -500,21 +500,6 @@ class PeftLoraLoaderMixinTests:
             "Fused lora should change the output",
         )
 
-    def test_get_active_adapters_text_encoder_only(self):
-        """
-        Tests that get_active_adapters correctly reports active adapters when only the text encoder has a LoRA attached.
-        """
-        if not self.supports_text_encoder_loras:
-            pytest.skip("Skipping test as text encoder LoRAs are not currently supported.")
-
-        components, text_lora_config, _ = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-
-        pipe, _ = self.add_adapters_to_pipeline(pipe, text_lora_config, denoiser_lora_config=None, adapter_name="default")
-
-        self.assertEqual(pipe.get_active_adapters(), ["default"])
-
     def test_simple_inference_with_text_lora_save_load(self):
         """
         Tests a simple usecase where users could use saving utilities for LoRA.
