@@ -5,7 +5,7 @@ name: Diffusers Bot
 #   /diffusers-bot style           run `make style && make quality` and push the fixes to the PR branch
 #   /diffusers-bot review          request a Serge AI review (also works from an inline review comment)
 #   /diffusers-bot pytest <args>   run `pytest <args>` on a GPU runner, e.g.
-#                                  `/diffusers-bot pytest tests/models/test_modeling_common.py -k "some_test"`
+#                                  `/diffusers-bot pytest tests/models/test_modeling_utils.py -k "some_test"`
 #
 # Auth is checked once in the `authorize` job. Each subcommand lives in its
 # own reusable workflow file under .github/workflows/bot_*.yml.

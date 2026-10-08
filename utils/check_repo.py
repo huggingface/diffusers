@@ -320,7 +320,6 @@ def get_model_test_files():
     """
 
     _ignore_files = [
-        "test_modeling_common",
         "test_modeling_encoder_decoder",
         "test_modeling_flax_encoder_decoder",
         "test_modeling_flax_speech_encoder_decoder",
