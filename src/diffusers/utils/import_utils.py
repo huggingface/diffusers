@@ -211,6 +211,7 @@ _pytorch_retinaface_available, _pytorch_retinaface_version = _is_package_availab
 _better_profanity_available, _better_profanity_version = _is_package_available("better_profanity")
 _nltk_available, _nltk_version = _is_package_available("nltk")
 _cosmos_guardrail_available, _cosmos_guardrail_version = _is_package_available("cosmos_guardrail")
+_pan2_guardrail_available, _pan2_guardrail_version = _is_package_available("pan2_guardrail")
 _sageattention_available, _sageattention_version = _is_package_available("sageattention")
 _flash_attn_available, _flash_attn_version = _is_package_available("flash_attn")
 _flash_attn_3_available, _flash_attn_3_version = _is_package_available("flash_attn_3")
@@ -396,6 +397,10 @@ def is_nltk_available():
 
 def is_cosmos_guardrail_available():
     return _cosmos_guardrail_available
+
+
+def is_pan2_guardrail_available():
+    return _pan2_guardrail_available
 
 
 def is_hpu_available():

@@ -60,6 +60,7 @@ if is_torch_available():
     from .transformer_nucleusmoe_image import NucleusMoEImageTransformer2DModel
     from .transformer_omnigen import OmniGenTransformer2DModel
     from .transformer_ovis_image import OvisImageTransformer2DModel
+    from .transformer_pan2 import PAN2Transformer3DModel
     from .transformer_prx import PRXTransformer2DModel
     from .transformer_qwenimage import QwenImageTransformer2DModel
     from .transformer_qwenimage21 import QwenImage21Transformer2DModel

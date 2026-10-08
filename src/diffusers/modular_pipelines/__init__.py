@@ -141,6 +141,10 @@ else:
         "MiniMaxMusic3Blocks",
         "MiniMaxMusic3ModularPipeline",
     ]
+    _import_structure["pan2"] = [
+        "PAN2Blocks",
+        "PAN2ModularPipeline",
+    ]
     _import_structure["z_image"] = [
         "ZImageAutoBlocks",
         "ZImageModularPipeline",
@@ -216,6 +220,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SequentialPipelineBlocks,
         )
         from .modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, InsertableDict, OutputParam
+        from .pan2 import PAN2Blocks, PAN2ModularPipeline
         from .qwenimage import (
             QwenImageAutoBlocks,
             QwenImageEditAutoBlocks,
