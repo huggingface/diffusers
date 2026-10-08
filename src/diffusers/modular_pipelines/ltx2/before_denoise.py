@@ -25,6 +25,7 @@ from ...models import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video, LTX2VideoT
 # the other shared LTX-2 data/utilities enumerated in `encoders.py`. Imported from the pipelines path here only so
 # the draft is runnable.
 from ...pipelines.ltx2.pipeline_ltx2_ic_lora import LTX2ReferenceCondition
+from ...pipelines.ltx2.utils import conditioning_frame_rate
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
@@ -753,12 +754,13 @@ class LTX2PrepareCoordsStep(ModularPipelineBlocks):
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
             ),
             InputParam(
-                "conditioning_frame_rate",
+                "motion_speed",
                 type_hint=float,
+                default=1.0,
                 description=(
-                    "Frame rate the model is conditioned on (the time axis of the positional embeddings). Defaults "
-                    "to `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture "
-                    "rate differs from its playback rate, e.g. slow-motion LoRAs: `frame_rate / speed`."
+                    "Speed of the motion relative to real time. The positional embeddings are conditioned on "
+                    "`frame_rate / motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the "
+                    "Slow-Motion-Control LoRA's 5x slow motion. `frame_rate` stays the playback rate."
                 ),
             ),
             InputParam("audio_num_frames", type_hint=int, required=True),
@@ -804,7 +806,7 @@ class LTX2PrepareCoordsStep(ModularPipelineBlocks):
             latent_height,
             latent_width,
             device,
-            fps=block_state.conditioning_frame_rate or block_state.frame_rate,
+            fps=conditioning_frame_rate(block_state.frame_rate, block_state.motion_speed),
         )
         block_state.audio_coords = components.transformer.audio_rope.prepare_audio_coords(
             batch_size, block_state.audio_num_frames, device
@@ -878,12 +880,13 @@ class LTX2ConditionPrepareLatentsStep(ModularPipelineBlocks):
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
             ),
             InputParam(
-                "conditioning_frame_rate",
+                "motion_speed",
                 type_hint=float,
+                default=1.0,
                 description=(
-                    "Frame rate the model is conditioned on (the time axis of the positional embeddings). Defaults "
-                    "to `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture "
-                    "rate differs from its playback rate, e.g. slow-motion LoRAs: `frame_rate / speed`."
+                    "Speed of the motion relative to real time. The positional embeddings are conditioned on "
+                    "`frame_rate / motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the "
+                    "Slow-Motion-Control LoRA's 5x slow motion. `frame_rate` stays the playback rate."
                 ),
             ),
             InputParam(
@@ -1045,7 +1048,7 @@ class LTX2ConditionPrepareLatentsStep(ModularPipelineBlocks):
                 keyframe_latent_width=kf_latent_width,
                 pixel_frame_idx=(latent_idx - 1) * frame_scale_factor + 1,
                 num_pixel_frames=num_pixel_frames,
-                fps=block_state.conditioning_frame_rate or block_state.frame_rate,
+                fps=conditioning_frame_rate(block_state.frame_rate, block_state.motion_speed),
                 patch_size=spatial_patch,
                 patch_size_t=temporal_patch,
                 scale_factors=scale_factors,
@@ -1183,12 +1186,13 @@ class LTX2InContextPrepareLatentsStep(ModularPipelineBlocks):
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
             ),
             InputParam(
-                "conditioning_frame_rate",
+                "motion_speed",
                 type_hint=float,
+                default=1.0,
                 description=(
-                    "Frame rate the model is conditioned on (the time axis of the positional embeddings). Defaults "
-                    "to `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture "
-                    "rate differs from its playback rate, e.g. slow-motion LoRAs: `frame_rate / speed`."
+                    "Speed of the motion relative to real time. The positional embeddings are conditioned on "
+                    "`frame_rate / motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the "
+                    "Slow-Motion-Control LoRA's 5x slow motion. `frame_rate` stays the playback rate."
                 ),
             ),
             InputParam(
@@ -1349,7 +1353,7 @@ class LTX2InContextPrepareLatentsStep(ModularPipelineBlocks):
                 keyframe_latent_width=kf_latent_width,
                 pixel_frame_idx=(latent_idx - 1) * frame_scale_factor + 1,
                 num_pixel_frames=num_pixel_frames,
-                fps=block_state.conditioning_frame_rate or block_state.frame_rate,
+                fps=conditioning_frame_rate(block_state.frame_rate, block_state.motion_speed),
                 patch_size=spatial_patch,
                 patch_size_t=temporal_patch,
                 scale_factors=scale_factors,
@@ -1739,12 +1743,13 @@ class LTX2ConditionPrepareCoordsStep(ModularPipelineBlocks):
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
             ),
             InputParam(
-                "conditioning_frame_rate",
+                "motion_speed",
                 type_hint=float,
+                default=1.0,
                 description=(
-                    "Frame rate the model is conditioned on (the time axis of the positional embeddings). Defaults "
-                    "to `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture "
-                    "rate differs from its playback rate, e.g. slow-motion LoRAs: `frame_rate / speed`."
+                    "Speed of the motion relative to real time. The positional embeddings are conditioned on "
+                    "`frame_rate / motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the "
+                    "Slow-Motion-Control LoRA's 5x slow motion. `frame_rate` stays the playback rate."
                 ),
             ),
             InputParam("audio_num_frames", type_hint=int, required=True),
@@ -1796,7 +1801,7 @@ class LTX2ConditionPrepareCoordsStep(ModularPipelineBlocks):
             latent_height,
             latent_width,
             device,
-            fps=block_state.conditioning_frame_rate or block_state.frame_rate,
+            fps=conditioning_frame_rate(block_state.frame_rate, block_state.motion_speed),
         )
         block_state.video_coords = torch.cat([video_coords, block_state.appended_coords.to(video_coords.dtype)], dim=2)
         block_state.audio_coords = components.transformer.audio_rope.prepare_audio_coords(

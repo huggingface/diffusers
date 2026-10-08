@@ -183,23 +183,27 @@ class TestLTX25Text2VideoModularPipelineFast(
         assert (num_frames - 1) % pipe.vae_temporal_compression_ratio == 0
         assert 0 < num_frames <= round(2.0 * inputs["frame_rate"])
 
-    def test_conditioning_frame_rate_rescales_only_the_video_time_axis(self):
+    def test_motion_speed_rescales_only_the_video_time_axis(self):
         pipe = self.get_pipeline().to("cpu")
-        frame_rate = self.get_dummy_inputs()["frame_rate"]
         outputs = ["videos", "audio", "video_coords", "audio_coords"]
 
         default = pipe(**self.get_dummy_inputs(), output=outputs)
-        same = pipe(**self.get_dummy_inputs(), conditioning_frame_rate=frame_rate, output=outputs)
-        slow = pipe(**self.get_dummy_inputs(), conditioning_frame_rate=2 * frame_rate, output=outputs)
+        same = pipe(**self.get_dummy_inputs(), motion_speed=1.0, output=outputs)
+        slow = pipe(**self.get_dummy_inputs(), motion_speed=0.5, output=outputs)
 
         assert_tensors_close(same["videos"], default["videos"], atol=1e-6, rtol=0)
-        # A doubled conditioning rate halves the time axis of the video positions and nothing else.
+        # Half speed doubles the conditioning rate: the time axis of the video positions halves, nothing else moves.
         assert_tensors_close(slow["video_coords"][:, 0], default["video_coords"][:, 0] / 2, atol=1e-6, rtol=1e-6)
         assert torch.equal(slow["video_coords"][:, 1:], default["video_coords"][:, 1:])
         assert torch.equal(slow["audio_coords"], default["audio_coords"])
         assert slow["videos"].shape == default["videos"].shape
         assert slow["audio"].shape == default["audio"].shape
         assert not torch.allclose(slow["videos"], default["videos"])
+
+    def test_motion_speed_must_be_positive(self):
+        pipe = self.get_pipeline().to("cpu")
+        with pytest.raises(ValueError, match="motion_speed"):
+            pipe(**self.get_dummy_inputs(), motion_speed=0.0, output="videos")
 
 
 class TestLTX25Text2VideoModularPipelineLoading(LTX25Text2VideoModularPipelineTesterConfig, ModularLoadingTesterMixin):

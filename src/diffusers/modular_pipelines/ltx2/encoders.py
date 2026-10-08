@@ -44,6 +44,7 @@ from ...pipelines.ltx2.utils import (
     LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT,
     LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT,
     apply_image_conditioning_crf,
+    conditioning_frame_rate,
     resolve_default_image_crf,
 )
 from ...utils import logging
@@ -1198,12 +1199,13 @@ class LTX2ReferenceEncoderStep(ModularPipelineBlocks):
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
             ),
             InputParam(
-                "conditioning_frame_rate",
+                "motion_speed",
                 type_hint=float,
+                default=1.0,
                 description=(
-                    "Frame rate the model is conditioned on (the time axis of the positional embeddings). Defaults "
-                    "to `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture "
-                    "rate differs from its playback rate, e.g. slow-motion LoRAs: `frame_rate / speed`."
+                    "Speed of the motion relative to real time. The positional embeddings are conditioned on "
+                    "`frame_rate / motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the "
+                    "Slow-Motion-Control LoRA's 5x slow motion. `frame_rate` stays the playback rate."
                 ),
             ),
             InputParam.template("generator"),
@@ -1294,7 +1296,7 @@ class LTX2ReferenceEncoderStep(ModularPipelineBlocks):
                 height=ref_latent_height,
                 width=ref_latent_width,
                 device=device,
-                fps=block_state.conditioning_frame_rate or block_state.frame_rate,
+                fps=conditioning_frame_rate(block_state.frame_rate, block_state.motion_speed),
             )
             if downscale_factor != 1:
                 ref_coords[:, 1, :, :] = ref_coords[:, 1, :, :] * downscale_factor

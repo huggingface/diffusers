@@ -56,6 +56,9 @@ from .utils import (
     apply_image_conditioning_crf,
     resolve_default_image_crf,
 )
+from .utils import (
+    conditioning_frame_rate as get_conditioning_frame_rate,
+)
 from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
 
 
@@ -1787,7 +1790,7 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         width: int = 768,
         num_frames: int = 121,
         frame_rate: float = 24.0,
-        conditioning_frame_rate: float | None = None,
+        motion_speed: float = 1.0,
         num_inference_steps: int = 30,
         sigmas: list[float] | None = None,
         timesteps: list[float] | None = None,
@@ -1865,11 +1868,11 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                 The number of video frames to generate. Must satisfy `(n - 1) % 8 == 0`.
             frame_rate (`float`, *optional*, defaults to `24.0`):
                 The frames per second (FPS) of the generated video.
-            conditioning_frame_rate (`float`, *optional*):
-                The frame rate the model is conditioned on, i.e. the time axis of the positional embeddings. Defaults
-                to `frame_rate`. Set it apart from `frame_rate` for adapters trained on footage whose capture rate
-                differs from its playback rate, e.g. a slow-motion LoRA at `frame_rate / speed`. Audio duration and the
-                predicted number of frames keep following `frame_rate`.
+            motion_speed (`float`, *optional*, defaults to `1.0`):
+                Speed of the motion relative to real time. The positional embeddings are conditioned on `frame_rate /
+                motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the Slow-Motion-Control LoRA's 5x
+                slow motion. `frame_rate` stays the playback rate: audio duration and the predicted number of frames
+                follow it.
             num_inference_steps (`int`, *optional*, defaults to 30):
                 The number of denoising steps.
             sigmas (`List[float]`, *optional*):
@@ -1970,7 +1973,7 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         audio_modality_scale = audio_modality_scale or modality_scale
         audio_guidance_rescale = audio_guidance_rescale or guidance_rescale
 
-        conditioning_frame_rate = conditioning_frame_rate if conditioning_frame_rate is not None else frame_rate
+        conditioning_frame_rate = get_conditioning_frame_rate(frame_rate, motion_speed)
 
         # 1. Check inputs
         self.check_inputs(
