@@ -24,6 +24,8 @@
       title: Schedulers
     - local: using-diffusers/weighted_prompts
       title: Prompting
+    - local: using-diffusers/image_quality
+      title: FreeU
     - local: using-diffusers/reusing_seeds
       title: Reproducibility
     - local: using-diffusers/callback
@@ -68,24 +70,14 @@
     title: Inference
   - isExpanded: false
     sections:
-    - local: optimization/pruna
-      title: Pruna
-    - local: optimization/xformers
-      title: xFormers
-    - local: optimization/tome
-      title: Token merging
-    - local: optimization/deepcache
-      title: DeepCache
     - local: optimization/cache_dit
       title: CacheDiT
-    - local: optimization/tgate
-      title: TGATE
-    - local: optimization/xdit
-      title: xDiT
     - local: optimization/para_attn
       title: ParaAttention
-    - local: using-diffusers/image_quality
-      title: FreeU
+    - local: optimization/pruna
+      title: Pruna
+    - local: optimization/xdit
+      title: xDiT
     title: Community methods
   - isExpanded: false
     sections:
@@ -210,6 +202,8 @@
     title: Training methods
   - local: training/nemo_automodel
     title: NeMo Automodel
+  - local: training/jobs
+    title: Hugging Face Jobs
   title: Train and fine-tune
 - isExpanded: false
   sections:
@@ -375,6 +369,8 @@
         title: JoyImageEditPlusTransformer3DModel
       - local: api/models/transformer_joyimage
         title: JoyImageEditTransformer3DModel
+      - local: api/models/kandinsky6_transformer
+        title: Kandinsky 6 Transformers
       - local: api/models/krea2_transformer2d
         title: Krea2Transformer2DModel
       - local: api/models/latte_transformer3d
@@ -501,6 +497,8 @@
         title: AutoencoderSAME
       - local: api/models/consistency_decoder_vae
         title: ConsistencyDecoderVAE
+      - local: api/models/kandinsky6_vae
+        title: Kandinsky 6 VAEs
       - local: api/models/ltx2_diffusion_decoder
         title: LTX2VideoDiffusionDecoderModel
       - local: api/models/autoencoder_oobleck
@@ -725,6 +723,8 @@
         title: HunyuanVideo1.5
       - local: api/pipelines/kandinsky5_video
         title: Kandinsky 5.0 Video
+      - local: api/pipelines/kandinsky6
+        title: Kandinsky 6
       - local: api/pipelines/latte
         title: Latte
       - local: api/pipelines/ltx2
@@ -816,6 +816,8 @@
       title: LMSDiscreteScheduler
     - local: api/schedulers/minimax_h3
       title: MiniMaxH3Scheduler
+    - local: api/schedulers/piflow
+      title: PiflowScheduler
     - local: api/schedulers/pndm
       title: PNDMScheduler
     - local: api/schedulers/repaint
