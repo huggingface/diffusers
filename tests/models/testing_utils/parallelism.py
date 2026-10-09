@@ -970,7 +970,17 @@ class ContextParallelAttentionBackendsTesterMixin:
 
 
 def _hybrid_parallel_worker(
-    rank, world_size, master_port, model_class, init_dict, cp_dict, tp_degree, inputs_dict, return_dict, state_dict
+    rank,
+    world_size,
+    master_port,
+    model_class,
+    init_dict,
+    cp_dict,
+    tp_degree,
+    inputs_dict,
+    return_dict,
+    state_dict,
+    checkpoint_dir=None,
 ):
     """Worker function for combined tensor + context parallel inference testing.
 
@@ -978,6 +988,9 @@ def _hybrid_parallel_worker(
     each rank holds `1 / tp_degree` of every sharded weight *and* `1 / (ring_degree * ulysses_degree)` of the
     sequence. Rank 0 reports its output so the caller can compare it against a single-device reference: the
     composition is mathematically equivalent to the unsharded model up to floating-point reduction order.
+
+    With `checkpoint_dir`, the model is loaded with `from_pretrained(..., parallel_config=...)` instead, which shards
+    while reading the checkpoint and must still apply the context parallel hooks.
     """
     try:
         os.environ["MASTER_ADDR"] = "localhost"
@@ -994,19 +1007,28 @@ def _hybrid_parallel_worker(
         device_module.set_device(rank)
         device = torch.device(f"{torch_device}:{rank}")
 
-        model = model_class(**init_dict)
-        model.load_state_dict(state_dict)
-        model.to(device)
-        model.eval()
+        parallel_config = ParallelConfig(
+            tensor_parallel_config=TensorParallelConfig(tp_degree=tp_degree),
+            context_parallel_config=ContextParallelConfig(**cp_dict),
+        )
+        if checkpoint_dir is not None:
+            model = model_class.from_pretrained(checkpoint_dir, parallel_config=parallel_config).eval()
+            cp_hooks = [
+                name
+                for module in model.modules()
+                if getattr(module, "_diffusers_hook", None) is not None
+                for name in module._diffusers_hook.hooks
+                if name.startswith("cp_")
+            ]
+            assert cp_hooks, "`from_pretrained(parallel_config=...)` applied no context parallel hooks."
+        else:
+            model = model_class(**init_dict)
+            model.load_state_dict(state_dict)
+            model.to(device)
+            model.eval()
+            model.enable_parallelism(config=parallel_config)
 
         inputs_on_device = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
-
-        model.enable_parallelism(
-            config=ParallelConfig(
-                tensor_parallel_config=TensorParallelConfig(tp_degree=tp_degree),
-                context_parallel_config=ContextParallelConfig(**cp_dict),
-            )
-        )
 
         with torch.no_grad():
             output = model(**inputs_on_device, return_dict=False)[0]
@@ -1035,7 +1057,8 @@ class HybridParallelTesterMixin:
     Needs `tp_degree * ulysses_degree` accelerators (4 at the degrees used here), so it skips on a 2-device runner.
     """
 
-    def test_hybrid_parallel_inference(self, batch_size: int = 1):
+    @pytest.mark.parametrize("load", ["enable_parallelism", "from_pretrained"])
+    def test_hybrid_parallel_inference(self, tmp_path, load, batch_size: int = 1):
         if not torch.distributed.is_available():
             pytest.skip("torch.distributed is not available.")
 
@@ -1068,6 +1091,11 @@ class HybridParallelTesterMixin:
 
         inputs_dict = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
 
+        checkpoint_dir = None
+        if load == "from_pretrained":
+            checkpoint_dir = str(tmp_path / "checkpoint")
+            model.save_pretrained(checkpoint_dir)
+
         master_port = _find_free_port()
         manager = mp.Manager()
         return_dict = manager.dict()
@@ -1084,6 +1112,7 @@ class HybridParallelTesterMixin:
                 inputs_dict,
                 return_dict,
                 state_dict,
+                checkpoint_dir,
             ),
             nprocs=world_size,
             join=True,

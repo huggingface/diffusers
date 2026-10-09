@@ -353,11 +353,12 @@ class TestFluxTransformerHybridParallelNeuron:
     `HybridParallelTesterMixin`. Runs at `tp_degree=2 x ulysses_degree=4`, i.e. 8 ranks.
     """
 
-    def test_hybrid_parallel_neuron_inference(self):
+    @pytest.mark.parametrize("load", ["enable_parallelism", "from_pretrained"])
+    def test_hybrid_parallel_neuron_inference(self, load):
         worker = os.path.join(os.path.dirname(__file__), "_neuron_hybrid_worker.py")
         spec = "tests.models.transformers.test_models_transformer_flux:make_neuron_hybrid_spec"
         cmd = [sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=8", worker, spec]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, env={**os.environ, "LOAD_MODE": load})
         assert result.returncode == 0, (
             f"Neuron hybrid-parallel worker failed (exit {result.returncode}).\n"
             f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"

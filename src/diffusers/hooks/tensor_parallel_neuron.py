@@ -28,7 +28,7 @@ bug in the first place.
 import torch
 import torch.nn as nn
 
-from .tensor_parallel import TPShardSpec, _pre_shard_and_parallelize
+from .tensor_parallel import TPShardSpec, _hooks_only_styles, _local_shard
 
 
 def _apply_tp_neuron(
@@ -45,4 +45,31 @@ def _apply_tp_neuron(
 
     Model weights must be on CPU when this is called.
     """
-    _pre_shard_and_parallelize(model, tp_mesh, groups, specs, torch.neuron.current_device())
+    from torch.distributed.tensor import DTensor, Replicate, Shard
+    from torch.distributed.tensor.parallel import parallelize_module
+
+    device = torch.neuron.current_device()
+
+    for name, spec in specs.items():
+        path, _, param_name = name.rpartition(".")
+        module = model.get_submodule(path)
+        param = getattr(module, param_name)
+
+        if spec.dim is None:
+            # A rowwise bias is added after the all-reduce, so every rank needs the whole vector.
+            local, placement = param.data, Replicate()
+        else:
+            local, placement = _local_shard(param.data, spec.dim, spec.block_sizes, tp_mesh), Shard(spec.dim)
+
+        module.register_parameter(
+            param_name,
+            nn.Parameter(
+                DTensor.from_local(local.to(device), tp_mesh, [placement]),
+                requires_grad=param.requires_grad,
+            ),
+        )
+
+    # `parallelize_module` is now a no-op for weight distribution (they are already DTensors) but still registers the
+    # input/output hooks required for the forward pass.
+    for block, relative_plan in groups:
+        parallelize_module(block, tp_mesh, _hooks_only_styles(relative_plan))

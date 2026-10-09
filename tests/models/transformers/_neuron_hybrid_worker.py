@@ -37,6 +37,7 @@ import argparse
 import importlib
 import os
 import sys
+import tempfile
 import traceback
 
 
@@ -82,12 +83,26 @@ def main():
     with torch.no_grad():
         ref_output = model(**inputs, return_dict=False)[0].float().cpu()
 
-    model.enable_parallelism(
-        config=ParallelConfig(
-            tensor_parallel_config=TensorParallelConfig(tp_degree=tp_degree),
-            context_parallel_config=ContextParallelConfig(ulysses_degree=ulysses_degree),
-        )
+    parallel_config = ParallelConfig(
+        tensor_parallel_config=TensorParallelConfig(tp_degree=tp_degree),
+        context_parallel_config=ContextParallelConfig(ulysses_degree=ulysses_degree),
     )
+    if os.environ.get("LOAD_MODE", "enable_parallelism") == "from_pretrained":
+        # The sharded-load path: every rank reads only its own slice of the checkpoint.
+        # Every rank holds the same weights, so each saves and reloads its own copy.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model.save_pretrained(tmpdir)
+            model = model_class.from_pretrained(tmpdir, parallel_config=parallel_config).eval()
+        cp_hooks = [
+            name
+            for module in model.modules()
+            if getattr(module, "_diffusers_hook", None) is not None
+            for name in module._diffusers_hook.hooks
+            if name.startswith("cp_")
+        ]
+        assert cp_hooks, "from_pretrained(parallel_config=TP+CP) applied no context parallel hooks"
+    else:
+        model.enable_parallelism(config=parallel_config)
     model = model.to(device)
     torch.neuron.synchronize()
 

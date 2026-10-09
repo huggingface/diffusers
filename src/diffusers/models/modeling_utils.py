@@ -1559,6 +1559,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         module = model.get_submodule(module_path) if module_path else model
                         module._buffers[buffer_name] = buffer.to(tp_device)
 
+                # Same order as `enable_parallelism`: context parallel hooks first, then tensor parallel ones.
+                if parallel_config.context_parallel_config is not None:
+                    model._apply_context_parallel(parallel_config)
                 apply_tensor_parallel(model, tp_config, cls._tp_plan, weights_already_sharded=True)
             else:
                 model.enable_parallelism(config=parallel_config)
@@ -1802,11 +1805,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             "`enable_parallelism` is an experimental feature. The API may change in the future and breaking changes may be introduced at any time without warning."
         )
 
-        from ..hooks.context_parallel import apply_context_parallel
-        from .attention import AttentionModuleMixin
-        from .attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
-        from .attention_processor import Attention, MochiAttention
-
         if self._parallel_config is not None:
             raise RuntimeError(
                 f"Parallelism is already applied to this {self.__class__.__name__}. `enable_parallelism` cannot be "
@@ -1833,59 +1831,73 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         config = self._resolve_parallel_config(config)
 
-        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
-
         if config.context_parallel_config is not None:
-            for module in self.modules():
-                if not isinstance(module, attention_classes):
-                    continue
-
-                processor = module.processor
-                if processor is None or not hasattr(processor, "_attention_backend"):
-                    continue
-
-                attention_backend = processor._attention_backend
-                if attention_backend is None:
-                    attention_backend, _ = _AttentionBackendRegistry.get_active_backend()
-                else:
-                    attention_backend = AttentionBackendName(attention_backend)
-
-                if not _AttentionBackendRegistry._is_context_parallel_available(attention_backend):
-                    compatible_backends = sorted(_AttentionBackendRegistry._supports_context_parallel)
-                    raise ValueError(
-                        f"Context parallelism is enabled but the attention processor '{processor.__class__.__name__}' "
-                        f"is using backend '{attention_backend.value}' which does not support context parallelism. "
-                        f"Please set a compatible attention backend: {compatible_backends} using `model.set_attention_backend()` before "
-                        f"calling `model.enable_parallelism()`."
-                    )
-
-                # All modules use the same attention processor and backend. We don't need to
-                # iterate over all modules after checking the first processor
-                break
-
-        # Only context parallelism needs the config inside attention: it replaces the attention computation itself
-        # (Ulysses all-to-all / ring). Tensor parallelism only shards `Linear` weights, so each rank runs the ordinary
-        # attention op over its own heads and the processors must stay unaware of it.
-        if config.context_parallel_config is not None:
-            for module in self.modules():
-                if not isinstance(module, attention_classes):
-                    continue
-                processor = module.processor
-                if processor is None or not hasattr(processor, "_parallel_config"):
-                    continue
-                processor._parallel_config = config
-
-            if cp_plan is None and self._cp_plan is None:
-                raise ValueError(
-                    "`cp_plan` must be provided either as an argument or set in the model's `_cp_plan` attribute."
-                )
-            cp_plan = cp_plan if cp_plan is not None else self._cp_plan
-            apply_context_parallel(self, config.context_parallel_config, cp_plan)
+            self._apply_context_parallel(config, cp_plan)
 
         if config.tensor_parallel_config is not None:
             from ..hooks.tensor_parallel import apply_tensor_parallel
 
             apply_tensor_parallel(self, config.tensor_parallel_config, self._tp_plan)
+
+    def _apply_context_parallel(
+        self, config: ParallelConfig, cp_plan: dict[str, ContextParallelModelPlan] | None = None
+    ) -> None:
+        """Apply `config.context_parallel_config` to a model whose `config` was already resolved.
+
+        Shared by `enable_parallelism` and the sharded `from_pretrained` path, which resolves the config before
+        loading.
+        """
+        from ..hooks.context_parallel import apply_context_parallel
+        from .attention import AttentionModuleMixin
+        from .attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
+        from .attention_processor import Attention, MochiAttention
+
+        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
+
+        for module in self.modules():
+            if not isinstance(module, attention_classes):
+                continue
+
+            processor = module.processor
+            if processor is None or not hasattr(processor, "_attention_backend"):
+                continue
+
+            attention_backend = processor._attention_backend
+            if attention_backend is None:
+                attention_backend, _ = _AttentionBackendRegistry.get_active_backend()
+            else:
+                attention_backend = AttentionBackendName(attention_backend)
+
+            if not _AttentionBackendRegistry._is_context_parallel_available(attention_backend):
+                compatible_backends = sorted(_AttentionBackendRegistry._supports_context_parallel)
+                raise ValueError(
+                    f"Context parallelism is enabled but the attention processor '{processor.__class__.__name__}' "
+                    f"is using backend '{attention_backend.value}' which does not support context parallelism. "
+                    f"Please set a compatible attention backend: {compatible_backends} using `model.set_attention_backend()` before "
+                    f"calling `model.enable_parallelism()`."
+                )
+
+            # All modules use the same attention processor and backend. We don't need to
+            # iterate over all modules after checking the first processor
+            break
+
+        # Only context parallelism needs the config inside attention: it replaces the attention computation itself
+        # (Ulysses all-to-all / ring). Tensor parallelism only shards `Linear` weights, so each rank runs the ordinary
+        # attention op over its own heads and the processors must stay unaware of it.
+        for module in self.modules():
+            if not isinstance(module, attention_classes):
+                continue
+            processor = module.processor
+            if processor is None or not hasattr(processor, "_parallel_config"):
+                continue
+            processor._parallel_config = config
+
+        if cp_plan is None and self._cp_plan is None:
+            raise ValueError(
+                "`cp_plan` must be provided either as an argument or set in the model's `_cp_plan` attribute."
+            )
+        cp_plan = cp_plan if cp_plan is not None else self._cp_plan
+        apply_context_parallel(self, config.context_parallel_config, cp_plan)
 
     @classmethod
     def _load_pretrained_model(
@@ -2001,6 +2013,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 low_cpu_mem_usage=low_cpu_mem_usage,
                 disable_mmap=disable_mmap,
             )
+
         if is_parallel_loading_enabled:
             offload_index, state_dict_index, _mismatched_keys, _error_msgs = load_fn(resolved_model_file)
             error_msgs += _error_msgs
