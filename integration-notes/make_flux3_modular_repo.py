@@ -13,7 +13,6 @@ Scheduler, guider and image processor are `from_config` components created by th
 
 import argparse
 import os
-import shutil
 import subprocess
 import sys
 
@@ -80,10 +79,5 @@ pipe.save_pretrained(
     push_to_hub=args.push_to_hub is not None,
     repo_id=args.push_to_hub,
     private=True,
-)
-# `AutoProcessor.from_pretrained(..., subfolder="tokenizer")` needs the model config next to the processor files
-# under the pinned transformers (see the README); the package already ships it, keep it
-shutil.copy(
-    os.path.join(args.package, "tokenizer", "config.json"), os.path.join(args.output, "tokenizer", "config.json")
 )
 print(f"saved {args.output}")
