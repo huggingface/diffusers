@@ -45,13 +45,16 @@ from .lora_conversion_utils import (
     _convert_hunyuan_video_lora_to_diffusers,
     _convert_kohya_flux2_lora_to_diffusers,
     _convert_kohya_flux_lora_to_diffusers,
+    _convert_lycoris_flux2_lokr_to_diffusers,
     _convert_musubi_wan_lora_to_diffusers,
     _convert_non_diffusers_ace_step_lora_to_diffusers,
     _convert_non_diffusers_anima_lora_to_diffusers,
+    _convert_non_diffusers_flux2_lokr_to_diffusers,
     _convert_non_diffusers_flux2_lora_to_diffusers,
     _convert_non_diffusers_hidream_lora_to_diffusers,
     _convert_non_diffusers_ideogram4_lora_to_diffusers,
     _convert_non_diffusers_krea2_lora_to_diffusers,
+    _convert_non_diffusers_lokr_to_diffusers,
     _convert_non_diffusers_lora_to_diffusers,
     _convert_non_diffusers_ltx2_lora_to_diffusers,
     _convert_non_diffusers_ltxv_lora_to_diffusers,
@@ -5443,14 +5446,19 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
         has_lora_unet = any(k.startswith("lora_unet_") for k in state_dict)
         has_diffusion_model = any(k.startswith("diffusion_model.") for k in state_dict)
         has_default = any("default." in k for k in state_dict)
-        if has_alphas_in_sd or has_lora_unet or has_diffusion_model or has_default:
+        is_lokr = any(".lokr_" in k for k in state_dict)
+        if is_lokr:
+            # ai-toolkit Z-Image LoKr checkpoints store module paths that already match the diffusers model.
+            if has_diffusion_model or has_alphas_in_sd:
+                state_dict = _convert_non_diffusers_lokr_to_diffusers(state_dict)
+        elif has_alphas_in_sd or has_lora_unet or has_diffusion_model or has_default:
             state_dict = _convert_non_diffusers_z_image_lora_to_diffusers(state_dict)
 
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
     @require_peft_backend
-    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
+    # Copied from diffusers.loaders.lora_pipeline.Flux2LoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
@@ -5471,9 +5479,9 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
         kwargs["return_lora_metadata"] = True
         state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
-        is_correct_format = all("lora" in key for key in state_dict.keys())
+        is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,
@@ -5831,15 +5839,23 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         if is_peft_format:
             state_dict = {k.replace("base_model.model.", "diffusion_model."): v for k, v in state_dict.items()}
 
+        is_lokr = any(".lokr_" in k for k in state_dict)
         is_ai_toolkit = any(k.startswith("diffusion_model.") for k in state_dict)
-        if is_ai_toolkit:
+        if is_lokr:
+            if any(k.startswith("lycoris_") for k in state_dict):
+                state_dict = _convert_lycoris_flux2_lokr_to_diffusers(state_dict)
+            elif is_ai_toolkit:
+                state_dict = _convert_non_diffusers_flux2_lokr_to_diffusers(state_dict)
+            elif not any(k.startswith("transformer.") for k in state_dict):
+                # Bare dotted diffusers module paths (e.g. SimpleTuner exports), possibly with alpha keys.
+                state_dict = _convert_non_diffusers_lokr_to_diffusers(state_dict)
+        elif is_ai_toolkit:
             state_dict = _convert_non_diffusers_flux2_lora_to_diffusers(state_dict)
 
         out = (state_dict, metadata) if return_lora_metadata else state_dict
         return out
 
     @require_peft_backend
-    # Copied from diffusers.loaders.lora_pipeline.CogVideoXLoraLoaderMixin.load_lora_weights
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: str | dict[str, torch.Tensor],
@@ -5860,9 +5876,9 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
         kwargs["return_lora_metadata"] = True
         state_dict, metadata = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
-        is_correct_format = all("lora" in key for key in state_dict.keys())
+        is_correct_format = all("lora" in key or "lokr" in key for key in state_dict.keys())
         if not is_correct_format:
-            raise ValueError("Invalid LoRA checkpoint. Make sure all LoRA param names contain `'lora'` substring.")
+            raise ValueError("Invalid adapter checkpoint. We currently support LoRA and LoKr.")
 
         self.load_lora_into_transformer(
             state_dict,
