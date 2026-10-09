@@ -24,10 +24,51 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.pipeline_loading_utils import is_safetensors_compatible, variant_compatible_siblings
+from diffusers.pipelines.pipeline_loading_utils import (
+    _get_custom_component_files,
+    is_safetensors_compatible,
+    variant_compatible_siblings,
+)
 
 from ..others.test_utils import TOKEN, USER, is_staging_test
 from ..testing_utils import require_torch_accelerator, torch_device
+
+
+class TestCustomComponentFiles:
+    def test_relative_dependencies_only(self, tmp_path, monkeypatch):
+        component = tmp_path / "text_encoder"
+        component.mkdir()
+        (component / "modeling.py").write_text("from .configuration import Config\nfrom .ops import operation\n")
+        (component / "configuration.py").write_text("from .constants import VALUE\n")
+        (component / "ops.py").write_text("from .constants import VALUE\n")
+        (component / "constants.py").write_text("VALUE = 1\n")
+        (component / "unrelated.py").write_text("raise RuntimeError('unrelated module')\n")
+
+        def download(repo_id, filename, **kwargs):
+            return str(tmp_path / filename)
+
+        monkeypatch.setattr("diffusers.pipelines.pipeline_loading_utils.hf_hub_download", download)
+        files = _get_custom_component_files("local/test", {"text_encoder": "modeling"})
+        assert files == [
+            "text_encoder/configuration.py",
+            "text_encoder/constants.py",
+            "text_encoder/modeling.py",
+            "text_encoder/ops.py",
+        ]
+
+    def test_circular_dependencies(self, tmp_path, monkeypatch):
+        component = tmp_path / "text_encoder"
+        component.mkdir()
+        (component / "modeling.py").write_text("from .configuration import Config\n")
+        (component / "configuration.py").write_text("from .modeling import Model\n")
+        monkeypatch.setattr(
+            "diffusers.pipelines.pipeline_loading_utils.hf_hub_download",
+            lambda repo_id, filename, **kwargs: str(tmp_path / filename),
+        )
+        assert _get_custom_component_files("local/test", {"text_encoder": "modeling"}) == [
+            "text_encoder/configuration.py",
+            "text_encoder/modeling.py",
+        ]
 
 
 class TestIsSafetensorsCompatible:

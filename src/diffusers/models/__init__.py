@@ -137,6 +137,12 @@ if is_torch_available():
     _import_structure["transformers.transformer_kandinsky6"] = ["Kandinsky6Transformer3DModel"]
     _import_structure["transformers.transformer_kandinsky6_sr"] = ["Kandinsky6SRTransformer3DModel"]
     _import_structure["transformers.transformer_krea2"] = ["Krea2Transformer2DModel"]
+    _import_structure["transformers.transformer_llada_image"] = [
+        "LLaDAImageQueryFormerModel",
+        "LLaDAImageSigVQModel",
+        "LLaDAImageTextProjectionModel",
+        "LLaDAImageTransformer2DModel",
+    ]
     _import_structure["transformers.transformer_longcat_audio_dit"] = ["LongCatAudioDiTTransformer"]
     _import_structure["transformers.transformer_longcat_image"] = ["LongCatImageTransformer2DModel"]
     _import_structure["transformers.transformer_ltx"] = ["LTXVideoTransformer3DModel"]
@@ -285,6 +291,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky6Transformer3DModel,
             Krea2Transformer2DModel,
             LatteTransformer3DModel,
+            LLaDAImageQueryFormerModel,
+            LLaDAImageSigVQModel,
+            LLaDAImageTextProjectionModel,
+            LLaDAImageTransformer2DModel,
             LongCatAudioDiTTransformer,
             LongCatImageTransformer2DModel,
             LTX2VideoTransformer3DModel,

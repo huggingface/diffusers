@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from huggingface_hub import ModelCard, model_info
+from huggingface_hub import ModelCard, hf_hub_download, model_info
 from huggingface_hub.utils import validate_hf_hub_args
 from packaging import version
 
@@ -42,6 +42,7 @@ from ..utils import (
     logging,
 )
 from ..utils.constants import DIFFUSERS_SDNQ_TRANSFORMERS
+from ..utils.dynamic_modules_utils import get_relative_imports
 from ..utils.torch_utils import is_compiled_module
 
 
@@ -548,6 +549,7 @@ def _load_empty_model(
         is_pipeline_module,
         component_name=name,
         cache_dir=cached_folder,
+        trust_remote_code=kwargs.pop("trust_remote_code", False),
     )
 
     if is_transformers_available():
@@ -689,6 +691,7 @@ def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dic
                 name=name,
                 dtype=sub_model_dtype,
                 cached_folder=kwargs.get("cached_folder", None),
+                trust_remote_code=kwargs.get("trust_remote_code", False),
                 force_download=kwargs.get("force_download", None),
                 proxies=kwargs.get("proxies", None),
                 local_files_only=kwargs.get("local_files_only", None),
@@ -1029,6 +1032,21 @@ def _update_init_kwargs_with_connected_pipeline(
         )
 
     return init_kwargs
+
+
+def _get_custom_component_files(pretrained_model_name, custom_components, **download_kwargs):
+    pending_files = [f"{component}/{module}.py" for component, module in custom_components.items()]
+    resolved_files = set()
+    while pending_files:
+        filename = pending_files.pop()
+        if filename in resolved_files:
+            continue
+        resolved_files.add(filename)
+        module_file = hf_hub_download(pretrained_model_name, filename, **download_kwargs)
+        for relative_import in get_relative_imports(module_file):
+            dependency = str(Path(filename).parent / (relative_import.replace(".", "/") + ".py"))
+            pending_files.append(dependency)
+    return sorted(resolved_files)
 
 
 def _get_custom_components_and_folders(
