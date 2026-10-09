@@ -45,6 +45,7 @@ from diffusers import (
     UNet2DConditionModel,
     logging,
 )
+from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback, SDCFGCutoffCallback
 from diffusers.utils.import_utils import is_accelerate_available
 
 from ...models.testing_utils.lora import check_if_lora_correctly_set
@@ -577,6 +578,34 @@ class TestStableDiffusionPipeline(StableDiffusionPipelineTesterConfig, PipelineT
         # compare the intermediate latent to the output of the interrupted process
         # they should be the same
         assert torch.allclose(intermediate_latent, output_interrupted, atol=1e-4)
+
+    def test_cfg_cutoff_callback(self):
+        # after the cutoff the callback must keep one conditional embedding per sample, not only the last row
+        cutoff_callback = SDCFGCutoffCallback(cutoff_step_ratio=None, cutoff_step_index=1)
+
+        class CheckBatchCallback(PipelineCallback):
+            tensor_inputs = ["latents", "prompt_embeds"]
+
+            def callback_fn(self, pipeline, step_index, timestep, callback_kwargs):
+                if step_index >= 1:
+                    assert callback_kwargs["prompt_embeds"].shape[0] == callback_kwargs["latents"].shape[0]
+                return callback_kwargs
+
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
+        inputs["prompt"] = [inputs["prompt"], "a different prompt"]
+        inputs["num_inference_steps"] = 3
+        inputs["callback_on_step_end"] = MultiPipelineCallbacks([cutoff_callback, CheckBatchCallback()])
+        image = pipe(**inputs).images
+
+        assert image.shape == (2, *self.output_shape)
+        assert pipe.guidance_scale == 0.0
+
+        # without CFG there is no negative batch to drop
+        inputs["guidance_scale"] = 1.0
+        image = pipe(**inputs).images
+
+        assert image.shape == (2, *self.output_shape)
 
     def test_pipeline_accept_tuple_type_unet_sample_size(self):
         # the purpose of this test is to see whether the pipeline would accept a unet with the tuple-typed sample size

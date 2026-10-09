@@ -31,6 +31,7 @@ from diffusers import (
     StableDiffusionXLImg2ImgPipeline,
     UNet2DConditionModel,
 )
+from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback, SDXLControlnetCFGCutoffCallback
 from diffusers.models.unets.unet_2d_blocks import UNetMidBlock2D
 from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.utils.torch_utils import randn_tensor
@@ -251,6 +252,42 @@ class StableDiffusionXLControlNetPipelineTests:
 
         image_slice = image[0, -1, -3:, -3:]
         assert_tensors_close(image_slice.flatten().cpu(), self.expected_lcm_slice, atol=1e-2)
+
+    def test_cfg_cutoff_callback(self):
+        # after the cutoff the callback must keep one conditional embedding per sample, not only the last row
+        cutoff_callback = SDXLControlnetCFGCutoffCallback(cutoff_step_ratio=None, cutoff_step_index=1)
+
+        class CheckBatchCallback(PipelineCallback):
+            tensor_inputs = ["latents", "prompt_embeds"]
+
+            def callback_fn(self, pipeline, step_index, timestep, callback_kwargs):
+                if step_index >= 1:
+                    assert callback_kwargs["prompt_embeds"].shape[0] == callback_kwargs["latents"].shape[0]
+                return callback_kwargs
+
+        # Run on CPU: guess mode calls `torch.logspace`, which has no MPS kernel.
+        pipe = self.get_pipeline()
+        inputs = self.get_dummy_inputs()
+        inputs["prompt"] = [inputs["prompt"], "a different prompt"]
+        inputs["num_inference_steps"] = 3
+        inputs["callback_on_step_end"] = MultiPipelineCallbacks([cutoff_callback, CheckBatchCallback()])
+        image = pipe(**inputs).images
+
+        assert image.shape == (2, *self.output_shape)
+        assert pipe.guidance_scale == 0.0
+
+        # without CFG there is no negative batch to drop
+        inputs["guidance_scale"] = 1.0
+        image = pipe(**inputs).images
+
+        assert image.shape == (2, *self.output_shape)
+
+        # in guess mode the conditioning image is not duplicated for CFG and has to be kept whole
+        inputs["guidance_scale"] = 6.0
+        inputs["guess_mode"] = True
+        image = pipe(**inputs).images
+
+        assert image.shape == (2, *self.output_shape)
 
 
 class TestStableDiffusionXLControlNetPipeline(

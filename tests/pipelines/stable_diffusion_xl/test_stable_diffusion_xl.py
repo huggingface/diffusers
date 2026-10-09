@@ -40,6 +40,7 @@ from diffusers import (
     UNet2DConditionModel,
     UniPCMultistepScheduler,
 )
+from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback, SDXLCFGCutoffCallback
 from diffusers.utils import logging
 
 from ...models.testing_utils.lora import check_if_lora_correctly_set
@@ -953,6 +954,34 @@ class TestStableDiffusionXLPipeline(StableDiffusionXLPipelineTesterConfig, Pipel
         # compare the intermediate latent to the output of the interrupted process
         # they should be the same
         assert_tensors_close(intermediate_latent, output_interrupted, atol=1e-4)
+
+    def test_cfg_cutoff_callback(self):
+        # after the cutoff the callback must keep one conditional embedding per sample, not only the last row
+        cutoff_callback = SDXLCFGCutoffCallback(cutoff_step_ratio=None, cutoff_step_index=1)
+
+        class CheckBatchCallback(PipelineCallback):
+            tensor_inputs = ["latents", "prompt_embeds"]
+
+            def callback_fn(self, pipeline, step_index, timestep, callback_kwargs):
+                if step_index >= 1:
+                    assert callback_kwargs["prompt_embeds"].shape[0] == callback_kwargs["latents"].shape[0]
+                return callback_kwargs
+
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
+        inputs["prompt"] = [inputs["prompt"], "a different prompt"]
+        inputs["num_inference_steps"] = 3
+        inputs["callback_on_step_end"] = MultiPipelineCallbacks([cutoff_callback, CheckBatchCallback()])
+        image = pipe(**inputs).images
+
+        assert image.shape == (2, *self.output_shape)
+        assert pipe.guidance_scale == 0.0
+
+        # without CFG there is no negative batch to drop
+        inputs["guidance_scale"] = 1.0
+        image = pipe(**inputs).images
+
+        assert image.shape == (2, *self.output_shape)
 
 
 class TestStableDiffusionXLPipelineMemory(StableDiffusionXLPipelineTesterConfig, MemoryTesterMixin):
