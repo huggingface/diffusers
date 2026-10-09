@@ -89,7 +89,7 @@ def transformer_config_from_package(package_config):
 
 
 def swap_scale_shift(weight):
-    # original adaLN weights produce [shift, scale]; diffusers Flux3AdaLayerNormOut expects [scale, shift]
+    # original adaLN weights produce [shift, scale]; diffusers Flux3AdaLayerNorm expects [scale, shift]
     shift, scale = weight.chunk(2, dim=0)
     return torch.cat([scale, shift], dim=0)
 

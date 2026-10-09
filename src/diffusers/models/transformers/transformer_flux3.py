@@ -322,7 +322,7 @@ class Flux3PosEmbed(nn.Module):
         return freqs_cos, freqs_sin
 
 
-class Flux3AdaLayerNormOut(nn.Module):
+class Flux3AdaLayerNorm(nn.Module):
     """Output adaptive layer norm conditioned on a per-token embedding of shape `(batch_size, seq_len, dim)`."""
 
     def __init__(self, dim: int, eps: float = 1e-6, bias: bool = False):
@@ -399,8 +399,8 @@ class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Attenti
         super().__init__()
 
         self.inner_dim = num_attention_heads * attention_head_dim
-        in_channels = {"image": in_channels, "image_cond": cond_in_channels}
-        modes = list(in_channels.keys())
+        in_channels_per_mode = {"image": in_channels, "image_cond": cond_in_channels}
+        modes = list(in_channels_per_mode.keys())
 
         # 1. Sinusoidal positional embedding for RoPE on all token modes
         self.pos_embed = Flux3PosEmbed(theta=rope_theta, axes_dim=list(axes_dims_rope))
@@ -421,7 +421,7 @@ class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Attenti
 
         # 4. Input projections
         self.x_embedders = nn.ModuleDict(
-            {name: nn.Linear(channels, self.inner_dim, bias=False) for name, channels in in_channels.items()}
+            {name: nn.Linear(channels, self.inner_dim, bias=False) for name, channels in in_channels_per_mode.items()}
         )
         self.context_embedder = nn.Linear(joint_attention_dim, self.inner_dim, bias=False)
 
@@ -471,8 +471,8 @@ class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Attenti
         )
 
         # 7. Output layers (image tokens only)
-        self.norm_out = Flux3AdaLayerNormOut(self.inner_dim, eps=eps)
-        self.proj_out = nn.Linear(self.inner_dim, in_channels["image"], bias=False)
+        self.norm_out = Flux3AdaLayerNorm(self.inner_dim, eps=eps)
+        self.proj_out = nn.Linear(self.inner_dim, in_channels, bias=False)
 
         self.gradient_checkpointing = False
 

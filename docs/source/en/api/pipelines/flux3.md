@@ -74,15 +74,25 @@ combined = pipe(
 
 Pass `height` and/or `width` to override the derived size.
 
+## Guidance scale
+
+The pipeline applies classifier-free guidance through its `guider` component and does not take a `guidance_scale` argument at call time. The default guider is [`ClassifierFreeGuidance`] with `guidance_scale=3.5`, the recommended setting for both workflows. To change it, create an updated copy of the guider:
+
+```python
+pipe.guider = pipe.guider.new(guidance_scale=5.0)
+```
+
+See the [guiders guide](../../using-diffusers/guiders) to switch to a different guidance method.
+
 ## Workflows
 
-The pipeline serves two workflows, `text2image` and `image2image`; the one that runs is picked by the inputs (`image` selects image-to-image). [`~ModularPipeline.from_pretrained`] can also build a pipeline for one workflow with the `workflow` argument, which then only expects and loads the components that workflow needs:
+The pipeline serves two workflows, `text2image` and `image_conditioned`; the one that runs is picked by the inputs (`image` selects image-to-image). [`~ModularPipeline.from_pretrained`] can also build a pipeline for one workflow with the `workflow` argument, which then only expects and loads the components that workflow needs:
 
 ```python
 from diffusers.modular_pipelines import Flux3AutoBlocks
 
 print(Flux3AutoBlocks().available_workflows)
-# ['text2image', 'image2image']
+# ["text2image", "image_conditioned"]
 
 t2i = ModularPipeline.from_pretrained("black-forest-labs/FLUX.3-image-small", workflow="text2image")
 print(t2i.blocks.doc)

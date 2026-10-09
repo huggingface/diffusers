@@ -326,7 +326,7 @@ class Flux3AutoBlocks(SequentialPipelineBlocks):
 
       Supported workflows:
         - `text2image`: requires `prompt`
-        - `image2image`: requires `prompt`, `image`
+        - `image_conditioned`: requires `prompt`, `image`
 
       Components:
           text_encoder (`Qwen3VLForConditionalGeneration`) tokenizer (`AutoProcessor`) image_processor
@@ -383,7 +383,7 @@ class Flux3AutoBlocks(SequentialPipelineBlocks):
     block_names = AUTO_BLOCKS.keys()
     _workflow_map = {
         "text2image": {"prompt": True},
-        "image2image": {"prompt": True, "image": True},
+        "image_conditioned": {"prompt": True, "image": True},
     }
 
     @property

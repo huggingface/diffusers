@@ -49,7 +49,7 @@ FLUX3_WORKFLOWS = {
         ("denoise.after_denoise", "Flux3UnpackLatentsStep"),
         ("decode", "Flux3DecodeStep"),
     ],
-    "image2image": [
+    "image_conditioned": [
         ("text_encoder", "Flux3TextEncoderStep"),
         ("vae_encoder.preprocess", "Flux3ProcessImagesInputStep"),
         ("vae_encoder.encode", "Flux3VaeEncoderStep"),
@@ -77,7 +77,7 @@ FLUX3_COMPONENTS = {
 }
 # the recommended sampling settings the blocks pin on the scheduler / guider they create
 FLUX3_SAMPLING = {"scheduler": {"shift": 6.93}, "guider": {"guidance_scale": 3.5}}
-# every optional input with its declared default. text2image declares the 1024 x 1024 size; image2image derives the
+# every optional input with its declared default. text2image declares the 1024 x 1024 size; image_conditioned derives the
 # size from the first reference image, so its branch declares none
 FLUX3_INPUTS = {
     "negative_prompt": None,
@@ -92,7 +92,7 @@ FLUX3_INPUTS = {
     "output_type": "pil",
 }
 FLUX3_TEXT2IMAGE_INPUTS = {**FLUX3_INPUTS, "height": 1024, "width": 1024}
-FLUX3_IMAGE2IMAGE_INPUTS = {**FLUX3_INPUTS, "height": None, "width": None}
+FLUX3_IMAGE_CONDITIONED_INPUTS = {**FLUX3_INPUTS, "height": None, "width": None}
 FLUX3_WORKFLOW_DEFAULTS = {
     "text2image": {
         "components": FLUX3_COMPONENTS,
@@ -100,10 +100,10 @@ FLUX3_WORKFLOW_DEFAULTS = {
         "inputs": FLUX3_TEXT2IMAGE_INPUTS,
         "component_configs": FLUX3_SAMPLING,
     },
-    "image2image": {
+    "image_conditioned": {
         "components": FLUX3_COMPONENTS,
         "required_inputs": ["prompt", "image"],
-        "inputs": FLUX3_IMAGE2IMAGE_INPUTS,
+        "inputs": FLUX3_IMAGE_CONDITIONED_INPUTS,
         "component_configs": FLUX3_SAMPLING,
     },
 }
@@ -166,7 +166,7 @@ class TestFlux3ModularPipelineFast(Flux3ModularPipelineTesterConfig, ModularPipe
         # without a size, image-to-image generates at the default area (1024 x 1024 for the real model) at the first
         # reference's aspect ratio, rounded to the token grid; a given side overrides its default. The default area is
         # shrunk to 64 x 64 for the tiny model.
-        blocks = self.pipeline_blocks_class().get_workflow("image2image")
+        blocks = self.pipeline_blocks_class().get_workflow("image_conditioned")
         blocks.sub_blocks["denoise.cond_input"] = Flux3ImageCondInputStep(default_height=64, default_width=64)
         pipe = blocks.init_pipeline(self.pretrained_model_name_or_path)
         pipe.load_components(dtype=torch.float32)
