@@ -342,16 +342,16 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
     AttentionBackendName.FLASH_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_func",
-        wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_forward",
-        wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_backward",
-        version=1,
+        wrapped_forward_attr="fwd",
+        wrapped_backward_attr="bwd",
+        version=3,
     ),
     AttentionBackendName.FLASH_VARLEN_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_varlen_func",
-        wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_varlen_forward",
-        wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_varlen_backward",
-        version=1,
+        wrapped_forward_attr="varlen_fwd",
+        wrapped_backward_attr="varlen_bwd",
+        version=3,
     ),
     AttentionBackendName.SAGE_HUB: _HubKernelConfig(
         repo_id="SageAttention/sage-attention",
@@ -1314,10 +1314,7 @@ def _flash_attention_hub_forward_op(
     wrapped_forward_fn = config.wrapped_forward_fn
     wrapped_backward_fn = config.wrapped_backward_fn
     if wrapped_forward_fn is None or wrapped_backward_fn is None:
-        raise RuntimeError(
-            "Flash attention hub kernels must expose `_wrapped_flash_attn_forward` and `_wrapped_flash_attn_backward` "
-            "for context parallel execution."
-        )
+        raise RuntimeError("Flash attention hub kernels must expose `fwd` and `bwd` for context parallel execution.")
 
     if scale is None:
         scale = query.shape[-1] ** (-0.5)
@@ -1330,19 +1327,22 @@ def _flash_attention_hub_forward_op(
     if grad_enabled or (_parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1):
         dropout_p = dropout_p if dropout_p > 0 else 1e-30
 
+    # The public hub ops call the registered torch op directly and require a unit stride on the last dim.
+    query, key, value = (x.contiguous() if x.stride(-1) != 1 else x for x in (query, key, value))
+
     with torch.set_grad_enabled(grad_enabled):
         out, lse, S_dmask, rng_state = wrapped_forward_fn(
             query,
             key,
             value,
-            dropout_p,
-            scale,
-            is_causal,
-            window_size[0],
-            window_size[1],
-            softcap,
-            alibi_slopes,
-            return_lse,
+            alibi_slopes=alibi_slopes,
+            p_dropout=dropout_p,
+            softmax_scale=scale,
+            is_causal=is_causal,
+            window_size_left=window_size[0],
+            window_size_right=window_size[1],
+            softcap=softcap,
+            return_softmax=return_lse,
         )
         lse = lse.permute(0, 2, 1).contiguous()
 
@@ -1373,9 +1373,7 @@ def _flash_attention_hub_backward_op(
     config = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_HUB]
     wrapped_backward_fn = config.wrapped_backward_fn
     if wrapped_backward_fn is None:
-        raise RuntimeError(
-            "Flash attention hub kernels must expose `_wrapped_flash_attn_backward` for context parallel execution."
-        )
+        raise RuntimeError("Flash attention hub kernels must expose `bwd` for context parallel execution.")
 
     # See `_flash_attention_backward_op` for why these tensors may be overridden by the ring loop.
     saved_query, saved_key, saved_value, saved_out, saved_lse, rng_state = ctx.saved_tensors
@@ -1388,6 +1386,10 @@ def _flash_attention_hub_backward_op(
     lse = lse.permute(0, 2, 1).contiguous()
     grad_query, grad_key, grad_value = torch.empty_like(query), torch.empty_like(key), torch.empty_like(value)
 
+    grad_out, query, key, value, out = (
+        x.contiguous() if x.stride(-1) != 1 else x for x in (grad_out, query, key, value, out)
+    )
+
     _ = wrapped_backward_fn(
         grad_out,
         query,
@@ -1395,18 +1397,18 @@ def _flash_attention_hub_backward_op(
         value,
         out,
         lse,
-        grad_query,
-        grad_key,
-        grad_value,
-        ctx.dropout_p,
-        ctx.scale,
-        ctx.is_causal,
-        ctx.window_size[0],
-        ctx.window_size[1],
-        ctx.softcap,
-        ctx.alibi_slopes,
-        ctx.deterministic,
-        rng_state,
+        dq=grad_query,
+        dk=grad_key,
+        dv=grad_value,
+        alibi_slopes=ctx.alibi_slopes,
+        p_dropout=ctx.dropout_p,
+        softmax_scale=ctx.scale,
+        is_causal=ctx.is_causal,
+        window_size_left=ctx.window_size[0],
+        window_size_right=ctx.window_size[1],
+        softcap=ctx.softcap,
+        deterministic=ctx.deterministic,
+        rng_state=rng_state,
     )
 
     grad_query = grad_query[..., : grad_out.shape[-1]]
@@ -1440,8 +1442,7 @@ def _flash_varlen_attention_hub_forward_op(
     wrapped_backward_fn = config.wrapped_backward_fn
     if wrapped_forward_fn is None or wrapped_backward_fn is None:
         raise RuntimeError(
-            "Flash attention varlen hub kernels must expose `_wrapped_flash_attn_varlen_forward` and "
-            "`_wrapped_flash_attn_varlen_backward` for context parallel execution."
+            "Flash attention varlen hub kernels must expose `varlen_fwd` and `varlen_bwd` for context parallel execution."
         )
 
     if scale is None:
@@ -1477,6 +1478,10 @@ def _flash_varlen_attention_hub_forward_op(
         value_packed = value.flatten(0, 1)
         seqlens_k = None
 
+    query_packed, key_packed, value_packed = (
+        x.contiguous() if x.stride(-1) != 1 else x for x in (query_packed, key_packed, value_packed)
+    )
+
     with torch.set_grad_enabled(grad_enabled):
         out_packed, lse, _, rng_state = wrapped_forward_fn(
             query_packed,
@@ -1484,16 +1489,16 @@ def _flash_varlen_attention_hub_forward_op(
             value_packed,
             cu_seqlens_q,
             cu_seqlens_k,
-            max_seqlen_q,
-            max_seqlen_k,
-            dropout_p,
-            scale,
-            is_causal,
-            window_size[0],
-            window_size[1],
-            softcap,
-            alibi_slopes,
-            return_lse,
+            alibi_slopes=alibi_slopes,
+            max_seqlen_q=max_seqlen_q,
+            max_seqlen_k=max_seqlen_k,
+            p_dropout=dropout_p,
+            softmax_scale=scale,
+            is_causal=is_causal,
+            window_size_left=window_size[0],
+            window_size_right=window_size[1],
+            softcap=softcap,
+            return_softmax=return_lse,
         )
 
     out = out_packed.view(batch_size, seq_len_q, *out_packed.shape[1:])
@@ -1539,8 +1544,7 @@ def _flash_varlen_attention_hub_backward_op(
     wrapped_backward_fn = config.wrapped_backward_fn
     if wrapped_backward_fn is None:
         raise RuntimeError(
-            "Flash attention varlen hub kernels must expose `_wrapped_flash_attn_varlen_backward` "
-            "for context parallel execution."
+            "Flash attention varlen hub kernels must expose `varlen_bwd` for context parallel execution."
         )
 
     # See `_flash_attention_backward_op` for why these tensors may be overridden by the ring loop.
@@ -1565,6 +1569,11 @@ def _flash_varlen_attention_hub_backward_op(
         torch.empty_like(value_packed),
     )
 
+    grad_out_packed, query_packed, key_packed, value_packed, out_packed = (
+        x.contiguous() if x.stride(-1) != 1 else x
+        for x in (grad_out_packed, query_packed, key_packed, value_packed, out_packed)
+    )
+
     _ = wrapped_backward_fn(
         grad_out_packed,
         query_packed,
@@ -1572,22 +1581,22 @@ def _flash_varlen_attention_hub_backward_op(
         value_packed,
         out_packed,
         lse,
-        grad_query,
-        grad_key,
-        grad_value,
         cu_seqlens_q,
         cu_seqlens_k,
-        ctx.max_seqlen_q,
-        ctx.max_seqlen_k,
-        ctx.dropout_p,
-        ctx.scale,
-        ctx.is_causal,
-        ctx.window_size[0],
-        ctx.window_size[1],
-        ctx.softcap,
-        ctx.alibi_slopes,
-        ctx.deterministic,
-        rng_state,
+        dq=grad_query,
+        dk=grad_key,
+        dv=grad_value,
+        alibi_slopes=ctx.alibi_slopes,
+        max_seqlen_q=ctx.max_seqlen_q,
+        max_seqlen_k=ctx.max_seqlen_k,
+        p_dropout=ctx.dropout_p,
+        softmax_scale=ctx.scale,
+        is_causal=ctx.is_causal,
+        window_size_left=ctx.window_size[0],
+        window_size_right=ctx.window_size[1],
+        softcap=ctx.softcap,
+        deterministic=ctx.deterministic,
+        rng_state=rng_state,
     )
 
     grad_query = grad_query.view(ctx.batch_size, ctx.seq_len_q, *grad_query.shape[1:])
