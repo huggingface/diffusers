@@ -24,6 +24,7 @@ from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import logging
 from ...utils.peft_utils import apply_lora_scale
 from ...utils.torch_utils import maybe_allow_in_graph
+from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
@@ -328,11 +329,7 @@ def _qwenimage21_prepare_qkv(
     attn: "QwenImage21Attention",
     hidden_states: torch.Tensor,
     rotary_emb: torch.Tensor | None,
-    layer_cache: QwenImage21KVLayerCache | None,
-    kv_cache_mode: str | None,
-    cache_write_slice: slice | None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int]:
-    """Shared QKV projection, norm, RoPE and KV-cache bookkeeping for both processors."""
     query = attn.to_q(hidden_states)
     key = attn.to_k(hidden_states)
     value = attn.to_v(hidden_states)
@@ -348,22 +345,7 @@ def _qwenimage21_prepare_qkv(
         query = apply_rotary_emb_qwen(query, rotary_emb, use_real=False)
         key = apply_rotary_emb_qwen(key, rotary_emb, use_real=False)
 
-    if layer_cache is not None:
-        if kv_cache_mode == "extract" and cache_write_slice is not None:
-            # `clone()`, not `contiguous()`: at batch size 1 the prefix slice already counts as contiguous
-            # (size-1 dims are ignored), so `contiguous()` returns the same view and the cache would pin the
-            # whole prefill K/V for every step of the denoising loop.
-            layer_cache.store(
-                key[:, cache_write_slice].clone(),
-                value[:, cache_write_slice].clone(),
-            )
-        elif kv_cache_mode == "cached":
-            cached_k, cached_v = layer_cache.get()
-            key = torch.cat([cached_k, key], dim=1)
-            value = torch.cat([cached_v, value], dim=1)
-
-    seq_len_q = query.shape[1]
-    return query, key, value, seq_len_q
+    return query, key, value, query.shape[1]
 
 
 class QwenImage21FlexAttnProcessor:
@@ -401,9 +383,12 @@ class QwenImage21FlexAttnProcessor:
         segments: list[tuple[int, int, bool]] | None = None,
         key_valid: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        query, key, value, seq_len_q = _qwenimage21_prepare_qkv(
-            attn, hidden_states, rotary_emb, layer_cache, kv_cache_mode, cache_write_slice
-        )
+        if self._parallel_config is not None:
+            raise NotImplementedError(
+                "Context parallelism is not implemented for QwenImage21FlexAttnProcessor. "
+                "Use QwenImage21AttnProcessor instead."
+            )
+        query, key, value, seq_len_q = _qwenimage21_prepare_qkv(attn, hidden_states, rotary_emb)
 
         seq_len_kv = key.shape[1]
         if isinstance(attention_mask, BlockMask):
@@ -440,6 +425,9 @@ class QwenImage21FlexAttnProcessor:
                 dropout_p=0.0,
                 backend="flex",
                 parallel_config=self._parallel_config,
+                kv_cache=layer_cache,
+                kv_cache_mode=kv_cache_mode,
+                cache_write_slice=cache_write_slice,
             )
         else:
             # decode: full attention over [cached prefix, target]
@@ -451,6 +439,9 @@ class QwenImage21FlexAttnProcessor:
                 dropout_p=0.0,
                 backend=self._attention_backend,
                 parallel_config=self._parallel_config,
+                kv_cache=layer_cache,
+                kv_cache_mode=kv_cache_mode,
+                cache_write_slice=cache_write_slice,
             )
         hidden_states = hidden_states[:, :seq_len_q]
         hidden_states = hidden_states.flatten(2, 3).type_as(query)
@@ -483,64 +474,22 @@ class QwenImage21AttnProcessor:
         segments: list[tuple[int, int, bool]] | None = None,
         key_valid: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        query, key, value, seq_len_q = _qwenimage21_prepare_qkv(
-            attn, hidden_states, rotary_emb, layer_cache, kv_cache_mode, cache_write_slice
+        query, key, value, seq_len_q = _qwenimage21_prepare_qkv(attn, hidden_states, rotary_emb)
+        if segments is not None:
+            attention_mask = None if key_valid is None else key_valid[:, None, None, :]
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            backend=self._attention_backend if segments is None else None,
+            parallel_config=self._parallel_config,
+            kv_cache=layer_cache,
+            kv_cache_mode=kv_cache_mode,
+            cache_write_slice=cache_write_slice,
+            block_causal_segments=segments,
         )
-
-        if segments is None:
-            # decode: full attention over [cached prefix, target]
-            hidden_states = dispatch_attention_fn(
-                query,
-                key,
-                value,
-                attn_mask=attention_mask,
-                dropout_p=0.0,
-                backend=self._attention_backend,
-                parallel_config=self._parallel_config,
-            )
-        else:
-            # prefill: every segment attends to the keys `[0, end)` (everything before it plus its own block); text
-            # segments additionally get a causal triangle over their own keys; padded text keys are dropped.
-            # `attention_mask` may hold the flex `BlockMask` of the same structure, which is not used here.
-            prefix_len = segments[-1][1] if segments else 0
-            outputs = []
-            for start, end, is_text in segments:
-                seg_mask = None
-                if is_text:
-                    seg_len = end - start
-                    seg_mask = torch.cat(
-                        [
-                            torch.ones(seg_len, start, dtype=torch.bool, device=query.device),
-                            torch.tril(torch.ones(seg_len, seg_len, dtype=torch.bool, device=query.device)),
-                        ],
-                        dim=1,
-                    )[None, None]
-                if key_valid is not None:
-                    seg_key_valid = key_valid[:, None, None, :end]
-                    seg_mask = seg_key_valid if seg_mask is None else (seg_mask & seg_key_valid)
-                outputs.append(
-                    dispatch_attention_fn(
-                        query[:, start:end],
-                        key[:, :end],
-                        value[:, :end],
-                        attn_mask=seg_mask,
-                        dropout_p=0.0,
-                        backend=None,
-                        parallel_config=self._parallel_config,
-                    )
-                )
-            outputs.append(
-                dispatch_attention_fn(
-                    query[:, prefix_len:],
-                    key,
-                    value,
-                    attn_mask=None if key_valid is None else key_valid[:, None, None, :],
-                    dropout_p=0.0,
-                    backend=None,
-                    parallel_config=self._parallel_config,
-                )
-            )
-            hidden_states = torch.cat(outputs, dim=1)
         hidden_states = hidden_states[:, :seq_len_q]
         hidden_states = hidden_states.flatten(2, 3).type_as(query)
 
@@ -758,6 +707,19 @@ class QwenImage21Transformer2DModel(
     _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
     _repeated_blocks = ["QwenImage21TransformerBlock"]
     _skip_keys = ["kv_cache"]
+    _cp_plan = {
+        "transformer_blocks.0": {
+            "hidden_states": ContextParallelInput(split_dim=1, expected_dims=3, split_output=False),
+        },
+        "transformer_blocks.*": {
+            "rotary_emb": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
+            "target_token_mask": ContextParallelInput(split_dim=0, expected_dims=1, split_output=False),
+        },
+        "norm_out": {
+            "target_token_mask": ContextParallelInput(split_dim=0, expected_dims=1, split_output=False),
+        },
+        "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+    }
 
     @register_to_config
     def __init__(

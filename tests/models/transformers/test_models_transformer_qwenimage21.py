@@ -15,22 +15,36 @@
 
 import pytest
 import torch
+import torch.distributed as dist
+import torch.multiprocessing as mp
 from torch.nn.attention.flex_attention import create_mask
 
 from diffusers import QwenImage21Transformer2DModel
-from diffusers.models.transformers.transformer_qwenimage21 import build_qwenimage21_block_causal_mask
+from diffusers.models._modeling_parallel import ContextParallelConfig
+from diffusers.models.transformers.transformer_qwenimage21 import (
+    QwenImage21KVCache,
+    build_qwenimage21_block_causal_mask,
+)
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, torch_device
+from ...testing_utils import (
+    enable_full_determinism,
+    is_context_parallel,
+    require_torch_multi_accelerator,
+    torch_device,
+)
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    ContextParallelAttentionBackendsTesterMixin,
+    ContextParallelTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     SingleFileTesterMixin,
     TaylorSeerCacheTesterMixin,
     TrainingTesterMixin,
 )
+from ..testing_utils.parallelism import DEVICE_CONFIG, _find_free_port
 
 
 enable_full_determinism()
@@ -296,6 +310,120 @@ class TestQwenImage21TransformerTraining(QwenImage21TransformerTesterConfig, Tra
 
 class TestQwenImage21TransformerAttention(QwenImage21TransformerTesterConfig, AttentionTesterMixin):
     pass
+
+
+def _qwenimage21_cached_context_parallel_worker(rank, world_size, port, ulysses_anything):
+    device_config = DEVICE_CONFIG[torch_device]
+    device_config["module"].set_device(rank)
+    device = torch.device(f"{torch_device}:{rank}")
+    dist.init_process_group(
+        device_config["backend"], init_method=f"tcp://localhost:{port}", rank=rank, world_size=world_size
+    )
+    try:
+        config = QwenImage21TransformerTesterConfig()
+        cases = [(1, 4, 0, False), (2, 4, 2, True)]
+        if ulysses_anything:
+            cases.extend([(1, 1, 0, True), (2, 3, 2, True)])
+        for batch_size, text_len, num_conditions, pad_prompt in cases:
+            torch.manual_seed(0)
+            init_dict = dict(config.get_init_dict(), num_attention_heads=4)
+            model = config.model_class(**init_dict).to(device).eval()
+            inputs = {
+                "hidden_states": torch.randn(batch_size, 4 * (num_conditions + 1), 4, device=device),
+                "encoder_hidden_states": torch.randn(batch_size, text_len + num_conditions, 8, device=device),
+                "encoder_hidden_states_mask": None,
+                "timestep": torch.full((batch_size,), 0.9, device=device),
+                "img_shapes": [[(1, 2, 2)] * (num_conditions + 1)] * batch_size,
+                "img_mask": torch.tensor(
+                    [[False] * text_len + [True] * (num_conditions + 1)] * batch_size, device=device
+                ),
+            }
+            if pad_prompt:
+                inputs["encoder_hidden_states_mask"] = torch.ones(
+                    batch_size, text_len + num_conditions, device=device, dtype=torch.long
+                )
+                inputs["encoder_hidden_states_mask"][-1, text_len - 1] = 0
+            steps = [inputs]
+            for timestep in (0.6, 0.3):
+                hidden_states = inputs["hidden_states"].clone()
+                hidden_states[:, -4:] = torch.randn_like(hidden_states[:, -4:])
+                steps.append(dict(inputs, hidden_states=hidden_states, timestep=inputs["timestep"] * timestep))
+
+            reference_cache = QwenImage21KVCache(init_dict["num_layers"])
+            with torch.no_grad():
+                reference_prefill = model(
+                    **inputs, kv_cache=reference_cache, kv_cache_mode="extract", return_dict=False
+                )[0]
+                references = [model(**step, return_dict=False)[0][:, -4:] for step in steps[1:]]
+
+            model.enable_parallelism(
+                config=ContextParallelConfig(ulysses_degree=world_size, ulysses_anything=ulysses_anything)
+            )
+            cache = QwenImage21KVCache(init_dict["num_layers"])
+            with torch.no_grad():
+                prefill = model(**inputs, kv_cache=cache, kv_cache_mode="extract", return_dict=False)[0]
+                torch.testing.assert_close(prefill, reference_prefill, atol=2e-5, rtol=2e-5)
+                for index in range(init_dict["num_layers"]):
+                    for cached, full in zip(cache.get_layer(index).get(), reference_cache.get_layer(index).get()):
+                        expected = torch.tensor_split(full, world_size, dim=2)[rank]
+                        torch.testing.assert_close(cached, expected, atol=2e-5, rtol=2e-5)
+                        assert cached.untyped_storage().nbytes() == cached.numel() * cached.element_size()
+                for step, reference in zip(steps[1:], references):
+                    decoded = model(**step, kv_cache=cache, kv_cache_mode="cached", return_dict=False)[0]
+                    torch.testing.assert_close(decoded, reference, atol=2e-5, rtol=2e-5)
+    finally:
+        dist.destroy_process_group()
+
+
+@is_context_parallel
+@require_torch_multi_accelerator
+class TestQwenImage21TransformerContextParallel(QwenImage21TransformerTesterConfig, ContextParallelTesterMixin):
+    @pytest.mark.parametrize("world_size", [2, 4])
+    @pytest.mark.parametrize("ulysses_anything", [False, True])
+    def test_context_parallel_kv_cache(self, world_size, ulysses_anything):
+        if DEVICE_CONFIG[torch_device]["module"].device_count() < world_size:
+            pytest.skip(f"Requires {world_size} devices")
+        mp.spawn(
+            _qwenimage21_cached_context_parallel_worker,
+            args=(world_size, _find_free_port(), ulysses_anything),
+            nprocs=world_size,
+            join=True,
+        )
+
+    @pytest.mark.parametrize("cp_type", ["ulysses_degree"], ids=["ulysses"])
+    def test_context_parallel_inference(self, cp_type, batch_size: int = 1):
+        super().test_context_parallel_inference(cp_type, batch_size=batch_size)
+
+    @pytest.mark.parametrize("cp_type", ["ulysses_degree"], ids=["ulysses"])
+    def test_context_parallel_batch_inputs(self, cp_type):
+        super().test_context_parallel_inference(cp_type, batch_size=2)
+
+    @pytest.mark.parametrize("cp_type", ["ulysses_degree"], ids=["ulysses"])
+    def test_context_parallel_backward(self, cp_type, batch_size: int = 1):
+        super().test_context_parallel_backward(cp_type, batch_size=batch_size)
+
+    @pytest.mark.parametrize("cp_type", ["ulysses_degree"], ids=["ulysses"])
+    def test_context_parallel_backward_batch_inputs(self, cp_type):
+        super().test_context_parallel_backward(cp_type, batch_size=2)
+
+    @pytest.mark.parametrize(
+        "cp_type,mesh_shape,mesh_dim_names",
+        [("ulysses_degree", (1, 2, 1), ("ring", "ulysses", "fsdp"))],
+        ids=["ulysses-3d-fsdp"],
+    )
+    def test_context_parallel_custom_mesh(self, cp_type, mesh_shape, mesh_dim_names):
+        super().test_context_parallel_custom_mesh(cp_type, mesh_shape, mesh_dim_names)
+
+
+class TestQwenImage21TransformerContextParallelAttnBackends(
+    QwenImage21TransformerTesterConfig, ContextParallelAttentionBackendsTesterMixin
+):
+    unsupported_attn_backends = ["flash_hub", "flash_varlen_hub", "_flash_3_hub", "_flash_3_varlen_hub"]
+
+    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
+        inputs = super().get_dummy_inputs(batch_size=batch_size)
+        inputs["encoder_hidden_states_mask"][:, 1] = 0
+        return inputs
 
 
 class TestQwenImage21TransformerTaylorSeerCache(QwenImage21TransformerTesterConfig, TaylorSeerCacheTesterMixin):
