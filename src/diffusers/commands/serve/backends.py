@@ -41,7 +41,14 @@ from PIL import Image
 from ...modular_pipelines import ModularPipeline
 from ...utils import export_to_video, load_image, load_video, logging, numpy_to_pil
 from ...utils.constants import DIFFUSERS_REQUEST_TIMEOUT
-from ..run import _as_audio_arrays, _as_pil_list, _get_generator, _load_pipeline, _save_audio_arrays
+from ..run import (
+    PNG_COMPRESS_LEVEL,
+    _as_audio_arrays,
+    _as_pil_list,
+    _get_generator,
+    _load_pipeline,
+    _save_audio_arrays,
+)
 from .generations import Generation
 from .manifest import GMSError, ServedModel, blocks_signature
 
@@ -144,7 +151,10 @@ def _save_images(images: Any, directory: Path, name: str, media_type: str, rate:
         filename = f"{name}-{index}.{media_type.split('/')[1]}"
         if media_type == "image/jpeg":
             image = image.convert("RGB")
-        image.save(directory / filename)
+        if media_type == "image/png":
+            image.save(directory / filename, compress_level=PNG_COMPRESS_LEVEL)
+        else:
+            image.save(directory / filename)
         artifacts.append({"file": filename, "media_type": media_type, "width": image.width, "height": image.height})
     return artifacts
 

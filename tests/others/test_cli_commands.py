@@ -34,6 +34,8 @@ from diffusers.commands.run import (
     RunCommand,
     _build_task_kwargs,
     _collapse_frame_dirs,
+    _compile_denoiser,
+    _compile_vae_decoder,
     _download_outputs_from_sandbox,
     _kwargs_to_argv,
     _load_lora,
@@ -240,6 +242,41 @@ class TestRunCommand:
         ]
         assert compiled_blocks
         assert all(m._compiled_call_impl is not None for m in compiled_blocks)
+
+    def test_compile_mode_full_compiles_the_whole_denoiser(self, monkeypatch):
+        class Denoiser(torch.nn.Module):
+            _repeated_blocks = ["Block"]
+
+            def compile_repeated_blocks(self, **kwargs):
+                raise AssertionError("regional compilation must not run with compile_mode='full'")
+
+        compiled = {}
+        monkeypatch.setattr(torch, "compile", lambda module, **kwargs: compiled.update(kwargs) or "compiled")
+        pipeline = SimpleNamespace(transformer=Denoiser())
+        _compile_denoiser(pipeline, '{"mode": "max-autotune"}', "full")
+        assert pipeline.transformer == "compiled"
+        assert compiled == {"mode": "max-autotune"}
+
+    def test_regional_compile_rejects_cuda_graph_modes(self):
+        class Denoiser(torch.nn.Module):
+            _repeated_blocks = ["Block"]
+
+        pipeline = SimpleNamespace(transformer=Denoiser())
+        with pytest.raises(SystemExit, match="uses CUDA graphs.*--compile-mode full"):
+            _compile_denoiser(pipeline, '{"mode": "max-autotune"}', "regional")
+
+    def test_compile_vae_decoder_compiles_the_decoder(self, monkeypatch):
+        compiled = {}
+        monkeypatch.setattr(torch, "compile", lambda module, **kwargs: compiled.update(kwargs) or "compiled")
+        pipeline = SimpleNamespace(vae=SimpleNamespace(decoder=torch.nn.Conv2d(4, 3, 3)))
+        _compile_vae_decoder(pipeline, '{"fullgraph": true}')
+        assert pipeline.vae.decoder == "compiled"
+        assert compiled == {"fullgraph": True}
+
+    def test_compile_vae_decoder_skips_a_pipeline_without_one(self):
+        pipeline = SimpleNamespace(vae=None)
+        _compile_vae_decoder(pipeline, "{}")
+        assert pipeline.vae is None
 
     @require_torch_gpu
     # `--attention-backend` only exposes Hub-hosted kernels, all of which need `kernels>=0.12`.

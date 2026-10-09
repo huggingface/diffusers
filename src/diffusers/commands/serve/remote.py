@@ -37,6 +37,8 @@ logger = logging.get_logger("diffusers-cli/serve")
 SANDBOX_PORT = 8000
 _SANDBOX_MANIFEST_PATH = "/tmp/diffusers-cli/gms.json"
 _SERVE_DEPS = ("fastapi", "uvicorn")
+# Each engine's own image carries the engine, its kernels and the CUDA toolchain they are built with.
+_ENGINE_IMAGES = {"sglang": "lmsysorg/sglang:latest", "vllm": "vllm/vllm-omni:latest"}
 _READY_POLL_SECONDS = 5.0
 
 # Flags that say how the sandbox is set up, or that the sandbox server sets itself.
@@ -69,7 +71,10 @@ def add_remote_arguments(parser: ArgumentParser) -> None:
     parser.add_argument(
         "--image",
         default=None,
-        help=f"Sandbox image for --remote (defaults to {_DEFAULT_REMOTE_IMAGE!r}). Must provide torch + CUDA.",
+        help=(
+            f"Sandbox image for --remote. Defaults to {_DEFAULT_REMOTE_IMAGE!r}, or to the engine's own image "
+            f"with --backend sglang ({_ENGINE_IMAGES['sglang']!r}) or vllm ({_ENGINE_IMAGES['vllm']!r})."
+        ),
     )
     parser.add_argument(
         "--idle-timeout",
@@ -109,7 +114,7 @@ def serve_remote(args: Namespace, task: str) -> None:
     hf_token = args.token or get_token()
     logger.info(f"creating sandbox on flavor={args.flavor!r}...")
     create_kwargs: dict[str, Any] = {
-        "image": args.image or _DEFAULT_REMOTE_IMAGE,
+        "image": args.image or _ENGINE_IMAGES.get(args.backend, _DEFAULT_REMOTE_IMAGE),
         "flavor": args.flavor,
         "forward_hf_token": True,
         "token": hf_token,
@@ -133,6 +138,9 @@ def serve_remote(args: Namespace, task: str) -> None:
         install_cmd = shlex.join(["uv", "pip", "install", "--system", "--break-system-packages", *dependencies])
         logger.info("installing dependencies in the sandbox...")
         sbx.run(install_cmd, on_stdout=_stream, on_stderr=_stream)
+        # An image can put another environment first on PATH, with its own older `diffusers-cli`
+        # (the SGLang image does), so the server is started with the interpreter the install went into.
+        python = sbx.run(["uv", "python", "find", "--system"]).stdout.strip()
 
         task_kwargs = _build_task_kwargs(args)
         for key in (*_LOCAL_KEYS, *_SANDBOX_SET_KEYS):
@@ -143,7 +151,8 @@ def serve_remote(args: Namespace, task: str) -> None:
         task_kwargs["port"] = SANDBOX_PORT
         # Clients reach the server through the proxy, so output links must be built on the proxied address.
         task_kwargs["public_url"] = sbx.proxy_url_for(SANDBOX_PORT)
-        cli_argv = ["diffusers-cli", "--format", "quiet", *_kwargs_to_argv(task, task_kwargs)]
+        cli_module = [python, "-m", "diffusers.commands.diffusers_cli"]
+        cli_argv = [*cli_module, "--format", "quiet", *_kwargs_to_argv(task, task_kwargs)]
 
         threading.Thread(target=_announce_when_ready, args=(sbx, args, stopped), daemon=True).start()
         logger.info(f"starting the server in sandbox {sbx.id}; stop it with Ctrl-C.")

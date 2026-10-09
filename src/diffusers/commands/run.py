@@ -63,6 +63,14 @@ CPU_OFFLOAD_CHOICES = ("model", "group", "auto")
 
 
 ATTENTION_BACKEND_CHOICES = ("default", *sorted(b.value for b in _HUB_KERNELS_REGISTRY))
+COMPILE_MODE_CHOICES = ("regional", "full")
+# zlib level for PNG outputs. Pillow's default of 6 takes close to four times as long to encode a
+# 1024x1024 image for a file about 7% smaller; the output is lossless either way.
+PNG_COMPRESS_LEVEL = 1
+
+# `torch.compile` modes that replay CUDA graphs. Repeated blocks share one compiled graph, so each
+# block's output is overwritten when the next block replays it.
+_CUDA_GRAPH_COMPILE_MODES = ("max-autotune", "reduce-overhead")
 
 # Kwarg keys whose string value gets auto-loaded before being passed to the pipeline call.
 # Images resolve via `diffusers.utils.load_image` → PIL.Image.Image; videos resolve via
@@ -211,11 +219,21 @@ def _add_optimization_arguments(parser: ArgumentParser) -> None:
         default=None,
         metavar="JSON",
         help=(
-            "torch.compile every denoiser submodule on the pipeline. Accepts an optional JSON "
+            "torch.compile every denoiser submodule on the pipeline, and the VAE decoder. Accepts an optional JSON "
             'object of kwargs forwarded to `torch.compile`, e.g. \'{"mode": "max-autotune", '
             '"fullgraph": true}\'. Bare `--compile` uses `fullgraph=true`. Adds a one-time '
             "compilation cost on the first step but speeds up every subsequent step — worth it "
             "for multi-step generation (50+ steps)."
+        ),
+    )
+    parser.add_argument(
+        "--compile-mode",
+        choices=COMPILE_MODE_CHOICES,
+        default="regional",
+        help=(
+            "What --compile compiles. 'regional' (default) compiles only the repeated blocks of a denoiser "
+            "that declares them, which keeps the first step fast. 'full' compiles the whole denoiser, which "
+            "`torch.compile` modes that use CUDA graphs (max-autotune, reduce-overhead) require."
         ),
     )
 
@@ -461,26 +479,44 @@ def _apply_optimizations(pipeline: Any, args: Namespace) -> None:
         if args.context_parallel:
             logger.warning("--compile is currently not supported with --context-parallel; skipping compile.")
         else:
-            _compile_denoiser(pipeline, args.compile)
+            _compile_denoiser(pipeline, args.compile, args.compile_mode)
+            _compile_vae_decoder(pipeline, args.compile)
 
 
-def _compile_denoiser(pipeline: Any, compile_spec: str) -> None:
-    """Compile every `transformer*` and `unet*` submodule on the pipeline.
-
-    `compile_spec` is the raw JSON string from `--compile` (`"{}"` for bare flag). Decoded into kwargs and forwarded
-    verbatim to the compile call.
-
-    Prefers regional compilation via `module.compile_repeated_blocks(**kwargs)` — only compiles the repeated inner
-    blocks (the bulk of the compute), much faster first-step latency than compiling the whole module. Falls back to
-    full `torch.compile` if the model doesn't expose `_repeated_blocks`.
-    """
-
+def _parse_compile_spec(compile_spec: str) -> dict[str, Any]:
     try:
         compile_kwargs = json.loads(compile_spec)
     except json.JSONDecodeError as e:
         raise SystemExit(f"--compile must be valid JSON: {e}") from e
     if not isinstance(compile_kwargs, dict):
         raise SystemExit("--compile must decode to a JSON object.")
+    return compile_kwargs
+
+
+def _compile_vae_decoder(pipeline: Any, compile_spec: str) -> None:
+    """Compile the decoder of the pipeline's VAE with the `--compile` kwargs.
+
+    The decoder runs once per call, so it has no repeated blocks to compile regionally and is always compiled whole.
+    """
+    decoder = getattr(getattr(pipeline, "vae", None), "decoder", None)
+    if not isinstance(decoder, torch.nn.Module):
+        return
+    pipeline.vae.decoder = torch.compile(decoder, **_parse_compile_spec(compile_spec))
+
+
+def _compile_denoiser(pipeline: Any, compile_spec: str, compile_mode: str = "regional") -> None:
+    """Compile every `transformer*` and `unet*` submodule on the pipeline.
+
+    `compile_spec` is the raw JSON string from `--compile` (`"{}"` for bare flag). Decoded into kwargs and forwarded
+    verbatim to the compile call.
+
+    With `compile_mode="regional"`, prefers regional compilation via `module.compile_repeated_blocks(**kwargs)` — only
+    compiles the repeated inner blocks (the bulk of the compute), much faster first-step latency than compiling the
+    whole module. Falls back to full `torch.compile` if the model doesn't expose `_repeated_blocks`. With
+    `compile_mode="full"`, always compiles the whole module.
+    """
+
+    compile_kwargs = _parse_compile_spec(compile_spec)
 
     for attr in dir(pipeline):
         if not any(attr.startswith(key) for key in _DENOISER_COMPONENT_KEYS):
@@ -489,11 +525,17 @@ def _compile_denoiser(pipeline: Any, compile_spec: str) -> None:
         if not isinstance(module, torch.nn.Module):
             continue
 
-        if getattr(module, "_repeated_blocks", None):
+        if compile_mode == "regional" and getattr(module, "_repeated_blocks", None):
+            if compile_kwargs.get("mode") in _CUDA_GRAPH_COMPILE_MODES:
+                raise SystemExit(
+                    f"--compile mode {compile_kwargs['mode']!r} uses CUDA graphs, which fail when the repeated "
+                    f"blocks of {type(module).__name__} are compiled separately. Add `--compile-mode full`, or "
+                    "use mode 'max-autotune-no-cudagraphs'."
+                )
             # Regional compile — only the repeated blocks. Mutates `module` in place.
             module.compile_repeated_blocks(**compile_kwargs)
         else:
-            # No regional metadata declared; fall back to compiling the whole module.
+            # Full compile was asked for, or no regional metadata is declared.
             setattr(pipeline, attr, torch.compile(module, **compile_kwargs))
 
 
@@ -535,6 +577,9 @@ def _load_lora(pipeline: Any, args: Namespace) -> None:
 
 
 def _load_pipeline(args: Namespace) -> Any:
+    if args.compile is None and args.compile_mode != "regional":
+        raise SystemExit(f"--compile-mode {args.compile_mode} only applies together with --compile.")
+
     # Detect modular repos by trying the standard config; `ModularPipeline` repos ship
     # `modular_model_index.json` instead of `model_index.json`, so `load_config` OSErrors.
     # A repo can also ship a `model_index.json` whose `_class_name` is a modular pipeline
@@ -800,7 +845,7 @@ def _save_videos(videos: list[Any], args: Namespace) -> list[str]:
                     arr = (np.clip(arr, 0.0, 1.0) * 255).round().astype(np.uint8)
                 frame = Image.fromarray(arr)
             frame_path = frames_dir / f"{i:04d}.png"
-            frame.save(frame_path)
+            frame.save(frame_path, compress_level=PNG_COMPRESS_LEVEL)
             saved.append(str(frame_path))
         try:
             export_to_video(frames, str(path), fps=args.fps)
@@ -837,14 +882,14 @@ def _save_output(value: Any, args: Namespace) -> list[str]:
             for arr, path in zip(value, paths):
                 if arr.dtype != np.uint8:
                     arr = (np.clip(arr, 0.0, 1.0) * 255).round().astype(np.uint8)
-                Image.fromarray(arr).save(path)
+                Image.fromarray(arr).save(path, compress_level=PNG_COMPRESS_LEVEL)
             return [str(p) for p in paths]
 
     pil_images = _as_pil_list(value)
     if pil_images is not None:
         paths = _resolve_output_paths(len(pil_images), args.output, ext="png")
         for img, path in zip(pil_images, paths):
-            img.save(path)
+            img.save(path, compress_level=PNG_COMPRESS_LEVEL)
         return [str(p) for p in paths]
 
     frames = _as_frame_sequence(value)

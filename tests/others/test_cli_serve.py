@@ -46,6 +46,8 @@ from diffusers.commands.serve.backends import (
 from diffusers.commands.serve.generations import Generation, GenerationQueue
 from diffusers.commands.serve.manifest import GMSError, Manifest, ServedModel, blocks_signature, derive_manifest
 from diffusers.modular_pipelines import InputParam, ModularPipelineBlocks, OutputParam
+from diffusers.utils import logging
+from diffusers.utils.testing_utils import CaptureLogger
 
 
 MODEL_ID = "test-org/fake-model"
@@ -836,7 +838,7 @@ class FakeSandbox:
 
     def run(self, cmd, **kwargs):
         self.commands.append(cmd)
-        return SimpleNamespace(exit_code=0)
+        return SimpleNamespace(exit_code=0, stdout="/usr/bin/python3\n")
 
     def kill(self):
         self.killed = True
@@ -859,10 +861,13 @@ class TestServeRemote:
         ServeCommand(parser.parse_args(argv)).run()
 
         assert created["flavor"] == "a10g-large"
-        install, serve_argv = sandbox.commands
+        assert created["image"] == "pytorch/pytorch:2.10.0-cuda12.8-cudnn9-runtime"
+        install, _, serve_argv = sandbox.commands
         assert "fastapi" in install and "extra-package" in install, install
-        assert serve_argv[:5] == ["diffusers-cli", "--format", "quiet", "serve", "--model"], serve_argv
-        options = dict(zip(serve_argv[4::2], serve_argv[5::2]))
+        # The server runs under the interpreter the dependencies were installed into, not whatever is on PATH.
+        assert serve_argv[:3] == ["/usr/bin/python3", "-m", "diffusers.commands.diffusers_cli"], serve_argv
+        assert serve_argv[3:7] == ["--format", "quiet", "serve", "--model"], serve_argv
+        options = dict(zip(serve_argv[6::2], serve_argv[7::2]))
         assert options["--dtype"] == "bf16"
         # The sandbox server always binds the proxied port and builds output links on the proxied address.
         assert options["--port"] == "8000"
@@ -872,6 +877,25 @@ class TestServeRemote:
         assert "--remote" not in serve_argv and "--flavor" not in serve_argv, serve_argv
         assert sandbox.killed, "the sandbox must be killed once the server stops"
 
+    @pytest.mark.parametrize(
+        "backend, image", [("sglang", "lmsysorg/sglang:latest"), ("vllm", "vllm/vllm-omni:latest")]
+    )
+    def test_engine_backend_defaults_to_the_engine_image(self, monkeypatch, backend, image):
+        created = {}
+        monkeypatch.setattr(
+            "diffusers.commands.serve.remote.Sandbox",
+            SimpleNamespace(create=lambda **kwargs: created.update(kwargs) or FakeSandbox()),
+        )
+        parser = ArgumentParser()
+        ServeCommand.register_subcommand(parser.add_subparsers())
+        ServeCommand(parser.parse_args(["serve", "-m", "org/model", "--backend", backend, "--remote"])).run()
+        assert created["image"] == image
+
+        ServeCommand(
+            parser.parse_args(["serve", "-m", "org/model", "--backend", backend, "--remote", "--image", "mine"])
+        ).run()
+        assert created["image"] == "mine", "an explicit --image must win over the engine default"
+
 
 class TestServeCommand:
     def _parse(self, argv):
@@ -879,11 +903,18 @@ class TestServeCommand:
         ServeCommand.register_subcommand(parser.add_subparsers())
         return parser.parse_args(["serve", *argv])
 
-    def test_engine_backend_rejects_pipeline_flags(self):
+    def test_engine_backend_warns_about_ignored_pipeline_flags(self, monkeypatch):
         pytest.importorskip("fastapi", reason="`diffusers-cli serve` needs the `diffusers[serve]` extra")
+
+        def stop(args):
+            raise RuntimeError("stop after the flag check")
+
+        monkeypatch.setattr("diffusers.commands.serve._resolve_pipeline", stop)
         args = self._parse(["-m", "org/model", "--backend", "vllm", "--dtype", "bf16", "--vae-tiling"])
-        with pytest.raises(SystemExit, match="--dtype, --vae-tiling configure the in-process pipeline"):
-            ServeCommand(args).run()
+        with CaptureLogger(logging.get_logger("diffusers-cli/serve")) as captured:
+            with pytest.raises(RuntimeError, match="stop after the flag check"):
+                ServeCommand(args).run()
+        assert "--dtype, --vae-tiling configure the in-process pipeline and are ignored" in captured.out
 
     def test_context_parallel_is_rejected(self):
         pytest.importorskip("fastapi", reason="`diffusers-cli serve` needs the `diffusers[serve]` extra")

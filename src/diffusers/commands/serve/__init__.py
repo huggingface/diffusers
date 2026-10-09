@@ -33,6 +33,8 @@ from ..run import _add_loading_arguments, _add_optimization_arguments
 from .remote import add_remote_arguments, serve_remote
 
 
+logger = logging.get_logger("diffusers-cli/serve")
+
 DEFAULT_OUTPUT_DIR = str(Path.home() / ".diffusers" / "cli" / "serve" / "outputs")
 BACKEND_CHOICES = ("diffusers", "sglang", "vllm")
 
@@ -47,6 +49,7 @@ _DIFFUSERS_ONLY_FLAGS = {
     "vae_tiling": False,
     "vae_slicing": False,
     "compile": None,
+    "compile_mode": "regional",
 }
 
 
@@ -212,14 +215,14 @@ class ServeCommand(BaseDiffusersCLICommand):
         if args.backend == "diffusers" and args.backend_args is not None:
             raise SystemExit("--backend-args only applies to --backend sglang or vllm.")
         if args.backend != "diffusers":
-            rejected = [
+            ignored = [
                 "--" + name.replace("_", "-")
                 for name, unset in _DIFFUSERS_ONLY_FLAGS.items()
                 if getattr(args, name) != unset
             ]
-            if rejected:
-                raise SystemExit(
-                    f"{', '.join(rejected)} configure the in-process pipeline and have no effect with "
+            if ignored:
+                logger.warning(
+                    f"{', '.join(ignored)} configure the in-process pipeline and are ignored with "
                     f"--backend {args.backend}. Pass the engine's own flags through --backend-args instead."
                 )
 

@@ -141,10 +141,15 @@ Configure how the CLI loads model weights and custom pipeline code.
   pipelines. See [Attention backends](../optimization/attention_backends).
 - `--vae-tiling` / `--vae-slicing` — lower VAE decode VRAM. See
   [VAE tiling](../optimization/memory#vae-tiling) and [VAE slicing](../optimization/memory#vae-slicing).
-- `--compile [JSON]` — compile denoiser modules with [torch.compile](../optimization/fp16#torchcompile). The
-  CLI prefers [regional compilation](../optimization/fp16#regional-compilation) for modules with repeated
-  blocks. Bare `--compile` uses `fullgraph=true`. A JSON object is forwarded to `torch.compile`. Not supported
-  with `--context-parallel`.
+- `--compile [JSON]` — compile denoiser modules and the VAE decoder with
+  [torch.compile](../optimization/fp16#torchcompile). The CLI prefers
+  [regional compilation](../optimization/fp16#regional-compilation) for denoisers with repeated blocks; the VAE
+  decoder is always compiled whole. Bare `--compile` uses `fullgraph=true`. A JSON object is forwarded to
+  `torch.compile`. Not supported with `--context-parallel`.
+- `--compile-mode {regional,full}` — what `--compile` compiles. `regional` (default) compiles only the repeated
+  blocks, which keeps the first step fast. `full` compiles the whole denoiser. `torch.compile` modes that use CUDA
+  graphs (`max-autotune`, `reduce-overhead`) need `--compile-mode full`: repeated blocks share one compiled graph,
+  so with CUDA graphs each block's output is overwritten by the next block's run.
 - `--context-parallel` — Ulysses-style context parallelism on a DiT-based pipeline. Locally requires torchrun;
   under `--remote` the CLI wraps `torchrun --nproc-per-node=gpu` for you. See
   [Context parallelism](../training/distributed_inference#context-parallelism).
@@ -375,6 +380,14 @@ diffusers-cli generate --sandbox-id <id> --inputs '{"prompt": "a cat on the moon
 [`run --remote`](#remote-execution---remote). `--model` must be a Hub repo id. A local `--manifest` file is
 uploaded to the sandbox.
 
+With `--backend sglang` or `--backend vllm`, the sandbox starts from the engine's own image
+(`lmsysorg/sglang:latest` or `vllm/vllm-omni:latest`) unless `--image` names another, so the engine does not need
+installing:
+
+```bash
+diffusers-cli serve --model black-forest-labs/FLUX.2-klein-4B --backend sglang --remote --flavor a100-large
+```
+
 ### Manifests
 
 What a model accepts is described by its manifest. `serve` looks for one in this order:
@@ -425,8 +438,8 @@ diffusers-cli serve --model Qwen/Qwen-Image --backend sglang --backend-args '--n
 diffusers-cli serve --model Wan-AI/Wan2.2-T2V-A14B-Diffusers --backend vllm
 ```
 
-The pipeline flags (`--dtype`, `--cpu-offload`, `--compile`, ...) do not apply to these backends; pass the
-engine's own flags with `--backend-args`. Compared with the in-process backend, they serve image and video
+The pipeline flags (`--dtype`, `--cpu-offload`, `--compile`, ...) do not apply to these backends: they are
+ignored with a warning. Pass the engine's own flags with `--backend-args`. Compared with the in-process backend, they serve image and video
 outputs only, accept `image` as the only media input, expose the parameters both engines share (size, steps,
 guidance scale, seed, number of frames, fps, number of images), report no step progress, and apply no request
 adapters.
