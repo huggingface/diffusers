@@ -311,6 +311,7 @@ report no step progress, and a cancel request only takes effect once the pipelin
 |---|---|
 | `--default-seed` | Seed used for requests that do not set one. Without it, each such request gets a random seed. |
 | `--enable-cors` | Allow cross-origin requests from any origin, so a browser app on another host can call the server. |
+| `--public-url` | Base URL clients reach the server at, used to build output file links. Set it behind a reverse proxy. |
 | `--log-level` | Logging level for diffusers and the HTTP server (`debug`, `info`, `warning`, `error`, `critical`). |
 
 `GET /health` returns `{"status": "ok"}`, or `503` when an SGLang or vLLM-Omni backend has exited. Every response
@@ -351,6 +352,28 @@ with a JSON pointer to the offending field.
 ```json
 {"error": {"code": "invalid_request", "message": "task 'text_to_image' declares no parameter 'cfg'", "pointer": "/parameters/cfg"}}
 ```
+
+### Remote serving (`--remote`)
+
+`--remote` starts the server in a [Hugging Face Sandbox](https://huggingface.co/docs/huggingface_hub/guides/sandbox)
+instead of on the local machine. The command creates the sandbox, installs the dependencies, starts the server,
+and streams its logs until you interrupt it; the sandbox is then deleted.
+
+```bash
+diffusers-cli serve --model black-forest-labs/FLUX.1-dev --dtype bf16 --remote --flavor a10g-large
+```
+
+Once the model has loaded, the command prints the sandbox id. The server is only reachable through the sandbox
+proxy, which requires your Hugging Face token, so pass the id to [`generate`](#generate) rather than calling a URL
+directly:
+
+```bash
+diffusers-cli generate --sandbox-id <id> --inputs '{"prompt": "a cat on the moon"}'
+```
+
+`--flavor`, `--image`, `--dependencies`, `--namespace` and `--idle-timeout` work as they do for
+[`run --remote`](#remote-execution---remote). `--model` must be a Hub repo id. A local `--manifest` file is
+uploaded to the sandbox.
 
 ### Manifests
 
@@ -430,6 +453,9 @@ fields of the same name. `--model` is only needed when the server hosts more tha
 Outputs are saved to `~/.diffusers/cli/generate/outputs/<generation id>/` unless `--output` names a directory.
 `--token` sends a bearer token in the `Authorization` header, for servers behind an authenticating proxy; no
 token is sent by default. Interrupting the command cancels the generation on the server.
+
+For a server started with [`serve --remote`](#remote-serving---remote), pass `--sandbox-id <id>` instead of
+`--url`. The request then goes through the sandbox proxy, authenticated with your Hugging Face token.
 
 ## `custom_blocks`
 

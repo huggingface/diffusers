@@ -22,6 +22,7 @@ import json
 import re
 import uuid
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,7 +47,7 @@ def _timestamp(value: Any) -> str | None:
     return value.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _render(generation: Generation, request: Request) -> dict[str, Any]:
+def _render(generation: Generation, request: Request, public_url: str | None) -> dict[str, Any]:
     outputs = None
     if generation.status == "complete":
         outputs = {}
@@ -58,10 +59,12 @@ def _render(generation: Generation, request: Request) -> dict[str, Any]:
                     content = (generation.directory / artifact["file"]).read_bytes()
                     rendered["base64"] = base64.b64encode(content).decode()
                 else:
-                    url = request.url_for(
-                        "get_generation_file", generation_id=generation.id, filename=artifact["file"]
-                    )
-                    rendered["url"] = str(url)
+                    route = {"generation_id": generation.id, "filename": artifact["file"]}
+                    if public_url is None:
+                        rendered["url"] = str(request.url_for("get_generation_file", **route))
+                    else:
+                        path = request.app.url_path_for("get_generation_file", **route)
+                        rendered["url"] = public_url.rstrip("/") + path
                 outputs[name].append(rendered)
 
     return {
@@ -83,8 +86,12 @@ def create_app(
     generations: GenerationQueue,
     default_seed: int | None = None,
     enable_cors: bool = False,
+    public_url: str | None = None,
 ) -> FastAPI:
-    app = FastAPI(title="diffusers-cli serve", docs_url=None, redoc_url=None, openapi_url=None)
+    # A proxy may or may not strip the path it publishes the server under before forwarding a request.
+    # With that path as the root path, routing accepts both forms.
+    root_path = urlparse(public_url).path.rstrip("/") if public_url is not None else ""
+    app = FastAPI(title="diffusers-cli serve", docs_url=None, redoc_url=None, openapi_url=None, root_path=root_path)
 
     @app.middleware("http")
     async def request_id(request: Request, call_next) -> Response:
@@ -157,14 +164,14 @@ def create_app(
             await asyncio.to_thread(generation.wait, min(float(wait.group(1)), MAX_WAIT_SECONDS))
         if generation.error is not None:
             raise generation.error
-        return _render(generation, request)
+        return _render(generation, request, public_url)
 
     @app.get("/v1/generations/{generation_id}")
     async def get_generation(generation_id: str, request: Request) -> dict[str, Any]:
         generation = generations.get(generation_id)
         if generation.error is not None:
             raise generation.error
-        return _render(generation, request)
+        return _render(generation, request, public_url)
 
     @app.delete("/v1/generations/{generation_id}", status_code=204)
     async def delete_generation(generation_id: str) -> Response:
@@ -176,7 +183,7 @@ def create_app(
         generation = generations.cancel(generation_id)
         if generation.error is not None:
             raise generation.error
-        return _render(generation, request)
+        return _render(generation, request, public_url)
 
     @app.get("/v1/generations/{generation_id}/events")
     async def get_generation_events(generation_id: str, request: Request) -> StreamingResponse:
@@ -190,7 +197,7 @@ def create_app(
                 events, done = await asyncio.to_thread(generation.wait_for_events, index, _KEEP_ALIVE_SECONDS)
                 for event, data in events:
                     index += 1
-                    payload = _render(generation, request) if event == "complete" else data
+                    payload = _render(generation, request, public_url) if event == "complete" else data
                     yield f"id: {index}\nevent: {event}\ndata: {json.dumps(payload)}\n\n"
                 if done:
                     return

@@ -516,6 +516,19 @@ class TestServeApp:
         body["parameters"] = {"seed": 11}
         assert client.post("/v1/generations", json=body, headers=WAIT).json()["seed"] == 11
 
+    def test_public_url_replaces_the_request_address_in_output_links(self, serve):
+        client, _ = serve(app_options={"public_url": "https://proxy.example/sandbox/proxy/8000/"})
+        body = {"model": MODEL_ID, "inputs": {"prompt": "a cat"}}
+        generation = client.post("/v1/generations", json=body, headers=WAIT).json()
+        expected = f"https://proxy.example/sandbox/proxy/8000/v1/generations/{generation['id']}/files/image-0.png"
+        assert generation["outputs"]["image"][0]["url"] == expected
+
+        # The sandbox proxy forwards some requests with the published path still attached.
+        for path in ("/v1/models", "/sandbox/proxy/8000/v1/models"):
+            assert client.get(path).status_code == 200, path
+        prefixed = client.post("/sandbox/proxy/8000/v1/generations", json=body, headers=WAIT)
+        assert prefixed.status_code == 201, prefixed.text
+
     def test_cors_is_opt_in(self, serve):
         origin = {"Origin": "http://example.com"}
         client, _ = serve()
@@ -806,6 +819,58 @@ class TestGenerateCommand:
         argv = ["--inputs", '{"prompt": "a cat"}', "--parameters", '{"cfg": 1}', "-o", str(tmp_path)]
         with pytest.raises(SystemExit, match=r"HTTP 400: invalid_request: .*\(at /parameters/cfg\)"):
             self._run(monkeypatch, client, argv)
+
+
+class FakeSandbox:
+    id = "sbx-1"
+    proxy_headers = {"Authorization": "Bearer hf_x", "X-Sandbox-Token": "tok"}
+
+    def __init__(self):
+        self.commands = []
+        self.uploads = []
+        self.killed = False
+        self.files = SimpleNamespace(upload=lambda local, remote: self.uploads.append((local, remote)))
+
+    def proxy_url_for(self, port, path="/"):
+        return f"https://job.hf.jobs/v1/sandboxes/s/proxy/{port}{path}"
+
+    def run(self, cmd, **kwargs):
+        self.commands.append(cmd)
+        return SimpleNamespace(exit_code=0)
+
+    def kill(self):
+        self.killed = True
+
+
+class TestServeRemote:
+    def test_remote_starts_the_server_in_a_sandbox(self, tmp_path, monkeypatch):
+        sandbox = FakeSandbox()
+        created = {}
+        monkeypatch.setattr(
+            "diffusers.commands.serve.remote.Sandbox",
+            SimpleNamespace(create=lambda **kwargs: created.update(kwargs) or sandbox),
+        )
+        manifest = tmp_path / "gms.json"
+        manifest.write_text("{}")
+        parser = ArgumentParser()
+        ServeCommand.register_subcommand(parser.add_subparsers())
+        argv = ["serve", "-m", "org/model", "--dtype", "bf16", "--remote", "--flavor", "a10g-large"]
+        argv += ["--manifest", str(manifest), "--port", "9000", "--dependencies", "extra-package"]
+        ServeCommand(parser.parse_args(argv)).run()
+
+        assert created["flavor"] == "a10g-large"
+        install, serve_argv = sandbox.commands
+        assert "fastapi" in install and "extra-package" in install, install
+        assert serve_argv[:5] == ["diffusers-cli", "--format", "quiet", "serve", "--model"], serve_argv
+        options = dict(zip(serve_argv[4::2], serve_argv[5::2]))
+        assert options["--dtype"] == "bf16"
+        # The sandbox server always binds the proxied port and builds output links on the proxied address.
+        assert options["--port"] == "8000"
+        assert options["--public-url"] == "https://job.hf.jobs/v1/sandboxes/s/proxy/8000/"
+        assert options["--manifest"] == "/tmp/diffusers-cli/gms.json"
+        assert sandbox.uploads == [(str(manifest), "/tmp/diffusers-cli/gms.json")]
+        assert "--remote" not in serve_argv and "--flavor" not in serve_argv, serve_argv
+        assert sandbox.killed, "the sandbox must be killed once the server stops"
 
 
 class TestServeCommand:

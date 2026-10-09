@@ -30,6 +30,7 @@ from huggingface_hub.cli._output import out
 from ...utils import logging
 from .. import BaseDiffusersCLICommand
 from ..run import _add_loading_arguments, _add_optimization_arguments
+from .remote import add_remote_arguments, serve_remote
 
 
 DEFAULT_OUTPUT_DIR = str(Path.home() / ".diffusers" / "cli" / "serve" / "outputs")
@@ -140,6 +141,15 @@ class ServeCommand(BaseDiffusersCLICommand):
         parser.add_argument("--host", default="127.0.0.1", help="Interface to bind. Defaults to 127.0.0.1.")
         parser.add_argument("--port", type=int, default=8000, help="Port to bind. Defaults to 8000.")
         parser.add_argument(
+            "--public-url",
+            default=None,
+            metavar="URL",
+            help=(
+                "Base URL clients reach the server at, used to build output file links. Set it when the server "
+                "sits behind a reverse proxy; defaults to the address of each incoming request."
+            ),
+        )
+        parser.add_argument(
             "--manifest",
             default=None,
             metavar="PATH",
@@ -182,6 +192,7 @@ class ServeCommand(BaseDiffusersCLICommand):
             default=None,
             help="Logging level for diffusers and the HTTP server. Defaults to the current diffusers verbosity.",
         )
+        add_remote_arguments(parser)
         # `_load_pipeline` reads these `run` flags, which `serve` does not expose.
         parser.set_defaults(func=ServeCommand, workflow=None, offload_margin=None)
 
@@ -190,14 +201,6 @@ class ServeCommand(BaseDiffusersCLICommand):
 
     def run(self) -> None:
         args = self.args
-        try:
-            import fastapi  # noqa: F401
-            import uvicorn
-        except ImportError as e:
-            raise SystemExit(
-                '`diffusers-cli serve` requires FastAPI and uvicorn. Install them with: pip install "diffusers[serve]"'
-            ) from e
-
         if args.log_level is not None:
             logging.set_verbosity(logging.get_log_levels_dict()[args.log_level])
 
@@ -219,6 +222,18 @@ class ServeCommand(BaseDiffusersCLICommand):
                     f"{', '.join(rejected)} configure the in-process pipeline and have no effect with "
                     f"--backend {args.backend}. Pass the engine's own flags through --backend-args instead."
                 )
+
+        if args.remote:
+            serve_remote(args, self.task)
+            return
+
+        try:
+            import fastapi  # noqa: F401
+            import uvicorn
+        except ImportError as e:
+            raise SystemExit(
+                '`diffusers-cli serve` requires FastAPI and uvicorn. Install them with: pip install "diffusers[serve]"'
+            ) from e
 
         from .app import create_app
         from .backends import (
@@ -266,6 +281,7 @@ class ServeCommand(BaseDiffusersCLICommand):
                 GenerationQueue(backend, args.output_dir),
                 default_seed=args.default_seed,
                 enable_cors=args.enable_cors,
+                public_url=args.public_url,
             )
             out.result(
                 self.task,

@@ -82,6 +82,7 @@ class GenerateCommand(BaseDiffusersCLICommand):
             "  $ diffusers-cli generate --url http://localhost:8000 \\\n"
             '      --inputs \'{"prompt": "make the fur grey", "image": "cat.png"}\' \\\n'
             '      --parameters \'{"steps": 8, "seed": 0}\' -o outputs/\n'
+            '  $ diffusers-cli generate --sandbox-id <id> --inputs \'{"prompt": "a cat on the moon"}\'\n'
             "\n"
             "Learn more\n"
             "  Use `diffusers-cli <command> --help` for more information about a command.\n"
@@ -91,12 +92,18 @@ class GenerateCommand(BaseDiffusersCLICommand):
         parser: ArgumentParser = subparsers.add_parser(
             "generate",
             help="Send a generation to a Generative Media Spec server and save its outputs.",
-            usage="\n  diffusers-cli generate --url <server> --inputs <json> [options]",
+            usage="\n  diffusers-cli generate (--url <server> | --sandbox-id <id>) --inputs <json> [options]",
             epilog=epilog,
             formatter_class=RawDescriptionHelpFormatter,
         )
         parser._optionals.title = "Options"
-        parser.add_argument("--url", required=True, help="Base URL of the server, e.g. http://localhost:8000.")
+        target = parser.add_mutually_exclusive_group(required=True)
+        target.add_argument("--url", default=None, help="Base URL of the server, e.g. http://localhost:8000.")
+        target.add_argument(
+            "--sandbox-id",
+            default=None,
+            help="Id of a sandbox started with `diffusers-cli serve --remote`, reached through the sandbox proxy.",
+        )
         parser.add_argument(
             "--model", "-m", default=None, help="Model id to request. Defaults to the server's only model."
         )
@@ -130,7 +137,10 @@ class GenerateCommand(BaseDiffusersCLICommand):
         parser.add_argument(
             "--token",
             default=None,
-            help="Bearer token sent to the server in the Authorization header. No token is sent by default.",
+            help=(
+                "With --url: bearer token sent in the Authorization header; none is sent by default. "
+                "With --sandbox-id: Hugging Face token used to reach the sandbox; defaults to the logged-in one."
+            ),
         )
         parser.set_defaults(func=GenerateCommand)
 
@@ -189,7 +199,7 @@ class GenerateCommand(BaseDiffusersCLICommand):
 
         out.result(
             self.task,
-            url=args.url,
+            url=str(client.base_url),
             model=model,
             generation=generation["id"],
             seed=generation.get("seed"),
@@ -197,6 +207,18 @@ class GenerateCommand(BaseDiffusersCLICommand):
         )
 
     def _client(self) -> httpx.Client:
+        if self.args.sandbox_id is not None:
+            from huggingface_hub import Sandbox
+
+            from .serve.remote import SANDBOX_PORT
+
+            sbx = Sandbox.connect(self.args.sandbox_id, token=self.args.token)
+            return httpx.Client(
+                base_url=sbx.proxy_url_for(SANDBOX_PORT),
+                headers=sbx.proxy_headers,
+                timeout=_TIMEOUT_SECONDS,
+                follow_redirects=True,
+            )
         headers = {"Authorization": f"Bearer {self.args.token}"} if self.args.token else {}
         return httpx.Client(base_url=self.args.url, headers=headers, timeout=_TIMEOUT_SECONDS, follow_redirects=True)
 
@@ -204,7 +226,7 @@ class GenerateCommand(BaseDiffusersCLICommand):
         try:
             response = client.request(method, path, **kwargs)
         except httpx.HTTPError as e:
-            raise SystemExit(f"Could not reach {self.args.url}: {type(e).__name__}: {e}") from e
+            raise SystemExit(f"Could not reach {client.base_url}: {type(e).__name__}: {e}") from e
         if response.status_code < 400:
             return response.json()
 
@@ -220,7 +242,7 @@ class GenerateCommand(BaseDiffusersCLICommand):
     def _only_model(self, client: httpx.Client) -> str:
         models = [model["id"] for model in self._request(client, "GET", "/v1/models")["data"]]
         if len(models) != 1:
-            raise SystemExit(f"{self.args.url} serves {len(models)} models ({models}); pick one with --model.")
+            raise SystemExit(f"{client.base_url} serves {len(models)} models ({models}); pick one with --model.")
         return models[0]
 
     def _artifact_bytes(self, client: httpx.Client, artifact: dict[str, Any]) -> bytes:
