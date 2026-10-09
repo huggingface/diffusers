@@ -12,15 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import NamedTuple
+
 import torch
 
 from ..models._modeling_parallel import TensorParallelConfig
-from ..utils import get_logger
+from ..utils import get_logger, is_peft_available
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
 
-_SUPPORTED_TP_DEVICES = ("cuda", "neuron")
+_SUPPORTED_TP_DEVICES = ("cuda", "neuron", "tpu")
 
 
 class PackedColwiseParallel:
@@ -48,6 +50,18 @@ class PackedRowwiseParallel:
         self.blocks = blocks
 
 
+def _packed_blocks(style: "PackedColwiseParallel | PackedRowwiseParallel", module, path: str) -> "list[int]":
+    """The blocks of a packed style: its own `blocks`, else the `_tp_packed_*_blocks` attribute on the Linear."""
+    attr = "_tp_packed_col_blocks" if isinstance(style, PackedColwiseParallel) else "_tp_packed_row_blocks"
+    blocks = style.blocks if style.blocks is not None else getattr(module, attr, None)
+    if not blocks:
+        raise ValueError(
+            f"'{path}' uses {type(style).__name__} but has no blocks: pass `blocks` to it, or set `{attr}` on the "
+            f"Linear in the model's `__init__`."
+        )
+    return blocks
+
+
 def _blocks_to_block_sizes(total_size: int, blocks: "list[int]") -> "list[int]":
     """Convert proportional block counts to absolute sizes.
 
@@ -63,6 +77,108 @@ def _blocks_to_block_sizes(total_size: int, blocks: "list[int]") -> "list[int]":
         )
     unit = total_size // total
     return [b * unit for b in blocks]
+
+
+class TPShardSpec(NamedTuple):
+    """How one parameter is laid out across the tensor-parallel ranks.
+
+    `dim` is the dimension sharded across ranks, or `None` when the parameter is replicated on every rank (a rowwise
+    bias, which is added after the all-reduce). `block_sizes` partitions `dim` into independently sharded blocks; a
+    plain `"colwise"` / `"rowwise"` style has a single block covering the whole dimension, and packed styles have one
+    per fused projection.
+    """
+
+    dim: "int | None"
+    block_sizes: "list[int] | None"
+
+
+def _local_shard(tensor, dim: int, block_sizes: "list[int]", tp_mesh) -> torch.Tensor:
+    """Extract this rank's slice of `tensor` along `dim`.
+
+    `tensor` may be a `torch.Tensor` or a safetensors `PySafeSlice`, so the same arithmetic serves both resharding a
+    weight already in memory and reading only one rank's slice off disk. Note that `PySafeSlice` exposes `get_shape()`
+    rather than `.ndim`, and that a `dim`-1 slice comes back strided, hence the final `contiguous()` —
+    `DTensor.from_local` needs a contiguous local tensor.
+    """
+    rank = tp_mesh.get_local_rank()
+    tp_size = tp_mesh.size()
+    ndim = tensor.dim() if isinstance(tensor, torch.Tensor) else len(tensor.get_shape())
+
+    parts, offset = [], 0
+    for block_size in block_sizes:
+        chunk = block_size // tp_size
+        index = [slice(None)] * ndim
+        index[dim] = slice(offset + rank * chunk, offset + (rank + 1) * chunk)
+        parts.append(tensor[tuple(index)])
+        offset += block_size
+
+    local = parts[0] if len(parts) == 1 else torch.cat(parts, dim=dim)
+    return local.contiguous()
+
+
+def resolve_tp_shard_specs(model: torch.nn.Module, tp_plan: dict, tp_degree: int) -> "dict[str, TPShardSpec]":
+    """Map every `_tp_plan`-covered parameter name to its `TPShardSpec`.
+
+    Parameters absent from the result are untouched by tensor parallelism. Both `weight` and `bias` of each planned
+    module are covered.
+
+    Raises if any sharded block is not divisible by `tp_degree`, so an uneven split is rejected before any weight is
+    read or sharded. Left to `Shard`, it would give the trailing ranks a smaller slice and break the paired
+    colwise/rowwise matmul.
+
+    The plan is expanded by `_resolve_tp_plan` so there is a single implementation of the glob rules; the `id(module)
+    -> name` map recovers qualified names from the submodules it returns. Going back through `_resolve_tp_plan` also
+    handles a model that reuses one block instance in two places, which re-expanding the globs here would get wrong.
+
+    Safe to call on a meta model: only shapes, `bias is not None`, and the packed-block attributes set in the module's
+    `__init__` are read.
+    """
+    names = {id(module): name for name, module in model.named_modules()}
+    specs: dict[str, TPShardSpec] = {}
+
+    for block, relative_plan in _resolve_tp_plan(model, tp_plan):
+        prefix = names[id(block)]
+        for relative_path, style in relative_plan.items():
+            submodule = block
+            for atom in relative_path.split("."):
+                submodule = getattr(submodule, atom)
+            path = f"{prefix}.{relative_path}" if prefix else relative_path
+
+            # `_tp_packed_*_blocks` hold absolute sizes rather than proportions; that works because
+            # they sum to the full dimension, so `_blocks_to_block_sizes` computes `unit == 1`.
+            if style == "colwise":
+                weight_spec = TPShardSpec(0, [submodule.weight.shape[0]])
+                bias_spec = weight_spec
+            elif style == "rowwise":
+                weight_spec = TPShardSpec(1, [submodule.weight.shape[1]])
+                bias_spec = TPShardSpec(None, None)
+            elif isinstance(style, PackedColwiseParallel):
+                blocks = _packed_blocks(style, submodule, path)
+                weight_spec = TPShardSpec(0, _blocks_to_block_sizes(submodule.weight.shape[0], blocks))
+                bias_spec = weight_spec
+            elif isinstance(style, PackedRowwiseParallel):
+                blocks = _packed_blocks(style, submodule, path)
+                weight_spec = TPShardSpec(1, _blocks_to_block_sizes(submodule.weight.shape[1], blocks))
+                bias_spec = TPShardSpec(None, None)
+            else:
+                raise ValueError(
+                    f"Unsupported tensor-parallel style '{style}' for '{path}'. "
+                    f"Expected 'colwise', 'rowwise', PackedColwiseParallel, or PackedRowwiseParallel."
+                )
+
+            specs[f"{path}.weight"] = weight_spec
+            if submodule.bias is not None:
+                specs[f"{path}.bias"] = bias_spec
+
+    for name, spec in specs.items():
+        for block_size in spec.block_sizes or []:
+            if block_size % tp_degree != 0:
+                raise ValueError(
+                    f"Cannot shard '{name}' across {tp_degree} tensor-parallel ranks: a block of size {block_size} "
+                    f"along dim {spec.dim} is not divisible by {tp_degree}."
+                )
+
+    return specs
 
 
 def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict) -> list:
@@ -107,127 +223,68 @@ def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict) -> list:
     return [grouped[key] for key in order]
 
 
+def _shard_packed_param(param, dim: int, blocks: "list[int]", device_mesh, src_data_rank) -> torch.nn.Parameter:
+    """Shard a packed `param` along `dim`, splitting each fused block across the ranks separately.
+
+    The parameter is replicated before slicing: the broadcast from `src_data_rank` is what makes one rank's weights
+    authoritative when the model was randomly initialized rather than loaded from a checkpoint, in which case every
+    rank starts with different values.
+    """
+    from torch.distributed.tensor import DTensor, Replicate, Shard, distribute_tensor
+
+    full = distribute_tensor(param, device_mesh, [Replicate()], src_data_rank=src_data_rank).to_local()
+    local = _local_shard(full, dim, _blocks_to_block_sizes(full.shape[dim], blocks), device_mesh)
+    return torch.nn.Parameter(
+        DTensor.from_local(local, device_mesh, [Shard(dim)], run_check=False), requires_grad=param.requires_grad
+    )
+
+
 def _styles(relative_plan: dict) -> dict:
     """Map a `{relative_path: style}` plan to `parallelize_module` style instances.
 
     Values may be plain strings (`"colwise"` / `"rowwise"`) or `PackedColwiseParallel` / `PackedRowwiseParallel` marker
-    instances. Returns `{relative_path: ColwiseParallel() | RowwiseParallel() | <packed impl>}`, each subclassed to
-    reject a sharded dim that is not divisible by the TP degree.
+    instances. Returns `{relative_path: ColwiseParallel() | RowwiseParallel() | <packed impl>}`. Divisibility by the TP
+    degree is checked earlier, by `resolve_tp_shard_specs`.
     """
-    import torch.nn as nn
-    from torch.distributed.tensor import DTensor, Replicate, Shard, distribute_tensor
+    from torch.distributed.tensor import Replicate, distribute_tensor
     from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
 
     def _make_packed_col(marker: PackedColwiseParallel) -> ColwiseParallel:
-        _blocks = marker.blocks
-
         class _PackedColwiseImpl(ColwiseParallel):
             def _partition_linear_fn(self, name, module, device_mesh):
-                blocks = _blocks if _blocks is not None else getattr(module, "_tp_packed_col_blocks")
-                rank = device_mesh.get_local_rank()
-                tp_size = device_mesh.size()
+                blocks = _packed_blocks(marker, module, name)
                 # Both weight (`[out, in]`) and bias (`[out]`) are sharded row-wise (dim 0) with the same per-block
                 # slicing so each rank's bias rows line up with its weight rows for the packed layout.
                 for param_name, param in module.named_parameters():
-                    full = distribute_tensor(
-                        param, device_mesh, [Replicate()], src_data_rank=self.src_data_rank
-                    ).to_local()
-                    block_sizes = _blocks_to_block_sizes(full.shape[0], blocks)
-                    parts, offset = [], 0
-                    for bs in block_sizes:
-                        if bs % tp_size != 0:
-                            raise ValueError(
-                                f"Cannot shard packed block of size {bs} across {tp_size} tensor-parallel ranks: "
-                                f"{bs} is not divisible by {tp_size}."
-                            )
-                        chunk = bs // tp_size
-                        parts.append(full[offset + rank * chunk : offset + (rank + 1) * chunk].contiguous())
-                        offset += bs
-                    local = torch.cat(parts, dim=0)
-                    dist_param = nn.Parameter(
-                        DTensor.from_local(local, device_mesh, [Shard(0)], run_check=False),
-                        requires_grad=param.requires_grad,
-                    )
-                    module.register_parameter(param_name, dist_param)
+                    sharded = _shard_packed_param(param, 0, blocks, device_mesh, self.src_data_rank)
+                    module.register_parameter(param_name, sharded)
 
         return _PackedColwiseImpl()
 
     def _make_packed_row(marker: PackedRowwiseParallel) -> RowwiseParallel:
-        _blocks = marker.blocks
-
         class _PackedRowwiseImpl(RowwiseParallel):
             def _partition_linear_fn(self, name, module, device_mesh):
-                blocks = _blocks if _blocks is not None else getattr(module, "_tp_packed_row_blocks")
-                rank = device_mesh.get_local_rank()
-                tp_size = device_mesh.size()
+                blocks = _packed_blocks(marker, module, name)
+                # Only the weight (`[out, in]`) is sharded, column-wise (dim 1); the bias is added after the
+                # all-reduce, so every rank keeps it whole.
                 for param_name, param in module.named_parameters():
                     if param_name == "weight":
-                        full = distribute_tensor(
-                            param, device_mesh, [Replicate()], src_data_rank=self.src_data_rank
-                        ).to_local()
-                        block_sizes = _blocks_to_block_sizes(full.shape[1], blocks)
-                        parts, offset = [], 0
-                        for bs in block_sizes:
-                            if bs % tp_size != 0:
-                                raise ValueError(
-                                    f"Cannot shard packed block of size {bs} across {tp_size} tensor-parallel ranks: "
-                                    f"{bs} is not divisible by {tp_size}."
-                                )
-                            chunk = bs // tp_size
-                            parts.append(full[:, offset + rank * chunk : offset + (rank + 1) * chunk].contiguous())
-                            offset += bs
-                        local = torch.cat(parts, dim=1)
-                        dist_param = nn.Parameter(
-                            DTensor.from_local(local, device_mesh, [Shard(1)], run_check=False),
-                            requires_grad=param.requires_grad,
-                        )
+                        sharded = _shard_packed_param(param, 1, blocks, device_mesh, self.src_data_rank)
                     else:
-                        dist_param = nn.Parameter(
+                        sharded = torch.nn.Parameter(
                             distribute_tensor(param, device_mesh, [Replicate()], src_data_rank=self.src_data_rank),
                             requires_grad=param.requires_grad,
                         )
-                    module.register_parameter(param_name, dist_param)
+                    module.register_parameter(param_name, sharded)
 
         return _PackedRowwiseImpl()
-
-    # `distribute_tensor` accepts an indivisible shard dim and just gives the trailing ranks a smaller (or empty)
-    # slice, so an uneven split does not raise here — it surfaces much later as a shape or numerics error, because
-    # the attention head split and the paired colwise/rowwise Linear both assume equal shards. Reject it up front,
-    # matching what the packed styles above and the Neuron pre-shard path already do.
-    def _make_checked_col(path: str) -> ColwiseParallel:
-        class _CheckedColwiseImpl(ColwiseParallel):
-            def _partition_linear_fn(self, name, module, device_mesh):
-                tp_size = device_mesh.size()
-                out_features = module.weight.shape[0]
-                if out_features % tp_size != 0:
-                    raise ValueError(
-                        f"Cannot colwise-shard '{path}' weight rows ({out_features}) across {tp_size} "
-                        f"tensor-parallel ranks: not divisible by {tp_size}."
-                    )
-                super()._partition_linear_fn(name, module, device_mesh)
-
-        return _CheckedColwiseImpl()
-
-    def _make_checked_row(path: str) -> RowwiseParallel:
-        class _CheckedRowwiseImpl(RowwiseParallel):
-            def _partition_linear_fn(self, name, module, device_mesh):
-                tp_size = device_mesh.size()
-                in_features = module.weight.shape[1]
-                if in_features % tp_size != 0:
-                    raise ValueError(
-                        f"Cannot rowwise-shard '{path}' weight columns ({in_features}) across {tp_size} "
-                        f"tensor-parallel ranks: not divisible by {tp_size}."
-                    )
-                super()._partition_linear_fn(name, module, device_mesh)
-
-        return _CheckedRowwiseImpl()
 
     resolved = {}
     for path, style in relative_plan.items():
         if style == "colwise":
-            resolved[path] = _make_checked_col(path)
+            resolved[path] = ColwiseParallel()
         elif style == "rowwise":
-            resolved[path] = _make_checked_row(path)
+            resolved[path] = RowwiseParallel()
         elif isinstance(style, PackedColwiseParallel):
             resolved[path] = _make_packed_col(style)
         elif isinstance(style, PackedRowwiseParallel):
@@ -240,12 +297,196 @@ def _styles(relative_plan: dict) -> dict:
     return resolved
 
 
+def _hooks_only_styles(relative_plan: dict) -> dict:
+    """Map a `{relative_path: style}` plan to styles that partition nothing.
+
+    Used when the caller has already placed every planned parameter as a sharded `DTensor`. `parallelize_module` then
+    runs only to register the forward input/output hooks; `_partition_linear_fn` must not re-partition. Packed and
+    plain styles share hook behaviour, so both collapse onto the two styles here.
+
+    Note this is not purely additive: `distribute_module` still replicates any *remaining* plain parameter of the
+    targeted module into a `Replicate()` DTensor via a broadcast. Callers should therefore place every planned
+    parameter themselves, and must ensure none is left on `meta` — the broadcast would be issued on a meta tensor.
+    """
+    from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
+
+    class _NoPartitionColwise(ColwiseParallel):
+        def _partition_linear_fn(self, name, module, device_mesh):
+            pass  # weight already Shard(0)
+
+    class _NoPartitionRowwise(RowwiseParallel):
+        def _partition_linear_fn(self, name, module, device_mesh):
+            pass  # weight already Shard(1)
+
+    resolved = {}
+    for path, style in relative_plan.items():
+        if style == "colwise" or isinstance(style, PackedColwiseParallel):
+            resolved[path] = _NoPartitionColwise()
+        elif style == "rowwise" or isinstance(style, PackedRowwiseParallel):
+            resolved[path] = _NoPartitionRowwise()
+        else:
+            raise ValueError(
+                f"Unsupported tensor-parallel style '{style}' for '{path}'. "
+                f"Expected 'colwise', 'rowwise', PackedColwiseParallel, or PackedRowwiseParallel."
+            )
+    return resolved
+
+
+def _tp_degree(tp_config) -> int:
+    """The TP degree, read the same way `_resolve_parallel_config` will, for checks run before the mesh is built."""
+    return tp_config.mesh.size() if tp_config.mesh is not None else tp_config.tp_degree
+
+
+def _is_tensor_parallel(module: torch.nn.Module) -> bool:
+    """Whether `module` has been sharded with tensor parallelism."""
+    parallel_config = getattr(module, "_parallel_config", None)
+    return parallel_config is not None and parallel_config.tensor_parallel_config is not None
+
+
+def _raise_if_tensor_parallel(module: torch.nn.Module, action: str, reason: str, error_cls=ValueError) -> None:
+    """Reject an operation that cannot run on a model already sharded with tensor parallelism.
+
+    `action` completes "so it cannot ...", and `reason` says why or what to do instead.
+    """
+    if _is_tensor_parallel(module):
+        raise error_cls(
+            f"'{module.__class__.__name__}' is sharded with tensor parallelism, so it cannot {action}. {reason}"
+        )
+
+
+def _check_tp_weights_format(model_files: list) -> None:
+    """Reject non-safetensors weights for a tensor-parallel load, which needs to read one slice of each tensor.
+
+    Separate from `_check_tp_supported` because it needs the resolved checkpoint files, which `from_pretrained` only
+    knows later.
+    """
+    non_safetensors = [f for f in model_files if not str(f).endswith(".safetensors")]
+    if non_safetensors:
+        raise ValueError(
+            f"A tensor-parallel `parallel_config` requires safetensors weights, so that each rank can "
+            f"read only its own slice of each tensor. Got {non_safetensors}."
+        )
+
+
+def _check_tp_supported(
+    model_name: str,
+    tp_plan: "dict | None",
+    num_heads: "int | None",
+    tp_config,
+    *,
+    model: "torch.nn.Module | None" = None,
+    device_map=None,
+    hf_quantizer=None,
+    low_cpu_mem_usage: bool = True,
+    use_flashpack: bool = False,
+    use_safetensors: bool = True,
+) -> None:
+    """Reject a model class, `tp_degree`, loading option, or model state that tensor parallelism cannot shard.
+
+    Both entry points run it before anything is loaded or sharded. `from_pretrained` passes its loading options:
+    sharding on load needs a meta-initialized model and lazily sliceable safetensors files, and rather than silently
+    falling back to loading the full checkpoint — which would quietly give up the memory saving — each unsupported
+    option raises. `enable_parallelism` passes the `model` already in memory instead, whose parameters must be plain
+    parameters owned by the model itself: a quantized, offloaded, or adapter-wrapped model is rejected up front rather
+    than failing deep inside `parallelize_module` — or, worse, sharding successfully and producing wrong numbers.
+    """
+    if tp_plan is None:
+        raise ValueError(
+            f"`_tp_plan` must be set on the model class to use tensor parallelism. '{model_name}' does not define one."
+        )
+
+    tp_degree = _tp_degree(tp_config)
+    if num_heads is not None and num_heads % tp_degree != 0:
+        raise ValueError(f"`tp_degree` ({tp_degree}) must divide the number of attention heads ({num_heads}).")
+
+    if device_map is not None:
+        raise ValueError(
+            "`device_map` cannot be combined with a tensor-parallel `parallel_config`: tensor parallelism "
+            "already places each rank's shard on that rank's device. Drop `device_map`."
+        )
+    if hf_quantizer is not None:
+        raise ValueError(
+            "`quantization_config` cannot be combined with a tensor-parallel `parallel_config`: quantized "
+            "parameters are packed into a quantizer-specific layout that cannot be sharded into `DTensor`s. "
+            "Load the model unquantized to shard it."
+        )
+    if not low_cpu_mem_usage:
+        raise ValueError(
+            "`low_cpu_mem_usage=False` cannot be combined with a tensor-parallel `parallel_config`: "
+            "streaming each rank's shard requires the model to be initialized on the meta device."
+        )
+    if use_flashpack:
+        raise ValueError(
+            "`use_flashpack=True` cannot be combined with a tensor-parallel `parallel_config`; FlashPack "
+            "checkpoints cannot be sliced per rank."
+        )
+    if not use_safetensors:
+        raise ValueError(
+            "`use_safetensors=False` cannot be combined with a tensor-parallel `parallel_config`: each rank reads "
+            "only its own slice of each tensor, which needs safetensors weights."
+        )
+
+    if model is not None:
+        if getattr(model, "hf_quantizer", None) is not None or getattr(model, "is_quantized", False):
+            raise ValueError(
+                f"'{model.__class__.__name__}' is quantized, which cannot be combined with tensor parallelism: its "
+                "parameters are packed into a quantizer-specific layout that cannot be sharded into `DTensor`s. Load "
+                "the model unquantized to shard it."
+            )
+
+        from .group_offloading import _is_group_offload_enabled
+
+        if _is_group_offload_enabled(model):
+            raise ValueError(
+                f"'{model.__class__.__name__}' has group offloading enabled, which cannot be combined with tensor "
+                "parallelism: both decide where a parameter lives. Tensor parallelism already keeps only one shard of "
+                "each weight per rank, so offloading is not needed on top of it."
+            )
+
+        # `device_map` dispatch and accelerate's CPU offloading both leave an `_hf_hook` on every module they placed,
+        # and the weights they offloaded are `meta` tensors that `DTensor.from_local` cannot shard.
+        if getattr(model, "hf_device_map", None) is not None or any(
+            hasattr(module, "_hf_hook") for module in model.modules()
+        ):
+            raise ValueError(
+                f"'{model.__class__.__name__}' is placed by accelerate — through `device_map` or CPU offloading — "
+                "which cannot be combined with tensor parallelism: tensor parallelism already places each rank's "
+                "shard on that rank's device. Load the model without `device_map` and without offloading to shard it."
+            )
+
+        if is_peft_available():
+            from peft.tuners.tuners_utils import BaseTunerLayer
+
+            if any(isinstance(module, BaseTunerLayer) for module in model.modules()):
+                raise ValueError(
+                    f"'{model.__class__.__name__}' has adapter (LoRA) layers injected, which cannot be combined with "
+                    "tensor parallelism: `_tp_plan` covers the base `Linear` layers only, so the adapter weights "
+                    "would stay unsharded and the result would be wrong. Unload the adapter before sharding."
+                )
+
+
 def apply_tensor_parallel(
     model: torch.nn.Module,
     config: TensorParallelConfig,
     tp_plan: dict,
+    weights_already_sharded: bool = False,
 ) -> None:
-    """Apply tensor parallel on a model from its flat `_tp_plan`."""
+    """Apply tensor parallel on a model from its flat `_tp_plan`.
+
+    Args:
+        model (`torch.nn.Module`):
+            The model to shard in place.
+        config (`TensorParallelConfig`):
+            The tensor-parallel config. Its device mesh must already be set up with `config.setup(...)`.
+        tp_plan (`dict`):
+            A flat mapping of module-name globs to a `"colwise"`/`"rowwise"` style (or a packed variant), usually the
+            model's `_tp_plan`.
+        weights_already_sharded (`bool`, defaults to `False`):
+            Whether the planned parameters are already `DTensor` shards, as they are after a streaming
+            `from_pretrained` load. If `True`, only the forward hooks are registered. This is passed explicitly rather
+            than detected, because a planned parameter missing from the checkpoint would still be a meta tensor and
+            would make detection say "not sharded" for a model that is in fact half-sharded.
+    """
     tp_mesh = config._mesh
     if tp_mesh is None:
         raise ValueError("`config._mesh` is None. Call `config.setup(rank, world_size, device)` before applying TP.")
@@ -261,13 +502,21 @@ def apply_tensor_parallel(
     groups = _resolve_tp_plan(model, tp_plan)
     logger.debug(f"Applying tensor parallel (backend={backend}) over {len(groups)} module group(s) on mesh {tp_mesh}.")
 
+    from torch.distributed.tensor.parallel import parallelize_module
+
+    if weights_already_sharded:
+        for submodule, relative_plan in groups:
+            parallelize_module(submodule, tp_mesh, _hooks_only_styles(relative_plan))
+        return
+
+    # Also validates every planned shard, so an uneven split raises before any module is sharded.
+    specs = resolve_tp_shard_specs(model, tp_plan, tp_mesh.size())
+
     if backend == "neuron":
         from .tensor_parallel_neuron import _apply_tp_neuron
 
-        _apply_tp_neuron(model, tp_mesh, groups)
+        _apply_tp_neuron(model, tp_mesh, groups, specs)
         return
-
-    from torch.distributed.tensor.parallel import parallelize_module
 
     for submodule, relative_plan in groups:
         parallelize_module(submodule, tp_mesh, _styles(relative_plan))

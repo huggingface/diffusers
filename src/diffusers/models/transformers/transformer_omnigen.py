@@ -150,7 +150,7 @@ class OmniGenSuScaledRotaryEmbedding(nn.Module):
         self.long_factor = rope_scaling["long_factor"]
         self.original_max_position_embeddings = original_max_position_embeddings
 
-    def forward(self, hidden_states, position_ids):
+    def forward(self, hidden_states, position_ids) -> tuple[torch.Tensor, torch.Tensor]:
         seq_len = torch.max(position_ids) + 1
         if seq_len > self.original_max_position_embeddings:
             ext_factors = torch.tensor(self.long_factor, dtype=torch.float32, device=hidden_states.device)

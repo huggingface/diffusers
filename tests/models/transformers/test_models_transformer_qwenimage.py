@@ -37,6 +37,7 @@ from ..testing_utils import (
     MemoryTesterMixin,
     ModelTesterMixin,
     TensorParallelTesterMixin,
+    TensorParallelTPUTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
@@ -259,7 +260,7 @@ class TestQwenImageTransformerAttention(QwenImageTransformerTesterConfig, Attent
 class TestQwenImageTransformerAttentionBackend(QwenImageTransformerTesterConfig, AttentionBackendTesterMixin):
     """Attention backend tests for QwenImage Transformer."""
 
-    unsupported_attn_backends = ["flash_hub", "_flash_3_hub"]
+    unsupported_attn_backends = ["flash_hub", "_flash_3_hub", "sage_hub", "sage_blackwell_hub"]
 
     def get_dummy_inputs(self, batch_size: int = 2):
         inputs = super().get_dummy_inputs(batch_size=batch_size)
@@ -289,9 +290,9 @@ class TestQwenImageTransformerContextParallelAttnBackends(
 ):
     """Context Parallel inference x attention backends tests for QwenImage Transformer"""
 
-    # QwenImage always passes a joint attention mask (text + image), which flash_hub and
-    # _flash_3_hub do not support.
-    unsupported_attn_backends = ["flash_hub", "_flash_3_hub"]
+    # QwenImage always passes a joint attention mask (text + image), which flash_hub,
+    # _flash_3_hub and the sage hub backends do not support.
+    unsupported_attn_backends = ["flash_hub", "_flash_3_hub", "sage_hub", "sage_blackwell_hub"]
 
     def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
         inputs = super().get_dummy_inputs(batch_size=batch_size)
@@ -305,6 +306,18 @@ class TestQwenImageTransformerContextParallelAttnBackends(
 
 class TestQwenImageTransformerTensorParallel(QwenImageTransformerTesterConfig, TensorParallelTesterMixin):
     """Tensor Parallel inference tests for QwenImage Transformer (CUDA/XPU multi-accelerator)."""
+
+
+class TestQwenImageTransformerTensorParallelTPU(QwenImageTransformerTesterConfig, TensorParallelTPUTesterMixin):
+    """Tensor Parallel inference test for QwenImage Transformer on TPU."""
+
+    def get_init_dict(self):
+        # One head per chip.
+        return {**super().get_init_dict(), "num_attention_heads": self.tp_world_size}
+
+    def test_tensor_parallel_tpu_inference(self):
+        # TPU numerics differ by ~1e-2 between sharded and unsharded QwenImage (~1e-7 on CPU).
+        super().test_tensor_parallel_tpu_inference(atol=2e-2, rtol=2e-2)
 
 
 def make_neuron_tp_spec():

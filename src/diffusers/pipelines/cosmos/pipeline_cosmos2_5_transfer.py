@@ -595,7 +595,7 @@ class Cosmos2_5_TransferPipeline(DiffusionPipeline):
         conditional_frame_timestep: float = 0.1,
         num_ar_conditional_frames: Optional[int] = 1,
         num_ar_latent_conditional_frames: Optional[int] = None,
-    ):
+    ) -> CosmosPipelineOutput | tuple:
         r"""
         `controls` drive the conditioning through ControlNet. Controls are assumed to be pre-processed, e.g. edge maps
         are pre-computed.
