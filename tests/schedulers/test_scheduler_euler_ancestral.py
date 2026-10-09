@@ -154,3 +154,25 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 56163.0508) < 1e-2, f" expected result sum 56163.0508, but get {result_sum}"
         assert abs(result_mean.item() - 73.1290) < 1e-3, f" expected result mean  73.1290, but get {result_mean}"
+
+    def test_full_loop_squaredcos_cap_v2_no_nan(self):
+        # Regression test for #14213: with beta_schedule="squaredcos_cap_v2" the
+        # sigma dynamic range is large enough that float32 rounding makes
+        # sigma_up fractionally exceed sigma_to, driving sigma_down's radicand
+        # negative and producing all-NaN output at low step counts.
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(beta_schedule="squaredcos_cap_v2")
+        scheduler = scheduler_class(**scheduler_config)
+
+        scheduler.set_timesteps(4)
+
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+        model = self.dummy_model()
+
+        for t in scheduler.timesteps:
+            sample = scheduler.scale_model_input(sample, t)
+            model_output = model(sample, t)
+            output = scheduler.step(model_output, t, sample)
+            sample = output.prev_sample
+
+        assert torch.isfinite(sample).all(), "step() produced non-finite output with beta_schedule='squaredcos_cap_v2'"
