@@ -96,6 +96,18 @@ class TestImageProcessor:
                     f"decoded output does not match input for output_type {output_type}"
                 )
 
+    def test_numpy_to_pil_singleton_dimensions(self):
+        image_processor = VaeImageProcessor(do_resize=False, do_normalize=False)
+        # (1, 7, 1) -> PIL (7, 1)
+        res = image_processor.numpy_to_pil(np.zeros((1, 7, 1), dtype=np.float32))[0]
+        assert res.size == (7, 1)
+        # (7, 1, 1) -> PIL (1, 7)
+        res = image_processor.numpy_to_pil(np.zeros((7, 1, 1), dtype=np.float32))[0]
+        assert res.size == (1, 7)
+        # (1, 1, 1) -> PIL (1, 1)
+        res = image_processor.numpy_to_pil(np.zeros((1, 1, 1), dtype=np.float32))[0]
+        assert res.size == (1, 1)
+
     def test_preprocess_input_3d(self):
         image_processor = VaeImageProcessor(do_resize=False, do_normalize=False)
 
