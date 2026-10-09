@@ -2337,22 +2337,6 @@ def all_to_all_single_any_qkv_async(
     # since we don't know the actual shape before this timing, thus,
     # we have to use all gather to collect the S_LOCAL first.
     output_split_sizes = gather_size_by_comm(S_LOCAL, group)
-    S_MAX = max(output_split_sizes)
-    if x.device.type == "neuron" and S_MAX != min(output_split_sizes):
-        # Neuron's all-to-all only handles equal splits (uneven ones silently return wrong data), so pad every
-        # rank's chunk to the longest, exchange equal splits, and drop the padding on arrival.
-        x = torch.cat([x, x.new_zeros(world_size, S_MAX - S_LOCAL, B, H_LOCAL, D)], dim=1).flatten(0, 1)
-        x = funcol.all_to_all_single(x, None, None, group)
-
-        def wait_padded() -> torch.Tensor:
-            nonlocal x, H_PAD
-            x = _wait_tensor(x).unflatten(0, (world_size, S_MAX))  # (world_size, S_MAX, B, H_LOCAL, D)
-            x = torch.cat([x[i, :size] for i, size in enumerate(output_split_sizes)])  # (S_GLOBAL, B, H_LOCAL, D)
-            x = x.permute(1, 0, 2, 3).contiguous()
-            return _maybe_unpad_qkv_head(x, H_PAD, group)
-
-        return wait_padded
-
     x = x.flatten(0, 1)  # (world_size * S_LOCAL, B, H_LOCAL, D)
     x = funcol.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
@@ -2393,26 +2377,6 @@ def all_to_all_single_any_o_async(x: torch.Tensor, group: dist.ProcessGroup, **k
     S_LOCAL = kwargs.get("Q_S_LOCAL")
     input_split_sizes = gather_size_by_comm(S_LOCAL, group)
     x = x.permute(1, 0, 2, 3).contiguous()  # (S_GLOBAL, B, H_LOCAL, D)
-    S_MAX = max(input_split_sizes)
-    if x.device.type == "neuron" and S_MAX != min(input_split_sizes):
-        # Same equal-split constraint as in `all_to_all_single_any_qkv_async`: pad each outgoing chunk to the longest.
-        x = torch.cat(
-            [
-                torch.cat([chunk, chunk.new_zeros(S_MAX - chunk.shape[0], B, H_LOCAL, D)])
-                for chunk in x.split(input_split_sizes)
-            ]
-        )
-        x = funcol.all_to_all_single(x, None, None, group)
-
-        def wait_padded() -> torch.Tensor:
-            nonlocal x, H_PAD
-            x = _wait_tensor(x).reshape(world_size, S_MAX, B, H_LOCAL, D)[:, :S_LOCAL]
-            x = x.permute(2, 1, 0, 3, 4).contiguous()
-            x = x.reshape(B, S_LOCAL, world_size * H_LOCAL, D)
-            return _maybe_unpad_o_head(x, H_PAD, group)
-
-        return wait_padded
-
     output_split_sizes = [S_LOCAL] * world_size
     x = funcol.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
