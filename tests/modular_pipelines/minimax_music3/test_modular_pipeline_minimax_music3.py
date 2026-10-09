@@ -139,7 +139,7 @@ class TestMiniMaxMusic3ModularPipelineLoading(MiniMaxMusic3ModularPipelineTester
     def test_save_from_pretrained(self, tmp_path, base_pipe_output):
         # the common implementation indexes 4-D image outputs; compare the audio waveform directly
         base_pipe = self.get_pipeline().to(torch_device)
-        base_pipe.save_pretrained(str(tmp_path))
+        base_pipe.save_pretrained(str(tmp_path), overwrite_modular_index=True)
 
         pipe = ModularPipeline.from_pretrained(str(tmp_path))
         pipe.load_components(dtype=torch.float32)

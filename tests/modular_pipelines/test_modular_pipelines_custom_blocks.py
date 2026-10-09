@@ -364,7 +364,7 @@ class TestModularCustomBlocks:
 
             block = ModularPipelineBlocks.from_pretrained(pipeline_repo_dir, trust_remote_code=True)
             pipe = block.init_pipeline()
-            pipe.save_pretrained(pipeline_repo_dir)
+            pipe.save_pretrained(pipeline_repo_dir, overwrite_modular_index=True)
 
             # Step 3: Load the pipeline from the saved directory.
             loaded_pipe = ModularPipeline.from_pretrained(pipeline_repo_dir, trust_remote_code=True)

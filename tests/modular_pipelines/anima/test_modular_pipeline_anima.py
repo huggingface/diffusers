@@ -146,7 +146,7 @@ class TestAnimaModularPipelineLoading(AnimaModularPipelineTesterConfig, ModularL
         pipe = self.get_pipeline()
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir, safe_serialization=True)
+            pipe.save_pretrained(tmpdir, safe_serialization=True, overwrite_modular_index=True)
             pipe = self.pipeline_class.from_pretrained(tmpdir)
             pipe.load_components()
 
