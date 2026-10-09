@@ -4,16 +4,14 @@ layout-control examples (regions in the caption; an edit that refers to the refe
 Standalone: loads the modular pipeline from the Hub repo and writes four PNGs under `out/`.
 
     CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 .venv/bin/python integration-notes/flux3_examples.py
-    F3_REPO=/raid/yiyi/flux3-image-modular ...   # a local repo instead of the Hub
 """
 
 import os
 
 import torch
-from huggingface_hub import hf_hub_download
-from PIL import Image
 
 from diffusers import ModularPipeline
+from diffusers.utils import load_image
 
 
 REPO = os.environ.get("F3_REPO", "diffusers-internal-dev/f3-small-img")
@@ -60,12 +58,7 @@ runner.save(os.path.join(OUT, "bbox_t2i.png"))
 # editing with layout: refer to the n-th reference image as <ref_image_n>; each region names its source image
 # (`from`), where it is in that image (`src_bbox`) and where it should end up (`tgt_bbox`). Here the knight moves
 # up and to the left and everything else is pinned in place.
-knight_path = (
-    os.path.join(REPO, "examples", "knight.jpg")
-    if os.path.isdir(REPO)
-    else hf_hub_download(REPO, "examples/knight.jpg")
-)
-knight = Image.open(knight_path)
+knight = load_image(os.path.join(os.path.dirname(__file__), "knight.jpg"))  # BFL's docs image, 1360 x 768
 prompt = (
     "In <ref_image_0>, move the miniature grey amigurumi knight figure <knight_1> upwards and to the left along the "
     "yarn cliff <cliff_1>. Keep the rest of the image completely unchanged, preserving the blurred yarn backdrop "
