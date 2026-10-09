@@ -619,7 +619,7 @@ class HunyuanVideoFramepackPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMix
         prompt_template: dict[str, Any] = DEFAULT_PROMPT_TEMPLATE,
         max_sequence_length: int = 256,
         sampling_type: FramepackSamplingType = FramepackSamplingType.INVERTED_ANTI_DRIFTING,
-    ):
+    ) -> HunyuanVideoFramepackPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

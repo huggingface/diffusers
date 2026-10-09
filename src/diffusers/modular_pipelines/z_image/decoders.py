@@ -24,6 +24,7 @@ from ...models import AutoencoderKL
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .modular_pipeline import ZImageModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -74,7 +75,7 @@ class ZImageVaeDecoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[ZImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         vae_dtype = components.vae.dtype
 

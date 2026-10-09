@@ -2227,7 +2227,7 @@ class SeqAllToAllDim(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, group, input, scatter_id=2, gather_id=1):
+    def forward(ctx, group, input, scatter_id=2, gather_id=1) -> torch.Tensor:
         ctx.group = group
         ctx.scatter_id = scatter_id
         ctx.gather_id = gather_id
@@ -2408,7 +2408,7 @@ class TemplatedRingAttention(torch.autograd.Function):
         forward_op,
         backward_op,
         _parallel_config: "ParallelConfig" | None = None,
-    ):
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         ring_mesh = _parallel_config.context_parallel_config._ring_mesh
         rank = _parallel_config.context_parallel_config._ring_local_rank
         world_size = _parallel_config.context_parallel_config.ring_degree
@@ -2561,7 +2561,7 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         forward_op,
         backward_op,
         _parallel_config: "ParallelConfig" | None = None,
-    ):
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
         world_size = _parallel_config.context_parallel_config.ulysses_degree
         group = ulysses_mesh.get_group()
@@ -2662,7 +2662,7 @@ class TemplatedRingAnythingAttention(torch.autograd.Function):
         forward_op,
         backward_op,
         _parallel_config: "ParallelConfig" | None = None,
-    ):
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         # Ring attention for arbitrary sequence lengths.
         if attn_mask is not None:
             raise ValueError(
@@ -2779,7 +2779,7 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         backward_op,
         _parallel_config: "ParallelConfig" | None = None,
         **kwargs,
-    ):
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
         group = ulysses_mesh.get_group()
 
@@ -3662,6 +3662,23 @@ def _native_flex_attention(
     else:
         raise ValueError("Attention mask must be either None, a BlockMask, or a 2D/4D tensor.")
 
+    # A `BlockMask`'s own block size is the sparsity granularity the caller built it around (e.g. NABLA's 64-token
+    # fractal blocks). The forward kernel's tile sizes must divide that granularity evenly; torch's autotuned
+    # defaults are only overridden when they don't already divide the mask's block size, to avoid unintended side
+    # effects from pinning tile sizes that otherwise would have been fine (e.g. the default 128x128 mask size would
+    # otherwise always force `BLOCK_N` to 128, even though 64 is a valid size).
+    kernel_options = None
+    if block_mask is not None:
+        q_block_size, kv_block_size = block_mask.BLOCK_SIZE
+        default_block_m = 64 if query.dtype == torch.float32 else 128
+        default_block_n = 64
+        kernel_options = {}
+        if q_block_size % default_block_m != 0:
+            kernel_options["BLOCK_M"] = q_block_size
+        if kv_block_size % default_block_n != 0:
+            kernel_options["BLOCK_N"] = kv_block_size
+        kernel_options = kernel_options or None
+
     query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
     out = flex_attention.flex_attention(
         query=query,
@@ -3672,6 +3689,7 @@ def _native_flex_attention(
         scale=scale,
         enable_gqa=enable_gqa,
         return_lse=return_lse,
+        kernel_options=kernel_options,
     )
     out = out.permute(0, 2, 1, 3)
     return out

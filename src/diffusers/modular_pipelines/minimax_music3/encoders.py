@@ -206,7 +206,9 @@ class MiniMaxMusic3TokenizeStep(ModularPipelineBlocks):
             raise ValueError(f"`lyrics` must be a non-empty string, got {block_state.lyrics!r}")
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxMusic3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxMusic3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxMusic3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
 
@@ -285,7 +287,9 @@ class MiniMaxMusic3AutoregressiveStep(ModularPipelineBlocks):
             raise ValueError(f"`audio_duration` must be positive, got {block_state.audio_duration}")
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxMusic3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxMusic3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxMusic3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
 
