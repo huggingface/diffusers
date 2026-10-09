@@ -2275,6 +2275,9 @@ def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
                 ("img", "mlp"),
                 ("txt", "mod"),
                 ("img", "mod"),
+                # Qwen-Image-2.1 SwiGLU: `img_mlp.gate_layer`, and the fused `img_mlp.gate_up`
+                ("gate", "layer"),
+                ("gate", "up"),
                 # triplets
                 ("add", "q", "proj"),
                 ("add", "k", "proj"),
@@ -2359,7 +2362,48 @@ def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
     if len(state_dict) > 0:
         raise ValueError(f"`state_dict` should be empty at this point but has {state_dict.keys()=}")
 
+    converted_state_dict = _split_qwen_image21_fused_gate_up_lora(converted_state_dict)
+
     converted_state_dict = {f"transformer.{k}": v for k, v in converted_state_dict.items()}
+    return converted_state_dict
+
+
+def _split_qwen_image21_fused_gate_up_lora(state_dict):
+    """
+    Split LoRAs that target the fused SwiGLU `img_mlp.gate_up` projection of Qwen-Image-2.1 into its two diffusers
+    layers.
+
+    ComfyUI (and trainers built on its layout, such as ai-toolkit) fuse `img_mlp.gate_layer` and `img_mlp.proj` into
+    one `img_mlp.gate_up` Linear whose output rows are `[gate; up]`, the same order
+    `convert_qwen_image21_transformer_checkpoint_to_diffusers` splits a full checkpoint in. Both halves read the same
+    input, so the fused `lora_A` is shared and `lora_B` is split along its rows: `B @ A` of the fused layer is exactly
+    `cat([B_gate @ A, B_up @ A])`, so the split is lossless. Any alpha has to be folded into the weights beforehand.
+
+    Only Qwen-Image-2.1 has an `img_mlp.gate_up` module. The original Qwen-Image's `img_mlp` is a `FeedForward`
+    (`net.0.proj` / `net.2`), so its keys pass through unchanged.
+    """
+    fused = ".img_mlp.gate_up."
+    converted_state_dict = {}
+    for key, value in state_dict.items():
+        if fused not in key:
+            converted_state_dict[key] = value
+            continue
+
+        gate_key = key.replace(fused, ".img_mlp.gate_layer.")
+        proj_key = key.replace(fused, ".img_mlp.proj.")
+        if ".lora_A." in key:
+            converted_state_dict[gate_key] = value
+            converted_state_dict[proj_key] = value.clone()
+        else:
+            if value.shape[0] % 2 != 0:
+                raise ValueError(
+                    f"Expected the fused `img_mlp.gate_up` LoRA weight {key} to have an even number of output rows, "
+                    f"but got shape {tuple(value.shape)}."
+                )
+            gate, up = value.chunk(2, dim=0)
+            converted_state_dict[gate_key] = gate.clone()
+            converted_state_dict[proj_key] = up.clone()
+
     return converted_state_dict
 
 
