@@ -778,11 +778,13 @@ class Cosmos2_5_PredictBasePipeline(DiffusionPipeline, CosmosLoraLoaderMixin):
         gt_velocity = (latents - cond_latent) * cond_mask
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
+            # read timesteps on the host; a device scalar would sync every step
+            timesteps_cpu = timesteps.tolist()
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
 
-                self._current_timestep = t.cpu().item()
+                self._current_timestep = timesteps_cpu[i]
 
                 # NOTE: assumes sigma(t) \in [0, 1]
                 sigma_t = self.scheduler.sigmas[i].expand(batch_size).to(device=device, dtype=torch.float32)
