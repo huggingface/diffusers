@@ -339,19 +339,20 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
         wrapped_backward_attr="flash_attn_interface._flash_attn_backward",
         version=1,
     ),
+    # Pinned to version 2: version 3 is a stable-ABI build that rejects any nonzero dropout.
     AttentionBackendName.FLASH_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_func",
         wrapped_forward_attr="fwd",
         wrapped_backward_attr="bwd",
-        version=3,
+        version=2,
     ),
     AttentionBackendName.FLASH_VARLEN_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_varlen_func",
         wrapped_forward_attr="varlen_fwd",
         wrapped_backward_attr="varlen_bwd",
-        version=3,
+        version=2,
     ),
     AttentionBackendName.SAGE_HUB: _HubKernelConfig(
         repo_id="SageAttention/sage-attention",
@@ -853,6 +854,266 @@ def _(
     return torch.empty_like(q), q.new_empty(lse_shape)
 
 
+# The public `fwd`/`bwd` ops of the flash-attn2 hub kernel are raw torch ops without fake-tensor support, so
+# we wrap them in custom ops here to keep the context-parallel paths traceable under `torch.compile`.
+@_custom_op("_diffusers_flash_attn_2::fwd", mutates_args=())
+def _wrapped_flash_attn_2_fwd(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    dropout_p: float,
+    softmax_scale: float,
+    causal: bool,
+    window_size_left: int,
+    window_size_right: int,
+    softcap: float,
+    alibi_slopes: torch.Tensor | None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    fwd = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_HUB].wrapped_forward_fn
+    out, lse, _, rng_state = fwd(
+        q,
+        k,
+        v,
+        alibi_slopes=alibi_slopes,
+        p_dropout=dropout_p,
+        softmax_scale=softmax_scale,
+        is_causal=causal,
+        window_size_left=window_size_left,
+        window_size_right=window_size_right,
+        softcap=softcap,
+        return_softmax=False,
+    )
+    return out, lse, rng_state
+
+
+@_register_fake("_diffusers_flash_attn_2::fwd")
+def _(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    dropout_p: float,
+    softmax_scale: float,
+    causal: bool,
+    window_size_left: int,
+    window_size_right: int,
+    softcap: float,
+    alibi_slopes: torch.Tensor | None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    batch_size, seq_len_q, num_heads, _ = q.shape
+    lse = q.new_empty((batch_size, num_heads, seq_len_q), dtype=torch.float32)
+    rng_state = q.new_empty((2,), dtype=torch.int64)
+    return torch.empty_like(q), lse, rng_state
+
+
+@_custom_op("_diffusers_flash_attn_2::bwd", mutates_args=("dq", "dk", "dv"))
+def _wrapped_flash_attn_2_bwd(
+    dout: torch.Tensor,
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    out: torch.Tensor,
+    softmax_lse: torch.Tensor,
+    dq: torch.Tensor,
+    dk: torch.Tensor,
+    dv: torch.Tensor,
+    dropout_p: float,
+    softmax_scale: float,
+    causal: bool,
+    window_size_left: int,
+    window_size_right: int,
+    softcap: float,
+    alibi_slopes: torch.Tensor | None,
+    deterministic: bool,
+    rng_state: torch.Tensor | None,
+) -> None:
+    bwd = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_HUB].wrapped_backward_fn
+    bwd(
+        dout,
+        q,
+        k,
+        v,
+        out,
+        softmax_lse,
+        dq=dq,
+        dk=dk,
+        dv=dv,
+        alibi_slopes=alibi_slopes,
+        p_dropout=dropout_p,
+        softmax_scale=softmax_scale,
+        is_causal=causal,
+        window_size_left=window_size_left,
+        window_size_right=window_size_right,
+        softcap=softcap,
+        deterministic=deterministic,
+        rng_state=rng_state,
+    )
+
+
+@_register_fake("_diffusers_flash_attn_2::bwd")
+def _(
+    dout: torch.Tensor,
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    out: torch.Tensor,
+    softmax_lse: torch.Tensor,
+    dq: torch.Tensor,
+    dk: torch.Tensor,
+    dv: torch.Tensor,
+    dropout_p: float,
+    softmax_scale: float,
+    causal: bool,
+    window_size_left: int,
+    window_size_right: int,
+    softcap: float,
+    alibi_slopes: torch.Tensor | None,
+    deterministic: bool,
+    rng_state: torch.Tensor | None,
+) -> None:
+    return None
+
+
+@_custom_op("_diffusers_flash_attn_2::varlen_fwd", mutates_args=())
+def _wrapped_flash_attn_2_varlen_fwd(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    cu_seqlens_q: torch.Tensor,
+    cu_seqlens_k: torch.Tensor,
+    max_seqlen_q: int,
+    max_seqlen_k: int,
+    dropout_p: float,
+    softmax_scale: float,
+    causal: bool,
+    window_size_left: int,
+    window_size_right: int,
+    softcap: float,
+    alibi_slopes: torch.Tensor | None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    varlen_fwd = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_VARLEN_HUB].wrapped_forward_fn
+    out, lse, _, rng_state = varlen_fwd(
+        q,
+        k,
+        v,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        alibi_slopes=alibi_slopes,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k=max_seqlen_k,
+        p_dropout=dropout_p,
+        softmax_scale=softmax_scale,
+        is_causal=causal,
+        window_size_left=window_size_left,
+        window_size_right=window_size_right,
+        softcap=softcap,
+        return_softmax=False,
+    )
+    return out, lse, rng_state
+
+
+@_register_fake("_diffusers_flash_attn_2::varlen_fwd")
+def _(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    cu_seqlens_q: torch.Tensor,
+    cu_seqlens_k: torch.Tensor,
+    max_seqlen_q: int,
+    max_seqlen_k: int,
+    dropout_p: float,
+    softmax_scale: float,
+    causal: bool,
+    window_size_left: int,
+    window_size_right: int,
+    softcap: float,
+    alibi_slopes: torch.Tensor | None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    total_q, num_heads, _ = q.shape
+    lse = q.new_empty((num_heads, total_q), dtype=torch.float32)
+    rng_state = q.new_empty((2,), dtype=torch.int64)
+    return torch.empty_like(q), lse, rng_state
+
+
+@_custom_op("_diffusers_flash_attn_2::varlen_bwd", mutates_args=("dq", "dk", "dv"))
+def _wrapped_flash_attn_2_varlen_bwd(
+    dout: torch.Tensor,
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    out: torch.Tensor,
+    softmax_lse: torch.Tensor,
+    dq: torch.Tensor,
+    dk: torch.Tensor,
+    dv: torch.Tensor,
+    cu_seqlens_q: torch.Tensor,
+    cu_seqlens_k: torch.Tensor,
+    max_seqlen_q: int,
+    max_seqlen_k: int,
+    dropout_p: float,
+    softmax_scale: float,
+    causal: bool,
+    window_size_left: int,
+    window_size_right: int,
+    softcap: float,
+    alibi_slopes: torch.Tensor | None,
+    deterministic: bool,
+    rng_state: torch.Tensor | None,
+) -> None:
+    varlen_bwd = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_VARLEN_HUB].wrapped_backward_fn
+    varlen_bwd(
+        dout,
+        q,
+        k,
+        v,
+        out,
+        softmax_lse,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        dq=dq,
+        dk=dk,
+        dv=dv,
+        alibi_slopes=alibi_slopes,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k=max_seqlen_k,
+        p_dropout=dropout_p,
+        softmax_scale=softmax_scale,
+        is_causal=causal,
+        window_size_left=window_size_left,
+        window_size_right=window_size_right,
+        softcap=softcap,
+        deterministic=deterministic,
+        rng_state=rng_state,
+    )
+
+
+@_register_fake("_diffusers_flash_attn_2::varlen_bwd")
+def _(
+    dout: torch.Tensor,
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    out: torch.Tensor,
+    softmax_lse: torch.Tensor,
+    dq: torch.Tensor,
+    dk: torch.Tensor,
+    dv: torch.Tensor,
+    cu_seqlens_q: torch.Tensor,
+    cu_seqlens_k: torch.Tensor,
+    max_seqlen_q: int,
+    max_seqlen_k: int,
+    dropout_p: float,
+    softmax_scale: float,
+    causal: bool,
+    window_size_left: int,
+    window_size_right: int,
+    softcap: float,
+    alibi_slopes: torch.Tensor | None,
+    deterministic: bool,
+    rng_state: torch.Tensor | None,
+) -> None:
+    return None
+
+
 # ===== Helper functions to use attention backends with templated CP autograd functions =====
 
 
@@ -1324,25 +1585,21 @@ def _flash_attention_hub_forward_op(
     deterministic = False
     grad_enabled = any(x.requires_grad for x in (query, key, value))
 
-    if grad_enabled or (_parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1):
-        dropout_p = dropout_p if dropout_p > 0 else 1e-30
-
     # The public hub ops call the registered torch op directly and require a unit stride on the last dim.
     query, key, value = (x.contiguous() if x.stride(-1) != 1 else x for x in (query, key, value))
 
     with torch.set_grad_enabled(grad_enabled):
-        out, lse, S_dmask, rng_state = wrapped_forward_fn(
+        out, lse, rng_state = _wrapped_flash_attn_2_fwd(
             query,
             key,
             value,
-            alibi_slopes=alibi_slopes,
-            p_dropout=dropout_p,
-            softmax_scale=scale,
-            is_causal=is_causal,
-            window_size_left=window_size[0],
-            window_size_right=window_size[1],
-            softcap=softcap,
-            return_softmax=return_lse,
+            dropout_p,
+            scale,
+            is_causal,
+            window_size[0],
+            window_size[1],
+            softcap,
+            alibi_slopes,
         )
         lse = lse.permute(0, 2, 1).contiguous()
 
@@ -1390,25 +1647,25 @@ def _flash_attention_hub_backward_op(
         x.contiguous() if x.stride(-1) != 1 else x for x in (grad_out, query, key, value, out)
     )
 
-    _ = wrapped_backward_fn(
+    _wrapped_flash_attn_2_bwd(
         grad_out,
         query,
         key,
         value,
         out,
         lse,
-        dq=grad_query,
-        dk=grad_key,
-        dv=grad_value,
-        alibi_slopes=ctx.alibi_slopes,
-        p_dropout=ctx.dropout_p,
-        softmax_scale=ctx.scale,
-        is_causal=ctx.is_causal,
-        window_size_left=ctx.window_size[0],
-        window_size_right=ctx.window_size[1],
-        softcap=ctx.softcap,
-        deterministic=ctx.deterministic,
-        rng_state=rng_state,
+        grad_query,
+        grad_key,
+        grad_value,
+        ctx.dropout_p,
+        ctx.scale,
+        ctx.is_causal,
+        ctx.window_size[0],
+        ctx.window_size[1],
+        ctx.softcap,
+        ctx.alibi_slopes,
+        ctx.deterministic,
+        rng_state,
     )
 
     grad_query = grad_query[..., : grad_out.shape[-1]]
@@ -1453,9 +1710,6 @@ def _flash_varlen_attention_hub_forward_op(
     deterministic = False
     grad_enabled = any(x.requires_grad for x in (query, key, value))
 
-    if grad_enabled or (_parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1):
-        dropout_p = dropout_p if dropout_p > 0 else 1e-30
-
     batch_size, seq_len_q, num_heads, _ = query.shape
     _, seq_len_kv, _, _ = key.shape
 
@@ -1483,22 +1737,21 @@ def _flash_varlen_attention_hub_forward_op(
     )
 
     with torch.set_grad_enabled(grad_enabled):
-        out_packed, lse, _, rng_state = wrapped_forward_fn(
+        out_packed, lse, rng_state = _wrapped_flash_attn_2_varlen_fwd(
             query_packed,
             key_packed,
             value_packed,
             cu_seqlens_q,
             cu_seqlens_k,
-            alibi_slopes=alibi_slopes,
-            max_seqlen_q=max_seqlen_q,
-            max_seqlen_k=max_seqlen_k,
-            p_dropout=dropout_p,
-            softmax_scale=scale,
-            is_causal=is_causal,
-            window_size_left=window_size[0],
-            window_size_right=window_size[1],
-            softcap=softcap,
-            return_softmax=return_lse,
+            max_seqlen_q,
+            max_seqlen_k,
+            dropout_p,
+            scale,
+            is_causal,
+            window_size[0],
+            window_size[1],
+            softcap,
+            alibi_slopes,
         )
 
     out = out_packed.view(batch_size, seq_len_q, *out_packed.shape[1:])
@@ -1574,29 +1827,29 @@ def _flash_varlen_attention_hub_backward_op(
         for x in (grad_out_packed, query_packed, key_packed, value_packed, out_packed)
     )
 
-    _ = wrapped_backward_fn(
+    _wrapped_flash_attn_2_varlen_bwd(
         grad_out_packed,
         query_packed,
         key_packed,
         value_packed,
         out_packed,
         lse,
+        grad_query,
+        grad_key,
+        grad_value,
         cu_seqlens_q,
         cu_seqlens_k,
-        dq=grad_query,
-        dk=grad_key,
-        dv=grad_value,
-        alibi_slopes=ctx.alibi_slopes,
-        max_seqlen_q=ctx.max_seqlen_q,
-        max_seqlen_k=ctx.max_seqlen_k,
-        p_dropout=ctx.dropout_p,
-        softmax_scale=ctx.scale,
-        is_causal=ctx.is_causal,
-        window_size_left=ctx.window_size[0],
-        window_size_right=ctx.window_size[1],
-        softcap=ctx.softcap,
-        deterministic=ctx.deterministic,
-        rng_state=rng_state,
+        ctx.max_seqlen_q,
+        ctx.max_seqlen_k,
+        ctx.dropout_p,
+        ctx.scale,
+        ctx.is_causal,
+        ctx.window_size[0],
+        ctx.window_size[1],
+        ctx.softcap,
+        ctx.alibi_slopes,
+        ctx.deterministic,
+        rng_state,
     )
 
     grad_query = grad_query.view(ctx.batch_size, ctx.seq_len_q, *grad_query.shape[1:])
