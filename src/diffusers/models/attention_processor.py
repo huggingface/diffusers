@@ -675,23 +675,30 @@ class Attention(nn.Module):
             query = query.float()
             key = key.float()
 
-        if attention_mask is None:
-            baddbmm_input = torch.empty(
-                query.shape[0], query.shape[1], key.shape[1], dtype=query.dtype, device=query.device
-            )
-            beta = 0
+        if attention_mask is None and query.device.type == "mps":
+            # On MPS, baddbmm does not honor the documented beta=0 semantics: NaN/Inf in the
+            # uninitialized `input` buffer propagate to the output, producing NaN attention
+            # scores (https://github.com/huggingface/diffusers/issues/14438). A buffer-free
+            # scaled bmm avoids relying on that contract (and skips the buffer allocation).
+            attention_scores = torch.bmm(query * self.scale, key.transpose(-1, -2))
         else:
-            baddbmm_input = attention_mask
-            beta = 1
+            if attention_mask is None:
+                baddbmm_input = torch.empty(
+                    query.shape[0], query.shape[1], key.shape[1], dtype=query.dtype, device=query.device
+                )
+                beta = 0
+            else:
+                baddbmm_input = attention_mask
+                beta = 1
 
-        attention_scores = torch.baddbmm(
-            baddbmm_input,
-            query,
-            key.transpose(-1, -2),
-            beta=beta,
-            alpha=self.scale,
-        )
-        del baddbmm_input
+            attention_scores = torch.baddbmm(
+                baddbmm_input,
+                query,
+                key.transpose(-1, -2),
+                beta=beta,
+                alpha=self.scale,
+            )
+            del baddbmm_input
 
         if self.upcast_softmax:
             attention_scores = attention_scores.float()
