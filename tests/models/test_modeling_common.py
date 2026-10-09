@@ -200,6 +200,52 @@ class TestModelUtils:
                 "We should call only `model_info` to check for commit hash and  knowing if shard index is present."
             )
 
+    def test_save_pretrained_variant_shards_cleanup(self):
+        # 14719: Ensure save_pretrained properly cleans up old shards, unsharded weights,
+        # and index files without touching files belonging to other variants.
+        model = UNet2DConditionModel(
+            block_out_channels=(32, 32),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=32,
+        )
+
+        with tempfile.TemporaryDirectory() as path:
+            # 1. Save unsharded default variant
+            model.save_pretrained(path, max_shard_size="100MB")
+
+            # 2. Save sharded default variant (should clean up unsharded default)
+            model.save_pretrained(path, max_shard_size="100KB")
+            files = os.listdir(path)
+            assert "diffusion_pytorch_model.safetensors" not in files
+
+            # 3. Save sharded ema variant
+            model.save_pretrained(path, variant="ema", max_shard_size="100KB")
+
+            # 4. Save unsharded default variant again
+            # This should clean up the sharded default variant (and its index),
+            # but MUST leave the ema variant shards and index untouched.
+            model.save_pretrained(path, max_shard_size="100MB")
+
+            files = os.listdir(path)
+            # Default variant should now be exclusively unsharded
+            assert "diffusion_pytorch_model.safetensors" in files
+            default_shards = [f for f in files if f.startswith("diffusion_pytorch_model-") and f.endswith(".safetensors")]
+            assert len(default_shards) == 0
+            assert "diffusion_pytorch_model.safetensors.index.json" not in files
+
+            # EMA variant should remain perfectly intact
+            ema_shards = [f for f in files if f.startswith("diffusion_pytorch_model.ema-") and f.endswith(".safetensors")]
+            assert len(ema_shards) > 0
+            assert "diffusion_pytorch_model.safetensors.index.ema.json" in files
+
+            # Verify the EMA variant still loads successfully
+            UNet2DConditionModel.from_pretrained(path, variant="ema")
+
     def test_weight_overwrite(self):
         with tempfile.TemporaryDirectory() as tmpdirname, pytest.raises(ValueError) as error_context:
             UNet2DConditionModel.from_pretrained(
