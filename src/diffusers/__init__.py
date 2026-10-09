@@ -43,7 +43,7 @@ _import_structure = {
     "modular_pipelines": [],
     "pipelines": [],
     "quantizers.pipe_quant_config": ["PipelineQuantizationConfig"],
-    "quantizers.quantization_config": [],
+    "quantizers.quantization_config": ["BFLQuantizationConfig"],
     "schedulers": [],
     "utils": [
         "OptionalDependencyNotAvailable",
@@ -999,6 +999,7 @@ else:
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
     from .quantizers import PipelineQuantizationConfig
+    from .quantizers.quantization_config import BFLQuantizationConfig
 
     try:
         if not is_bitsandbytes_available():

@@ -77,6 +77,7 @@ from .import_utils import (
     is_flash_attn_3_available,
     is_flash_attn_available,
     is_flash_attn_version,
+    is_flashinfer_available,
     is_flashpack_available,
     is_ftfy_available,
     is_gguf_available,

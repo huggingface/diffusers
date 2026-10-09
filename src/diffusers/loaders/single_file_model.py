@@ -409,9 +409,12 @@ class FromOriginalModelMixin:
                 user_agent=user_agent,
             )
         if quantization_config is not None:
+            if not low_cpu_mem_usage:
+                raise ValueError("`low_cpu_mem_usage` cannot be False when using quantization.")
             hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config)
             hf_quantizer.validate_environment()
             torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
+            checkpoint = hf_quantizer.maybe_update_state_dict(checkpoint)
 
         else:
             hf_quantizer = None

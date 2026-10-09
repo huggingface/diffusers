@@ -85,6 +85,8 @@
       title: Getting started
     - local: quantization/bitsandbytes
       title: bitsandbytes
+    - local: quantization/bfl
+      title: BFL (fp8r / nvfp4)
     - local: quantization/gguf
       title: gguf
     - local: quantization/nunchaku
