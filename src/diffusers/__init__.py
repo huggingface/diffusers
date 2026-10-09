@@ -524,6 +524,8 @@ else:
         [
             "AnimaAutoBlocks",
             "AnimaModularPipeline",
+            "ChromaAutoBlocks",
+            "ChromaModularPipeline",
             "Cosmos3DistilledBlocks",
             "Cosmos3DistilledModularPipeline",
             "Cosmos3OmniBlocks",
@@ -1396,6 +1398,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_pipelines import (
             AnimaAutoBlocks,
             AnimaModularPipeline,
+            ChromaAutoBlocks,
+            ChromaModularPipeline,
             Cosmos3DistilledBlocks,
             Cosmos3DistilledModularPipeline,
             Cosmos3OmniBlocks,
