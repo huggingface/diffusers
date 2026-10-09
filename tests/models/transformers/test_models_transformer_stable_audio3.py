@@ -215,6 +215,24 @@ class TestStableAudio3DiTModelBehavior(unittest.TestCase):
         self.assertEqual(self.model.memory_tokens.shape[0], TINY_CFG["num_memory_tokens"])
         self.assertEqual(self.model.memory_tokens.shape[1], TINY_CFG["embed_dim"])
 
+    def test_low_precision_rope_keeps_distinct_positions(self):
+        """Loading with bf16/fp16 must not collapse RoPE positions (#14934)."""
+        import math
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self.model.save_pretrained(tmp)
+            ref = StableAudio3DiTModel.from_pretrained(tmp).rotary_pos_emb
+            seq_len = 64 + math.ceil(120 * 44100 / 4096)
+            ref_freqs = ref(seq_len, "cpu")
+            for dtype in (torch.float16, torch.bfloat16):
+                rope = StableAudio3DiTModel.from_pretrained(tmp, torch_dtype=dtype).rotary_pos_emb
+                self.assertEqual(rope.inv_freq.dtype, torch.float32)
+                freqs = rope(seq_len, "cpu")
+                self.assertEqual(freqs.unique(dim=0).shape[0], seq_len)
+                err = (freqs.double() - ref_freqs.double() + math.pi).remainder(2 * math.pi) - math.pi
+                self.assertLess(err.abs().max().item(), 1e-4)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Structural parity with the released SA3 Medium checkpoint
