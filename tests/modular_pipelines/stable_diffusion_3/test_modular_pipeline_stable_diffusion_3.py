@@ -51,6 +51,7 @@ class StableDiffusion3ModularPipelineTesterConfig(BaseModularPipelineTesterConfi
     pipeline_class = StableDiffusion3ModularPipeline
     pipeline_blocks_class = StableDiffusion3AutoBlocks
     pretrained_model_name_or_path = "AlanPonnachan/tiny-sd3-modular"
+    expected_latents_shape = (1, 4, 32, 32)
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
     expected_workflow_blocks = SD3_TEXT2IMAGE_WORKFLOWS
@@ -143,6 +144,7 @@ class StableDiffusion3Img2ImgModularPipelineTesterConfig(BaseModularPipelineTest
     pipeline_class = StableDiffusion3ModularPipeline
     pipeline_blocks_class = StableDiffusion3AutoBlocks
     pretrained_model_name_or_path = "AlanPonnachan/tiny-sd3-modular"
+    expected_latents_shape = (1, 4, 32, 32)
     params = frozenset(["prompt", "height", "width", "image"])
     batch_params = frozenset(["prompt", "image"])
     expected_workflow_blocks = SD3_IMAGE2IMAGE_WORKFLOWS

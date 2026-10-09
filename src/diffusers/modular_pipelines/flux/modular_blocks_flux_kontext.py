@@ -21,7 +21,7 @@ from .before_denoise import (
     FluxRoPEInputsStep,
     FluxSetTimestepsStep,
 )
-from .decoders import FluxDecodeStep
+from .decoders import FluxDecodeStep, FluxUnpackLatentsStep
 from .denoise import FluxKontextDenoiseStep
 from .encoders import (
     FluxKontextProcessImagesInputStep,
@@ -481,8 +481,13 @@ class FluxKontextCoreDenoiseStep(SequentialPipelineBlocks):
     """
 
     model_name = "flux-kontext"
-    block_classes = [FluxKontextAutoInputStep, FluxKontextAutoBeforeDenoiseStep, FluxKontextDenoiseStep]
-    block_names = ["input", "before_denoise", "denoise"]
+    block_classes = [
+        FluxKontextAutoInputStep,
+        FluxKontextAutoBeforeDenoiseStep,
+        FluxKontextDenoiseStep,
+        FluxUnpackLatentsStep,
+    ]
+    block_names = ["input", "before_denoise", "denoise", "unpack_latents"]
 
     @property
     def description(self):
