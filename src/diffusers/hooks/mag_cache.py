@@ -130,6 +130,7 @@ class MagCacheConfig:
             if not torch.is_tensor(self.mag_ratios):
                 self.mag_ratios = torch.tensor(self.mag_ratios)
 
+            self._original_mag_ratios = self.mag_ratios.clone()
             if len(self.mag_ratios) != self.num_inference_steps:
                 logger.debug(
                     f"Interpolating mag_ratios from length {len(self.mag_ratios)} to {self.num_inference_steps}"
@@ -168,12 +169,25 @@ class MagCacheState(BaseState):
         self.calibration_ratios = []
 
 
+def _get_effective_num_steps(config: MagCacheConfig, root_module: torch.nn.Module) -> int:
+    expected = getattr(root_module, "_mag_cache_expected_steps", None)
+    return expected if expected is not None else config.num_inference_steps
+
+
+def _get_effective_mag_ratios(config: MagCacheConfig, effective_num_steps: int) -> torch.Tensor:
+    if effective_num_steps == config.num_inference_steps:
+        return config.mag_ratios
+    original = getattr(config, "_original_mag_ratios", config.mag_ratios)
+    return nearest_interp(original, effective_num_steps)
+
+
 class MagCacheHeadHook(ModelHook):
     _is_stateful = True
 
-    def __init__(self, state_manager: StateManager, config: MagCacheConfig):
+    def __init__(self, state_manager: StateManager, config: MagCacheConfig, root_module: torch.nn.Module):
         self.state_manager = state_manager
         self.config = config
+        self.root_module = root_module
         self._metadata = None
 
     def initialize_hook(self, module):
@@ -199,13 +213,16 @@ class MagCacheHeadHook(ModelHook):
             should_compute = True
         else:
             # MagCache Logic
+            effective_num_steps = _get_effective_num_steps(self.config, self.root_module)
+            effective_mag_ratios = _get_effective_mag_ratios(self.config, effective_num_steps)
+
             current_step = state.step_index
-            if current_step >= len(self.config.mag_ratios):
+            if current_step >= len(effective_mag_ratios):
                 current_scale = 1.0
             else:
-                current_scale = self.config.mag_ratios[current_step]
+                current_scale = effective_mag_ratios[current_step]
 
-            retention_step = int(self.config.retention_ratio * self.config.num_inference_steps + 0.5)
+            retention_step = int(self.config.retention_ratio * effective_num_steps + 0.5)
 
             if current_step >= retention_step:
                 state.accumulated_ratio *= current_scale
@@ -285,11 +302,18 @@ class MagCacheHeadHook(ModelHook):
 
 
 class MagCacheBlockHook(ModelHook):
-    def __init__(self, state_manager: StateManager, is_tail: bool = False, config: MagCacheConfig = None):
+    def __init__(
+        self,
+        state_manager: StateManager,
+        is_tail: bool = False,
+        config: MagCacheConfig = None,
+        root_module: torch.nn.Module = None,
+    ):
         super().__init__()
         self.state_manager = state_manager
         self.is_tail = is_tail
         self.config = config
+        self.root_module = root_module
         self._metadata = None
 
     def initialize_hook(self, module):
@@ -378,7 +402,8 @@ class MagCacheBlockHook(ModelHook):
 
     def _advance_step(self, state: MagCacheState):
         state.step_index += 1
-        if state.step_index >= self.config.num_inference_steps:
+        effective_num_steps = _get_effective_num_steps(self.config, self.root_module)
+        if state.step_index >= effective_num_steps:
             # End of inference loop
             if self.config.calibrate:
                 print("\n[MagCache] Calibration Complete. Copy these values to MagCacheConfig(mag_ratios=...):")
@@ -407,6 +432,7 @@ def apply_mag_cache(module: torch.nn.Module, config: MagCacheConfig) -> None:
     # Initialize registry on the root module so the Pipeline can set context.
     HookRegistry.check_if_exists_or_initialize(module)
 
+    module._mag_cache_config = config
     state_manager = StateManager(MagCacheState, (), {})
     remaining_blocks = []
 
@@ -424,31 +450,36 @@ def apply_mag_cache(module: torch.nn.Module, config: MagCacheConfig) -> None:
     if len(remaining_blocks) == 1:
         name, block = remaining_blocks[0]
         logger.info(f"MagCache: Applying Head+Tail Hooks to single block '{name}'")
-        _apply_mag_cache_block_hook(block, state_manager, config, is_tail=True)
-        _apply_mag_cache_head_hook(block, state_manager, config)
+        _apply_mag_cache_block_hook(block, state_manager, config, module, is_tail=True)
+        _apply_mag_cache_head_hook(block, state_manager, config, module)
         return
 
     head_block_name, head_block = remaining_blocks.pop(0)
     tail_block_name, tail_block = remaining_blocks.pop(-1)
 
     logger.info(f"MagCache: Applying Head Hook to {head_block_name}")
-    _apply_mag_cache_head_hook(head_block, state_manager, config)
+    _apply_mag_cache_head_hook(head_block, state_manager, config, module)
 
     for name, block in remaining_blocks:
-        _apply_mag_cache_block_hook(block, state_manager, config)
+        _apply_mag_cache_block_hook(block, state_manager, config, module)
 
     logger.info(f"MagCache: Applying Tail Hook to {tail_block_name}")
-    _apply_mag_cache_block_hook(tail_block, state_manager, config, is_tail=True)
+    _apply_mag_cache_block_hook(tail_block, state_manager, config, module, is_tail=True)
 
 
-def _apply_mag_cache_head_hook(block: torch.nn.Module, state_manager: StateManager, config: MagCacheConfig) -> None:
+def _apply_mag_cache_head_hook(
+    block: torch.nn.Module,
+    state_manager: StateManager,
+    config: MagCacheConfig,
+    root_module: torch.nn.Module,
+) -> None:
     registry = HookRegistry.check_if_exists_or_initialize(block)
 
     # Automatically remove existing hook to allow re-application (e.g. switching modes)
     if registry.get_hook(_MAG_CACHE_LEADER_BLOCK_HOOK) is not None:
         registry.remove_hook(_MAG_CACHE_LEADER_BLOCK_HOOK)
 
-    hook = MagCacheHeadHook(state_manager, config)
+    hook = MagCacheHeadHook(state_manager, config, root_module)
     registry.register_hook(hook, _MAG_CACHE_LEADER_BLOCK_HOOK)
 
 
@@ -456,6 +487,7 @@ def _apply_mag_cache_block_hook(
     block: torch.nn.Module,
     state_manager: StateManager,
     config: MagCacheConfig,
+    root_module: torch.nn.Module,
     is_tail: bool = False,
 ) -> None:
     registry = HookRegistry.check_if_exists_or_initialize(block)
@@ -464,5 +496,6 @@ def _apply_mag_cache_block_hook(
     if registry.get_hook(_MAG_CACHE_BLOCK_HOOK) is not None:
         registry.remove_hook(_MAG_CACHE_BLOCK_HOOK)
 
-    hook = MagCacheBlockHook(state_manager, is_tail, config)
+    hook = MagCacheBlockHook(state_manager, is_tail, config, root_module)
     registry.register_hook(hook, _MAG_CACHE_BLOCK_HOOK)
+
