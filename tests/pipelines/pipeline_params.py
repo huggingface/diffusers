@@ -101,6 +101,8 @@ TOKENS_TO_AUDIO_GENERATION_PARAMS = frozenset(["input_tokens"])
 
 UNCONDITIONAL_AUDIO_GENERATION_PARAMS = frozenset(["batch_size"])
 
+TEXT_TO_TEXT_PARAMS = frozenset(["prompt", "gen_length", "num_inference_steps"])
+
 # image params
 TEXT_TO_IMAGE_IMAGE_PARAMS = frozenset([])
 
@@ -129,6 +131,8 @@ TEXT_TO_AUDIO_BATCH_PARAMS = frozenset(["prompt", "negative_prompt"])
 TOKENS_TO_AUDIO_GENERATION_BATCH_PARAMS = frozenset(["input_tokens"])
 
 VIDEO_TO_VIDEO_BATCH_PARAMS = frozenset(["prompt", "negative_prompt", "video"])
+
+TEXT_TO_TEXT_BATCH_PARAMS = frozenset(["prompt"])
 
 # callback params
 TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS = frozenset(["prompt_embeds"])
