@@ -2242,7 +2242,7 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                     if video_self_attention_mask is not None
                     else None
                 )
-                with self.transformer.cache_context("cond_uncond"):
+                with self.transformer.cache_context("cond_uncond", timestep=t):
                     noise_pred_video, noise_pred_audio = self.transformer(
                         hidden_states=latent_model_input,
                         audio_hidden_states=audio_latent_model_input,
@@ -2331,7 +2331,7 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                         if video_self_attention_mask is not None
                         else None
                     )
-                    with self.transformer.cache_context("uncond_stg"):
+                    with self.transformer.cache_context("uncond_stg", timestep=t):
                         noise_pred_video_uncond_stg, noise_pred_audio_uncond_stg = self.transformer(
                             hidden_states=latents.to(dtype=prompt_embeds.dtype),
                             audio_hidden_states=audio_latents.to(dtype=prompt_embeds.dtype),
@@ -2380,7 +2380,7 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                         if video_self_attention_mask is not None
                         else None
                     )
-                    with self.transformer.cache_context("uncond_modality"):
+                    with self.transformer.cache_context("uncond_modality", timestep=t):
                         noise_pred_video_uncond_mod, noise_pred_audio_uncond_mod = self.transformer(
                             hidden_states=latents.to(dtype=prompt_embeds.dtype),
                             audio_hidden_states=audio_latents.to(dtype=prompt_embeds.dtype),

@@ -62,7 +62,6 @@ class CacheMixin:
         >>> config = PyramidAttentionBroadcastConfig(
         ...     spatial_attention_block_skip_range=2,
         ...     spatial_attention_timestep_skip_range=(100, 800),
-        ...     current_timestep_callback=lambda: pipe.current_timestep,
         ... )
         >>> pipe.transformer.enable_cache(config)
         ```

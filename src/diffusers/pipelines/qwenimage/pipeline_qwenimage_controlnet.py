@@ -872,18 +872,19 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                     cond_scale = controlnet_cond_scale * controlnet_keep[i]
 
                 # controlnet
-                controlnet_block_samples = self.controlnet(
-                    hidden_states=latents,
-                    controlnet_cond=control_image,
-                    conditioning_scale=cond_scale,
-                    timestep=timestep / 1000,
-                    encoder_hidden_states=prompt_embeds,
-                    encoder_hidden_states_mask=prompt_embeds_mask,
-                    img_shapes=img_shapes,
-                    return_dict=False,
-                )
+                with self.controlnet.cache_context("cond", timestep=t):
+                    controlnet_block_samples = self.controlnet(
+                        hidden_states=latents,
+                        controlnet_cond=control_image,
+                        conditioning_scale=cond_scale,
+                        timestep=timestep / 1000,
+                        encoder_hidden_states=prompt_embeds,
+                        encoder_hidden_states_mask=prompt_embeds_mask,
+                        img_shapes=img_shapes,
+                        return_dict=False,
+                    )
 
-                with self.transformer.cache_context("cond"):
+                with self.transformer.cache_context("cond", timestep=t):
                     noise_pred = self.transformer(
                         hidden_states=latents,
                         timestep=timestep / 1000,
@@ -896,7 +897,7 @@ class QwenImageControlNetPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                     )[0]
 
                 if do_true_cfg:
-                    with self.transformer.cache_context("uncond"):
+                    with self.transformer.cache_context("uncond", timestep=t):
                         neg_noise_pred = self.transformer(
                             hidden_states=latents,
                             timestep=timestep / 1000,

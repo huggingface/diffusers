@@ -1180,15 +1180,18 @@ class AceStepPipeline(DiffusionPipeline, AceStepLoraLoaderMixin):
                 if apply_cfg:
                     # Batched guidance: stack (cond, null) on batch dim and run the DiT once.
                     # Matches `acestep/models/base/modeling_acestep_v15_base.py:1972-2022`.
-                    model_output = self.transformer(
-                        hidden_states=torch.cat([xt, xt], dim=0),
-                        timestep=torch.cat([t_curr_tensor, t_curr_tensor], dim=0),
-                        timestep_r=torch.cat([t_curr_tensor, t_curr_tensor], dim=0),
-                        encoder_hidden_states=torch.cat([encoder_hidden_states, null_encoder_hidden_states], dim=0),
-                        context_latents=torch.cat([context_latents, context_latents], dim=0),
-                        attention_kwargs=self.attention_kwargs,
-                        return_dict=False,
-                    )
+                    with self.transformer.cache_context("cfg", timestep=t_sched):
+                        model_output = self.transformer(
+                            hidden_states=torch.cat([xt, xt], dim=0),
+                            timestep=torch.cat([t_curr_tensor, t_curr_tensor], dim=0),
+                            timestep_r=torch.cat([t_curr_tensor, t_curr_tensor], dim=0),
+                            encoder_hidden_states=torch.cat(
+                                [encoder_hidden_states, null_encoder_hidden_states], dim=0
+                            ),
+                            context_latents=torch.cat([context_latents, context_latents], dim=0),
+                            attention_kwargs=self.attention_kwargs,
+                            return_dict=False,
+                        )
                     vt_cond, vt_uncond = model_output[0].chunk(2, dim=0)
                     # ACE-Step base / SFT use APG — not vanilla CFG. The original formulation is
                     # `pred_cond + (guidance_scale - 1) * update` with time-only normalization.
@@ -1204,28 +1207,30 @@ class AceStepPipeline(DiffusionPipeline, AceStepLoraLoaderMixin):
                     )
                 else:
                     # Standard forward pass (no CFG)
-                    model_output = self.transformer(
-                        hidden_states=xt,
-                        timestep=t_curr_tensor,
-                        timestep_r=t_curr_tensor,
-                        encoder_hidden_states=encoder_hidden_states,
-                        context_latents=context_latents,
-                        attention_kwargs=self.attention_kwargs,
-                        return_dict=False,
-                    )
+                    with self.transformer.cache_context("cond", timestep=t_sched):
+                        model_output = self.transformer(
+                            hidden_states=xt,
+                            timestep=t_curr_tensor,
+                            timestep_r=t_curr_tensor,
+                            encoder_hidden_states=encoder_hidden_states,
+                            context_latents=context_latents,
+                            attention_kwargs=self.attention_kwargs,
+                            return_dict=False,
+                        )
                     vt = model_output[0]
 
                 # Audio cover strength blending for cover tasks
                 if audio_cover_strength < 1.0 and non_cover_encoder_hidden_states is not None and task_type == "cover":
-                    nc_output = self.transformer(
-                        hidden_states=xt,
-                        timestep=t_curr_tensor,
-                        timestep_r=t_curr_tensor,
-                        encoder_hidden_states=non_cover_encoder_hidden_states,
-                        context_latents=context_latents,
-                        attention_kwargs=self.attention_kwargs,
-                        return_dict=False,
-                    )
+                    with self.transformer.cache_context("non_cover", timestep=t_sched):
+                        nc_output = self.transformer(
+                            hidden_states=xt,
+                            timestep=t_curr_tensor,
+                            timestep_r=t_curr_tensor,
+                            encoder_hidden_states=non_cover_encoder_hidden_states,
+                            context_latents=context_latents,
+                            attention_kwargs=self.attention_kwargs,
+                            return_dict=False,
+                        )
                     vt_nc = nc_output[0]
                     # Blend: strength * cover_vt + (1 - strength) * text2music_vt
                     vt = audio_cover_strength * vt + (1.0 - audio_cover_strength) * vt_nc
