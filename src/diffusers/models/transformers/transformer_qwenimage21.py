@@ -133,6 +133,26 @@ def apply_rotary_emb_qwen(
         return x_out.type_as(x)
 
 
+# Backends whose kernel libraries lack complex64 support (Ascend NPU, AWS Neuron, ...); see
+# https://github.com/huggingface/diffusers/issues/12668. On these backends the RoPE frequency table stays on CPU,
+# the per-request selection runs there, and frequencies cross the device boundary as reals (torch.view_as_real).
+COMPLEX_LESS_ROPE_BACKENDS = ("neuron", "npu")
+
+
+def apply_rotary_emb_qwen_real(x: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
+    """Real-valued variant of `apply_rotary_emb_qwen(..., use_real=False)` for backends without complex64 kernels.
+
+    `freqs_cis` carries `torch.view_as_real` pairs of the complex exponentials, shape `[S, D//2, 2]`. The complex
+    multiply expands to the same four real multiply-adds, and the operands are bit-identical to the complex path's
+    (`torch.polar(1, theta)` stores exactly `(cos theta, sin theta)`), so the result matches the complex path to
+    within float32 multiply-add rounding — both paths compute in float32 via `x.float()`.
+    """
+    x_real, x_imag = x.float().reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
+    cos, sin = freqs_cis.unsqueeze(1).unbind(-1)  # [S, 1, D//2]
+    out = torch.stack([x_real * cos - x_imag * sin, x_real * sin + x_imag * cos], dim=-1).flatten(3)
+    return out.type_as(x)
+
+
 class QwenImage21TemporalTimesteps(nn.Module):
     r"""Sinusoidal timestep embedding. `cos` occupies the first half of the channels and `sin` the second."""
 
@@ -345,8 +365,14 @@ def _qwenimage21_prepare_qkv(
     key = attn.norm_k(key).to(value.dtype)
 
     if rotary_emb is not None:
-        query = apply_rotary_emb_qwen(query, rotary_emb, use_real=False)
-        key = apply_rotary_emb_qwen(key, rotary_emb, use_real=False)
+        # Complex-capable backends carry complex64 exponentials; COMPLEX_LESS_ROPE_BACKENDS carry
+        # view_as_real pairs (see QwenImage21Rope.forward). The dtype picks the path.
+        if rotary_emb.is_complex():
+            query = apply_rotary_emb_qwen(query, rotary_emb, use_real=False)
+            key = apply_rotary_emb_qwen(key, rotary_emb, use_real=False)
+        else:
+            query = apply_rotary_emb_qwen_real(query, rotary_emb)
+            key = apply_rotary_emb_qwen_real(key, rotary_emb)
 
     if layer_cache is not None:
         if kv_cache_mode == "extract" and cache_write_slice is not None:
@@ -677,7 +703,13 @@ class QwenImage21Rope(nn.Module):
     def forward(
         self, img_shapes: list[tuple[int, int, int]], image_pad_mask: torch.Tensor, device: torch.device
     ) -> torch.Tensor:
-        self.freqs = [freq.to(device) for freq in self.freqs]
+        # On complex-less backends the complex64 table cannot be moved to or indexed on device: keep it on
+        # CPU, do the selection there, and cross the device boundary as reals via torch.view_as_real.
+        complex_less = device.type in COMPLEX_LESS_ROPE_BACKENDS
+        index_device = torch.device("cpu") if complex_less else device
+        self.freqs = [freq.to(index_device) for freq in self.freqs]
+        if complex_less:
+            image_pad_mask = image_pad_mask.cpu()
 
         frame_index, height_index, width_index = [], [], []
         image_height_index, image_width_index = [], []
@@ -701,13 +733,18 @@ class QwenImage21Rope(nn.Module):
         if cursor < total_len:
             frame_index.extend(range(position, position + total_len - cursor))
 
-        frame_index = torch.tensor(frame_index, dtype=torch.long, device=device)
+        frame_index = torch.tensor(frame_index, dtype=torch.long, device=index_device)
         height_index = frame_index.clone()
         width_index = frame_index.clone()
-        height_index[image_pad_mask] = torch.tensor(image_height_index, dtype=torch.long, device=device)
-        width_index[image_pad_mask] = torch.tensor(image_width_index, dtype=torch.long, device=device)
+        height_index[image_pad_mask] = torch.tensor(image_height_index, dtype=torch.long, device=index_device)
+        width_index[image_pad_mask] = torch.tensor(image_width_index, dtype=torch.long, device=index_device)
 
-        return torch.cat([self.freqs[0][frame_index], self.freqs[1][height_index], self.freqs[2][width_index]], dim=-1)
+        freqs = torch.cat(
+            [self.freqs[0][frame_index], self.freqs[1][height_index], self.freqs[2][width_index]], dim=-1
+        )
+        if complex_less:
+            return torch.view_as_real(freqs).to(device)
+        return freqs
 
 
 class QwenImage21Transformer2DModel(

@@ -506,3 +506,23 @@ class TestQwenImageTransformerTorchAo(QwenImageTransformerQuantTesterConfig, Tor
     @property
     def torch_dtype(self):
         return torch.bfloat16
+
+
+class TestQwenImageRopeComplexLess:
+    def test_npu_registered_and_neuron_path_matches_complex(self):
+        from diffusers.models.transformers.transformer_qwenimage import (
+            ROPE_PER_DEVICE,
+            apply_rotary_emb_qwen,
+            apply_rotary_emb_qwen_neuron,
+        )
+
+        assert ROPE_PER_DEVICE.get("npu") is apply_rotary_emb_qwen_neuron
+
+        torch.manual_seed(0)
+        x = torch.randn(2, 65, 8, 128)
+        angles = (torch.rand(65, 64) * 2 - 1) * torch.pi
+        freqs = torch.polar(torch.ones_like(angles), angles).to(torch.complex64)
+        ref = apply_rotary_emb_qwen(x, freqs, use_real=False)
+        cand = apply_rotary_emb_qwen_neuron(x, torch.angle(freqs))
+        # The atan2 round-trip in torch.angle adds up to ~1e-7 on top of multiply-add rounding.
+        torch.testing.assert_close(ref, cand, rtol=1e-5, atol=1e-6)

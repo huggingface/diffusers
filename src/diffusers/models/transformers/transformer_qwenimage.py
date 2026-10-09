@@ -166,12 +166,17 @@ def apply_rotary_emb_qwen_neuron(x: torch.Tensor, freqs: torch.Tensor) -> torch.
     return (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
 
 
-# RoPE application is backend-dependent: the default path multiplies by a complex exponential, which Neuron cannot
-# represent. Callers select by `device.type` and fall back to the default for any backend not listed here.
+# RoPE application is backend-dependent: the default path multiplies by a complex exponential, which backends
+# without complex64 kernels (Neuron, Ascend NPU) cannot represent. Callers select by `device.type` and fall back
+# to the default for any backend not listed here.
 ROPE_PER_DEVICE = {
     "cuda": functools.partial(apply_rotary_emb_qwen, use_real=False),
     "neuron": apply_rotary_emb_qwen_neuron,
+    "npu": apply_rotary_emb_qwen_neuron,
 }
+
+# Backends whose RoPE frequency tables are sent as rotation angles instead of complex exponentials.
+COMPLEX_LESS_ROPE_BACKENDS = ("neuron", "npu")
 
 
 def compute_text_seq_len_from_mask(
@@ -268,8 +273,8 @@ class QwenEmbedRope(nn.Module):
     @lru_cache_unless_export(maxsize=None)
     def _get_device_freqs(self, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
         """Return pos_freqs and neg_freqs on the given device."""
-        if device is not None and device.type == "neuron":
-            # Neuron has no complex dtype, so send the rotation angles instead and let
+        if device is not None and device.type in COMPLEX_LESS_ROPE_BACKENDS:
+            # Neuron and Ascend NPU have no complex64 kernels, so send the rotation angles instead and let
             # `apply_rotary_emb_qwen_neuron` take cos/sin on device. `torch.angle` runs on CPU while the freqs are
             # still complex; wrapping into (-pi, pi] is harmless because only cos/sin of the angle are used.
             return torch.angle(self.pos_freqs).to(device), torch.angle(self.neg_freqs).to(device)
@@ -397,8 +402,8 @@ class QwenEmbedLayer3DRope(nn.Module):
     @lru_cache_unless_export(maxsize=None)
     def _get_device_freqs(self, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
         """Return pos_freqs and neg_freqs on the given device."""
-        if device is not None and device.type == "neuron":
-            # Neuron has no complex dtype, so send the rotation angles instead and let
+        if device is not None and device.type in COMPLEX_LESS_ROPE_BACKENDS:
+            # Neuron and Ascend NPU have no complex64 kernels, so send the rotation angles instead and let
             # `apply_rotary_emb_qwen_neuron` take cos/sin on device. `torch.angle` runs on CPU while the freqs are
             # still complex; wrapping into (-pi, pi] is harmless because only cos/sin of the angle are used.
             return torch.angle(self.pos_freqs).to(device), torch.angle(self.neg_freqs).to(device)

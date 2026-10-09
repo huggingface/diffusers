@@ -72,6 +72,31 @@ class TimestepEmbedder(nn.Module):
         return t_emb
 
 
+# Backends whose kernel libraries lack complex64 support (Ascend NPU, AWS Neuron, ...); see
+# https://github.com/huggingface/diffusers/issues/12668. On these backends RopeEmbedder keeps its frequency
+# tables on CPU and returns view_as_real pairs instead of complex64.
+COMPLEX_LESS_ROPE_BACKENDS = ("neuron", "npu")
+
+
+def apply_rotary_emb_zimage(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
+    """Apply rotary embeddings to [B, S, H, D] with freqs broadcast over heads.
+
+    `freqs_cis` is complex64 `[B, S, D//2]` on complex-capable backends and `torch.view_as_real` pairs
+    `[B, S, D//2, 2]` on complex-less ones (see RopeEmbedder.__call__); the dtype picks the path. The two paths
+    expand to the same real multiply-adds, so they match to within float32 rounding (both compute in float32).
+    """
+    with torch.amp.autocast("cuda", enabled=False):
+        if freqs_cis.is_complex():
+            x = torch.view_as_complex(x_in.float().reshape(*x_in.shape[:-1], -1, 2))
+            freqs_cis = freqs_cis.unsqueeze(2)
+            x_out = torch.view_as_real(x * freqs_cis).flatten(3)
+            return x_out.type_as(x_in)  # todo
+        x_real, x_imag = x_in.float().reshape(*x_in.shape[:-1], -1, 2).unbind(-1)
+        cos, sin = freqs_cis.unsqueeze(2).unbind(-1)  # [B, S, 1, D//2]
+        out = torch.stack([x_real * cos - x_imag * sin, x_real * sin + x_imag * cos], dim=-1).flatten(3)
+        return out.type_as(x_in)
+
+
 class ZSingleStreamAttnProcessor:
     """
     Processor for Z-Image single stream attention that adapts the existing Attention class to match the behavior of the
@@ -110,16 +135,9 @@ class ZSingleStreamAttnProcessor:
             key = attn.norm_k(key)
 
         # Apply RoPE
-        def apply_rotary_emb(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
-            with torch.amp.autocast("cuda", enabled=False):
-                x = torch.view_as_complex(x_in.float().reshape(*x_in.shape[:-1], -1, 2))
-                freqs_cis = freqs_cis.unsqueeze(2)
-                x_out = torch.view_as_real(x * freqs_cis).flatten(3)
-                return x_out.type_as(x_in)  # todo
-
         if freqs_cis is not None:
-            query = apply_rotary_emb(query, freqs_cis)
-            key = apply_rotary_emb(key, freqs_cis)
+            query = apply_rotary_emb_zimage(query, freqs_cis)
+            key = apply_rotary_emb_zimage(key, freqs_cis)
 
         # Cast to correct dtype
         dtype = query.dtype
@@ -340,20 +358,25 @@ class RopeEmbedder:
         assert ids.ndim == 2
         assert ids.shape[-1] == len(self.axes_dims)
         device = ids.device
+        # On complex-less backends the complex64 tables cannot be moved to or indexed on device: keep them on
+        # CPU, index there, and cross the device boundary as reals via torch.view_as_real.
+        complex_less = device.type in COMPLEX_LESS_ROPE_BACKENDS
 
         if self.freqs_cis is None:
             self.freqs_cis = self.precompute_freqs_cis(self.axes_dims, self.axes_lens, theta=self.theta)
-            self.freqs_cis = [freqs_cis.to(device) for freqs_cis in self.freqs_cis]
-        else:
-            # Ensure freqs_cis are on the same device as ids
-            if self.freqs_cis[0].device != device:
-                self.freqs_cis = [freqs_cis.to(device) for freqs_cis in self.freqs_cis]
+        # Keep the tables on the indexing device: CPU on complex-less backends, ids' device otherwise
+        table_device = torch.device("cpu") if complex_less else device
+        if self.freqs_cis[0].device != table_device:
+            self.freqs_cis = [freqs_cis.to(table_device) for freqs_cis in self.freqs_cis]
 
+        index = ids.cpu() if complex_less else ids
         result = []
         for i in range(len(self.axes_dims)):
-            index = ids[:, i]
-            result.append(self.freqs_cis[i][index])
-        return torch.cat(result, dim=-1)
+            result.append(self.freqs_cis[i][index[:, i]])
+        freqs = torch.cat(result, dim=-1)
+        if complex_less:
+            return torch.view_as_real(freqs).to(device)
+        return freqs
 
 
 class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):

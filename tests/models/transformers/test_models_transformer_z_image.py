@@ -402,3 +402,34 @@ class TestZImageTransformer2DSingleFile(ZImageTransformerTesterConfig, SingleFil
     @property
     def pretrained_model_kwargs(self):
         return {"subfolder": "transformer"}
+
+
+class TestZImageRopeComplexLess:
+    """The real-valued RoPE path for COMPLEX_LESS_ROPE_BACKENDS matches the complex reference."""
+
+    def test_real_fallback_matches_complex(self, monkeypatch):
+        from diffusers.models.transformers import transformer_z_image as tzi
+
+        ids = torch.stack(
+            [
+                torch.randint(0, 64, (37,), generator=torch.Generator().manual_seed(0)),
+                torch.randint(0, 128, (37,), generator=torch.Generator().manual_seed(1)),
+                torch.randint(0, 128, (37,), generator=torch.Generator().manual_seed(2)),
+            ],
+            dim=-1,
+        )
+        ref = tzi.RopeEmbedder(theta=256.0, axes_dims=(16, 56, 56), axes_lens=(64, 128, 128))(ids)
+        assert ref.is_complex()
+
+        monkeypatch.setattr(tzi, "COMPLEX_LESS_ROPE_BACKENDS", ("cpu",))
+        cand = tzi.RopeEmbedder(theta=256.0, axes_dims=(16, 56, 56), axes_lens=(64, 128, 128))(ids)
+        assert cand.dtype == torch.float32 and cand.shape == ref.shape + (2,)
+
+        # The frequency selection crosses the boundary bit-exact.
+        torch.testing.assert_close(torch.view_as_real(ref), cand, rtol=0, atol=0)
+
+        # Same rotation to within float32 rounding, in the processor's [B, S, H, D] shape.
+        x = torch.randn(2, 37, 6, 128, generator=torch.Generator().manual_seed(3))
+        ref_out = tzi.apply_rotary_emb_zimage(x, ref.unsqueeze(0))
+        cand_out = tzi.apply_rotary_emb_zimage(x, cand.unsqueeze(0))
+        torch.testing.assert_close(ref_out, cand_out, rtol=1e-5, atol=1e-6)

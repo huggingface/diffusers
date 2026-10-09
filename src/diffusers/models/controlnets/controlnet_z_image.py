@@ -29,6 +29,7 @@ from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention_dispatch import dispatch_attention_fn
 from ..controlnets.controlnet import zero_module
 from ..modeling_utils import ModelMixin
+from ..transformers.transformer_z_image import COMPLEX_LESS_ROPE_BACKENDS, apply_rotary_emb_zimage
 
 
 ADALN_EMBED_DIM = 256
@@ -113,16 +114,9 @@ class ZSingleStreamAttnProcessor:
             key = attn.norm_k(key)
 
         # Apply RoPE
-        def apply_rotary_emb(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
-            with torch.amp.autocast("cuda", enabled=False):
-                x = torch.view_as_complex(x_in.float().reshape(*x_in.shape[:-1], -1, 2))
-                freqs_cis = freqs_cis.unsqueeze(2)
-                x_out = torch.view_as_real(x * freqs_cis).flatten(3)
-                return x_out.type_as(x_in)  # todo
-
         if freqs_cis is not None:
-            query = apply_rotary_emb(query, freqs_cis)
-            key = apply_rotary_emb(key, freqs_cis)
+            query = apply_rotary_emb_zimage(query, freqs_cis)
+            key = apply_rotary_emb_zimage(key, freqs_cis)
 
         # Cast to correct dtype
         dtype = query.dtype
@@ -317,20 +311,25 @@ class RopeEmbedder:
         assert ids.ndim == 2
         assert ids.shape[-1] == len(self.axes_dims)
         device = ids.device
+        # On complex-less backends the complex64 tables cannot be moved to or indexed on device: keep them on
+        # CPU, index there, and cross the device boundary as reals via torch.view_as_real.
+        complex_less = device.type in COMPLEX_LESS_ROPE_BACKENDS
 
         if self.freqs_cis is None:
             self.freqs_cis = self.precompute_freqs_cis(self.axes_dims, self.axes_lens, theta=self.theta)
-            self.freqs_cis = [freqs_cis.to(device) for freqs_cis in self.freqs_cis]
-        else:
-            # Ensure freqs_cis are on the same device as ids
-            if self.freqs_cis[0].device != device:
-                self.freqs_cis = [freqs_cis.to(device) for freqs_cis in self.freqs_cis]
+        # Keep the tables on the indexing device: CPU on complex-less backends, ids' device otherwise
+        table_device = torch.device("cpu") if complex_less else device
+        if self.freqs_cis[0].device != table_device:
+            self.freqs_cis = [freqs_cis.to(table_device) for freqs_cis in self.freqs_cis]
 
+        index = ids.cpu() if complex_less else ids
         result = []
         for i in range(len(self.axes_dims)):
-            index = ids[:, i]
-            result.append(self.freqs_cis[i][index])
-        return torch.cat(result, dim=-1)
+            result.append(self.freqs_cis[i][index[:, i]])
+        freqs = torch.cat(result, dim=-1)
+        if complex_less:
+            return torch.view_as_real(freqs).to(device)
+        return freqs
 
 
 @maybe_allow_in_graph
