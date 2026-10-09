@@ -12,6 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # LoopSequentialPipelineBlocks
 
+> [!WARNING]
+> [`~modular_pipelines.LoopSequentialPipelineBlocks`] is superseded by [`~modular_pipelines.IterativePipelineBlocks`], which lets loop steps work on the [`~modular_pipelines.PipelineState`] like regular blocks, can be nested, and supports streaming. Use [IterativePipelineBlocks](./iterative_pipeline_blocks) for new pipelines; this page documents the earlier type that existing pipelines still use.
+
 [`~modular_pipelines.LoopSequentialPipelineBlocks`] are a multi-block type that composes other [`~modular_pipelines.ModularPipelineBlocks`] together in a loop. Data flows circularly, using `inputs` and `intermediate_outputs`, and each block is run iteratively. This is typically used to create a denoising loop which is iterative by default.
 
 This guide shows you how to create [`~modular_pipelines.LoopSequentialPipelineBlocks`].
