@@ -45,6 +45,7 @@ from ..testing_utils import (
     ModelTesterMixin,
     SingleFileTesterMixin,
     TensorParallelTesterMixin,
+    TensorParallelTPUTesterMixin,
     TorchAoCompileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
@@ -178,6 +179,14 @@ def make_neuron_tp_spec():
     """
     config = Flux2TransformerTesterConfig()
     return Flux2Transformer2DModel, config.get_init_dict(), config.get_dummy_inputs(device="cpu")
+
+
+class TestFlux2TransformerTensorParallelTPU(Flux2TransformerTesterConfig, TensorParallelTPUTesterMixin):
+    """Tensor Parallel inference test for Flux2 Transformer on TPU."""
+
+    def get_init_dict(self):
+        # One head per chip.
+        return {**super().get_init_dict(), "num_attention_heads": self.tp_world_size}
 
 
 @is_tensor_parallel
