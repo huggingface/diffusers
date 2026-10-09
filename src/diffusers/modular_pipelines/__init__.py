@@ -101,6 +101,7 @@ else:
         "QwenImageLayeredModularPipeline",
         "QwenImageLayeredAutoBlocks",
     ]
+    _import_structure["qwenimage21"] = ["QwenImage21AutoBlocks", "QwenImage21ModularPipeline"]
     _import_structure["anima"] = [
         "AnimaAutoBlocks",
         "AnimaModularPipeline",
@@ -226,6 +227,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageLayeredModularPipeline,
             QwenImageModularPipeline,
         )
+        from .qwenimage21 import QwenImage21AutoBlocks, QwenImage21ModularPipeline
         from .stable_diffusion_3 import StableDiffusion3AutoBlocks, StableDiffusion3ModularPipeline
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
         from .wan import (
