@@ -21,6 +21,8 @@ specific language governing permissions and limitations under the License.
 | [`env`](#env) | Print environment info for bug reports. |
 | [`schema`](#schema) | Inspect a pipeline's `__call__` signature without downloading weights. |
 | [`run`](#run) | Run a pipeline locally or in a Hugging Face Sandbox. |
+| [`serve`](#serve) | Serve a pipeline over HTTP with the Generative Media Spec API. |
+| [`generate`](#generate) | Send a generation to a Generative Media Spec server and save its outputs. |
 | [`custom_blocks`](#customblocks) | Package a local `ModularPipelineBlocks` subclass for the Hub. |
 | [`fp16_safetensors`](#fp16safetensors) | Convert a checkpoint to fp16 `.safetensors`. |
 | [`skills`](#skills) | Install pre-authored skill bundles into your AI coding agent. |
@@ -286,6 +288,148 @@ diffusers-cli run -m black-forest-labs/FLUX.1-dev --dtype bf16 \
 # Stop it when done (or let it timeout).
 hf sandbox kill <id>
 ```
+
+## `serve`
+
+Serve a pipeline over HTTP. The server implements the Generative Media Spec (GMS, draft `gms/0.1`): clients
+discover what the model accepts, create a generation, follow it while it runs, and read the results. It needs
+the `serve` extra:
+
+```bash
+pip install "diffusers[serve]"
+diffusers-cli serve --model black-forest-labs/FLUX.1-dev --dtype bf16
+```
+
+`serve` takes the same loading and optimization flags as [`run`](#run) (`--dtype`, `--device-map`,
+`--cpu-offload`, `--compile`, `--lora`, ...), plus `--host` (default `127.0.0.1`) and `--port` (default `8000`).
+The server has no authentication, so keep it on a trusted network.
+
+[Modular repos](../modular_diffusers/overview) are detected the same way as in `run` and served in-process. They
+report no step progress, and a cancel request only takes effect once the pipeline call returns.
+
+| Flag | Effect |
+|---|---|
+| `--default-seed` | Seed used for requests that do not set one. Without it, each such request gets a random seed. |
+| `--enable-cors` | Allow cross-origin requests from any origin, so a browser app on another host can call the server. |
+| `--log-level` | Logging level for diffusers and the HTTP server (`debug`, `info`, `warning`, `error`, `critical`). |
+
+`GET /health` returns `{"status": "ok"}`, or `503` when an SGLang or vLLM-Omni backend has exited. Every response
+carries an `x-request-id` header: the one sent with the request, or a generated one.
+
+Generations run one at a time. Creating one returns immediately with a `queued` generation; poll it, subscribe
+to its events, or ask the server to hold the connection with `Prefer: wait=<seconds>`:
+
+```bash
+# What the model accepts: tasks, inputs, parameters with types and defaults.
+curl localhost:8000/v1/models/black-forest-labs/FLUX.1-dev
+
+# Create a generation and wait up to 120 seconds for it.
+curl localhost:8000/v1/generations -H 'Prefer: wait=120' -d '{
+  "model": "black-forest-labs/FLUX.1-dev",
+  "inputs": {"prompt": "an astronaut riding a horse"},
+  "parameters": {"width": 1024, "height": 1024, "steps": 28, "seed": 42}
+}'
+
+# Follow step progress as server-sent events, or poll the generation.
+curl -N localhost:8000/v1/generations/<id>/events
+curl localhost:8000/v1/generations/<id>
+
+# Cancel a queued or running generation, or delete it together with its files.
+curl -X POST localhost:8000/v1/generations/<id>/cancel
+curl -X DELETE localhost:8000/v1/generations/<id>
+```
+
+A completed generation lists its outputs with a download URL each (or inline base64 with
+`"response_format": "b64_json"`), the seed that was used, and the model revision. Outputs are kept under
+`--output-dir` and expire after one hour. Images are PNG by default (`"output_format": "image/jpeg"` or
+`"image/webp"` to change it), videos MP4, audio WAV. Media inputs are passed as
+`{"type": "image", "url": "https://..."}` or `{"type": "image", "base64": "...", "media_type": "image/png"}`.
+
+Validation is strict: an unknown parameter, a value outside its declared range, or a missing input is rejected
+with a JSON pointer to the offending field.
+
+```json
+{"error": {"code": "invalid_request", "message": "task 'text_to_image' declares no parameter 'cfg'", "pointer": "/parameters/cfg"}}
+```
+
+### Manifests
+
+What a model accepts is described by its manifest. `serve` looks for one in this order:
+
+1. the file passed with `--manifest <path>`;
+2. a `gms.json` published in the model repo, served byte-for-byte;
+3. a manifest derived from the pipeline's `__call__` signature.
+
+A derived manifest is a best-effort reading of the signature: scalar arguments become parameters, prompts and
+media arguments become inputs, and arguments with a core GMS name are renamed (`num_inference_steps` becomes
+`steps`, `num_images_per_prompt` becomes `num_outputs`, `generator` becomes `seed`). It carries no value ranges.
+Write a `gms.json` when you need ranges, presets, or a duration in seconds.
+
+When a manifest uses a name that differs from the pipeline argument, map it per task under `x-diffusers`:
+
+```json
+"x-diffusers": {"inputs": {"caption": "prompt"}, "parameters": {"cfg": "guidance_scale"}}
+```
+
+A task is only hosted when every input it requires maps to a pipeline argument. A parameter the pipeline cannot
+set is rejected with `not_implemented` unless the request sends its default value.
+
+### Adapters
+
+A request can apply LoRAs for that generation only. They are loaded before the call and unloaded after it:
+
+```bash
+curl localhost:8000/v1/generations -d '{
+  "model": "black-forest-labs/FLUX.1-dev",
+  "inputs": {"prompt": "a tiny cat"},
+  "adapters": [{"type": "lora", "path": "hf:alvdansen/littletinies", "scale": 0.8}]
+}'
+```
+
+Request adapters are turned off when the server starts with `--compile` or `--lora`; such requests fail with
+`not_implemented`.
+
+### SGLang and vLLM-Omni backends
+
+`--backend sglang` and `--backend vllm` run the model in [SGLang Diffusion](https://docs.sglang.io/) or
+[vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni) instead of in-process. `serve` starts `sglang serve` or
+`vllm serve --omni` as a child process on a local port, waits for it to become healthy, and translates GMS
+requests to the engine's OpenAI-compatible image and video routes. Clients only ever talk to the GMS endpoints
+of `serve`. The engine must be installed separately.
+
+```bash
+diffusers-cli serve --model Qwen/Qwen-Image --backend sglang --backend-args '--num-gpus 2'
+diffusers-cli serve --model Wan-AI/Wan2.2-T2V-A14B-Diffusers --backend vllm
+```
+
+The pipeline flags (`--dtype`, `--cpu-offload`, `--compile`, ...) do not apply to these backends; pass the
+engine's own flags with `--backend-args`. Compared with the in-process backend, they serve image and video
+outputs only, accept `image` as the only media input, expose the parameters both engines share (size, steps,
+guidance scale, seed, number of frames, fps, number of images), report no step progress, and apply no request
+adapters.
+
+## `generate`
+
+Send a generation to a server started with [`serve`](#serve), or to any other Generative Media Spec server, and
+save its outputs. Unlike [`run`](#run), `generate` loads no pipeline: it reads the model's discovery document,
+submits the request, polls the generation until it finishes, and downloads the files.
+
+```bash
+diffusers-cli generate --url http://localhost:8000 --inputs '{"prompt": "a cat on the moon"}'
+
+diffusers-cli generate --url http://localhost:8000 \
+    --inputs '{"prompt": "make the fur grey", "image": "cat.png"}' \
+    --parameters '{"steps": 8, "seed": 0}' --output outputs/
+```
+
+`--inputs` and `--parameters` use the names the server declares, not pipeline argument names (`steps`, not
+`num_inference_steps`). An image, mask, video or audio input can be an http(s) URL or a local file path; local
+files are sent inline as base64. `--task`, `--preset`, `--adapters` and `--output-format` map to the request
+fields of the same name. `--model` is only needed when the server hosts more than one model.
+
+Outputs are saved to `~/.diffusers/cli/generate/outputs/<generation id>/` unless `--output` names a directory.
+`--token` sends a bearer token in the `Authorization` header, for servers behind an authenticating proxy; no
+token is sent by default. Interrupting the command cancels the generation on the server.
 
 ## `custom_blocks`
 
