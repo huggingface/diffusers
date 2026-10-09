@@ -140,6 +140,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("flux-kontext", _create_default_map_fn("FluxKontextModularPipeline")),
         ("flux2", _create_default_map_fn("Flux2ModularPipeline")),
         ("flux2-klein", _flux2_klein_map_fn),
+        ("flux3", _create_default_map_fn("Flux3ModularPipeline")),
         ("ideogram4", _create_default_map_fn("Ideogram4ModularPipeline")),
         ("krea2", _krea2_map_fn),
         ("qwenimage", _create_default_map_fn("QwenImageModularPipeline")),

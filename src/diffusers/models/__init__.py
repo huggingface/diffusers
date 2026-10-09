@@ -118,6 +118,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_ernie_image"] = ["ErnieImageTransformer2DModel"]
     _import_structure["transformers.transformer_flux"] = ["FluxTransformer2DModel"]
     _import_structure["transformers.transformer_flux2"] = ["Flux2Transformer2DModel"]
+    _import_structure["transformers.transformer_flux3"] = ["Flux3Transformer2DModel"]
     _import_structure["transformers.transformer_glm_image"] = ["GlmImageTransformer2DModel"]
     _import_structure["transformers.transformer_helios"] = ["HeliosTransformer3DModel"]
     _import_structure["transformers.transformer_hidream_image"] = ["HiDreamImageTransformer2DModel"]
@@ -255,6 +256,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EasyAnimateTransformer3DModel,
             ErnieImageTransformer2DModel,
             Flux2Transformer2DModel,
+            Flux3Transformer2DModel,
             FluxTransformer2DModel,
             GlmImageTransformer2DModel,
             HeliosTransformer3DModel,
