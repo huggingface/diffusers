@@ -33,6 +33,8 @@ from ...testing_utils import (
 )
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
 )
@@ -189,6 +191,14 @@ class TestSanaPipeline(SanaPipelineTesterConfig, PipelineTesterMixin):
     def test_half_precision_inference_no_nan(self, dtype):
         with skip_if_no_cudnn_engine():
             super().test_half_precision_inference_no_nan(dtype)
+
+
+class TestSanaPipelineLoRA(SanaPipelineTesterConfig, LoraTesterMixin):
+    pass
+
+
+class TestSanaPipelineLoRAMemory(SanaPipelineTesterConfig, LoraMemoryTesterMixin):
+    pass
 
 
 class TestSanaPipelineMemory(SanaPipelineTesterConfig, MemoryTesterMixin):
