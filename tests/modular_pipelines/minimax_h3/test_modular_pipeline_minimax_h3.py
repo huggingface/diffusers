@@ -14,6 +14,7 @@
 
 
 import os
+import struct
 
 import numpy as np
 import pytest
@@ -38,7 +39,7 @@ from diffusers.modular_pipelines.minimax_h3.encoders import (
     MiniMaxH3TextEncoderStep,
 )
 from diffusers.modular_pipelines.minimax_h3.modular_pipeline import MINIMAX_H3_FPS
-from diffusers.utils import is_peft_available, logging
+from diffusers.utils import is_av_available, is_peft_available, logging
 
 from ...testing_utils import CaptureLogger
 from ..testing_utils import (
@@ -1081,3 +1082,47 @@ class TestMiniMaxH3Reference:
             frames, fps=float(MINIMAX_H3_FPS), num_frames=124, **canvas
         )
         assert np.shares_memory(untouched, frames)
+
+    @pytest.mark.skipif(not is_av_available(), reason="PyAV is required to decode a video file")
+    @pytest.mark.parametrize(
+        "display_rotation, red_corner",
+        [(0, "top-left"), (90, "bottom-left"), (-90, "top-right"), (180, "bottom-right")],
+    )
+    def test_video_file_is_decoded_upright(self, tmp_path, display_rotation, red_corner):
+        r"""
+        A display matrix rotation is counterclockwise, as `ffmpeg`'s autorotate applies it: a clip tagged 90 degrees
+        has its top-left corner shown at the bottom-left, and a portrait phone clip has to come out upright.
+        """
+        import av
+
+        # a 96x64 landscape clip, grey with a red 32x32 block in the top-left corner
+        frame = np.full((64, 96, 3), 128, dtype="uint8")
+        frame[:32, :32] = (255, 0, 0)
+        path = str(tmp_path / "clip.mp4")
+        with av.open(path, "w") as container:
+            stream = container.add_stream("mpeg4", rate=24)
+            stream.width, stream.height, stream.pix_fmt = 96, 64, "yuv420p"
+            for packet in stream.encode(av.VideoFrame.from_ndarray(frame, format="rgb24")):
+                container.mux(packet)
+            for packet in stream.encode(None):
+                container.mux(packet)
+
+        # tag the display matrix in the `tkhd` box: its 36 byte matrix is the last field of a 84 byte version 0 box
+        radians = np.deg2rad(display_rotation)
+        cos, sin = round(np.cos(radians)), round(np.sin(radians))
+        matrix = struct.pack(">9i", cos << 16, -sin << 16, 0, sin << 16, cos << 16, 0, 0, 0, 1 << 30)
+        with open(path, "r+b") as file:
+            data = file.read()
+            matrix_start = data.index(b"tkhd") + 4 + 40
+            file.seek(matrix_start)
+            file.write(matrix)
+
+        frames = MiniMaxH3VideoReference.from_file(path).frames
+
+        height, width = frames.shape[1:3]
+        assert (height, width) == ((96, 64) if abs(display_rotation) == 90 else (64, 96))
+        vertical, horizontal = red_corner.split("-")
+        rows = slice(0, 16) if vertical == "top" else slice(height - 16, height)
+        columns = slice(0, 16) if horizontal == "left" else slice(width - 16, width)
+        block = frames[0, rows, columns].astype(int)
+        assert np.abs(block - np.array([255, 0, 0])).mean() < 40
