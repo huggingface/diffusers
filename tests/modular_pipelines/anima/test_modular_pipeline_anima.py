@@ -17,6 +17,7 @@ import unittest
 
 import numpy as np
 import PIL.Image
+import pytest
 import torch
 
 from diffusers import (
@@ -25,6 +26,7 @@ from diffusers import (
     AnimaTextConditioner,
     CosmosTransformer3DModel,
 )
+from diffusers.modular_pipelines.anima.modular_blocks_anima import AnimaCoreDenoiseStep
 
 from ...testing_utils import enable_full_determinism, is_lora, require_peft_backend
 from ..testing_utils import (
@@ -127,6 +129,55 @@ class AnimaModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestAnimaModularPipelineFast(AnimaModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    @pytest.mark.parametrize("negative_prompt", [None, "", "bad quality"])
+    def test_split_text_encoder(self, negative_prompt):
+        pipe = self.get_pipeline()
+        inputs = self.get_dummy_inputs()
+        inputs["negative_prompt"] = negative_prompt
+        expected = pipe(**inputs).images
+
+        blocks = self.pipeline_blocks_class()
+        text_block = blocks.sub_blocks.pop("text_encoder")
+        text_pipe = text_block.init_pipeline(self.pretrained_model_name_or_path)
+        text_pipe.load_components(dtype=torch.float32)
+        denoise_pipe = blocks.init_pipeline(self.pretrained_model_name_or_path)
+        denoise_pipe.load_components(dtype=torch.float32)
+
+        inputs = self.get_dummy_inputs()
+        inputs["negative_prompt"] = negative_prompt
+        text_inputs = {name: inputs.pop(name) for name in ("prompt", "negative_prompt", "max_sequence_length")}
+        embeddings = text_pipe(**text_inputs).get_by_kwargs("denoiser_input_fields")
+        output = denoise_pipe(**embeddings, **inputs).images
+
+        torch.testing.assert_close(output, expected, rtol=1e-5, atol=1e-5)
+
+    def test_standalone_core_denoise(self):
+        text_block = self.pipeline_blocks_class().sub_blocks["text_encoder"]
+        text_pipe = text_block.init_pipeline(self.pretrained_model_name_or_path)
+        text_pipe.load_components(dtype=torch.float32)
+        inputs = self.get_dummy_inputs()
+        text_inputs = {name: inputs.pop(name) for name in ("prompt", "negative_prompt", "max_sequence_length")}
+        embeddings = text_pipe(**text_inputs).get(
+            [
+                "qwen_prompt_embeds",
+                "qwen_attention_mask",
+                "t5_input_ids",
+                "t5_attention_mask",
+                "negative_qwen_prompt_embeds",
+                "negative_qwen_attention_mask",
+                "negative_t5_input_ids",
+                "negative_t5_attention_mask",
+            ]
+        )
+
+        denoise_pipe = AnimaCoreDenoiseStep().init_pipeline(self.pretrained_model_name_or_path)
+        denoise_pipe.load_components(dtype=torch.float32)
+        inputs.pop("output_type")
+        output = denoise_pipe(**embeddings, **inputs).get("latents")
+
+        assert output.shape == (1, 4, 1, 4, 4)
+        assert torch.isfinite(output).all()
+
     def test_inference_empty_negative_prompt(self):
         pipe = self.get_pipeline()
 
