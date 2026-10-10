@@ -21,7 +21,7 @@ from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 from diffusers import AutoencoderKLWan, UniPCMultistepScheduler, WanTransformer3DModel, WanVideoToVideoPipeline
 
 from ...testing_utils import assert_tensors_close
-from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, CacheContextTesterMixin, MemoryTesterMixin, PipelineTesterMixin
 
 
 class WanVideoToVideoPipelineTesterConfig(BasePipelineTesterConfig):
@@ -128,3 +128,11 @@ class TestWanVideoToVideoPipeline(WanVideoToVideoPipelineTesterConfig, PipelineT
 
 class TestWanVideoToVideoPipelineMemory(WanVideoToVideoPipelineTesterConfig, MemoryTesterMixin):
     pass
+
+
+class TestWanVideoToVideoPipelineCacheContext(WanVideoToVideoPipelineTesterConfig, CacheContextTesterMixin):
+    @pytest.mark.parametrize("guidance_scale", [1.0, 6.0])
+    @pytest.mark.parametrize("strength", [0.5, 1.0])
+    def test_cache_context(self, guidance_scale, strength):
+        expected_contexts = {"cond", "uncond"} if guidance_scale > 1.0 else {"cond"}
+        self._test_cache_context(expected_contexts, guidance_scale=guidance_scale, strength=strength)
