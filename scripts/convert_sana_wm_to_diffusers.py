@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright 2025 The HuggingFace Team and SANA-WM Authors. All rights reserved.
+# Copyright 2026 The HuggingFace Team and SANA-WM Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -148,8 +148,13 @@ def main() -> None:
 
     sd = load_file(str(dit_ckpt))
     sd.pop("pos_embed", None)  # unused at inference (wan_rope is computed on-the-fly)
-    # The public release keys (``blocks.0...``) load directly into the merged
-    # SanaWMTransformer3DModel — no ``_inner.`` prefix anymore.
+    # `y_embedding` is the training-time null-caption embedding; inference never reads it.
+    sd.pop("y_embedder.y_embedding", None)
+    # The timestep MLP is diffusers' `TimestepEmbedding`, which names its layers `linear_1` / `linear_2`.
+    sd = {
+        k.replace("t_embedder.mlp.0.", "t_embedder.linear_1.").replace("t_embedder.mlp.2.", "t_embedder.linear_2."): v
+        for k, v in sd.items()
+    }
     # `.pos_embed` entries are non-persistent buffers rebuilt at construction, so they are
     # expected to be absent from the converted state dict; anything else means the mapping
     # is wrong and would silently produce a broken transformer.

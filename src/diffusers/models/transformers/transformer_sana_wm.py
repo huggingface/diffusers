@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team and SANA-WM Authors. All rights reserved.
+# Copyright 2026 The HuggingFace Team and SANA-WM Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,16 +29,16 @@ from ...utils import logging
 from ..activations import get_activation
 from ..attention import AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
-from ..embeddings import get_1d_rotary_pos_embed
+from ..embeddings import TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
 from ..modeling_outputs import Transformer2DModelOutput
-from ..modeling_utils import ModelMixin, get_parameter_dtype
+from ..modeling_utils import ModelMixin
 from ..normalization import RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class Mlp(nn.Module):
+class SanaWMMlp(nn.Module):
     """Two-layer feed-forward block (`fc1` -> activation -> `fc2`)."""
 
     def __init__(
@@ -365,7 +365,7 @@ class T2IFinalLayer(nn.Module):
         self.scale_shift_table = nn.Parameter(torch.randn(2, hidden_size) / hidden_size**0.5)
         self.out_channels = out_channels
 
-    def forward_frame_aware(self, x, t):
+    def forward(self, x, t):
         # t: B,1,F,D
         B, N, C = x.shape
         num_frames = t.shape[2]
@@ -377,64 +377,8 @@ class T2IFinalLayer(nn.Module):
         x = self.linear(x)
         return x
 
-    def forward(self, x, t):
-        if len(t.shape) > 2:
-            return self.forward_frame_aware(x, t)
-        shift, scale = (self.scale_shift_table[None] + t[:, None]).chunk(2, dim=1)
-        x = self.norm_final(x) * (1 + scale) + shift
-        x = self.linear(x)
-        return x
 
-
-#################################################################################
-#               Embedding Layers for Timesteps and Class Labels                 #
-#################################################################################
-class TimestepEmbedder(nn.Module):
-    """
-    Embeds scalar timesteps into vector representations.
-    """
-
-    def __init__(self, hidden_size, frequency_embedding_size=256):
-        super().__init__()
-        self.mlp = nn.Sequential(
-            nn.Linear(frequency_embedding_size, hidden_size, bias=True),
-            nn.SiLU(),
-            nn.Linear(hidden_size, hidden_size, bias=True),
-        )
-        self.frequency_embedding_size = frequency_embedding_size
-
-    @staticmethod
-    def timestep_embedding(t, dim, max_period=10000):
-        """
-        Create sinusoidal timestep embeddings. :param t: a 1-D Tensor of N indices, one per batch element.
-                          These may be fractional.
-        :param dim: the dimension of the output. :param max_period: controls the minimum frequency of the embeddings.
-        :return: an (N, D) Tensor of positional embeddings.
-        """
-        # https://github.com/openai/glide-text2im/blob/main/glide_text2im/nn.py
-        half = dim // 2
-        freqs = torch.exp(
-            -math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32, device=t.device) / half
-        )
-        args = t[:, None].float() * freqs[None]
-        embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
-        if dim % 2:
-            embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
-        return embedding
-
-    def forward(self, t):
-        t_freq = self.timestep_embedding(t, self.frequency_embedding_size).to(self.dtype)
-        t_emb = self.mlp(t_freq)
-        return t_emb
-
-    @property
-    def dtype(self):
-        # `get_parameter_dtype` is layerwise-casting aware: under layerwise casting the storage dtype
-        # (e.g. FP8) differs from the compute dtype, and `next(self.parameters()).dtype` returns the former.
-        return get_parameter_dtype(self)
-
-
-class CaptionEmbedder(nn.Module):
+class SanaWMCaptionEmbedder(nn.Module):
     """
     Embeds class labels into vector representations. Also handles label dropout for classifier-free guidance.
     """
@@ -444,19 +388,17 @@ class CaptionEmbedder(nn.Module):
         in_channels,
         hidden_size,
         act_layer=nn.GELU(approximate="tanh"),
-        token_num=120,
     ):
         super().__init__()
-        self.y_proj = Mlp(
+        self.y_proj = SanaWMMlp(
             in_features=in_channels, hidden_features=hidden_size, out_features=hidden_size, act_layer=act_layer, drop=0
         )
-        self.register_buffer("y_embedding", nn.Parameter(torch.randn(token_num, in_channels) / in_channels**0.5))
 
     def forward(self, caption):
         return self.y_proj(caption)
 
 
-class PatchEmbedMS3D(nn.Module):
+class SanaWMPatchEmbed(nn.Module):
     """3D Image to Patch Embedding"""
 
     def __init__(
@@ -497,7 +439,12 @@ class SanaWMRotaryPosEmbed(nn.Module):
     """Rotary position embedding for SANA-WM.
 
     Deliberately not shared with Wan's rotary embedding: the per-axis split is configurable through `fhw_dim`, and the
-    frequencies stay complex in a single `freqs` buffer rather than being split into real cos/sin buffers.
+    frequencies stay complex rather than being split into real cos/sin buffers.
+
+    The complex table is held as a plain attribute rather than a registered buffer. `nn.Module.to(dtype)` casts complex
+    buffers to the requested *real* dtype, silently discarding the imaginary (sine) half of every rotation, so
+    `transformer.to(torch.bfloat16)` would corrupt it. Keeping it out of the buffer registry makes dtype casts leave it
+    alone; it is moved to the activations' device on each call.
     """
 
     def __init__(
@@ -528,12 +475,12 @@ class SanaWMRotaryPosEmbed(nn.Module):
                 dim, max_seq_len, theta, use_real=False, repeat_interleave_real=False, freqs_dtype=torch.float32
             )
             freqs.append(freq)
-        self.register_buffer("freqs", torch.cat(freqs, dim=1), persistent=False)
+        self.freqs = torch.cat(freqs, dim=1)
 
-    def forward(self, fhw: Tuple[int, int, int]) -> torch.Tensor:
+    def forward(self, fhw: Tuple[int, int, int], device: torch.device | None = None) -> torch.Tensor:
         ppf, pph, ppw = fhw
 
-        freqs = self.freqs.split_with_sizes(
+        freqs = self.freqs.to(device).split_with_sizes(
             [
                 self.attention_head_dim // 2 - 2 * (self.attention_head_dim // 6),
                 self.attention_head_dim // 6,
@@ -894,57 +841,60 @@ def _process_camera_conditions_ucpe(camera_conditions, B, HW, patch_size):
     ``raymats`` is ``(B, F, H, W, 4, 4)`` ``ray<-world`` transforms; ``absmap`` is ``(B, F, H, W, 3)`` (up_map 2-ch +
     lat_map 1-ch).
     """
-    F_dim = camera_conditions.shape[1]
-    c2w_flat = camera_conditions[..., :16]
-    C_to_W = c2w_flat.view(B, F_dim, 4, 4)
+    # Camera geometry runs in the input dtype. `torch.cross` has no autocast rule and raises under autocast, so
+    # keep autocast off here: without autocast these ops already run in the input dtype, so results are unchanged.
+    with torch.autocast(device_type=camera_conditions.device.type, enabled=False):
+        F_dim = camera_conditions.shape[1]
+        c2w_flat = camera_conditions[..., :16]
+        C_to_W = c2w_flat.view(B, F_dim, 4, 4)
 
-    fx = camera_conditions[..., 16]
-    fy = camera_conditions[..., 17]
-    cx = camera_conditions[..., 18]
-    cy = camera_conditions[..., 19]
-    H_dim, W_dim = HW[1], HW[2]
-    image_width = W_dim * patch_size[2]
-    image_height = H_dim * patch_size[1]
+        fx = camera_conditions[..., 16]
+        fy = camera_conditions[..., 17]
+        cx = camera_conditions[..., 18]
+        cy = camera_conditions[..., 19]
+        H_dim, W_dim = HW[1], HW[2]
+        image_width = W_dim * patch_size[2]
+        image_height = H_dim * patch_size[1]
 
-    # xi is fixed at 0 (pinhole) in this stack.
-    xi = torch.zeros((B, F_dim), device=camera_conditions.device, dtype=camera_conditions.dtype)
-    x_fov = compute_fov_from_fx_xi(
-        fx, xi, image_width, device=camera_conditions.device, dtype=camera_conditions.dtype
-    ).view(B, F_dim)
-    y_fov = compute_fov_from_fx_xi(
-        fy, xi, image_height, device=camera_conditions.device, dtype=camera_conditions.dtype
-    ).view(B, F_dim)
+        # xi is fixed at 0 (pinhole) in this stack.
+        xi = torch.zeros((B, F_dim), device=camera_conditions.device, dtype=camera_conditions.dtype)
+        x_fov = compute_fov_from_fx_xi(
+            fx, xi, image_width, device=camera_conditions.device, dtype=camera_conditions.dtype
+        ).view(B, F_dim)
+        y_fov = compute_fov_from_fx_xi(
+            fy, xi, image_height, device=camera_conditions.device, dtype=camera_conditions.dtype
+        ).view(B, F_dim)
 
-    d_cam = ucm_unproject_grid_fov(
-        x_fov,
-        y_fov,
-        xi,
-        H_dim,
-        W_dim,
-        cx / patch_size[2],
-        cy / patch_size[1],
-        device=camera_conditions.device,
-        dtype=camera_conditions.dtype,
-    )
-    if d_cam.ndim == 4 and d_cam.shape[0] == B * F_dim:
-        d_cam = d_cam.view(B, F_dim, H_dim, W_dim, 3)
+        d_cam = ucm_unproject_grid_fov(
+            x_fov,
+            y_fov,
+            xi,
+            H_dim,
+            W_dim,
+            cx / patch_size[2],
+            cy / patch_size[1],
+            device=camera_conditions.device,
+            dtype=camera_conditions.dtype,
+        )
+        if d_cam.ndim == 4 and d_cam.shape[0] == B * F_dim:
+            d_cam = d_cam.view(B, F_dim, H_dim, W_dim, 3)
 
-    raymats = world_to_ray_mats(d_cam, C_to_W)  # [B, F, H, W, 4, 4]
+        raymats = world_to_ray_mats(d_cam, C_to_W)  # [B, F, H, W, 4, 4]
 
-    up_map, lat_map = compute_up_lat_map(
-        R=C_to_W[..., :3, :3],
-        x_fov=x_fov,
-        y_fov=y_fov,
-        xi=xi,
-        height=image_height,
-        width=image_width,
-        cx=cx,
-        cy=cy,
-        device=camera_conditions.device,
-    )
-    absmap = torch.cat([up_map, lat_map], dim=-1)  # (B, F, H, W, 3)
+        up_map, lat_map = compute_up_lat_map(
+            R=C_to_W[..., :3, :3],
+            x_fov=x_fov,
+            y_fov=y_fov,
+            xi=xi,
+            height=image_height,
+            width=image_width,
+            cx=cx,
+            cy=cy,
+            device=camera_conditions.device,
+        )
+        absmap = torch.cat([up_map, lat_map], dim=-1)  # (B, F, H, W, 3)
 
-    return raymats, absmap
+        return raymats, absmap
 
 
 # ---------------------------------------------------------------------------
@@ -2572,7 +2522,7 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
             def approx_gelu():
                 return nn.GELU(approximate="tanh")
 
-            self.mlp = Mlp(
+            self.mlp = SanaWMMlp(
                 in_features=hidden_size, hidden_features=int(hidden_size * mlp_ratio), act_layer=approx_gelu, drop=0
             )
         else:
@@ -2622,7 +2572,6 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
         THW=None,
         rotary_emb=None,
         block_mask=None,
-        *,
         camera_conditions=None,
         ucpe_ray_transforms=None,
         plucker_emb=None,
@@ -2743,13 +2692,12 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
             `config.json` files load.
         image_size (`int`, defaults to 720): Nominal image size.
         caption_channels (`int`, defaults to 2304): Gemma-2 hidden size.
-        model_max_length (`int`, defaults to 300): Max prompt tokens.
 
     The state-dict is identical to the public sana checkpoint apart from the intentionally-removed ``pos_embed``
     buffer.
     """
 
-    _supports_gradient_checkpointing = False
+    _supports_gradient_checkpointing = True
     _no_split_modules = ["SanaVideoMSCamCtrlBlock"]
     _repeated_blocks = ["SanaVideoMSCamCtrlBlock"]
     _skip_layerwise_casting_patterns = ["x_embedder", "plucker_embedder", "norm"]
@@ -2784,7 +2732,6 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         fp32_attention: bool = True,
         image_size: int = 720,
         caption_channels: int = 2304,
-        model_max_length: int = 300,
         mlp_ratio: float = 3.0,
         mlp_acts: tuple = ("silu", "silu", None),
         use_pe: bool = True,
@@ -2805,7 +2752,6 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         pe_interpolation = 1.0
         norm_eps = 1e-5
         patch_embed_kernel = None
-        cfg_embed = False
         timestep_norm_scale_factor = 1.0
         rope_fhw_dim = None
         pack_latents = False
@@ -2827,10 +2773,10 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         # NOTE: ``self.config`` is provided (read-only) by ConfigMixin via @register_to_config.
         self.timestep_norm_scale_factor = timestep_norm_scale_factor
 
-        self.t_embedder = TimestepEmbedder(hidden_size)
-        self.cfg_embedder = None
-        if cfg_embed:
-            self.cfg_embedder = TimestepEmbedder(hidden_size)
+        self.gradient_checkpointing = False
+
+        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.t_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=hidden_size)
 
         if self.y_norm:
             self.attention_y_norm = RMSNorm(hidden_size, eps=norm_eps)
@@ -2853,28 +2799,27 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
             x_embedder_in_channels = x_embedder_in_channels * 2 * 2
             self.out_channels = in_channels * 2 * 2
 
-        self.x_embedder = PatchEmbedMS3D(
+        self.x_embedder = SanaWMPatchEmbed(
             patch_size, x_embedder_in_channels, hidden_size, kernel_size=kernel_size, bias=True
         )
 
-        self.y_embedder = CaptionEmbedder(
+        self.y_embedder = SanaWMCaptionEmbedder(
             in_channels=caption_channels,
             hidden_size=hidden_size,
             act_layer=approx_gelu,
-            token_num=model_max_length,
         )
 
         self.use_chunk_plucker_input = use_chunk_plucker_input
         self.use_chunk_plucker_post_attn = use_chunk_plucker_post_attn
         if self.use_chunk_plucker_input or self.use_chunk_plucker_post_attn:
-            self.plucker_embedder = PatchEmbedMS3D(
+            self.plucker_embedder = SanaWMPatchEmbed(
                 patch_size, chunk_plucker_channels, hidden_size, kernel_size=kernel_size, bias=True
             )
             nn.init.zeros_(self.plucker_embedder.proj.weight)
             nn.init.zeros_(self.plucker_embedder.proj.bias)
 
         # UCPE-style camera branch uses a 3-channel absmap (up_map + lat_map).
-        self.raymap_embedder = PatchEmbedMS3D(patch_size, 3, hidden_size, kernel_size=kernel_size, bias=True)
+        self.raymap_embedder = SanaWMPatchEmbed(patch_size, 3, hidden_size, kernel_size=kernel_size, bias=True)
 
         if use_pe:
             if pos_embed_type != "wan_rope":
@@ -3069,13 +3014,13 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
 
         image_pos_embed = pos_embeds
         if self.use_pe and image_pos_embed is None:
-            image_pos_embed = self.rope((post_patch_num_frames, post_patch_height, post_patch_width))
+            image_pos_embed = self.rope((post_patch_num_frames, post_patch_height, post_patch_width), device=x.device)
         elif image_pos_embed is not None:
             image_pos_embed = image_pos_embed.to(x.device)
             while image_pos_embed.ndim > 4:
                 image_pos_embed = image_pos_embed.squeeze(1)
 
-        t = self.t_embedder(timestep.flatten())  # (N, D)
+        t = self.t_embedder(self.time_proj(timestep.flatten()).to(self.dtype))  # (N, D)
         t0 = self.t_block(t)
         t = t.unflatten(dim=0, sizes=timestep.shape)
         t0 = t0.unflatten(dim=0, sizes=timestep.shape)
@@ -3125,20 +3070,24 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
             )
 
         for i, block in enumerate(self.blocks):
-            x = block(
+            block_args = (
                 x,
                 y,
                 t0,
                 y_lens,
                 (post_patch_num_frames, post_patch_height, post_patch_width),
                 image_pos_embed,
-                block_mask=block_mask if i > 1 else None,
-                camera_conditions=camera_conditions,
-                ucpe_ray_transforms=ucpe_ray_transforms,
-                plucker_emb=post_attn_plucker_emb,
-                frame_valid_mask=frame_valid_mask,
-                chunk_size=chunk_size,
-            )  # (N, T, D)
+                block_mask if i > 1 else None,
+                camera_conditions,
+                ucpe_ray_transforms,
+                post_attn_plucker_emb,
+                frame_valid_mask,
+                chunk_size,
+            )
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                x = self._gradient_checkpointing_func(block, *block_args)
+            else:
+                x = block(*block_args)  # (N, T, D)
 
         x = self.final_layer(x, t)  # (N, T, patch_size ** 2 * out_channels)
         x = self.unpatchify(x, post_patch_num_frames, post_patch_height, post_patch_width)  # (N, out_channels, H, W)

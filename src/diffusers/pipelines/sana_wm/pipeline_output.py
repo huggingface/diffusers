@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team and SANA-WM Authors. All rights reserved.
+# Copyright 2026 The HuggingFace Team and SANA-WM Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,8 +28,9 @@ class SanaWMPipelineOutput(BaseOutput):
 
     Args:
         frames (`torch.Tensor`, `np.ndarray`, or `list[PIL.Image.Image]`):
-            Generated video. Shape ``(T, H, W, 3)`` as a float ``np.ndarray`` / ``torch.Tensor`` in ``[0, 1]`` when
-            ``output_type="np"`` / ``"latent"``, or a list of ``PIL.Image`` of length ``T`` when ``output_type="pil"``.
+            Generated video: a float ``np.ndarray`` of shape ``(T, H, W, 3)`` in ``[0, 1]`` for ``output_type="np"``, a
+            ``(T, 3, H, W)`` tensor for ``"pt"``, a list of ``T`` ``PIL.Image`` for ``"pil"``, or the latent tensor
+            ``(B, C, T_lat, H_lat, W_lat)`` for ``"latent"``.
         c2w (`np.ndarray`):
             Camera-to-world poses ``(T, 4, 4)`` aligned with ``frames`` (the refiner drops the sink anchor frame; this
             array is realigned accordingly when the refiner ran).

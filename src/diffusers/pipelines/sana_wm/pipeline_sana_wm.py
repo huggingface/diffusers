@@ -1,4 +1,4 @@
-# Copyright 2025 The HuggingFace Team and SANA-WM Authors. All rights reserved.
+# Copyright 2026 The HuggingFace Team and SANA-WM Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
-from typing import Literal
+from typing import Callable, Literal
 
 import numpy as np
 import PIL.Image
@@ -163,6 +163,7 @@ class SanaWMPipeline(DiffusionPipeline):
 
     # the offload sequence; it manages its own sub-module device placement.
     model_cpu_offload_seq = "text_encoder->transformer->vae"
+    _callback_tensor_inputs = ["latents", "prompt_embeds"]
 
     def __init__(
         self,
@@ -205,7 +206,7 @@ class SanaWMPipeline(DiffusionPipeline):
         prompt: str,
         negative_prompt: str = "",
         *,
-        device: torch.device,
+        device: torch.device | None = None,
         max_sequence_length: int = 300,
         chi_prompt: list[str] | None = None,
         prompt_embeds: torch.Tensor | None = None,
@@ -229,6 +230,7 @@ class SanaWMPipeline(DiffusionPipeline):
         if prompt_embeds is not None and negative_prompt_embeds is not None:
             return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
+        device = device or self._execution_device
         chi = "\n".join(chi_prompt) if chi_prompt else ""
         if chi:
             full_prompt = chi + prompt
@@ -293,7 +295,7 @@ class SanaWMPipeline(DiffusionPipeline):
         `self.video_processor.postprocess_video` at the call site so callers get the diffusers convention that the
         `VideoProcessor` / `export_to_video` helpers assume.
         """
-        latents = latents.to(self.vae.device, dtype=self.vae.dtype)
+        latents = latents.to(self._execution_device, dtype=self.vae.dtype)
         latents_mean = self.vae.latents_mean.view(1, -1, 1, 1, 1).to(latents)
         latents_std = self.vae.latents_std.view(1, -1, 1, 1, 1).to(latents)
         latents = latents / self.vae.config.scaling_factor * latents_std + latents_mean
@@ -335,8 +337,16 @@ class SanaWMPipeline(DiffusionPipeline):
         c2w: np.ndarray | None,
         action: str | None,
         intrinsics: np.ndarray | list[float] | None,
+        callback_on_step_end_tensor_inputs: list[str] | None = None,
     ) -> None:
         """Validate `__call__` inputs. Raises on bad input and returns nothing."""
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found "
+                f"{[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
         if (c2w is None) == (action is None):
             raise ValueError("Provide exactly one of `c2w` or `action`.")
         if c2w is not None:
@@ -468,7 +478,9 @@ class SanaWMPipeline(DiffusionPipeline):
         negative_prompt_attention_mask: torch.Tensor | None = None,
         max_sequence_length: int = 300,
         chi_prompt: list[str] | None = None,
-        output_type: Literal["np", "pil", "latent"] = "np",
+        output_type: Literal["np", "pil", "pt", "latent"] = "np",
+        callback_on_step_end: Callable[[DiffusionPipeline, int, int, dict], dict] | None = None,
+        callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         return_dict: bool = True,
     ) -> SanaWMPipelineOutput | tuple:
         r"""
@@ -516,19 +528,25 @@ class SanaWMPipeline(DiffusionPipeline):
                 Max prompt tokens.
             chi_prompt (`list[str]`, *optional*):
                 Override the chi-prompt prefix (default mirrors the public release).
-            output_type (`"np"`, `"pil"`, or `"latent"`, defaults to `"np"`):
+            output_type (`"np"`, `"pil"`, `"pt"`, or `"latent"`, defaults to `"np"`):
                 Output format.
+            callback_on_step_end (`Callable`, *optional*):
+                Called at the end of each denoising step as `callback_on_step_end(self, step, timestep,
+                callback_kwargs)`, where `callback_kwargs` holds the tensors named in
+                `callback_on_step_end_tensor_inputs`. Tensors in the returned dict replace the pipeline's.
+            callback_on_step_end_tensor_inputs (`list[str]`, defaults to `["latents"]`):
+                Which tensors to pass to `callback_on_step_end`; must be a subset of `._callback_tensor_inputs`.
             return_dict (`bool`, defaults to True):
                 Return [`SanaWMPipelineOutput`] vs tuple.
 
         Returns:
             [`SanaWMPipelineOutput`] with `.frames` of shape ``(T, H, W, 3)``, float ``np.ndarray`` in ``[0, 1]`` for
-            `output_type="np"`, a list of ``PIL.Image.Image`` of length ``T`` for `"pil"`, or the raw latent tensor for
-            `"latent"`.
+            `output_type="np"`, a list of ``PIL.Image.Image`` of length ``T`` for `"pil"`, a ``(T, 3, H, W)`` tensor
+            for `"pt"`, or the raw latent tensor for `"latent"`.
 
         Examples:
         """
-        self.check_inputs(c2w, action, intrinsics)
+        self.check_inputs(c2w, action, intrinsics, callback_on_step_end_tensor_inputs)
         c2w, intr = self.prepare_camera_trajectory(c2w, action, intrinsics, num_frames)
         num_frames = c2w.shape[0]
         pixel_values, intr = self.image_processor.preprocess_with_intrinsics(image, intr, height, width)
@@ -577,7 +595,7 @@ class SanaWMPipeline(DiffusionPipeline):
             **cam_kwargs,
         }
 
-        for t in self.progress_bar(timesteps):
+        for i, t in enumerate(self.progress_bar(timesteps)):
             if self.interrupt:
                 continue
             self._current_timestep = t
@@ -596,7 +614,7 @@ class SanaWMPipeline(DiffusionPipeline):
 
             if do_cfg:
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
                 timestep = timestep.chunk(2)[0]
 
             B, C, F, H, W = latents.shape
@@ -611,12 +629,21 @@ class SanaWMPipeline(DiffusionPipeline):
             keep_clean = t / 1000.0 - 1e-6 < (1.0 - condition_mask)
             latents = torch.where(keep_clean, denoised, latents).to(dtype)
 
+            if callback_on_step_end is not None:
+                callback_kwargs = {}
+                for k in callback_on_step_end_tensor_inputs:
+                    callback_kwargs[k] = locals()[k]
+                callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                latents = callback_outputs.pop("latents", latents)
+                prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+
+        self._current_timestep = None
+
         if output_type == "latent":
+            self.maybe_free_model_hooks()
             if not return_dict:
                 return (latents, c2w, latents)
             return SanaWMPipelineOutput(frames=latents, c2w=c2w, latent=latents)
-
-        self._current_timestep = None
 
         decoded = self._decode_latents(latents)  # (B=1, C=3, F, H, W) in [-1, 1]
         video_c2w = c2w[:num_frames]
@@ -625,6 +652,7 @@ class SanaWMPipeline(DiffusionPipeline):
         # requested output_type conversion (uint8 PIL frames, float np.ndarray
         # in [0, 1], or the raw pt tensor).
         frames = self.video_processor.postprocess_video(decoded, output_type=output_type)[0]
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (frames, video_c2w, latents)

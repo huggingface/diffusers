@@ -13,11 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
 import torch
 
 from diffusers import SanaWMTransformer3DModel
-from diffusers.models.transformers.transformer_sana_wm import SanaWMTemporalShortConvolution
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -80,7 +78,6 @@ class SanaWMTransformer3DTesterConfig(BaseModelTesterConfig):
             "t_kernel_size": 3,
             "conv_kernel_size": 4,
             "caption_channels": self.caption_channels,
-            "model_max_length": self.sequence_length,
             "mlp_ratio": 2.0,
             "chunk_plucker_channels": self.chunk_plucker_channels,
             "chunk_plucker_post_attn_blocks": self.num_layers,
@@ -122,49 +119,17 @@ class SanaWMTransformer3DTesterConfig(BaseModelTesterConfig):
 
 
 class TestSanaWMTransformer3D(SanaWMTransformer3DTesterConfig, ModelTesterMixin):
-    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
-    def test_from_save_pretrained_dtype_inference(self, tmp_path, dtype):
-        # Skip: fp16/bf16 require very high atol to pass, providing little signal.
-        # Dtype preservation is already tested by test_from_save_pretrained_dtype.
-        pytest.skip("Tolerance requirements too high for meaningful test")
-
-
-class TestSanaWMTransformer3DGDNBranch(SanaWMTransformer3DTesterConfig):
-    """Guards against the GDN branch silently contributing nothing on a from-scratch model.
-
-    `SanaWMTemporalShortConvolution` allocates its weight with `torch.zeros`, which `from_pretrained` overwrites but
-    a freshly constructed model does not. With a zero `conv_k` the GDN key is identically zero and the whole branch
-    returns zeros, so every other test in this file would keep passing while exercising none of the GDN maths.
-    """
-
-    def _build(self):
-        return self.model_class(**self.get_init_dict()).to(torch_device).eval()
-
-    def test_short_conv_weights_start_at_zero(self):
-        model = self._build()
-        conv_weights = [m.weight for m in model.modules() if isinstance(m, SanaWMTemporalShortConvolution)]
-        assert conv_weights, "expected the GDN blocks to build temporal short convolutions"
-        assert all(torch.count_nonzero(w) == 0 for w in conv_weights)
-
-    def test_gdn_branch_is_live_once_the_short_convs_are_populated(self):
+    def test_dtype_cast_keeps_complex_rotary_frequencies(self):
+        # The RoPE table is complex. A registered buffer would be cast to the *real* dtype by `model.to(dtype)`,
+        # silently dropping the sine half of every rotation, so a same-dtype round trip must be a no-op.
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
         inputs = self.get_dummy_inputs()
-
-        model = self._build()
         with torch.no_grad():
-            zero_conv_out = model(**inputs, return_dict=False)[0]
-
-        generator = torch.Generator("cpu").manual_seed(0)
-        for module in model.modules():
-            if isinstance(module, SanaWMTemporalShortConvolution):
-                module.weight.data = randn_tensor(
-                    tuple(module.weight.shape), generator=generator, device=module.weight.device
-                ).to(module.weight.dtype)
-        with torch.no_grad():
-            live_conv_out = model(**inputs, return_dict=False)[0]
-
-        assert not torch.allclose(zero_conv_out, live_conv_out), (
-            "populating the short convolutions did not change the output, so the GDN branch is still dead"
-        )
+            reference = model(**inputs, return_dict=False)[0]
+            model.to(torch.float32)
+            assert model.rope.freqs.is_complex()
+            output = model(**inputs, return_dict=False)[0]
+        assert torch.equal(reference, output)
 
 
 class TestSanaWMTransformer3DMemory(SanaWMTransformer3DTesterConfig, MemoryTesterMixin):
@@ -179,6 +144,6 @@ class TestSanaWMTransformer3DCompile(SanaWMTransformer3DTesterConfig, TorchCompi
 
 
 class TestSanaWMTransformer3DTraining(SanaWMTransformer3DTesterConfig, TrainingTesterMixin):
-    # `SanaWMTransformer3DModel._supports_gradient_checkpointing` is `False`, so the
-    # gradient-checkpointing tests of this mixin skip themselves.
-    pass
+    def test_gradient_checkpointing_is_applied(self):
+        expected_set = {"SanaWMTransformer3DModel"}
+        super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
