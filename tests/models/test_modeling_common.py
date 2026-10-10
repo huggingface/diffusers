@@ -147,6 +147,30 @@ class TestModelUtils:
                 "Model parameters don't match!"
             )
 
+    def test_hf_hub_offline_with_sharded_checkpoint(self):
+        repo_id = "hf-internal-testing/tiny-flux-sharded"
+        error_response = mock.Mock(status_code=500, headers={}, json=mock.Mock(return_value={}))
+        # `resolve_revision` inspects `error.response.status_code` to tell a Hub outage from a definitive answer,
+        # so the raised error has to carry the response itself.
+        error_response.raise_for_status = mock.Mock(side_effect=HfHubHTTPError("Server down", response=error_response))
+        client_mock = mock.Mock()
+        client_mock.get.return_value = error_response
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model = FluxTransformer2DModel.from_pretrained(repo_id, subfolder="transformer", cache_dir=tmpdir)
+
+            with mock.patch("huggingface_hub.hf_api.get_session", return_value=client_mock):
+                with mock.patch("diffusers.utils.hub_utils.HF_HUB_OFFLINE", True):
+                    # Should succeed when HF_HUB_OFFLINE is True (uses cache)
+                    # model_info call skipped, just like local_files_only=True
+                    offline_model = FluxTransformer2DModel.from_pretrained(
+                        repo_id, subfolder="transformer", cache_dir=tmpdir
+                    )
+
+            assert all(torch.equal(p1, p2) for p1, p2 in zip(model.parameters(), offline_model.parameters())), (
+                "Model parameters don't match!"
+            )
+
             # Remove a shard file
             cached_shard_file = try_to_load_from_cache(
                 repo_id, filename="transformer/diffusion_pytorch_model-00001-of-00002.safetensors", cache_dir=tmpdir
