@@ -680,7 +680,7 @@ The upsample step and the stage 2 call itself are unchanged from the distilled r
 LTX-2.5 ships two video decoders over the same latent space, so latents are interchangeable between them:
 
 - `vae/` — the convolutional VAE ([`AutoencoderKLLTX2Video`]). It is what the pipelines decode with, so every snippet above already uses it, and it is the only one of the two that tiles (`pipe.vae.enable_tiling()`), which is usually what makes a high resolution fit.
-- `diffusion_decoder/` — [`LTX2VideoDiffusionDecoderModel`]. It is a diffusion model in its own right rather than a pipeline component, so it is not passed as a `vae`: run the pipeline with `output_type="latent"` and hand the latents to [`LTX2VideoDiffusionDecodePipeline`].
+- `diffusion_decoder/` — [`LTX2VideoDiffusionDecoderModel`]. It is a diffusion model in its own right rather than a pipeline component, so it is not passed as a `vae`: run the pipeline with `output_type="latent"` and hand the latents to [`LTX2VideoDiffusionDecodePipeline`]. Because it denoises it needs a scheduler of its own, kept in `diffusion_decoder_scheduler/` — the repo's top-level `scheduler/` is the transformer's and is shifted for the transformer's sequence lengths.
 
 Encoding always goes through `vae/`, so image and video conditioning are unaffected by the choice.
 
@@ -688,7 +688,12 @@ Two things change when you decode with the diffusion decoder. `output_type="late
 
 ```py
 import torch
-from diffusers import LTX2Pipeline, LTX2VideoDiffusionDecodePipeline, LTX2VideoDiffusionDecoderModel
+from diffusers import (
+    FlowMatchEulerDiscreteScheduler,
+    LTX2Pipeline,
+    LTX2VideoDiffusionDecodePipeline,
+    LTX2VideoDiffusionDecoderModel,
+)
 from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoVaeNeighborhoodNattenProcessor
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
 from diffusers.utils import encode_video
@@ -733,7 +738,10 @@ decoder.set_attn_processor(LTX2VideoVaeNeighborhoodNattenProcessor())
 # Decode in overlapping tiles so peak memory scales with the tile size rather than the video size.
 decoder.enable_tiling()
 
-decode_pipe = LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=pipe.scheduler)
+# The decoder's own scheduler, not `pipe.scheduler`: the transformer's is resolution-shifted and would need
+# a `mu` this pipeline does not compute.
+scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(model_path, subfolder="diffusion_decoder_scheduler")
+decode_pipe = LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=scheduler)
 
 # `denormalize=False`: `output_type="latent"` already applied the latent statistics, so applying them
 # again would rescale every channel by its std a second time. The decoder draws the noise it denoises,
@@ -753,7 +761,9 @@ encode_video(
 
 To combine this with [two-stage generation](#two-stage-generation-for-ltx-25), ask *stage 2* for `output_type="latent"` and decode that.
 
-`decoder.enable_tiling()` is what keeps a high resolution decode in memory, the same way `pipe.vae.enable_tiling()` does for the convolutional VAE. The memory-dominant part of the decode — the last upsampling stage and the diffusion stage — then runs on overlapping tiles that are blended back together, so peak memory is bounded by the tile size instead of the video size. Tiling only kicks in once the latent exceeds one tile, and the tile and overlap sizes can be tuned via the `tile_sample_min_*` / `tile_sample_stride_*` arguments (defaults match the reference implementation). Since the diffusion stage denoises each tile separately, a tiled decode does not reproduce the untiled result exactly.
+`decoder.enable_tiling()` is what keeps a high resolution decode in memory, the same way `pipe.vae.enable_tiling()` does for the convolutional VAE. The memory-dominant part of the decode — the last upsampling stage and the diffusion stage — then runs on overlapping tiles that are blended back together, so peak memory is bounded by the tile size instead of the video size. Tiling only kicks in once the latent exceeds one tile, and the tile and overlap sizes can be tuned via the `tile_sample_min_*` / `tile_sample_stride_*` arguments (defaults match the reference implementation). Since the diffusion stage denoises each tile separately, a tiled decode does not reproduce the untiled result exactly. The call sets the sizes and [`LTX2VideoDiffusionDecodePipeline`] does the tiling, since each tile runs its own denoising loop — unlike the convolutional VAE, where the tiling is entirely inside the model.
+
+The decode is a denoising loop like any other, so `num_inference_steps` (or an explicit `sigmas` schedule) is a `__call__` argument. It defaults to what the checkpoint was distilled for, which is a single step on LTX-2.5; more steps cost proportionally more time and are rarely worth it on a distilled decoder. The scheduler is a real component rather than a formality — reshaping the schedule through its config (a `shift`, say) reaches the decode, which is the point of driving the loop from one. The only setting the pipeline cannot honour is `use_dynamic_shifting`, since it never computes a `mu`; that is why a transformer's scheduler cannot be reused here.
 
 On a single card it is also worth moving the pipeline out of the way before decoding (`pipe.to("cpu")` and `torch.cuda.empty_cache()`, after capturing `pipe.scheduler` and the vocoder's `output_sampling_rate`), since the decoder needs its own headroom. See [`LTX2VideoDiffusionDecoderModel`] for the attention backends, the tiling details, and the rest of the decoder's behaviour.
 
@@ -1247,14 +1257,18 @@ The two axes are seamed differently. Neither side of a spatial border holds a kn
 **Decoding with the diffusion decoder.** For maximum detail fidelity, stay on `output_type="latent"` and hand the (already denormalized, possibly `trim_canvas`'d) latents to [`LTX2VideoDiffusionDecodePipeline`].
 
 ```py
-from diffusers import LTX2VideoDiffusionDecodePipeline
+from diffusers import FlowMatchEulerDiscreteScheduler, LTX2VideoDiffusionDecodePipeline
 from diffusers.models.autoencoders.ltx2_diffusion_decoder import LTX2VideoDiffusionDecoderModel
 
 decoder = LTX2VideoDiffusionDecoderModel.from_pretrained(
     "Lightricks/LTX-2.5-Diffusers", subfolder="diffusion_decoder", dtype=torch.bfloat16
 )
+# The decoder's own scheduler, not `pipe.scheduler`, which this pipeline cannot drive.
+scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
+    "Lightricks/LTX-2.5-Diffusers", subfolder="diffusion_decoder_scheduler"
+)
 decode_pipe = LTX2VideoDiffusionDecodePipeline(
-    diffusion_decoder=decoder, scheduler=pipe.scheduler, vae=pipe.vae
+    diffusion_decoder=decoder, scheduler=scheduler, vae=pipe.vae
 )
 decode_pipe.enable_model_cpu_offload()
 # `denormalize=False`: the `output_type="latent"` path already applied the latent statistics.
