@@ -28,7 +28,14 @@ from ..utils import logging
 from . import BaseDiffusersCLICommand
 
 
-EXPECTED_PARENT_CLASSES = ["ModularPipelineBlocks"]
+# the block base class and its composite subclasses; a class deriving from any of them is a packageable block
+EXPECTED_PARENT_CLASSES = [
+    "ModularPipelineBlocks",
+    "SequentialPipelineBlocks",
+    "AutoPipelineBlocks",
+    "ConditionalPipelineBlocks",
+    "LoopSequentialPipelineBlocks",
+]
 
 
 def conversion_command_factory(args: Namespace):
@@ -128,7 +135,10 @@ class CustomBlocksCommand(BaseDiffusersCLICommand):
             if not isinstance(node, ast.ClassDef):
                 continue
 
-            base_names = [bname for b in node.bases if (bname := self._get_base_name(b)) is not None]
+            # compare on the class name only, so `diffusers.modular_pipelines.SequentialPipelineBlocks` matches too
+            base_names = [
+                bname.rsplit(".", 1)[-1] for b in node.bases if (bname := self._get_base_name(b)) is not None
+            ]
 
             for allowed in EXPECTED_PARENT_CLASSES:
                 if allowed in base_names:

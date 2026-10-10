@@ -57,7 +57,8 @@ diffusers-cli custom_blocks [--block_module_name <file.py>] [--block_class_name 
 ### What it does
 
 1. **AST scan**: parses `<file>` without executing it, walks top-level `ClassDef` nodes, and collects every
-   class whose `bases` include `ModularPipelineBlocks`.
+   class whose `bases` include `ModularPipelineBlocks` or one of its composite subclasses
+   (`SequentialPipelineBlocks`, `AutoPipelineBlocks`, `ConditionalPipelineBlocks`, `LoopSequentialPipelineBlocks`).
 2. **Pick a class**: uses `--block_class_name` if given, else the first found. Errors with the list of available
    classes if your name doesn't match.
 3. **Load and save**: imports the file via `importlib.util.spec_from_file_location` (this does execute the
@@ -137,9 +138,9 @@ diffusers-cli run --model my-user/my-denoise-block --trust-remote-code \
 - **`block_class_name could not be retrieved. Available classes from <file>: [ClassA, ClassB]`** — your
   `--block_class_name` doesn't match any `ModularPipelineBlocks` subclass found. Pick from the list shown.
 - **No classes found**: silent — the command will try to use the first entry in an empty list and raise
-  `IndexError`. If you hit that, double-check your class actually inherits from `ModularPipelineBlocks`
-  (the AST scan looks for that literal base-class name; aliased imports like `from diffusers import ...
-  as MPB` won't be picked up).
+  `IndexError`. If you hit that, double-check your class actually inherits from `ModularPipelineBlocks` or one
+  of the composite classes listed above (the AST scan looks for those literal class names; aliased imports like
+  `from diffusers import ... as MPB` won't be picked up).
 - **Block requires constructor args**: the command calls `<ClassName>()` with no args. If your block needs
   `__init__` parameters, refactor to take them from `state`/`components` at `__call__` time instead, or
   hardcode defaults in `__init__`.
