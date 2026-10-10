@@ -342,16 +342,14 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
     AttentionBackendName.FLASH_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_func",
-        wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_forward",
-        wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_backward",
-        version=1,
+        wrapped_backward_attr="flash_attn_interface._flash_attn_backward",
+        version=3,
     ),
     AttentionBackendName.FLASH_VARLEN_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_varlen_func",
-        wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_varlen_forward",
-        wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_varlen_backward",
-        version=1,
+        wrapped_backward_attr="flash_attn_interface._flash_attn_varlen_backward",
+        version=3,
     ),
     AttentionBackendName.SAGE_HUB: _HubKernelConfig(
         repo_id="SageAttention/sage-attention",
@@ -1307,16 +1305,15 @@ def _flash_attention_hub_forward_op(
 ):
     if attn_mask is not None:
         raise ValueError("`attn_mask` is not yet supported for flash-attn hub kernels.")
+    if dropout_p != 0.0:
+        raise ValueError("`dropout_p` is not yet supported for flash-attn hub kernels.")
     if enable_gqa:
         raise ValueError("`enable_gqa` is not yet supported for flash-attn hub kernels.")
 
     config = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_HUB]
-    wrapped_forward_fn = config.wrapped_forward_fn
-    wrapped_backward_fn = config.wrapped_backward_fn
-    if wrapped_forward_fn is None or wrapped_backward_fn is None:
+    if config.wrapped_backward_fn is None:
         raise RuntimeError(
-            "Flash attention hub kernels must expose `_wrapped_flash_attn_forward` and `_wrapped_flash_attn_backward` "
-            "for context parallel execution."
+            "Flash attention hub kernels must expose `_flash_attn_backward` for context parallel execution."
         )
 
     if scale is None:
@@ -1325,29 +1322,22 @@ def _flash_attention_hub_forward_op(
     softcap = 0.0
     alibi_slopes = None
     deterministic = False
-    grad_enabled = any(x.requires_grad for x in (query, key, value))
 
-    if grad_enabled or (_parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1):
-        dropout_p = dropout_p if dropout_p > 0 else 1e-30
-
-    with torch.set_grad_enabled(grad_enabled):
-        out, lse, S_dmask, rng_state = wrapped_forward_fn(
-            query,
-            key,
-            value,
-            dropout_p,
-            scale,
-            is_causal,
-            window_size[0],
-            window_size[1],
-            softcap,
-            alibi_slopes,
-            return_lse,
-        )
-        lse = lse.permute(0, 2, 1).contiguous()
+    out, lse, _ = config.kernel_fn(
+        q=query,
+        k=key,
+        v=value,
+        softmax_scale=scale,
+        causal=is_causal,
+        window_size=window_size,
+        softcap=softcap,
+        alibi_slopes=alibi_slopes,
+        return_attn_probs=True,
+    )
+    lse = lse.permute(0, 2, 1).contiguous()
 
     if _save_ctx:
-        ctx.save_for_backward(query, key, value, out, lse, rng_state)
+        ctx.save_for_backward(query, key, value, out, lse)
         ctx.dropout_p = dropout_p
         ctx.scale = scale
         ctx.is_causal = is_causal
@@ -1374,11 +1364,11 @@ def _flash_attention_hub_backward_op(
     wrapped_backward_fn = config.wrapped_backward_fn
     if wrapped_backward_fn is None:
         raise RuntimeError(
-            "Flash attention hub kernels must expose `_wrapped_flash_attn_backward` for context parallel execution."
+            "Flash attention hub kernels must expose `_flash_attn_backward` for context parallel execution."
         )
 
     # See `_flash_attention_backward_op` for why these tensors may be overridden by the ring loop.
-    saved_query, saved_key, saved_value, saved_out, saved_lse, rng_state = ctx.saved_tensors
+    saved_query, saved_key, saved_value, saved_out, saved_lse = ctx.saved_tensors
     query = saved_query if query is None else query
     key = saved_key if key is None else key
     value = saved_value if value is None else value
@@ -1406,7 +1396,7 @@ def _flash_attention_hub_backward_op(
         ctx.softcap,
         ctx.alibi_slopes,
         ctx.deterministic,
-        rng_state,
+        None,
     )
 
     grad_query = grad_query[..., : grad_out.shape[-1]]
@@ -1432,16 +1422,16 @@ def _flash_varlen_attention_hub_forward_op(
     *,
     window_size: tuple[int, int] = (-1, -1),
 ):
+    if dropout_p != 0.0:
+        raise ValueError("`dropout_p` is not yet supported for flash-attn varlen hub kernels.")
     if enable_gqa:
         raise ValueError("`enable_gqa` is not yet supported for flash-attn varlen hub kernels.")
 
     config = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_VARLEN_HUB]
-    wrapped_forward_fn = config.wrapped_forward_fn
-    wrapped_backward_fn = config.wrapped_backward_fn
-    if wrapped_forward_fn is None or wrapped_backward_fn is None:
+    if config.wrapped_backward_fn is None:
         raise RuntimeError(
-            "Flash attention varlen hub kernels must expose `_wrapped_flash_attn_varlen_forward` and "
-            "`_wrapped_flash_attn_varlen_backward` for context parallel execution."
+            "Flash attention varlen hub kernels must expose `_flash_attn_varlen_backward` "
+            "for context parallel execution."
         )
 
     if scale is None:
@@ -1450,10 +1440,6 @@ def _flash_varlen_attention_hub_forward_op(
     softcap = 0.0
     alibi_slopes = None
     deterministic = False
-    grad_enabled = any(x.requires_grad for x in (query, key, value))
-
-    if grad_enabled or (_parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1):
-        dropout_p = dropout_p if dropout_p > 0 else 1e-30
 
     batch_size, seq_len_q, num_heads, _ = query.shape
     _, seq_len_kv, _, _ = key.shape
@@ -1477,31 +1463,26 @@ def _flash_varlen_attention_hub_forward_op(
         value_packed = value.flatten(0, 1)
         seqlens_k = None
 
-    with torch.set_grad_enabled(grad_enabled):
-        out_packed, lse, _, rng_state = wrapped_forward_fn(
-            query_packed,
-            key_packed,
-            value_packed,
-            cu_seqlens_q,
-            cu_seqlens_k,
-            max_seqlen_q,
-            max_seqlen_k,
-            dropout_p,
-            scale,
-            is_causal,
-            window_size[0],
-            window_size[1],
-            softcap,
-            alibi_slopes,
-            return_lse,
-        )
+    out_packed, lse, _ = config.kernel_fn(
+        q=query_packed,
+        k=key_packed,
+        v=value_packed,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_k=cu_seqlens_k,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k=max_seqlen_k,
+        softmax_scale=scale,
+        causal=is_causal,
+        window_size=window_size,
+        softcap=softcap,
+        alibi_slopes=alibi_slopes,
+        return_attn_probs=True,
+    )
 
     out = out_packed.view(batch_size, seq_len_q, *out_packed.shape[1:])
 
     if _save_ctx:
-        ctx.save_for_backward(
-            query_packed, key_packed, value_packed, out_packed, lse, rng_state, cu_seqlens_q, cu_seqlens_k
-        )
+        ctx.save_for_backward(query_packed, key_packed, value_packed, out_packed, lse, cu_seqlens_q, cu_seqlens_k)
         ctx.seqlens_k = seqlens_k  # None if unmasked
         ctx.indices_k = indices_k if attn_mask is not None else None
         ctx.max_seqlen_q = max_seqlen_q
@@ -1539,7 +1520,7 @@ def _flash_varlen_attention_hub_backward_op(
     wrapped_backward_fn = config.wrapped_backward_fn
     if wrapped_backward_fn is None:
         raise RuntimeError(
-            "Flash attention varlen hub kernels must expose `_wrapped_flash_attn_varlen_backward` "
+            "Flash attention varlen hub kernels must expose `_flash_attn_varlen_backward` "
             "for context parallel execution."
         )
 
@@ -1548,9 +1529,7 @@ def _flash_varlen_attention_hub_backward_op(
     # arrive in the packed varlen layout (total_tokens, H, D) they were saved in; out/lse are the
     # fully-reduced tensors in model layout (B, S, H, D) / (B, S, H) and are packed back to the
     # kernel layout here.
-    saved_query, saved_key, saved_value, saved_out, saved_lse, rng_state, cu_seqlens_q, cu_seqlens_k = (
-        ctx.saved_tensors
-    )
+    saved_query, saved_key, saved_value, saved_out, saved_lse, cu_seqlens_q, cu_seqlens_k = ctx.saved_tensors
     query_packed = saved_query if query is None else query
     key_packed = saved_key if key is None else key
     value_packed = saved_value if value is None else value
@@ -1587,7 +1566,7 @@ def _flash_varlen_attention_hub_backward_op(
         ctx.softcap,
         ctx.alibi_slopes,
         ctx.deterministic,
-        rng_state,
+        None,
     )
 
     grad_query = grad_query.view(ctx.batch_size, ctx.seq_len_q, *grad_query.shape[1:])
