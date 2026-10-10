@@ -565,9 +565,8 @@ def apply_tensor_parallel(
             f"or from the active accelerator when the mesh is built from `tp_degree`."
         )
 
-    backend = tp_mesh.device_type if tp_mesh.device_type in ("neuron", "tpu") else "default"
     groups = _resolve_tp_plan(model, tp_plan)
-    logger.debug(f"Applying tensor parallel (backend={backend}) over {len(groups)} module group(s) on mesh {tp_mesh}.")
+    logger.debug(f"Applying tensor parallel over {len(groups)} module group(s) on mesh {tp_mesh}.")
 
     from torch.distributed.tensor.parallel import parallelize_module
 
@@ -579,16 +578,12 @@ def apply_tensor_parallel(
     # Also validates every planned shard, so an uneven split raises before any module is sharded.
     specs = resolve_tp_shard_specs(model, tp_plan, tp_mesh.size())
 
-    if backend == "neuron":
-        from .tensor_parallel_neuron import _apply_tp_neuron
-
-        _apply_tp_neuron(model, tp_mesh, groups, specs)
-        return
-
-    if backend == "tpu":
-        # `parallelize_module` would materialize every full weight on each chip before scattering it, which runs out
-        # of HBM on models larger than one chip. Pre-sharding on CPU keeps only this rank's slice on the device.
-        _pre_shard_and_parallelize(model, tp_mesh, groups, specs, config._device)
+    if tp_mesh.device_type in ("neuron", "tpu"):
+        # Pre-shard on CPU instead of letting `parallelize_module` distribute the weights. On Neuron, consecutive
+        # `reduce_scatter`s of large weights (>= 5120x5120) in one `parallelize_module` call can fail in the runtime. On
+        # TPU, it would materialize every full weight on each chip first, which runs out of HBM on large models.
+        device = torch.neuron.current_device() if tp_mesh.device_type == "neuron" else config._device
+        _pre_shard_and_parallelize(model, tp_mesh, groups, specs, device)
         return
 
     for submodule, relative_plan in groups:
