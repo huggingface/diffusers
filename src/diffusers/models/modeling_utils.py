@@ -1544,8 +1544,24 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if tp_shard_specs is not None:
                 # The weights are already sharded, so this only registers the forward hooks. `_parallel_config`
                 # was recorded by `_resolve_parallel_config` before loading.
+                from torch.distributed.tensor import DTensor
+
                 from ..hooks.tensor_parallel import apply_tensor_parallel
 
+                # Non-persistent buffers are absent from both the state dict and the checkpoint, and
+                # `init_empty_weights` leaves them as real CPU tensors, so move them across explicitly.
+                tp_device = (
+                    torch.neuron.current_device() if tp_config._mesh.device_type == "neuron" else tp_config._device
+                )
+                for name, buffer in model.named_buffers():
+                    if buffer.device != tp_device and not isinstance(buffer, DTensor):
+                        module_path, _, buffer_name = name.rpartition(".")
+                        module = model.get_submodule(module_path) if module_path else model
+                        module._buffers[buffer_name] = buffer.to(tp_device)
+
+                # Same order as `enable_parallelism`: context parallel hooks first, then tensor parallel ones.
+                if parallel_config.context_parallel_config is not None:
+                    model._apply_context_parallel(parallel_config)
                 apply_tensor_parallel(model, tp_config, cls._tp_plan, weights_already_sharded=True)
             else:
                 model.enable_parallelism(config=parallel_config)
@@ -1720,15 +1736,28 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         device = torch.device(device_type, rank % device_module.device_count())
 
         mesh = None
-        if config.context_parallel_config is not None:
-            cp_config = config.context_parallel_config
+        cp_config = config.context_parallel_config
+        tp_config = config.tensor_parallel_config
+        if cp_config is not None and tp_config is not None:
+            # One mesh, one dimension per parallelism, so `ParallelConfig.setup` can hand each config its own
+            # submesh. "tp" goes first so the CP dimensions vary fastest: on Neuron, `all_to_all` (Ulysses) rejects
+            # strided replica groups. TP's all-reduce accepts them, so TP is the axis that gives up contiguity.
+            mesh = (
+                cp_config.mesh
+                or tp_config.mesh
+                or torch.distributed.device_mesh.init_device_mesh(
+                    device_type=device_type,
+                    mesh_shape=(tp_config.tp_degree, cp_config.ring_degree, cp_config.ulysses_degree),
+                    mesh_dim_names=("tp", "ring", "ulysses"),
+                )
+            )
+        elif cp_config is not None:
             mesh = cp_config.mesh or torch.distributed.device_mesh.init_device_mesh(
                 device_type=device_type,
                 mesh_shape=cp_config.mesh_shape,
                 mesh_dim_names=cp_config.mesh_dim_names,
             )
-        elif config.tensor_parallel_config is not None:
-            tp_config = config.tensor_parallel_config
+        elif tp_config is not None:
             mesh = tp_config.mesh or torch.distributed.device_mesh.init_device_mesh(
                 device_type=device_type,
                 mesh_shape=(tp_config.tp_degree,),
@@ -1737,6 +1766,32 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         # `config.setup()` records the mesh resolved above onto the config; see `ParallelConfig.setup`.
         config.setup(rank, world_size, device, mesh=mesh)
+
+        # Validate the combination up front — after `setup`, which resolves `_tp_degree` from the mesh, but before
+        # anything is recorded on the model or applied to it. CP hooks are applied before TP, so a check left to the
+        # TP branch would raise on a model already carrying CP hooks: half-parallelised, and not usable.
+        if cp_config is not None and tp_config is not None:
+            tp_degree = tp_config._tp_degree
+            requested = cp_config.ring_degree * cp_config.ulysses_degree * tp_degree
+            if requested > world_size:
+                raise ValueError(
+                    f"Combining context and tensor parallelism needs `ring_degree` ({cp_config.ring_degree}) * "
+                    f"`ulysses_degree` ({cp_config.ulysses_degree}) * `tp_degree` ({tp_degree}) = {requested} "
+                    f"devices, which exceeds the world size ({world_size})."
+                )
+            num_heads = getattr(self.config, "num_attention_heads", None)
+            divisor = tp_degree * cp_config.ulysses_degree
+            if num_heads is not None and not cp_config.ulysses_anything and num_heads % divisor != 0:
+                # Ulysses trades sequence for heads inside attention (`SeqAllToAllDim` scatters over dim 2), and it
+                # only ever sees the heads TP left on this rank, so the count has to survive both splits.
+                raise ValueError(
+                    f"Combining tensor parallelism (`tp_degree`={tp_degree}) with Ulysses context parallelism "
+                    f"(`ulysses_degree`={cp_config.ulysses_degree}) requires the number of attention heads "
+                    f"({num_heads}) to be divisible by their product ({divisor}): TP shards the heads first, and "
+                    f"Ulysses splits what is left on each rank. Pass `ulysses_anything=True` to pad the head "
+                    f"dimension instead, or pick degrees whose product divides {num_heads}."
+                )
+
         self._parallel_config = config
         return config
 
@@ -1749,11 +1804,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         logger.warning(
             "`enable_parallelism` is an experimental feature. The API may change in the future and breaking changes may be introduced at any time without warning."
         )
-
-        from ..hooks.context_parallel import apply_context_parallel
-        from .attention import AttentionModuleMixin
-        from .attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
-        from .attention_processor import Attention, MochiAttention
 
         if self._parallel_config is not None:
             raise RuntimeError(
@@ -1781,59 +1831,73 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         config = self._resolve_parallel_config(config)
 
-        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
-
         if config.context_parallel_config is not None:
-            for module in self.modules():
-                if not isinstance(module, attention_classes):
-                    continue
-
-                processor = module.processor
-                if processor is None or not hasattr(processor, "_attention_backend"):
-                    continue
-
-                attention_backend = processor._attention_backend
-                if attention_backend is None:
-                    attention_backend, _ = _AttentionBackendRegistry.get_active_backend()
-                else:
-                    attention_backend = AttentionBackendName(attention_backend)
-
-                if not _AttentionBackendRegistry._is_context_parallel_available(attention_backend):
-                    compatible_backends = sorted(_AttentionBackendRegistry._supports_context_parallel)
-                    raise ValueError(
-                        f"Context parallelism is enabled but the attention processor '{processor.__class__.__name__}' "
-                        f"is using backend '{attention_backend.value}' which does not support context parallelism. "
-                        f"Please set a compatible attention backend: {compatible_backends} using `model.set_attention_backend()` before "
-                        f"calling `model.enable_parallelism()`."
-                    )
-
-                # All modules use the same attention processor and backend. We don't need to
-                # iterate over all modules after checking the first processor
-                break
-
-        # Only context parallelism needs the config inside attention: it replaces the attention computation itself
-        # (Ulysses all-to-all / ring). Tensor parallelism only shards `Linear` weights, so each rank runs the ordinary
-        # attention op over its own heads and the processors must stay unaware of it.
-        if config.context_parallel_config is not None:
-            for module in self.modules():
-                if not isinstance(module, attention_classes):
-                    continue
-                processor = module.processor
-                if processor is None or not hasattr(processor, "_parallel_config"):
-                    continue
-                processor._parallel_config = config
-
-            if cp_plan is None and self._cp_plan is None:
-                raise ValueError(
-                    "`cp_plan` must be provided either as an argument or set in the model's `_cp_plan` attribute."
-                )
-            cp_plan = cp_plan if cp_plan is not None else self._cp_plan
-            apply_context_parallel(self, config.context_parallel_config, cp_plan)
+            self._apply_context_parallel(config, cp_plan)
 
         if config.tensor_parallel_config is not None:
             from ..hooks.tensor_parallel import apply_tensor_parallel
 
             apply_tensor_parallel(self, config.tensor_parallel_config, self._tp_plan)
+
+    def _apply_context_parallel(
+        self, config: ParallelConfig, cp_plan: dict[str, ContextParallelModelPlan] | None = None
+    ) -> None:
+        """Apply `config.context_parallel_config` to a model whose `config` was already resolved.
+
+        Shared by `enable_parallelism` and the sharded `from_pretrained` path, which resolves the config before
+        loading.
+        """
+        from ..hooks.context_parallel import apply_context_parallel
+        from .attention import AttentionModuleMixin
+        from .attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
+        from .attention_processor import Attention, MochiAttention
+
+        attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
+
+        for module in self.modules():
+            if not isinstance(module, attention_classes):
+                continue
+
+            processor = module.processor
+            if processor is None or not hasattr(processor, "_attention_backend"):
+                continue
+
+            attention_backend = processor._attention_backend
+            if attention_backend is None:
+                attention_backend, _ = _AttentionBackendRegistry.get_active_backend()
+            else:
+                attention_backend = AttentionBackendName(attention_backend)
+
+            if not _AttentionBackendRegistry._is_context_parallel_available(attention_backend):
+                compatible_backends = sorted(_AttentionBackendRegistry._supports_context_parallel)
+                raise ValueError(
+                    f"Context parallelism is enabled but the attention processor '{processor.__class__.__name__}' "
+                    f"is using backend '{attention_backend.value}' which does not support context parallelism. "
+                    f"Please set a compatible attention backend: {compatible_backends} using `model.set_attention_backend()` before "
+                    f"calling `model.enable_parallelism()`."
+                )
+
+            # All modules use the same attention processor and backend. We don't need to
+            # iterate over all modules after checking the first processor
+            break
+
+        # Only context parallelism needs the config inside attention: it replaces the attention computation itself
+        # (Ulysses all-to-all / ring). Tensor parallelism only shards `Linear` weights, so each rank runs the ordinary
+        # attention op over its own heads and the processors must stay unaware of it.
+        for module in self.modules():
+            if not isinstance(module, attention_classes):
+                continue
+            processor = module.processor
+            if processor is None or not hasattr(processor, "_parallel_config"):
+                continue
+            processor._parallel_config = config
+
+        if cp_plan is None and self._cp_plan is None:
+            raise ValueError(
+                "`cp_plan` must be provided either as an argument or set in the model's `_cp_plan` attribute."
+            )
+        cp_plan = cp_plan if cp_plan is not None else self._cp_plan
+        apply_context_parallel(self, config.context_parallel_config, cp_plan)
 
     @classmethod
     def _load_pretrained_model(

@@ -50,6 +50,20 @@ class PackedRowwiseParallel:
         self.blocks = blocks
 
 
+class ReplicatedInputRowwiseParallel:
+    """Row-wise sharding for a Linear whose input arrives replicated instead of column-sharded.
+
+    Plain `"rowwise"` is the second half of a colwise/rowwise pair, so it expects its input to already be `Shard(-1)` —
+    which it is when the preceding Linear was colwise-sharded. A Linear that instead reads a replicated activation,
+    such as a modulation projection off the shared timestep embedding, needs its input sharded on the way in (a local
+    narrow, no collective) and its partial output all-reduced on the way out.
+
+    Weight and bias shard exactly as for plain `"rowwise"`: the weight over its input columns, the bias replicated and
+    added after the all-reduce. Use this to shard a large standalone projection whose output must keep the full feature
+    dimension, where colwise sharding would need an extra all-gather to rebuild it.
+    """
+
+
 def _packed_blocks(style: "PackedColwiseParallel | PackedRowwiseParallel", module, path: str) -> "list[int]":
     """The blocks of a packed style: its own `blocks`, else the `_tp_packed_*_blocks` attribute on the Linear."""
     attr = "_tp_packed_col_blocks" if isinstance(style, PackedColwiseParallel) else "_tp_packed_row_blocks"
@@ -149,7 +163,8 @@ def resolve_tp_shard_specs(model: torch.nn.Module, tp_plan: dict, tp_degree: int
             if style == "colwise":
                 weight_spec = TPShardSpec(0, [submodule.weight.shape[0]])
                 bias_spec = weight_spec
-            elif style == "rowwise":
+            elif style == "rowwise" or isinstance(style, ReplicatedInputRowwiseParallel):
+                # Both place the weight the same way; they differ only in the forward input/output hooks.
                 weight_spec = TPShardSpec(1, [submodule.weight.shape[1]])
                 bias_spec = TPShardSpec(None, None)
             elif isinstance(style, PackedColwiseParallel):
@@ -163,7 +178,8 @@ def resolve_tp_shard_specs(model: torch.nn.Module, tp_plan: dict, tp_degree: int
             else:
                 raise ValueError(
                     f"Unsupported tensor-parallel style '{style}' for '{path}'. "
-                    f"Expected 'colwise', 'rowwise', PackedColwiseParallel, or PackedRowwiseParallel."
+                    f"Expected 'colwise', 'rowwise', PackedColwiseParallel, PackedRowwiseParallel, or "
+                    f"ReplicatedInputRowwiseParallel."
                 )
 
             specs[f"{path}.weight"] = weight_spec
@@ -242,9 +258,9 @@ def _shard_packed_param(param, dim: int, blocks: "list[int]", device_mesh, src_d
 def _styles(relative_plan: dict) -> dict:
     """Map a `{relative_path: style}` plan to `parallelize_module` style instances.
 
-    Values may be plain strings (`"colwise"` / `"rowwise"`) or `PackedColwiseParallel` / `PackedRowwiseParallel` marker
-    instances. Returns `{relative_path: ColwiseParallel() | RowwiseParallel() | <packed impl>}`. Divisibility by the TP
-    degree is checked earlier, by `resolve_tp_shard_specs`.
+    Values may be plain strings (`"colwise"` / `"rowwise"`) or `PackedColwiseParallel` / `PackedRowwiseParallel` /
+    `ReplicatedInputRowwiseParallel` marker instances. Returns `{relative_path: ColwiseParallel() | RowwiseParallel() |
+    <packed impl>}`. Divisibility by the TP degree is checked earlier, by `resolve_tp_shard_specs`.
     """
     from torch.distributed.tensor import Replicate, distribute_tensor
     from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
@@ -285,6 +301,11 @@ def _styles(relative_plan: dict) -> dict:
             resolved[path] = ColwiseParallel()
         elif style == "rowwise":
             resolved[path] = RowwiseParallel()
+        elif isinstance(style, ReplicatedInputRowwiseParallel):
+            # `input_layouts=Replicate()` makes `prepare_input` narrow the replicated activation down to this rank's
+            # columns rather than trusting it to already be `Shard(-1)`; the default would read a full-width tensor
+            # as if it were one rank's shard.
+            resolved[path] = RowwiseParallel(input_layouts=Replicate())
         elif isinstance(style, PackedColwiseParallel):
             resolved[path] = _make_packed_col(style)
         elif isinstance(style, PackedRowwiseParallel):
@@ -292,7 +313,8 @@ def _styles(relative_plan: dict) -> dict:
         else:
             raise ValueError(
                 f"Unsupported tensor-parallel style '{style}' for '{path}'. "
-                f"Expected 'colwise', 'rowwise', PackedColwiseParallel, or PackedRowwiseParallel."
+                f"Expected 'colwise', 'rowwise', PackedColwiseParallel, PackedRowwiseParallel, or "
+                f"ReplicatedInputRowwiseParallel."
             )
     return resolved
 
@@ -308,6 +330,7 @@ def _hooks_only_styles(relative_plan: dict) -> dict:
     targeted module into a `Replicate()` DTensor via a broadcast. Callers should therefore place every planned
     parameter themselves, and must ensure none is left on `meta` — the broadcast would be issued on a meta tensor.
     """
+    from torch.distributed.tensor import Replicate
     from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
 
     class _NoPartitionColwise(ColwiseParallel):
@@ -324,12 +347,56 @@ def _hooks_only_styles(relative_plan: dict) -> dict:
             resolved[path] = _NoPartitionColwise()
         elif style == "rowwise" or isinstance(style, PackedRowwiseParallel):
             resolved[path] = _NoPartitionRowwise()
+        elif isinstance(style, ReplicatedInputRowwiseParallel):
+            resolved[path] = _NoPartitionRowwise(input_layouts=Replicate())
         else:
             raise ValueError(
                 f"Unsupported tensor-parallel style '{style}' for '{path}'. "
-                f"Expected 'colwise', 'rowwise', PackedColwiseParallel, or PackedRowwiseParallel."
+                f"Expected 'colwise', 'rowwise', PackedColwiseParallel, PackedRowwiseParallel, or "
+                f"ReplicatedInputRowwiseParallel."
             )
     return resolved
+
+
+def _pre_shard_and_parallelize(
+    model: torch.nn.Module,
+    tp_mesh: "torch.distributed.device_mesh.DeviceMesh",
+    groups: list,
+    specs: "dict[str, TPShardSpec]",
+    device: torch.device,
+) -> None:
+    """Slice every planned parameter on CPU, place only this rank's shard on `device`, then register the hooks.
+
+    Unlike the default path this does not broadcast from a single rank, so every rank must already hold the same
+    weights. Model weights must be on CPU when this is called.
+    """
+    import torch.nn as nn
+    from torch.distributed.tensor import DTensor, Replicate, Shard
+    from torch.distributed.tensor.parallel import parallelize_module
+
+    for name, spec in specs.items():
+        path, _, param_name = name.rpartition(".")
+        module = model.get_submodule(path)
+        param = getattr(module, param_name)
+
+        if spec.dim is None:
+            # A rowwise bias is added after the all-reduce, so every rank needs the whole vector.
+            local, placement = param.data, Replicate()
+        else:
+            local, placement = _local_shard(param.data, spec.dim, spec.block_sizes, tp_mesh), Shard(spec.dim)
+
+        module.register_parameter(
+            param_name,
+            nn.Parameter(
+                DTensor.from_local(local.to(device), tp_mesh, [placement]),
+                requires_grad=param.requires_grad,
+            ),
+        )
+
+    # `parallelize_module` is now a no-op for weight distribution (they are already DTensors) but still registers the
+    # input/output hooks required for the forward pass.
+    for block, relative_plan in groups:
+        parallelize_module(block, tp_mesh, _hooks_only_styles(relative_plan))
 
 
 def _tp_degree(tp_config) -> int:
@@ -498,9 +565,8 @@ def apply_tensor_parallel(
             f"or from the active accelerator when the mesh is built from `tp_degree`."
         )
 
-    backend = "neuron" if tp_mesh.device_type == "neuron" else "default"
     groups = _resolve_tp_plan(model, tp_plan)
-    logger.debug(f"Applying tensor parallel (backend={backend}) over {len(groups)} module group(s) on mesh {tp_mesh}.")
+    logger.debug(f"Applying tensor parallel over {len(groups)} module group(s) on mesh {tp_mesh}.")
 
     from torch.distributed.tensor.parallel import parallelize_module
 
@@ -512,10 +578,12 @@ def apply_tensor_parallel(
     # Also validates every planned shard, so an uneven split raises before any module is sharded.
     specs = resolve_tp_shard_specs(model, tp_plan, tp_mesh.size())
 
-    if backend == "neuron":
-        from .tensor_parallel_neuron import _apply_tp_neuron
-
-        _apply_tp_neuron(model, tp_mesh, groups, specs)
+    if tp_mesh.device_type in ("neuron", "tpu"):
+        # Pre-shard on CPU instead of letting `parallelize_module` distribute the weights. On Neuron, consecutive
+        # `reduce_scatter`s of large weights (>= 5120x5120) in one `parallelize_module` call can fail in the runtime. On
+        # TPU, it would materialize every full weight on each chip first, which runs out of HBM on large models.
+        device = torch.neuron.current_device() if tp_mesh.device_type == "neuron" else config._device
+        _pre_shard_and_parallelize(model, tp_mesh, groups, specs, device)
         return
 
     for submodule, relative_plan in groups:
