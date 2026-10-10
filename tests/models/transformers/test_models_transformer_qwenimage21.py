@@ -217,6 +217,17 @@ class TestQwenImage21Transformer(QwenImage21TransformerTesterConfig, ModelTester
         torch.testing.assert_close(outputs[0], outputs[1])
 
 
+class TestQwenImage21TimestepEmbedding:
+    def test_bf16_cast_keeps_timestep_embedding(self):
+        """`model.to(torch.bfloat16)` (as the LoRA training script does) must not change the timestep embedding."""
+        init_dict = QwenImage21TransformerTesterConfig().get_init_dict()
+        reference = QwenImage21Transformer2DModel(**init_dict).time_text_embed.time_proj
+        cast = QwenImage21Transformer2DModel(**init_dict).to(dtype=torch.bfloat16).time_text_embed.time_proj
+
+        timestep = torch.linspace(0, 1, 1001)
+        assert torch.equal(cast(timestep), reference(timestep))
+
+
 class TestQwenImage21BlockCausalMask:
     """
     The mask is `(q_idx >= kv_idx) or same_image_block`: causal over the joint sequence, bidirectional inside each
