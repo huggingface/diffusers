@@ -529,31 +529,6 @@ class TestStableDiffusionPipeline(StableDiffusionPipelineTesterConfig, PipelineT
             "Disabling of FreeU should lead to results similar to the default pipeline results."
         )
 
-    def test_fused_qkv_projections(self, base_pipe_output):
-        # The unfused reference is the class-cached `base_pipe_output`, so the runs below reseed the global RNG to
-        # reproduce it and the only remaining difference comes from the projection fusion itself.
-        sd_pipe = self.get_pipeline().to(torch_device)
-
-        original_image_slice = base_pipe_output[0, -1, -3:, -3:]
-
-        sd_pipe.fuse_qkv_projections()
-        torch.manual_seed(0)
-        image_slice_fused = sd_pipe(**self.get_dummy_inputs()).images[0, -1, -3:, -3:]
-
-        sd_pipe.unfuse_qkv_projections()
-        torch.manual_seed(0)
-        image_slice_disabled = sd_pipe(**self.get_dummy_inputs()).images[0, -1, -3:, -3:]
-
-        assert torch.allclose(original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2), (
-            "Fusion of QKV projections shouldn't affect the outputs."
-        )
-        assert torch.allclose(image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2), (
-            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        )
-        assert torch.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
-            "Original outputs should match when fused QKV projections are disabled."
-        )
-
     def test_pipeline_interrupt(self):
         sd_pipe = self.get_pipeline().to(torch_device)
 

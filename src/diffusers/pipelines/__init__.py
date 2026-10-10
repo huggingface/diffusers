@@ -355,8 +355,8 @@ else:
         "JoyImageEditPlusPipeline",
         "JoyImageEditPlusPipelineOutput",
     ]
-    _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
-    _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
+    _import_structure["lumina"] = ["LuminaPipeline"]
+    _import_structure["lumina2"] = ["Lumina2Pipeline"]
     _import_structure["lucy"] = ["LucyEditPipeline"]
     _import_structure["longcat_image"] = ["LongCatImagePipeline", "LongCatImageEditPipeline"]
     _import_structure["longcat_audio_dit"] = ["LongCatAudioDiTPipeline"]
@@ -455,6 +455,12 @@ else:
         "Kandinsky5I2VPipeline",
         "Kandinsky5T2IPipeline",
         "Kandinsky5I2IPipeline",
+    ]
+    _import_structure["kandinsky6"] = [
+        "Kandinsky6SRPipeline",
+        "Kandinsky6SRPipelineOutput",
+        "Kandinsky6TI2VAPipeline",
+        "Kandinsky6TI2VAPipelineOutput",
     ]
     _import_structure["z_image"] = [
         "ZImageControlNetInpaintPipeline",
@@ -786,6 +792,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky5T2IPipeline,
             Kandinsky5T2VPipeline,
         )
+        from .kandinsky6 import (
+            Kandinsky6SRPipeline,
+            Kandinsky6SRPipelineOutput,
+            Kandinsky6TI2VAPipeline,
+            Kandinsky6TI2VAPipelineOutput,
+        )
         from .krea2 import Krea2Pipeline
         from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,
@@ -822,8 +834,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTX2VideoDiffusionDecodePipeline,
         )
         from .lucy import LucyEditPipeline
-        from .lumina import LuminaPipeline, LuminaText2ImgPipeline
-        from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline
+        from .lumina import LuminaPipeline
+        from .lumina2 import Lumina2Pipeline
         from .marigold import (
             MarigoldDepthPipeline,
             MarigoldIntrinsicsPipeline,

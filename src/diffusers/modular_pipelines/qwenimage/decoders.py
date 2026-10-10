@@ -90,7 +90,9 @@ class QwenImageAfterDenoiseStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         vae_scale_factor = components.vae_scale_factor
@@ -158,7 +160,7 @@ class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         # Unpack: (B, seq, C*4) -> (B, C, layers+1, H, W)
@@ -225,7 +227,9 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
         return [OutputParam.template("images", note="tensor output of the vae decoder.")]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         # YiYi Notes: remove support for output_type = "latents', we can just skip decode/encode step in modular
@@ -307,7 +311,7 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
         return [OutputParam.template("images")]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         latents = block_state.latents
@@ -409,7 +413,9 @@ class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
             raise ValueError(f"Invalid output_type: {output_type}")
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         self.check_inputs(block_state.output_type)
@@ -492,7 +498,9 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
             raise ValueError("only support output_type 'pil' for mask overlay")
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         self.check_inputs(block_state.output_type, block_state.mask_overlay_kwargs)
