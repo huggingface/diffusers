@@ -22,6 +22,7 @@ from .utils import (
     is_torch_available,
     is_torchao_available,
     is_torchsde_available,
+    is_torchvision_available,
     is_transformers_available,
     is_transformers_version,
 )
@@ -194,6 +195,7 @@ else:
             "SkipLayerGuidance",
             "SmoothedEnergyGuidance",
             "TangentialClassifierFreeGuidance",
+            "TripoSplatClassifierFreeGuidance",
         ]
     )
     _import_structure["hooks"].extend(
@@ -222,6 +224,7 @@ else:
         "InpaintProcessor",
         "IPAdapterMaskProcessor",
         "PixArtImageProcessor",
+        "TripoSplatImageProcessor",
         "VaeImageProcessor",
         "VaeImageProcessorLDM3D",
     ]
@@ -361,6 +364,8 @@ else:
             "TensorParallelConfig",
             "Transformer2DModel",
             "TransformerTemporalModel",
+            "TripoSplatGaussianDecoder",
+            "TripoSplatTransformer3DModel",
             "UNet1DModel",
             "UNet2DConditionModel",
             "UNet2DModel",
@@ -510,6 +515,18 @@ else:
     _import_structure["schedulers"].extend(["CosineDPMSolverMultistepScheduler", "DPMSolverSDEScheduler"])
 
 try:
+    if not (is_torch_available() and is_torchvision_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_torch_and_torchvision_objects
+
+    _import_structure["utils.dummy_torch_and_torchvision_objects"] = [
+        name for name in dir(dummy_torch_and_torchvision_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["pipelines.triposplat.modeling_birefnet"] = ["BiRefNetModel"]
+
+try:
     if not (is_torch_available() and is_transformers_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -578,6 +595,8 @@ else:
             "StableDiffusion3ModularPipeline",
             "StableDiffusionXLAutoBlocks",
             "StableDiffusionXLModularPipeline",
+            "TripoSplatAutoBlocks",
+            "TripoSplatModularPipeline",
             "Wan22Blocks",
             "Wan22Image2VideoBlocks",
             "Wan22Image2VideoModularPipeline",
@@ -876,6 +895,8 @@ else:
             "TextToVideoSDPipeline",
             "TextToVideoZeroPipeline",
             "TextToVideoZeroSDXLPipeline",
+            "TripoSplatPipeline",
+            "TripoSplatPipelineOutput",
             "UnCLIPImageVariationPipeline",
             "UnCLIPPipeline",
             "UniDiffuserModel",
@@ -1091,6 +1112,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SkipLayerGuidance,
             SmoothedEnergyGuidance,
             TangentialClassifierFreeGuidance,
+            TripoSplatClassifierFreeGuidance,
         )
         from .hooks import (
             FasterCacheConfig,
@@ -1116,6 +1138,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             InpaintProcessor,
             IPAdapterMaskProcessor,
             PixArtImageProcessor,
+            TripoSplatImageProcessor,
             VaeImageProcessor,
             VaeImageProcessorLDM3D,
         )
@@ -1253,6 +1276,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             TensorParallelConfig,
             Transformer2DModel,
             TransformerTemporalModel,
+            TripoSplatGaussianDecoder,
+            TripoSplatTransformer3DModel,
             UNet1DModel,
             UNet2DConditionModel,
             UNet2DModel,
@@ -1388,6 +1413,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .schedulers import CosineDPMSolverMultistepScheduler, DPMSolverSDEScheduler
 
     try:
+        if not (is_torch_available() and is_torchvision_available()):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_torch_and_torchvision_objects import *  # noqa F403
+    else:
+        from .pipelines.triposplat.modeling_birefnet import BiRefNetModel
+
+    try:
         if not (is_torch_available() and is_transformers_available()):
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
@@ -1450,6 +1483,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusion3ModularPipeline,
             StableDiffusionXLAutoBlocks,
             StableDiffusionXLModularPipeline,
+            TripoSplatAutoBlocks,
+            TripoSplatModularPipeline,
             Wan22Blocks,
             Wan22Image2VideoBlocks,
             Wan22Image2VideoModularPipeline,
@@ -1742,6 +1777,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             TextToVideoSDPipeline,
             TextToVideoZeroPipeline,
             TextToVideoZeroSDXLPipeline,
+            TripoSplatPipeline,
+            TripoSplatPipelineOutput,
             UnCLIPImageVariationPipeline,
             UnCLIPPipeline,
             UniDiffuserModel,

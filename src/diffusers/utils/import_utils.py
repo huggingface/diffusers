@@ -464,6 +464,12 @@ installation page: https://librosa.org/doc/latest/install.html and follow the on
 """
 
 # docstyle-ignore
+TORCHVISION_IMPORT_ERROR = """
+{0} requires the torchvision library but it was not found in your environment. You can install it with pip:
+`pip install torchvision`
+"""
+
+# docstyle-ignore
 TRANSFORMERS_IMPORT_ERROR = """
 {0} requires the transformers library but it was not found in your environment. You can install it with pip: `pip
 install transformers`
@@ -596,6 +602,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("opencv", (is_opencv_available, OPENCV_IMPORT_ERROR)),
         ("scipy", (is_scipy_available, SCIPY_IMPORT_ERROR)),
         ("torch", (is_torch_available, PYTORCH_IMPORT_ERROR)),
+        ("torchvision", (is_torchvision_available, TORCHVISION_IMPORT_ERROR)),
         ("transformers", (is_transformers_available, TRANSFORMERS_IMPORT_ERROR)),
         ("unidecode", (is_unidecode_available, UNIDECODE_IMPORT_ERROR)),
         ("librosa", (is_librosa_available, LIBROSA_IMPORT_ERROR)),
