@@ -18,7 +18,53 @@ import PIL.Image
 import pytest
 import torch
 
-from diffusers.image_processor import InpaintProcessor, VaeImageProcessor
+from diffusers.image_processor import InpaintProcessor, TripoSplatImageProcessor, VaeImageProcessor
+
+
+class TestTripoSplatImageProcessor:
+    @pytest.mark.parametrize("input_type", ["pil", "np", "pt"])
+    def test_preprocess_preserves_rgb_tensor_contract(self, input_type):
+        pixels = np.arange(12 * 20 * 3, dtype=np.uint8).reshape(12, 20, 3)
+        pil_image = PIL.Image.fromarray(pixels)
+        image = pil_image
+        if input_type == "np":
+            image = pixels.astype(np.float32) / 255
+        elif input_type == "pt":
+            image = torch.from_numpy(pixels.astype(np.float32) / 255).permute(2, 0, 1)
+        processor = TripoSplatImageProcessor(canvas_size=32)
+        actual = processor.preprocess(image)
+        expected = VaeImageProcessor(do_resize=False, do_normalize=False).preprocess(pil_image)
+        assert actual.shape == (1, 3, 12, 20)
+        torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("input_type", ["pil", "np", "pt", "np_uint8", "pt_uint8", "pt_bfloat16"])
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_prepare_foreground_preserves_alpha_and_input(self, input_type, batched):
+        image = PIL.Image.new("RGBA", (40, 24), (0, 0, 0, 0))
+        image.paste((255, 128, 64, 255), (12, 4, 28, 20))
+        pixels = np.asarray(image).copy()
+        value = image
+        if input_type.startswith("np"):
+            value = pixels if input_type == "np_uint8" else pixels.astype(np.float32) / 255
+            if batched:
+                value = np.stack([value, value])
+        elif input_type.startswith("pt"):
+            value = torch.from_numpy(pixels).permute(2, 0, 1)
+            if input_type != "pt_uint8":
+                value = value.to(torch.bfloat16 if input_type == "pt_bfloat16" else torch.float32) / 255
+            if batched:
+                value = torch.stack([value, value])
+        elif batched:
+            value = [image, image]
+        processor = TripoSplatImageProcessor(canvas_size=32)
+        expected = processor.prepare_foreground(image, erode_radius=1)[0]
+        actual = processor.prepare_foreground(value, erode_radius=1)
+        assert len(actual) == (2 if batched else 1)
+        for prepared in actual:
+            assert prepared.mode == "RGB"
+            assert prepared.size == (32, 32)
+            np.testing.assert_array_equal(np.asarray(prepared), np.asarray(expected))
+        np.testing.assert_array_equal(np.asarray(image), pixels)
 
 
 class TestImageProcessor:

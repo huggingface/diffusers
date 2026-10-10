@@ -2795,6 +2795,33 @@ def convert_mochi_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     return converted_state_dict
 
 
+def convert_triposplat_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted = {}
+    for key, value in checkpoint.items():
+        key = key.replace(".mlp.mlp.0.", ".mlp.net.0.proj.").replace(".mlp.mlp.2.", ".mlp.net.2.")
+        key = key.replace("cam_refiner.mlp.", "cam_refiner.")
+        converted[key.replace(".attn.qkv.", ".attn.to_qkv.").replace(".attn.out.", ".attn.to_out.")] = value
+    return converted
+
+
+def convert_triposplat_decoder_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted = {}
+    for key, value in checkpoint.items():
+        key = key.replace(".q_rms_norm.", ".q_norm.").replace(".k_rms_norm.", ".k_norm.")
+        key = key.replace(".mlp.mlp.0.", ".mlp.net.0.proj.").replace(".mlp.mlp.2.", ".mlp.net.2.")
+        converted[key] = value
+    return converted
+
+
+def convert_triposplat_birefnet_checkpoint_to_diffusers(checkpoint, **kwargs):
+    training_heads = ("decoder.conv_ms_spvn_", "decoder.gdt_convs_pred_")
+    return {
+        key.replace(".regular_conv.", "."): value
+        for key, value in checkpoint.items()
+        if not key.startswith(training_heads)
+    }
+
+
 def convert_hunyuan_video_transformer_to_diffusers(checkpoint, **kwargs):
     def remap_norm_scale_shift_(key, state_dict):
         weight = state_dict.pop(key)

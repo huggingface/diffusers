@@ -57,6 +57,9 @@ from .single_file_utils import (
     convert_sana_transformer_to_diffusers,
     convert_sd3_transformer_checkpoint_to_diffusers,
     convert_stable_cascade_unet_single_file_to_diffusers,
+    convert_triposplat_birefnet_checkpoint_to_diffusers,
+    convert_triposplat_decoder_checkpoint_to_diffusers,
+    convert_triposplat_transformer_checkpoint_to_diffusers,
     convert_wan_animate_2_transformer_to_diffusers,
     convert_wan_transformer_to_diffusers,
     convert_wan_vae_to_diffusers,
@@ -85,6 +88,15 @@ else:
     _LOW_CPU_MEM_USAGE_DEFAULT = False
 
 SINGLE_FILE_LOADABLE_CLASSES = {
+    "TripoSplatTransformer3DModel": {
+        "checkpoint_mapping_fn": convert_triposplat_transformer_checkpoint_to_diffusers,
+    },
+    "TripoSplatGaussianDecoder": {
+        "checkpoint_mapping_fn": convert_triposplat_decoder_checkpoint_to_diffusers,
+    },
+    "BiRefNetModel": {
+        "checkpoint_mapping_fn": convert_triposplat_birefnet_checkpoint_to_diffusers,
+    },
     "StableCascadeUNet": {
         "checkpoint_mapping_fn": convert_stable_cascade_unet_single_file_to_diffusers,
     },

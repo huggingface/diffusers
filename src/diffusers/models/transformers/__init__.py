@@ -68,6 +68,7 @@ if is_torch_available():
     from .transformer_skyreels_v2 import SkyReelsV2Transformer3DModel
     from .transformer_stable_audio3 import StableAudio3DiTModel
     from .transformer_temporal import TransformerTemporalModel
+    from .transformer_triposplat import TripoSplatTransformer3DModel
     from .transformer_wan import WanTransformer3DModel
     from .transformer_wan_animate import WanAnimateTransformer3DModel
     from .transformer_wan_animate_2 import WanAnimate2Transformer3DModel

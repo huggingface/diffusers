@@ -176,3 +176,7 @@ def check_min_version(min_version):
             error_message = f"This example requires a minimum version of {min_version},"
         error_message += f" but the version found is {__version__}.\n"
         raise ImportError(error_message)
+
+
+if is_torch_available():
+    from .gaussian_splat import export_to_gaussian_ply, export_to_splat

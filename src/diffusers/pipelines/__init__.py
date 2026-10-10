@@ -170,6 +170,7 @@ else:
     ]
     _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["bria_fibo"] = ["BriaFiboPipeline", "BriaFiboEditPipeline"]
+    _import_structure["triposplat"] = ["TripoSplatPipeline", "TripoSplatPipelineOutput"]
     _import_structure["flux2"] = [
         "Flux2Pipeline",
         "Flux2KleinPipeline",
@@ -927,6 +928,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionAdapterPipeline,
             StableDiffusionXLAdapterPipeline,
         )
+        from .triposplat import TripoSplatPipeline, TripoSplatPipelineOutput
         from .visualcloze import VisualClozeGenerationPipeline, VisualClozePipeline
         from .wan import (
             WanAnimatePipeline,

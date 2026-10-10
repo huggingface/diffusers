@@ -182,6 +182,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("wan-vace", _create_default_map_fn("Wan22VaceModularPipeline")),
         ("flux", _create_default_map_fn("FluxModularPipeline")),
         ("flux-kontext", _create_default_map_fn("FluxKontextModularPipeline")),
+        ("triposplat", _create_default_map_fn("TripoSplatModularPipeline")),
         ("flux2", _create_default_map_fn("Flux2ModularPipeline")),
         ("flux2-klein", _flux2_klein_map_fn),
         ("ideogram4", _create_default_map_fn("Ideogram4ModularPipeline")),
@@ -1825,6 +1826,9 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             for name, value in config_dict.items():
                 if name in self._component_specs and isinstance(value, (tuple, list)) and len(value) == 2:
                     library, class_name = value
+                    if library is None and class_name is None:
+                        self._component_specs[name].pretrained_model_name_or_path = None
+                        continue
                     component_spec_dict = {
                         "repo": pretrained_model_name_or_path,
                         "subfolder": name,
