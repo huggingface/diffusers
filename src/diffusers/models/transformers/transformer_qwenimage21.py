@@ -674,6 +674,7 @@ class QwenImage21Rope(nn.Module):
         freqs = torch.outer(index, 1.0 / torch.pow(theta, torch.arange(0, dim, 2).to(torch.float32).div(dim)))
         return torch.polar(torch.ones_like(freqs), freqs)
 
+    @torch.compiler.disable
     def forward(
         self, img_shapes: list[tuple[int, int, int]], image_pad_mask: torch.Tensor, device: torch.device
     ) -> torch.Tensor:
