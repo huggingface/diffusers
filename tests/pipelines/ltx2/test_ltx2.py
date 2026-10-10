@@ -244,6 +244,36 @@ class TestLTX2Pipeline(LTX2PipelineTesterConfig, PipelineTesterMixin):
         with pytest.raises(ValueError, match="min_seconds"):
             pipe(**inputs)
 
+    def test_motion_speed_changes_the_video_only(self):
+        pipe = self.get_pipeline()
+
+        default = pipe(**self.get_dummy_inputs())
+        same = pipe(**{**self.get_dummy_inputs(), "motion_speed": 1.0})
+        slow = pipe(**{**self.get_dummy_inputs(), "motion_speed": 0.5})
+
+        # The default speed of 1 leaves the pipeline unchanged.
+        assert_tensors_close(same.frames, default.frames, atol=1e-6, rtol=0)
+        assert_tensors_close(same.audio, default.audio, atol=1e-6, rtol=0)
+        # A different speed changes the video, not the output shapes or the audio length.
+        assert slow.frames.shape == default.frames.shape
+        assert slow.audio.shape == default.audio.shape
+        assert not torch.allclose(slow.frames, default.frames)
+
+    def test_duration_head_follows_frame_rate_not_motion_speed(self):
+        pipe = self.get_pipeline_with_duration_head()
+        inputs = self.get_dummy_inputs()
+        inputs.pop("num_frames")
+        inputs.update(min_seconds=1.0, max_seconds=2.0)
+
+        default = pipe(**inputs).frames
+        slow = pipe(**{**inputs, "motion_speed": 0.2}).frames
+        assert slow.shape[1] == default.shape[1]
+
+    def test_motion_speed_must_be_positive(self):
+        pipe = self.get_pipeline()
+        with pytest.raises(ValueError, match="motion_speed"):
+            pipe(**{**self.get_dummy_inputs(), "motion_speed": 0.0})
+
 
 class TestLTX2PipelineMemory(LTX2PipelineTesterConfig, LTX2MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the LTX2 pipeline."""
