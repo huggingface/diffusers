@@ -22,49 +22,48 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils import DiscreteSchedulerOutput, SchedulerMixin
 
 
-class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
+class UniformRefinementScheduler(SchedulerMixin, ConfigMixin):
     """
-    Entropy bound scheduler for the uniform corruption process.
+    Commit-by-confidence scheduler for the uniform corruption process.
 
-    At each step the scheduler samples a candidate token per position and accepts the `k` lowest-entropy positions such
-    that `sum_i^k entropy_i - max(entropy_1, ..., entropy_k) <= entropy_bound`. The left-hand side upper-bounds the
-    joint mutual information between the accepted tokens, so they are approximately independent. Accepted positions
-    keep their sampled token; the rest are renoised with uniformly random tokens (there is no mask token).
+    There is no mask token: every position always holds a real token, so which positions are still undecided cannot be
+    read off the sequence and is tracked as scheduler state instead. At each step the scheduler samples a candidate per
+    position, commits the most confident undecided ones until the step's cumulative quota is met (plus any whose
+    confidence exceeds `threshold`), and renoises everything still undecided with uniformly random tokens.
 
-    Proposed in "Accelerated Sampling from Masked Diffusion Models via Entropy Bounded Unmasking"
-    (https://huggingface.co/papers/2505.24857).
+    Optionally supports editing: once a position is committed it can still be overwritten if the model predicts a
+    different token with confidence above a positive `editing_threshold` (`None`, `0.0`, or negative disables editing).
 
-    The sampling temperature is annealed from `t_max` on the first step down to `t_min` on the last, matching the
-    released checkpoint's sampler (sharper sampling as denoising advances). It is applied to the logits before both the
-    candidate sampling and the entropy that drives acceptance.
+    Because the undecided set is state, the scheduler must be reset between blocks by calling
+    [`~UniformRefinementScheduler.set_timesteps`] at the start of each one. Denoising past `num_inference_steps` raises
+    rather than silently over-committing.
 
     Args:
-        entropy_bound (`float`, defaults to 0.1):
-            The maximum tolerated joint entropy of the accepted tokens. Larger values accept more tokens per step.
-        t_max (`float`, defaults to 0.8):
-            Sampling temperature on the first denoising step.
-        t_min (`float`, defaults to 0.4):
-            Sampling temperature on the last denoising step.
         num_inference_steps (`int`, defaults to 32):
-            The maximum number of denoising steps.
+            The number of denoising steps the commit quota is spread across.
+        temperature (`float`, defaults to 0.0):
+            Sampling temperature applied to the logits when drawing candidates. `0.0` takes the argmax. The confidence
+            driving the quota is always measured on the unscaled distribution, so `threshold` and `editing_threshold`
+            do not move with this value.
+        threshold (`float`, defaults to 0.95):
+            Confidence above which an undecided position commits even if the quota is already met.
+        editing_threshold (`float`, *optional*):
+            Confidence above which an already-committed position is overwritten with a different predicted token. Must
+            be positive to enable editing; `None`, `0.0`, or negative disables it.
     """
 
     order = 1
 
     @register_to_config
     def __init__(
-        self, entropy_bound: float = 0.1, t_max: float = 0.8, t_min: float = 0.4, num_inference_steps: int = 32
+        self,
+        num_inference_steps: int = 32,
+        temperature: float = 0.0,
+        threshold: float = 0.95,
+        editing_threshold: float | None = None,
     ):
-        # The annealed temperature divides the logits, so it must stay strictly positive across the whole
-        # schedule. Since it moves linearly between `t_min` and `t_max`, bounding both ends is what guarantees
-        # that -- `t_max > 0` alone would still let a negative `t_min` cross exactly zero mid-schedule, where
-        # the division yields `inf` and the entropy becomes `nan`.
-        if t_max <= 0.0 or t_min < 0.0:
-            raise ValueError(
-                f"`t_max` must be > 0 and `t_min` must be >= 0, got t_max={t_max}, t_min={t_min}. The annealed "
-                "temperature divides the logits, so it can never reach zero. For greedy sampling use "
-                "`DiscreteDDIMScheduler`."
-            )
+        if threshold < 0.0:
+            raise ValueError(f"`threshold` must be >= 0 (use > 1 to commit on quota alone), got {threshold}.")
         self._step_index = None
         self._begin_index = None
         self.set_timesteps(num_inference_steps)
@@ -96,15 +95,16 @@ class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(self, num_inference_steps: int, device: str | torch.device | None = None) -> None:
         """
-        Set the discrete timestep grid, as the decreasing corruption level `t` in `[0, 1]`.
+        Set the discrete timestep grid, as the decreasing corruption level `t` in `[0, 1]`, and clear the committed
+        state so the next block starts undecided.
 
         The grid matches [`~DiscreteDDIMScheduler.set_timesteps`] — `1.0` down to `1 / num_inference_steps` — so the
-        two schedulers are interchangeable in a pipeline loop. `timesteps` is the public loop variable; the annealed
-        sampling temperature is derived from the integer `step_index` so it does not inherit float rounding.
+        two schedulers are interchangeable in a pipeline loop. `timesteps` is the public loop variable; the commit
+        quota is derived from the integer `step_index` so it stays exact for any `num_inference_steps`.
 
         Args:
             num_inference_steps (`int`):
-                The maximum number of denoising steps.
+                The number of denoising steps.
             device (`str` or `torch.device`, *optional*):
                 The device the timesteps should be moved to.
         """
@@ -116,6 +116,8 @@ class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
         )
         self._step_index = None
         self._begin_index = None
+        # Committed positions, tracked because the uniform process leaves no mark on the sequence itself.
+        self._committed: torch.BoolTensor | None = None
 
     # Copied from diffusers.schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteScheduler.index_for_timestep
     def index_for_timestep(
@@ -198,14 +200,13 @@ class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
         return_dict: bool = True,
     ) -> DiscreteSchedulerOutput | tuple:
         """
-        Accept the lowest-entropy positions under the entropy bound and renoise the rest.
+        Commit the most confident undecided positions and renoise the rest.
 
         Args:
             model_output (`torch.Tensor` of shape `(batch_size, block_length, vocab_size)`):
                 Raw logits from the model for the current block.
             timestep (`float` or `torch.Tensor`):
-                The current corruption level, one entry of [`~EntropyBoundScheduler.timesteps`]. Sets the annealed
-                sampling temperature.
+                The current corruption level, one entry of [`~UniformRefinementScheduler.timesteps`].
             sample (`torch.LongTensor` of shape `(batch_size, block_length)`):
                 Current block token IDs.
             generator (`torch.Generator`, *optional*):
@@ -215,52 +216,65 @@ class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
         """
         if self.step_index is None:
             self._init_step_index(timestep)
+        if self.step_index >= self.num_inference_steps:
+            raise ValueError(
+                f"`step` was called {self.step_index + 1} times for a schedule of {self.num_inference_steps} steps. "
+                "This scheduler carries per-block committed state, so `set_timesteps` must be called again at the "
+                "start of each block."
+            )
 
-        entropy_bound = float(self.config.entropy_bound)
+        threshold = float(self.config.threshold)
+        editing_threshold = self.config.editing_threshold
 
-        # Anneal the temperature from `t_max` on the first step down to `t_min` on the last. The fraction comes from
-        # the integer `step_index`, not from `timestep`, so it is exact for any `num_inference_steps` (see
-        # `set_timesteps`).
-        fraction = (self.num_inference_steps - self.step_index) / self.num_inference_steps
-        temperature = self.config.t_min + (self.config.t_max - self.config.t_min) * fraction
-
-        # The candidates are drawn from the annealed distribution, and the acceptance entropy is measured on that
-        # same distribution — the annealing is part of this scheduler's rule, not a user-facing knob. The reported
-        # `sampled_probs`, however, come from the *unshaped* denoiser distribution, which is what
-        # `DiscreteSchedulerOutput` promises; `_sample_from_logits` does both in one pass.
         sampled_tokens, sampled_probs = self._sample_from_logits(
-            model_output, temperature=temperature, generator=generator
-        )
-        scaled_logits = model_output / temperature
-
-        token_entropy = torch.distributions.Categorical(logits=scaled_logits).entropy()  # (batch, block_length)
-        sorted_token_entropy, sorted_indices = torch.sort(token_entropy, dim=-1, descending=False)
-        cumulative_entropy = torch.cumsum(sorted_token_entropy, dim=-1)
-
-        # `sorted_token_entropy` is the running maximum entropy (ascending order), so the left-hand side bounds the
-        # joint mutual information of the accepted tokens.
-        sorted_accepted = cumulative_entropy - sorted_token_entropy <= entropy_bound
-        accepted_index = torch.scatter(
-            input=torch.zeros_like(sorted_accepted), dim=-1, index=sorted_indices, src=sorted_accepted
+            model_output, temperature=float(self.config.temperature), generator=generator
         )
 
+        batch_size, block_length = sample.shape
+        if self._committed is None:
+            # First step of this block: `set_timesteps` cleared the state, so every position is undecided.
+            self._committed = torch.zeros_like(sample, dtype=torch.bool)
+        elif self._committed.shape != sample.shape:
+            raise ValueError(
+                f"`sample` changed shape mid-schedule, from {tuple(self._committed.shape)} to "
+                f"{tuple(sample.shape)}. Call `set_timesteps` to start a new block."
+            )
+        committed = self._committed
+        confidence = sampled_probs.to(dtype=torch.float32)
+
+        # Cumulative quota: spread the block evenly across the steps and commit whatever is still owed. Integer
+        # arithmetic off `step_index`, so the boundary is exact for any `(block_length, num_inference_steps)`.
+        steps_done = self.step_index + 1
+        target = (steps_done * block_length + self.num_inference_steps - 1) // self.num_inference_steps
+        needed = (target - committed.sum(dim=-1)).clamp(min=0)
+
+        masked_confidence = confidence.masked_fill(committed, float("-inf"))
+        ranks = masked_confidence.argsort(dim=-1, descending=True).argsort(dim=-1)
+        committed_mask = ~committed & ((ranks < needed[:, None]) | (confidence > threshold))
+
+        edited_mask = torch.zeros_like(committed_mask)
+        if editing_threshold is not None and editing_threshold > 0.0:
+            edited_mask = committed & (sampled_tokens != sample) & (confidence > float(editing_threshold))
+
+        prev_sample = torch.where(committed_mask | edited_mask, sampled_tokens, sample)
+        self._committed = committed | committed_mask
         random_tokens = torch.randint(
             low=0, high=model_output.shape[-1], size=sample.shape, device=sample.device, generator=generator
         )
-        prev_sample = torch.where(accepted_index, sampled_tokens, random_tokens)
+        prev_sample = torch.where(self._committed, prev_sample, random_tokens)
 
         self._step_index += 1
 
         if not return_dict:
-            return prev_sample, sampled_tokens, sampled_probs, scaled_logits, accepted_index, None
+            return prev_sample, sampled_tokens, sampled_probs, model_output, committed_mask, edited_mask
         return DiscreteSchedulerOutput(
             prev_sample=prev_sample,
             pred_original_sample=sampled_tokens,
             sampled_probs=sampled_probs,
-            # Self-conditioning wants the distribution the candidates were actually drawn from.
-            pred_logits=scaled_logits,
-            committed_mask=accepted_index,
+            pred_logits=model_output,
+            committed_mask=committed_mask,
+            edited_mask=edited_mask,
         )
 
 
-__all__ = ["EntropyBoundScheduler"]
+__all__ = ["UniformRefinementScheduler"]

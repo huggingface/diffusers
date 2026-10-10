@@ -14,14 +14,19 @@ specific language governing permissions and limitations under the License.
 
 The `DiscreteDDIMScheduler` samples each canvas position from the exact discrete posterior of the uniform corruption
 process (D3PM), following [Structured Denoising Diffusion Models in Discrete State-Spaces](https://huggingface.co/papers/2107.03006).
-It is parameter free, and the final step deterministically commits the predicted tokens. An optional predictor-corrector
+The final step deterministically commits the predicted tokens. An optional predictor-corrector
 mode adds the leave-one-out Gibbs sweeps of [Uniform Diffusion Models Revisited: Leave-One-Out Denoiser and Absorbing State Reformulation](https://huggingface.co/papers/2605.22765)
 through `corrector_steps`.
 
 This scheduler is used by [`DiffusionGemmaPipeline`].
 
+
+This scheduler follows the shared [discrete diffusion scheduler](overview#discrete-diffusion-schedulers) contract: a decreasing
+`float` corruption level in `(0, 1]`, `step(model_output, timestep, sample)`, sampling knobs on the config, and a
+[`DiscreteSchedulerOutput`] return.
+
 ## DiscreteDDIMScheduler
 [[autodoc]] DiscreteDDIMScheduler
 
-## DiscreteDDIMSchedulerOutput
-[[autodoc]] schedulers.scheduling_discrete_ddim.DiscreteDDIMSchedulerOutput
+## DiscreteSchedulerOutput
+[[autodoc]] schedulers.scheduling_utils.DiscreteSchedulerOutput

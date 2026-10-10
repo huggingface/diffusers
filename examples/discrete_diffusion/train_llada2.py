@@ -206,7 +206,7 @@ def main():
         model, optimizer, train_dataloader, lr_scheduler
     )
 
-    noise_scheduler = BlockRefinementScheduler(block_length=cfg.block_length)
+    noise_scheduler = BlockRefinementScheduler(block_length=cfg.block_length, mask_token_id=mask_token_id)
 
     global_step = 0
     model.train()
@@ -218,14 +218,21 @@ def main():
                 attention_mask = batch.get("attention_mask", torch.ones_like(input_ids))
 
                 gen = torch.Generator(device=input_ids.device).manual_seed(cfg.seed + global_step)
-                noisy, noisy_rev, masked, masked_rev = noise_scheduler.add_noise(
-                    input_ids,
-                    attention_mask,
-                    prompt_length=cfg.prompt_length,
-                    block_length=cfg.block_length,
-                    mask_token_id=mask_token_id,
-                    generator=gen,
-                )
+                # One masking rate per example, redrawn every step.
+                rate = torch.rand((input_ids.shape[0], 1), device=input_ids.device, generator=gen)
+                _, masked = noise_scheduler.add_noise(input_ids, rate, generator=gen)
+
+                # LLaDA2 trains on two complementary views: what one masks, the other keeps. `add_noise` returns a
+                # single view (the library-wide contract), so both are rebuilt here from its mask, restricted to the
+                # positions either view may mask -- never the prompt prefix or the padding. Building `valid` with `&`
+                # rather than assigning into it matters: `Tensor.to(dtype=...)` returns `self` when the dtype already
+                # matches, so an `attention_mask` that is already `bool` would be mutated in place.
+                generated = torch.arange(input_ids.shape[1], device=input_ids.device) >= cfg.prompt_length
+                valid = attention_mask.to(dtype=torch.bool) & generated
+                masked = masked & valid
+                masked_rev = (~masked) & valid
+                noisy = torch.where(masked, torch.full_like(input_ids, mask_token_id), input_ids)
+                noisy_rev = torch.where(masked_rev, torch.full_like(input_ids, mask_token_id), input_ids)
 
                 position_ids = (
                     torch.arange(input_ids.shape[1], device=input_ids.device).unsqueeze(0).expand_as(input_ids)
@@ -240,10 +247,6 @@ def main():
                 logits[..., mask_token_id] = torch.finfo(logits.dtype).min
                 logits_rev = logits_rev.clone()
                 logits_rev[..., mask_token_id] = torch.finfo(logits_rev.dtype).min
-
-                valid = attention_mask.to(dtype=torch.bool)
-                masked = masked & valid
-                masked_rev = masked_rev & valid
 
                 labels = input_ids.clone()
                 labels[~masked] = -100
