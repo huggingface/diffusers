@@ -345,17 +345,6 @@ def _all_gather_anything(tensor: torch.Tensor, dim: int, group: dist.device_mesh
     rank_dim = shape[dim]
     gather_dims = gather_size_by_comm(rank_dim, group)
 
-    max_dim = max(gather_dims)
-    if any(d != max_dim for d in gather_dims) and tensor.device.type == "neuron":
-        # Neuron's all-gather requires every rank to send the same size, so pad each chunk to the longest one,
-        # gather, and trim each chunk back to its real length.
-        pad_shape = list(shape)
-        pad_shape[dim] = max_dim - rank_dim
-        padded = torch.cat([tensor, tensor.new_zeros(pad_shape)], dim=dim)
-        gathered_tensors = [torch.empty_like(padded) for _ in range(world_size)]
-        dist.all_gather(gathered_tensors, padded, group=group)
-        return torch.cat([t.narrow(dim, 0, d) for t, d in zip(gathered_tensors, gather_dims)], dim=dim)
-
     gather_shapes = _fill_gather_shapes(tuple(shape), tuple(gather_dims), dim, world_size)
 
     gathered_tensors = [torch.empty(shape, device=tensor.device, dtype=tensor.dtype) for shape in gather_shapes]
