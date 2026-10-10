@@ -36,6 +36,7 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     BitsAndBytesTesterMixin,
     ContextParallelTesterMixin,
+    FirstBlockCacheTesterMixin,
     GGUFCompileTesterMixin,
     GGUFTesterMixin,
     LoKrTesterMixin,
@@ -209,6 +210,10 @@ class TestFlux2TransformerTensorParallelNeuron:
             f"Neuron tensor-parallel worker failed (exit {result.returncode}).\n"
             f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
         )
+
+
+class TestFlux2TransformerFBCCache(Flux2TransformerTesterConfig, FirstBlockCacheTesterMixin):
+    """FirstBlockCache tests for Flux2 Transformer."""
 
 
 class TestFlux2TransformerLoRA(Flux2TransformerTesterConfig, LoraTesterMixin):
