@@ -22,7 +22,7 @@ from ..utils import get_logger, is_peft_available
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
 
-_SUPPORTED_TP_DEVICES = ("cuda", "neuron")
+_SUPPORTED_TP_DEVICES = ("cuda", "neuron", "tpu")
 
 
 class PackedColwiseParallel:
