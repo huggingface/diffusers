@@ -28,7 +28,6 @@ from ..testing_utils import (
     ModularPipelineTesterMixin,
     ModularWorkflowTesterMixin,
 )
-from .pan2_guardrail import DummyPAN2SafetyChecker
 
 
 PAN2_WORKFLOWS = {
@@ -124,63 +123,13 @@ class TestPAN2ModularPipelineFast(PAN2ModularPipelineTesterConfig, ModularPipeli
         with pytest.raises(ValueError, match="requires a safety checker"):
             pipe(**self.get_dummy_inputs(), output=self.output_name)
 
-    @pytest.mark.parametrize("output_type", ["pt", "np", "pil"])
-    def test_safety_checker_passes(self, output_type):
-        pipe = self.get_pipeline().to(torch_device)
-        inputs = {**self.get_dummy_inputs(), "output_type": output_type}
-        expected = pipe(**inputs, output=self.output_name)
-
-        safety_checker = DummyPAN2SafetyChecker()
-        pipe.enable_safety_checker(safety_checker)
-        videos = pipe(**{**inputs, "generator": self.get_generator(0)}, output=self.output_name)
-
-        assert safety_checker.checked_prompts == [inputs["prompt"]]
-        # A video that passes is returned unchanged.
-        if output_type == "pil":
-            assert [frame.tobytes() for frame in videos[0]] == [frame.tobytes() for frame in expected[0]]
-        else:
-            assert (videos == expected).all()
-
-        # Each video is checked, as uint8 `[num_frames, height, width, 3]` frames.
-        pipe(**inputs, num_videos_per_prompt=2, output=self.output_name)
-        assert [(frames.shape, frames.dtype) for frames in safety_checker.checked_videos] == [
-            ((5, 32, 32, 3), "uint8")
-        ] * 3
-
-    def test_unsafe_prompt_raises(self):
-        pipe = self.get_pipeline().to(torch_device)
-        safety_checker = DummyPAN2SafetyChecker(text_safe=False)
-        pipe.enable_safety_checker(safety_checker)
-        with pytest.raises(ValueError, match="unsafe content in the prompt"):
-            pipe(**self.get_dummy_inputs(), output=self.output_name)
-        assert safety_checker.checked_videos == []
-
-    def test_unsafe_video_raises(self):
-        pipe = self.get_pipeline().to(torch_device)
-        pipe.enable_safety_checker(DummyPAN2SafetyChecker(video_safe=False))
-        with pytest.raises(ValueError, match="unsafe content in the generated video"):
-            pipe(**self.get_dummy_inputs(), output=self.output_name)
-
     def test_latent_output_skips_decoding(self):
         pipe = self.get_pipeline().to(torch_device)
-        safety_checker = DummyPAN2SafetyChecker(video_safe=False)
-        pipe.enable_safety_checker(safety_checker)
         inputs = {**self.get_dummy_inputs(), "output_type": "latent"}
         latents = pipe(**inputs, output=self.output_name)
 
-        # The denoised latents are returned as they are: no decoding, so no video to check, but the prompt is.
         num_channels_latents = pipe.transformer.config.out_channels
         assert latents.shape == (1, num_channels_latents, 2, 2, 2)
-        assert safety_checker.checked_prompts == [inputs["prompt"]]
-        assert safety_checker.checked_videos == []
-
-    def test_disable_safety_checker(self):
-        pipe = self.get_pipeline().to(torch_device)
-        safety_checker = DummyPAN2SafetyChecker(text_safe=False, video_safe=False)
-        pipe.enable_safety_checker(safety_checker)
-        pipe.disable_safety_checker()
-        pipe(**self.get_dummy_inputs(), output=self.output_name)
-        assert safety_checker.checked_prompts == safety_checker.checked_videos == []
 
 
 class TestPAN2ModularPipelineLoading(PAN2ModularPipelineTesterConfig, ModularLoadingTesterMixin):

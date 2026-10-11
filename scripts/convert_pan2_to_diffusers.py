@@ -22,8 +22,7 @@ python scripts/convert_pan2_to_diffusers.py \
 
 # Full modular pipeline repository.
 python scripts/convert_pan2_to_diffusers.py \
-    --checkpoint_path /path/to/checkpoint/transformer --output_path /tmp/pan2-diffusers \
-    --text_encoder_path /path/to/Qwen3.5-9B --vae_path Wan-AI/Wan2.2-TI2V-5B-Diffusers
+    --checkpoint_path /path/to/checkpoint/transformer --output_path /tmp/pan2-diffusers --save_pipeline
 ```
 """
 
@@ -212,16 +211,21 @@ def get_args():
     parser.add_argument("--output_path", type=str, required=True, help="Where the diffusers checkpoint is written.")
     parser.add_argument("--dtype", type=str, default="bf16", choices=list(DTYPE_MAPPING))
     parser.add_argument(
+        "--save_pipeline",
+        action="store_true",
+        help="Also write the text encoder, tokenizer, VAE and scheduler as a full modular pipeline repository.",
+    )
+    parser.add_argument(
         "--text_encoder_path",
         type=str,
-        default=None,
-        help="Qwen3.5 checkpoint to take the text encoder and tokenizer from. Required to write a full pipeline.",
+        default="Qwen/Qwen3.5-9B",
+        help="Qwen3.5 checkpoint to take the text encoder and tokenizer from. Used with `--save_pipeline`.",
     )
     parser.add_argument(
         "--vae_path",
         type=str,
-        default=None,
-        help="Diffusers Wan2.2 repository to take the VAE from, e.g. `Wan-AI/Wan2.2-TI2V-5B-Diffusers`.",
+        default="Wan-AI/Wan2.2-TI2V-5B-Diffusers",
+        help="Diffusers Wan2.2 repository to take the VAE from. Used with `--save_pipeline`.",
     )
     parser.add_argument(
         "--modular_repo_id",
@@ -240,7 +244,7 @@ def main(args):
     transformer.save_pretrained(os.path.join(args.output_path, "transformer"), max_shard_size="5GB")
     del transformer
 
-    if args.text_encoder_path is None or args.vae_path is None:
+    if not args.save_pipeline:
         return
 
     from transformers import AutoTokenizer, Qwen3_5ForConditionalGeneration

@@ -198,6 +198,8 @@ class PAN2PrepareLatentsStep(ModularPipelineBlocks):
         )
 
         if block_state.latents is not None:
+            if block_state.latents.shape != shape:
+                raise ValueError(f"`latents` should have shape {shape}, but got {tuple(block_state.latents.shape)}.")
             block_state.latents = block_state.latents.to(device=device, dtype=dtype)
         else:
             if isinstance(block_state.generator, list) and len(block_state.generator) != batch_size:
