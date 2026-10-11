@@ -44,7 +44,7 @@ jobs:
 
   build:
     needs: check-links
-    uses: huggingface/doc-builder/.github/workflows/build_pr_documentation.yml@e60a538eea9817ab312196d0d233604b01697265  # main
+    uses: huggingface/doc-builder/.github/workflows/build_pr_documentation.yml@9fc8a41d7729c424fdb2192f2f85ff63102ec9a3  # main
     with:
       commit_sha: ${{ github.event.pull_request.head.sha }}
       pr_number: ${{ github.event.number }}
