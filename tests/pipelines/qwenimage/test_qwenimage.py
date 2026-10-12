@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 from transformers import Qwen2_5_VLConfig, Qwen2_5_VLForConditionalGeneration, Qwen2Tokenizer
 
@@ -194,6 +195,63 @@ class TestQwenImagePipelineMemory(QwenImagePipelineTesterConfig, MemoryTesterMix
 
 class TestQwenImagePipelineLoRA(QwenImagePipelineTesterConfig, LoraTesterMixin):
     """LoRA tests for the QwenImage pipeline."""
+
+    @pytest.mark.parametrize("alpha", [None, 2, 4, 8])
+    def test_lora_state_dict_applies_alpha(self, alpha):
+        rank = 4
+        down = torch.arange(rank * 16, dtype=torch.float32).reshape(rank, 16) / 100
+        up = torch.arange(16 * rank, dtype=torch.float32).reshape(16, rank) / 100
+        state_dict = {
+            "diffusion_model.transformer_blocks.0.attn.to_q.lora_A.weight": down.clone(),
+            "diffusion_model.transformer_blocks.0.attn.to_q.lora_B.weight": up.clone(),
+        }
+        if alpha is not None:
+            state_dict["diffusion_model.transformer_blocks.0.attn.to_q.alpha"] = torch.tensor(float(alpha))
+
+        converted = self.pipeline_class.lora_state_dict(state_dict)
+
+        assert set(converted) == {
+            "transformer.transformer_blocks.0.attn.to_q.lora_A.weight",
+            "transformer.transformer_blocks.0.attn.to_q.lora_B.weight",
+        }
+        expected_scale = alpha / rank if alpha is not None else 1.0
+        assert_tensors_close(
+            converted["transformer.transformer_blocks.0.attn.to_q.lora_B.weight"]
+            @ converted["transformer.transformer_blocks.0.attn.to_q.lora_A.weight"],
+            expected_scale * (up @ down),
+            atol=1e-6,
+            rtol=1e-6,
+        )
+
+    def test_lora_state_dict_missing_lora_b(self):
+        state_dict = {
+            "diffusion_model.transformer_blocks.0.attn.to_q.lora_A.weight": torch.randn(4, 16),
+        }
+        with pytest.raises(ValueError, match="Missing lora_B weight"):
+            self.pipeline_class.lora_state_dict(state_dict)
+
+    def test_lora_state_dict_missing_lora_a(self):
+        state_dict = {
+            "diffusion_model.transformer_blocks.0.attn.to_q.lora_B.weight": torch.randn(16, 4),
+        }
+        with pytest.raises(ValueError, match="Missing lora_A weight"):
+            self.pipeline_class.lora_state_dict(state_dict)
+
+    def test_lora_state_dict_drops_stray_alpha(self):
+        state_dict = {
+            "diffusion_model.transformer_blocks.0.attn.to_q.alpha": torch.tensor(8.0),
+        }
+        assert self.pipeline_class.lora_state_dict(state_dict) == {}
+
+    def test_lora_state_dict_preserves_dtype(self):
+        state_dict = {
+            "diffusion_model.transformer_blocks.0.attn.to_q.lora_A.weight": torch.randn(4, 16, dtype=torch.bfloat16),
+            "diffusion_model.transformer_blocks.0.attn.to_q.lora_B.weight": torch.randn(16, 4, dtype=torch.bfloat16),
+            "diffusion_model.transformer_blocks.0.attn.to_q.alpha": torch.tensor(8.0),
+        }
+        converted = self.pipeline_class.lora_state_dict(state_dict)
+        assert converted["transformer.transformer_blocks.0.attn.to_q.lora_A.weight"].dtype == torch.bfloat16
+        assert converted["transformer.transformer_blocks.0.attn.to_q.lora_B.weight"].dtype == torch.bfloat16
 
 
 class TestQwenImagePipelineLoRAMemory(QwenImagePipelineTesterConfig, LoraMemoryTesterMixin):
