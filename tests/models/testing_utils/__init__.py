@@ -23,6 +23,7 @@ from .memory import CPUOffloadTesterMixin, GroupOffloadTesterMixin, LayerwiseCas
 from .parallelism import (
     ContextParallelAttentionBackendsTesterMixin,
     ContextParallelTesterMixin,
+    TensorParallelNeuronTesterMixin,
     TensorParallelTesterMixin,
     TensorParallelTPUTesterMixin,
 )
@@ -69,6 +70,7 @@ __all__ = [
     "ContextParallelTesterMixin",
     "ContextParallelAttentionBackendsTesterMixin",
     "TensorParallelTesterMixin",
+    "TensorParallelNeuronTesterMixin",
     "TensorParallelTPUTesterMixin",
     "CPUOffloadTesterMixin",
     "FasterCacheConfigMixin",
