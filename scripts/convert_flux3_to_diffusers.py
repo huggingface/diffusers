@@ -85,6 +85,7 @@ def transformer_config_from_package(package_config):
         "mlp_ratio": dit["mlp_ratio"],
         "axes_dims_rope": tuple(dit["axes_dim"]),
         "rope_theta": dit["theta"],
+        "flow_map": dit.get("flow_map", False),
     }
 
 
@@ -118,6 +119,9 @@ PREFIX_MAPPING = {
 KEY_MAPPING = {
     "time_in.in_layer.weight": "timestep_embedder.linear_1.weight",
     "time_in.out_layer.weight": "timestep_embedder.linear_2.weight",
+    # flow map (step-distilled packages): the embedder of the timestep each step jumps to
+    "ref_time_in.in_layer.weight": "target_timestep_embedder.linear_1.weight",
+    "ref_time_in.out_layer.weight": "target_timestep_embedder.linear_2.weight",
     # final_layer.image.linear -> proj_out; final_layer.image.adaLN_modulation.1 -> norm_out.linear ([shift, scale] -> [scale, shift])
     "final_layer.image.linear.weight": "proj_out.weight",
     "final_layer.image.adaLN_modulation.1.weight": "norm_out.linear.weight",

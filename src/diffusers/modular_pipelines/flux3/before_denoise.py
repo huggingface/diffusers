@@ -92,9 +92,11 @@ def retrieve_timesteps(
 class Flux3SetTimestepsStep(ModularPipelineBlocks):
     model_name = "flux3"
 
-    def __init__(self, shift: float = 6.93):
-        # the constant timestep shift ("alpha") of the FLUX.3 sampling recipe, configured on the scheduler
+    def __init__(self, shift: float = 6.93, num_inference_steps: int = 50):
+        # the constant timestep shift ("alpha") of the FLUX.3 sampling recipe, configured on the scheduler, and the
+        # default number of steps (50; 16 for the step-distilled checkpoints)
         self.shift = shift
+        self.num_inference_steps = num_inference_steps
         super().__init__()
 
     @property
@@ -118,7 +120,7 @@ class Flux3SetTimestepsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("num_inference_steps"),
+            InputParam.template("num_inference_steps", default=self.num_inference_steps),
             InputParam.template("timesteps", note="overrides `num_inference_steps` when provided"),
             InputParam.template("sigmas", note="overrides `num_inference_steps` when provided"),
         ]
@@ -393,5 +395,42 @@ class Flux3TextRoPEInputsStep(ModularPipelineBlocks):
         if block_state.negative_prompt_embeds is not None:
             block_state.negative_txt_ids = self._prepare_text_ids(block_state.negative_prompt_embeds).to(device)
 
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class Flux3DistilledTextRoPEInputsStep(Flux3TextRoPEInputsStep):
+    model_name = "flux3-distilled"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Step that prepares the 4D RoPE position IDs of the text tokens for the step-distilled FLUX.3 model (no "
+            "negative prompt). Place it after the text encoder step."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template(
+                "prompt_embeds",
+                description="Text embeddings used to guide the generation. Can be generated from text_encoder step.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                name="txt_ids",
+                kwargs_type="denoiser_input_fields",
+                type_hint=torch.Tensor,
+                description="4D position IDs (T, H, W, L) for text tokens, used for RoPE calculation.",
+            ),
+        ]
+
+    def __call__(self, components: Flux3ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        block_state.txt_ids = self._prepare_text_ids(block_state.prompt_embeds).to(block_state.prompt_embeds.device)
         self.set_block_state(state, block_state)
         return components, state

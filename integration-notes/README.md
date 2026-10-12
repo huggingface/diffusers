@@ -32,6 +32,14 @@ python scripts/convert_flux2_to_diffusers.py --vae \
 was built). `flux3_examples.py` runs the four parity cases as doc examples against that repo, without any
 reference code.
 
+`--variant sd` builds the step-distilled repo from `variants/sd/` of the package (`flow_map: true` in its config;
+the converter maps `ref_time_in.*` to `target_timestep_embedder.*`), with `Flux3DistilledAutoBlocks` in the index:
+
+```bash
+.venv/bin/python integration-notes/make_flux3_modular_repo.py \
+    --package /raid/yiyi/f3-image-small --variant sd --output /raid/yiyi/flux3-image-distilled-modular
+```
+
 ## Parity (`parity_bf16.py`)
 
 bf16, 50 steps, guidance 3.5, shift 6.93, seed 0, same prompts and the same initial noise on both sides.
@@ -54,6 +62,27 @@ All four pairs are visually identical (`diffusers-scratch/flux3-image/parity-bf1
 reference left, diffusers right). The differences are bf16 rounding over 50 steps; in fp32 the two
 implementations agree to within 2/255 (checked during development: the text encoder is bit-identical and
 the transformer agrees to 4e-5 in fp32).
+
+### Step-distilled variant (`F3_VARIANT=sd`)
+
+Same four cases with the `sd` package variant: 16 steps, no guidance, BFL's flow-map branch
+(`/raid/yiyi/bfl-f3-flowmap`, their PR #5) against `flux3-image-distilled-modular`:
+
+```bash
+F3_VARIANT=sd CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 /raid/yiyi/venv-tf457/bin/python integration-notes/parity_bf16.py reference
+F3_VARIANT=sd CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 .venv/bin/python integration-notes/parity_bf16.py diffusers
+```
+
+| case | size | mean pixel diff | max | pixels off by > 30 |
+|---|---|---|---|---|
+| t2i | 1024 x 1024 | 1.74/255 | 221/255 | 1.8 % |
+| i2i | 1024 x 1024 | 0.21/255 | 12/255 | 0 % |
+| bbox_t2i | 1024 x 1024 | 0.46/255 | 247/255 | 0.2 % |
+| bbox_i2i | 1360 x 768 | 0.31/255 | 89/255 | 0.03 % |
+
+Visually identical (`parity-bf16-sd/*_side_by_side.png`). The t2i case drifts more than with the base model
+(1.8 % of pixels differ by more than 30, fine fur texture only): 16 large Euler steps amplify bf16 rounding more
+than 50 small ones, and the attention kernels differ (cuDNN in the reference, PyTorch's default here).
 
 ## Why the reference runs under transformers 4.57.6
 

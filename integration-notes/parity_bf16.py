@@ -10,6 +10,9 @@ Two runs, one per environment, handing over through PNG files:
 Cases: t2i and i2i (the fox), and BFL's two layout-control examples (bbox regions in the caption; the knight edit
 with <ref_image_0>, which also exercises the i2i size derived from the reference). Writes <case>_reference.png,
 <case>_diffusers.png and <case>_side_by_side.png under OUT, and prints the mean pixel difference.
+
+`F3_VARIANT=sd` runs the step-distilled variant instead (16 steps, no CFG): BFL's flow-map branch against the converted
+`flux3-image-distilled-modular` repo, under OUT-sd.
 """
 
 import os
@@ -21,9 +24,11 @@ import torch
 
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+VARIANT = os.environ.get("F3_VARIANT")  # None (bf16 base) or "sd" (step-distilled)
 PACKAGE = "/raid/yiyi/f3-image-small"  # the BFL package
-MODULAR_REPO = "/raid/yiyi/flux3-image-modular"  # the converted diffusers repo
-OUT = "/raid/yiyi/diffusers-scratch/flux3-image/parity-bf16"
+BFL_CODE = os.path.join(REPO, "..", "bfl-f3-flowmap" if VARIANT else "bfl-f3-image")  # the reference implementation
+MODULAR_REPO = "/raid/yiyi/flux3-image-distilled-modular" if VARIANT == "sd" else "/raid/yiyi/flux3-image-modular"
+OUT = "/raid/yiyi/diffusers-scratch/flux3-image/parity-bf16" + (f"-{VARIANT}" if VARIANT else "")
 
 SEED = 0
 HEIGHT = WIDTH = 1024
@@ -53,11 +58,11 @@ CASES = [
 
 
 def reference():
-    sys.path.insert(0, os.path.join(REPO, "..", "bfl-f3-image"))
+    sys.path.insert(0, BFL_CODE)
     from f3.core.hub import resolve_package
     from f3.image_small.pipeline import ImageSmallPipeline, default_size, prepare_reference, to_pil, to_tensor
 
-    package = resolve_package(PACKAGE, verify=False)
+    package = resolve_package(PACKAGE, variant=VARIANT, verify=False)
     pipe = ImageSmallPipeline.from_package(package, device="cuda")
     for name, prompt, image, size in CASES:
         references = []
@@ -65,7 +70,7 @@ def reference():
             path = os.path.join(OUT, "t2i_reference.png") if image == "t2i" else image
             references = [prepare_reference(PIL.Image.open(path))]
         width, height = (size[1], size[0]) if size else default_size(references, package.config)
-        # defaults from the package config: 50 steps, guidance 3.5, alpha 6.93
+        # defaults from the package config: 50 steps, guidance 3.5, alpha 6.93 (sd: 16 steps, no guidance)
         result = to_pil(pipe.generate(prompt, [to_tensor(r) for r in references], width, height, seed=SEED))
         result.save(os.path.join(OUT, f"{name}_reference.png"))
         print(f"{name}: {result.size}")

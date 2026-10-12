@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import Flux3Transformer2DModel
@@ -107,6 +108,28 @@ class TestFlux3TransformerModel(Flux3TransformerTesterConfig, ModelTesterMixin):
         # the references change the prediction
         text_only = model(**{k: v for k, v in inputs.items() if not k.startswith("image_cond")}, return_dict=False)[0]
         assert not torch.allclose(output, text_only)
+
+    @torch.no_grad()
+    def test_flow_map(self):
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict(), flow_map=True).to(torch_device).eval()
+        inputs = self.get_dummy_inputs()
+        target_timestep = torch.full_like(inputs["timestep"], 0.25)
+
+        output = model(**inputs, target_timestep=target_timestep, return_dict=False)[0]
+        assert output.shape == inputs["hidden_states"].shape
+
+        # the target timestep changes the prediction
+        other = model(**inputs, target_timestep=torch.zeros_like(target_timestep), return_dict=False)[0]
+        assert not torch.allclose(output, other)
+
+        # a flow map requires the target timestep; a plain model refuses it
+        with pytest.raises(ValueError, match="target_timestep"):
+            model(**inputs, return_dict=False)
+        plain = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        assert plain.target_timestep_embedder is None
+        with pytest.raises(ValueError, match="target_timestep"):
+            plain(**inputs, target_timestep=target_timestep, return_dict=False)
 
 
 class TestFlux3TransformerMemory(Flux3TransformerTesterConfig, MemoryTesterMixin):

@@ -84,6 +84,21 @@ pipe.guider = pipe.guider.new(guidance_scale=5.0)
 
 See the [guiders guide](../../using-diffusers/guiders) to switch to a different guidance method.
 
+## Step-distilled model
+
+The step-distilled checkpoint generates in 16 steps without classifier-free guidance. Its transformer is a flow map: at every step it is told the current timestep and the one the step jumps to. It loads like the base model (the repo's `modular_model_index.json` resolves to [`Flux3DistilledModularPipeline`] and [`Flux3DistilledAutoBlocks`]); the pipeline has no `guider` and does not take `negative_prompt`:
+
+<!-- TODO: replace the repo id with the release repo of the step-distilled checkpoint -->
+```python
+pipe = ModularPipeline.from_pretrained("black-forest-labs/FLUX.3-image-small-distilled")
+pipe.load_components(dtype=torch.bfloat16)
+pipe.to("cuda")
+
+image = pipe(prompt=prompt, generator=torch.Generator().manual_seed(0), output="images")[0]
+```
+
+It serves the same two workflows as the base model. `num_inference_steps` defaults to 16; the model is trained for 4 to 16 steps.
+
 ## Workflows
 
 The pipeline serves two workflows, `text2image` and `image_conditioned`; the one that runs is picked by the inputs (`image` selects image-to-image). [`~ModularPipeline.from_pretrained`] can also build a pipeline for one workflow with the `workflow` argument, which then only expects and loads the components that workflow needs:
@@ -115,3 +130,11 @@ pipe.enable_auto_cpu_offload(device="cuda")
 ## Flux3AutoBlocks
 
 [[autodoc]] Flux3AutoBlocks
+
+## Flux3DistilledAutoBlocks
+
+[[autodoc]] Flux3DistilledAutoBlocks
+
+## Flux3DistilledModularPipeline
+
+[[autodoc]] Flux3DistilledModularPipeline

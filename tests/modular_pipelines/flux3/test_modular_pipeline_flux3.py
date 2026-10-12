@@ -18,7 +18,12 @@ import PIL.Image
 import pytest
 import torch
 
-from diffusers.modular_pipelines import Flux3AutoBlocks, Flux3ModularPipeline
+from diffusers.modular_pipelines import (
+    Flux3AutoBlocks,
+    Flux3DistilledAutoBlocks,
+    Flux3DistilledModularPipeline,
+    Flux3ModularPipeline,
+)
 from diffusers.modular_pipelines.flux3.encoders import Flux3TextEncoderStep
 from diffusers.modular_pipelines.flux3.inputs import Flux3ImageCondInputStep
 from diffusers.utils import logging
@@ -37,6 +42,7 @@ from ..testing_utils import (
 # TODO: local tiny repo built by integration-notes/make_tiny_flux3_repo.py — upload as
 # hf-internal-testing/tiny-flux3-image-modular and switch before opening the PR
 FLUX3_TINY_REPO = "/raid/yiyi/tiny-flux3-image-modular"
+FLUX3_DISTILLED_TINY_REPO = "/raid/yiyi/tiny-flux3-image-distilled-modular"
 
 FLUX3_WORKFLOWS = {
     "text2image": [
@@ -105,6 +111,54 @@ FLUX3_WORKFLOW_DEFAULTS = {
         "required_inputs": ["prompt", "image"],
         "inputs": FLUX3_IMAGE_CONDITIONED_INPUTS,
         "component_configs": FLUX3_SAMPLING,
+    },
+}
+
+# the step-distilled model: the same graph with distilled text encoder / text input / text RoPE / denoise steps (no
+# guider, no negative prompt, 16 steps by default)
+FLUX3_DISTILLED_WORKFLOWS = {
+    "text2image": [
+        ("text_encoder", "Flux3DistilledTextEncoderStep"),
+        ("denoise.input", "Flux3DistilledTextInputStep"),
+        ("denoise.prepare_latents", "Flux3PrepareLatentsStep"),
+        ("denoise.set_timesteps", "Flux3SetTimestepsStep"),
+        ("denoise.prepare_rope_inputs", "Flux3DistilledTextRoPEInputsStep"),
+        ("denoise.denoise", "Flux3DistilledDenoiseStep"),
+        ("denoise.after_denoise", "Flux3UnpackLatentsStep"),
+        ("decode", "Flux3DecodeStep"),
+    ],
+    "image_conditioned": [
+        ("text_encoder", "Flux3DistilledTextEncoderStep"),
+        ("vae_encoder.preprocess", "Flux3ProcessImagesInputStep"),
+        ("vae_encoder.encode", "Flux3VaeEncoderStep"),
+        ("denoise.input", "Flux3DistilledTextInputStep"),
+        ("denoise.cond_input", "Flux3ImageCondInputStep"),
+        ("denoise.prepare_latents", "Flux3PrepareLatentsStep"),
+        ("denoise.prepare_image_cond_latents", "Flux3PrepareImageCondLatentsStep"),
+        ("denoise.set_timesteps", "Flux3SetTimestepsStep"),
+        ("denoise.prepare_rope_inputs", "Flux3DistilledTextRoPEInputsStep"),
+        ("denoise.denoise", "Flux3DistilledDenoiseStep"),
+        ("denoise.after_denoise", "Flux3UnpackLatentsStep"),
+        ("decode", "Flux3DecodeStep"),
+    ],
+}
+FLUX3_DISTILLED_COMPONENTS = {name: cls for name, cls in FLUX3_COMPONENTS.items() if name != "guider"}
+FLUX3_DISTILLED_SAMPLING = {"scheduler": {"shift": 6.93}}
+# no negative prompt, 16 steps by default
+FLUX3_DISTILLED_INPUTS = {name: value for name, value in FLUX3_INPUTS.items() if name != "negative_prompt"}
+FLUX3_DISTILLED_INPUTS["num_inference_steps"] = 16
+FLUX3_DISTILLED_WORKFLOW_DEFAULTS = {
+    "text2image": {
+        "components": FLUX3_DISTILLED_COMPONENTS,
+        "required_inputs": ["prompt"],
+        "inputs": {**FLUX3_DISTILLED_INPUTS, "height": 1024, "width": 1024},
+        "component_configs": FLUX3_DISTILLED_SAMPLING,
+    },
+    "image_conditioned": {
+        "components": FLUX3_DISTILLED_COMPONENTS,
+        "required_inputs": ["prompt", "image"],
+        "inputs": {**FLUX3_DISTILLED_INPUTS, "height": None, "width": None},
+        "component_configs": FLUX3_DISTILLED_SAMPLING,
     },
 }
 
@@ -266,4 +320,48 @@ class TestFlux3ModularPipelineMemory(Flux3ModularPipelineTesterConfig, ModularMe
 
 
 class TestFlux3ModularPipelineWorkflow(Flux3ModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class Flux3DistilledModularPipelineTesterConfig(Flux3ModularPipelineTesterConfig):
+    pipeline_class = Flux3DistilledModularPipeline
+    pipeline_blocks_class = Flux3DistilledAutoBlocks
+    pretrained_model_name_or_path = FLUX3_DISTILLED_TINY_REPO
+    expected_workflow_blocks = FLUX3_DISTILLED_WORKFLOWS
+    expected_workflow_defaults = FLUX3_DISTILLED_WORKFLOW_DEFAULTS
+
+
+class TestFlux3DistilledModularPipelineFast(Flux3DistilledModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    @pytest.mark.skip(reason="FLUX.3 takes one prompt per call; batched prompts are not supported.")
+    def test_inference_batch_consistent(self):
+        pass
+
+    @pytest.mark.skip(reason="FLUX.3 takes one prompt per call; batched prompts are not supported.")
+    def test_inference_batch_single_identical(self):
+        pass
+
+    def test_num_images_per_prompt(self):
+        super().test_num_images_per_prompt(batch_sizes=[1])
+
+    def test_no_guider_no_negative_prompt(self):
+        # the step-distilled model samples without classifier-free guidance: no guider, and the block set neither
+        # takes a negative prompt nor produces negative embeddings
+        pipe = self.get_pipeline()
+        assert "guider" not in pipe.component_names
+        blocks = self.pipeline_blocks_class()
+        assert {"negative_prompt", "negative_prompt_embeds"}.isdisjoint({p.name for p in blocks.inputs})
+        assert {"negative_prompt_embeds", "negative_txt_ids"}.isdisjoint({p.name for p in blocks.intermediate_outputs})
+
+    def test_image_to_image(self):
+        pipe = self.get_pipeline()
+        inputs = {**self.get_dummy_inputs(), "image": self.get_reference_images(sizes=((64, 48), (32, 32)))}
+        images = pipe(**inputs, output="images")
+        assert images.shape == (1, 3, 64, 64)
+
+
+class TestFlux3DistilledModularPipelineLoading(Flux3DistilledModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestFlux3DistilledModularPipelineWorkflow(Flux3DistilledModularPipelineTesterConfig, ModularWorkflowTesterMixin):
     pass

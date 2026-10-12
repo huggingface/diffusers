@@ -46,3 +46,11 @@ class Flux3ModularPipeline(ModularPipeline):
         if getattr(self, "guider", None) is None:
             return False
         return self.guider._enabled and self.guider.num_conditions > 1
+
+
+class Flux3DistilledModularPipeline(Flux3ModularPipeline):
+    """
+    A ModularPipeline for the step-distilled FLUX.3 model (16 steps, no classifier-free guidance).
+    """
+
+    default_blocks_name = "Flux3DistilledAutoBlocks"

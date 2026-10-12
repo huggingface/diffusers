@@ -173,6 +173,73 @@ class Flux3TextInputStep(ModularPipelineBlocks):
         return components, state
 
 
+class Flux3DistilledTextInputStep(ModularPipelineBlocks):
+    model_name = "flux3-distilled"
+
+    @property
+    def description(self) -> str:
+        return (
+            "This step:\n"
+            "  1. Determines `batch_size` from `prompt_embeds` and the compute `dtype` from the transformer\n"
+            "  2. Repeats the text embeddings to the batch size (batch_size * num_images_per_prompt)\n"
+            "For the step-distilled FLUX.3 model, which samples without classifier-free guidance (no negative "
+            "embeddings)."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("transformer", Flux3Transformer2DModel)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("num_images_per_prompt"),
+            InputParam(
+                "prompt_embeds",
+                required=True,
+                kwargs_type="denoiser_input_fields",
+                type_hint=torch.Tensor,
+                description="Pre-generated text embeddings. Can be generated from text_encoder step.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "batch_size",
+                type_hint=int,
+                description="Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt",
+            ),
+            OutputParam(
+                "dtype",
+                type_hint=torch.dtype,
+                description="Data type of model tensor inputs (the transformer's dtype)",
+            ),
+            OutputParam(
+                "prompt_embeds",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="Text embeddings used to guide the image generation",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(self, components: Flux3ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+
+        block_state.batch_size = block_state.prompt_embeds.shape[0]
+        # the denoiser consumes every tensor this chain prepares, so its dtype is the compute dtype
+        block_state.dtype = components.transformer.dtype
+
+        block_state.prompt_embeds = repeat_tensor_to_batch_size(
+            "prompt_embeds", block_state.prompt_embeds, block_state.batch_size, block_state.num_images_per_prompt
+        ).to(block_state.dtype)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 class Flux3ImageCondInputStep(ModularPipelineBlocks):
     model_name = "flux3"
 
