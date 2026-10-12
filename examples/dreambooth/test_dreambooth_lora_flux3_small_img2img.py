@@ -31,8 +31,8 @@ logger = logging.getLogger()
 stream_handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(stream_handler)
 
-# The tiny FLUX.3 image repo is built by `integration-notes/make_tiny_flux3_repo.py`. Upload it as
-# hf-internal-testing/tiny-flux3-image-modular and drop the env override before opening the PR.
+# Tiny randomly-initialized FLUX.3 image modular repo used for fast CI. The env var is an escape hatch for
+# running against a local build (see `integration-notes/make_tiny_flux3_repo.py`).
 FLUX3_TINY_REPO = os.environ.get("FLUX3_TINY_REPO", "hf-internal-testing/tiny-flux3-image-modular")
 
 
