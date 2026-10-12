@@ -68,6 +68,7 @@ else:
     _import_structure["scheduling_helios_dmd"] = ["HeliosDMDScheduler"]
     _import_structure["scheduling_heun_discrete"] = ["HeunDiscreteScheduler"]
     _import_structure["scheduling_ipndm"] = ["IPNDMScheduler"]
+    _import_structure["scheduling_kandinsky_s2v_piflow"] = ["KandinskyS2VPiflowScheduler"]
     _import_structure["scheduling_k_dpm_2_ancestral_discrete"] = ["KDPM2AncestralDiscreteScheduler"]
     _import_structure["scheduling_k_dpm_2_discrete"] = ["KDPM2DiscreteScheduler"]
     _import_structure["scheduling_lcm"] = ["LCMScheduler"]
@@ -156,6 +157,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_ipndm import IPNDMScheduler
         from .scheduling_k_dpm_2_ancestral_discrete import KDPM2AncestralDiscreteScheduler
         from .scheduling_k_dpm_2_discrete import KDPM2DiscreteScheduler
+        from .scheduling_kandinsky_s2v_piflow import KandinskyS2VPiflowScheduler
         from .scheduling_lcm import LCMScheduler
         from .scheduling_ltx_euler_ancestral_rf import LTXEulerAncestralRFScheduler
         from .scheduling_minimax_h3 import MiniMaxH3Scheduler
