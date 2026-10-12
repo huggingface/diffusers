@@ -24,7 +24,28 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
-          LABELS=$(python utils/label_issues.py)
+          # Truncate untrusted input before passing it to the LLM
+          export ISSUE_TITLE="${ISSUE_TITLE:0:256}"
+          export ISSUE_BODY="${ISSUE_BODY:0:4000}"
+          LABELS_RAW=$(python utils/label_issues.py) || LABELS_RAW='[]'
+          export LABELS_RAW
+          # Validate model output: must be a JSON list of short, safe label strings, emitted as a single line
+          LABELS=$(python3 - <<'PYEOF'
+          import json, os, re
+          try:
+              data = json.loads(os.environ.get("LABELS_RAW", ""))
+          except Exception:
+              data = []
+          if not isinstance(data, list):
+              data = []
+          out = []
+          for l in data:
+              if isinstance(l, str) and re.fullmatch(r"[A-Za-z0-9 _.:/-]{1,50}", l) and l not in out:
+                  out.append(l)
+          print(json.dumps(out[:5]))
+          PYEOF
+          )
+          if [ "$LABELS" = "[]" ]; then LABELS=""; fi
           echo "labels=$LABELS" >> "$GITHUB_OUTPUT"
       - name: Apply labels
         if: steps.get-labels.outputs.labels != ''
@@ -33,6 +54,17 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           LABELS: ${{ steps.get-labels.outputs.labels }}
         run: |
-          for label in $(echo "$LABELS" | python -c "import json,sys; print('\n'.join(json.load(sys.stdin)))"); do
-            gh issue edit "$ISSUE_NUMBER" --add-label "$label"
+          # Only allow labels that already exist in the repository and are not automation/privileged labels
+          ALLOWED=$(gh label list --repo "$GITHUB_REPOSITORY" --limit 500 --json name --jq '.[].name')
+          printf '%s' "$LABELS" | python3 -c "import json,sys; print('\n'.join(json.load(sys.stdin)))" | while IFS= read -r label; do
+            [ -z "$label" ] && continue
+            if printf '%s' "$label" | grep -Eiq '(deploy|approv|safe[- _]?to|ok[- _]?to|merge|release|lgtm|run[- _]|ci[- _:]|security|priority|critical)'; then
+              echo "Skipping privileged label: $label"
+              continue
+            fi
+            if ! printf '%s\n' "$ALLOWED" | grep -Fxq -- "$label"; then
+              echo "Skipping unknown label: $label"
+              continue
+            fi
+            gh issue edit "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --add-label "$label"
           done
