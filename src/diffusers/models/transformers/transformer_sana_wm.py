@@ -347,7 +347,7 @@ class MultiHeadCrossAttention(torch.nn.Module, AttentionModuleMixin):
 
         self.set_processor(processor if processor is not None else self._default_processor_cls())
 
-    def forward(self, x, cond, mask=None):
+    def forward(self, x, cond, mask=None) -> torch.Tensor:
         return self.processor(self, x, cond, attention_mask=mask)
 
 
@@ -365,7 +365,7 @@ class T2IFinalLayer(nn.Module):
         self.scale_shift_table = nn.Parameter(torch.randn(2, hidden_size) / hidden_size**0.5)
         self.out_channels = out_channels
 
-    def forward(self, x, t):
+    def forward(self, x, t) -> torch.Tensor:
         # t: B,1,F,D
         B, N, C = x.shape
         num_frames = t.shape[2]
@@ -394,7 +394,7 @@ class SanaWMCaptionEmbedder(nn.Module):
             in_features=in_channels, hidden_features=hidden_size, out_features=hidden_size, act_layer=act_layer, drop=0
         )
 
-    def forward(self, caption):
+    def forward(self, caption) -> torch.Tensor:
         return self.y_proj(caption)
 
 
@@ -427,7 +427,7 @@ class SanaWMPatchEmbed(nn.Module):
         )
         self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         x = self.proj(x)
         if self.flatten:
             x = x.flatten(2).transpose(1, 2)  # BCTHW -> BNC
@@ -2577,7 +2577,7 @@ class SanaVideoMSCamCtrlBlock(nn.Module):
         plucker_emb=None,
         frame_valid_mask=None,
         chunk_size=None,
-    ):
+    ) -> torch.Tensor:
         """Run one adaLN-Zero block: self-attention -> cross-attention -> FFN.
 
         Args:
@@ -2909,7 +2909,7 @@ class SanaWMTransformer3DModel(ModelMixin, ConfigMixin):
         raymats: torch.Tensor | None = None,
         frame_valid_mask: torch.Tensor | None = None,
         chunk_size: int | None = None,
-    ):
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         """Run the SANA-WM DiT.
 
         Args:

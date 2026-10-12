@@ -1454,7 +1454,7 @@ class SanaWMLTX2RefinerTransformer3DModel(
         kv_cache_mode: str | None = None,
         attention_kwargs: dict | None = None,
         return_dict: bool = True,
-    ):
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         r"""
         Video-only forward pass over a single AR block.
 
