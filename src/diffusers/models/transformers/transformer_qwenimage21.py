@@ -892,11 +892,10 @@ class QwenImage21Transformer2DModel(
             )
 
         image_ids = torch.full_like(image_pad_mask, -1, dtype=torch.long)
-        # `output_size` fixes the output length up front, so the op does not depend on tensor values.
-        block_ids = torch.repeat_interleave(
-            torch.arange(len(block_lengths), device=image_pad_mask.device),
-            torch.tensor(block_lengths, device=image_pad_mask.device),
-            output_size=sum(block_lengths),
+        # Neuron cannot lower a tensor-repeats repeat_interleave, so build the ids from the Python block lengths.
+        block_ids = torch.tensor(
+            [block for block, length in enumerate(block_lengths) for _ in range(length)],
+            device=image_pad_mask.device,
         )
         image_ids[image_positions] = block_ids
 
