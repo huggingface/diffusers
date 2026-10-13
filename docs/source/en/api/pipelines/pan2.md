@@ -51,7 +51,7 @@ pipe.update_components(guider=pipe.guider.new(guidance_scale=5.0))
 Every call takes a single prompt, which is encoded without padding. The transformer therefore never needs an attention mask, and every [attention backend](../../optimization/attention_backends) is available:
 
 ```py
-pipe.transformer.set_attention_backend("flash")  # FlashAttention-2
+pipe.transformer.set_attention_backend("flash_hub")  # FlashAttention-2
 ```
 
 ## Safety checker
