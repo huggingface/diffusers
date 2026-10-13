@@ -66,10 +66,6 @@ class PAN2VaeDecoderStep(ModularPipelineBlocks):
         self, components: PAN2ModularPipeline, state: PipelineState
     ) -> tuple[PAN2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
-        if block_state.output_type == "latent":
-            block_state.videos = block_state.latents
-            self.set_block_state(state, block_state)
-            return components, state
 
         vae = components.vae
         latents = block_state.latents
