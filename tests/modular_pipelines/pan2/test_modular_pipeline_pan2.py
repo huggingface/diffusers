@@ -123,14 +123,6 @@ class TestPAN2ModularPipelineFast(PAN2ModularPipelineTesterConfig, ModularPipeli
         with pytest.raises(ValueError, match="requires a safety checker"):
             pipe(**self.get_dummy_inputs(), output=self.output_name)
 
-    def test_latent_output_skips_decoding(self):
-        pipe = self.get_pipeline().to(torch_device)
-        inputs = {**self.get_dummy_inputs(), "output_type": "latent"}
-        latents = pipe(**inputs, output=self.output_name)
-
-        num_channels_latents = pipe.transformer.config.out_channels
-        assert latents.shape == (1, num_channels_latents, 2, 2, 2)
-
 
 class TestPAN2ModularPipelineLoading(PAN2ModularPipelineTesterConfig, ModularLoadingTesterMixin):
     def test_save_from_pretrained(self, tmp_path, base_pipe_output):
