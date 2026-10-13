@@ -86,6 +86,7 @@ def transformer_config_from_package(package_config):
         "mlp_ratio": dit["mlp_ratio"],
         "axes_dims_rope": tuple(dit["axes_dim"]),
         "rope_theta": dit["theta"],
+        "flow_map": dit.get("flow_map", False),
     }
 
 

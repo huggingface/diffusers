@@ -4018,6 +4018,9 @@ def convert_flux3_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     FLUX3_TRANSFORMER_KEYS_RENAME_DICT = {
         "time_in.in_layer.weight": "timestep_embedder.linear_1.weight",
         "time_in.out_layer.weight": "timestep_embedder.linear_2.weight",
+        # flow map (step-distilled packages): the embedder of the timestep each step jumps to
+        "ref_time_in.in_layer.weight": "target_timestep_embedder.linear_1.weight",
+        "ref_time_in.out_layer.weight": "target_timestep_embedder.linear_2.weight",
         "final_layer.image.linear.weight": "proj_out.weight",
         # original adaLN weights produce [shift, scale]; Flux3AdaLayerNorm expects [scale, shift]
         "final_layer.image.adaLN_modulation.1.weight": "norm_out.linear.weight",

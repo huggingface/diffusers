@@ -10,7 +10,10 @@ The text encoder + processor are vendored from trl-internal-testing's tiny Qwen3
 (hidden 16, 2 layers, real Qwen vocab/processor files); tests pass
 text_encoder_out_layers=(1,), so joint_attention_dim = 16 * 1 = 16.
 
-Upload later as hf-internal-testing/tiny-flux3-image-modular and point the tests there.
+With `--flow_map`, builds the step-distilled counterpart instead (a `flow_map` transformer and
+`Flux3DistilledAutoBlocks`) under ../tiny-flux3-image-distilled-modular.
+
+Upload later as hf-internal-testing/tiny-flux3-image-modular (and -distilled-) and point the tests there.
 """
 
 import json
@@ -27,7 +30,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from diffusers import AutoencoderKLFlux2, Flux3Transformer2DModel, ModularPipeline  # noqa: E402
 
 
-OUT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "tiny-flux3-image-modular"))
+FLOW_MAP = "--flow_map" in sys.argv
+OUT = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "tiny-flux3-image-distilled-modular" if FLOW_MAP else "tiny-flux3-image-modular",
+    )
+)
 TINY_QWEN3VL = "trl-internal-testing/tiny-Qwen3VLForConditionalGeneration"
 
 torch.manual_seed(0)
@@ -66,12 +77,13 @@ transformer = Flux3Transformer2DModel(
     joint_attention_dim=text_hidden,  # tests pass text_encoder_out_layers=(1,)
     timestep_channels=32,
     axes_dims_rope=(2, 2, 2, 2),
+    flow_map=FLOW_MAP,
 )
 transformer.save_pretrained(os.path.join(OUT, "transformer"))
 
 index = {
-    "_class_name": "Flux3ModularPipeline",
-    "_blocks_class_name": "Flux3AutoBlocks",
+    "_class_name": "Flux3DistilledModularPipeline" if FLOW_MAP else "Flux3ModularPipeline",
+    "_blocks_class_name": "Flux3DistilledAutoBlocks" if FLOW_MAP else "Flux3AutoBlocks",
     "_diffusers_version": "0.40.0.dev0",
 }
 for name, lib, cls in [

@@ -138,6 +138,76 @@ class Flux3LoopDenoiser(ModularPipelineBlocks):
         return components, block_state
 
 
+class Flux3DistilledLoopDenoiser(ModularPipelineBlocks):
+    model_name = "flux3-distilled"
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("transformer", Flux3Transformer2DModel)]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Step within the denoising loop that predicts the velocity of the image tokens with a step-distilled "
+            "(flow-map) FLUX.3 transformer: no classifier-free guidance, and each step also passes the transformer the "
+            "timestep it jumps to. The static conditioning fields (`prompt_embeds`, `txt_ids`, `img_ids`, the "
+            "reference image tokens and their ids) arrive via `denoiser_input_fields`. "
+            "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
+            "object (e.g. `Flux3DistilledDenoiseStep`)"
+        )
+
+    @property
+    def inputs(self) -> list[tuple[str, Any]]:
+        return [
+            InputParam(
+                "latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The image latent tokens to denoise. Shape: (B, seq_len, C)",
+            ),
+            InputParam.template("denoiser_input_fields"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [OutputParam("noise_pred", type_hint=torch.Tensor, description="The predicted velocity for this step")]
+
+    @torch.no_grad()
+    def __call__(
+        self, components: Flux3ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> PipelineState:
+        denoiser_input_fields = block_state.denoiser_input_fields
+
+        # transformer kwargs = every collected static field matching the forward signature (`img_ids`, `txt_ids`, and
+        # the `image_cond_*` fields of image-to-image generation)
+        transformer_args = set(inspect.signature(components.transformer.forward).parameters.keys())
+        transformer_kwargs = {
+            field_name: field_value
+            for field_name, field_value in denoiser_input_fields.items()
+            if field_name in transformer_args
+        }
+
+        latents = block_state.latents.to(components.transformer.dtype)
+        batch_size = latents.shape[0]
+        # the flow timestep in [0, 1] (scheduler timesteps are sigmas * 1000), and the one this step jumps to: the next
+        # scheduler timestep, 0 after the last
+        timesteps = block_state.timesteps
+        next_t = timesteps[i + 1] if i + 1 < len(timesteps) else torch.zeros_like(t)
+        timestep = (t / 1000).expand(batch_size).to(latents.dtype)
+        target_timestep = (next_t / 1000).expand(batch_size).to(latents.dtype)
+
+        block_state.noise_pred = components.transformer(
+            hidden_states=latents,
+            encoder_hidden_states=denoiser_input_fields["prompt_embeds"],
+            timestep=timestep,
+            target_timestep=target_timestep,
+            return_dict=False,
+            **transformer_kwargs,
+        )[0]
+
+        return components, block_state
+
+
 class Flux3LoopAfterDenoiser(ModularPipelineBlocks):
     model_name = "flux3"
 
@@ -275,4 +345,74 @@ class Flux3DenoiseStep(Flux3DenoiseLoopWrapper):
             " - `Flux3LoopDenoiser`\n"
             " - `Flux3LoopAfterDenoiser`\n"
             "This block supports text-to-image and image-to-image generation."
+        )
+
+
+# auto_docstring
+class Flux3DistilledDenoiseStep(Flux3DenoiseLoopWrapper):
+    """
+    Denoise step that iteratively denoises the latents for the step-distilled (flow-map) FLUX.3 model.
+      Its loop logic is defined in `Flux3DenoiseLoopWrapper.__call__` method At each iteration, it runs blocks defined
+      in `sub_blocks` sequentially:
+       - `Flux3DistilledLoopDenoiser`
+       - `Flux3LoopAfterDenoiser`
+      This block supports text-to-image and image-to-image generation, without classifier-free guidance.
+
+      Components:
+          transformer (`Flux3Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+      Inputs:
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process.
+          num_inference_steps (`int`):
+              The number of inference steps to use for the denoising process.
+          latents (`Tensor`):
+              The image latent tokens to denoise. Shape: (B, seq_len, C)
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+
+      Outputs:
+          latents (`Tensor`):
+              The denoised latents
+    """
+
+    model_name = "flux3-distilled"
+    """
+    Denoise step that iteratively denoises the latents for the step-distilled (flow-map) FLUX.3 model.
+      Its loop logic is defined in `Flux3DenoiseLoopWrapper.__call__` method At each iteration, it runs blocks defined
+      in `sub_blocks` sequentially:
+       - `Flux3DistilledLoopDenoiser`
+       - `Flux3LoopAfterDenoiser`
+      This block supports text-to-image and image-to-image generation, without classifier-free guidance.
+
+      Components:
+          transformer (`Flux3Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+      Inputs:
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process.
+          num_inference_steps (`int`):
+              The number of inference steps to use for the denoising process.
+          latents (`Tensor`):
+              The image latent tokens to denoise. Shape: (B, seq_len, C)
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+
+      Outputs:
+          latents (`Tensor`):
+              The denoised latents
+    """
+
+    block_classes = [Flux3DistilledLoopDenoiser(), Flux3LoopAfterDenoiser()]
+    block_names = ["denoiser", "after_denoiser"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step that iteratively denoises the latents for the step-distilled (flow-map) FLUX.3 model. \n"
+            "Its loop logic is defined in `Flux3DenoiseLoopWrapper.__call__` method \n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequentially:\n"
+            " - `Flux3DistilledLoopDenoiser`\n"
+            " - `Flux3LoopAfterDenoiser`\n"
+            "This block supports text-to-image and image-to-image generation, without classifier-free guidance."
         )

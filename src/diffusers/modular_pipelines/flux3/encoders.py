@@ -326,3 +326,70 @@ class Flux3TextEncoderStep(ModularPipelineBlocks):
 
         self.set_block_state(state, block_state)
         return components, state
+
+
+class Flux3DistilledTextEncoderStep(Flux3TextEncoderStep):
+    model_name = "flux3-distilled"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Text Encoder step that generates text embeddings using Qwen3-VL to guide the generation with the "
+            "step-distilled FLUX.3 model, which samples without classifier-free guidance (no negative prompt). Takes "
+            f"one prompt per call; it goes through the chat template and is right-padded to a multiple of "
+            f"{self.pad_multiple} tokens."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("prompt", description="The prompt to guide the generation (one prompt per call)"),
+            InputParam.template(
+                "max_sequence_length",
+                default=8192,
+                description="Maximum number of prompt tokens; longer prompts are truncated.",
+            ),
+            InputParam(
+                "text_encoder_out_layers",
+                type_hint=tuple[int],
+                default=(4, 8, 12, 16, 20, 24, 28, 32),
+                required=False,
+                description="Indices of the text-encoder hidden layers whose states are stacked to form the text embeddings",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "prompt_embeds",
+                kwargs_type="denoiser_input_fields",
+                type_hint=torch.Tensor,
+                description="Text embeddings (stacked Qwen3-VL hidden states) used to guide the image generation",
+            ),
+        ]
+
+    @staticmethod
+    def check_inputs(block_state):
+        if not isinstance(block_state.prompt, str):
+            raise ValueError(
+                f"`prompt` must be a str; batched prompts are not supported, got {type(block_state.prompt).__name__}."
+            )
+
+    @torch.no_grad()
+    def __call__(self, components: Flux3ModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        self.check_inputs(block_state)
+
+        block_state.prompt_embeds = self._get_qwen3_vl_prompt_embeds(
+            text_encoder=components.text_encoder,
+            tokenizer=components.tokenizer,
+            prompt=block_state.prompt,
+            device=components._execution_device,
+            max_sequence_length=block_state.max_sequence_length,
+            pad_multiple=self.pad_multiple,
+            hidden_states_layers=block_state.text_encoder_out_layers,
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state

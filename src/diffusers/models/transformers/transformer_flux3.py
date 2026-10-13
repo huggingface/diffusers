@@ -346,7 +346,9 @@ class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
     passes through its own per-mode transformer blocks (`mode_blocks` for the image modes, `txt_mode_blocks` for the
     text context), then the text context and the active image modes are concatenated for the joint single blocks, and
     only the image tokens pass through the output layers. The modulation is per mode: the image tokens are modulated by
-    the flow timestep, the reference image tokens and the text context by timestep `0`.
+    the flow timestep, the reference image tokens and the text context by timestep `0`. A flow-map checkpoint
+    (`flow_map=True`, the step-distilled models) additionally embeds the timestep each denoising step jumps to and adds
+    it to every mode's modulation.
 
     Args:
         in_channels (`int`, defaults to `128`):
@@ -373,6 +375,9 @@ class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
             The base frequency of the rotary positional embeddings.
         eps (`float`, defaults to `1e-6`):
             The epsilon of the layer norms and the QK norms.
+        flow_map (`bool`, defaults to `False`):
+            Whether the model is a flow map (step-distilled): adds the `target_timestep_embedder` and requires
+            `target_timestep` in the forward pass.
     """
 
     _supports_gradient_checkpointing = True
@@ -395,6 +400,7 @@ class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         axes_dims_rope: tuple[int, ...] = (32, 32, 32, 32),
         rope_theta: int = 10000,
         eps: float = 1e-6,
+        flow_map: bool = False,
     ):
         super().__init__()
 
@@ -409,6 +415,12 @@ class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         self.time_proj = Timesteps(num_channels=timestep_channels, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.timestep_embedder = TimestepEmbedding(
             in_channels=timestep_channels, time_embed_dim=self.inner_dim, sample_proj_bias=False
+        )
+        # flow map (step-distilled checkpoints): a second embedder for the timestep each step jumps to
+        self.target_timestep_embedder = (
+            TimestepEmbedding(in_channels=timestep_channels, time_embed_dim=self.inner_dim, sample_proj_bias=False)
+            if flow_map
+            else None
         )
 
         # 3. Modulation: one head per mode (+ text) for the per-mode blocks and for the joint blocks
@@ -486,6 +498,7 @@ class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         txt_ids: torch.Tensor,
         image_cond_hidden_states: torch.Tensor | None = None,
         image_cond_ids: torch.Tensor | None = None,
+        target_timestep: torch.Tensor | None = None,
         attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
@@ -509,6 +522,9 @@ class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
                 VAE-encoded reference image tokens (clean conditioning content, for image-to-image generation).
             image_cond_ids (`torch.Tensor` of shape `(cond_seq_len, 4)`, *optional*):
                 Position ids of the reference image tokens. Required with `image_cond_hidden_states`.
+            target_timestep (`torch.Tensor` of shape `(batch_size,)`, *optional*):
+                Flow timestep in `[0, 1]` that the current denoising step jumps to. Required by, and only by, a flow-map
+                model (`flow_map=True`).
             attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary whose `scale` entry, if specified, scales the LoRA layers for this forward pass.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -524,6 +540,10 @@ class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
             raise ValueError("`image_cond_hidden_states` requires `image_cond_ids`.")
         if image_cond_hidden_states is None and image_cond_ids is not None:
             raise ValueError("`image_cond_ids` was passed without `image_cond_hidden_states`.")
+        if (target_timestep is not None) != bool(self.config.flow_map):
+            raise ValueError(
+                "`target_timestep` is required by, and only by, a flow-map transformer (`flow_map=True`)."
+            )
 
         batch_size, image_seq_len = hidden_states.shape[:2]
         dtype = hidden_states.dtype
@@ -531,9 +551,17 @@ class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         # 1. Timestep embeddings: the image tokens at `timestep`, the text context and the reference tokens at 0.
         #    Each is a per-token embedding (batch_size, seq_len, dim) since the modulation is per token.
         image_temb = self.time_proj(timestep.to(dtype) * 1000)
-        image_temb = self.timestep_embedder(image_temb.to(dtype))[:, None, :].expand(batch_size, image_seq_len, -1)
+        image_temb = self.timestep_embedder(image_temb.to(dtype))[:, None, :]
         zero_temb = self.time_proj(torch.zeros(batch_size, device=hidden_states.device, dtype=dtype))
         zero_temb = self.timestep_embedder(zero_temb.to(dtype))[:, None, :]
+        if target_timestep is not None:
+            # flow map: the embedding of the timestep this step jumps to is added to every mode's embedding, so it
+            # reaches the per-mode blocks, the joint blocks and the output layer
+            target_temb = self.time_proj(target_timestep.to(dtype) * 1000)
+            target_temb = self.target_timestep_embedder(target_temb.to(dtype))[:, None, :]
+            image_temb = image_temb + target_temb
+            zero_temb = zero_temb + target_temb
+        image_temb = image_temb.expand(batch_size, image_seq_len, -1)
         zero_temb_act = F.silu(zero_temb)
 
         # 2. Text context: the two modulation sets, input projection and RoPE
