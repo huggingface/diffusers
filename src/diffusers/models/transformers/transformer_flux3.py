@@ -120,12 +120,13 @@ class Flux3AttnProcessor:
         key = key.unflatten(-1, (attn.heads, -1))
         value = value.unflatten(-1, (attn.heads, -1))
 
-        query = attn.norm_q(query)
-        key = attn.norm_k(key)
+        query = attn.norm_q(query.float())
+        key = attn.norm_k(key.float())
 
         if image_rotary_emb is not None:
             query = apply_rotary_emb(query, image_rotary_emb, sequence_dim=1)
             key = apply_rotary_emb(key, image_rotary_emb, sequence_dim=1)
+        query, key = query.to(value.dtype), key.to(value.dtype)
 
         hidden_states = dispatch_attention_fn(
             query,
@@ -382,6 +383,8 @@ class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
 
     _supports_gradient_checkpointing = True
     _no_split_modules = ["Flux3ModeTransformerBlock", "Flux3SingleTransformerBlock"]
+    # QK norm and RoPE run in fp32 with a single cast back, matching the BFL implementation
+    _keep_in_fp32_modules = ["norm_q", "norm_k"]
     _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
     _repeated_blocks = ["Flux3ModeTransformerBlock", "Flux3SingleTransformerBlock"]
 
