@@ -24,6 +24,7 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -125,3 +126,21 @@ class TestFlux3TransformerTraining(Flux3TransformerTesterConfig, TrainingTesterM
 
 class TestFlux3TransformerAttention(Flux3TransformerTesterConfig, AttentionTesterMixin):
     pass
+
+
+class TestFlux3SingleFile(Flux3TransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/herzogenhorn/f3-image-small/blob/main/model.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "diffusers-internal-dev/f3-small-img"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16

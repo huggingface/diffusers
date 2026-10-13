@@ -39,6 +39,7 @@ from .single_file_utils import (
     convert_cosmos_transformer_checkpoint_to_diffusers,
     convert_ernie_image_transformer_checkpoint_to_diffusers,
     convert_flux2_transformer_checkpoint_to_diffusers,
+    convert_flux3_transformer_checkpoint_to_diffusers,
     convert_flux_transformer_checkpoint_to_diffusers,
     convert_hidream_transformer_to_diffusers,
     convert_hunyuan_video_transformer_to_diffusers,
@@ -195,6 +196,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "Flux2Transformer2DModel": {
         "checkpoint_mapping_fn": convert_flux2_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "Flux3Transformer2DModel": {
+        "checkpoint_mapping_fn": convert_flux3_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
     "ZImageTransformer2DModel": {
