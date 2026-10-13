@@ -58,41 +58,49 @@ class AnimaTextEncoderStep(ModularPipelineBlocks):
         return [
             OutputParam(
                 "qwen_prompt_embeds",
+                kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
                 description="Qwen prompt embeddings to be consumed by the Anima text conditioner.",
             ),
             OutputParam(
                 "qwen_attention_mask",
+                kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
                 description="Qwen prompt attention mask to be consumed by the Anima text conditioner.",
             ),
             OutputParam(
                 "t5_input_ids",
+                kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
                 description="T5 prompt token ids to be consumed by the Anima text conditioner.",
             ),
             OutputParam(
                 "t5_attention_mask",
+                kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
                 description="T5 prompt attention mask to be consumed by the Anima text conditioner.",
             ),
             OutputParam(
                 "negative_qwen_prompt_embeds",
+                kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
                 description="Negative Qwen prompt embeddings to be consumed by the Anima text conditioner.",
             ),
             OutputParam(
                 "negative_qwen_attention_mask",
+                kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
                 description="Negative Qwen prompt attention mask to be consumed by the Anima text conditioner.",
             ),
             OutputParam(
                 "negative_t5_input_ids",
+                kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
                 description="Negative T5 prompt token ids to be consumed by the Anima text conditioner.",
             ),
             OutputParam(
                 "negative_t5_attention_mask",
+                kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
                 description="Negative T5 prompt attention mask to be consumed by the Anima text conditioner.",
             ),
