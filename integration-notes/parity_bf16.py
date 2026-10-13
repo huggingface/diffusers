@@ -12,7 +12,7 @@ with <ref_image_0>, which also exercises the i2i size derived from the reference
 <case>_diffusers.png and <case>_side_by_side.png under OUT, and prints the mean pixel difference.
 
 `F3_VARIANT=sd` runs the step-distilled variant instead (16 steps, no CFG): BFL's flow-map branch against the converted
-`flux3-image-distilled-modular` repo, under OUT-sd.
+distilled Hub repo, under OUT-sd.
 """
 
 import os
@@ -27,7 +27,9 @@ REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 VARIANT = os.environ.get("F3_VARIANT")  # None (bf16 base) or "sd" (step-distilled)
 PACKAGE = "/raid/yiyi/f3-image-small"  # the BFL package
 BFL_CODE = os.path.join(REPO, "..", "bfl-f3-flowmap" if VARIANT else "bfl-f3-image")  # the reference implementation
-MODULAR_REPO = "/raid/yiyi/flux3-image-distilled-modular" if VARIANT == "sd" else "/raid/yiyi/flux3-image-modular"
+MODULAR_REPO = (
+    "diffusers-internal-dev/f3-small-image-distilled" if VARIANT == "sd" else "diffusers-internal-dev/f3-small-img"
+)
 OUT = "/raid/yiyi/diffusers-scratch/flux3-image/parity-bf16" + (f"-{VARIANT}" if VARIANT else "")
 
 SEED = 0
@@ -79,6 +81,9 @@ def reference():
 def diffusers():
     sys.path.insert(0, os.path.join(REPO, "src"))
     from diffusers import AutoencoderKLFlux2, ModularPipeline
+    from diffusers.models.transformers import transformer_flux3
+
+    print(f"diffusers source: {transformer_flux3.__file__}")
 
     pipe = ModularPipeline.from_pretrained(MODULAR_REPO)
     pipe.load_components(dtype=torch.bfloat16)
