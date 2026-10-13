@@ -6,6 +6,7 @@ import torch
 from huggingface_hub import hf_hub_download
 
 from diffusers import Flux3Transformer2DModel
+from diffusers.loaders.single_file_utils import convert_flux3_transformer_checkpoint_to_diffusers
 
 
 """
@@ -87,72 +88,6 @@ def transformer_config_from_package(package_config):
         "rope_theta": dit["theta"],
         "flow_map": dit.get("flow_map", False),
     }
-
-
-def swap_scale_shift(weight):
-    # original adaLN weights produce [shift, scale]; diffusers Flux3AdaLayerNorm expects [scale, shift]
-    shift, scale = weight.chunk(2, dim=0)
-    return torch.cat([scale, shift], dim=0)
-
-
-# inner-module renames shared by the mode blocks and the joint single blocks
-BLOCK_KEY_MAPPING = {
-    "q_proj.weight": "attn.to_q.weight",
-    "k_proj.weight": "attn.to_k.weight",
-    "v_proj.weight": "attn.to_v.weight",
-    "attn_out.weight": "attn.to_out.0.weight",
-    "norm.query_norm.scale": "attn.norm_q.weight",
-    "norm.key_norm.scale": "attn.norm_k.weight",
-    "mlp_in.weight": "ff.linear_in.weight",
-    "mlp_out.weight": "ff.linear_out.weight",
-}
-
-# module-prefix renames
-PREFIX_MAPPING = {
-    "emb_in.": "x_embedders.",
-    "txt_in.": "context_embedder.",
-    "content_mode_blocks.": "mode_blocks.",
-    "single_blocks.": "single_transformer_blocks.",
-}
-
-# exact-key renames
-KEY_MAPPING = {
-    "time_in.in_layer.weight": "timestep_embedder.linear_1.weight",
-    "time_in.out_layer.weight": "timestep_embedder.linear_2.weight",
-    # flow map (step-distilled packages): the embedder of the timestep each step jumps to
-    "ref_time_in.in_layer.weight": "target_timestep_embedder.linear_1.weight",
-    "ref_time_in.out_layer.weight": "target_timestep_embedder.linear_2.weight",
-    # final_layer.image.linear -> proj_out; final_layer.image.adaLN_modulation.1 -> norm_out.linear ([shift, scale] -> [scale, shift])
-    "final_layer.image.linear.weight": "proj_out.weight",
-    "final_layer.image.adaLN_modulation.1.weight": "norm_out.linear.weight",
-}
-
-
-def convert_flux3_transformer_checkpoint_to_diffusers(original_state_dict):
-    converted_state_dict = {}
-    for key, value in original_state_dict.items():
-        # training-only REPA projection heads, not part of the inference model
-        if key.startswith("repa_projectors."):
-            continue
-        if key in KEY_MAPPING:
-            if key.endswith("adaLN_modulation.1.weight"):
-                value = swap_scale_shift(value)
-            converted_state_dict[KEY_MAPPING[key]] = value
-            continue
-
-        new_key = key
-        for old_prefix, new_prefix in PREFIX_MAPPING.items():
-            if new_key.startswith(old_prefix):
-                new_key = new_prefix + new_key[len(old_prefix) :]
-                break
-        new_key = new_key.replace(".lin.weight", ".linear.weight")
-        for old_suffix, new_suffix in BLOCK_KEY_MAPPING.items():
-            if new_key.endswith(old_suffix):
-                new_key = new_key[: -len(old_suffix)] + new_suffix
-                break
-
-        converted_state_dict[new_key] = value
-    return converted_state_dict
 
 
 def main(args):

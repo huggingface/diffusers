@@ -19,7 +19,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import apply_lora_scale, logging
 from ...utils.torch_utils import maybe_adjust_dtype_for_device
 from ..attention import AttentionMixin, AttentionModuleMixin
@@ -337,7 +337,7 @@ class Flux3AdaLayerNorm(nn.Module):
         return self.norm(hidden_states) * (1 + scale) + shift
 
 
-class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, AttentionMixin):
+class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin, AttentionMixin):
     """
     The Transformer model introduced in FLUX.3 for text-to-image and image-to-image generation.
 

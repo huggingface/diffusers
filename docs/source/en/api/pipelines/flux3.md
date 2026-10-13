@@ -123,6 +123,29 @@ pipe.load_components(dtype=torch.bfloat16)
 pipe.enable_auto_cpu_offload(device="cuda")
 ```
 
+## Single-file loading
+
+[`Flux3Transformer2DModel`] loads the transformer straight from a Black Forest Labs model package with [`~loaders.FromOriginalModelMixin.from_single_file`]. The package `config.json` is not read; pass the diffusers config with `config` and `subfolder`.
+
+```python
+import torch
+from diffusers import Flux3Transformer2DModel, ModularPipeline
+
+transformer = Flux3Transformer2DModel.from_single_file(
+    "https://huggingface.co/black-forest-labs/FLUX.3-image-small/blob/main/model.safetensors",
+    config="black-forest-labs/FLUX.3-image-small",
+    subfolder="transformer",
+    dtype=torch.bfloat16,
+)
+
+pipe = ModularPipeline.from_pretrained("black-forest-labs/FLUX.3-image-small")
+pipe.load_components(names=["text_encoder", "tokenizer", "vae"], dtype=torch.bfloat16)
+pipe.update_components(transformer=transformer)
+pipe.to("cuda")
+```
+
+Load the other components by name first: [`~ModularPipeline.load_components`] without `names` would also load the transformer from the pipeline repo.
+
 ## Flux3ModularPipeline
 
 [[autodoc]] Flux3ModularPipeline
