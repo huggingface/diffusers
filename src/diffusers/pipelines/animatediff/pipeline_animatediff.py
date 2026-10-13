@@ -595,7 +595,7 @@ class AnimateDiffPipeline(
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         decode_chunk_size: int = 16,
         **kwargs,
-    ):
+    ) -> AnimateDiffPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

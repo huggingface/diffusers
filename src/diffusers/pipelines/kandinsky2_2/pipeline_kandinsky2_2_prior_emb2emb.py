@@ -410,7 +410,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         guidance_scale: float = 4.0,
         output_type: str | None = "pt",  # pt only
         return_dict: bool = True,
-    ):
+    ) -> KandinskyPriorPipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 

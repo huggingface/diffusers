@@ -30,13 +30,23 @@ from tqdm.auto import tqdm
 from typing_extensions import Self
 
 from ..configuration_utils import ConfigMixin, FrozenDict
+from ..models.auto_model import AutoModel
+from ..models.modeling_utils import ModelMixin
 from ..pipelines.pipeline_loading_utils import (
     LOADABLE_CLASSES,
     _fetch_class_library_tuple,
     _unwrap_model,
+    filter_model_files,
     simple_get_class_obj,
 )
-from ..utils import PushToHubMixin, deprecate, is_accelerate_available, logging
+from ..utils import (
+    TRANSFORMERS_COMPONENT_AUX_FILES,
+    PushToHubMixin,
+    deprecate,
+    is_accelerate_available,
+    is_transformers_available,
+    logging,
+)
 from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
 from ..utils.hub_utils import _resolve_revision, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import empty_device_cache, is_compiled_module
@@ -59,10 +69,44 @@ from .modular_pipeline_utils import (
 )
 
 
+# classes whose components are loaded from weight files; a component without a type hint is loaded with `AutoModel`
+_MODEL_CLASSES = (ModelMixin, AutoModel)
+if is_transformers_available():
+    from transformers import PreTrainedModel
+
+    _MODEL_CLASSES = (*_MODEL_CLASSES, PreTrainedModel)
+
 if is_accelerate_available():
     import accelerate
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def _is_local_component(
+    pretrained_model_name_or_path: str | os.PathLike | None, component_spec: ComponentSpec
+) -> bool:
+    """
+    Whether the component's files are in `pretrained_model_name_or_path`, a local pipeline directory: weight files for
+    a model, the config file its class saves for a diffusers component without weights (schedulers, guiders, ...), one
+    of `TRANSFORMERS_COMPONENT_AUX_FILES` for a transformers one (tokenizers, processors, ...).
+    """
+    if pretrained_model_name_or_path is None:
+        return False
+    component_dir = os.path.join(pretrained_model_name_or_path, component_spec.subfolder or "")
+    if not os.path.isdir(component_dir):
+        return False
+    filenames = os.listdir(component_dir)
+
+    class_obj = component_spec.type_hint
+    is_model = class_obj is None or issubclass(class_obj, _MODEL_CLASSES)
+
+    if is_model:
+        return len(filter_model_files(filenames)) > 0
+
+    if issubclass(class_obj, ConfigMixin):
+        return class_obj.config_name in filenames
+
+    return any(filename in filenames for filename in TRANSFORMERS_COMPONENT_AUX_FILES)
 
 
 # map regular pipeline to modular pipeline class name
@@ -152,6 +196,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("helios", _create_default_map_fn("HeliosModularPipeline")),
         ("helios-pyramid", _helios_pyramid_map_fn),
         ("hunyuan-video-1.5", _create_default_map_fn("HunyuanVideo15ModularPipeline")),
+        ("echo", _create_default_map_fn("EchoModularPipeline")),
         ("ltx", _create_default_map_fn("LTXModularPipeline")),
         ("ltx2", _create_default_map_fn("LTX2ModularPipeline")),
         ("ltx2.5", _create_default_map_fn("LTX25ModularPipeline")),
@@ -777,7 +822,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         raise NotImplementedError(f"Subclass {self.__class__.__name__} must implement the `select_block` method.")
 
     @torch.no_grad()
-    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, pipeline, state: PipelineState) -> tuple["ModularPipeline", PipelineState]:
         trigger_kwargs = {name: state.get(name) for name in self.block_trigger_inputs if name is not None}
         block_name = self.select_block(**trigger_kwargs)
 
@@ -1149,7 +1194,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         return self.intermediate_outputs
 
     @torch.no_grad()
-    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, pipeline, state: PipelineState) -> tuple["ModularPipeline", PipelineState]:
         for block_name, block in self.sub_blocks.items():
             try:
                 pipeline, state = block(pipeline, state)
@@ -1533,7 +1578,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
                 raise
         return components, state
 
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple["ModularPipeline", PipelineState]:
         raise NotImplementedError("`__call__` method needs to be implemented by the subclass")
 
     @property
@@ -1727,6 +1772,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             )
 
         if blocks is None:
+            blocks_class = None
             if modular_config_dict is not None:
                 blocks_class_name = modular_config_dict.get("_blocks_class_name")
             else:
@@ -1740,14 +1786,14 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     blocks_class_name = self.default_blocks_name
                     blocks_class = getattr(diffusers_module, blocks_class_name)
 
-            if blocks_class is not None:
-                blocks = blocks_class()
-            else:
-                logger.warning(f"`blocks` is `None`, no default blocks class found for {self.__class__.__name__}")
+            if blocks_class is None:
+                raise ValueError(
+                    f"No pipeline blocks could be resolved for {self.__class__.__name__}: pass `blocks`, or use a "
+                    "pipeline class with a `default_blocks_name`."
+                )
+            blocks = blocks_class()
 
         if workflow is not None:
-            if blocks is None:
-                raise ValueError(f"`workflow={workflow!r}` requires pipeline blocks, but none could be resolved.")
             blocks = blocks.get_workflow(workflow)
 
         self._blocks = blocks
@@ -1764,6 +1810,11 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     library, class_name, component_spec_dict = value
                     component_spec = self._dict_to_component_spec(name, component_spec_dict)
                     component_spec.default_creation_method = "from_pretrained"
+                    # a local copy of the repo (e.g. `hf download --local-dir`) keeps the original index, which
+                    # points at the Hub; load the components whose files are present locally from the copy
+                    if _is_local_component(pretrained_model_name_or_path, component_spec):
+                        component_spec.pretrained_model_name_or_path = str(pretrained_model_name_or_path)
+                        component_spec.revision = None
                     self._component_specs[name] = component_spec
 
                 elif name in self._config_specs:

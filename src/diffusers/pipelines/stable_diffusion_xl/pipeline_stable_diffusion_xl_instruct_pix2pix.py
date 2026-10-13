@@ -752,7 +752,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
         target_size: tuple[int, int] = None,
         ip_adapter_image: PipelineImageInput | None = None,
         ip_adapter_image_embeds: list[torch.Tensor] | None = None,
-    ):
+    ) -> StableDiffusionXLPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

@@ -6,13 +6,15 @@ on:
   pull_request_review_comment:
     types: [created]
 
-permissions:
-  contents: write
-  pull-requests: write
-  issues: read
+
+permissions: {}
 
 jobs:
   claude-review:
+    permissions:
+      contents: write
+      issues: read
+      pull-requests: write
     if: |
       (
         github.event_name == 'issue_comment' &&

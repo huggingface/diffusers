@@ -426,7 +426,7 @@ image
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-double-prompt.png" alt="generated image of an astronaut in a jungle in the style of a van gogh painting"/>
 </div>
 
-The dual text-encoders also support textual inversion embeddings that need to be loaded separately as explained in the [textual inversion](../../../using-diffusers/textual_inversion_inference) guide.
+The dual text-encoders also support textual inversion embeddings that need to be loaded separately as explained in the [textual inversion](../../../using-diffusers/legacy_adapters#textual-inversion) guide.
 
 ## Optimizations
 
@@ -448,7 +448,7 @@ SDXL is a large model, and you may need to optimize memory to get it to run on y
 + refiner.unet = torch.compile(refiner.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
-3. Enable [xFormers](../../../optimization/xformers) to run SDXL if `torch<2.0`:
+3. Enable [xFormers](../../../optimization/attention_backends) to run SDXL if `torch<2.0`:
 
 ```diff
 + base.enable_xformers_memory_efficient_attention()
