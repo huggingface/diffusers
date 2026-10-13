@@ -39,7 +39,8 @@ Stage 4 — bucket: group tests by top-level `tests/` folder for the CI matrix. 
     `tests/pipelines` are split further into one job per feature mixin (via the pytest markers the
     mixins carry) so a large selection fans out instead of serialising in one job.
 Stage 5 — report: print the import chain that selected each test (kept as a CI artifact) and write a
-    markdown job summary of how many tests each modified file triggers.
+    markdown job summary of how many tests each modified file triggers and how many source files trigger
+    each modified test, on the PR and on the base commit.
 
 Usage:
 
@@ -164,8 +165,11 @@ def get_diff(repo: Repo, base_commit, commits) -> List[str]:
     return list(dict.fromkeys(code_diff))
 
 
-def get_modified_python_files(diff_with_last_commit: bool = False) -> List[str]:
-    """List Python files modified between HEAD and either main (default) or the previous commit."""
+def get_modified_python_files(diff_with_last_commit: bool = False) -> Tuple[List[str], str]:
+    """List Python files modified between HEAD and either main (default) or the previous commit.
+
+    Also returns the base commit the diff was taken against, so the import graph can be rebuilt at that point.
+    """
     repo = Repo(PATH_TO_REPO)
     if diff_with_last_commit:
         base_label = "previous commit"
@@ -175,7 +179,7 @@ def get_modified_python_files(diff_with_last_commit: bool = False) -> List[str]:
         base_label = f"merge-base with main ({upstream_main.commit})"
         commits = repo.merge_base(upstream_main, repo.head)
     print(f"Diffing HEAD ({repo.head.commit}) against {base_label}: {[str(c) for c in commits]}")
-    return get_diff(repo, repo.head.commit, commits)
+    return get_diff(repo, repo.head.commit, commits), commits[0].hexsha
 
 
 # ============================================================
@@ -443,34 +447,88 @@ def _tests_triggered_by(f: str, reverse_map: Dict[str, List[str]]) -> set:
     return triggered
 
 
-def _write_summary(
-    summary_file: str, modified_files: List[str], test_files: List[str], reverse_map: Dict[str, List[str]]
-):
-    """Write a short markdown report for the CI job summary: how many tests each modified file triggers.
+def _graph_at(commit: str) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
+    """Direct and reverse dependency maps with the repo checked out at `commit`."""
+    with checkout_commit(Repo(PATH_TO_REPO), commit):
+        direct_deps = create_direct_dependency_map()
+    return direct_deps, create_reverse_dependency_map(direct_deps)
 
-    A file with outsized reach is the cue for a maintainer to open the per-test import chains in the artifact.
+
+def _test_reach(reverse_map: Dict[str, List[str]]) -> Dict[str, int]:
+    """For every test file, the number of `src/` files whose change selects it."""
+    reach: Dict[str, int] = collections.Counter()
+    for src, dependents in reverse_map.items():
+        if src.startswith("src/"):
+            reach.update(t for t in dependents if _is_test_file(t))
+    return reach
+
+
+def _write_summary(
+    summary_file: str,
+    modified_files: List[str],
+    test_files: List[str],
+    reverse_map: Dict[str, List[str]],
+    base_commit: str,
+):
+    """Write a short markdown report for the CI job summary, comparing the PR's import graph to the base's.
+
+    Modified source files: how many test files each one triggers, on the PR and on the base. Modified and
+    added test files: the same, plus how many source files trigger the test (its reach). A top-level import
+    of a hub such as `auto_pipeline.py` roughly doubles a test's reach, and from then on the test runs on
+    every PR touching any pipeline; the PR adding the import is the only place to see it. A new file has no
+    base value, so its numbers stand alone. Test files that trigger only themselves and whose reach did not
+    change are counted on one line instead of listed.
     """
+    base_direct, base_reverse = _graph_at(base_commit)
+    reach, base_reach = _test_reach(reverse_map), _test_reach(base_reverse)
+    triggered = {f: len(_tests_triggered_by(f, reverse_map)) for f in modified_files}
+    base_triggered = {f: len(_tests_triggered_by(f, base_reverse)) for f in modified_files}
+    on_base = lambda f, value: "new file" if f not in base_direct else str(value)  # noqa: E731
+
     lines = [
         "## Test fetcher",
         "",
         f"Selected {len(test_files)} test files from {len(modified_files)} modified Python files.",
-        "",
-        "| Modified file | Test files it triggers |",
-        "|---|---|",
     ]
-    # A modified file that pulls in nothing beyond itself gets no row of its own; whatever the listed rows do
-    # not reach is modified test files running only themselves, reported as one line.
-    triggered = {f: _tests_triggered_by(f, reverse_map) for f in modified_files}
-    covered = set()
-    for f in sorted(modified_files, key=lambda f: (-len(triggered[f]), f)):
-        if len(triggered[f]) > (1 if _is_test_file(f) else 0):
-            lines.append(f"| `{f}` | {len(triggered[f])} |")
-            covered |= triggered[f]
-    remaining = set(test_files) - covered
-    if remaining:
-        lines.append(f"| Modified test files | {len(remaining)} |")
-    lines.append(f"| **Distinct test files selected** | **{len(test_files)}** |")
+    by_reach = sorted(modified_files, key=lambda f: (-triggered[f], f))
 
+    src_rows = [
+        f"| `{f}` | {triggered[f]} | {on_base(f, base_triggered[f])} |"
+        for f in by_reach
+        if not _is_test_file(f) and (triggered[f] or base_triggered[f])
+    ]
+    if src_rows:
+        lines += [
+            "",
+            "**Modified source files**",
+            "",
+            "| File | Test files it triggers | On base |",
+            "|---|---|---|",
+        ] + src_rows
+
+    test_rows, quiet = [], []
+    for f in by_reach:
+        if f not in test_files:  # a source file, or a test file the diff deleted
+            continue
+        if triggered[f] > 1 or f not in base_direct or reach[f] != base_reach[f]:
+            test_rows.append(f"| `{f}` | {triggered[f]} | {reach[f]} | {on_base(f, base_reach[f])} |")
+        else:
+            quiet.append(f)
+    if quiet:
+        noun = "file" if len(quiet) == 1 else "files"
+        test_rows.append(
+            f"| {len(quiet)} other modified test {noun}, each triggering only itself | {len(quiet)} | unchanged | |"
+        )
+    if test_rows:
+        lines += [
+            "",
+            "**Modified and added test files**",
+            "",
+            "| File | Test files it triggers | Source files that trigger it | On base |",
+            "|---|---|---|---|",
+        ] + test_rows
+
+    lines += ["", f"**Distinct test files selected: {len(test_files)}**"]
     Path(summary_file).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -586,7 +644,7 @@ def _is_test_file(path: str) -> bool:
 
 def fetch_tests_to_run(json_output_file: str, summary_file: str, diff_with_last_commit: bool):
     """Determine the tests to run from the diff, write `test_map.json` and the markdown job summary."""
-    modified_files = get_modified_python_files(diff_with_last_commit=diff_with_last_commit)
+    modified_files, base_commit = get_modified_python_files(diff_with_last_commit=diff_with_last_commit)
     direct_deps = create_direct_dependency_map()
     reverse_map = create_reverse_dependency_map(direct_deps)
 
@@ -599,7 +657,7 @@ def fetch_tests_to_run(json_output_file: str, summary_file: str, diff_with_last_
 
     test_files_to_run = sorted(p for p in selected if (PATH_TO_REPO / p).exists())
     _print_selection_report(test_files_to_run, modified_files, direct_deps)
-    _write_summary(summary_file, modified_files, test_files_to_run, reverse_map)
+    _write_summary(summary_file, modified_files, test_files_to_run, reverse_map, base_commit)
     _write_matrix(json_output_file, test_files_to_run)
 
 
