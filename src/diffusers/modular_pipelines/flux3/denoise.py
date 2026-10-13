@@ -91,26 +91,27 @@ class Flux3LoopDenoiser(ModularPipelineBlocks):
     def __call__(
         self, components: Flux3ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
     ) -> PipelineState:
-        denoiser_input_fields = block_state.denoiser_input_fields
+        denoiser_input_fields = dict(block_state.denoiser_input_fields)
         guider_inputs = {
             "encoder_hidden_states": (
-                denoiser_input_fields.get("prompt_embeds"),
-                denoiser_input_fields.get("negative_prompt_embeds"),
+                denoiser_input_fields.pop("prompt_embeds", None),
+                denoiser_input_fields.pop("negative_prompt_embeds", None),
             ),
             "txt_ids": (
-                denoiser_input_fields.get("txt_ids"),
-                denoiser_input_fields.get("negative_txt_ids"),
+                denoiser_input_fields.pop("txt_ids", None),
+                denoiser_input_fields.pop("negative_txt_ids", None),
             ),
         }
 
-        # transformer kwargs = every collected static field matching the forward signature (`img_ids`, and the
-        # `image_cond_*` fields of image-to-image generation)
+        # the remaining collected fields that match the forward signature go straight to the transformer (`img_ids`,
+        # and the `image_cond_*` fields of image-to-image generation)
         transformer_args = set(inspect.signature(components.transformer.forward).parameters.keys())
-        transformer_kwargs = {
-            field_name: field_value
-            for field_name, field_value in denoiser_input_fields.items()
-            if field_name in transformer_args and field_name not in guider_inputs
-        }
+        transformer_kwargs = {}
+        for field_name in list(denoiser_input_fields):
+            if field_name in transformer_args:
+                transformer_kwargs[field_name] = denoiser_input_fields.pop(field_name)
+        if denoiser_input_fields and i == 0:
+            logger.warning(f"`denoiser_input_fields` not passed to the transformer: {sorted(denoiser_input_fields)}")
 
         latents = block_state.latents.to(components.transformer.dtype)
         # the flow timestep in [0, 1] (scheduler timesteps are sigmas * 1000); the transformer applies it to every
@@ -176,16 +177,18 @@ class Flux3DistilledLoopDenoiser(ModularPipelineBlocks):
     def __call__(
         self, components: Flux3ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
     ) -> PipelineState:
-        denoiser_input_fields = block_state.denoiser_input_fields
+        denoiser_input_fields = dict(block_state.denoiser_input_fields)
+        prompt_embeds = denoiser_input_fields.pop("prompt_embeds")
 
-        # transformer kwargs = every collected static field matching the forward signature (`img_ids`, `txt_ids`, and
-        # the `image_cond_*` fields of image-to-image generation)
+        # the remaining collected fields that match the forward signature go straight to the transformer (`img_ids`,
+        # `txt_ids`, and the `image_cond_*` fields of image-to-image generation)
         transformer_args = set(inspect.signature(components.transformer.forward).parameters.keys())
-        transformer_kwargs = {
-            field_name: field_value
-            for field_name, field_value in denoiser_input_fields.items()
-            if field_name in transformer_args
-        }
+        transformer_kwargs = {}
+        for field_name in list(denoiser_input_fields):
+            if field_name in transformer_args:
+                transformer_kwargs[field_name] = denoiser_input_fields.pop(field_name)
+        if denoiser_input_fields and i == 0:
+            logger.warning(f"`denoiser_input_fields` not passed to the transformer: {sorted(denoiser_input_fields)}")
 
         latents = block_state.latents.to(components.transformer.dtype)
         batch_size = latents.shape[0]
@@ -198,7 +201,7 @@ class Flux3DistilledLoopDenoiser(ModularPipelineBlocks):
 
         block_state.noise_pred = components.transformer(
             hidden_states=latents,
-            encoder_hidden_states=denoiser_input_fields["prompt_embeds"],
+            encoder_hidden_states=prompt_embeds,
             timestep=timestep,
             target_timestep=target_timestep,
             return_dict=False,
