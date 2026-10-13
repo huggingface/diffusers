@@ -17,7 +17,6 @@ import torch
 from transformers import Qwen2Tokenizer, Qwen3_5TextModel
 
 from ...configuration_utils import FrozenDict
-from ...guiders import ClassifierFreeGuidance
 from ...models import AutoencoderKLWan
 from ...utils import logging
 from ...video_processor import VideoProcessor
@@ -63,7 +62,8 @@ class PAN2TextEncoderStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Text encoder step that encodes the prompt, and the negative prompt when guidance needs it, with Qwen3.5."
+            "Text encoder step that encodes the prompt, and the negative prompt unless guidance is disabled, with "
+            "Qwen3.5."
         )
 
     @property
@@ -71,12 +71,6 @@ class PAN2TextEncoderStep(ModularPipelineBlocks):
         return [
             ComponentSpec("text_encoder", Qwen3_5TextModel),
             ComponentSpec("tokenizer", Qwen2Tokenizer),
-            ComponentSpec(
-                "guider",
-                ClassifierFreeGuidance,
-                config=FrozenDict({"guidance_scale": 3.0}),
-                default_creation_method="from_config",
-            ),
         ]
 
     @property
@@ -139,8 +133,11 @@ class PAN2TextEncoderStep(ModularPipelineBlocks):
             device=device,
         )
 
+        # The guider belongs to the denoise step: in the full pipeline, it decides whether the negative prompt is
+        # needed. Standalone, there is no guider and the negative prompt is encoded, since the PAN2 denoise step uses
+        # classifier-free guidance by default.
         block_state.negative_prompt_embeds = None
-        if components.requires_unconditional_embeds:
+        if getattr(components, "guider", None) is None or components.requires_unconditional_embeds:
             block_state.negative_prompt_embeds = get_pan2_prompt_embeds(
                 components.text_encoder,
                 components.tokenizer,
@@ -150,6 +147,8 @@ class PAN2TextEncoderStep(ModularPipelineBlocks):
                 max_sequence_length=block_state.max_sequence_length,
                 device=device,
             )
+        elif block_state.negative_prompt:
+            logger.warning("`negative_prompt` is ignored because the guider does not use unconditional embeddings.")
 
         self.set_block_state(state, block_state)
         return components, state
