@@ -99,6 +99,21 @@ image = pipe(prompt=prompt, generator=torch.Generator().manual_seed(0), output="
 
 It serves the same two workflows as the base model. `num_inference_steps` defaults to 16; the model is trained for 4 to 16 steps.
 
+## Reproducible generation
+
+A `generator` fixes the noise the pipeline draws (see [Reproducibility](../../using-diffusers/reusing_seeds)). To reuse noise drawn elsewhere, pass it as `latents` with shape `(batch_size, 128, height // 16, width // 16)`. For example, the [BFL implementation](https://github.com/black-forest-labs/TODO) draws its noise as image tokens on the CPU and casts it to bf16; this reproduces its sample for a given seed:
+
+<!-- TODO: replace the BFL implementation link with the released repository -->
+```python
+height, width = 1024, 1024
+h, w = height // 16, width // 16
+
+noise = torch.randn((h * w, 128), generator=torch.Generator().manual_seed(0)).to(torch.bfloat16)
+latents = noise.T.reshape(1, 128, h, w)
+
+image = pipe(prompt=prompt, latents=latents, height=height, width=width, output="images")[0]
+```
+
 ## Workflows
 
 The pipeline serves two workflows, `text2image` and `image_conditioned`; the one that runs is picked by the inputs (`image` selects image-to-image). [`~ModularPipeline.from_pretrained`] can also build a pipeline for one workflow with the `workflow` argument, which then only expects and loads the components that workflow needs:
