@@ -82,6 +82,24 @@ class DDPMParallelSchedulerTest(SchedulerCommonTest):
         assert torch.sum(torch.abs(scheduler._get_variance(487) - 0.00979)) < 1e-5
         assert torch.sum(torch.abs(scheduler._get_variance(999) - 0.02)) < 1e-5
 
+    def test_fixed_large_log_sampling_is_finite_and_matches_fixed_large(self):
+        # `fixed_large_log` stores log(beta). Sampling must use exp(0.5 * log) rather than
+        # sqrt(log(beta)), which is NaN because beta < 1. The intended scale matches `fixed_large`.
+        sample = torch.zeros((1, 2, 2, 2))
+        model_output = torch.zeros_like(sample)
+        log_scheduler = self.scheduler_classes[0](**self.get_scheduler_config(variance_type="fixed_large_log"))
+        large_scheduler = self.scheduler_classes[0](**self.get_scheduler_config(variance_type="fixed_large"))
+
+        log_output = log_scheduler.step(
+            model_output, 500, sample, generator=torch.Generator().manual_seed(0)
+        ).prev_sample
+        large_output = large_scheduler.step(
+            model_output, 500, sample, generator=torch.Generator().manual_seed(0)
+        ).prev_sample
+
+        assert torch.isfinite(log_output).all()
+        assert torch.allclose(log_output, large_output)
+
     def test_rescale_betas_zero_snr(self):
         for rescale_betas_zero_snr in [True, False]:
             self.check_over_configs(rescale_betas_zero_snr=rescale_betas_zero_snr)
