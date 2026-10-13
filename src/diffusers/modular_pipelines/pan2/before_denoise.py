@@ -82,6 +82,58 @@ class PAN2TextInputStep(ModularPipelineBlocks):
         return components, state
 
 
+class PAN2Image2VideoInputStep(ModularPipelineBlocks):
+    model_name = "pan2"
+
+    @property
+    def description(self) -> str:
+        return "Input step that derives `height` and `width` from the first-frame latents when they are not provided."
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam(
+                "image_latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The normalized first-frame latents. Can be generated from the vae_encoder step.",
+            ),
+            InputParam.template(
+                "height",
+                description="The height in pixels of the generated video, by default that of `image_latents`.",
+            ),
+            InputParam.template(
+                "width", description="The width in pixels of the generated video, by default that of `image_latents`."
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam("height", type_hint=int, description="The height in pixels of the generated video."),
+            OutputParam("width", type_hint=int, description="The width in pixels of the generated video."),
+        ]
+
+    @torch.no_grad()
+    def __call__(
+        self, components: PAN2ModularPipeline, state: PipelineState
+    ) -> tuple[PAN2ModularPipeline, PipelineState]:
+        block_state = self.get_block_state(state)
+
+        latent_height, latent_width = block_state.image_latents.shape[-2:]
+        height = latent_height * components.vae_scale_factor_spatial
+        width = latent_width * components.vae_scale_factor_spatial
+        if (block_state.height or height, block_state.width or width) != (height, width):
+            raise ValueError(
+                f"`height` and `width` ({block_state.height}, {block_state.width}) do not match the size of "
+                f"`image_latents` ({height}, {width}); leave them unset to take the size of `image_latents`."
+            )
+        block_state.height, block_state.width = height, width
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 class PAN2SetTimestepsStep(ModularPipelineBlocks):
     model_name = "pan2"
 
@@ -140,8 +192,8 @@ class PAN2PrepareLatentsStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("height", default=704, description="The height in pixels of the generated video."),
-            InputParam.template("width", default=1248, description="The width in pixels of the generated video."),
+            InputParam.template("height", description="The height in pixels of the generated video, 704 by default."),
+            InputParam.template("width", description="The width in pixels of the generated video, 1248 by default."),
             InputParam(
                 "num_frames",
                 type_hint=int,
@@ -183,6 +235,8 @@ class PAN2PrepareLatentsStep(ModularPipelineBlocks):
         self, components: PAN2ModularPipeline, state: PipelineState
     ) -> tuple[PAN2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
+        block_state.height = block_state.height or components.default_height
+        block_state.width = block_state.width or components.default_width
         self.check_inputs(components, block_state.height, block_state.width, block_state.num_frames)
         device = components._execution_device
         # The latents stay in float32 across the denoising loop and are cast to the transformer dtype per step.

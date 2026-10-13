@@ -44,6 +44,7 @@ PAN2_WORKFLOWS = {
         ("text_encoder", "PAN2TextEncoderStep"),
         ("vae_encoder", "PAN2VaeEncoderStep"),
         ("denoise.input", "PAN2TextInputStep"),
+        ("denoise.image_input", "PAN2Image2VideoInputStep"),
         ("denoise.set_timesteps", "PAN2SetTimestepsStep"),
         ("denoise.prepare_latents", "PAN2PrepareLatentsStep"),
         ("denoise.prepare_condition_latents", "PAN2Image2VideoPrepareConditionLatentsStep"),
@@ -102,6 +103,18 @@ class TestPAN2ModularPipelineFast(PAN2ModularPipelineTesterConfig, ModularPipeli
         inputs["image"] = PIL.Image.new("RGB", (40, 48))
         videos = pipe(**inputs, output=self.output_name)
         assert videos.shape == (1, 5, 3, 32, 32)
+
+    def test_i2v_takes_size_from_image_latents(self):
+        pipe = self.get_pipeline().to(torch_device)
+        vae_encoder = pipe.blocks.sub_blocks["vae_encoder"].init_pipeline()
+        vae_encoder.update_components(vae=pipe.vae, video_processor=pipe.video_processor)
+        image_latents = vae_encoder(image=PIL.Image.new("RGB", (40, 48)), height=32, width=64, output="image_latents")
+
+        inputs = {k: v for k, v in self.get_dummy_inputs().items() if k not in ("height", "width")}
+        videos = pipe(**inputs, image_latents=image_latents, output=self.output_name)
+        assert videos.shape == (1, 5, 3, 32, 64)
+        with pytest.raises(ValueError, match="do not match the size of `image_latents`"):
+            pipe(**inputs, image_latents=image_latents, height=64, output=self.output_name)
 
     def test_prompt_list_raises(self):
         pipe = self.get_pipeline().to(torch_device)

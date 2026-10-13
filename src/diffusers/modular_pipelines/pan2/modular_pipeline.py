@@ -61,6 +61,22 @@ class PAN2ModularPipeline(ModularPipeline):
                 transformer._reset_stateful_cache()
 
     @property
+    def default_height(self):
+        return self.default_sample_height * self.vae_scale_factor_spatial
+
+    @property
+    def default_width(self):
+        return self.default_sample_width * self.vae_scale_factor_spatial
+
+    @property
+    def default_sample_height(self):
+        return 44
+
+    @property
+    def default_sample_width(self):
+        return 78
+
+    @property
     def vae_scale_factor_spatial(self):
         if getattr(self, "vae", None) is not None:
             return self.vae.config.scale_factor_spatial

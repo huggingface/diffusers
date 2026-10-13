@@ -191,8 +191,8 @@ class PAN2VaeEncoderStep(ModularPipelineBlocks):
             InputParam.template(
                 "image", required=True, type_hint=PIL.Image.Image, description="The first frame, a single image."
             ),
-            InputParam.template("height", default=704, description="The height in pixels of the generated video."),
-            InputParam.template("width", default=1248, description="The width in pixels of the generated video."),
+            InputParam.template("height", description="The height in pixels of the generated video, 704 by default."),
+            InputParam.template("width", description="The width in pixels of the generated video, 1248 by default."),
         ]
 
     @property
@@ -217,6 +217,8 @@ class PAN2VaeEncoderStep(ModularPipelineBlocks):
     ) -> tuple[PAN2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(block_state.image)
+        block_state.height = block_state.height or components.default_height
+        block_state.width = block_state.width or components.default_width
         device = components._execution_device
         vae = components.vae
 
