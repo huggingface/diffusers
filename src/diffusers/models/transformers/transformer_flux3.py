@@ -526,8 +526,8 @@ class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
             image_cond_ids (`torch.Tensor` of shape `(cond_seq_len, 4)`, *optional*):
                 Position ids of the reference image tokens. Required with `image_cond_hidden_states`.
             target_timestep (`torch.Tensor` of shape `(batch_size,)`, *optional*):
-                Flow timestep in `[0, 1]` that the current denoising step jumps to. Required by, and only by, a flow-map
-                model (`flow_map=True`).
+                Flow timestep in `[0, 1]` that the current denoising step jumps to. Required by, and only by, a
+                flow-map model (`flow_map=True`).
             attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary whose `scale` entry, if specified, scales the LoRA layers for this forward pass.
             return_dict (`bool`, *optional*, defaults to `True`):
