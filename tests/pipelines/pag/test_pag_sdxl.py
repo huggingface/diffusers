@@ -306,3 +306,5 @@ class TestStableDiffusionXLPAGPipelineIntegration:
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3, (
             f"output is different from expected, {image_slice.flatten()}"
         )
+
+X = 1
