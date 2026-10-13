@@ -89,6 +89,8 @@ FEATURE_GROUPS = {
     "single_file": ["single_file"],
 }
 FEATURE_MARKERS = [m for markers in FEATURE_GROUPS.values() for m in markers]
+# Rows per section of the job summary; a wide migration PR touches hundreds of files and the rest are counted.
+MAX_SUMMARY_ROWS = 10
 _unknown = sorted(set(FEATURE_MARKERS) - NON_CORE_MARKERS)
 if _unknown:
     raise ValueError(
@@ -483,7 +485,7 @@ def _write_summary(
     reach, base_reach = _test_reach(reverse_map), _test_reach(base_reverse)
     triggered = {f: len(_tests_triggered_by(f, reverse_map)) for f in modified_files}
     base_triggered = {f: len(_tests_triggered_by(f, base_reverse)) for f in modified_files}
-    on_base = lambda f, value: "new file" if f not in base_direct else str(value)  # noqa: E731
+    on_main = lambda f, value: "new file" if f not in base_direct else str(value)  # noqa: E731
 
     lines = [
         "## Test fetcher",
@@ -492,41 +494,36 @@ def _write_summary(
     ]
     by_reach = sorted(modified_files, key=lambda f: (-triggered[f], f))
 
-    src_rows = [
-        f"| `{f}` | {triggered[f]} | {on_base(f, base_triggered[f])} |"
-        for f in by_reach
-        if not _is_test_file(f) and (triggered[f] or base_triggered[f])
-    ]
-    if src_rows:
-        lines += [
-            "",
-            "**Modified source files**",
-            "",
-            "| File | Test files it triggers | On base |",
-            "|---|---|---|",
-        ] + src_rows
+    def section(title: str, rows: List[str], hidden: int):
+        if not rows:
+            return
+        lines.extend(["", f"**{title}**", "", "| File | On branch | On main |", "|---|---|---|"])
+        lines.extend(rows)
+        if hidden:
+            lines.append(f"| {hidden} more not shown | | |")
 
-    test_rows, quiet = [], []
-    for f in by_reach:
-        if f not in test_files:  # a source file, or a test file the diff deleted
-            continue
-        if triggered[f] > 1 or f not in base_direct or reach[f] != base_reach[f]:
-            test_rows.append(f"| `{f}` | {triggered[f]} | {reach[f]} | {on_base(f, base_reach[f])} |")
-        else:
-            quiet.append(f)
-    if quiet:
-        noun = "file" if len(quiet) == 1 else "files"
-        test_rows.append(
-            f"| {len(quiet)} other modified test {noun}, each triggering only itself | {len(quiet)} | unchanged | |"
-        )
-    if test_rows:
-        lines += [
-            "",
-            "**Modified and added test files**",
-            "",
-            "| File | Test files it triggers | Source files that trigger it | On base |",
-            "|---|---|---|---|",
-        ] + test_rows
+    # Source files, and test helpers (anything under tests/ pytest does not collect): what they trigger. A
+    # zero is worth a row: the change runs no tests, either for lack of coverage or because the import graph
+    # cannot see how the module is reached. Deleted files are left out since they trigger nothing either way.
+    for title, keep in (
+        ("Modified source files: test files each one triggers", lambda f: f.startswith("src/")),
+        (
+            "Modified test helpers: test files each one triggers",
+            lambda f: f.startswith("tests/") and not _is_test_file(f),
+        ),
+    ):
+        rows = [
+            f"| `{f}` | {triggered[f]} | {on_main(f, base_triggered[f])} |"
+            for f in by_reach
+            if keep(f) and (PATH_TO_REPO / f).exists()
+        ]
+        section(title, rows[:MAX_SUMMARY_ROWS], len(rows[MAX_SUMMARY_ROWS:]))
+
+    # Test files: every one the diff touches, largest change in reach first.
+    present = [f for f in test_files if f in triggered]
+    present.sort(key=lambda f: (-abs(reach[f] - base_reach.get(f, 0)), f))
+    rows = [f"| `{f}` | {reach[f]} | {on_main(f, base_reach[f])} |" for f in present[:MAX_SUMMARY_ROWS]]
+    section("Modified and added test files: source files that trigger each one", rows, len(present[MAX_SUMMARY_ROWS:]))
 
     lines += ["", f"**Distinct test files selected: {len(test_files)}**"]
     Path(summary_file).write_text("\n".join(lines) + "\n", encoding="utf-8")
