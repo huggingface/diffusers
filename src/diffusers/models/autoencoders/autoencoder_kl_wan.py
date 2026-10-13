@@ -40,14 +40,18 @@ class AvgDown3D(nn.Module):
         factor_s=1,
     ):
         super().__init__()
+        factor = factor_t * factor_s * factor_s
+        if in_channels * factor % out_channels != 0:
+            raise ValueError(
+                f"`in_channels` ({in_channels}) times the downsampling factor ({factor}) must be divisible by "
+                f"`out_channels` ({out_channels})."
+            )
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.factor_t = factor_t
         self.factor_s = factor_s
-        self.factor = self.factor_t * self.factor_s * self.factor_s
-
-        assert in_channels * self.factor % out_channels == 0
-        self.group_size = in_channels * self.factor // out_channels
+        self.factor = factor
+        self.group_size = in_channels * factor // out_channels
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         pad_t = (self.factor_t - x.shape[2] % self.factor_t) % self.factor_t

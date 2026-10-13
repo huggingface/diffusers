@@ -110,21 +110,25 @@ class Krea2TextEncoderStep(ModularPipelineBlocks):
             OutputParam(
                 name="prompt_embeds",
                 type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
                 description="Per-prompt stacked text features (B, text_seq_len, num_text_layers, text_hidden_dim).",
             ),
             OutputParam(
                 name="prompt_embeds_mask",
                 type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
                 description="Per-prompt boolean text mask (B, text_seq_len).",
             ),
             OutputParam(
                 name="negative_prompt_embeds",
                 type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
                 description="Per-prompt negative text features (only when guidance is enabled).",
             ),
             OutputParam(
                 name="negative_prompt_embeds_mask",
                 type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
                 description="Per-prompt negative text mask (only when guidance is enabled).",
             ),
         ]
@@ -254,11 +258,13 @@ class Krea2TurboTextEncoderStep(Krea2TextEncoderStep):
             OutputParam(
                 name="prompt_embeds",
                 type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
                 description="Per-prompt stacked text features (B, text_seq_len, num_text_layers, text_hidden_dim).",
             ),
             OutputParam(
                 name="prompt_embeds_mask",
                 type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
                 description="Per-prompt boolean text mask (B, text_seq_len).",
             ),
         ]

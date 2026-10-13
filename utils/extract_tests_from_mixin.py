@@ -45,9 +45,11 @@ if __name__ == "__main__":
     with redirect_stdout(sys.stderr):
         mixin_classes = []
         if args.type == "pipeline":
-            from tests.pipelines.test_pipelines_common import PipelineTesterMixin
+            # Preserve the old PipelineTesterMixin's scope: general pipeline and memory tests.
+            # Other feature mixins were not selected by the old script either.
+            from tests.pipelines.testing_utils import MemoryTesterMixin, PipelineTesterMixin
 
-            mixin_classes = [PipelineTesterMixin]
+            mixin_classes = [PipelineTesterMixin, MemoryTesterMixin]
 
         elif args.type == "models":
             # The model tester suite is split across several mixins under `tests/models/testing_utils`,

@@ -92,6 +92,36 @@ class Cosmos3OmniModularPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
+class EchoBlocks(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class EchoModularPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
 class ErnieImageAutoBlocks(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
@@ -2702,6 +2732,66 @@ class Kandinsky5T2VPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
+class Kandinsky6SRPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class Kandinsky6SRPipelineOutput(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class Kandinsky6TI2VAPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class Kandinsky6TI2VAPipelineOutput(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
 class KandinskyCombinedPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
@@ -3933,6 +4023,51 @@ class SanaSprintPipeline(metaclass=DummyObject):
 
 
 class SanaVideoPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class SanaWMLTX2Refiner(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class SanaWMPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class SanaWMPipelineOutput(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):

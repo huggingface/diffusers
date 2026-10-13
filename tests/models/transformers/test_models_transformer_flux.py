@@ -53,6 +53,7 @@ from ..testing_utils import (
     SingleFileTesterMixin,
     TaylorSeerCacheTesterMixin,
     TensorParallelTesterMixin,
+    TensorParallelTPUTesterMixin,
     TorchAoCompileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
@@ -64,7 +65,7 @@ enable_full_determinism()
 
 
 # TODO: This standalone function maintains backward compatibility with pipeline tests
-# (tests/pipelines/test_pipelines_common.py) and will be refactored.
+# (tests/pipelines/testing_utils/ip_adapter.py) and will be refactored.
 def create_flux_ip_adapter_state_dict(model) -> dict[str, dict[str, Any]]:
     """Create a dummy IP Adapter state dict for Flux transformer testing."""
     ip_cross_attn_state_dict = {}
@@ -274,6 +275,14 @@ class TestFluxTransformerContextParallelAttnBackends(
 
 class TestFluxTransformerTensorParallel(FluxTransformerTesterConfig, TensorParallelTesterMixin):
     """Tensor Parallel inference tests for Flux Transformer (CUDA/XPU multi-accelerator)."""
+
+
+class TestFluxTransformerTensorParallelTPU(FluxTransformerTesterConfig, TensorParallelTPUTesterMixin):
+    """Tensor Parallel inference test for Flux Transformer on TPU."""
+
+    def get_init_dict(self):
+        # One head per chip.
+        return {**super().get_init_dict(), "num_attention_heads": self.tp_world_size}
 
 
 def make_neuron_tp_spec():
