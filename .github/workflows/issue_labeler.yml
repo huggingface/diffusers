@@ -33,6 +33,28 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           LABELS: ${{ steps.get-labels.outputs.labels }}
         run: |
-          for label in $(echo "$LABELS" | python -c "import json,sys; print('\n'.join(json.load(sys.stdin)))"); do
-            gh issue edit "$ISSUE_NUMBER" --add-label "$label"
+          # LLM output is untrusted: only apply labels that already exist in the repo,
+          # never apply security-sensitive labels, and cap the number applied.
+          EXISTING_LABELS=$(gh label list --repo "$GITHUB_REPOSITORY" --limit 1000 --json name --jq '.[].name')
+          echo "$LABELS" | EXISTING_LABELS="$EXISTING_LABELS" python -c "
+          import json, os, re, sys
+          existing = set(l.strip() for l in os.environ.get('EXISTING_LABELS', '').splitlines() if l.strip())
+          blocked = re.compile(r'(safe|ok|ready)[-_ ]?(to|for)[-_ ]?(test|merge|deploy|run)|approved|lgtm|security|deploy|release|priority|critical|\\bci\\b|run[-_ ]?ci|maintainer|trusted', re.I)
+          try:
+              data = json.load(sys.stdin)
+          except Exception:
+              data = []
+          if not isinstance(data, list):
+              data = []
+          out = []
+          for l in data:
+              if isinstance(l, str) and l in existing and not blocked.search(l) and l not in out:
+                  out.append(l)
+              if len(out) >= 3:
+                  break
+          print('\n'.join(out))
+          " | while IFS= read -r label; do
+            if [ -n "$label" ]; then
+              gh issue edit "$ISSUE_NUMBER" --add-label "$label"
+            fi
           done
