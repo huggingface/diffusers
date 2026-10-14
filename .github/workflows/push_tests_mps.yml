@@ -3,8 +3,6 @@ name: Fast mps tests on main
 on:
   workflow_dispatch:
 
-permissions:
-  contents: read
 
 env:
   DIFFUSERS_IS_CI: yes
@@ -19,14 +17,18 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
   run_fast_tests_apple_m1:
+    permissions:
+      contents: read
     name: Fast PyTorch MPS tests on MacOS
     runs-on: macos-13-xlarge
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@v6
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       with:
         fetch-depth: 2
 
@@ -68,7 +70,7 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
         name: pr_torch_mps_test_reports
         path: reports

@@ -118,7 +118,9 @@ class ErnieImageTextInputStep(ModularPipelineBlocks):
         return [h for h in hiddens for _ in range(num_images_per_prompt)]
 
     @torch.no_grad()
-    def __call__(self, components: ErnieImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: ErnieImageModularPipeline, state: PipelineState
+    ) -> tuple[ErnieImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         dtype = components.transformer.dtype
@@ -177,7 +179,9 @@ class ErnieImageSetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: ErnieImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: ErnieImageModularPipeline, state: PipelineState
+    ) -> tuple[ErnieImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         num_inference_steps = block_state.num_inference_steps
@@ -243,7 +247,9 @@ class ErnieImagePrepareLatentsStep(ModularPipelineBlocks):
             )
 
     @torch.no_grad()
-    def __call__(self, components: ErnieImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: ErnieImageModularPipeline, state: PipelineState
+    ) -> tuple[ErnieImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         dtype = components.transformer.dtype

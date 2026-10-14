@@ -55,7 +55,9 @@ class Krea2LoopBeforeDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Krea2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Krea2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Krea2ModularPipeline, BlockState]:
         num_train_timesteps = components.scheduler.config.num_train_timesteps
         block_state.timestep = (t / num_train_timesteps).expand(block_state.batch_size)
         return components, block_state
@@ -113,7 +115,9 @@ class Krea2LoopDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Krea2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Krea2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Krea2ModularPipeline, BlockState]:
         transformer = components.transformer
 
         latents = block_state.latents.to(transformer.dtype)
@@ -190,7 +194,9 @@ class Krea2TurboLoopDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Krea2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Krea2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Krea2ModularPipeline, BlockState]:
         transformer = components.transformer
 
         latents = block_state.latents.to(transformer.dtype)
@@ -224,7 +230,9 @@ class Krea2LoopAfterDenoiser(ModularPipelineBlocks):
         return [OutputParam(name="latents", type_hint=torch.Tensor, description="The denoised latents.")]
 
     @torch.no_grad()
-    def __call__(self, components: Krea2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Krea2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Krea2ModularPipeline, BlockState]:
         latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(
             block_state.noise_pred, t, block_state.latents, return_dict=False
@@ -261,7 +269,9 @@ class Krea2DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Krea2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Krea2ModularPipeline, state: PipelineState
+    ) -> tuple[Krea2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:

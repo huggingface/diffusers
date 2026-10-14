@@ -66,7 +66,9 @@ class StableDiffusionXLLoopBeforeDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, block_state: BlockState, i: int, t: int):
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, block_state: BlockState, i: int, t: int
+    ) -> tuple[StableDiffusionXLModularPipeline, BlockState]:
         block_state.scaled_latents = components.scheduler.scale_model_input(block_state.latents, t)
 
         return components, block_state
@@ -131,7 +133,9 @@ class StableDiffusionXLInpaintLoopBeforeDenoiser(ModularPipelineBlocks):
                 )
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, block_state: BlockState, i: int, t: int):
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, block_state: BlockState, i: int, t: int
+    ) -> tuple[StableDiffusionXLModularPipeline, BlockState]:
         self.check_inputs(components, block_state)
 
         block_state.scaled_latents = components.scheduler.scale_model_input(block_state.latents, t)
@@ -198,7 +202,7 @@ class StableDiffusionXLLoopDenoiser(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(
         self, components: StableDiffusionXLModularPipeline, block_state: BlockState, i: int, t: int
-    ) -> PipelineState:
+    ) -> tuple[StableDiffusionXLModularPipeline, BlockState]:
         #  Map the keys we'll see on each `guider_state_batch` (e.g. guider_state_batch.prompt_embeds)
         #  to the corresponding (cond, uncond) fields on block_state. (e.g. block_state.prompt_embeds, block_state.negative_prompt_embeds)
         guider_inputs = {
@@ -351,7 +355,9 @@ class StableDiffusionXLControlNetLoopDenoiser(ModularPipelineBlocks):
         return extra_kwargs
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, block_state: BlockState, i: int, t: int):
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, block_state: BlockState, i: int, t: int
+    ) -> tuple[StableDiffusionXLModularPipeline, BlockState]:
         extra_controlnet_kwargs = self.prepare_extra_kwargs(
             components.controlnet.forward, **block_state.controlnet_kwargs
         )
@@ -508,7 +514,9 @@ class StableDiffusionXLLoopAfterDenoiser(ModularPipelineBlocks):
         return extra_kwargs
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, block_state: BlockState, i: int, t: int):
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, block_state: BlockState, i: int, t: int
+    ) -> tuple[StableDiffusionXLModularPipeline, BlockState]:
         # Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         block_state.extra_step_kwargs = self.prepare_extra_kwargs(
             components.scheduler.step, generator=block_state.generator, eta=block_state.eta
@@ -603,7 +611,9 @@ class StableDiffusionXLInpaintLoopAfterDenoiser(ModularPipelineBlocks):
                 raise ValueError(f"noise is required for this step {self.__class__.__name__}")
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, block_state: BlockState, i: int, t: int):
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, block_state: BlockState, i: int, t: int
+    ) -> tuple[StableDiffusionXLModularPipeline, BlockState]:
         self.check_inputs(components, block_state)
 
         # Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
@@ -684,7 +694,9 @@ class StableDiffusionXLDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusionXLModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.disable_guidance = True if components.unet.config.time_cond_proj_dim is not None else False

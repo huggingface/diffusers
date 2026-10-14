@@ -273,7 +273,9 @@ class WanTextEncoderStep(ModularPipelineBlocks):
         return prompt_embeds, negative_prompt_embeds
 
     @torch.no_grad()
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: WanModularPipeline, state: PipelineState
+    ) -> tuple[WanModularPipeline, PipelineState]:
         # Get inputs and intermediates
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
@@ -319,7 +321,9 @@ class WanImageResizeStep(ModularPipelineBlocks):
             OutputParam("resized_image", type_hint=PIL.Image.Image),
         ]
 
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: WanModularPipeline, state: PipelineState
+    ) -> tuple[WanModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         max_area = block_state.height * block_state.width
 
@@ -356,7 +360,9 @@ class WanImageCropResizeStep(ModularPipelineBlocks):
             OutputParam("resized_last_image", type_hint=PIL.Image.Image),
         ]
 
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: WanModularPipeline, state: PipelineState
+    ) -> tuple[WanModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         height = block_state.resized_image.height
@@ -403,7 +409,9 @@ class WanImageEncoderStep(ModularPipelineBlocks):
             OutputParam("image_embeds", type_hint=torch.Tensor, description="The image embeddings"),
         ]
 
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: WanModularPipeline, state: PipelineState
+    ) -> tuple[WanModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -448,7 +456,9 @@ class WanFirstLastFrameImageEncoderStep(ModularPipelineBlocks):
             OutputParam("image_embeds", type_hint=torch.Tensor, description="The image embeddings"),
         ]
 
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: WanModularPipeline, state: PipelineState
+    ) -> tuple[WanModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -521,7 +531,9 @@ class WanVaeEncoderStep(ModularPipelineBlocks):
                 f"`num_frames` has to be greater than 0, and (num_frames - 1) must be divisible by {components.vae_scale_factor_temporal}, but got {block_state.num_frames}."
             )
 
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: WanModularPipeline, state: PipelineState
+    ) -> tuple[WanModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(components, block_state)
 
@@ -822,7 +834,9 @@ class WanVaceEncoderStep(ModularPipelineBlocks):
         return torch.stack(mask_list)
 
     @torch.no_grad()
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: WanModularPipeline, state: PipelineState
+    ) -> tuple[WanModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(components, block_state)
 
@@ -897,7 +911,9 @@ class WanPrepareFirstFrameLatentsStep(ModularPipelineBlocks):
             OutputParam("image_condition_latents", type_hint=torch.Tensor | None),
         ]
 
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: WanModularPipeline, state: PipelineState
+    ) -> tuple[WanModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         batch_size, _, _, latent_height, latent_width = block_state.first_frame_latents.shape
@@ -976,7 +992,9 @@ class WanFirstLastFrameVaeEncoderStep(ModularPipelineBlocks):
                 f"`num_frames` has to be greater than 0, and (num_frames - 1) must be divisible by {components.vae_scale_factor_temporal}, but got {block_state.num_frames}."
             )
 
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: WanModularPipeline, state: PipelineState
+    ) -> tuple[WanModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(components, block_state)
 
@@ -1046,7 +1064,9 @@ class WanPrepareFirstLastFrameLatentsStep(ModularPipelineBlocks):
             OutputParam("image_condition_latents", type_hint=torch.Tensor | None),
         ]
 
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: WanModularPipeline, state: PipelineState
+    ) -> tuple[WanModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         batch_size, _, _, latent_height, latent_width = block_state.first_last_frame_latents.shape
