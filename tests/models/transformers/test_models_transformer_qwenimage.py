@@ -37,6 +37,7 @@ from ..testing_utils import (
     MemoryTesterMixin,
     ModelTesterMixin,
     TensorParallelTesterMixin,
+    TensorParallelTPUTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
@@ -305,6 +306,18 @@ class TestQwenImageTransformerContextParallelAttnBackends(
 
 class TestQwenImageTransformerTensorParallel(QwenImageTransformerTesterConfig, TensorParallelTesterMixin):
     """Tensor Parallel inference tests for QwenImage Transformer (CUDA/XPU multi-accelerator)."""
+
+
+class TestQwenImageTransformerTensorParallelTPU(QwenImageTransformerTesterConfig, TensorParallelTPUTesterMixin):
+    """Tensor Parallel inference test for QwenImage Transformer on TPU."""
+
+    def get_init_dict(self):
+        # One head per chip.
+        return {**super().get_init_dict(), "num_attention_heads": self.tp_world_size}
+
+    def test_tensor_parallel_tpu_inference(self):
+        # TPU numerics differ by ~1e-2 between sharded and unsharded QwenImage (~1e-7 on CPU).
+        super().test_tensor_parallel_tpu_inference(atol=2e-2, rtol=2e-2)
 
 
 def make_neuron_tp_spec():
