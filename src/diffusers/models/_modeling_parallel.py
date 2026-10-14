@@ -161,7 +161,7 @@ class TensorParallelConfig:
     Tensor parallelism shards weight matrices (column-wise and row-wise) across devices. Each device computes a partial
     result; an AllReduce/AllGather at layer boundaries reconstructs the full output. Uses
     `torch.distributed.tensor.parallelize_module` with `ColwiseParallel` / `RowwiseParallel` sharding styles. Supported
-    device types are `"cuda"` and `"neuron"`.
+    device types are `"cuda"`, `"neuron"` and `"tpu"`.
 
     Args:
         tp_degree (`int`, defaults to `1`):
@@ -186,6 +186,8 @@ class TensorParallelConfig:
             raise ValueError("`tp_degree` must be >= 1.")
 
     def setup(self, rank: int, world_size: int, device: torch.device, mesh: torch.distributed.device_mesh.DeviceMesh):
+        if mesh.size() > world_size:
+            raise ValueError(f"Tensor parallel degree ({mesh.size()}) cannot exceed the world size ({world_size}).")
         self._rank = rank
         self._world_size = world_size
         self._device = device

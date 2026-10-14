@@ -59,6 +59,7 @@ from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,
     DEPRECATED_REVISION_ARGS,
+    TRANSFORMERS_COMPONENT_AUX_FILES,
     BaseOutput,
     PushToHubMixin,
     _get_detailed_type,
@@ -92,7 +93,6 @@ from .pipeline_loading_utils import (
     CONNECTED_PIPES_KEYS,
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
-    TRANSFORMERS_COMPONENT_AUX_FILES,
     _fetch_class_library_tuple,
     _get_custom_components_and_folders,
     _get_custom_pipeline_class,
@@ -1187,6 +1187,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 automatically detect the available accelerator and use.
         """
         self._maybe_raise_error_if_group_offload_active(raise_error=True)
+        self._maybe_raise_error_if_tensor_parallel_active()
 
         is_pipeline_device_mapped = self._is_pipeline_device_mapped()
         if is_pipeline_device_mapped:
@@ -1287,7 +1288,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             return
 
         # make sure the model is in the same state as before calling it
-        self.enable_model_cpu_offload(device=getattr(self, "_offload_device", "cuda"))
+        self.enable_model_cpu_offload(device=getattr(self, "_offload_device", get_device()))
 
     def enable_sequential_cpu_offload(self, gpu_id: int | None = None, device: torch.device | str = None):
         r"""
@@ -1305,6 +1306,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 automatically detect the available accelerator and use.
         """
         self._maybe_raise_error_if_group_offload_active(raise_error=True)
+        self._maybe_raise_error_if_tensor_parallel_active()
 
         if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
@@ -2241,6 +2243,23 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     )
                 return True
         return False
+
+    def _maybe_raise_error_if_tensor_parallel_active(self) -> None:
+        """Raise if any component is sharded with tensor parallelism, which CPU offloading cannot be applied on top of.
+
+        A tensor-parallel component's parameters are `DTensor` shards tied to that rank's device and process group;
+        moving them to CPU and back, as the offload hooks do, is not supported.
+        """
+        from ..hooks.tensor_parallel import _raise_if_tensor_parallel
+
+        for component in self.components.values():
+            if isinstance(component, torch.nn.Module):
+                _raise_if_tensor_parallel(
+                    component,
+                    "be CPU-offloaded (model or sequential)",
+                    "Tensor parallelism already keeps only one shard of each weight per rank, so offloading is not "
+                    "needed on top of it.",
+                )
 
     def _is_pipeline_device_mapped(self):
         # We support passing `device_map="cuda"`, for example. This is helpful, in case

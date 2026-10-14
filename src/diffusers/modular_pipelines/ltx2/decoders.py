@@ -30,6 +30,7 @@ from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .modular_pipeline import LTX2ModularPipeline
 
 
 logger = logging.get_logger(__name__)
@@ -118,7 +119,7 @@ class LTX2TrimConditionTokensStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         block_state.latents = block_state.latents[:, : block_state.base_token_count]
         self.set_block_state(state, block_state)
@@ -168,7 +169,7 @@ class LTX2DiffusionVaeDecoderStep(ModularPipelineBlocks):
         return [OutputParam.template("videos")]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         decoder = components.diffusion_decoder
 
@@ -258,7 +259,7 @@ class LTX2VaeDecoderStep(ModularPipelineBlocks):
         return [OutputParam.template("videos")]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         vae = components.vae
 
@@ -362,7 +363,7 @@ class LTX2AudioDecoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         audio_vae = components.audio_vae
 

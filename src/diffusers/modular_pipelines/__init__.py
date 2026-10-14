@@ -115,6 +115,10 @@ else:
         "ErnieImageAutoBlocks",
         "ErnieImageModularPipeline",
     ]
+    _import_structure["echo"] = [
+        "EchoBlocks",
+        "EchoModularPipeline",
+    ]
     _import_structure["hunyuan_video1_5"] = [
         "HunyuanVideo15AutoBlocks",
         "HunyuanVideo15ModularPipeline",
@@ -158,6 +162,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Cosmos3OmniBlocks,
             Cosmos3OmniModularPipeline,
         )
+        from .echo import EchoBlocks, EchoModularPipeline
         from .ernie_image import ErnieImageAutoBlocks, ErnieImageModularPipeline
         from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline
         from .flux2 import (

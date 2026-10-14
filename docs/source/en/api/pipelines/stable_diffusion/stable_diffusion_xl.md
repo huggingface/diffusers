@@ -448,7 +448,7 @@ SDXL is a large model, and you may need to optimize memory to get it to run on y
 + refiner.unet = torch.compile(refiner.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
-3. Enable [xFormers](../../../optimization/xformers) to run SDXL if `torch<2.0`:
+3. Enable [xFormers](../../../optimization/attention_backends) to run SDXL if `torch<2.0`:
 
 ```diff
 + base.enable_xformers_memory_efficient_attention()

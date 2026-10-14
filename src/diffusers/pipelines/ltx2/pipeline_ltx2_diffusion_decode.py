@@ -84,7 +84,7 @@ class LTX2VideoDiffusionDecodePipeline(DiffusionPipeline):
         output_type: str = "pil",
         return_dict: bool = True,
         denormalize: bool = True,
-    ):
+    ) -> LTX2VideoDecodeOutput | tuple:
         r"""
         Args:
             latents (`torch.Tensor`):

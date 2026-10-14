@@ -327,6 +327,12 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         # 1. Prepare default sigmas
         is_timesteps_provided = timesteps is not None
+        if is_timesteps_provided and sigmas is None:
+            logger.warning(
+                "`timesteps` were passed without `sigmas`. The timesteps are used as given, while the sigmas derived "
+                "from them go through the scheduler's shifting, so the two may not be consistent. Pass `sigmas` to "
+                "get a shifted schedule, or pass both `sigmas` and `timesteps` to control them separately."
+            )
 
         if is_timesteps_provided:
             timesteps = np.array(timesteps).astype(np.float32)
@@ -364,7 +370,10 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         # 5. Convert sigmas and timesteps to tensors and move to specified device
         sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
-        timesteps = sigmas * self.config.num_train_timesteps
+        if is_timesteps_provided:
+            timesteps = torch.from_numpy(timesteps).to(dtype=torch.float32, device=device)
+        else:
+            timesteps = sigmas * self.config.num_train_timesteps
 
         # 6. Append the terminal sigma value.
         #    If a model requires inverted sigma schedule for denoising but timesteps without inversion, the

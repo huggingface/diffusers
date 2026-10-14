@@ -283,7 +283,7 @@ class TransformerSpatioTemporalModel(nn.Module):
         encoder_hidden_states: torch.Tensor | None = None,
         image_only_indicator: torch.Tensor | None = None,
         return_dict: bool = True,
-    ):
+    ) -> TransformerTemporalModelOutput | tuple[torch.Tensor]:
         """
         Args:
             hidden_states (`torch.Tensor` of shape `(batch size, channel, height, width)`):

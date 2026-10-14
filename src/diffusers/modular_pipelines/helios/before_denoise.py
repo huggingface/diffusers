@@ -93,7 +93,9 @@ class HeliosTextInputStep(ModularPipelineBlocks):
                 )
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HeliosModularPipeline, state: PipelineState
+    ) -> tuple[HeliosModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(components, block_state)
 
@@ -296,7 +298,9 @@ class HeliosAdditionalInputsStep(ModularPipelineBlocks):
 
         return outputs
 
-    def __call__(self, components: HeliosModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HeliosModularPipeline, state: PipelineState
+    ) -> tuple[HeliosModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         for input_param in self._image_latent_inputs:
@@ -400,7 +404,9 @@ class HeliosAddNoiseToImageLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HeliosModularPipeline, state: PipelineState
+    ) -> tuple[HeliosModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -504,7 +510,9 @@ class HeliosAddNoiseToVideoLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HeliosModularPipeline, state: PipelineState
+    ) -> tuple[HeliosModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -614,7 +622,9 @@ class HeliosPrepareHistoryStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HeliosModularPipeline, state: PipelineState
+    ) -> tuple[HeliosModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         batch_size = block_state.batch_size
@@ -719,7 +729,9 @@ class HeliosI2VSeedHistoryStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HeliosModularPipeline, state: PipelineState
+    ) -> tuple[HeliosModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.history_latents = torch.cat([block_state.history_latents, block_state.fake_image_latents], dim=2)
@@ -757,7 +769,9 @@ class HeliosV2VSeedHistoryStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HeliosModularPipeline, state: PipelineState
+    ) -> tuple[HeliosModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         history_latents = block_state.history_latents
@@ -809,7 +823,9 @@ class HeliosSetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HeliosModularPipeline, state: PipelineState
+    ) -> tuple[HeliosModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         patch_size = components.transformer.config.patch_size
