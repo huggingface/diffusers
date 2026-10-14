@@ -200,6 +200,12 @@ class ParallelConfig:
     """
     Configuration for applying different parallelisms.
 
+    Both may be set at once. The two are then applied over one device mesh with a dimension each — `("tp", "ring",
+    "ulysses")`, built by `enable_parallelism` — so their collectives stay in separate process groups. This is what
+    lets a model too large for one device (TP shards the weights) also run a sequence too long for one device's
+    attention scratchpad (CP splits the sequence): TP alone cannot divide the sequence, and CP alone cannot divide the
+    weights.
+
     Args:
         context_parallel_config (`ContextParallelConfig`, *optional*):
             Configuration for context parallelism.
@@ -222,6 +228,11 @@ class ParallelConfig:
                 "`tensor_parallel_config`."
             )
 
+    @property
+    def _is_combined(self) -> bool:
+        """Whether both context and tensor parallelism are requested, i.e. they must share one mesh."""
+        return self.context_parallel_config is not None and self.tensor_parallel_config is not None
+
     def setup(
         self,
         rank: int,
@@ -234,14 +245,31 @@ class ParallelConfig:
         self._world_size = world_size
         self._device = device
         self._mesh = mesh
+
+        # Context and tensor parallelism compose because they cut the model along different axes: CP splits the
+        # sequence (and, under Ulysses, trades sequence for heads inside attention) while TP shards the Linear
+        # weights. Composing them means giving each its own mesh *dimension*, so that every collective one issues
+        # stays inside its own process group: TP's all-reduce must not reach a rank holding a different sequence
+        # chunk, and CP's sequence all-gather must not reach a rank holding a different weight shard.
+        cp_mesh = tp_mesh = mesh
+        if self._is_combined:
+            dim_names = mesh.mesh_dim_names if mesh is not None else None
+            missing = [d for d in ("ring", "ulysses", "tp") if dim_names is None or d not in dim_names]
+            if missing:
+                raise ValueError(
+                    f"Combining context and tensor parallelism requires a device mesh with 'ring', 'ulysses' and "
+                    f"'tp' dimensions, but {missing} {'is' if len(missing) == 1 else 'are'} missing (got "
+                    f"{dim_names}). `enable_parallelism` builds this mesh from `ring_degree`/`ulysses_degree`/"
+                    f"`tp_degree`; if you build it yourself, set `mesh=` on one of the two configs."
+                )
+            # `ContextParallelConfig.setup` slices ("ring", "ulysses") off whatever mesh it is handed, so it takes
+            # the full mesh. TP instead needs its own 1-D submesh: `parallelize_module` shards a weight over every
+            # rank of the mesh it is given, so handing it the 3-D mesh would shard over the CP ranks as well.
+            tp_mesh = mesh["tp"]
+
         if self.context_parallel_config is not None:
-            # `ContextParallelConfig.setup` selects its own "ring" and "ulysses" dimensions out of `mesh`.
-            self.context_parallel_config.setup(rank, world_size, device, mesh)
+            self.context_parallel_config.setup(rank, world_size, device, cp_mesh)
         if self.tensor_parallel_config is not None:
-            # `TensorParallelConfig.setup` reads `tp_degree` off `mesh.size()`, so when the mesh is shared with
-            # context parallelism it must be handed the "tp" dimension alone rather than the whole mesh.
-            dim_names = (mesh.mesh_dim_names or ()) if mesh is not None else ()
-            tp_mesh = mesh["tp"] if "tp" in dim_names and len(dim_names) > 1 else mesh
             self.tensor_parallel_config.setup(rank, world_size, device, tp_mesh)
 
 
