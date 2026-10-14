@@ -80,8 +80,8 @@ accelerate launch train_dreambooth_lora_flux3_small.py \
   --train_batch_size=1 \
   --gradient_checkpointing \
   --cache_latents \
-  --rank=16 \
-  --lora_alpha=16 \
+  --rank=32 \
+  --lora_alpha=32 \
   --optimizer="adamW" \
   --use_8bit_adam \
   --learning_rate=1e-4 \
