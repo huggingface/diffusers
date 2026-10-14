@@ -49,7 +49,9 @@ class LTXLoopBeforeDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: LTXModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: LTXModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[LTXModularPipeline, BlockState]:
         block_state.latent_model_input = block_state.latents.to(block_state.dtype)
         return components, block_state
 
@@ -115,7 +117,7 @@ class LTXLoopDenoiser(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(
         self, components: LTXModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
-    ) -> PipelineState:
+    ) -> tuple[LTXModularPipeline, BlockState]:
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
 
         latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
@@ -171,7 +173,9 @@ class LTXLoopAfterDenoiser(ModularPipelineBlocks):
         )
 
     @torch.no_grad()
-    def __call__(self, components: LTXModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: LTXModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[LTXModularPipeline, BlockState]:
         latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(
             block_state.noise_pred,
@@ -211,7 +215,9 @@ class LTXDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: LTXModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: LTXModularPipeline, state: PipelineState
+    ) -> tuple[LTXModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.num_warmup_steps = max(
@@ -275,7 +281,9 @@ class LTXImage2VideoLoopBeforeDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: LTXModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: LTXModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[LTXModularPipeline, BlockState]:
         block_state.latent_model_input = block_state.latents.to(block_state.dtype)
         block_state.timestep_adjusted = t.expand(block_state.latent_model_input.shape[0]).unsqueeze(-1) * (
             1 - block_state.conditioning_mask
@@ -342,7 +350,7 @@ class LTXImage2VideoLoopDenoiser(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(
         self, components: LTXModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
-    ) -> PipelineState:
+    ) -> tuple[LTXModularPipeline, BlockState]:
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
 
         latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
@@ -411,7 +419,9 @@ class LTXImage2VideoLoopAfterDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: LTXModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: LTXModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[LTXModularPipeline, BlockState]:
         latent_num_frames = (block_state.num_frames - 1) // components.vae_temporal_compression_ratio + 1
         latent_height = block_state.height // components.vae_spatial_compression_ratio
         latent_width = block_state.width // components.vae_spatial_compression_ratio

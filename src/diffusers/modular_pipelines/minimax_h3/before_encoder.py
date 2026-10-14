@@ -112,7 +112,9 @@ class MiniMaxH3ResizeStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         keyframes = [keyframe for keyframe in (block_state.image, block_state.last_image) if keyframe is not None]
@@ -383,7 +385,9 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
         return torchaudio.transforms.Resample(sample_rate, target_sample_rate)(waveform)
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         # 1. Validate the request.

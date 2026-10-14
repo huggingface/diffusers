@@ -8,11 +8,13 @@ on:
     branches:
       - 'v*-release'
 
-permissions:
-  contents: read
+
+permissions: {}
 
 jobs:
   build-and-test:
+    permissions:
+      contents: read
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout repo

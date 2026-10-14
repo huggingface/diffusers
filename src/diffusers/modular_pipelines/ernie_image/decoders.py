@@ -73,7 +73,9 @@ class ErnieImageVaeDecoderStep(ModularPipelineBlocks):
         return [OutputParam("images", type_hint=list, description="The generated images.")]
 
     @torch.no_grad()
-    def __call__(self, components: ErnieImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: ErnieImageModularPipeline, state: PipelineState
+    ) -> tuple[ErnieImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         vae = components.vae
         device = block_state.latents.device

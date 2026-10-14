@@ -288,7 +288,7 @@ def parse_args(input_args=None):
         "--max_sequence_length",
         type=int,
         default=256,
-        help="Maximum sequence length to use with with the Gemma2 model",
+        help="Maximum sequence length to use with the Gemma2 model",
     )
     parser.add_argument(
         "--system_prompt",
