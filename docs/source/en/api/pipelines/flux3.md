@@ -60,11 +60,11 @@ night = pipe(
 )[0]
 ```
 
-With several references, the prompt can refer to them in order:
+With several references, refer to them in the prompt as `<ref_image_0>`, `<ref_image_1>`, ... in the order they are passed to `image`:
 
 ```python
 combined = pipe(
-    prompt="The fox from the first image sitting on the wooden bench from the second image, in the same snowy clearing.",
+    prompt="The fox from <ref_image_0> sitting on the wooden bench from <ref_image_1>, in the same snowy clearing.",
     image=[image, bench],
     height=768,
     width=1360,
@@ -73,6 +73,33 @@ combined = pipe(
 ```
 
 Pass `height` and/or `width` to override the derived size.
+
+## Layout control
+
+To place content explicitly, tag regions in the caption with `<id>` and append a JSON list of regions to the prompt. Each region has an `id`, a `bbox` of `[y0, x0, y1, x1]` (top-left and bottom-right corners, origin top-left) normalized to 0-1000 on both axes so it is independent of the output size, and a `desc`:
+
+```python
+prompt = (
+    "Minimalist graphic illustration featuring a black silhouette of a person <silhouette_1> centered against a "
+    "solid, vibrant chartreuse background <background_1>. "
+    '[{"id": "background_1", "bbox": [0, 0, 1000, 1000], "desc": "A flat field of neon yellow-green."}, '
+    '{"id": "silhouette_1", "bbox": [150, 150, 850, 850], "desc": "A black silhouette of a person in motion."}]'
+)
+```
+
+When editing, each region names its source reference with `from` (for example `"ref_image_0"`), where it is in that image with `src_bbox`, and where it should end up with `tgt_bbox`. Equal boxes keep a region in place:
+
+```python
+prompt = (
+    "In <ref_image_0>, move the knight figure <knight_1> upwards and to the left. Keep the rest of the image "
+    "unchanged, preserving the backdrop <backdrop_1>. "
+    '[{"id": "knight_1", "from": "ref_image_0", "src_bbox": [500, 150, 850, 350], "tgt_bbox": [194, 55, 544, 255], '
+    '"desc": "A miniature amigurumi knight crocheted from grey yarn."}, '
+    '{"id": "backdrop_1", "from": "ref_image_0", "src_bbox": [0, 0, 1000, 1000], "tgt_bbox": [0, 0, 1000, 1000], '
+    '"desc": "A soft, out-of-focus backdrop of knitted yarn."}]'
+)
+image = pipe(prompt=prompt, image=knight, output="images")[0]
+```
 
 ## Guidance scale
 
