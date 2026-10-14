@@ -24,7 +24,18 @@ jobs:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
-          LABELS=$(python utils/label_issues.py)
+          RAW=$(python utils/label_issues.py) || RAW=""
+          # Treat LLM output as untrusted: must be a JSON list of simple label strings; emit single-line JSON
+          LABELS=$(printf '%s' "$RAW" | python -c "import json,sys,re
+try:
+    d=json.loads(sys.stdin.read())
+except Exception:
+    d=[]
+if not isinstance(d,list):
+    d=[]
+out=[l for l in d if isinstance(l,str) and re.fullmatch(r'[A-Za-z0-9 _.:/-]{1,50}',l)][:5]
+print(json.dumps(out) if out else '')") || LABELS=""
+          LABELS=$(printf '%s' "$LABELS" | tr -d '\r\n')
           echo "labels=$LABELS" >> "$GITHUB_OUTPUT"
       - name: Apply labels
         if: steps.get-labels.outputs.labels != ''
@@ -33,6 +44,12 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           LABELS: ${{ steps.get-labels.outputs.labels }}
         run: |
-          for label in $(echo "$LABELS" | python -c "import json,sys; print('\n'.join(json.load(sys.stdin)))"); do
-            gh issue edit "$ISSUE_NUMBER" --add-label "$label"
+          # Only apply labels that already exist in the repository (allowlist)
+          ALLOWED=$(gh label list --limit 500 --json name -q '.[].name')
+          printf '%s' "$LABELS" | python -c "import json,sys; print('\n'.join(l for l in json.load(sys.stdin) if isinstance(l,str)))" | while IFS= read -r label; do
+            if [ -n "$label" ] && printf '%s\n' "$ALLOWED" | grep -Fxq -- "$label"; then
+              gh issue edit "$ISSUE_NUMBER" --add-label "$label"
+            else
+              echo "Skipping label not in allowlist"
+            fi
           done
