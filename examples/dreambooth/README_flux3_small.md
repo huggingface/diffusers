@@ -66,7 +66,7 @@ This trains a *yarn-art* style LoRA on [Norod78/Yarn-art-style](https://huggingf
 whose captions already contain the trigger phrase `yarn art style`.
 
 ```bash
-export MODEL_NAME="<flux3 image diffusers model>"
+export MODEL_NAME="black-forest-labs/flux-3-image-klein-base"
 export OUTPUT_DIR="trained-flux3-small-yarn-lora"
 
 accelerate launch train_dreambooth_lora_flux3_small.py \
@@ -111,7 +111,7 @@ This example uses [kontext-community/relighting](https://huggingface.co/datasets
 (`file_name` = source, `output` = relit target, `instruction` = edit prompt):
 
 ```bash
-export MODEL_NAME="<flux3 image diffusers model>"
+export MODEL_NAME="black-forest-labs/flux-3-image-klein-base"
 export OUTPUT_DIR="trained-flux3-small-relight-lora"
 
 accelerate launch train_dreambooth_lora_flux3_small_img2img.py \
@@ -142,6 +142,28 @@ accelerate launch train_dreambooth_lora_flux3_small_img2img.py \
 
 i2i reads its data through `--dataset_name` (a dataset with an image column, a conditioning-image column and a caption
 column), not a plain image folder.
+
+### Addressing the reference image in the prompt
+
+FLUX.3 refers to each conditioning image passed to `image=` as `<ref_image_0>`, `<ref_image_1>`, ... in the order
+they are passed. i2i training uses a single conditioning image, so captions address it as `<ref_image_0>`, e.g.
+`"Relight <ref_image_0> with warm sunset light."` Matching this grammar in your captions keeps the adapter aligned
+with how the base model reads references.
+
+For explicit placement you can tag regions with an `<id>` and append a JSON list of regions to the caption. Each
+region has an `id`, a `bbox` of `[y0, x0, y1, x1]` (top-left and bottom-right corners, origin top-left) normalized to
+0-1000 on both axes, and a `desc`. When editing, a region also names its source reference with `from` (e.g.
+`"ref_image_0"`), where it starts with `src_bbox`, and where it should end up with `tgt_bbox` (equal boxes keep it in
+place):
+
+```text
+In <ref_image_0>, move the knight <knight_1> up and to the left, keeping everything else.
+[{"id": "knight_1", "from": "ref_image_0", "src_bbox": [500, 150, 850, 350], "tgt_bbox": [194, 55, 544, 255],
+  "desc": "A miniature knight crocheted from grey yarn."}]
+```
+
+See the [FLUX.3 pipeline docs](https://github.com/huggingface/diffusers/blob/main/docs/source/en/api/pipelines/flux3.md)
+for the full prompt grammar.
 
 ## Tracking
 
@@ -189,7 +211,7 @@ Load a trained adapter onto the modular pipeline and generate:
 import torch
 from diffusers.modular_pipelines import Flux3AutoBlocks
 
-pipe = Flux3AutoBlocks().init_pipeline("<flux3 image diffusers model>")
+pipe = Flux3AutoBlocks().init_pipeline("black-forest-labs/flux-3-image-klein-base")
 pipe.load_components(dtype=torch.bfloat16)
 pipe.to("cuda")
 

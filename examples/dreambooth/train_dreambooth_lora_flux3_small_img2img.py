@@ -215,7 +215,7 @@ def save_model_card(
     instance_prompt=None,
     validation_prompt=None,
     repo_folder=None,
-    fp8_training=False,
+    quant_training=None,
 ):
     widget_dict = []
     if images is not None:
@@ -234,9 +234,9 @@ def save_model_card(
 
 These are {repo_id} DreamBooth LoRA weights for {base_model}.
 
-The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the [FLUX.3 diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_flux3.md).
+The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the [FLUX.3 diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_flux3_small.md).
 
-FP8 training? {fp8_training}
+Quant training? {quant_training}
 
 ## Trigger words
 
@@ -818,7 +818,7 @@ def parse_args(input_args=None):
 
     if args.cond_image_column is None:
         raise ValueError(
-            "you must provide --cond_image_column for image-to-image training. Otherwise please see Flux2 text-to-image training example."
+            "you must provide --cond_image_column for image-to-image training. Otherwise use the FLUX.3 text-to-image training script (train_dreambooth_lora_flux3_small.py)."
         )
     else:
         assert args.image_column is not None
@@ -953,14 +953,15 @@ class DreamBoothDataset(Dataset):
             if not image.mode == "RGB":
                 image = image.convert("RGB")
             dest_image = None
-            if self.cond_images:  # todo: take care of max area for buckets
+            if self.cond_images:
                 dest_image = self.cond_images[i]
                 image_width, image_height = dest_image.size
                 if image_width * image_height > 1024 * 1024:
                     dest_image = Flux2ImageProcessor._resize_to_target_area(dest_image, 1024 * 1024)
                     image_width, image_height = dest_image.size
 
-                multiple_of = 2 ** (4 - 1)  # 2 ** (len(vae.config.block_out_channels) - 1), temp!
+                # VAE spatial compression: 2 ** (len(vae.config.block_out_channels) - 1) = 8 for the Flux2 VAE
+                multiple_of = 2 ** (4 - 1)
                 image_width = (image_width // multiple_of) * multiple_of
                 image_height = (image_height // multiple_of) * multiple_of
                 image_processor = Flux2ImageProcessor()
@@ -2002,6 +2003,11 @@ def main(args):
             free_memory()
 
         validation_prompt = args.validation_prompt if args.validation_prompt else args.final_validation_prompt
+        quant_training = None
+        if args.do_fp8_training:
+            quant_training = "FP8 TorchAO"
+        elif args.bnb_quantization_config_path:
+            quant_training = "BitsandBytes"
         save_model_card(
             (args.hub_model_id or Path(args.output_dir).name) if not args.push_to_hub else repo_id,
             images=images,
@@ -2009,7 +2015,7 @@ def main(args):
             instance_prompt=args.instance_prompt,
             validation_prompt=validation_prompt,
             repo_folder=args.output_dir,
-            fp8_training=args.do_fp8_training,
+            quant_training=quant_training,
         )
 
         if args.push_to_hub:

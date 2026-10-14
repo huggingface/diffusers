@@ -227,7 +227,7 @@ def save_model_card(
 
 These are {repo_id} DreamBooth LoRA weights for {base_model}.
 
-The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the [FLUX.3 diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_flux3.md).
+The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the [FLUX.3 diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_flux3_small.md).
 
 Quant training? {quant_training}
 
@@ -1957,7 +1957,7 @@ def main(args):
                 image_ids = prepare_latent_ids(lh, lw, accelerator.device)  # (image_seq_len, 4)
                 # FLUX.3 is not guidance-distilled: no guidance argument. The flow timestep is a per-sample scalar in
                 # [0, 1] (the transformer scales it by 1000 and broadcasts it over the image tokens internally); the
-                # text context and any reference tokens sit at timestep 0.
+                # text context sits at timestep 0.
                 timestep = sigmas.reshape(bsz)
 
                 # Predict the noise residual. The transformer returns only the generated image tokens, so there is
@@ -2133,7 +2133,6 @@ def main(args):
                     is_final_validation=True,
                     torch_dtype=weight_dtype,
                 )
-            images = None
             del pipeline
             free_memory()
 
