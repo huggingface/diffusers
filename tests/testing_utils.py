@@ -468,6 +468,14 @@ def is_sdnq(test_case):
     return pytest.mark.sdnq(test_case)
 
 
+def is_bfl(test_case):
+    """
+    Decorator marking a test as a BFL (fp8r / nvfp4) quantization test. These tests can be filtered using:
+        pytest -m "not bfl" to skip pytest -m bfl to run only these tests
+    """
+    return pytest.mark.bfl(test_case)
+
+
 def is_context_parallel(test_case):
     """
     Decorator marking a test as a context parallel inference test. These tests can be filtered using:

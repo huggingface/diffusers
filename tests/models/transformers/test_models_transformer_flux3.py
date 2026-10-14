@@ -23,6 +23,8 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    BFLCompileTesterMixin,
+    BFLTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     SingleFileTesterMixin,
@@ -167,3 +169,32 @@ class TestFlux3SingleFile(Flux3TransformerTesterConfig, SingleFileTesterMixin):
     @property
     def torch_dtype(self):
         return torch.bfloat16
+
+
+class Flux3TransformerBFLTesterConfig(Flux3TransformerTesterConfig):
+    """Shared config for the BFL quantization tests: which linears to quantize comes from the real checkpoints'
+    headers; the model itself is the small test model in the compute dtype."""
+
+    @property
+    def bfl_checkpoints(self):
+        return {
+            "fp8r": "https://huggingface.co/herzogenhorn/f3-image-small/blob/main/variants/fp8r/model.safetensors",
+            "nvfp4": "https://huggingface.co/herzogenhorn/f3-image-small/blob/main/variants/nvfp4/model.safetensors",
+        }
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
+    def get_dummy_inputs(self, **kwargs):
+        """Override to build inputs in the quantizer compute dtype (unquantized linears do strict-dtype matmuls)."""
+        inputs = super().get_dummy_inputs(**kwargs)
+        return {k: v.to(self.torch_dtype) if torch.is_floating_point(v) else v for k, v in inputs.items()}
+
+
+class TestFlux3TransformerBFL(Flux3TransformerBFLTesterConfig, BFLTesterMixin):
+    """BFL fp8r / nvfp4 quantization tests for the FLUX.3 image transformer."""
+
+
+class TestFlux3TransformerBFLCompile(Flux3TransformerBFLTesterConfig, BFLCompileTesterMixin):
+    """BFL fp8r / nvfp4 + torch.compile tests for the FLUX.3 image transformer."""

@@ -161,6 +161,34 @@ pipe.to("cuda")
 
 Load the other components by name first: [`~ModularPipeline.load_components`] without `names` would also load the transformer from the pipeline repo.
 
+Loading the FP8r and NVFP4 single-file checkpoints are also supported. Both load through the same call with a [`BFLQuantizationConfig`]. See the [BFL quantization guide](../../quantization/bfl) for the kernel requirements of each scheme.
+
+```python
+from diffusers import BFLQuantizationConfig
+
+transformer = Flux3Transformer2DModel.from_single_file(
+    "https://huggingface.co/black-forest-labs/FLUX.3-image-small/blob/main/variants/nvfp4/model.safetensors",
+    config="black-forest-labs/FLUX.3-image-small",
+    subfolder="transformer",
+    quantization_config=BFLQuantizationConfig(compute_dtype=torch.bfloat16),
+    dtype=torch.bfloat16,
+)
+```
+
+When loading the step-distilled checkpoints, we need their
+configs (`flow_map=True`):
+
+<!-- TODO: replace the repo ids with the release repos -->
+```python
+transformer = Flux3Transformer2DModel.from_single_file(
+    "https://huggingface.co/black-forest-labs/FLUX.3-image-small/blob/main/variants/sd-nvfp4/model.safetensors",
+    config="black-forest-labs/FLUX.3-image-small-distilled",
+    subfolder="transformer",
+    quantization_config=BFLQuantizationConfig(compute_dtype=torch.bfloat16),
+    dtype=torch.bfloat16,
+)
+```
+
 ## Flux3ModularPipeline
 
 [[autodoc]] Flux3ModularPipeline

@@ -135,6 +135,18 @@ else:
     _import_structure["quantizers.quantization_config"].append("NunchakuLiteQuantizationConfig")
 
 try:
+    if not is_torch_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_bfl_objects
+
+    _import_structure["utils.dummy_bfl_objects"] = [
+        name for name in dir(dummy_bfl_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("BFLQuantizationConfig")
+
+try:
     if not is_auto_round_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -1036,6 +1048,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_nunchaku_lite_objects import *
     else:
         from .quantizers.quantization_config import NunchakuLiteQuantizationConfig
+
+    try:
+        if not is_torch_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_bfl_objects import *
+    else:
+        from .quantizers.quantization_config import BFLQuantizationConfig
 
     try:
         if not is_auto_round_available():

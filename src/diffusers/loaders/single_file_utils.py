@@ -153,6 +153,7 @@ CHECKPOINT_KEY_NAMES = {
         "model.diffusion_model.early_stream_modulations.image.lin.weight",
         "early_stream_modulations.image.lin.weight",
     ],
+    "flux3-distilled": ["model.diffusion_model.ref_time_in.in_layer.weight", "ref_time_in.in_layer.weight"],
     "chroma": [
         "model.diffusion_model.distilled_guidance_layer.in_proj.bias",
         "distilled_guidance_layer.in_proj.bias",
@@ -213,6 +214,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "flux-schnell": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-schnell"},
     "flux-2-dev": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.2-dev"},
     "flux-3-image": {"pretrained_model_name_or_path": "diffusers-internal-dev/f3-small-img"},
+    "flux-3-image-distilled": {"pretrained_model_name_or_path": "diffusers-internal-dev/f3-small-image-distilled"},
     "chroma": {"pretrained_model_name_or_path": "lodestones/Chroma1-HD"},
     "ltx-video": {"pretrained_model_name_or_path": "diffusers/LTX-Video-0.9.0"},
     "ltx-video-0.9.1": {"pretrained_model_name_or_path": "diffusers/LTX-Video-0.9.1"},
@@ -694,7 +696,11 @@ def infer_diffusers_model_type(checkpoint):
         model_type = "flux-2-dev"
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["flux3"]):
-        model_type = "flux-3-image"
+        # the step-distilled (flow-map) checkpoint carries a second timestep embedder
+        if any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["flux3-distilled"]):
+            model_type = "flux-3-image-distilled"
+        else:
+            model_type = "flux-3-image"
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["chroma"]):
         model_type = "chroma"
