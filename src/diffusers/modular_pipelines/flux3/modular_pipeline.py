@@ -13,6 +13,7 @@
 # limitations under the License.
 
 
+from ...loaders import Flux3LoraLoaderMixin
 from ...utils import logging
 from ..modular_pipeline import ModularPipeline
 
@@ -20,7 +21,7 @@ from ..modular_pipeline import ModularPipeline
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class Flux3ModularPipeline(ModularPipeline):
+class Flux3ModularPipeline(ModularPipeline, Flux3LoraLoaderMixin):
     """
     A ModularPipeline for FLUX.3.
     """

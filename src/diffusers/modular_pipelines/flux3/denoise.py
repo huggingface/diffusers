@@ -81,6 +81,7 @@ class Flux3LoopDenoiser(ModularPipelineBlocks):
                 description="The image latent tokens to denoise. Shape: (B, seq_len, C)",
             ),
             InputParam.template("denoiser_input_fields"),
+            InputParam.template("attention_kwargs", kwargs_type="denoiser_input_fields"),
         ]
 
     @property

@@ -33,6 +33,7 @@ from ..testing_utils import (
     BaseModularPipelineTesterConfig,
     ModularGuiderTesterMixin,
     ModularLoadingTesterMixin,
+    ModularLoraTesterMixin,
     ModularMemoryTesterMixin,
     ModularPipelineTesterMixin,
     ModularWorkflowTesterMixin,
@@ -91,6 +92,7 @@ FLUX3_INPUTS = {
     "text_encoder_out_layers": (4, 8, 12, 16, 20, 24, 28, 32),
     "num_images_per_prompt": 1,
     "latents": None,
+    "attention_kwargs": None,
     "generator": None,
     "num_inference_steps": 50,
     "timesteps": None,
@@ -322,7 +324,6 @@ class TestFlux3ModularPipelineMemory(Flux3ModularPipelineTesterConfig, ModularMe
 class TestFlux3ModularPipelineWorkflow(Flux3ModularPipelineTesterConfig, ModularWorkflowTesterMixin):
     pass
 
-
 class Flux3DistilledModularPipelineTesterConfig(Flux3ModularPipelineTesterConfig):
     pipeline_class = Flux3DistilledModularPipeline
     pipeline_blocks_class = Flux3DistilledAutoBlocks
@@ -364,4 +365,7 @@ class TestFlux3DistilledModularPipelineLoading(Flux3DistilledModularPipelineTest
 
 
 class TestFlux3DistilledModularPipelineWorkflow(Flux3DistilledModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+class TestFlux3ModularPipelineLoRA(Flux3ModularPipelineTesterConfig, ModularLoraTesterMixin):
     pass
