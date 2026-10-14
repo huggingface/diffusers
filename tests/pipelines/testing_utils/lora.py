@@ -700,6 +700,18 @@ class LoraTesterMixin(BaseLoraTesterMixin, BasePipelineOutputMixin):
             msg="output with no lora and output with lora disabled should give same results",
         )
 
+    def test_get_active_adapters_text_encoder_only(self):
+        """
+        Tests that get_active_adapters correctly reports active adapters when only the text encoder has a LoRA attached.
+        """
+        if not self.text_encoder_components:
+            pytest.skip("Skipping test as text encoder LoRAs are not currently supported.")
+
+        pipe = self.get_pipeline().to(torch_device)
+        self.add_adapters_to_pipeline(pipe, components=self.text_encoder_components, adapter_name="default")
+
+        assert pipe.get_active_adapters() == ["default"]
+
     def test_get_adapters(self):
         pipe = self.get_pipeline().to(torch_device)
 
