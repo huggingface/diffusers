@@ -31,6 +31,7 @@ from ...testing_utils import (
     is_kernels_available,
     is_tensor_parallel,
     require_torch_multi_accelerator,
+    require_torch_tpu,
     torch_device,
 )
 from .common import calculate_expected_num_shards, compute_module_persistent_sizes
@@ -41,6 +42,7 @@ from .utils import _maybe_cast_to_bf16
 DEVICE_CONFIG = {
     "cuda": {"backend": "nccl", "module": torch.cuda},
     "xpu": {"backend": "xccl", "module": torch.xpu},
+    "tpu": {"backend": "tpu_dist", "module": None},
 }
 
 
@@ -245,7 +247,15 @@ def _custom_mesh_worker(
 
 
 def _tensor_parallel_worker(
-    rank, world_size, master_port, model_class, init_dict, inputs_dict, return_dict, state_dict
+    rank,
+    world_size,
+    master_port,
+    model_class,
+    init_dict,
+    inputs_dict,
+    return_dict,
+    state_dict,
+    device_type=torch_device,
 ):
     """Worker function for tensor parallel inference testing.
 
@@ -258,16 +268,19 @@ def _tensor_parallel_worker(
         os.environ["MASTER_ADDR"] = "localhost"
         os.environ["MASTER_PORT"] = str(master_port)
         os.environ["RANK"] = str(rank)
+        os.environ["LOCAL_RANK"] = str(rank)
         os.environ["WORLD_SIZE"] = str(world_size)
 
-        device_config = DEVICE_CONFIG.get(torch_device, DEVICE_CONFIG["cuda"])
-        backend = device_config["backend"]
-        device_module = device_config["module"]
+        device_config = DEVICE_CONFIG.get(device_type, DEVICE_CONFIG["cuda"])
+        dist.init_process_group(backend=device_config["backend"], rank=rank, world_size=world_size)
 
-        dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
-
-        device_module.set_device(rank)
-        device = torch.device(f"{torch_device}:{rank}")
+        if device_type == "tpu":
+            # Each spawned process is bound to one chip. Avoid bf16 matmuls to keep the tolerance tight.
+            device = torch.device("tpu")
+            torch.set_float32_matmul_precision("highest")
+        else:
+            device_config["module"].set_device(rank)
+            device = torch.device(f"{device_type}:{rank}")
 
         model = model_class(**init_dict)
         model.load_state_dict(state_dict)
@@ -303,8 +316,8 @@ def _tensor_parallel_from_pretrained_worker(
     """Worker for `from_pretrained(..., parallel_config=...)`, i.e. sharding while reading the checkpoint.
 
     Each rank loads only its own slice of every `_tp_plan` parameter straight into a `DTensor` and runs a forward
-    pass. Rank 0 reports its output and the local/global shapes of one sharded weight so the caller can check both the
-    numerics and that sharding actually happened.
+    pass. Rank 0 checks that exactly the parameters `_tp_plan` covers were loaded as `DTensor`s, each with the
+    placement and local shape its shard spec implies, and reports its output so the caller can check the numerics.
     """
     try:
         os.environ["MASTER_ADDR"] = "localhost"
@@ -316,7 +329,9 @@ def _tensor_parallel_from_pretrained_worker(
         dist.init_process_group(backend=device_config["backend"], rank=rank, world_size=world_size)
         device_config["module"].set_device(rank)
 
-        from torch.distributed.tensor import DTensor
+        from torch.distributed.tensor import DTensor, Replicate, Shard
+
+        from diffusers.hooks.tensor_parallel import resolve_tp_shard_specs
 
         model = model_class.from_pretrained(
             checkpoint_dir, parallel_config=TensorParallelConfig(tp_degree=world_size)
@@ -330,12 +345,30 @@ def _tensor_parallel_from_pretrained_worker(
             output = output.full_tensor()
 
         if rank == 0:
-            sharded = {k: v for k, v in model.state_dict().items() if isinstance(v, DTensor)}
-            assert sharded, "No parameter was sharded into a DTensor by the streaming load."
-            name, param = next(iter(sharded.items()))
+            specs = resolve_tp_shard_specs(model, model_class._tp_plan, world_size)
+            state_dict = model.state_dict()
+
+            # The numerics check alone wouldn't catch a planned parameter left unsharded.
+            for name, spec in specs.items():
+                param = state_dict[name]
+                assert isinstance(param, DTensor), (
+                    f"'{name}' is covered by `_tp_plan` but was not loaded as a DTensor."
+                )
+                placement = Replicate() if spec.dim is None else Shard(spec.dim)
+                assert param.placements == (placement,), (
+                    f"'{name}' has placements {param.placements}, not {placement}."
+                )
+                expected_local_shape = list(param.shape)
+                if spec.dim is not None:
+                    expected_local_shape[spec.dim] //= world_size
+                assert list(param.to_local().shape) == expected_local_shape, (
+                    f"'{name}' has local shape {list(param.to_local().shape)}, not {expected_local_shape}."
+                )
+
+            unplanned = sorted(k for k, v in state_dict.items() if isinstance(v, DTensor) and k not in specs)
+            assert not unplanned, f"Parameters not covered by `_tp_plan` were loaded as DTensors: {unplanned}"
+
             return_dict["status"] = "success"
-            return_dict["num_sharded"] = len(sharded)
-            return_dict["shard_example"] = (name, list(param.to_local().shape), list(param.shape))
             return_dict["output"] = output.float().cpu().tolist()
 
     except Exception as e:
@@ -456,13 +489,73 @@ class TensorParallelTesterMixin:
             f"Tensor parallel `from_pretrained` failed: {return_dict.get('error', 'Unknown error')}"
         )
 
-        name, local_shape, global_shape = return_dict["shard_example"]
-        assert local_shape != global_shape, (
-            f"'{name}' has local shape {local_shape} equal to its global shape, so it was not sharded."
-        )
-
         # Sharded matmuls + all-reduce reorder the summation, so allow a small tolerance over the reference.
         torch.testing.assert_close(reference, torch.tensor(return_dict["output"]), atol=1e-3, rtol=1e-3)
+
+
+@is_tensor_parallel
+@require_torch_tpu
+class TensorParallelTPUTesterMixin:
+    """Same check as `TensorParallelTesterMixin`, spawning one process per TPU chip.
+
+    Run these tests in their own pytest process (e.g. `-k TensorParallelTPU`): `torch.manual_seed` or a backward pass
+    in an earlier test binds every TPU chip to the pytest process, and the spawned workers then fail.
+    """
+
+    # Smallest slice every TPU generation supports, so the test is the same on any CI host.
+    tp_world_size = 4
+
+    def test_tensor_parallel_tpu_inference(self, atol=1e-3, rtol=1e-3):
+        from torch_tpu._internal.distributed.launchers.singlehost_wrapper import prepare_tpu_environment
+        from torch_tpu._internal.utils import hardware
+
+        if getattr(self.model_class, "_tp_plan", None) is None:
+            pytest.skip("Model does not define a `_tp_plan` for tensor parallel inference.")
+
+        world_size = self.tp_world_size
+        if hardware.get_tpu_device_count() < world_size:
+            pytest.skip(f"Needs at least {world_size} TPU chips.")
+        init_dict = self.get_init_dict()
+        num_heads = init_dict.get("num_attention_heads")
+        if num_heads is not None and num_heads % world_size != 0:
+            pytest.skip(f"`num_attention_heads` ({num_heads}) is not divisible by tp_degree ({world_size}).")
+
+        # Reference on CPU: touching the TPU here would bind every chip to this process.
+        inputs_dict = self.get_dummy_inputs(device="cpu")
+        model = self.model_class(**init_dict).eval()
+        with torch.no_grad():
+            ref_output = model(**inputs_dict, return_dict=False)[0].float()
+
+        tpu_env = ("TORCH_TPU_TOPOLOGY", "TORCH_TPU_SLICEBUILDER_ADDRESSES")
+        for key in tpu_env:
+            os.environ.pop(key, None)
+        prepare_tpu_environment(world_size)
+        return_dict = mp.Manager().dict()
+        try:
+            mp.spawn(
+                _tensor_parallel_worker,
+                args=(
+                    world_size,
+                    _find_free_port(),
+                    self.model_class,
+                    init_dict,
+                    inputs_dict,
+                    return_dict,
+                    model.state_dict(),
+                    "tpu",
+                ),
+                nprocs=world_size,
+                join=True,
+            )
+        finally:
+            for key in tpu_env:
+                os.environ.pop(key, None)
+
+        assert return_dict.get("status") == "success", (
+            f"Tensor parallel inference failed: {return_dict.get('error', 'Unknown error')}"
+        )
+        tp_output = torch.tensor(return_dict["output"])
+        torch.testing.assert_close(ref_output, tp_output, atol=atol, rtol=rtol)
 
 
 @is_context_parallel
