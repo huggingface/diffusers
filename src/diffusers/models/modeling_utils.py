@@ -1973,9 +1973,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             save_offload_index(offload_index, offload_folder)
             offload_index = None
 
-            if offload_state_dict:
+        if offload_state_dict:
+            if state_dict_index:
                 load_offloaded_weights(model, state_dict_index, state_dict_folder)
-                shutil.rmtree(state_dict_folder)
+            shutil.rmtree(state_dict_folder)
 
         if len(error_msgs) > 0:
             error_msg = "\n\t".join(error_msgs)
