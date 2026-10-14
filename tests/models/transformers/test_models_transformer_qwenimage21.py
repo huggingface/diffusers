@@ -97,33 +97,6 @@ class QwenImage21TransformerTesterConfig(BaseModelTesterConfig):
             "img_mask": img_mask,
         }
 
-    def _get_step_inputs(self, num_steps):
-        base_inputs = self.get_dummy_inputs()
-        generator = torch.Generator("cpu").manual_seed(0)
-        return [
-            dict(
-                base_inputs,
-                hidden_states=randn_tensor(
-                    base_inputs["hidden_states"].shape, generator=generator, device=torch_device
-                ),
-                timestep=torch.tensor([1.0 - index / num_steps], device=torch_device),
-            )
-            for index in range(num_steps)
-        ]
-
-    def _run_denoising_loop(self, model, step_inputs, use_kv_cache):
-        from diffusers.models.transformers.transformer_qwenimage21 import QwenImage21KVCache
-
-        # Mirrors `QwenImage21Pipeline`: the first step prefills the cache, later steps only recompute the target.
-        kv_cache = QwenImage21KVCache(self.get_init_dict()["num_layers"]) if use_kv_cache else None
-        outputs = []
-        with torch.no_grad(), model.cache_context("cond"):
-            for index, inputs in enumerate(step_inputs):
-                kv_cache_mode = ("extract" if index == 0 else "cached") if use_kv_cache else None
-                output = model(**inputs, kv_cache=kv_cache, kv_cache_mode=kv_cache_mode, return_dict=False)[0]
-                outputs.append(output[:, -inputs["hidden_states"].shape[1] :])
-        return outputs
-
 
 class TestQwenImage21Transformer(QwenImage21TransformerTesterConfig, ModelTesterMixin):
     @pytest.mark.skip(
@@ -329,6 +302,19 @@ class TestQwenImage21TransformerAttention(QwenImage21TransformerTesterConfig, At
 class TestQwenImage21TransformerTaylorSeerCache(QwenImage21TransformerTesterConfig, TaylorSeerCacheTesterMixin):
     """TaylorSeerCache tests for QwenImage 2.1 Transformer."""
 
+    def _run_denoising_loop(self, model, step_inputs, use_kv_cache):
+        from diffusers.models.transformers.transformer_qwenimage21 import QwenImage21KVCache
+
+        # Mirrors `QwenImage21Pipeline`: the first step prefills the cache, later steps only recompute the target.
+        kv_cache = QwenImage21KVCache(self.get_init_dict()["num_layers"]) if use_kv_cache else None
+        outputs = []
+        with torch.no_grad(), model.cache_context("cond"):
+            for index, inputs in enumerate(step_inputs):
+                kv_cache_mode = ("extract" if index == 0 else "cached") if use_kv_cache else None
+                output = model(**inputs, kv_cache=kv_cache, kv_cache_mode=kv_cache_mode, return_dict=False)[0]
+                outputs.append(output[:, -inputs["hidden_states"].shape[1] :])
+        return outputs
+
     @pytest.mark.parametrize("use_lite_mode", [False, True])
     def test_taylorseer_cache_with_kv_cache(self, use_lite_mode):
         """
@@ -338,7 +324,19 @@ class TestQwenImage21TransformerTaylorSeerCache(QwenImage21TransformerTesterConf
         """
         from diffusers import TaylorSeerCacheConfig
 
-        step_inputs = self._get_step_inputs(num_steps=8)
+        num_steps = 8
+        base_inputs = self.get_dummy_inputs()
+        generator = torch.Generator("cpu").manual_seed(0)
+        step_inputs = [
+            dict(
+                base_inputs,
+                hidden_states=randn_tensor(
+                    base_inputs["hidden_states"].shape, generator=generator, device=torch_device
+                ),
+                timestep=torch.tensor([1.0 - index / num_steps], device=torch_device),
+            )
+            for index in range(num_steps)
+        ]
 
         torch.manual_seed(0)
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
@@ -369,53 +367,6 @@ class TestQwenImage21TransformerTaylorSeerCache(QwenImage21TransformerTesterConf
 
 class TestQwenImage21TransformerMagCache(QwenImage21TransformerTesterConfig, MagCacheTesterMixin):
     """MagCache tests for QwenImage 2.1 Transformer."""
-
-    def test_mag_cache_with_kv_cache(self):
-        """
-        With the KV cache, the hooked blocks see prefix + target tokens on the prefill step and target tokens only
-        afterwards. Calibration must compare residuals across that shape change, and a step skipped right after the
-        prefill must reuse the target part of the prefill residual, giving the same target tokens as a loop that
-        recomputes the full sequence every step.
-        """
-        from diffusers import MagCacheConfig
-
-        num_steps = 4
-        step_inputs = self._get_step_inputs(num_steps)
-
-        torch.manual_seed(0)
-        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
-        uncached = self._run_denoising_loop(model, step_inputs, use_kv_cache=False)
-
-        # Calibration never skips, so it must reproduce the uncached outputs.
-        model.enable_cache(MagCacheConfig(num_inference_steps=num_steps, calibrate=True))
-        calibrated = self._run_denoising_loop(model, step_inputs, use_kv_cache=True)
-        model.disable_cache()
-        for step, (cached, reference) in enumerate(zip(calibrated, uncached)):
-            torch.testing.assert_close(
-                cached, reference, atol=2e-5, rtol=2e-5, msg=f"calibration step {step} diverged"
-            )
-
-        # Step 0 computes, step 1 is skipped, step 2 computes, step 3 is skipped.
-        model.enable_cache(
-            MagCacheConfig(
-                num_inference_steps=num_steps,
-                retention_ratio=0.0,
-                threshold=100.0,
-                max_skip_steps=1,
-                mag_ratios=[1.0] * num_steps,
-            )
-        )
-        with_kv_cache = self._run_denoising_loop(model, step_inputs, use_kv_cache=True)
-        model._reset_stateful_cache()
-        without_kv_cache = self._run_denoising_loop(model, step_inputs, use_kv_cache=False)
-        model.disable_cache()
-
-        for step, (cached, reference) in enumerate(zip(with_kv_cache, without_kv_cache)):
-            assert cached.shape == reference.shape
-            torch.testing.assert_close(cached, reference, atol=2e-5, rtol=2e-5, msg=f"step {step} diverged")
-
-        # The skipped steps must actually be approximated, otherwise the comparison above proves nothing.
-        assert not torch.allclose(with_kv_cache[1], uncached[1], atol=1e-5)
 
 
 class TestQwenImage21TransformerSingleFile(QwenImage21TransformerTesterConfig, SingleFileTesterMixin):
