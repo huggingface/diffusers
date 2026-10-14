@@ -23,7 +23,7 @@ FLUX.3 ships as a modular pipeline. Prompting matters: the model responds best t
 import torch
 from diffusers import ModularPipeline
 
-pipe = ModularPipeline.from_pretrained("black-forest-labs/FLUX.3-image-small")
+pipe = ModularPipeline.from_pretrained("black-forest-labs/flux-3-image-klein-base")
 pipe.load_components(dtype=torch.bfloat16)
 pipe.to("cuda")
 
@@ -90,7 +90,7 @@ The step-distilled checkpoint generates in 16 steps without classifier-free guid
 
 <!-- TODO: replace the repo id with the release repo of the step-distilled checkpoint -->
 ```python
-pipe = ModularPipeline.from_pretrained("black-forest-labs/FLUX.3-image-small-distilled")
+pipe = ModularPipeline.from_pretrained("black-forest-labs/flux-3-image-klein")
 pipe.load_components(dtype=torch.bfloat16)
 pipe.to("cuda")
 
@@ -124,7 +124,7 @@ from diffusers.modular_pipelines import Flux3AutoBlocks
 print(Flux3AutoBlocks().available_workflows)
 # ["text2image", "image_conditioned"]
 
-t2i = ModularPipeline.from_pretrained("black-forest-labs/FLUX.3-image-small", workflow="text2image")
+t2i = ModularPipeline.from_pretrained("black-forest-labs/flux-3-image-klein-base", workflow="text2image")
 print(t2i.blocks.doc)
 ```
 
@@ -133,7 +133,7 @@ print(t2i.blocks.doc)
 Loading everything in bf16 takes about 20 GB of weights (the transformer is 5.5B parameters, the Qwen3-VL-4B text encoder 4B), with the image VAE in fp32. For GPUs with less memory, enable component offloading:
 
 ```python
-pipe = ModularPipeline.from_pretrained("black-forest-labs/FLUX.3-image-small")
+pipe = ModularPipeline.from_pretrained("black-forest-labs/flux-3-image-klein-base")
 pipe.load_components(dtype=torch.bfloat16)
 pipe.enable_auto_cpu_offload(device="cuda")
 ```
@@ -147,13 +147,13 @@ import torch
 from diffusers import Flux3Transformer2DModel, ModularPipeline
 
 transformer = Flux3Transformer2DModel.from_single_file(
-    "https://huggingface.co/black-forest-labs/FLUX.3-image-small/blob/main/model.safetensors",
-    config="black-forest-labs/FLUX.3-image-small",
+    "https://huggingface.co/black-forest-labs/flux-3-image-klein-base/blob/main/model.safetensors",
+    config="black-forest-labs/flux-3-image-klein-base",
     subfolder="transformer",
     dtype=torch.bfloat16,
 )
 
-pipe = ModularPipeline.from_pretrained("black-forest-labs/FLUX.3-image-small")
+pipe = ModularPipeline.from_pretrained("black-forest-labs/flux-3-image-klein-base")
 pipe.load_components(names=["text_encoder", "tokenizer", "vae"], dtype=torch.bfloat16)
 pipe.update_components(transformer=transformer)
 pipe.to("cuda")
@@ -167,8 +167,8 @@ Loading the FP8r and NVFP4 single-file checkpoints are also supported. Both load
 from diffusers import BFLQuantizationConfig
 
 transformer = Flux3Transformer2DModel.from_single_file(
-    "https://huggingface.co/black-forest-labs/FLUX.3-image-small/blob/main/variants/nvfp4/model.safetensors",
-    config="black-forest-labs/FLUX.3-image-small",
+    "https://huggingface.co/black-forest-labs/flux-3-image-klein-base/blob/main/variants/nvfp4/model.safetensors",
+    config="black-forest-labs/flux-3-image-klein-base",
     subfolder="transformer",
     quantization_config=BFLQuantizationConfig(compute_dtype=torch.bfloat16),
     dtype=torch.bfloat16,
@@ -181,8 +181,8 @@ configs (`flow_map=True`):
 <!-- TODO: replace the repo ids with the release repos -->
 ```python
 transformer = Flux3Transformer2DModel.from_single_file(
-    "https://huggingface.co/black-forest-labs/FLUX.3-image-small/blob/main/variants/sd-nvfp4/model.safetensors",
-    config="black-forest-labs/FLUX.3-image-small-distilled",
+    "https://huggingface.co/black-forest-labs/flux-3-image-klein-base/blob/main/variants/sd-nvfp4/model.safetensors",
+    config="black-forest-labs/flux-3-image-klein",
     subfolder="transformer",
     quantization_config=BFLQuantizationConfig(compute_dtype=torch.bfloat16),
     dtype=torch.bfloat16,

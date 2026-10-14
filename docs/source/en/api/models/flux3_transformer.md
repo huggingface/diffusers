@@ -21,7 +21,7 @@ import torch
 from diffusers import Flux3Transformer2DModel
 
 transformer = Flux3Transformer2DModel.from_pretrained(
-    "black-forest-labs/FLUX.3-image-small", subfolder="transformer", dtype=torch.bfloat16
+    "black-forest-labs/flux-3-image-klein-base", subfolder="transformer", dtype=torch.bfloat16
 )
 ```
 
