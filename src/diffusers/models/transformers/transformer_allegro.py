@@ -311,7 +311,7 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
         encoder_attention_mask: torch.Tensor | None = None,
         image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         return_dict: bool = True,
-    ):
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`AllegroTransformer3DModel`] forward method.
 

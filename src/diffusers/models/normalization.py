@@ -503,7 +503,7 @@ else:
                 self.weight = None
                 self.bias = None
 
-        def forward(self, input):
+        def forward(self, input) -> torch.Tensor:
             return F.layer_norm(input, self.dim, self.weight, self.bias, self.eps)
 
 
@@ -538,7 +538,7 @@ class RMSNorm(nn.Module):
             if bias:
                 self.bias = nn.Parameter(torch.zeros(dim))
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states) -> torch.Tensor:
         # `npu_rms_norm` requires a gamma tensor. When `elementwise_affine=False`,
         # `self.weight` is `None`, so fall back to the pure PyTorch path.
         if is_torch_npu_available() and self.weight is not None:
@@ -586,7 +586,7 @@ class MochiRMSNorm(nn.Module):
         else:
             self.weight = None
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states) -> torch.Tensor:
         input_dtype = hidden_states.dtype
         variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
         hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
@@ -612,7 +612,7 @@ class GlobalResponseNorm(nn.Module):
         self.gamma = nn.Parameter(torch.zeros(1, 1, 1, dim))
         self.beta = nn.Parameter(torch.zeros(1, 1, 1, dim))
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         gx = torch.norm(x, p=2, dim=(1, 2), keepdim=True)
         nx = gx / (gx.mean(dim=-1, keepdim=True) + 1e-6)
         return self.gamma * (x * nx) + self.beta + x

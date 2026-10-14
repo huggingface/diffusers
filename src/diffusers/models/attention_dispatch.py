@@ -30,6 +30,9 @@ import torch.nn.functional as F
 if torch.distributed.is_available():
     import torch.distributed._functional_collectives as funcol
 
+from huggingface_hub import get_organization_overview
+from huggingface_hub.constants import HF_HUB_OFFLINE
+
 from .. import __version__
 from ..utils import (
     get_logger,
@@ -47,7 +50,7 @@ from ..utils import (
     is_xformers_available,
     is_xformers_version,
 )
-from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
+from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS, DIFFUSERS_TRUST_REMOTE_KERNELS
 from ..utils.torch_utils import lru_cache_unless_export, maybe_allow_in_graph
 from ._modeling_parallel import gather_size_by_comm
 
@@ -242,6 +245,7 @@ class AttentionBackendName(str, Enum):
     # `sageattention`
     SAGE = "sage"
     SAGE_HUB = "sage_hub"
+    SAGE_BLACKWELL_HUB = "sage_blackwell_hub"
     SAGE_VARLEN = "sage_varlen"
     _SAGE_QK_INT8_PV_FP8_CUDA = "_sage_qk_int8_pv_fp8_cuda"
     _SAGE_QK_INT8_PV_FP8_CUDA_SM90 = "_sage_qk_int8_pv_fp8_cuda_sm90"
@@ -350,8 +354,13 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
         version=1,
     ),
     AttentionBackendName.SAGE_HUB: _HubKernelConfig(
-        repo_id="kernels-community/sage-attention",
+        repo_id="SageAttention/sage-attention",
         function_attr="sageattn",
+        version=3,
+    ),
+    AttentionBackendName.SAGE_BLACKWELL_HUB: _HubKernelConfig(
+        repo_id="SageAttention/sage-blackwell",
+        function_attr="sageattn3_blackwell",
         version=1,
     ),
     AttentionBackendName.FLASH_4_HUB: _HubKernelConfig(
@@ -473,6 +482,13 @@ def _check_device_cuda_atleast_smXY(major: int, minor: int) -> Callable:
     return check_device_cuda
 
 
+def _check_head_dim_64_or_128(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, **kwargs) -> None:
+    # The SM120 SageAttention3 kernel rejects head dims below 64 outright, fails to compile its
+    # Triton pre-pass on non-power-of-two dims, and silently falls back to SDPA at 256 and above.
+    if query.shape[-1] not in (64, 128):
+        raise ValueError(f"Query, key, and value must have a head dimension of 64 or 128, got {query.shape[-1]}.")
+
+
 def _check_qkv_dtype_match(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, **kwargs) -> None:
     if query.dtype != key.dtype:
         raise ValueError("Query and key must have the same dtype.")
@@ -535,6 +551,7 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
         AttentionBackendName._FLASH_3_HUB,
         AttentionBackendName._FLASH_3_VARLEN_HUB,
         AttentionBackendName.SAGE_HUB,
+        AttentionBackendName.SAGE_BLACKWELL_HUB,
         AttentionBackendName.FLASH_4_HUB,
         AttentionBackendName.AITER_FA2_HUB,
     ]:
@@ -725,11 +742,28 @@ def _maybe_download_kernel_for_backend(backend: AttentionBackendName) -> None:
     try:
         from kernels import get_kernel
 
+        repo_id = config.repo_id
+
+        if not HF_HUB_OFFLINE and not DIFFUSERS_TRUST_REMOTE_KERNELS:
+            publisher = repo_id.split("/")[0]
+            org_info = get_organization_overview(publisher)
+            if not getattr(org_info, "trustedKernelPublisher", False):
+                raise ValueError(
+                    f"Backend '{backend.value}' loads `{config.repo_id}`, which is not published by a trusted kernel "
+                    "publisher on the Hub, so loading it downloads and executes remote code. Set "
+                    "`DIFFUSERS_TRUST_REMOTE_KERNELS=true` to allow it."
+                )
+
+        trust_kwargs = (
+            {"trust_remote_code": DIFFUSERS_TRUST_REMOTE_KERNELS} if is_kernels_version(">=", "0.14.0") else {}
+        )
+
         kernel_module = get_kernel(
-            config.repo_id,
+            repo_id,
             revision=config.revision,
             version=config.version,
             user_agent={"diffusers": __version__},
+            **trust_kwargs,
         )
         if needs_kernel:
             config.kernel_fn = _resolve_kernel_attr(kernel_module, config.function_attr)
@@ -2193,7 +2227,7 @@ class SeqAllToAllDim(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, group, input, scatter_id=2, gather_id=1):
+    def forward(ctx, group, input, scatter_id=2, gather_id=1) -> torch.Tensor:
         ctx.group = group
         ctx.scatter_id = scatter_id
         ctx.gather_id = gather_id
@@ -2374,7 +2408,7 @@ class TemplatedRingAttention(torch.autograd.Function):
         forward_op,
         backward_op,
         _parallel_config: "ParallelConfig" | None = None,
-    ):
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         ring_mesh = _parallel_config.context_parallel_config._ring_mesh
         rank = _parallel_config.context_parallel_config._ring_local_rank
         world_size = _parallel_config.context_parallel_config.ring_degree
@@ -2527,7 +2561,7 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         forward_op,
         backward_op,
         _parallel_config: "ParallelConfig" | None = None,
-    ):
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
         world_size = _parallel_config.context_parallel_config.ulysses_degree
         group = ulysses_mesh.get_group()
@@ -2628,7 +2662,7 @@ class TemplatedRingAnythingAttention(torch.autograd.Function):
         forward_op,
         backward_op,
         _parallel_config: "ParallelConfig" | None = None,
-    ):
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         # Ring attention for arbitrary sequence lengths.
         if attn_mask is not None:
             raise ValueError(
@@ -2745,7 +2779,7 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         backward_op,
         _parallel_config: "ParallelConfig" | None = None,
         **kwargs,
-    ):
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
         group = ulysses_mesh.get_group()
 
@@ -3628,6 +3662,23 @@ def _native_flex_attention(
     else:
         raise ValueError("Attention mask must be either None, a BlockMask, or a 2D/4D tensor.")
 
+    # A `BlockMask`'s own block size is the sparsity granularity the caller built it around (e.g. NABLA's 64-token
+    # fractal blocks). The forward kernel's tile sizes must divide that granularity evenly; torch's autotuned
+    # defaults are only overridden when they don't already divide the mask's block size, to avoid unintended side
+    # effects from pinning tile sizes that otherwise would have been fine (e.g. the default 128x128 mask size would
+    # otherwise always force `BLOCK_N` to 128, even though 64 is a valid size).
+    kernel_options = None
+    if block_mask is not None:
+        q_block_size, kv_block_size = block_mask.BLOCK_SIZE
+        default_block_m = 64 if query.dtype == torch.float32 else 128
+        default_block_n = 64
+        kernel_options = {}
+        if q_block_size % default_block_m != 0:
+            kernel_options["BLOCK_M"] = q_block_size
+        if kv_block_size % default_block_n != 0:
+            kernel_options["BLOCK_N"] = kv_block_size
+        kernel_options = kernel_options or None
+
     query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
     out = flex_attention.flex_attention(
         query=query,
@@ -3638,6 +3689,7 @@ def _native_flex_attention(
         scale=scale,
         enable_gqa=enable_gqa,
         return_lse=return_lse,
+        kernel_options=kernel_options,
     )
     out = out.permute(0, 2, 1, 3)
     return out
@@ -4105,6 +4157,40 @@ def _sage_attention_hub(
             out, lse = out
 
     return (out, lse) if return_lse else out
+
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.SAGE_BLACKWELL_HUB,
+    constraints=[_check_device_cuda, _check_qkv_dtype_bf16_or_fp16, _check_head_dim_64_or_128, _check_shape],
+)
+def _sage_attention_blackwell_hub(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: torch.Tensor | None = None,
+    is_causal: bool = False,
+    scale: float | None = None,
+    return_lse: bool = False,
+    _parallel_config: "ParallelConfig" | None = None,
+) -> torch.Tensor:
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not supported for sage attention")
+    if return_lse:
+        # `sageattn3_blackwell` returns the output only, so there is no LSE to hand back. This
+        # also rules out context parallelism, hence `supports_context_parallel` is not set above.
+        raise ValueError("`return_lse` is not supported by the `sage_blackwell_hub` backend.")
+    if scale is not None and scale != query.shape[-1] ** -0.5:
+        # The kernel derives the softmax scale from the head dimension internally and silently
+        # swallows unknown kwargs, so a custom scale would be ignored rather than applied.
+        raise ValueError("A custom `scale` is not supported by the `sage_blackwell_hub` backend.")
+
+    func = _HUB_KERNELS_REGISTRY[AttentionBackendName.SAGE_BLACKWELL_HUB].kernel_fn
+    # The kernel works on the HND layout, unlike the other Sage backends which take NHD. It also
+    # subtracts the per-token mean from `key` in place, so the transposed copies we build here
+    # double as protection for the caller's tensors.
+    query, key, value = (x.transpose(1, 2).contiguous() for x in (query, key, value))
+    out = func(query, key, value, is_causal=is_causal)
+    return out.transpose(1, 2).contiguous()
 
 
 @_AttentionBackendRegistry.register(

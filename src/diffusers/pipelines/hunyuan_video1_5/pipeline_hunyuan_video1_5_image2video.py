@@ -671,7 +671,7 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
         output_type: str | None = "np",
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
-    ):
+    ) -> HunyuanVideo15PipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 
