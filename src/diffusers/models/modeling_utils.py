@@ -1546,6 +1546,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 # was recorded by `_resolve_parallel_config` before loading.
                 from ..hooks.tensor_parallel import apply_tensor_parallel
 
+                # A config that also asks for context parallelism gets its hooks here, in the same order as
+                # `enable_parallelism`, which is no longer callable now that the weights are sharded.
+                model._apply_context_parallel(parallel_config)
                 apply_tensor_parallel(model, tp_config, cls._tp_plan, weights_already_sharded=True)
             else:
                 model.enable_parallelism(config=parallel_config)
@@ -1720,15 +1723,33 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         device = torch.device(device_type, rank % device_module.device_count())
 
         mesh = None
-        if config.context_parallel_config is not None:
-            cp_config = config.context_parallel_config
+        cp_config, tp_config = config.context_parallel_config, config.tensor_parallel_config
+        if cp_config is not None and tp_config is not None:
+            # A single mesh spanning both parallelisms, with the context parallel dimensions varying fastest: a
+            # CP group is then a contiguous run of ranks and a TP group takes one rank out of each run.
+            #
+            # That order is a default, not a universal optimum. Some accelerator runtimes only accept contiguous
+            # replica groups for all-to-all -- which Ulysses needs -- while tolerating strided groups for
+            # all-reduce, which is all TP needs; since only one axis of a 2-D mesh can be contiguous, Ulysses
+            # gets it. On multi-node CUDA the opposite order is usually preferable, because TP is the most
+            # bandwidth-hungry collective and wants to stay within one NVLink domain. Pass `mesh=` on either
+            # config to choose the layout yourself.
+            mesh = (
+                cp_config.mesh
+                or tp_config.mesh
+                or torch.distributed.device_mesh.init_device_mesh(
+                    device_type=device_type,
+                    mesh_shape=(tp_config.tp_degree, *cp_config.mesh_shape),
+                    mesh_dim_names=("tp", *cp_config.mesh_dim_names),
+                )
+            )
+        elif cp_config is not None:
             mesh = cp_config.mesh or torch.distributed.device_mesh.init_device_mesh(
                 device_type=device_type,
                 mesh_shape=cp_config.mesh_shape,
                 mesh_dim_names=cp_config.mesh_dim_names,
             )
-        elif config.tensor_parallel_config is not None:
-            tp_config = config.tensor_parallel_config
+        elif tp_config is not None:
             mesh = tp_config.mesh or torch.distributed.device_mesh.init_device_mesh(
                 device_type=device_type,
                 mesh_shape=(tp_config.tp_degree,),
@@ -1737,6 +1758,32 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         # `config.setup()` records the mesh resolved above onto the config; see `ParallelConfig.setup`.
         config.setup(rank, world_size, device, mesh=mesh)
+
+        # Validate the combination up front — after `setup`, which resolves `_tp_degree` from the mesh, but before
+        # anything is recorded on the model or applied to it. CP hooks are applied before TP, so a check left to the
+        # TP branch would raise on a model already carrying CP hooks: half-parallelised, and not usable.
+        if cp_config is not None and tp_config is not None:
+            tp_degree = tp_config._tp_degree
+            requested = cp_config.ring_degree * cp_config.ulysses_degree * tp_degree
+            if requested > world_size:
+                raise ValueError(
+                    f"Combining context and tensor parallelism needs `ring_degree` ({cp_config.ring_degree}) * "
+                    f"`ulysses_degree` ({cp_config.ulysses_degree}) * `tp_degree` ({tp_degree}) = {requested} "
+                    f"devices, which exceeds the world size ({world_size})."
+                )
+            num_heads = getattr(self.config, "num_attention_heads", None)
+            divisor = tp_degree * cp_config.ulysses_degree
+            if num_heads is not None and not cp_config.ulysses_anything and num_heads % divisor != 0:
+                # Ulysses trades sequence for heads inside attention (`SeqAllToAllDim` scatters over dim 2), and it
+                # only ever sees the heads TP left on this rank, so the count has to survive both splits.
+                raise ValueError(
+                    f"Combining tensor parallelism (`tp_degree`={tp_degree}) with Ulysses context parallelism "
+                    f"(`ulysses_degree`={cp_config.ulysses_degree}) requires the number of attention heads "
+                    f"({num_heads}) to be divisible by their product ({divisor}): TP shards the heads first, and "
+                    f"Ulysses splits what is left on each rank. Pass `ulysses_anything=True` to pad the head "
+                    f"dimension instead, or pick degrees whose product divides {num_heads}."
+                )
+
         self._parallel_config = config
         return config
 
@@ -1749,11 +1796,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         logger.warning(
             "`enable_parallelism` is an experimental feature. The API may change in the future and breaking changes may be introduced at any time without warning."
         )
-
-        from ..hooks.context_parallel import apply_context_parallel
-        from .attention import AttentionModuleMixin
-        from .attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
-        from .attention_processor import Attention, MochiAttention
 
         if self._parallel_config is not None:
             raise RuntimeError(
@@ -1780,6 +1822,32 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             resolve_tp_shard_specs(self, self._tp_plan, _tp_degree(tp_config))
 
         config = self._resolve_parallel_config(config)
+
+        self._apply_context_parallel(config, cp_plan)
+
+        if config.tensor_parallel_config is not None:
+            from ..hooks.tensor_parallel import apply_tensor_parallel
+
+            apply_tensor_parallel(self, config.tensor_parallel_config, self._tp_plan)
+
+    def _apply_context_parallel(
+        self,
+        config: ParallelConfig,
+        cp_plan: dict[str, ContextParallelModelPlan] | None = None,
+    ):
+        """Install the context-parallel hooks `config` asks for, if any, and hand it to the attention processors.
+
+        Split out of `enable_parallelism` for the same reason as `_resolve_parallel_config`: `from_pretrained(...,
+        parallel_config=...)` shards the weights while reading them, so it cannot call `enable_parallelism`
+        afterwards, yet it still has to apply these hooks when the config asks for context parallelism.
+        """
+        from ..hooks.context_parallel import apply_context_parallel
+        from .attention import AttentionModuleMixin
+        from .attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
+        from .attention_processor import Attention, MochiAttention
+
+        if config.context_parallel_config is None:
+            return
 
         attention_classes = (Attention, MochiAttention, AttentionModuleMixin)
 
@@ -1829,11 +1897,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 )
             cp_plan = cp_plan if cp_plan is not None else self._cp_plan
             apply_context_parallel(self, config.context_parallel_config, cp_plan)
-
-        if config.tensor_parallel_config is not None:
-            from ..hooks.tensor_parallel import apply_tensor_parallel
-
-            apply_tensor_parallel(self, config.tensor_parallel_config, self._tp_plan)
 
     @classmethod
     def _load_pretrained_model(
