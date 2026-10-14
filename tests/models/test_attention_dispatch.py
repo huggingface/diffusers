@@ -146,7 +146,9 @@ class TestContextParallelAttentionBackward:
                 "_flash_3_varlen_hub",
                 marks=[
                     pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
-                    pytest.mark.skipif(torch_device != "cuda", reason="CUDA is required for _flash_3_varlen_hub backend."),
+                    pytest.mark.skipif(
+                        torch_device != "cuda", reason="CUDA is required for _flash_3_varlen_hub backend."
+                    ),
                 ],
             ),
         ],
