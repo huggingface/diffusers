@@ -24,7 +24,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import logging
 from ...utils.peft_utils import apply_lora_scale
-from ...utils.torch_utils import lru_cache_unless_export, maybe_allow_in_graph
+from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
@@ -707,19 +707,24 @@ class QwenImage21Rope(nn.Module):
             torch.cat([self.rope_params(pos_index, dim, theta), self.rope_params(neg_index, dim, theta)], dim=0)
             for dim in axes_dim
         ]
+        # Per-device copies of `freqs`, kept on the instance so they are freed with the model. A class-level
+        # `lru_cache` would key on `self` and keep every instance's device freqs alive for the life of the process.
+        self._device_freqs: dict[torch.device, list[torch.Tensor]] = {}
 
     def rope_params(self, index: torch.Tensor, dim: int, theta: int = 10000) -> torch.Tensor:
         freqs = torch.outer(index, 1.0 / torch.pow(theta, torch.arange(0, dim, 2).to(torch.float32).div(dim)))
         return torch.polar(torch.ones_like(freqs), freqs)
 
-    @lru_cache_unless_export(maxsize=128)
     def _get_device_freqs(self, device: torch.device) -> list[torch.Tensor]:
         """Return the per-axis freqs on `device`: complex exponentials, or rotation angles where complex is missing."""
-        if device.type == "neuron":
-            # `torch.angle` runs on CPU while the freqs are still complex; wrapping into (-pi, pi] is harmless
-            # because only cos/sin of the angle are used.
-            return [torch.angle(freq).to(device) for freq in self.freqs]
-        return [freq.to(device) for freq in self.freqs]
+        if device not in self._device_freqs:
+            if device.type == "neuron":
+                # `torch.angle` runs on CPU while the freqs are still complex; wrapping into (-pi, pi] is harmless
+                # because only cos/sin of the angle are used.
+                self._device_freqs[device] = [torch.angle(freq).to(device) for freq in self.freqs]
+            else:
+                self._device_freqs[device] = [freq.to(device) for freq in self.freqs]
+        return self._device_freqs[device]
 
     def forward(
         self, img_shapes: list[tuple[int, int, int]], image_pad_mask: torch.Tensor, device: torch.device
