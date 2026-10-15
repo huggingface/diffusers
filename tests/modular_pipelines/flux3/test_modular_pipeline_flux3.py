@@ -17,6 +17,7 @@ import numpy as np
 import PIL.Image
 import pytest
 import torch
+from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
 
 from diffusers.modular_pipelines import (
     Flux3AutoBlocks,
@@ -26,6 +27,7 @@ from diffusers.modular_pipelines import (
 )
 from diffusers.modular_pipelines.flux3.encoders import Flux3TextEncoderStep
 from diffusers.modular_pipelines.flux3.inputs import Flux3ImageCondInputStep
+from diffusers.modular_pipelines.flux3.prompt_upsampler import Flux3PromptUpsampleStep
 from diffusers.utils import logging
 
 from ...testing_utils import CaptureLogger, torch_device
@@ -42,6 +44,8 @@ from ..testing_utils import (
 
 FLUX3_TINY_REPO = "hf-internal-testing/tiny-flux3-image-modular"
 FLUX3_DISTILLED_TINY_REPO = "hf-internal-testing/tiny-flux3-image-distilled-modular"
+# a tiny random upsampler with the real processor, standing in for black-forest-labs/flux-3-image-klein-pup
+FLUX3_PROMPT_UPSAMPLER_TINY_REPO = "hf-internal-testing/tiny-flux3-prompt-upsampler"
 
 FLUX3_WORKFLOWS = {
     "text2image": [
@@ -217,6 +221,31 @@ class TestFlux3ModularPipelineFast(Flux3ModularPipelineTesterConfig, ModularPipe
         # only using the first reference changes the result
         single = pipe(**inputs, image=references[:1], output="images")
         assert not torch.allclose(images, single)
+
+    def test_prompt_upsampling(self):
+        # the prompt upsampler step, inserted before the text encoder, expands `prompt_to_upsample` into the `prompt`
+        # the pipeline then encodes. Its components come from their own repository, the tiny one here in place of the
+        # real upsampler the block points to
+        blocks = self.pipeline_blocks_class()
+        blocks.sub_blocks.insert("prompt_upsampler", Flux3PromptUpsampleStep(), 0)
+        pipe = blocks.init_pipeline(self.pretrained_model_name_or_path)
+        pipe.update_components(
+            prompt_upsampler=Qwen3_5ForConditionalGeneration.from_pretrained(FLUX3_PROMPT_UPSAMPLER_TINY_REPO),
+            prompt_upsampler_processor=AutoProcessor.from_pretrained(FLUX3_PROMPT_UPSAMPLER_TINY_REPO),
+        )
+        pipe.load_components()
+        pipe.to(torch_device)
+
+        request = "a tiny fox in the snow"
+        inputs = {k: v for k, v in self.get_dummy_inputs().items() if k != "prompt"}
+        out = pipe(**inputs, prompt_to_upsample=request, max_new_tokens=16, output=["images", "prompt"])
+        assert len(out["prompt"]) > len(request)
+
+        # the same text passed as `prompt` skips the step and gives a different image
+        inputs = {k: v for k, v in self.get_dummy_inputs().items() if k != "prompt"}
+        direct = pipe(**inputs, prompt=request, output=["images", "prompt"])
+        assert direct["prompt"] == request
+        assert not torch.allclose(out["images"], direct["images"])
 
     def test_image_to_image_default_size(self):
         # without a size, image-to-image generates at the default area (1024 x 1024 for the real model) at the first
