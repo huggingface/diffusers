@@ -156,11 +156,11 @@ class TestFlux3TransformerAttention(Flux3TransformerTesterConfig, AttentionTeste
 class TestFlux3SingleFile(Flux3TransformerTesterConfig, SingleFileTesterMixin):
     @property
     def ckpt_path(self):
-        return "https://huggingface.co/herzogenhorn/f3-image-small/blob/main/model.safetensors"
+        return "https://huggingface.co/black-forest-labs/flux-3-image-klein-base/blob/main/model.safetensors"
 
     @property
     def pretrained_model_name_or_path(self):
-        return "diffusers-internal-dev/f3-small-img"
+        return "black-forest-labs/flux-3-image-klein-base"
 
     @property
     def pretrained_model_kwargs(self):
@@ -178,8 +178,8 @@ class Flux3TransformerBFLTesterConfig(Flux3TransformerTesterConfig):
     @property
     def bfl_checkpoints(self):
         return {
-            "fp8r": "https://huggingface.co/herzogenhorn/f3-image-small/blob/main/variants/fp8r/model.safetensors",
-            "nvfp4": "https://huggingface.co/herzogenhorn/f3-image-small/blob/main/variants/nvfp4/model.safetensors",
+            "fp8r": "https://huggingface.co/black-forest-labs/flux-3-image-klein-base/blob/main/variants/fp8r/model.safetensors",
+            "nvfp4": "https://huggingface.co/black-forest-labs/flux-3-image-klein-base/blob/main/variants/nvfp4/model.safetensors",
         }
 
     @property
