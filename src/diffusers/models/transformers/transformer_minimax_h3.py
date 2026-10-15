@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...hooks.tensor_parallel import PackedColwiseParallel, ReplicatedInputRowwiseParallel
+from ...hooks.tensor_parallel import PackedColwiseParallel
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import BaseOutput, apply_lora_scale, logging
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
@@ -462,7 +462,7 @@ class MiniMaxH3Transformer3DModel(
     # `adaln_proj.linear` is the one projection that has to keep its full output width: the six modulation
     # parameters it produces scale and shift the full hidden dim of the packed sequence, which is already all-reduced
     # by the time they are applied. Sharding it colwise would need an all-gather to rebuild that width, so it is
-    # sharded `ReplicatedInputRowwiseParallel` instead — over its `time_embed_dim` input, reading the replicated
+    # sharded `"rowwise_split_input"` instead — over its `time_embed_dim` input, reading the replicated
     # `temb` and all-reducing the result. It is worth the collective: at `6 * hidden_size * MINIMAX_H3_MODALITY_NUM`
     # outputs per block it is ~40% of the denoiser's weights, and leaving it replicated puts the per-rank floor above
     # a single device's memory at any TP degree. The all-reduce itself is over `num_timesteps * 6 * hidden_size *
@@ -484,7 +484,7 @@ class MiniMaxH3Transformer3DModel(
         "transformer_blocks.*.attn.to_out.0": "rowwise",
         "transformer_blocks.*.ff.net.0.proj": PackedColwiseParallel([1, 1]),
         "transformer_blocks.*.ff.net.2": "rowwise",
-        "transformer_blocks.*.adaln_proj.linear": ReplicatedInputRowwiseParallel(),
+        "transformer_blocks.*.adaln_proj.linear": "rowwise_split_input",
         # the token-refiner blocks are the same attention + SwiGLU FFN, minus AdaLN and rotary
         "token_refiner.refiner_blocks.*.attn.to_q": "colwise",
         "token_refiner.refiner_blocks.*.attn.to_k": "colwise",
