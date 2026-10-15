@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import functools
 import math
 from typing import Any
 
@@ -132,39 +131,6 @@ def apply_rotary_emb_qwen(
         x_out = torch.view_as_real(x_rotated * freqs_cis).flatten(3)
 
         return x_out.type_as(x)
-
-
-# Copied from diffusers.models.transformers.transformer_qwenimage.apply_rotary_emb_qwen_neuron
-def apply_rotary_emb_qwen_neuron(x: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
-    """
-    Apply rotary embeddings to `x` using real-valued cos/sin, for backends without a complex dtype.
-
-    Numerically equivalent to `apply_rotary_emb_qwen(..., use_real=False)`, which multiplies `x` by a complex
-    exponential. Neuron has no complex tensor support, so the rotation angles are carried as reals and cos/sin are
-    taken here instead.
-
-    Args:
-        x (`torch.Tensor`): Query or key tensor to rotate, shape `[B, S, H, D]`.
-        freqs (`torch.Tensor`): Rotation angles, shape `[S, D // 2]`.
-
-    Returns:
-        `torch.Tensor`: `x` with rotary embeddings applied.
-    """
-    # Adjacent feature pairs (2k, 2k+1) share angle k, so each angle is repeated twice along the last dim; unsqueeze
-    # the head axis so the freqs broadcast over heads (this is what keeps it tensor-parallel-agnostic).
-    cos = torch.cos(freqs).repeat_interleave(2, dim=-1).unsqueeze(1)  # [S, 1, D]
-    sin = torch.sin(freqs).repeat_interleave(2, dim=-1).unsqueeze(1)  # [S, 1, D]
-    x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)  # [B, S, H, D//2]
-    x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)  # [B, S, H, D]
-    return (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
-
-
-# RoPE application is backend-dependent: the default path multiplies by a complex exponential, which Neuron cannot
-# represent. Callers select by `device.type` and fall back to the default for any backend not listed here.
-ROPE_PER_DEVICE = {
-    "cuda": functools.partial(apply_rotary_emb_qwen, use_real=False),
-    "neuron": apply_rotary_emb_qwen_neuron,
-}
 
 
 class QwenImage21TemporalTimesteps(nn.Module):
@@ -382,9 +348,8 @@ def _qwenimage21_prepare_qkv(
     key = attn.norm_k(key).to(value.dtype)
 
     if rotary_emb is not None:
-        apply_rope = ROPE_PER_DEVICE.get(query.device.type, ROPE_PER_DEVICE["cuda"])
-        query = apply_rope(query, rotary_emb)
-        key = apply_rope(key, rotary_emb)
+        query = apply_rotary_emb_qwen(query, rotary_emb, use_real=False)
+        key = apply_rotary_emb_qwen(key, rotary_emb, use_real=False)
 
     if layer_cache is not None:
         if kv_cache_mode == "extract" and cache_write_slice is not None:
@@ -707,29 +672,15 @@ class QwenImage21Rope(nn.Module):
             torch.cat([self.rope_params(pos_index, dim, theta), self.rope_params(neg_index, dim, theta)], dim=0)
             for dim in axes_dim
         ]
-        # Per-device copies of `freqs`, kept on the instance so they are freed with the model. A class-level
-        # `lru_cache` would key on `self` and keep every instance's device freqs alive for the life of the process.
-        self._device_freqs: dict[torch.device, list[torch.Tensor]] = {}
 
     def rope_params(self, index: torch.Tensor, dim: int, theta: int = 10000) -> torch.Tensor:
         freqs = torch.outer(index, 1.0 / torch.pow(theta, torch.arange(0, dim, 2).to(torch.float32).div(dim)))
         return torch.polar(torch.ones_like(freqs), freqs)
 
-    def _get_device_freqs(self, device: torch.device) -> list[torch.Tensor]:
-        """Return the per-axis freqs on `device`: complex exponentials, or rotation angles where complex is missing."""
-        if device not in self._device_freqs:
-            if device.type == "neuron":
-                # `torch.angle` runs on CPU while the freqs are still complex; wrapping into (-pi, pi] is harmless
-                # because only cos/sin of the angle are used.
-                self._device_freqs[device] = [torch.angle(freq).to(device) for freq in self.freqs]
-            else:
-                self._device_freqs[device] = [freq.to(device) for freq in self.freqs]
-        return self._device_freqs[device]
-
     def forward(
         self, img_shapes: list[tuple[int, int, int]], image_pad_mask: torch.Tensor, device: torch.device
     ) -> torch.Tensor:
-        freqs = self._get_device_freqs(device)
+        self.freqs = [freq.to(device) for freq in self.freqs]
 
         frame_index, height_index, width_index = [], [], []
         image_height_index, image_width_index = [], []
@@ -759,7 +710,7 @@ class QwenImage21Rope(nn.Module):
         height_index[image_pad_mask] = torch.tensor(image_height_index, dtype=torch.long, device=device)
         width_index[image_pad_mask] = torch.tensor(image_width_index, dtype=torch.long, device=device)
 
-        return torch.cat([freqs[0][frame_index], freqs[1][height_index], freqs[2][width_index]], dim=-1)
+        return torch.cat([self.freqs[0][frame_index], self.freqs[1][height_index], self.freqs[2][width_index]], dim=-1)
 
 
 class QwenImage21Transformer2DModel(
