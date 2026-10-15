@@ -23,8 +23,13 @@ import torch.multiprocessing as mp
 import torch.nn.functional as F
 
 from diffusers.models._modeling_parallel import ContextParallelConfig, ParallelConfig
+from diffusers.models.attention_dispatch import (
+    _HUB_KERNELS_REGISTRY,
+    AttentionBackendName,
+    _AttentionBackendRegistry,
+    dispatch_attention_fn,
+)
 from diffusers.models.attention_dispatch import attention_backend as attention_backend_ctx
-from diffusers.models.attention_dispatch import dispatch_attention_fn
 
 from ..testing_utils import (
     is_attention,
@@ -231,3 +236,62 @@ class TestVarlenAttentionCompile:
                         )
             finally:
                 torch.compiler.reset()
+
+
+@is_attention
+class TestAiterSageHubFallback:
+    """`aiter_sage_hub` runs the gfx1201 kernel only on inputs it supports and falls back to native SDPA otherwise.
+
+    The kernel is replaced by a stub, so this runs without a gfx1201 GPU or the Hub kernel.
+    """
+
+    @pytest.fixture
+    def kernel_calls(self, monkeypatch):
+        calls = []
+
+        def fake_sageattn(q, k, v, tensor_layout, is_causal, sm_scale):
+            calls.append(tensor_layout)
+            return torch.zeros_like(q)
+
+        config = _HUB_KERNELS_REGISTRY[AttentionBackendName.AITER_SAGE_HUB]
+        monkeypatch.setattr(config, "kernel_fn", fake_sageattn)
+        return calls
+
+    @staticmethod
+    def _run(query, key, value, **kwargs):
+        backend_fn = _AttentionBackendRegistry._backends[AttentionBackendName.AITER_SAGE_HUB]
+        return backend_fn(query, key, value, **kwargs)
+
+    @staticmethod
+    def _qkv(seq_q=16, seq_kv=16, head_dim=128, dtype=torch.bfloat16):
+        q = torch.randn(1, seq_q, 2, head_dim, dtype=dtype)
+        k = torch.randn(1, seq_kv, 2, head_dim, dtype=dtype)
+        v = torch.randn(1, seq_kv, 2, head_dim, dtype=dtype)
+        return q, k, v
+
+    def test_supported_inputs_use_kernel(self, kernel_calls):
+        self._run(*self._qkv())
+        assert len(kernel_calls) == 1
+
+    @pytest.mark.parametrize(
+        "qkv_kwargs, call_kwargs",
+        [
+            ({"head_dim": 64}, {}),
+            ({"dtype": torch.float32}, {}),
+            ({"seq_kv": 8}, {}),
+            ({}, {"is_causal": True}),
+            ({}, {"attn_mask": torch.ones(16, 16, dtype=torch.bool)}),
+        ],
+        ids=["head_dim_64", "fp32", "cross_attention", "causal", "mask"],
+    )
+    def test_unsupported_inputs_fall_back_to_native(self, kernel_calls, qkv_kwargs, call_kwargs):
+        query, key, value = self._qkv(**qkv_kwargs)
+        out = self._run(query, key, value, **call_kwargs)
+        ref = _AttentionBackendRegistry._backends[AttentionBackendName.NATIVE](query, key, value, **call_kwargs)
+        assert kernel_calls == []
+        assert torch.equal(out, ref)
+
+    def test_ring_attention_raises(self, kernel_calls):
+        config = ParallelConfig(context_parallel_config=ContextParallelConfig(ring_degree=2))
+        with pytest.raises(NotImplementedError, match="ring_degree"):
+            self._run(*self._qkv(), _parallel_config=config)
