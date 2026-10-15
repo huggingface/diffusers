@@ -16,7 +16,7 @@
 
 FLUX.3 is an image generation model from Black Forest Labs: a single transformer ([`Flux3Transformer2DModel`]) generates images from a text prompt, alone or together with one or more reference images. Text conditioning comes from Qwen3-VL, and images use the FLUX.2 packed autoencoder ([`AutoencoderKLFlux2`]).
 
-FLUX.3 ships as a modular pipeline. Prompting matters: the model responds best to full scene captions that describe the subject, composition, lighting, and atmosphere. Black Forest Labs provides a [prompt upsampler](https://huggingface.co/black-forest-labs/flux-3-image-klein-pup) that expands short prompts automatically; see [Prompt upsampling](#prompt-upsampling). Get started with a text-to-image generation:
+FLUX.3 ships as a modular pipeline. It takes full scene captions, not short prompts: a request sent as typed gives generic output. Run the [prompt upsampler](#prompt-upsampling) on every request, text-to-image and editing alike, or write the caption with any LLM using the system prompts in [`system_prompts.json`](https://huggingface.co/black-forest-labs/flux-3-image-klein-pup/blob/main/system_prompts.json). The pipeline does not run an upsampler on its own; the example below passes a full caption:
 
 ```python
 import torch
@@ -44,7 +44,7 @@ image.save("fox.png")
 
 ## Prompt upsampling
 
-The prompt upsampler, [black-forest-labs/flux-3-image-klein-pup](https://huggingface.co/black-forest-labs/flux-3-image-klein-pup), turns the user prompt, together with the reference images when editing, into a full scene caption. It is a separate model; run it with Transformers and pass its output as `prompt`:
+The prompt upsampler, [black-forest-labs/flux-3-image-klein-pup](https://huggingface.co/black-forest-labs/flux-3-image-klein-pup), turns a short request, together with the reference images when editing, into the full scene caption the model takes. It is a separate model; run it with Transformers and pass its output as `prompt`:
 
 ```python
 import json
@@ -88,9 +88,11 @@ image = pipe(prompt=upsample("An astronaut riding a horse"), output="images")[0]
 
 For an edit, pass the same reference images to both: `pipe(prompt=upsample(instruction, [image]), image=image, ...)`. The upsampler also writes the [layout](#layout-control) captions from a list of boxes; see its model card.
 
+Any other LLM can take its place: give it `system_prompts["t2i"]` (or `"i2i"` with the references) as the system prompt and the request as the user message, and pass the caption it returns as `prompt`.
+
 ## Image-to-image
 
-Pass one or more reference images with `image`. Every reference keeps its own resolution (center-cropped to the 16-pixel grid; references above 16 megapixels are downscaled first), and the generation size defaults to one megapixel at the first reference's aspect ratio. Describe the *target* image as a complete caption of the reference with your edit folded in, rather than a one-line instruction, or let the [prompt upsampler](#prompt-upsampling) write it from the instruction and the references:
+Pass one or more reference images with `image`. Every reference keeps its own resolution (center-cropped to the 16-pixel grid; references above 16 megapixels are downscaled first), and the generation size defaults to one megapixel at the first reference's aspect ratio. The prompt is the *target* image as a complete caption of the reference with the edit folded in, not a one-line instruction; the [prompt upsampler](#prompt-upsampling) writes it from the instruction and the references:
 
 ```python
 night = pipe(
