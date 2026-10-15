@@ -70,13 +70,13 @@ QWENIMAGE21_WORKFLOW_DEFAULTS = {
         "components": {
             "text_encoder": "Qwen3VLForConditionalGeneration",
             "processor": "Qwen3VLProcessor",
-            "guider": "ClassifierFreeGuidance",
             "scheduler": "FlowMatchEulerDiscreteScheduler",
+            "guider": "ClassifierFreeGuidance",
             "transformer": "QwenImage21Transformer2DModel",
             "vae": "AutoencoderKLQwenImage21",
             "image_processor": "VaeImageProcessor",
         },
-        "configs": {"sample_sigmas": None},
+        "configs": {},
         "required_inputs": ["prompt"],
         "inputs": {
             "negative_prompt": None,
@@ -99,12 +99,12 @@ QWENIMAGE21_WORKFLOW_DEFAULTS = {
             "image_processor": "VaeImageProcessor",
             "text_encoder": "Qwen3VLForConditionalGeneration",
             "processor": "Qwen3VLProcessor",
-            "guider": "ClassifierFreeGuidance",
             "vae": "AutoencoderKLQwenImage21",
             "scheduler": "FlowMatchEulerDiscreteScheduler",
+            "guider": "ClassifierFreeGuidance",
             "transformer": "QwenImage21Transformer2DModel",
         },
-        "configs": {"sample_sigmas": None},
+        "configs": {},
         "required_inputs": ["image", "prompt"],
         "inputs": {
             "output_resolution": 1024,
@@ -161,16 +161,6 @@ class TestQwenImage21ModularPipelineFast(QwenImage21ModularPipelineTesterConfig,
         cached = pipe(**self.get_dummy_inputs(), use_kv_cache=True, output="images")
         uncached = pipe(**self.get_dummy_inputs(), use_kv_cache=False, output="images")
         assert_tensors_close(cached, uncached, atol=1e-4, rtol=1e-4)
-
-    def test_sample_sigmas_config_sets_the_schedule(self):
-        pipe = self.get_pipeline().to(torch_device)
-        sample_sigmas = [1.0, 0.6, 0.2]
-        pipe.update_components(sample_sigmas=sample_sigmas)
-        timesteps = pipe(**self.get_dummy_inputs(), output="timesteps")
-        assert len(timesteps) == len(sample_sigmas)
-        # Explicit sigmas take precedence over the configured grid.
-        timesteps = pipe(**self.get_dummy_inputs(), sigmas=[1.0, 0.5], output="timesteps")
-        assert len(timesteps) == 2
 
 
 class TestQwenImage21ModularPipelineLoading(QwenImage21ModularPipelineTesterConfig, ModularLoadingTesterMixin):

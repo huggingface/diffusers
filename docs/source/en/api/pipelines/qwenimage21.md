@@ -119,6 +119,21 @@ pipe.update_components(guider=ClassifierFreeGuidance(guidance_scale=4.0))
 edited = pipe(prompt="Move it to a snowy mountain top", negative_prompt="blurry", image=image).images[0]
 ```
 
+The Turbo checkpoint maps to its own blocks ([`QwenImage21TurboAutoBlocks`]): it runs without a `guider`, takes no
+`negative_prompt`, and samples the sigma grid it ships with. `ModularPipeline.from_pretrained` picks the Turbo blocks
+from the `sample_sigmas` entry in the checkpoint's config, so nothing needs configuring:
+
+```python
+import torch
+from diffusers import ModularPipeline
+
+pipe = ModularPipeline.from_pretrained("Qwen/Qwen-Image-2.1-Turbo")
+pipe.load_components(dtype=torch.bfloat16)
+pipe.to("cuda")
+
+image = pipe(prompt="A capybara wearing a wizard hat, oil painting").images[0]
+```
+
 ## QwenImage21Pipeline
 
 [[autodoc]] QwenImage21Pipeline
@@ -136,3 +151,11 @@ edited = pipe(prompt="Move it to a snowy mountain top", negative_prompt="blurry"
 ## QwenImage21AutoBlocks
 
 [[autodoc]] QwenImage21AutoBlocks
+
+## QwenImage21TurboModularPipeline
+
+[[autodoc]] QwenImage21TurboModularPipeline
+
+## QwenImage21TurboAutoBlocks
+
+[[autodoc]] QwenImage21TurboAutoBlocks

@@ -179,11 +179,13 @@ class QwenImage21TextInputsStep(ModularPipelineBlocks):
             OutputParam.template("negative_prompt_embeds_mask", note="batch-expanded, None when nothing is padded"),
             OutputParam(
                 name="image_pad_mask",
+                kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
                 description="Bool mask marking the vision positions of the prompt embeddings (batch-expanded)",
             ),
             OutputParam(
                 name="negative_image_pad_mask",
+                kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
                 description="Bool mask marking the vision positions of the negative prompt embeddings (batch-expanded)",
             ),
@@ -371,6 +373,113 @@ class QwenImage21AdditionalInputsStep(ModularPipelineBlocks):
         block_state.image_width = image_widths
         block_state.height = block_state.height or image_heights[-1]
         block_state.width = block_state.width or image_widths[-1]
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# auto_docstring
+class QwenImage21TurboTextInputsStep(ModularPipelineBlocks):
+    """
+    Text input processing step that standardizes text embeddings for the pipeline.
+      This step:
+        1. Determines `batch_size` and `dtype` based on `prompt_embeds`
+        2. Expands the text embeddings and masks to batch_size * num_images_per_prompt
+        3. Drops an attention mask that carries no padding, as the attention backends then skip masking
+
+      This block should be placed after all encoder steps to process the text embeddings before they are used in
+      subsequent pipeline steps.
+
+      Inputs:
+          num_images_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          prompt_embeds (`Tensor`):
+              text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          prompt_embeds_mask (`Tensor`):
+              mask for the text embeddings. Can be generated from text_encoder step.
+          image_pad_mask (`Tensor`):
+              Bool mask marking the vision positions of the prompt embeddings. Can be generated from text_encoder step.
+
+      Outputs:
+          batch_size (`int`):
+              The batch size of the prompt embeddings
+          dtype (`dtype`):
+              The data type of the prompt embeddings
+          prompt_embeds (`Tensor`):
+              The prompt embeddings. (batch-expanded)
+          prompt_embeds_mask (`Tensor`):
+              The encoder attention mask. (batch-expanded, None when nothing is padded)
+          image_pad_mask (`Tensor`):
+              Bool mask marking the vision positions of the prompt embeddings (batch-expanded)
+    """
+
+    model_name = "qwenimage21-turbo"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Text input processing step that standardizes text embeddings for the pipeline.\n"
+            "This step:\n"
+            "  1. Determines `batch_size` and `dtype` based on `prompt_embeds`\n"
+            "  2. Expands the text embeddings and masks to batch_size * num_images_per_prompt\n"
+            "  3. Drops an attention mask that carries no padding, as the attention backends then skip masking\n\n"
+            "This block should be placed after all encoder steps to process the text embeddings before they are used "
+            "in subsequent pipeline steps."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("num_images_per_prompt"),
+            InputParam.template("prompt_embeds"),
+            InputParam.template("prompt_embeds_mask"),
+            InputParam(
+                name="image_pad_mask",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Bool mask marking the vision positions of the prompt embeddings. Can be generated from text_encoder step.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(name="batch_size", type_hint=int, description="The batch size of the prompt embeddings"),
+            OutputParam(name="dtype", type_hint=torch.dtype, description="The data type of the prompt embeddings"),
+            OutputParam.template("prompt_embeds", note="batch-expanded"),
+            OutputParam.template("prompt_embeds_mask", note="batch-expanded, None when nothing is padded"),
+            OutputParam(
+                name="image_pad_mask",
+                kwargs_type="denoiser_input_fields",
+                type_hint=torch.Tensor,
+                description="Bool mask marking the vision positions of the prompt embeddings (batch-expanded)",
+            ),
+        ]
+
+    @staticmethod
+    def check_inputs(prompt_embeds, prompt_embeds_mask, image_pad_mask):
+        batch_size = prompt_embeds.shape[0]
+        for name, value in (("prompt_embeds_mask", prompt_embeds_mask), ("image_pad_mask", image_pad_mask)):
+            if value.shape[0] != batch_size:
+                raise ValueError(f"`{name}` must have the same batch size as `prompt_embeds`")
+
+    def __call__(
+        self, components: QwenImage21ModularPipeline, state: PipelineState
+    ) -> tuple[QwenImage21ModularPipeline, PipelineState]:
+        block_state = self.get_block_state(state)
+        self.check_inputs(block_state.prompt_embeds, block_state.prompt_embeds_mask, block_state.image_pad_mask)
+
+        block_state.batch_size = block_state.prompt_embeds.shape[0]
+        block_state.dtype = block_state.prompt_embeds.dtype
+
+        for name in ("prompt_embeds", "prompt_embeds_mask", "image_pad_mask"):
+            value = getattr(block_state, name).repeat_interleave(block_state.num_images_per_prompt, dim=0)
+            setattr(block_state, name, value)
+
+        # Without padding there is nothing to mask, and a mask that carries no information costs the attention
+        # backends that reject one outright.
+        if block_state.prompt_embeds_mask.all():
+            block_state.prompt_embeds_mask = None
 
         self.set_block_state(state, block_state)
         return components, state

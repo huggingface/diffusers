@@ -20,7 +20,6 @@ import torch
 from transformers import Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 
 from ...configuration_utils import FrozenDict
-from ...guiders import ClassifierFreeGuidance
 from ...image_processor import VaeImageProcessor, is_valid_image, is_valid_image_imagelist
 from ...models import AutoencoderKLQwenImage21
 from ...utils import logging
@@ -303,8 +302,7 @@ class QwenImage21TextEncoderStep(ModularPipelineBlocks):
     Text Encoder step that generates text embeddings with Qwen3-VL to guide text-to-image generation.
 
       Components:
-          text_encoder (`Qwen3VLForConditionalGeneration`) processor (`Qwen3VLProcessor`) guider
-          (`ClassifierFreeGuidance`)
+          text_encoder (`Qwen3VLForConditionalGeneration`) processor (`Qwen3VLProcessor`)
 
       Inputs:
           prompt (`str`):
@@ -338,12 +336,6 @@ class QwenImage21TextEncoderStep(ModularPipelineBlocks):
         return [
             ComponentSpec("text_encoder", Qwen3VLForConditionalGeneration),
             ComponentSpec("processor", Qwen3VLProcessor),
-            ComponentSpec(
-                "guider",
-                ClassifierFreeGuidance,
-                config=FrozenDict({"guidance_scale": 1.0}),
-                default_creation_method="from_config",
-            ),
         ]
 
     @property
@@ -404,7 +396,14 @@ class QwenImage21TextEncoderStep(ModularPipelineBlocks):
         block_state.negative_prompt_embeds = None
         block_state.negative_prompt_embeds_mask = None
         block_state.negative_image_pad_mask = None
-        if components.requires_unconditional_embeds:
+        # On its own the block encodes what it was asked for. Next to a denoiser the guider decides: with guidance
+        # off nothing would consume the negative embeddings.
+        encode_negative_prompt = block_state.negative_prompt is not None
+        if getattr(components, "guider", None) is not None:
+            encode_negative_prompt = components.requires_unconditional_embeds
+            if block_state.negative_prompt is not None and not encode_negative_prompt:
+                logger.warning("`negative_prompt` is ignored because the guider is disabled.")
+        if encode_negative_prompt:
             negative_prompt = block_state.negative_prompt or ""
             (
                 block_state.negative_prompt_embeds,
@@ -428,8 +427,7 @@ class QwenImage21VLTextEncoderStep(ModularPipelineBlocks):
     image-conditioned generation.
 
       Components:
-          text_encoder (`Qwen3VLForConditionalGeneration`) processor (`Qwen3VLProcessor`) guider
-          (`ClassifierFreeGuidance`)
+          text_encoder (`Qwen3VLForConditionalGeneration`) processor (`Qwen3VLProcessor`)
 
       Inputs:
           prompt (`str`):
@@ -468,12 +466,6 @@ class QwenImage21VLTextEncoderStep(ModularPipelineBlocks):
         return [
             ComponentSpec("text_encoder", Qwen3VLForConditionalGeneration),
             ComponentSpec("processor", Qwen3VLProcessor),
-            ComponentSpec(
-                "guider",
-                ClassifierFreeGuidance,
-                config=FrozenDict({"guidance_scale": 1.0}),
-                default_creation_method="from_config",
-            ),
         ]
 
     @property
@@ -541,7 +533,14 @@ class QwenImage21VLTextEncoderStep(ModularPipelineBlocks):
         block_state.negative_prompt_embeds = None
         block_state.negative_prompt_embeds_mask = None
         block_state.negative_image_pad_mask = None
-        if components.requires_unconditional_embeds:
+        # On its own the block encodes what it was asked for. Next to a denoiser the guider decides: with guidance
+        # off nothing would consume the negative embeddings.
+        encode_negative_prompt = block_state.negative_prompt is not None
+        if getattr(components, "guider", None) is not None:
+            encode_negative_prompt = components.requires_unconditional_embeds
+            if block_state.negative_prompt is not None and not encode_negative_prompt:
+                logger.warning("`negative_prompt` is ignored because the guider is disabled.")
+        if encode_negative_prompt:
             negative_prompt = block_state.negative_prompt or ""
             (
                 block_state.negative_prompt_embeds,
@@ -706,6 +705,175 @@ class QwenImage21VaeEncoderStep(ModularPipelineBlocks):
             )
             for image in block_state.processed_image
         ]
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# auto_docstring
+class QwenImage21TurboTextEncoderStep(ModularPipelineBlocks):
+    """
+    Text Encoder step that generates text embeddings with Qwen3-VL to guide text-to-image generation. The Turbo
+    checkpoint runs without guidance, so there is no negative prompt.
+
+      Components:
+          text_encoder (`Qwen3VLForConditionalGeneration`) processor (`Qwen3VLProcessor`)
+
+      Inputs:
+          prompt (`str`):
+              The prompt or prompts to guide image generation.
+
+      Outputs:
+          prompt_embeds (`Tensor`):
+              The prompt embeddings.
+          prompt_embeds_mask (`Tensor`):
+              The encoder attention mask.
+          image_pad_mask (`Tensor`):
+              Bool mask marking the vision positions of the prompt embeddings
+    """
+
+    model_name = "qwenimage21-turbo"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Text Encoder step that generates text embeddings with Qwen3-VL to guide text-to-image generation. The "
+            "Turbo checkpoint runs without guidance, so there is no negative prompt."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("text_encoder", Qwen3VLForConditionalGeneration),
+            ComponentSpec("processor", Qwen3VLProcessor),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [InputParam.template("prompt")]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam.template("prompt_embeds"),
+            OutputParam.template("prompt_embeds_mask"),
+            OutputParam(
+                name="image_pad_mask",
+                type_hint=torch.Tensor,
+                description="Bool mask marking the vision positions of the prompt embeddings",
+            ),
+        ]
+
+    @staticmethod
+    def check_inputs(prompt):
+        if not isinstance(prompt, str) and not isinstance(prompt, list):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+    @torch.no_grad()
+    def __call__(
+        self, components: QwenImage21ModularPipeline, state: PipelineState
+    ) -> tuple[QwenImage21ModularPipeline, PipelineState]:
+        block_state = self.get_block_state(state)
+        self.check_inputs(block_state.prompt)
+
+        block_state.prompt_embeds, block_state.prompt_embeds_mask, block_state.image_pad_mask = (
+            get_qwenimage21_prompt_embeds(
+                components.text_encoder,
+                components.processor,
+                prompt=block_state.prompt,
+                device=components._execution_device,
+            )
+        )
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# auto_docstring
+class QwenImage21TurboVLTextEncoderStep(ModularPipelineBlocks):
+    """
+    Text Encoder step that encodes the prompt together with the condition images with Qwen3-VL to guide
+    image-conditioned generation. The Turbo checkpoint runs without guidance, so there is no negative prompt.
+
+      Components:
+          text_encoder (`Qwen3VLForConditionalGeneration`) processor (`Qwen3VLProcessor`)
+
+      Inputs:
+          prompt (`str`):
+              The prompt or prompts to guide image generation.
+          resized_image (`list`):
+              RGBA condition images resized to the output resolution. Can be generated in the resize step.
+
+      Outputs:
+          prompt_embeds (`Tensor`):
+              The prompt embeddings.
+          prompt_embeds_mask (`Tensor`):
+              The encoder attention mask.
+          image_pad_mask (`Tensor`):
+              Bool mask marking the vision positions of the prompt embeddings
+    """
+
+    model_name = "qwenimage21-turbo"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Text Encoder step that encodes the prompt together with the condition images with Qwen3-VL to guide "
+            "image-conditioned generation. The Turbo checkpoint runs without guidance, so there is no negative prompt."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("text_encoder", Qwen3VLForConditionalGeneration),
+            ComponentSpec("processor", Qwen3VLProcessor),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("prompt"),
+            InputParam(
+                name="resized_image",
+                required=True,
+                type_hint=list[PIL.Image.Image],
+                description="RGBA condition images resized to the output resolution. Can be generated in the resize step.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam.template("prompt_embeds"),
+            OutputParam.template("prompt_embeds_mask"),
+            OutputParam(
+                name="image_pad_mask",
+                type_hint=torch.Tensor,
+                description="Bool mask marking the vision positions of the prompt embeddings",
+            ),
+        ]
+
+    @staticmethod
+    def check_inputs(prompt):
+        if not isinstance(prompt, str) and not isinstance(prompt, list):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+    @torch.no_grad()
+    def __call__(
+        self, components: QwenImage21ModularPipeline, state: PipelineState
+    ) -> tuple[QwenImage21ModularPipeline, PipelineState]:
+        block_state = self.get_block_state(state)
+        self.check_inputs(block_state.prompt)
+
+        block_state.prompt_embeds, block_state.prompt_embeds_mask, block_state.image_pad_mask = (
+            get_qwenimage21_prompt_embeds(
+                components.text_encoder,
+                components.processor,
+                prompt=block_state.prompt,
+                image=block_state.resized_image,
+                device=components._execution_device,
+            )
+        )
 
         self.set_block_state(state, block_state)
         return components, state

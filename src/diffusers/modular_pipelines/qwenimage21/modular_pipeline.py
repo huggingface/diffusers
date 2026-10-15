@@ -49,3 +49,12 @@ class QwenImage21ModularPipeline(ModularPipeline, QwenImageLoraLoaderMixin):
         if hasattr(self, "guider") and self.guider is not None:
             requires_unconditional_embeds = self.guider._enabled and self.guider.num_conditions > 1
         return requires_unconditional_embeds
+
+
+class QwenImage21TurboModularPipeline(QwenImage21ModularPipeline):
+    """
+    A ModularPipeline for Qwen-Image 2.1 Turbo, the accelerated checkpoint that samples in a few steps without
+    guidance.
+    """
+
+    default_blocks_name = "QwenImage21TurboAutoBlocks"

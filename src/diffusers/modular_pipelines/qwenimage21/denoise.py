@@ -37,6 +37,13 @@ else:
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+def joint_vision_mask(image_pad_mask: torch.Tensor, num_target_tokens: int) -> torch.Tensor:
+    # The transformer expands every vision slot into a 2x2 group of latent tokens, so the target image takes one
+    # slot per four latents, appended after the prompt's vision positions.
+    target_slots = num_target_tokens // 4
+    return torch.cat([image_pad_mask, image_pad_mask.new_ones(image_pad_mask.shape[0], target_slots)], dim=1)
+
+
 # ====================
 # 1. LOOP STEPS (run at each denoising step)
 # ====================
@@ -148,15 +155,17 @@ class QwenImage21LoopDenoiser(ModularPipelineBlocks):
                 description="Per-sample latent grids, condition images first and the target image last. Can be generated in prepare_rope_inputs step.",
             ),
             InputParam(
-                name="img_mask",
+                name="image_pad_mask",
                 required=True,
+                kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
-                description="Joint vision mask over the prompt positions and the target image slots. Can be generated in prepare_rope_inputs step.",
+                description="Bool mask marking the vision positions of the prompt embeddings. Can be generated in the text input step.",
             ),
             InputParam(
-                name="negative_img_mask",
+                name="negative_image_pad_mask",
+                kwargs_type="denoiser_input_fields",
                 type_hint=torch.Tensor,
-                description="Joint vision mask for the negative prompt. Can be generated in prepare_rope_inputs step.",
+                description="Bool mask marking the vision positions of the negative prompt embeddings. Can be generated in the text input step.",
             ),
         ]
 
@@ -173,7 +182,12 @@ class QwenImage21LoopDenoiser(ModularPipelineBlocks):
                 getattr(block_state, "prompt_embeds_mask", None),
                 getattr(block_state, "negative_prompt_embeds_mask", None),
             ),
-            "img_mask": (block_state.img_mask, block_state.negative_img_mask),
+            "img_mask": (
+                joint_vision_mask(block_state.image_pad_mask, block_state.latents.shape[1]),
+                joint_vision_mask(block_state.negative_image_pad_mask, block_state.latents.shape[1])
+                if block_state.negative_image_pad_mask is not None
+                else None,
+            ),
         }
 
         transformer_args = set(inspect.signature(components.transformer.forward).parameters.keys())
@@ -217,6 +231,82 @@ class QwenImage21LoopDenoiser(ModularPipelineBlocks):
             components.guider.cleanup_models(components.transformer)
 
         block_state.noise_pred = components.guider(guider_state)[0]
+
+        return components, block_state
+
+
+# loop step: denoiser (Turbo, no guidance)
+class QwenImage21TurboLoopDenoiser(ModularPipelineBlocks):
+    model_name = "qwenimage21-turbo"
+
+    @property
+    def description(self) -> str:
+        return (
+            "step within the denoising loop that denoise the latent input for the denoiser without guidance. "
+            "This block should be used to compose the `sub_blocks` attribute of a `LoopSequentialPipelineBlocks` "
+            "object (e.g. `QwenImage21DenoiseLoopWrapper`)"
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("transformer", QwenImage21Transformer2DModel)]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("attention_kwargs"),
+            InputParam.template("denoiser_input_fields"),
+            InputParam(
+                name="img_shapes",
+                required=True,
+                type_hint=list[list[tuple[int, int, int]]],
+                description="Per-sample latent grids, condition images first and the target image last. Can be generated in prepare_rope_inputs step.",
+            ),
+            InputParam(
+                name="image_pad_mask",
+                required=True,
+                kwargs_type="denoiser_input_fields",
+                type_hint=torch.Tensor,
+                description="Bool mask marking the vision positions of the prompt embeddings. Can be generated in the text input step.",
+            ),
+        ]
+
+    @torch.no_grad()
+    def __call__(
+        self, components: QwenImage21ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[QwenImage21ModularPipeline, BlockState]:
+        transformer_args = set(inspect.signature(components.transformer.forward).parameters.keys())
+        additional_cond_kwargs = {}
+        for field_name, field_value in block_state.denoiser_input_fields.items():
+            if field_name in transformer_args:
+                additional_cond_kwargs[field_name] = field_value
+        block_state.additional_cond_kwargs.update(additional_cond_kwargs)
+
+        num_target_tokens = block_state.latents.shape[1]
+        # Text and condition-image keys and values are step-independent under `causal_condition`, so the first
+        # call prefills the cache and the later calls only recompute the target tokens.
+        kv_cache, kv_cache_mode = None, None
+        if block_state.cache_enabled:
+            kv_cache = block_state.kv_caches.get("cond")
+            kv_cache_mode = "cached" if kv_cache is not None else "extract"
+            if kv_cache is None:
+                kv_cache = QwenImage21KVCache(len(components.transformer.transformer_blocks))
+                block_state.kv_caches["cond"] = kv_cache
+
+        with components.transformer.cache_context("cond"):
+            noise_pred = components.transformer(
+                hidden_states=block_state.latent_model_input,
+                timestep=block_state.timestep / 1000,
+                encoder_hidden_states=block_state.prompt_embeds,
+                encoder_hidden_states_mask=getattr(block_state, "prompt_embeds_mask", None),
+                img_mask=joint_vision_mask(block_state.image_pad_mask, num_target_tokens),
+                attention_kwargs=block_state.attention_kwargs,
+                kv_cache=kv_cache,
+                kv_cache_mode=kv_cache_mode,
+                return_dict=False,
+                **block_state.additional_cond_kwargs,
+            )[0]
+        block_state.noise_pred = noise_pred[:, -num_target_tokens:]
 
         return components, block_state
 
@@ -375,11 +465,11 @@ class QwenImage21DenoiseStep(QwenImage21DenoiseLoopWrapper):
           img_shapes (`list`):
               Per-sample latent grids, condition images first and the target image last. Can be generated in
               prepare_rope_inputs step.
-          img_mask (`Tensor`):
-              Joint vision mask over the prompt positions and the target image slots. Can be generated in
-              prepare_rope_inputs step.
-          negative_img_mask (`Tensor`, *optional*):
-              Joint vision mask for the negative prompt. Can be generated in prepare_rope_inputs step.
+          image_pad_mask (`Tensor`):
+              Bool mask marking the vision positions of the prompt embeddings. Can be generated in the text input step.
+          negative_image_pad_mask (`Tensor`, *optional*):
+              Bool mask marking the vision positions of the negative prompt embeddings. Can be generated in the text
+              input step.
 
       Outputs:
           latents (`Tensor`):
@@ -442,11 +532,11 @@ class QwenImage21ImageConditionedDenoiseStep(QwenImage21DenoiseLoopWrapper):
           img_shapes (`list`):
               Per-sample latent grids, condition images first and the target image last. Can be generated in
               prepare_rope_inputs step.
-          img_mask (`Tensor`):
-              Joint vision mask over the prompt positions and the target image slots. Can be generated in
-              prepare_rope_inputs step.
-          negative_img_mask (`Tensor`, *optional*):
-              Joint vision mask for the negative prompt. Can be generated in prepare_rope_inputs step.
+          image_pad_mask (`Tensor`):
+              Bool mask marking the vision positions of the prompt embeddings. Can be generated in the text input step.
+          negative_image_pad_mask (`Tensor`, *optional*):
+              Bool mask marking the vision positions of the negative prompt embeddings. Can be generated in the text
+              input step.
 
       Outputs:
           latents (`Tensor`):
@@ -471,4 +561,128 @@ class QwenImage21ImageConditionedDenoiseStep(QwenImage21DenoiseLoopWrapper):
             " - `QwenImage21LoopDenoiser`\n"
             " - `QwenImage21LoopAfterDenoiser`\n"
             "This block supports image-conditioned generation."
+        )
+
+
+# auto_docstring
+class QwenImage21TurboDenoiseStep(QwenImage21DenoiseLoopWrapper):
+    """
+    Denoise step that iteratively denoise the latents.
+      Its loop logic is defined in `QwenImage21DenoiseLoopWrapper.__call__` method At each iteration, it runs blocks
+      defined in `sub_blocks` sequencially:
+       - `QwenImage21LoopBeforeDenoiser`
+       - `QwenImage21TurboLoopDenoiser`
+       - `QwenImage21LoopAfterDenoiser`
+      This block supports text-to-image generation with the Turbo checkpoint.
+
+      Components:
+          transformer (`QwenImage21Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+      Inputs:
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process. Can be generated in set_timesteps step.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          use_kv_cache (`bool`, *optional*, defaults to True):
+              Cache the text and condition-image keys and values after the first step. Valid because `causal_condition`
+              modulates those tokens from `t = 0`, making their activations step-independent. Toggling it does not
+              reproduce the same image bit-for-bit in reduced precision.
+          latents (`Tensor`):
+              The initial latents to use for the denoising process. Can be generated in prepare_latent step.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+          img_shapes (`list`):
+              Per-sample latent grids, condition images first and the target image last. Can be generated in
+              prepare_rope_inputs step.
+          image_pad_mask (`Tensor`):
+              Bool mask marking the vision positions of the prompt embeddings. Can be generated in the text input step.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
+    model_name = "qwenimage21-turbo"
+    block_classes = [
+        QwenImage21LoopBeforeDenoiser,
+        QwenImage21TurboLoopDenoiser,
+        QwenImage21LoopAfterDenoiser,
+    ]
+    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step that iteratively denoise the latents. \n"
+            "Its loop logic is defined in `QwenImage21DenoiseLoopWrapper.__call__` method \n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            " - `QwenImage21LoopBeforeDenoiser`\n"
+            " - `QwenImage21TurboLoopDenoiser`\n"
+            " - `QwenImage21LoopAfterDenoiser`\n"
+            "This block supports text-to-image generation with the Turbo checkpoint."
+        )
+
+
+# auto_docstring
+class QwenImage21TurboImageConditionedDenoiseStep(QwenImage21DenoiseLoopWrapper):
+    """
+    Denoise step that iteratively denoise the latents.
+      Its loop logic is defined in `QwenImage21DenoiseLoopWrapper.__call__` method At each iteration, it runs blocks
+      defined in `sub_blocks` sequencially:
+       - `QwenImage21ImageConditionedLoopBeforeDenoiser`
+       - `QwenImage21TurboLoopDenoiser`
+       - `QwenImage21LoopAfterDenoiser`
+      This block supports image-conditioned generation with the Turbo checkpoint.
+
+      Components:
+          transformer (`QwenImage21Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+      Inputs:
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process. Can be generated in set_timesteps step.
+          num_inference_steps (`int`):
+              The number of denoising steps.
+          use_kv_cache (`bool`, *optional*, defaults to True):
+              Cache the text and condition-image keys and values after the first step. Valid because `causal_condition`
+              modulates those tokens from `t = 0`, making their activations step-independent. Toggling it does not
+              reproduce the same image bit-for-bit in reduced precision.
+          latents (`Tensor`):
+              The initial latents to use for the denoising process. Can be generated in prepare_latent step.
+          image_latents (`Tensor`):
+              Packed condition image latents. Can be generated in the additional inputs step.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
+          **denoiser_input_fields (`None`, *optional*):
+              conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+          img_shapes (`list`):
+              Per-sample latent grids, condition images first and the target image last. Can be generated in
+              prepare_rope_inputs step.
+          image_pad_mask (`Tensor`):
+              Bool mask marking the vision positions of the prompt embeddings. Can be generated in the text input step.
+
+      Outputs:
+          latents (`Tensor`):
+              Denoised latents.
+    """
+
+    model_name = "qwenimage21-turbo"
+    block_classes = [
+        QwenImage21ImageConditionedLoopBeforeDenoiser,
+        QwenImage21TurboLoopDenoiser,
+        QwenImage21LoopAfterDenoiser,
+    ]
+    block_names = ["before_denoiser", "denoiser", "after_denoiser"]
+
+    @property
+    def description(self) -> str:
+        return (
+            "Denoise step that iteratively denoise the latents. \n"
+            "Its loop logic is defined in `QwenImage21DenoiseLoopWrapper.__call__` method \n"
+            "At each iteration, it runs blocks defined in `sub_blocks` sequencially:\n"
+            " - `QwenImage21ImageConditionedLoopBeforeDenoiser`\n"
+            " - `QwenImage21TurboLoopDenoiser`\n"
+            " - `QwenImage21LoopAfterDenoiser`\n"
+            "This block supports image-conditioned generation with the Turbo checkpoint."
         )

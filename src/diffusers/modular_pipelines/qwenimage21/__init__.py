@@ -22,7 +22,8 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["modular_blocks_qwenimage21"] = ["QwenImage21AutoBlocks"]
-    _import_structure["modular_pipeline"] = ["QwenImage21ModularPipeline"]
+    _import_structure["modular_blocks_qwenimage21_turbo"] = ["QwenImage21TurboAutoBlocks"]
+    _import_structure["modular_pipeline"] = ["QwenImage21ModularPipeline", "QwenImage21TurboModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -32,7 +33,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_blocks_qwenimage21 import QwenImage21AutoBlocks
-        from .modular_pipeline import QwenImage21ModularPipeline
+        from .modular_blocks_qwenimage21_turbo import QwenImage21TurboAutoBlocks
+        from .modular_pipeline import QwenImage21ModularPipeline, QwenImage21TurboModularPipeline
 else:
     import sys
 

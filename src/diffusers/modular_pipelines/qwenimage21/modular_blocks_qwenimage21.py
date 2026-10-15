@@ -55,7 +55,7 @@ class QwenImage21VLEncoderStep(SequentialPipelineBlocks):
 
       Components:
           image_processor (`VaeImageProcessor`) text_encoder (`Qwen3VLForConditionalGeneration`) processor
-          (`Qwen3VLProcessor`) guider (`ClassifierFreeGuidance`)
+          (`Qwen3VLProcessor`)
 
       Inputs:
           image (`Image | list`):
@@ -105,7 +105,7 @@ class QwenImage21AutoTextEncoderStep(AutoPipelineBlocks):
 
       Components:
           image_processor (`VaeImageProcessor`) text_encoder (`Qwen3VLForConditionalGeneration`) processor
-          (`Qwen3VLProcessor`) guider (`ClassifierFreeGuidance`)
+          (`Qwen3VLProcessor`)
 
       Inputs:
           image (`Image | list`, *optional*):
@@ -264,9 +264,6 @@ class QwenImage21CoreDenoiseStep(SequentialPipelineBlocks):
           scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
           (`QwenImage21Transformer2DModel`)
 
-      Configs:
-          sample_sigmas (default: None): Default sampling grid of the checkpoint, used when `sigmas` is not passed.
-
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
@@ -348,9 +345,6 @@ class QwenImage21ImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
           scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
           (`QwenImage21Transformer2DModel`)
 
-      Configs:
-          sample_sigmas (default: None): Default sampling grid of the checkpoint, used when `sigmas` is not passed.
-
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
@@ -423,9 +417,6 @@ class QwenImage21AutoCoreDenoiseStep(AutoPipelineBlocks):
       Components:
           scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
           (`QwenImage21Transformer2DModel`)
-
-      Configs:
-          sample_sigmas (default: None): Default sampling grid of the checkpoint, used when `sigmas` is not passed.
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -515,11 +506,8 @@ class QwenImage21AutoBlocks(SequentialPipelineBlocks):
 
       Components:
           image_processor (`VaeImageProcessor`) text_encoder (`Qwen3VLForConditionalGeneration`) processor
-          (`Qwen3VLProcessor`) guider (`ClassifierFreeGuidance`) vae (`AutoencoderKLQwenImage21`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) transformer (`QwenImage21Transformer2DModel`)
-
-      Configs:
-          sample_sigmas (default: None): Default sampling grid of the checkpoint, used when `sigmas` is not passed.
+          (`Qwen3VLProcessor`) vae (`AutoencoderKLQwenImage21`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
+          (`ClassifierFreeGuidance`) transformer (`QwenImage21Transformer2DModel`)
 
       Inputs:
           image (`Image | list`, *optional*):

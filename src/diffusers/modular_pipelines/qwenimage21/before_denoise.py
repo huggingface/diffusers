@@ -215,14 +215,11 @@ class QwenImage21PrepareLatentsStep(ModularPipelineBlocks):
 # auto_docstring
 class QwenImage21SetTimestepsStep(ModularPipelineBlocks):
     """
-    Step that sets the scheduler's timesteps. The sampling grid comes from `sigmas`, then from the `sample_sigmas`
-    pipeline config, then from `num_inference_steps`. Should be run after the prepare latents step.
+    Step that sets the scheduler's timesteps. The sampling grid comes from `sigmas` when passed, otherwise from
+    `num_inference_steps`. Should be run after the prepare latents step.
 
       Components:
           scheduler (`FlowMatchEulerDiscreteScheduler`)
-
-      Configs:
-          sample_sigmas (default: None): Default sampling grid of the checkpoint, used when `sigmas` is not passed.
 
       Inputs:
           num_inference_steps (`int`, *optional*, defaults to 40):
@@ -244,9 +241,257 @@ class QwenImage21SetTimestepsStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Step that sets the scheduler's timesteps. The sampling grid comes from `sigmas`, then from the "
-            "`sample_sigmas` pipeline config, then from `num_inference_steps`. Should be run after the prepare "
+            "Step that sets the scheduler's timesteps. The sampling grid comes from `sigmas` when passed, otherwise "
+            "from `num_inference_steps`. Should be run after the prepare latents step."
+        )
+
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [
+            ComponentSpec("scheduler", FlowMatchEulerDiscreteScheduler),
+        ]
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("num_inference_steps", default=40),
+            InputParam.template("sigmas"),
+            InputParam(
+                name="latents",
+                required=True,
+                type_hint=torch.Tensor,
+                description="The initial random noised latents for the denoising process. Can be generated in prepare latents step.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                name="timesteps", type_hint=torch.Tensor, description="The timesteps to use for the denoising process"
+            ),
+            OutputParam(
+                name="num_inference_steps",
+                type_hint=int,
+                description="The number of denoising steps, updated when the grid comes from sigmas",
+            ),
+        ]
+
+    def __call__(
+        self, components: QwenImage21ModularPipeline, state: PipelineState
+    ) -> tuple[QwenImage21ModularPipeline, PipelineState]:
+        block_state = self.get_block_state(state)
+
+        device = components._execution_device
+
+        sigmas = block_state.sigmas
+        if sigmas is None:
+            sigmas = np.linspace(1.0, 1 / block_state.num_inference_steps, block_state.num_inference_steps)
+
+        mu = calculate_shift(
+            image_seq_len=block_state.latents.shape[1],
+            base_seq_len=components.scheduler.config.get("base_image_seq_len", 256),
+            max_seq_len=components.scheduler.config.get("max_image_seq_len", 4096),
+            base_shift=components.scheduler.config.get("base_shift", 0.5),
+            max_shift=components.scheduler.config.get("max_shift", 1.15),
+        )
+        block_state.timesteps, block_state.num_inference_steps = retrieve_timesteps(
+            scheduler=components.scheduler,
+            num_inference_steps=block_state.num_inference_steps,
+            device=device,
+            sigmas=sigmas,
+            mu=mu,
+        )
+        components.scheduler.set_begin_index(0)
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# auto_docstring
+class QwenImage21RoPEInputsStep(ModularPipelineBlocks):
+    """
+    Step that prepares the layout of the transformer's joint sequence for text-to-image generation: the latent grid of
+    the target image. Should be placed after the prepare latents step.
+
+      Inputs:
+          batch_size (`int`, *optional*, defaults to 1):
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+
+      Outputs:
+          img_shapes (`list`):
+              Per-sample (frame, height, width) of the target image in latent tokens
+    """
+
+    model_name = "qwenimage21"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Step that prepares the layout of the transformer's joint sequence for text-to-image generation: the "
+            "latent grid of the target image. Should be placed after the prepare latents step."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("batch_size"),
+            InputParam.template("height"),
+            InputParam.template("width"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                name="img_shapes",
+                kwargs_type="denoiser_input_fields",
+                type_hint=list[list[tuple[int, int, int]]],
+                description="Per-sample (frame, height, width) of the target image in latent tokens",
+            ),
+        ]
+
+    def __call__(
+        self, components: QwenImage21ModularPipeline, state: PipelineState
+    ) -> tuple[QwenImage21ModularPipeline, PipelineState]:
+        block_state = self.get_block_state(state)
+
+        vae_scale_factor = components.vae_scale_factor
+        block_state.img_shapes = [
+            [(1, block_state.height // vae_scale_factor, block_state.width // vae_scale_factor)]
+        ] * block_state.batch_size
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# auto_docstring
+class QwenImage21ImageConditionedRoPEInputsStep(ModularPipelineBlocks):
+    """
+    Step that prepares the layout of the transformer's joint sequence for image-conditioned generation: the latent grid
+    of every condition image followed by the target image. Should be placed after the prepare latents step.
+
+      Inputs:
+          batch_size (`int`, *optional*, defaults to 1):
+              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
+              be generated in input step.
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
+          image_height (`list`):
+              The pixel heights of the condition images. Can be generated in the additional inputs step.
+          image_width (`list`):
+              The pixel widths of the condition images. Can be generated in the additional inputs step.
+
+      Outputs:
+          img_shapes (`list`):
+              Per-sample (frame, height, width) of each image in latent tokens, condition images first and the target
+              image last
+    """
+
+    model_name = "qwenimage21"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Step that prepares the layout of the transformer's joint sequence for image-conditioned generation: the "
+            "latent grid of every condition image followed by the target image. Should be placed after the prepare "
             "latents step."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [
+            InputParam.template("batch_size"),
+            InputParam.template("height"),
+            InputParam.template("width"),
+            InputParam(
+                name="image_height",
+                required=True,
+                type_hint=list[int],
+                description="The pixel heights of the condition images. Can be generated in the additional inputs step.",
+            ),
+            InputParam(
+                name="image_width",
+                required=True,
+                type_hint=list[int],
+                description="The pixel widths of the condition images. Can be generated in the additional inputs step.",
+            ),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                name="img_shapes",
+                kwargs_type="denoiser_input_fields",
+                type_hint=list[list[tuple[int, int, int]]],
+                description="Per-sample (frame, height, width) of each image in latent tokens, condition images first and the target image last",
+            ),
+        ]
+
+    def __call__(
+        self, components: QwenImage21ModularPipeline, state: PipelineState
+    ) -> tuple[QwenImage21ModularPipeline, PipelineState]:
+        block_state = self.get_block_state(state)
+
+        vae_scale_factor = components.vae_scale_factor
+        block_state.img_shapes = [
+            [
+                *[
+                    (1, image_height // vae_scale_factor, image_width // vae_scale_factor)
+                    for image_height, image_width in zip(block_state.image_height, block_state.image_width)
+                ],
+                (1, block_state.height // vae_scale_factor, block_state.width // vae_scale_factor),
+            ]
+        ] * block_state.batch_size
+
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+# auto_docstring
+class QwenImage21TurboSetTimestepsStep(ModularPipelineBlocks):
+    """
+    Step that sets the scheduler's timesteps for the Turbo checkpoint. The sampling grid comes from `sigmas` when
+    passed, otherwise from the checkpoint's `sample_sigmas` config, otherwise from `num_inference_steps`. Should be run
+    after the prepare latents step.
+
+      Components:
+          scheduler (`FlowMatchEulerDiscreteScheduler`)
+
+      Configs:
+          sample_sigmas (default: None): Sampling grid the checkpoint ships with, used when `sigmas` is not passed.
+
+      Inputs:
+          num_inference_steps (`int`, *optional*, defaults to 8):
+              The number of denoising steps.
+          sigmas (`list`, *optional*):
+              Custom sigmas for the denoising process.
+          latents (`Tensor`):
+              The initial random noised latents for the denoising process. Can be generated in prepare latents step.
+
+      Outputs:
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process
+          num_inference_steps (`int`):
+              The number of denoising steps, updated when the grid comes from sigmas
+    """
+
+    model_name = "qwenimage21-turbo"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Step that sets the scheduler's timesteps for the Turbo checkpoint. The sampling grid comes from `sigmas` "
+            "when passed, otherwise from the checkpoint's `sample_sigmas` config, otherwise from "
+            "`num_inference_steps`. Should be run after the prepare latents step."
         )
 
     @property
@@ -261,14 +506,14 @@ class QwenImage21SetTimestepsStep(ModularPipelineBlocks):
             ConfigSpec(
                 name="sample_sigmas",
                 default=None,
-                description="Default sampling grid of the checkpoint, used when `sigmas` is not passed.",
+                description="Sampling grid the checkpoint ships with, used when `sigmas` is not passed.",
             ),
         ]
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("num_inference_steps", default=40),
+            InputParam.template("num_inference_steps", default=8),
             InputParam.template("sigmas"),
             InputParam(
                 name="latents",
@@ -319,253 +564,6 @@ class QwenImage21SetTimestepsStep(ModularPipelineBlocks):
             mu=mu,
         )
         components.scheduler.set_begin_index(0)
-
-        self.set_block_state(state, block_state)
-        return components, state
-
-
-def joint_vision_mask(image_pad_mask: torch.Tensor, num_target_tokens: int) -> torch.Tensor:
-    # The transformer expands every vision slot into a 2x2 group of latent tokens, so the target image takes one
-    # slot per four latents, appended after the prompt's vision positions.
-    target_slots = num_target_tokens // 4
-    return torch.cat([image_pad_mask, image_pad_mask.new_ones(image_pad_mask.shape[0], target_slots)], dim=1)
-
-
-# auto_docstring
-class QwenImage21RoPEInputsStep(ModularPipelineBlocks):
-    """
-    Step that prepares the layout inputs of the transformer for text-to-image generation: the latent grid of the target
-    image and the joint vision mask that appends one slot per 2x2 group of target latents to the prompt positions.
-    Should be placed after the prepare latents step.
-
-      Inputs:
-          batch_size (`int`, *optional*, defaults to 1):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
-              be generated in input step.
-          height (`int`, *optional*):
-              The height in pixels of the generated image.
-          width (`int`, *optional*):
-              The width in pixels of the generated image.
-          latents (`Tensor`):
-              The packed target latents. Can be generated in prepare latents step.
-          image_pad_mask (`Tensor`):
-              Bool mask marking the vision positions of the prompt embeddings. Can be generated in the text input step.
-          negative_image_pad_mask (`Tensor`, *optional*):
-              Bool mask marking the vision positions of the negative prompt embeddings. Can be generated in the text
-              input step.
-
-      Outputs:
-          img_shapes (`list`):
-              Per-sample (frame, height, width) of the target image in latent tokens
-          img_mask (`Tensor`):
-              Joint vision mask over the prompt positions and the target image slots
-          negative_img_mask (`Tensor`):
-              Joint vision mask over the negative prompt positions and the target image slots
-    """
-
-    model_name = "qwenimage21"
-
-    @property
-    def description(self) -> str:
-        return (
-            "Step that prepares the layout inputs of the transformer for text-to-image generation: the latent grid "
-            "of the target image and the joint vision mask that appends one slot per 2x2 group of target latents to "
-            "the prompt positions. Should be placed after the prepare latents step."
-        )
-
-    @property
-    def inputs(self) -> list[InputParam]:
-        return [
-            InputParam.template("batch_size"),
-            InputParam.template("height"),
-            InputParam.template("width"),
-            InputParam(
-                name="latents",
-                required=True,
-                type_hint=torch.Tensor,
-                description="The packed target latents. Can be generated in prepare latents step.",
-            ),
-            InputParam(
-                name="image_pad_mask",
-                required=True,
-                type_hint=torch.Tensor,
-                description="Bool mask marking the vision positions of the prompt embeddings. Can be generated in the text input step.",
-            ),
-            InputParam(
-                name="negative_image_pad_mask",
-                type_hint=torch.Tensor,
-                description="Bool mask marking the vision positions of the negative prompt embeddings. Can be generated in the text input step.",
-            ),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        return [
-            OutputParam(
-                name="img_shapes",
-                kwargs_type="denoiser_input_fields",
-                type_hint=list[list[tuple[int, int, int]]],
-                description="Per-sample (frame, height, width) of the target image in latent tokens",
-            ),
-            OutputParam(
-                name="img_mask",
-                type_hint=torch.Tensor,
-                description="Joint vision mask over the prompt positions and the target image slots",
-            ),
-            OutputParam(
-                name="negative_img_mask",
-                type_hint=torch.Tensor,
-                description="Joint vision mask over the negative prompt positions and the target image slots",
-            ),
-        ]
-
-    def __call__(
-        self, components: QwenImage21ModularPipeline, state: PipelineState
-    ) -> tuple[QwenImage21ModularPipeline, PipelineState]:
-        block_state = self.get_block_state(state)
-
-        vae_scale_factor = components.vae_scale_factor
-        block_state.img_shapes = [
-            [(1, block_state.height // vae_scale_factor, block_state.width // vae_scale_factor)]
-        ] * block_state.batch_size
-
-        num_target_tokens = block_state.latents.shape[1]
-        block_state.img_mask = joint_vision_mask(block_state.image_pad_mask, num_target_tokens)
-        block_state.negative_img_mask = None
-        if block_state.negative_image_pad_mask is not None:
-            block_state.negative_img_mask = joint_vision_mask(block_state.negative_image_pad_mask, num_target_tokens)
-
-        self.set_block_state(state, block_state)
-        return components, state
-
-
-# auto_docstring
-class QwenImage21ImageConditionedRoPEInputsStep(ModularPipelineBlocks):
-    """
-    Step that prepares the layout inputs of the transformer for image-conditioned generation: the latent grid of every
-    condition image followed by the target image, and the joint vision mask that marks the condition-image slots in the
-    prompt and appends one slot per 2x2 group of target latents. Should be placed after the prepare latents step.
-
-      Inputs:
-          batch_size (`int`, *optional*, defaults to 1):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
-              be generated in input step.
-          height (`int`, *optional*):
-              The height in pixels of the generated image.
-          width (`int`, *optional*):
-              The width in pixels of the generated image.
-          latents (`Tensor`):
-              The packed target latents. Can be generated in prepare latents step.
-          image_height (`list`):
-              The pixel heights of the condition images. Can be generated in the additional inputs step.
-          image_width (`list`):
-              The pixel widths of the condition images. Can be generated in the additional inputs step.
-          image_pad_mask (`Tensor`):
-              Bool mask marking the vision positions of the prompt embeddings. Can be generated in the text input step.
-          negative_image_pad_mask (`Tensor`, *optional*):
-              Bool mask marking the vision positions of the negative prompt embeddings. Can be generated in the text
-              input step.
-
-      Outputs:
-          img_shapes (`list`):
-              Per-sample (frame, height, width) of each image in latent tokens, condition images first and the target
-              image last
-          img_mask (`Tensor`):
-              Joint vision mask over the prompt positions and the target image slots
-          negative_img_mask (`Tensor`):
-              Joint vision mask over the negative prompt positions and the target image slots
-    """
-
-    model_name = "qwenimage21"
-
-    @property
-    def description(self) -> str:
-        return (
-            "Step that prepares the layout inputs of the transformer for image-conditioned generation: the latent "
-            "grid of every condition image followed by the target image, and the joint vision mask that marks the "
-            "condition-image slots in the prompt and appends one slot per 2x2 group of target latents. Should be "
-            "placed after the prepare latents step."
-        )
-
-    @property
-    def inputs(self) -> list[InputParam]:
-        return [
-            InputParam.template("batch_size"),
-            InputParam.template("height"),
-            InputParam.template("width"),
-            InputParam(
-                name="latents",
-                required=True,
-                type_hint=torch.Tensor,
-                description="The packed target latents. Can be generated in prepare latents step.",
-            ),
-            InputParam(
-                name="image_height",
-                required=True,
-                type_hint=list[int],
-                description="The pixel heights of the condition images. Can be generated in the additional inputs step.",
-            ),
-            InputParam(
-                name="image_width",
-                required=True,
-                type_hint=list[int],
-                description="The pixel widths of the condition images. Can be generated in the additional inputs step.",
-            ),
-            InputParam(
-                name="image_pad_mask",
-                required=True,
-                type_hint=torch.Tensor,
-                description="Bool mask marking the vision positions of the prompt embeddings. Can be generated in the text input step.",
-            ),
-            InputParam(
-                name="negative_image_pad_mask",
-                type_hint=torch.Tensor,
-                description="Bool mask marking the vision positions of the negative prompt embeddings. Can be generated in the text input step.",
-            ),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        return [
-            OutputParam(
-                name="img_shapes",
-                kwargs_type="denoiser_input_fields",
-                type_hint=list[list[tuple[int, int, int]]],
-                description="Per-sample (frame, height, width) of each image in latent tokens, condition images first and the target image last",
-            ),
-            OutputParam(
-                name="img_mask",
-                type_hint=torch.Tensor,
-                description="Joint vision mask over the prompt positions and the target image slots",
-            ),
-            OutputParam(
-                name="negative_img_mask",
-                type_hint=torch.Tensor,
-                description="Joint vision mask over the negative prompt positions and the target image slots",
-            ),
-        ]
-
-    def __call__(
-        self, components: QwenImage21ModularPipeline, state: PipelineState
-    ) -> tuple[QwenImage21ModularPipeline, PipelineState]:
-        block_state = self.get_block_state(state)
-
-        vae_scale_factor = components.vae_scale_factor
-        block_state.img_shapes = [
-            [
-                *[
-                    (1, image_height // vae_scale_factor, image_width // vae_scale_factor)
-                    for image_height, image_width in zip(block_state.image_height, block_state.image_width)
-                ],
-                (1, block_state.height // vae_scale_factor, block_state.width // vae_scale_factor),
-            ]
-        ] * block_state.batch_size
-
-        num_target_tokens = block_state.latents.shape[1]
-        block_state.img_mask = joint_vision_mask(block_state.image_pad_mask, num_target_tokens)
-        block_state.negative_img_mask = None
-        if block_state.negative_image_pad_mask is not None:
-            block_state.negative_img_mask = joint_vision_mask(block_state.negative_image_pad_mask, num_target_tokens)
 
         self.set_block_state(state, block_state)
         return components, state
