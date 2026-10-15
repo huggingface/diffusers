@@ -288,9 +288,10 @@ def _styles(relative_plan: dict) -> dict:
         elif style == "rowwise":
             resolved[path] = RowwiseParallel()
         elif style == "rowwise_split_input":
-            # `input_layouts=Replicate()` makes `prepare_input` narrow the replicated activation down to this rank's
-            # columns rather than trusting it to already be `Shard(-1)`; the default would read a full-width tensor
-            # as if it were one rank's shard.
+            # Same weight split as "rowwise", for a Linear whose input arrives whole instead of split by a "colwise"
+            # layer before it; each rank slices its own columns locally. E.g. an AdaLN modulation projection reading
+            # the timestep embedding (MiniMax-H3's `adaln_proj.linear`), or an output projection after a gathered
+            # QK-norm. Same as the transformers style of the same name.
             resolved[path] = RowwiseParallel(input_layouts=Replicate())
         elif isinstance(style, PackedColwiseParallel):
             resolved[path] = _make_packed_col(style)
