@@ -133,7 +133,7 @@ def get_dummy_condition_image(seed=0):
 class QwenImage21ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = QwenImage21ModularPipeline
     pipeline_blocks_class = QwenImage21AutoBlocks
-    pretrained_model_name_or_path = "akshan-main/tiny-qwenimage21-modular-pipe"
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage21-modular"
     params = frozenset(
         ["prompt", "negative_prompt", "height", "width", "output_resolution", "attention_kwargs", "image"]
     )
