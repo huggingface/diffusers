@@ -131,6 +131,17 @@ def _flux2_klein_map_fn(config_dict=None):
         return "Flux2KleinBaseModularPipeline"
 
 
+def _qwenimage21_map_fn(config_dict=None):
+    if config_dict is None:
+        return "QwenImage21ModularPipeline"
+
+    # The Turbo checkpoint ships its sampling grid as pipeline config; the base checkpoint has none.
+    if config_dict.get("sample_sigmas"):
+        return "QwenImage21TurboModularPipeline"
+    else:
+        return "QwenImage21ModularPipeline"
+
+
 def _wan_map_fn(config_dict=None):
     if config_dict is None:
         return "WanModularPipeline"
@@ -190,6 +201,8 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("qwenimage-edit", _create_default_map_fn("QwenImageEditModularPipeline")),
         ("qwenimage-edit-plus", _create_default_map_fn("QwenImageEditPlusModularPipeline")),
         ("qwenimage-layered", _create_default_map_fn("QwenImageLayeredModularPipeline")),
+        ("qwenimage21", _qwenimage21_map_fn),
+        ("qwenimage21-turbo", _create_default_map_fn("QwenImage21TurboModularPipeline")),
         ("anima", _create_default_map_fn("AnimaModularPipeline")),
         ("z-image", _create_default_map_fn("ZImageModularPipeline")),
         ("cosmos3-omni", _create_default_map_fn("Cosmos3OmniModularPipeline")),
