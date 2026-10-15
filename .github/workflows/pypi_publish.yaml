@@ -8,11 +8,13 @@ on:
     branches:
       - 'v*-release'
 
-permissions:
-  contents: read
+
+permissions: {}
 
 jobs:
   build-and-test:
+    permissions:
+      contents: read
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout repo
@@ -21,7 +23,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
-          python-version: "3.10"
+          python-version: "3.11"
 
       - name: Install build dependencies
         run: |

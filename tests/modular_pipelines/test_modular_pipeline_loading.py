@@ -15,9 +15,11 @@
 
 import json
 import os
+import shutil
 
 import pytest
 import torch
+from huggingface_hub import snapshot_download
 
 from diffusers import AutoModel, ControlNetModel, ModularPipeline, UNet2DConditionModel
 from diffusers.modular_pipelines.modular_pipeline_utils import ComponentSpec
@@ -253,6 +255,9 @@ class TestModularPipelineInitFallback:
     def test_init_fallback_when_blocks_class_name_is_base_class(self, tmp_path):
         # 1. Load pipeline and get a workflow (returns a base SequentialPipelineBlocks)
         pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+        assert pipe.__class__.__name__ == "StableDiffusionXLModularPipeline"
+        assert pipe.blocks.__class__.__name__ == "StableDiffusionXLAutoBlocks"
+
         t2i_blocks = pipe.blocks.get_workflow("text2image")
         assert t2i_blocks.__class__.__name__ == "SequentialPipelineBlocks"
 
@@ -268,3 +273,74 @@ class TestModularPipelineInitFallback:
         assert loaded_pipe.__class__.__name__ == pipe.__class__.__name__
         assert loaded_pipe._blocks.__class__.__name__ == pipe._blocks.__class__.__name__
         assert len(loaded_pipe._blocks.sub_blocks) == len(pipe._blocks.sub_blocks)
+
+    def test_init_raises_without_resolvable_blocks(self):
+        # The base class has no `default_blocks_name`, so with no `blocks` there is nothing to build from.
+        with pytest.raises(ValueError, match="No pipeline blocks could be resolved"):
+            ModularPipeline()
+
+
+class TestLoadFromLocalCopy:
+    def test_local_copy_loads_present_components_locally(self, tmp_path):
+        """`hf download --local-dir` keeps the index pointing at the Hub; components whose subfolder is present in
+        the local copy load from it, the rest keep their recorded spec."""
+        local_dir = str(tmp_path / "local-copy")
+        cache_dir = str(tmp_path / "cache")
+        snapshot_download("hf-internal-testing/tiny-anima-modular-pipe", local_dir=local_dir)
+
+        pipe = ModularPipeline.from_pretrained(local_dir)
+        for name in ("vae", "transformer", "text_encoder", "scheduler"):
+            spec = pipe._component_specs[name]
+            assert spec.pretrained_model_name_or_path == local_dir, f"{name} should load from the local copy"
+            assert spec.revision is None
+        assert (
+            pipe._component_specs["t5_tokenizer"].pretrained_model_name_or_path == "hf-internal-testing/tiny-random-t5"
+        )
+
+        pipe.load_components(names=["vae"], dtype=torch.float32, local_files_only=True, cache_dir=cache_dir)
+        assert pipe.vae is not None
+        cached_weights = [p for p in (tmp_path / "cache").rglob("*") if p.suffix in (".safetensors", ".bin")]
+        assert cached_weights == [], f"weights should not be in the Hub cache: {cached_weights}"
+
+    def test_local_copy_missing_files_keeps_recorded_spec(self, tmp_path):
+        """A missing subfolder, or a model subfolder without weight files (e.g. a partial download), keeps the
+        recorded spec instead of shadowing it with an unloadable folder."""
+        local_dir = str(tmp_path / "local-copy")
+        snapshot_download("hf-internal-testing/tiny-anima-modular-pipe", local_dir=local_dir)
+        shutil.rmtree(os.path.join(local_dir, "transformer"))
+        for filename in os.listdir(os.path.join(local_dir, "vae")):
+            if filename.endswith((".safetensors", ".bin")):
+                os.remove(os.path.join(local_dir, "vae", filename))
+
+        pipe = ModularPipeline.from_pretrained(local_dir)
+        assert (
+            pipe._component_specs["transformer"].pretrained_model_name_or_path
+            == "hf-internal-testing/tiny-anima-modular-pipe"
+        )
+        assert (
+            pipe._component_specs["vae"].pretrained_model_name_or_path == "hf-internal-testing/tiny-anima-modular-pipe"
+        )
+        assert pipe._component_specs["text_encoder"].pretrained_model_name_or_path == local_dir
+
+    def test_local_copy_loads_components_at_root(self, tmp_path):
+        """A component recorded without a subfolder is at the root of its repo; when the local copy has its files
+        there it is loaded from the copy: weights for a model, the saved config file for anything else."""
+        local_dir = str(tmp_path / "local-copy")
+        snapshot_download("hf-internal-testing/tiny-cosmos3-modular-pipe", local_dir=local_dir)
+        index_path = os.path.join(local_dir, "modular_model_index.json")
+        with open(index_path) as f:
+            index = json.load(f)
+        root_components = ["transformer", "scheduler", "text_tokenizer"]
+        for name in root_components:
+            for filename in os.listdir(os.path.join(local_dir, name)):
+                shutil.move(os.path.join(local_dir, name, filename), os.path.join(local_dir, filename))
+            index[name][2]["subfolder"] = None
+        with open(index_path, "w") as f:
+            json.dump(index, f)
+
+        pipe = ModularPipeline.from_pretrained(local_dir)
+        for name in root_components:
+            assert pipe._component_specs[name].pretrained_model_name_or_path == local_dir, f"{name} not local"
+        pipe.load_components(names=root_components, dtype=torch.float32, local_files_only=True)
+        for name in root_components:
+            assert getattr(pipe, name) is not None, f"{name} did not load from the local copy"

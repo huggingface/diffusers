@@ -10,8 +10,6 @@ on:
       - "examples/**.py"
       - "tests/**.py"
 
-permissions:
-  contents: read
 
 env:
   DIFFUSERS_IS_CI: yes
@@ -26,8 +24,12 @@ env:
   #     (torchvision::nms). The pinned set is (re)written into the override file per job below.
   UV_OVERRIDE: /tmp/uv-overrides.txt
 
+permissions: {}
+
 jobs:
   setup_torch_cuda_pipeline_matrix:
+    permissions:
+      contents: read
     name: Setup Torch Pipelines CUDA Slow Tests Matrix
     runs-on:
       group: aws-general-8-plus
@@ -61,6 +63,8 @@ jobs:
           path: reports
 
   torch_pipelines_cuda_tests:
+    permissions:
+      contents: read
     name: Torch Pipelines CUDA Tests
     needs: setup_torch_cuda_pipeline_matrix
     strategy:
@@ -112,6 +116,8 @@ jobs:
           path: reports
 
   torch_cuda_tests:
+    permissions:
+      contents: read
     name: Torch CUDA Tests
     runs-on:
       group: aws-g4dn-2xlarge
@@ -169,6 +175,8 @@ jobs:
         path: reports
 
   run_torch_compile_tests:
+    permissions:
+      contents: read
     name: PyTorch Compile CUDA tests
 
     runs-on:
@@ -212,6 +220,8 @@ jobs:
         path: reports
 
   run_xformers_tests:
+    permissions:
+      contents: read
     name: PyTorch xformers CUDA tests
 
     runs-on:
@@ -254,6 +264,8 @@ jobs:
         path: reports
 
   run_examples_tests:
+    permissions:
+      contents: read
     name: Examples PyTorch CUDA tests on Ubuntu
 
     runs-on:

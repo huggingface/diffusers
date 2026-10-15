@@ -3,8 +3,6 @@ name: Fast mps tests on main
 on:
   workflow_dispatch:
 
-permissions:
-  contents: read
 
 env:
   DIFFUSERS_IS_CI: yes
@@ -19,8 +17,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
   run_fast_tests_apple_m1:
+    permissions:
+      contents: read
     name: Fast PyTorch MPS tests on MacOS
     runs-on: macos-13-xlarge
 

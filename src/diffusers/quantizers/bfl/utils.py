@@ -84,9 +84,9 @@ class BFLQuantizedParameter(nn.Parameter):
     """A quantized linear weight bundled with its scales.
 
     Single-file checkpoint converters chunk, split and concatenate weights along the output dimension (fused QKV,
-    swapped scale/shift). Bundling keeps the per-row scales aligned with the rows through those operations. A cast to
-    a floating point dtype dequantizes the weight into a plain tensor (the loader casts the parameters of modules kept
-    in fp32); any other shape or dtype change is refused.
+    swapped scale/shift). Bundling keeps the per-row scales aligned with the rows through those operations. A cast to a
+    floating point dtype dequantizes the weight into a plain tensor (the loader casts the parameters of modules kept in
+    fp32); any other shape or dtype change is refused.
     """
 
     def __new__(cls, data, quant_type, weight_scale, weight_scale_2=None, input_scale=None):

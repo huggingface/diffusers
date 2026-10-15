@@ -40,10 +40,8 @@ from ..testing_utils import (
 )
 
 
-# TODO: local tiny repo built by integration-notes/make_tiny_flux3_repo.py — upload as
-# hf-internal-testing/tiny-flux3-image-modular and switch before opening the PR
-FLUX3_TINY_REPO = "/raid/yiyi/tiny-flux3-image-modular"
-FLUX3_DISTILLED_TINY_REPO = "/raid/yiyi/tiny-flux3-image-distilled-modular"
+FLUX3_TINY_REPO = "hf-internal-testing/tiny-flux3-image-modular"
+FLUX3_DISTILLED_TINY_REPO = "hf-internal-testing/tiny-flux3-image-distilled-modular"
 
 FLUX3_WORKFLOWS = {
     "text2image": [
@@ -326,6 +324,7 @@ class TestFlux3ModularPipelineMemory(Flux3ModularPipelineTesterConfig, ModularMe
 class TestFlux3ModularPipelineWorkflow(Flux3ModularPipelineTesterConfig, ModularWorkflowTesterMixin):
     pass
 
+
 class Flux3DistilledModularPipelineTesterConfig(Flux3ModularPipelineTesterConfig):
     pipeline_class = Flux3DistilledModularPipeline
     pipeline_blocks_class = Flux3DistilledAutoBlocks
@@ -368,6 +367,7 @@ class TestFlux3DistilledModularPipelineLoading(Flux3DistilledModularPipelineTest
 
 class TestFlux3DistilledModularPipelineWorkflow(Flux3DistilledModularPipelineTesterConfig, ModularWorkflowTesterMixin):
     pass
+
 
 class TestFlux3ModularPipelineLoRA(Flux3ModularPipelineTesterConfig, ModularLoraTesterMixin):
     pass

@@ -20,11 +20,13 @@ on:
         required: true
         default: 'main'
 
-permissions:
-  contents: read
+
+permissions: {}
 
 jobs:
   mirror_community_pipeline:
+    permissions:
+      contents: read
     env:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_COMMUNITY_MIRROR }}
     runs-on: ubuntu-22.04

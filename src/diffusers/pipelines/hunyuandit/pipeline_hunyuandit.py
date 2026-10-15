@@ -596,7 +596,7 @@ class HunyuanDiTPipeline(DiffusionPipeline):
         target_size: tuple[int, int] | None = None,
         crops_coords_top_left: tuple[int, int] = (0, 0),
         use_resolution_binning: bool = True,
-    ):
+    ) -> StableDiffusionPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation with HunyuanDiT.
 

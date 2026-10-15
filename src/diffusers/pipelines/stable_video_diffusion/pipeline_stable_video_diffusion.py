@@ -406,7 +406,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         return_dict: bool = True,
-    ):
+    ) -> StableVideoDiffusionPipelineOutput | list[list[PIL.Image.Image]] | np.ndarray | torch.Tensor:
         r"""
         The call function to the pipeline for generation.
 

@@ -25,7 +25,6 @@ from ...models import AutoencoderKL
 from ...models.transformers.transformer_lumina2 import Lumina2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import (
-    deprecate,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
@@ -743,23 +742,3 @@ class Lumina2Pipeline(DiffusionPipeline, Lumina2LoraLoaderMixin):
             return (image,)
 
         return ImagePipelineOutput(images=image)
-
-
-class Lumina2Text2ImgPipeline(Lumina2Pipeline):
-    def __init__(
-        self,
-        transformer: Lumina2Transformer2DModel,
-        scheduler: FlowMatchEulerDiscreteScheduler,
-        vae: AutoencoderKL,
-        text_encoder: Gemma2PreTrainedModel,
-        tokenizer: GemmaTokenizer | GemmaTokenizerFast,
-    ):
-        deprecation_message = "`Lumina2Text2ImgPipeline` has been renamed to `Lumina2Pipeline` and will be removed in a future version. Please use `Lumina2Pipeline` instead."
-        deprecate("diffusers.pipelines.lumina2.pipeline_lumina2.Lumina2Text2ImgPipeline", "0.34", deprecation_message)
-        super().__init__(
-            transformer=transformer,
-            scheduler=scheduler,
-            vae=vae,
-            text_encoder=text_encoder,
-            tokenizer=tokenizer,
-        )

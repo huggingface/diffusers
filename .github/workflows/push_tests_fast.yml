@@ -13,8 +13,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
 
 env:
   DIFFUSERS_IS_CI: yes
@@ -25,8 +23,12 @@ env:
   PYTEST_TIMEOUT: 600
   RUN_SLOW: no
 
+permissions: {}
+
 jobs:
   run_fast_tests:
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:

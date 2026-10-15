@@ -15,8 +15,6 @@ on:
         description: 'Name of the Docker image'
         required: true
 
-permissions:
-  contents: read
 
 env:
   IS_GITHUB_CI: "1"
@@ -27,8 +25,12 @@ env:
   MKL_NUM_THREADS: 8
   RUN_SLOW: yes
 
+permissions: {}
+
 jobs:
   ssh_runner:
+    permissions:
+      contents: read
     name: "SSH"
     runs-on:
       group: "${{ github.event.inputs.runner_type }}"
@@ -47,7 +49,7 @@ jobs:
           nvidia-smi
 
       - name: Tailscale # In order to be able to SSH when a test fails
-        uses: huggingface/tailscale-action@main
+        uses: huggingface/tailscale-action@9d1a67c46875a956cf2d1975473da978a970a2a9  # main
         with:
           authkey: ${{ secrets.TAILSCALE_SSH_AUTHKEY }}
           slackChannel: ${{ secrets.SLACK_CIFEEDBACK_CHANNEL }}
