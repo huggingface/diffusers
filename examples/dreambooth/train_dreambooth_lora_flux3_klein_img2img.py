@@ -160,7 +160,7 @@ def prepare_text_ids(seq_len, device):
 
 @torch.no_grad()
 def get_qwen3vl_prompt_embeds(
-    text_encoder, tokenizer, prompt, device, dtype, text_encoder_out_layers, max_sequence_length
+    text_encoder, tokenizer, prompt, device, dtype, text_encoder_out_layers, max_sequence_length, pad_to_length=None
 ):
     """Stack the FLUX.3 Qwen3-VL hidden layers -> (B, seq, len(layers) * hidden_dim).
 
@@ -184,6 +184,10 @@ def get_qwen3vl_prompt_embeds(
         for t in texts
     ]
     padded_length = min(math.ceil(max(real_lengths) / TEXT_PAD_MULTIPLE) * TEXT_PAD_MULTIPLE, max_sequence_length)
+    if pad_to_length is not None:
+        # Force a specific window (caption dropout encodes the empty prompt at a dropped instruction's window). Never
+        # shrink below the prompt's own real length, never exceed max_sequence_length.
+        padded_length = min(max(padded_length, pad_to_length), max_sequence_length)
     enc = tokenizer.tokenizer(
         texts,
         return_tensors="pt",
@@ -234,7 +238,7 @@ def save_model_card(
 
 These are {repo_id} DreamBooth LoRA weights for {base_model}.
 
-The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the [FLUX.3 diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_flux3_small.md).
+The weights were trained using [DreamBooth](https://dreambooth.github.io/) with the [FLUX.3 diffusers trainer](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_flux3_klein.md).
 
 Quant training? {quant_training}
 
@@ -450,6 +454,16 @@ def parse_args(input_args=None):
     )
 
     parser.add_argument("--repeats", type=int, default=1, help="How many times to repeat the training data.")
+    parser.add_argument(
+        "--caption_dropout",
+        type=float,
+        default=0.0,
+        help=(
+            "Probability of replacing a sample's instruction with an empty string during training, so that fraction"
+            " of samples is trained unconditionally on the text (the conditioning image is kept). Improves"
+            " classifier-free guidance. A common value is 0.1."
+        ),
+    )
 
     parser.add_argument(
         "--instance_prompt",
@@ -818,7 +832,7 @@ def parse_args(input_args=None):
 
     if args.cond_image_column is None:
         raise ValueError(
-            "you must provide --cond_image_column for image-to-image training. Otherwise use the FLUX.3 text-to-image training script (train_dreambooth_lora_flux3_small.py)."
+            "you must provide --cond_image_column for image-to-image training. Otherwise use the FLUX.3 text-to-image training script (train_dreambooth_lora_flux3_klein.py)."
         )
     else:
         assert args.image_column is not None
@@ -1557,7 +1571,7 @@ def main(args):
         num_workers=args.dataloader_num_workers,
     )
 
-    def compute_text_embeddings(prompt, text_encoder, tokenizer):
+    def compute_text_embeddings(prompt, text_encoder, tokenizer, pad_to_length=None):
         # FLUX.3 has no classic text-encoding pipeline; encode directly with the frozen Qwen3-VL encoder.
         with torch.no_grad():
             prompt_embeds = get_qwen3vl_prompt_embeds(
@@ -1568,6 +1582,7 @@ def main(args):
                 weight_dtype,
                 text_encoder_out_layers=args.text_encoder_out_layers,
                 max_sequence_length=args.max_sequence_length,
+                pad_to_length=pad_to_length,
             )
             # FLUX.3 text ids are positional only (identical for every sample of a given length). We carry them
             # batched here so the repeat plumbing below is unchanged; the transformer consumes a single (seq, 4)
@@ -1653,6 +1668,23 @@ def main(args):
                             )
                     prompt_embeds_cache.append(prompt_embeds)
                     text_ids_cache.append(text_ids)
+
+    # Caption dropout replaces the instruction with the empty prompt for a fraction of samples (the conditioning
+    # image is kept). FLUX.3 pads each prompt to its own window (a multiple of TEXT_PAD_MULTIPLE) and the transformer
+    # attends to it, so the empty prompt must match the dropped sample's window. Precompute it for every window in
+    # use here, while the text encoder is still loaded (it is deleted below, so this cannot be done in the loop).
+    empty_prompt_by_window = {}
+    if args.caption_dropout > 0:
+        dropout_windows = (
+            {embeds.shape[1] for embeds in prompt_embeds_cache}
+            if train_dataset.custom_instance_prompts
+            else {instance_prompt_hidden_states.shape[1]}
+        )
+        for window in sorted(dropout_windows):
+            with offload_models(text_encoder, device=accelerator.device, offload=args.offload):
+                empty_prompt_by_window[window] = compute_text_embeddings(
+                    "", text_encoder, tokenizer, pad_to_length=window
+                )
 
     # move back to cpu before deleting to ensure memory is freed see: https://github.com/huggingface/diffusers/issues/11376#issue-3008144624
     if args.cache_latents:
@@ -1787,6 +1819,20 @@ def main(args):
                     num_repeat_elements = len(prompts)
                     prompt_embeds = prompt_embeds.repeat(num_repeat_elements, 1, 1)
                     text_ids = text_ids.repeat(num_repeat_elements, 1, 1)
+
+                # Caption dropout: replace the instruction with the empty prompt for a fraction of samples so they
+                # train unconditionally on the text (the conditioning image is kept). Clone first so the in-place
+                # write never mutates the cached embeddings.
+                if args.caption_dropout > 0:
+                    drop_mask = torch.rand(prompt_embeds.shape[0], device=prompt_embeds.device) < args.caption_dropout
+                    if drop_mask.any():
+                        empty_hidden_states, empty_text_ids = empty_prompt_by_window[prompt_embeds.shape[1]]
+                        prompt_embeds = prompt_embeds.clone()
+                        text_ids = text_ids.clone()
+                        prompt_embeds[drop_mask] = empty_hidden_states.to(
+                            device=prompt_embeds.device, dtype=prompt_embeds.dtype
+                        )
+                        text_ids[drop_mask] = empty_text_ids.to(device=text_ids.device, dtype=text_ids.dtype)
 
                 # Convert images to latent space
                 if args.cache_latents:

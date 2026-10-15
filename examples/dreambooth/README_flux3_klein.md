@@ -3,8 +3,8 @@
 These scripts train LoRA adapters for the FLUX.3 image model (`Flux3Transformer2DModel`, served by
 `Flux3ModularPipeline`) with the DreamBooth recipe:
 
-- `train_dreambooth_lora_flux3_small.py` — text-to-image (t2i)
-- `train_dreambooth_lora_flux3_small_img2img.py` — image-to-image / instruction editing (i2i)
+- `train_dreambooth_lora_flux3_klein.py` — text-to-image (t2i)
+- `train_dreambooth_lora_flux3_klein_img2img.py` — image-to-image / instruction editing (i2i)
 
 > [!NOTE]
 > LoRA **loading and inference** for this model live in the pipeline/loader PR (`Flux3LoraLoaderMixin`); these
@@ -18,7 +18,7 @@ A few things that are specific to FLUX.3 and differ from the FLUX.1/FLUX.2 train
   through the Qwen chat template and the text window is right-padded to a multiple of 80 tokens (capped at
   `--max_sequence_length`), matching the pipeline's `Flux3TextEncoderStep`.
 - **No guidance distillation.** The model is not guidance-distilled, so there is no guidance argument in training;
-  classifier-free guidance happens at inference. Use `--caption_dropout` for unconditional training (t2i).
+  classifier-free guidance happens at inference. Use `--caption_dropout` for unconditional training (t2i and i2i).
 - **VAE normalization is a batch-norm.** Latents are 2×2-patchified to 128 channels and normalized with the VAE's
   stored batch-norm statistics (not a scalar `scaling_factor`/`shift_factor`).
 - **Flow matching with a fixed shift of 6.93** (no resolution-dependent dynamic shifting); the velocity target is
@@ -41,7 +41,7 @@ pip install -e .
 Then `cd` into `examples/dreambooth` and install the requirements:
 
 ```bash
-pip install -r requirements_flux3_small.txt
+pip install -r requirements_flux3_klein.txt
 ```
 
 Initialize an [🤗 Accelerate](https://github.com/huggingface/accelerate/) environment with:
@@ -67,9 +67,9 @@ whose captions already contain the trigger phrase `yarn art style`.
 
 ```bash
 export MODEL_NAME="black-forest-labs/flux-3-image-klein-base"
-export OUTPUT_DIR="trained-flux3-small-yarn-lora"
+export OUTPUT_DIR="trained-flux3-klein-yarn-lora"
 
-accelerate launch train_dreambooth_lora_flux3_small.py \
+accelerate launch train_dreambooth_lora_flux3_klein.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --dataset_name="Norod78/Yarn-art-style" \
   --caption_column="text" \
@@ -112,9 +112,9 @@ This example uses [kontext-community/relighting](https://huggingface.co/datasets
 
 ```bash
 export MODEL_NAME="black-forest-labs/flux-3-image-klein-base"
-export OUTPUT_DIR="trained-flux3-small-relight-lora"
+export OUTPUT_DIR="trained-flux3-klein-relight-lora"
 
-accelerate launch train_dreambooth_lora_flux3_small_img2img.py \
+accelerate launch train_dreambooth_lora_flux3_klein_img2img.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --dataset_name="kontext-community/relighting" \
   --image_column="output" \
@@ -200,8 +200,8 @@ every stream. Use `--lora_layers` (a comma-separated list) to target a different
 
 - `--aspect_ratio_buckets` / `--use_aspect_ratio_buckets` group images of similar aspect ratio so a batch shares a
   resolution (t2i).
-- `--caption_dropout` replaces a fraction of instance captions with the empty prompt during training, which improves
-  classifier-free guidance at inference (t2i).
+- `--caption_dropout` replaces a fraction of captions (t2i) or instructions (i2i) with the empty prompt during
+  training, which improves classifier-free guidance at inference. For i2i the conditioning image is kept.
 
 ## Inference
 
@@ -215,7 +215,7 @@ pipe = Flux3AutoBlocks().init_pipeline("black-forest-labs/flux-3-image-klein-bas
 pipe.load_components(dtype=torch.bfloat16)
 pipe.to("cuda")
 
-pipe.load_lora_weights("trained-flux3-small-yarn-lora", weight_name="pytorch_lora_weights.safetensors")
+pipe.load_lora_weights("trained-flux3-klein-yarn-lora", weight_name="pytorch_lora_weights.safetensors")
 
 image = pipe(prompt="a cat, yarn art style", output="images")[0]
 image.save("yarn_cat.png")

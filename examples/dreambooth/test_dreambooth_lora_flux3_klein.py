@@ -36,14 +36,14 @@ logger.addHandler(stream_handler)
 FLUX3_TINY_REPO = os.environ.get("FLUX3_TINY_REPO", "hf-internal-testing/tiny-flux3-image-modular")
 
 
-class DreamBoothLoRAFlux3Small(ExamplesTestsAccelerate):
+class DreamBoothLoRAFlux3Klein(ExamplesTestsAccelerate):
     instance_data_dir = "docs/source/en/imgs"
     instance_prompt = "dog"
     pretrained_model_name_or_path = FLUX3_TINY_REPO
-    script_path = "examples/dreambooth/train_dreambooth_lora_flux3_small.py"
+    script_path = "examples/dreambooth/train_dreambooth_lora_flux3_klein.py"
     transformer_layer_type = "single_transformer_blocks.0.attn.to_k"
 
-    def test_dreambooth_lora_flux3_small(self):
+    def test_dreambooth_lora_flux3_klein(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 {self.script_path}
@@ -77,7 +77,7 @@ class DreamBoothLoRAFlux3Small(ExamplesTestsAccelerate):
             starts_with_transformer = all(key.startswith("transformer") for key in lora_state_dict.keys())
             self.assertTrue(starts_with_transformer)
 
-    def test_dreambooth_lora_flux3_small_latent_caching(self):
+    def test_dreambooth_lora_flux3_klein_latent_caching(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 {self.script_path}
@@ -110,7 +110,7 @@ class DreamBoothLoRAFlux3Small(ExamplesTestsAccelerate):
             starts_with_transformer = all(key.startswith("transformer") for key in lora_state_dict.keys())
             self.assertTrue(starts_with_transformer)
 
-    def test_dreambooth_lora_flux3_small_layers(self):
+    def test_dreambooth_lora_flux3_klein_layers(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 {self.script_path}
@@ -147,7 +147,7 @@ class DreamBoothLoRAFlux3Small(ExamplesTestsAccelerate):
             )
             self.assertTrue(starts_with_transformer)
 
-    def test_dreambooth_lora_flux3_small_checkpointing_checkpoints_total_limit(self):
+    def test_dreambooth_lora_flux3_klein_checkpointing_checkpoints_total_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
             {self.script_path}
@@ -172,7 +172,7 @@ class DreamBoothLoRAFlux3Small(ExamplesTestsAccelerate):
                 {"checkpoint-4", "checkpoint-6"},
             )
 
-    def test_dreambooth_lora_flux3_small_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
+    def test_dreambooth_lora_flux3_klein_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
             {self.script_path}

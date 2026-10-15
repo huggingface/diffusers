@@ -36,7 +36,7 @@ logger.addHandler(stream_handler)
 FLUX3_TINY_REPO = os.environ.get("FLUX3_TINY_REPO", "hf-internal-testing/tiny-flux3-image-modular")
 
 
-class DreamBoothLoRAFlux3SmallImg2Img(ExamplesTestsAccelerate):
+class DreamBoothLoRAFlux3KleinImg2Img(ExamplesTestsAccelerate):
     # image-to-image training needs a paired conditioning image, so it reads a dataset with an image +
     # conditioning_image column rather than a plain folder
     dataset_name = "hf-internal-testing/fill10"
@@ -45,9 +45,9 @@ class DreamBoothLoRAFlux3SmallImg2Img(ExamplesTestsAccelerate):
     caption_column = "text"
     instance_prompt = "dog"
     pretrained_model_name_or_path = FLUX3_TINY_REPO
-    script_path = "examples/dreambooth/train_dreambooth_lora_flux3_small_img2img.py"
+    script_path = "examples/dreambooth/train_dreambooth_lora_flux3_klein_img2img.py"
 
-    def test_dreambooth_lora_flux3_small_img2img(self):
+    def test_dreambooth_lora_flux3_klein_img2img(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 {self.script_path}
@@ -86,7 +86,7 @@ class DreamBoothLoRAFlux3SmallImg2Img(ExamplesTestsAccelerate):
             self.assertTrue(any("mode_blocks.image." in key for key in lora_state_dict.keys()))
             self.assertTrue(any("mode_blocks.image_cond." in key for key in lora_state_dict.keys()))
 
-    def test_dreambooth_lora_flux3_small_img2img_latent_caching(self):
+    def test_dreambooth_lora_flux3_klein_img2img_latent_caching(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 {self.script_path}
