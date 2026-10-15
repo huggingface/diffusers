@@ -146,8 +146,10 @@ FLUX3_DISTILLED_WORKFLOWS = {
 }
 FLUX3_DISTILLED_COMPONENTS = {name: cls for name, cls in FLUX3_COMPONENTS.items() if name != "guider"}
 FLUX3_DISTILLED_SAMPLING = {"scheduler": {"shift": 6.93}}
-# no negative prompt, 16 steps by default
-FLUX3_DISTILLED_INPUTS = {name: value for name, value in FLUX3_INPUTS.items() if name != "negative_prompt"}
+# no negative prompt and no attention kwargs, 16 steps by default
+FLUX3_DISTILLED_INPUTS = {
+    name: value for name, value in FLUX3_INPUTS.items() if name not in ("negative_prompt", "attention_kwargs")
+}
 FLUX3_DISTILLED_INPUTS["num_inference_steps"] = 16
 FLUX3_DISTILLED_WORKFLOW_DEFAULTS = {
     "text2image": {
