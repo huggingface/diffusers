@@ -23,7 +23,7 @@ import torch
 from diffusers import ModularPipeline
 
 pipe = ModularPipeline.from_pretrained("black-forest-labs/flux-3-image-klein-base")
-pipe.load_components(dtype=torch.bfloat16)
+pipe.load_components(dtype={"vae": torch.float32, "default": torch.bfloat16})
 pipe.to("cuda")
 
 image = pipe(
@@ -158,7 +158,7 @@ Loading everything in bf16 takes about 20 GB of weights (the transformer is 5.5B
 
 ```python
 pipe = ModularPipeline.from_pretrained("black-forest-labs/flux-3-image-klein-base")
-pipe.load_components(dtype=torch.bfloat16)
+pipe.load_components(dtype={"vae": torch.float32, "default": torch.bfloat16})
 pipe.enable_auto_cpu_offload(device="cuda")
 ```
 
@@ -178,7 +178,7 @@ transformer = Flux3Transformer2DModel.from_single_file(
 )
 
 pipe = ModularPipeline.from_pretrained("black-forest-labs/flux-3-image-klein-base")
-pipe.load_components(dtype=torch.bfloat16)
+pipe.load_components(dtype={"vae": torch.float32, "default": torch.bfloat16})
 pipe.update_components(transformer=transformer)
 pipe.to("cuda")
 ```
