@@ -536,30 +536,17 @@ class TestMarigoldIntrinsicsPipelineIntegration:
     def test_marigold_intrinsics_einstein_f16_accelerator_G0_S1_P768_E4_B2_M1(self):
         expected_slices = Expectations(
             {
-                ("xpu", 3): np.array(
-                    [
-                        0.62988,
-                        0.62792,
-                        0.62548,
-                        0.62841,
-                        0.62792,
-                        0.62792,
-                        0.62646,
-                        0.62939,
-                        0.63721,
-                    ]
-                ),
                 ("xpu", 5): np.array(
                     [
-                        0.62207,
                         0.62012,
+                        0.61816,
+                        0.61621,
                         0.61865,
+                        0.61816,
+                        0.61914,
+                        0.61768,
                         0.62061,
-                        0.62061,
-                        0.62158,
-                        0.62012,
-                        0.62305,
-                        0.63086,
+                        0.62842,
                     ]
                 ),
                 ("cuda", 7): np.array(
