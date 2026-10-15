@@ -18,7 +18,6 @@ FLUX.3 is an image generation model from Black Forest Labs: a single transformer
 
 FLUX.3 ships as a modular pipeline. Prompting matters: the model responds best to full scene captions that describe the subject, composition, lighting, and atmosphere — see the [FLUX.3 prompting guide](https://docs.bfl.ai) for details. Get started with a text-to-image generation:
 
-<!-- TODO: replace the prompting guide link with the final FLUX.3 guide URL and the repo id with the release repo -->
 ```python
 import torch
 from diffusers import ModularPipeline
@@ -115,7 +114,6 @@ See the [guiders guide](../../using-diffusers/guiders) to switch to a different 
 
 The step-distilled checkpoint generates in 16 steps without classifier-free guidance. Its transformer is a flow map: at every step it is told the current timestep and the one the step jumps to. It loads like the base model (the repo's `modular_model_index.json` resolves to [`Flux3DistilledModularPipeline`] and [`Flux3DistilledAutoBlocks`]); the pipeline has no `guider` and does not take `negative_prompt`:
 
-<!-- TODO: replace the repo id with the release repo of the step-distilled checkpoint -->
 ```python
 pipe = ModularPipeline.from_pretrained("black-forest-labs/flux-3-image-klein")
 pipe.load_components(dtype=torch.bfloat16)
@@ -128,9 +126,8 @@ It serves the same two workflows as the base model. `num_inference_steps` defaul
 
 ## Reproducible generation
 
-A `generator` fixes the noise the pipeline draws (see [Reproducibility](../../using-diffusers/reusing_seeds)). To reuse noise drawn elsewhere, pass it as `latents` with shape `(batch_size, 128, height // 16, width // 16)`. For example, the [BFL implementation](https://github.com/black-forest-labs/TODO) draws its noise as image tokens on the CPU and casts it to bf16; this reproduces its sample for a given seed:
+A `generator` fixes the noise the pipeline draws (see [Reproducibility](../../using-diffusers/reusing_seeds)). To reuse noise drawn elsewhere, pass it as `latents` with shape `(batch_size, 128, height // 16, width // 16)`. For example, the [BFL implementation](https://github.com/black-forest-labs/flux-3) draws its noise as image tokens on the CPU and casts it to bf16; this reproduces its sample for a given seed:
 
-<!-- TODO: replace the BFL implementation link with the released repository -->
 ```python
 height, width = 1024, 1024
 h, w = height // 16, width // 16
@@ -181,7 +178,7 @@ transformer = Flux3Transformer2DModel.from_single_file(
 )
 
 pipe = ModularPipeline.from_pretrained("black-forest-labs/flux-3-image-klein-base")
-pipe.load_components(names=["text_encoder", "tokenizer", "vae"], dtype=torch.bfloat16)
+pipe.load_components(dtype=torch.bfloat16)
 pipe.update_components(transformer=transformer)
 pipe.to("cuda")
 ```
@@ -205,10 +202,9 @@ transformer = Flux3Transformer2DModel.from_single_file(
 When loading the step-distilled checkpoints, we need their
 configs (`flow_map=True`):
 
-<!-- TODO: replace the repo ids with the release repos -->
 ```python
 transformer = Flux3Transformer2DModel.from_single_file(
-    "https://huggingface.co/black-forest-labs/flux-3-image-klein-base/blob/main/variants/sd-nvfp4/model.safetensors",
+    "https://huggingface.co/black-forest-labs/flux-3-image-klein/blob/main/variants/nvfp4/model.safetensors",
     config="black-forest-labs/flux-3-image-klein",
     subfolder="transformer",
     quantization_config=BFLQuantizationConfig(compute_dtype=torch.bfloat16),

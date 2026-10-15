@@ -20,32 +20,32 @@ specific language governing permissions and limitations under the License.
 
 Diffusers loads both through [`~FromSingleFileMixin.from_single_file`] with a [`BFLQuantizationConfig`]. The scheme is read from the checkpoint, so the same config works for either file. Only loading prequantized checkpoints is supported; pipeline-level loading is not.
 
-The example below loads a `fp8r` checkpoint of [FLUX.2 klein 4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B). Pass `config` so that the model config is read from the Diffusers repository.
+The example below loads the `fp8r` checkpoint of [FLUX 3 Image Klein Base](https://huggingface.co/black-forest-labs/flux-3-image-klein-base), which lives at `variants/fp8r/model.safetensors` in the model repository. Pass `config` so that the model config is read from the Diffusers folder of that repository, then load the other components by name (see [Single-file loading](../api/pipelines/flux3#single-file-loading)).
 
 ```python
 import torch
 
-from diffusers import BFLQuantizationConfig, Flux2KleinPipeline, Flux2Transformer2DModel
+from diffusers import BFLQuantizationConfig, Flux3Transformer2DModel, ModularPipeline
 
-ckpt_path = "https://huggingface.co/sayakpaul/FLUX.2-klein-4B-fp8r-nvfp4/blob/main/flux-2-klein-4b-fp8r.safetensors"
-transformer = Flux2Transformer2DModel.from_single_file(
+ckpt_path = "https://huggingface.co/black-forest-labs/flux-3-image-klein-base/blob/main/variants/fp8r/model.safetensors"
+transformer = Flux3Transformer2DModel.from_single_file(
     ckpt_path,
-    config="black-forest-labs/FLUX.2-klein-4B",
+    config="black-forest-labs/flux-3-image-klein-base",
     subfolder="transformer",
     quantization_config=BFLQuantizationConfig(compute_dtype=torch.bfloat16),
     dtype=torch.bfloat16,
 )
-pipe = Flux2KleinPipeline.from_pretrained(
-    "black-forest-labs/FLUX.2-klein-4B",
-    transformer=transformer,
-    dtype=torch.bfloat16,
-).to("cuda")
-prompt = "A cat holding a sign that says hello world"
-image = pipe(prompt=prompt, num_inference_steps=4, guidance_scale=1.0, generator=torch.manual_seed(0)).images[0]
-image.save("flux2-klein-fp8r.png")
+pipe = ModularPipeline.from_pretrained("black-forest-labs/flux-3-image-klein-base")
+pipe.load_components(dtype=torch.bfloat16)
+pipe.update_components(transformer=transformer)
+pipe.to("cuda")
+
+prompt = "A wide-angle wildlife photograph of a red fox standing alert in a snow-covered forest clearing at golden hour."
+image = pipe(prompt=prompt, generator=torch.Generator().manual_seed(0), output="images")[0]
+image.save("flux3-klein-base-fp8r.png")
 ```
 
-Replace the filename with `flux-2-klein-4b-nvfp4.safetensors` to load the `nvfp4` variant.
+Replace `variants/fp8r` with `variants/nvfp4` to load the `nvfp4` variant. The step-distilled [FLUX 3 Image Klein](https://huggingface.co/black-forest-labs/flux-3-image-klein) ships the same two variants; load them with its repository id as `config` and pipeline.
 
 ## Kernels
 
