@@ -13,17 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import subprocess
-import sys
-
 import torch
 
 from diffusers import MiniMaxH3Transformer3DModel
 from diffusers.models.transformers.transformer_minimax_h3 import MiniMaxH3TransformerOutput
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, is_tensor_parallel, require_torch_neuron, torch_device
+from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
@@ -32,6 +28,7 @@ from ..testing_utils import (
     MemoryTesterMixin,
     ModelTesterMixin,
     SingleFileTesterMixin,
+    TensorParallelNeuronTesterMixin,
     TensorParallelTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
@@ -224,34 +221,5 @@ class TestMiniMaxH3TransformerTensorParallel(MiniMaxH3TransformerTesterConfig, T
     """Tensor Parallel inference tests for the MiniMax-H3 transformer (CUDA/XPU multi-accelerator)."""
 
 
-def make_neuron_tp_spec():
-    """Model spec consumed by the generic Neuron TP worker (`_neuron_tp_worker.py`).
-
-    Returns `(model_class, init_dict, cpu_inputs)`. Defined here so all MiniMax-H3-specific test data lives in this
-    file while the worker stays model-agnostic. Reuses the shared tester config so the spec never drifts from the
-    rest of the MiniMax-H3 tests.
-    """
-    config = MiniMaxH3TransformerTesterConfig()
-    return MiniMaxH3Transformer3DModel, config.get_init_dict(), config.get_dummy_inputs(device="cpu")
-
-
-@is_tensor_parallel
-@require_torch_neuron
-class TestMiniMaxH3TransformerTensorParallelNeuron:
-    """Tensor Parallel inference test for the MiniMax-H3 transformer on AWS Neuron.
-
-    Neuron TP runs through `torchrun` with the `"neuron"` distributed backend, so it cannot use the
-    `torch.multiprocessing`/NCCL spawn path of `TensorParallelTesterMixin`. This launches the generic worker with
-    the MiniMax-H3 model spec (`make_neuron_tp_spec`); the worker asserts the sharded output matches a
-    single-device reference, and the test checks its exit code.
-    """
-
-    def test_tensor_parallel_neuron_inference(self):
-        worker = os.path.join(os.path.dirname(__file__), "_neuron_tp_worker.py")
-        spec = "tests.models.transformers.test_models_transformer_minimax_h3:make_neuron_tp_spec"
-        cmd = [sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=2", worker, spec]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        assert result.returncode == 0, (
-            f"Neuron tensor-parallel worker failed (exit {result.returncode}).\n"
-            f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
-        )
+class TestMiniMaxH3TransformerTensorParallelNeuron(MiniMaxH3TransformerTesterConfig, TensorParallelNeuronTesterMixin):
+    """Tensor Parallel inference test for the MiniMax-H3 transformer on AWS Neuron."""
