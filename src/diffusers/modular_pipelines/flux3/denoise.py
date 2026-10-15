@@ -333,6 +333,8 @@ class Flux3DenoiseStep(Flux3DenoiseLoopWrapper):
               The image latent tokens to denoise. Shape: (B, seq_len, C)
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
 
       Outputs:
           latents (`Tensor`):

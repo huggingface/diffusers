@@ -151,6 +151,8 @@ class Flux3CoreDenoiseStep(SequentialPipelineBlocks):
               Custom sigmas for the denoising process. (overrides `num_inference_steps` when provided)
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
 
       Outputs:
           latents (`Tensor`):
@@ -223,6 +225,8 @@ class Flux3ImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
               Custom sigmas for the denoising process. (overrides `num_inference_steps` when provided)
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
 
       Outputs:
           latents (`Tensor`):
@@ -285,6 +289,8 @@ class Flux3AutoCoreDenoiseStep(AutoPipelineBlocks):
               Custom sigmas for the denoising process. (overrides `num_inference_steps` when provided)
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
 
       Outputs:
           latents (`Tensor`):
@@ -368,6 +374,8 @@ class Flux3AutoBlocks(SequentialPipelineBlocks):
               Custom sigmas for the denoising process. (overrides `num_inference_steps` when provided)
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
 
