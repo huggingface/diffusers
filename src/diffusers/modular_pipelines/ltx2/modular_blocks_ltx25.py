@@ -17,11 +17,11 @@ import torch
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
 from ..modular_pipeline_utils import OutputParam
 from .decoders import (
-    LTX2AudioDecoderStep,
     LTX2DiffusionVaeDecoderStep,
     LTX2TrimConditionTokensStep,
 )
 from .modular_blocks_ltx2 import (
+    LTX2AutoAudioDecoderStep,
     LTX2AutoConditionEncoderStep,
     LTX2AutoCoreDenoiseStep,
     LTX2AutoDurationStep,
@@ -57,10 +57,13 @@ class LTX25DecoderStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           dtype (`dtype`):
               The dtype of the model inputs, can be generated in input step.
-          audio_latents (`Tensor`):
+          audio_latents (`Tensor`, *optional*):
               Denoised audio latents.
-          audio_num_frames (`int`):
+          audio_num_frames (`int`, *optional*):
               Number of audio latent frames, used to unpack the audio latent sequence.
+          decode_audio (`bool`, *optional*, defaults to True):
+              Whether to decode the audio. `False` skips this step (`LTX2AutoAudioDecoderStep`) and leaves `audio` as
+              `None`, for video-only outputs; the video is unchanged.
 
       Outputs:
           videos (`list`):
@@ -70,7 +73,7 @@ class LTX25DecoderStep(SequentialPipelineBlocks):
     """
 
     model_name = "ltx2.5"
-    block_classes = [LTX2DiffusionVaeDecoderStep, LTX2AudioDecoderStep]
+    block_classes = [LTX2DiffusionVaeDecoderStep, LTX2AutoAudioDecoderStep]
     block_names = ["video_decode", "audio_decode"]
 
     @property
@@ -115,10 +118,13 @@ class LTX25ConditionDecoderStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           dtype (`dtype`):
               The dtype of the model inputs, can be generated in input step.
-          audio_latents (`Tensor`):
+          audio_latents (`Tensor`, *optional*):
               Denoised audio latents.
-          audio_num_frames (`int`):
+          audio_num_frames (`int`, *optional*):
               Number of audio latent frames, used to unpack the audio latent sequence.
+          decode_audio (`bool`, *optional*, defaults to True):
+              Whether to decode the audio. `False` skips this step (`LTX2AutoAudioDecoderStep`) and leaves `audio` as
+              `None`, for video-only outputs; the video is unchanged.
 
       Outputs:
           videos (`list`):
@@ -128,7 +134,7 @@ class LTX25ConditionDecoderStep(SequentialPipelineBlocks):
     """
 
     model_name = "ltx2.5"
-    block_classes = [LTX2TrimConditionTokensStep, LTX2DiffusionVaeDecoderStep, LTX2AudioDecoderStep]
+    block_classes = [LTX2TrimConditionTokensStep, LTX2DiffusionVaeDecoderStep, LTX2AutoAudioDecoderStep]
     block_names = ["trim_condition_tokens", "video_decode", "audio_decode"]
 
     @property
@@ -176,10 +182,13 @@ class LTX25AutoDecoderStep(AutoPipelineBlocks):
               Torch generator for deterministic generation.
           dtype (`dtype`):
               The dtype of the model inputs, can be generated in input step.
-          audio_latents (`Tensor`):
+          audio_latents (`Tensor`, *optional*):
               Denoised audio latents.
-          audio_num_frames (`int`):
+          audio_num_frames (`int`, *optional*):
               Number of audio latent frames, used to unpack the audio latent sequence.
+          decode_audio (`bool`, *optional*, defaults to True):
+              Whether to decode the audio. `False` skips this step (`LTX2AutoAudioDecoderStep`) and leaves `audio` as
+              `None`, for video-only outputs; the video is unchanged.
 
       Outputs:
           videos (`list`):
@@ -332,6 +341,9 @@ class LTX25AutoBlocks(SequentialPipelineBlocks):
               VAE-encoded reference-image latents used for image-to-video conditioning.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
+          decode_audio (`bool`, *optional*, defaults to True):
+              Whether to decode the audio. `False` skips this step (`LTX2AutoAudioDecoderStep`) and leaves `audio` as
+              `None`, for video-only outputs; the video is unchanged.
 
       Outputs:
           videos (`list`):

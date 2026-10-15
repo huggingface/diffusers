@@ -354,6 +354,15 @@ class LTX2AudioDecoderStep(ModularPipelineBlocks):
                 description="Number of audio latent frames, used to unpack the audio latent sequence.",
             ),
             InputParam.template("output_type", default="pil"),
+            InputParam(
+                "decode_audio",
+                type_hint=bool,
+                default=True,
+                description=(
+                    "Whether to decode the audio. `False` skips this step (`LTX2AutoAudioDecoderStep`) and leaves "
+                    "`audio` as `None`, for video-only outputs; the video is unchanged."
+                ),
+            ),
         ]
 
     @property

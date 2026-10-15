@@ -54,6 +54,54 @@ logger = logging.get_logger(__name__)
 
 
 # auto_docstring
+class LTX2AutoAudioDecoderStep(ConditionalPipelineBlocks):
+    """
+    Conditional audio decoder step: vocodes the audio latents unless `decode_audio=False`.
+       - `LTX2AudioDecoderStep` by default.
+       - Skipped when `decode_audio=False`, leaving `audio` as `None`: for video-only outputs (e.g. an IC-LoRA alpha
+         matte) the audio VAE and vocoder are not run. The video is unchanged, since the audio latents are still
+         denoised jointly with it.
+
+      Components:
+          audio_vae (`AutoencoderKLLTX2Audio`) vocoder (`LTX2Vocoder`)
+
+      Inputs:
+          audio_latents (`Tensor`, *optional*):
+              Denoised audio latents.
+          audio_num_frames (`int`, *optional*):
+              Number of audio latent frames, used to unpack the audio latent sequence.
+          output_type (`str`, *optional*, defaults to pil):
+              Output format: 'pil', 'np', 'pt'.
+          decode_audio (`bool`, *optional*, defaults to True):
+              Whether to decode the audio. `False` skips this step (`LTX2AutoAudioDecoderStep`) and leaves `audio` as
+              `None`, for video-only outputs; the video is unchanged.
+
+      Outputs:
+          audio (`Tensor`):
+              The generated audio waveform.
+    """
+
+    model_name = "ltx2"
+    block_classes = [LTX2AudioDecoderStep]
+    block_names = ["audio_decode"]
+    block_trigger_inputs = ["decode_audio"]
+
+    def select_block(self, decode_audio=None) -> str | None:
+        # Decoding is the default: only an explicit `decode_audio=False` skips the step.
+        return None if decode_audio is False else "audio_decode"
+
+    @property
+    def description(self):
+        return (
+            "Conditional audio decoder step: vocodes the audio latents unless `decode_audio=False`.\n"
+            " - `LTX2AudioDecoderStep` by default.\n"
+            " - Skipped when `decode_audio=False`, leaving `audio` as `None`: for video-only outputs (e.g. an "
+            "IC-LoRA alpha matte) the audio VAE and vocoder are not run. The video is unchanged, since the audio "
+            "latents are still denoised jointly with it."
+        )
+
+
+# auto_docstring
 class LTX2AutoPromptEnhancerStep(ConditionalPipelineBlocks):
     """
     Conditional prompt-enhancer step, run only when `enable_prompt_enhancement` is truthy.
@@ -1064,10 +1112,13 @@ class LTX2DecoderStep(SequentialPipelineBlocks):
               be generated in input step.
           dtype (`dtype`):
               The dtype of the model inputs, can be generated in input step.
-          audio_latents (`Tensor`):
+          audio_latents (`Tensor`, *optional*):
               Denoised audio latents.
-          audio_num_frames (`int`):
+          audio_num_frames (`int`, *optional*):
               Number of audio latent frames, used to unpack the audio latent sequence.
+          decode_audio (`bool`, *optional*, defaults to True):
+              Whether to decode the audio. `False` skips this step (`LTX2AutoAudioDecoderStep`) and leaves `audio` as
+              `None`, for video-only outputs; the video is unchanged.
 
       Outputs:
           videos (`list`):
@@ -1077,7 +1128,7 @@ class LTX2DecoderStep(SequentialPipelineBlocks):
     """
 
     model_name = "ltx2"
-    block_classes = [LTX2VaeDecoderStep, LTX2AudioDecoderStep]
+    block_classes = [LTX2VaeDecoderStep, LTX2AutoAudioDecoderStep]
     block_names = ["video_decode", "audio_decode"]
 
     @property
@@ -1127,10 +1178,13 @@ class LTX2ConditionDecoderStep(SequentialPipelineBlocks):
               be generated in input step.
           dtype (`dtype`):
               The dtype of the model inputs, can be generated in input step.
-          audio_latents (`Tensor`):
+          audio_latents (`Tensor`, *optional*):
               Denoised audio latents.
-          audio_num_frames (`int`):
+          audio_num_frames (`int`, *optional*):
               Number of audio latent frames, used to unpack the audio latent sequence.
+          decode_audio (`bool`, *optional*, defaults to True):
+              Whether to decode the audio. `False` skips this step (`LTX2AutoAudioDecoderStep`) and leaves `audio` as
+              `None`, for video-only outputs; the video is unchanged.
 
       Outputs:
           videos (`list`):
@@ -1140,7 +1194,7 @@ class LTX2ConditionDecoderStep(SequentialPipelineBlocks):
     """
 
     model_name = "ltx2"
-    block_classes = [LTX2TrimConditionTokensStep, LTX2VaeDecoderStep, LTX2AudioDecoderStep]
+    block_classes = [LTX2TrimConditionTokensStep, LTX2VaeDecoderStep, LTX2AutoAudioDecoderStep]
     block_names = ["trim_condition_tokens", "video_decode", "audio_decode"]
 
     @property
@@ -1195,10 +1249,13 @@ class LTX2AutoDecoderStep(AutoPipelineBlocks):
               be generated in input step.
           dtype (`dtype`):
               The dtype of the model inputs, can be generated in input step.
-          audio_latents (`Tensor`):
+          audio_latents (`Tensor`, *optional*):
               Denoised audio latents.
-          audio_num_frames (`int`):
+          audio_num_frames (`int`, *optional*):
               Number of audio latent frames, used to unpack the audio latent sequence.
+          decode_audio (`bool`, *optional*, defaults to True):
+              Whether to decode the audio. `False` skips this step (`LTX2AutoAudioDecoderStep`) and leaves `audio` as
+              `None`, for video-only outputs; the video is unchanged.
 
       Outputs:
           videos (`list`):
@@ -1309,6 +1366,9 @@ class LTX2Blocks(SequentialPipelineBlocks):
               The timestep at which the VAE decodes the final latents.
           decode_noise_scale (`None`, *optional*):
               Noise interpolation factor applied to the latents at the decode timestep.
+          decode_audio (`bool`, *optional*, defaults to True):
+              Whether to decode the audio. `False` skips this step (`LTX2AutoAudioDecoderStep`) and leaves `audio` as
+              `None`, for video-only outputs; the video is unchanged.
 
       Outputs:
           videos (`list`):
@@ -1424,6 +1484,9 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
               The timestep at which the VAE decodes the final latents.
           decode_noise_scale (`None`, *optional*):
               Noise interpolation factor applied to the latents at the decode timestep.
+          decode_audio (`bool`, *optional*, defaults to True):
+              Whether to decode the audio. `False` skips this step (`LTX2AutoAudioDecoderStep`) and leaves `audio` as
+              `None`, for video-only outputs; the video is unchanged.
 
       Outputs:
           videos (`list`):
@@ -1534,6 +1597,9 @@ class LTX2ConditionBlocks(SequentialPipelineBlocks):
               The timestep at which the VAE decodes the final latents.
           decode_noise_scale (`None`, *optional*):
               Noise interpolation factor applied to the latents at the decode timestep.
+          decode_audio (`bool`, *optional*, defaults to True):
+              Whether to decode the audio. `False` skips this step (`LTX2AutoAudioDecoderStep`) and leaves `audio` as
+              `None`, for video-only outputs; the video is unchanged.
 
       Outputs:
           videos (`list`):
@@ -1669,6 +1735,9 @@ class LTX2InContextBlocks(SequentialPipelineBlocks):
               The timestep at which the VAE decodes the final latents.
           decode_noise_scale (`None`, *optional*):
               Noise interpolation factor applied to the latents at the decode timestep.
+          decode_audio (`bool`, *optional*, defaults to True):
+              Whether to decode the audio. `False` skips this step (`LTX2AutoAudioDecoderStep`) and leaves `audio` as
+              `None`, for video-only outputs; the video is unchanged.
 
       Outputs:
           videos (`list`):
@@ -1840,6 +1909,9 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
               The timestep at which the VAE decodes the final latents.
           decode_noise_scale (`None`, *optional*):
               Noise interpolation factor applied to the latents at the decode timestep.
+          decode_audio (`bool`, *optional*, defaults to True):
+              Whether to decode the audio. `False` skips this step (`LTX2AutoAudioDecoderStep`) and leaves `audio` as
+              `None`, for video-only outputs; the video is unchanged.
 
       Outputs:
           videos (`list`):
