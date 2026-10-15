@@ -23,9 +23,25 @@ jobs:
           HF_TOKEN: ${{ secrets.ISSUE_LABELER_HF_TOKEN }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
+          ALLOWED_LABELS: ${{ vars.ISSUE_LABELER_ALLOWED_LABELS }}
         run: |
           LABELS=$(python utils/label_issues.py)
-          echo "labels=$LABELS" >> "$GITHUB_OUTPUT"
+          # Treat LLM output as untrusted: parse, validate against allowlist, emit single-line JSON
+          SANITIZED=$(printf '%s' "$LABELS" | python -c '
+          import json, os, sys
+          try:
+              data = json.load(sys.stdin)
+          except Exception:
+              data = []
+          allowed = [l.strip() for l in os.environ.get("ALLOWED_LABELS", "").split(",") if l.strip()]
+          out = []
+          if isinstance(data, list):
+              for l in data:
+                  if isinstance(l, str) and l and "\n" not in l and "\r" not in l and (not allowed or l in allowed) and l not in out:
+                      out.append(l)
+          print(json.dumps(out) if out else "")
+          ')
+          echo "labels=$SANITIZED" >> "$GITHUB_OUTPUT"
       - name: Apply labels
         if: steps.get-labels.outputs.labels != ''
         env:
