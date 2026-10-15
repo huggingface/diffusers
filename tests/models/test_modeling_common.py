@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
 import logging
 import os
 import tempfile
@@ -275,37 +274,6 @@ class TestModelUtils:
             _ = model(**model_inputs)
 
         SD3Transformer2DModel._keep_in_fp32_modules = fp32_modules
-
-
-class UNetTesterMixin:
-    @staticmethod
-    def _accepts_norm_num_groups(model_class):
-        model_sig = inspect.signature(model_class.__init__)
-        accepts_norm_groups = "norm_num_groups" in model_sig.parameters
-        return accepts_norm_groups
-
-    def test_forward_with_norm_groups(self):
-        if not self._accepts_norm_num_groups(self.model_class):
-            pytest.skip(f"Test not supported for {self.model_class.__name__}")
-        init_dict = self.get_init_dict()
-        inputs_dict = self.get_dummy_inputs()
-
-        init_dict["norm_num_groups"] = 16
-        init_dict["block_out_channels"] = (16, 32)
-
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-        model.eval()
-
-        with torch.no_grad():
-            output = model(**inputs_dict)
-
-            if isinstance(output, dict):
-                output = output.to_tuple()[0]
-
-        assert output is not None
-        expected_shape = inputs_dict["sample"].shape
-        assert output.shape == expected_shape, "Input and output shapes do not match"
 
 
 @is_staging_test
