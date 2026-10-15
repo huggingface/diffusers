@@ -16,7 +16,7 @@
 
 FLUX.3 is an image generation model from Black Forest Labs: a single transformer ([`Flux3Transformer2DModel`]) generates images from a text prompt, alone or together with one or more reference images. Text conditioning comes from Qwen3-VL, and images use the FLUX.2 packed autoencoder ([`AutoencoderKLFlux2`]).
 
-FLUX.3 ships as a modular pipeline. Prompting matters: the model responds best to full scene captions that describe the subject, composition, lighting, and atmosphere — see the [FLUX.3 prompting guide](https://docs.bfl.ai) for details. Get started with a text-to-image generation:
+FLUX.3 ships as a modular pipeline. Prompting matters: the model responds best to full scene captions that describe the subject, composition, lighting, and atmosphere. Black Forest Labs provides a [prompt upsampler](https://huggingface.co/black-forest-labs/flux-3-image-klein-pup) that expands short prompts automatically; see [Prompt upsampling](#prompt-upsampling). Get started with a text-to-image generation:
 
 ```python
 import torch
@@ -42,9 +42,55 @@ image.save("fox.png")
 
 `prompt` is the only required input: the pipeline carries the recommended sampling settings (50 steps, guidance scale 3.5, scheduler shift 6.93) and generates 1024 x 1024 images by default. It takes one prompt per call; use `num_images_per_prompt` for several images of the same prompt.
 
+## Prompt upsampling
+
+The prompt upsampler, [black-forest-labs/flux-3-image-klein-pup](https://huggingface.co/black-forest-labs/flux-3-image-klein-pup), turns the user prompt, together with the reference images when editing, into a full scene caption. It is a separate model; run it with Transformers and pass its output as `prompt`:
+
+```python
+import json
+
+import torch
+from huggingface_hub import hf_hub_download
+from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
+
+
+model_id = "black-forest-labs/flux-3-image-klein-pup"
+processor = AutoProcessor.from_pretrained(model_id)
+upsampler = Qwen3_5ForConditionalGeneration.from_pretrained(model_id, dtype=torch.bfloat16, device_map="auto").eval()
+system_prompts = json.load(open(hf_hub_download(model_id, "system_prompts.json")))
+
+
+def upsample(prompt, images=()):
+    if images:
+        text = (
+            "Reference images follow in order (the first image, the second image, ...).\n"
+            f"User request: {prompt}\nOutput the caption."
+        )
+        content = [{"type": "image", "image": image} for image in images] + [{"type": "text", "text": text}]
+        messages = [{"role": "system", "content": system_prompts["i2i"]}, {"role": "user", "content": content}]
+    else:
+        messages = [{"role": "system", "content": system_prompts["t2i"]}, {"role": "user", "content": prompt}]
+    inputs = processor.apply_chat_template(
+        messages,
+        add_generation_prompt=True,
+        tokenize=True,
+        return_dict=True,
+        return_tensors="pt",
+        enable_thinking=False,
+    ).to(upsampler.device)
+    with torch.no_grad():
+        output = upsampler.generate(**inputs, max_new_tokens=3584, do_sample=False)
+    return processor.decode(output[0, inputs["input_ids"].shape[1] :], skip_special_tokens=True).strip()
+
+
+image = pipe(prompt=upsample("An astronaut riding a horse"), output="images")[0]
+```
+
+For an edit, pass the same reference images to both: `pipe(prompt=upsample(instruction, [image]), image=image, ...)`. The upsampler also writes the [layout](#layout-control) captions from a list of boxes; see its model card.
+
 ## Image-to-image
 
-Pass one or more reference images with `image`. Every reference keeps its own resolution (center-cropped to the 16-pixel grid; references above 16 megapixels are downscaled first), and the generation size defaults to one megapixel at the first reference's aspect ratio. Describe the *target* image as a complete caption of the reference with your edit folded in, rather than a one-line instruction:
+Pass one or more reference images with `image`. Every reference keeps its own resolution (center-cropped to the 16-pixel grid; references above 16 megapixels are downscaled first), and the generation size defaults to one megapixel at the first reference's aspect ratio. Describe the *target* image as a complete caption of the reference with your edit folded in, rather than a one-line instruction, or let the [prompt upsampler](#prompt-upsampling) write it from the instruction and the references:
 
 ```python
 night = pipe(
