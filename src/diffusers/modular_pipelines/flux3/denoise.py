@@ -233,7 +233,9 @@ class Flux3LoopAfterDenoiser(ModularPipelineBlocks):
         return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
 
     @torch.no_grad()
-    def __call__(self, components: Flux3ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Flux3ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Flux3ModularPipeline, BlockState]:
         latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(
             block_state.noise_pred,

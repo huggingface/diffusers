@@ -73,7 +73,9 @@ class Flux3ProcessImagesInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Flux3ModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: Flux3ModularPipeline, state: PipelineState
+    ) -> tuple[Flux3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         images = block_state.image if isinstance(block_state.image, list) else [block_state.image]
