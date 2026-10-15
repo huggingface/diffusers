@@ -582,8 +582,7 @@ def apply_tensor_parallel(
         # Pre-shard on CPU instead of letting `parallelize_module` distribute the weights. On Neuron, consecutive
         # `reduce_scatter`s of large weights (>= 5120x5120) in one `parallelize_module` call can fail in the runtime. On
         # TPU, it would materialize every full weight on each chip first, which runs out of HBM on large models.
-        device = torch.neuron.current_device() if tp_mesh.device_type == "neuron" else config._device
-        _pre_shard_and_parallelize(model, tp_mesh, groups, specs, device)
+        _pre_shard_and_parallelize(model, tp_mesh, groups, specs, config._device)
         return
 
     for submodule, relative_plan in groups:

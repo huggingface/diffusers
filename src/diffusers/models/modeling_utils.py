@@ -1550,9 +1550,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
                 # Non-persistent buffers are absent from both the state dict and the checkpoint, and
                 # `init_empty_weights` leaves them as real CPU tensors, so move them across explicitly.
-                tp_device = (
-                    torch.neuron.current_device() if tp_config._mesh.device_type == "neuron" else tp_config._device
-                )
+                tp_device = tp_config._device
                 for name, buffer in model.named_buffers():
                     if buffer.device != tp_device and not isinstance(buffer, DTensor):
                         module_path, _, buffer_name = name.rpartition(".")
