@@ -22,6 +22,7 @@ jobs:
       commit_sha: ${{ github.sha }}
       install_libgl1: true
       package: diffusers
+      python_version: "3.11"
       notebook_folder: diffusers_doc
       languages: en ko zh ja pt
       pre_command: uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
