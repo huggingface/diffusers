@@ -24,7 +24,7 @@ else:
         def __init__(self, *args, **kwargs):
             raise ImportError(
                 "`pan2_guardrail` is not installed. Please install it to use the safety checker for PAN2: "
-                "`pip install git+https://github.com/MBZUAI-IFM/PAN2-guardrail`."
+                "`pip install git+https://github.com/ifm-ai/pan2-guardrail`."
             )
 
         @classmethod
