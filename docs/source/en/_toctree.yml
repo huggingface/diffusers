@@ -345,6 +345,8 @@
         title: DiTTransformer2DModel
       - local: api/models/easyanimate_transformer3d
         title: EasyAnimateTransformer3DModel
+      - local: api/models/edenlive_transformer_3d
+        title: EdenLiveTransformer3DModel
       - local: api/models/ernie_image_transformer2d
         title: ErnieImageTransformer2DModel
       - local: api/models/flux2_transformer
@@ -721,6 +723,8 @@
         title: Cosmos
       - local: api/pipelines/cosmos3
         title: Cosmos3
+      - local: api/pipelines/edenlive
+        title: EdenLive
       - local: api/pipelines/framepack
         title: Framepack
       - local: api/pipelines/helios
@@ -790,6 +794,8 @@
       title: DPMSolverSDEScheduler
     - local: api/schedulers/singlestep_dpm_solver
       title: DPMSolverSinglestepScheduler
+    - local: api/schedulers/edenlive
+      title: EdenLiveFlowMatchEulerDiscreteScheduler
     - local: api/schedulers/edm_multistep_dpm_solver
       title: EDMDPMSolverMultistepScheduler
     - local: api/schedulers/edm_euler
