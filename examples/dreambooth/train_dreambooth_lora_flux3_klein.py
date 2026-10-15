@@ -1639,6 +1639,31 @@ def main(args):
             text_ids = text_ids.unsqueeze(0).expand(prompt_embeds.shape[0], -1, -1)
         return prompt_embeds, text_ids
 
+    # Prompt embeddings get stacked across a batch (train_batch_size > 1) and concatenated with the class prompt
+    # (prior preservation). FLUX.3 pads each prompt to its own window, so stacking requires a shared window. Compute
+    # one dataset-wide window here and pad all custom captions (and the class prompt) to it. bs=1 without prior
+    # preservation never stacks, so it keeps each prompt's exact per-prompt window.
+    uniform_window = None
+    if train_dataset.custom_instance_prompts and (args.train_batch_size > 1 or args.with_prior_preservation):
+        windowed_prompts = list(train_dataset.custom_instance_prompts)
+        if args.with_prior_preservation:
+            windowed_prompts.append(args.class_prompt)
+        real_lengths = [
+            len(
+                tokenizer.tokenizer(
+                    tokenizer.apply_chat_template(
+                        [{"role": "user", "content": p}], tokenize=False, add_generation_prompt=True
+                    ),
+                    truncation=True,
+                    max_length=args.max_sequence_length,
+                )["input_ids"]
+            )
+            for p in windowed_prompts
+        ]
+        uniform_window = min(
+            math.ceil(max(real_lengths) / TEXT_PAD_MULTIPLE) * TEXT_PAD_MULTIPLE, args.max_sequence_length
+        )
+
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
@@ -1652,7 +1677,7 @@ def main(args):
     if args.with_prior_preservation:
         with offload_models(text_encoder, device=accelerator.device, offload=args.offload):
             class_prompt_hidden_states, class_text_ids = compute_text_embeddings(
-                args.class_prompt, text_encoder, tokenizer
+                args.class_prompt, text_encoder, tokenizer, pad_to_length=uniform_window
             )
 
     # FLUX.3 validation runs through the modular pipeline (which encodes prompts itself), so we only assemble
@@ -1735,12 +1760,12 @@ def main(args):
                 if train_dataset.custom_instance_prompts:
                     if args.fsdp_text_encoder:
                         prompt_embeds, text_ids = compute_text_embeddings(
-                            batch["instance_prompts"], text_encoder, tokenizer
+                            batch["instance_prompts"], text_encoder, tokenizer, pad_to_length=uniform_window
                         )
                     else:
                         with offload_models(text_encoder, device=accelerator.device, offload=args.offload):
                             prompt_embeds, text_ids = compute_text_embeddings(
-                                batch["instance_prompts"], text_encoder, tokenizer
+                                batch["instance_prompts"], text_encoder, tokenizer, pad_to_length=uniform_window
                             )
                     for i, idx in enumerate(sample_indices):
                         prompt_embeds_cache[idx] = prompt_embeds[i : i + 1]
@@ -1757,17 +1782,6 @@ def main(args):
                 "Prompt embedding cache has unfilled entries."
             )
             assert all(ids is not None for ids in text_ids_cache), "Text ID cache has unfilled entries."
-
-            # The training loop re-batches the cached per-caption embeddings with torch.cat, which needs a uniform
-            # sequence window across the batch. FLUX.3 pads each caption to its own window, and the bucket sampler
-            # reshuffles every epoch, so train_batch_size > 1 with variable-length captions would group mismatched
-            # windows and crash mid-training. Fail fast with a clear message instead.
-            if args.train_batch_size > 1 and len({embeds.shape[1] for embeds in prompt_embeds_cache}) > 1:
-                raise ValueError(
-                    "train_batch_size > 1 with variable-length captions is not supported: FLUX.3 pads each caption to"
-                    " its own window and the cached embeddings cannot be batched together. Use --train_batch_size=1,"
-                    " or a dataset whose captions all share a length."
-                )
 
     # Caption dropout swaps the empty-prompt embedding in for a dropped caption. FLUX.3 pads each prompt to its own
     # window (a multiple of TEXT_PAD_MULTIPLE) and the transformer attends to it, so the empty prompt must match the
