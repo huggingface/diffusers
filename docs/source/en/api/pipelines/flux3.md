@@ -45,7 +45,22 @@ As you can see in the example above, loading and running differ a little from a 
 
 Prompting matters: FLUX 3 Image Klein takes full scene captions that describe the subject, composition, lighting, and atmosphere, not short prompts; a request sent as typed gives generic output. That is why the pipeline runs the prompt upsampler first on every request, text-to-image and editing alike. It is a separate 9B model from Black Forest Labs ([black-forest-labs/flux-3-image-klein-pup](https://huggingface.co/black-forest-labs/flux-3-image-klein-pup)) that expands `prompt` into such a caption before the text encoder, and a short prompt is all it takes.
 
-The prompt upsampler turns a short request, together with the reference images when editing, into the full scene caption the model takes: medium and style, scene, lighting and camera, each subject with its colors, materials and position in the frame. One model covers text-to-image, editing with reference images and layout with boxes. The caption it wrote comes back as the `prompt` output: in the example above, pass `output=["images", "prompt"]` and read `out["prompt"]` to see the caption the image model received. `max_new_tokens` caps its length (3584 by default).
+The prompt upsampler turns a short request, together with the reference images when editing, into the full scene caption the model takes: medium and style, scene, lighting and camera, each subject with its colors, materials and position in the frame. One model covers text-to-image, editing with reference images and layout with boxes. The caption it wrote comes back as the `prompt` output. In the example above, ask for it alongside the images to see what the image model received:
+
+```python
+out = pipe(
+    prompt="A red fox in a snow-covered forest clearing at golden hour",
+    generator=torch.Generator().manual_seed(0),
+    output=["images", "prompt"],
+)
+print(out["prompt"])
+```
+
+```
+Full-color outdoor wildlife photograph taken from a low eye-level perspective in a snow-covered forest clearing at golden hour. In the center foreground, a red fox stands in profile facing left, its body turned toward the viewer and its head raised as it looks across the clearing. The fox has dense rust-red winter fur, a white throat and chest, black lower legs, pointed ears with dark tips, and a long bushy tail ending in white. ...
+```
+
+The full caption runs to about 240 words; `max_new_tokens` caps its length (3584 by default).
 
 You can print the step's `doc` to see what it takes and what it writes:
 
