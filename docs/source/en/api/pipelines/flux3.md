@@ -39,7 +39,7 @@ image.save("fox.png")
 As you can see in the example above, loading and running differ a little from a `DiffusionPipeline`. Loading is lazy: [`~ModularPipeline.from_pretrained`] only builds the pipeline, and you call [`~ModularPipeline.load_components`] to load the weights. A call returns the pipeline state, and you ask for what you need with `output`: `output="images"` here, or `output=["images", "prompt"]` to also get the caption the prompt upsampler wrote.
 
 > [!TIP]
-> If you're working with `ModularPipeline` for the first time, read [Coming from DiffusionPipeline](../../modular_diffusers/quickstart#coming-from-diffusionpipeline) in the quickstart. Besides loading and outputs, a few other things differ: [guidance](#guidance-scale), [callbacks](#per-step-callbacks) and [offloading](#memory).
+> If you're working with `ModularPipeline` for the first time, read the [quickstart](../../modular_diffusers/quickstart), and [Coming from DiffusionPipeline](../../modular_diffusers/coming_from_diffusion_pipeline) if you know the standard pipelines. Besides loading and outputs, a few other things differ: [guidance](#guidance-scale), [callbacks](#per-step-callbacks) and [offloading](#memory).
 
 ## Prompt upsampling
 
