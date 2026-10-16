@@ -12,8 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # EdenLive
 
-[EdenLive](https://github.com/VAST-AI-Research/EdenLive-Official) generates video from a reference image, prompt, and
-RGB proxy video. [`EdenLivePipeline`] supports bidirectional generation and causal generation with persistent history.
+[EdenLive](https://github.com/VAST-AI-Research/EdenLive-Official) renders a proxy or reference video stream, a target first frame, and a text prompt into refined or stylized video. References can come from 2D/3D scenes, existing engines, or recordings. [`EdenLivePipeline`] supports bidirectional generation and causal generation with persistent history.
 
 ## Basic usage
 
