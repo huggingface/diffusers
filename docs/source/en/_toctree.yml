@@ -137,6 +137,8 @@
     title: Overview
   - local: modular_diffusers/quickstart
     title: Quickstart
+  - local: modular_diffusers/coming_from_diffusion_pipeline
+    title: Coming from DiffusionPipeline
   - local: modular_diffusers/modular_diffusers_states
     title: States
   - local: modular_diffusers/pipeline_block
