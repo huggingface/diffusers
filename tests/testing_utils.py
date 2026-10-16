@@ -46,6 +46,7 @@ from diffusers.utils.import_utils import (
     is_timm_available,
     is_torch_available,
     is_torch_neuronx_available,
+    is_torch_tpu_available,
     is_torch_version,
     is_torchao_available,
     is_torchsde_available,
@@ -469,6 +470,14 @@ def is_sdnq(test_case):
     return pytest.mark.sdnq(test_case)
 
 
+def is_bfl(test_case):
+    """
+    Decorator marking a test as a BFL (fp8r / nvfp4) quantization test. These tests can be filtered using:
+        pytest -m "not bfl" to skip pytest -m bfl to run only these tests
+    """
+    return pytest.mark.bfl(test_case)
+
+
 def is_context_parallel(test_case):
     """
     Decorator marking a test as a context parallel inference test. These tests can be filtered using:
@@ -563,6 +572,14 @@ def require_torch_neuron(test_case):
     return pytest.mark.skipif(
         not (is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available()),
         reason="test requires Neuron device",
+    )(test_case)
+
+
+def require_torch_tpu(test_case):
+    """Decorator marking a test that requires a TPU device (torch_tpu)."""
+    return pytest.mark.skipif(
+        not is_torch_tpu_available(),
+        reason="test requires TPU device (torch_tpu)",
     )(test_case)
 
 
