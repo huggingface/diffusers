@@ -131,10 +131,9 @@ class TestPAN2ModularPipelineFast(PAN2ModularPipelineTesterConfig, ModularPipeli
             pipe(**inputs, output=self.output_name)
 
     def test_safety_checker_required_by_default(self):
-        pipe = super(PAN2ModularPipelineTesterConfig, self).get_pipeline().to(torch_device)
+        pipe = super(PAN2ModularPipelineTesterConfig, self).get_pipeline()
         assert pipe.config.enable_safety_checker
-        with pytest.raises(ValueError, match="requires a safety checker"):
-            pipe(**self.get_dummy_inputs(), output=self.output_name)
+        assert pipe.requires_safety_checker
 
 
 class TestPAN2ModularPipelineLoading(PAN2ModularPipelineTesterConfig, ModularLoadingTesterMixin):

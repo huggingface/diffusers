@@ -62,8 +62,6 @@ PAN2 runs guardrails on the prompt before generation and on every generated vide
 pip install git+https://github.com/ifm-ai/pan2-guardrail
 ```
 
-`disable_safety_checker()` turns the checks off at your own risk.
-
 ## Context parallelism
 
 [`PAN2Transformer3DModel`] supports [context parallelism](../../training/distributed_inference#context-parallelism). The text and video token counts are usually not divisible by the number of devices (the number of text tokens depends on the prompt), so use `ulysses_anything` or `ring_anything` for inference. Plain `ulysses_degree` / `ring_degree`, for example for training, requires both token counts to be divisible by the context parallel size.

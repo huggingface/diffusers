@@ -100,16 +100,22 @@ class PAN2ModularPipeline(ModularPipeline):
             return self.guider._enabled and self.guider.num_conditions > 1
         return False
 
-    def enable_safety_checker(self, safety_checker=None):
-        r"""
-        Check the prompt and the generated videos with `safety_checker`, or with the PAN2 guardrail if none is given
-        and none is loaded yet.
-        """
-        if safety_checker is not None:
-            self.safety_checker = safety_checker
-        elif getattr(self, "safety_checker", None) is None:
+    def enable_safety_checker(self):
+        r"""Check the prompt and the generated videos with the PAN2 guardrail."""
+        if getattr(self, "safety_checker", None) is None:
             self.safety_checker = PAN2SafetyChecker.from_pretrained()
         self._is_safety_checker_enabled = True
+
+    def load_safety_checker(self):
+        r"""Load the PAN2 guardrail if it is not loaded yet, as the checks are on by default."""
+        if getattr(self, "safety_checker", None) is None:
+            if not is_pan2_guardrail_available():
+                raise ValueError(
+                    "PAN2 requires a safety checker by default. Install it with "
+                    "`pip install git+https://github.com/ifm-ai/pan2-guardrail`, or disable the checks at your own "
+                    "risk with `pipe.disable_safety_checker()`."
+                )
+            self.safety_checker = PAN2SafetyChecker.from_pretrained()
 
     def disable_safety_checker(self):
         r"""Turn off the prompt and video checks, at your own risk."""
