@@ -91,7 +91,7 @@ class PAN2VaeDecoderStep(ModularPipelineBlocks):
             try:
                 for video_frames in frames:
                     if components.safety_checker.check_video_safety(video_frames) is None:
-                        raise ValueError("The PAN2 guardrail detected unsafe content in the generated video.")
+                        raise ValueError("The PAN 2 guardrail detected unsafe content in the generated video.")
             finally:
                 components.safety_checker.to("cpu")
 

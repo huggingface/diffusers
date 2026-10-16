@@ -84,11 +84,11 @@ class PAN2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestPAN2ModularPipelineFast(PAN2ModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    @pytest.mark.skip(reason="PAN2 takes a single prompt per call, so a batch of prompts is not a thing.")
+    @pytest.mark.skip(reason="PAN 2 takes a single prompt per call, so a batch of prompts is not a thing.")
     def test_inference_batch_consistent(self):
         pass
 
-    @pytest.mark.skip(reason="PAN2 takes a single prompt per call, so a batch of prompts is not a thing.")
+    @pytest.mark.skip(reason="PAN 2 takes a single prompt per call, so a batch of prompts is not a thing.")
     def test_inference_batch_single_identical(self):
         pass
 

@@ -40,7 +40,7 @@ def get_pan2_prompt_embeds(
     # An empty prompt is encoded as a single space, as in training.
     messages = [{"role": "system", "content": system_message}, {"role": "user", "content": prompt or " "}]
 
-    # PAN2 conditions on the tokens after the `<|im_start|>user\n` header: the prompt and the assistant header after it.
+    # PAN 2 conditions on the tokens after the `<|im_start|>user\n` header: the prompt and the assistant header after it.
     header_ids = tokenizer("<|im_start|>user\n", add_special_tokens=False).input_ids
     input_ids = tokenizer.apply_chat_template(
         messages, add_generation_prompt=True, tokenize=True, return_dict=True
@@ -115,7 +115,7 @@ class PAN2TextEncoderStep(ModularPipelineBlocks):
             components.safety_checker.to(device)
             try:
                 if not components.safety_checker.check_text_safety(block_state.prompt):
-                    raise ValueError("The PAN2 guardrail detected unsafe content in the prompt.")
+                    raise ValueError("The PAN 2 guardrail detected unsafe content in the prompt.")
             finally:
                 components.safety_checker.to("cpu")
 
@@ -130,7 +130,7 @@ class PAN2TextEncoderStep(ModularPipelineBlocks):
         )
 
         # The guider belongs to the denoise step: in the full pipeline, it decides whether the negative prompt is
-        # needed. Standalone, there is no guider and the negative prompt is encoded, since the PAN2 denoise step uses
+        # needed. Standalone, there is no guider and the negative prompt is encoded, since the PAN 2 denoise step uses
         # classifier-free guidance by default.
         block_state.negative_prompt_embeds = None
         if getattr(components, "guider", None) is None or components.requires_unconditional_embeds:
@@ -151,7 +151,7 @@ class PAN2TextEncoderStep(ModularPipelineBlocks):
 
 
 def resize_and_center_crop(image: PIL.Image.Image, height: int, width: int) -> PIL.Image.Image:
-    r"""Scale the image to cover the `(height, width)` canvas, rounding its size, and center crop it, as PAN2 was trained."""
+    r"""Scale the image to cover the `(height, width)` canvas, rounding its size, and center crop it, as PAN 2 was trained."""
     scale = max(width / image.width, height / image.height)
     image = image.resize((round(image.width * scale), round(image.height * scale)), resample=PIL.Image.LANCZOS)
     left, top = round((image.width - width) / 2), round((image.height - height) / 2)

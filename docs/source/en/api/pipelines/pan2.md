@@ -9,11 +9,11 @@ Unless required by applicable law or agreed to in writing, software distributed 
 an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License. -->
 
-# PAN2
+# PAN 2
 
 PAN2 is a foundation world model that simulates how a scene evolves under a time-grounded plan of actions and camera movements. Its 29B generative simulator is a dual-stream multimodal diffusion transformer, integrated here; the [reasoning backbone](https://huggingface.co/IFM/PAN2#reasoning-backbone) that writes its prompts is not.
 
-PAN2 is integrated as [Modular Diffusers](../../modular_diffusers/overview) blocks only. [`PAN2Blocks`] supports two workflows:
+PAN 2 is integrated as [Modular Diffusers](../../modular_diffusers/overview) blocks only. [`PAN2Blocks`] supports two workflows:
 
 | Workflow | Inputs |
 |---|---|
@@ -56,7 +56,7 @@ pipe.transformer.set_attention_backend("flash_hub")  # FlashAttention-2
 
 ## Safety checker
 
-PAN2 runs guardrails on the prompt before generation and on every generated video after it, and a blocked prompt or video raises a `ValueError`. The checks are on by default, so the pipeline raises until a checker is loaded with `enable_safety_checker()`, which needs the [PAN2 guardrail](https://github.com/ifm-ai/pan2-guardrail) package:
+PAN 2 runs guardrails on the prompt before generation and on every generated video after it, and a blocked prompt or video raises a `ValueError`. The checks are on by default, so the pipeline raises until a checker is loaded with `enable_safety_checker()`, which needs the [PAN 2 guardrail](https://github.com/ifm-ai/pan2-guardrail) package:
 
 ```bash
 pip install git+https://github.com/ifm-ai/pan2-guardrail

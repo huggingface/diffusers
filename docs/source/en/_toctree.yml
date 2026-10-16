@@ -742,7 +742,7 @@
       - local: api/pipelines/motif_video
         title: Motif-Video
       - local: api/pipelines/pan2
-        title: PAN2
+        title: PAN 2
       - local: api/pipelines/skyreels_v2
         title: SkyReels-V2
       - local: api/pipelines/stable_diffusion/svd

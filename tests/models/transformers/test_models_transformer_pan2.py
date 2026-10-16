@@ -94,26 +94,26 @@ class PAN2TransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestPAN2Transformer(PAN2TransformerTesterConfig, ModelTesterMixin):
-    """Core model tests for the PAN2 transformer."""
+    """Core model tests for the PAN 2 transformer."""
 
 
 class TestPAN2TransformerMemory(PAN2TransformerTesterConfig, MemoryTesterMixin):
-    """Memory optimization tests for the PAN2 transformer."""
+    """Memory optimization tests for the PAN 2 transformer."""
 
 
 class TestPAN2TransformerTraining(PAN2TransformerTesterConfig, TrainingTesterMixin):
-    """Training tests for the PAN2 transformer."""
+    """Training tests for the PAN 2 transformer."""
 
     def test_gradient_checkpointing_is_applied(self):
         super().test_gradient_checkpointing_is_applied(expected_set={"PAN2Transformer3DModel"})
 
 
 class TestPAN2TransformerAttention(PAN2TransformerTesterConfig, AttentionTesterMixin):
-    """Attention processor tests for the PAN2 transformer."""
+    """Attention processor tests for the PAN 2 transformer."""
 
 
 class TestPAN2TransformerCompile(PAN2TransformerTesterConfig, TorchCompileTesterMixin):
-    """Torch compile tests for the PAN2 transformer."""
+    """Torch compile tests for the PAN 2 transformer."""
 
     @property
     def different_shapes_for_compilation(self):
@@ -121,4 +121,4 @@ class TestPAN2TransformerCompile(PAN2TransformerTesterConfig, TorchCompileTester
 
 
 class TestPAN2TransformerContextParallel(PAN2TransformerTesterConfig, ContextParallelTesterMixin):
-    """Context parallel inference tests for the PAN2 transformer."""
+    """Context parallel inference tests for the PAN 2 transformer."""

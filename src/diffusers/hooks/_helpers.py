@@ -324,7 +324,7 @@ def _register_transformer_blocks_metadata():
         ),
     )
 
-    # PAN2
+    # PAN 2
     TransformerBlockRegistry.register(
         model_class=PAN2TransformerBlock,
         metadata=TransformerBlockMetadata(

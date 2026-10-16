@@ -198,7 +198,7 @@ class PAN2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class PAN2AutoCoreDenoiseStep(AutoPipelineBlocks):
     """
-    Core denoise step for PAN2.
+    Core denoise step for PAN 2.
        - `PAN2Image2VideoCoreDenoiseStep` is used when `image_latents` is provided (image-to-video).
        - `PAN2CoreDenoiseStep` is used otherwise (text-to-video).
 
@@ -245,7 +245,7 @@ class PAN2AutoCoreDenoiseStep(AutoPipelineBlocks):
     @property
     def description(self):
         return (
-            "Core denoise step for PAN2.\n"
+            "Core denoise step for PAN 2.\n"
             " - `PAN2Image2VideoCoreDenoiseStep` is used when `image_latents` is provided (image-to-video).\n"
             " - `PAN2CoreDenoiseStep` is used otherwise (text-to-video)."
         )
@@ -254,7 +254,7 @@ class PAN2AutoCoreDenoiseStep(AutoPipelineBlocks):
 # auto_docstring
 class PAN2Blocks(SequentialPipelineBlocks):
     """
-    Modular pipeline blocks for text-to-video and image-to-video generation with PAN2.
+    Modular pipeline blocks for text-to-video and image-to-video generation with PAN 2.
 
       Supported workflows:
         - `t2v`: requires `prompt`
@@ -315,7 +315,7 @@ class PAN2Blocks(SequentialPipelineBlocks):
 
     @property
     def description(self):
-        return "Modular pipeline blocks for text-to-video and image-to-video generation with PAN2."
+        return "Modular pipeline blocks for text-to-video and image-to-video generation with PAN 2."
 
     @property
     def outputs(self):

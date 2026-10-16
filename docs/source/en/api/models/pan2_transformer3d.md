@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License. -->
 
 # PAN2Transformer3DModel
 
-The diffusion transformer of PAN2. It runs joint attention over the video tokens and the text tokens, with separate projections and feed-forward networks for each stream.
+The diffusion transformer of PAN 2. It runs joint attention over the video tokens and the text tokens, with separate projections and feed-forward networks for each stream.
 
 The video input stacks the noisy latents, the conditioning latents and a one-channel conditioning mask, so the same model serves text-to-video and image-to-video.
 

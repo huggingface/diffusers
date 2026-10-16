@@ -166,7 +166,7 @@ class PAN2SetTimestepsStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         device = components._execution_device
 
-        # PAN2 samples on uniformly spaced sigmas from 1 down to (excluding) 0, then shifted by the scheduler.
+        # PAN 2 samples on uniformly spaced sigmas from 1 down to (excluding) 0, then shifted by the scheduler.
         sigmas = block_state.sigmas
         if sigmas is None:
             sigmas = np.linspace(1.0, 0.0, block_state.num_inference_steps + 1)[:-1]

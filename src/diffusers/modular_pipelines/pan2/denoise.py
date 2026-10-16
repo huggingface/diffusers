@@ -168,7 +168,7 @@ class PAN2LoopAfterDenoiser(ModularPipelineBlocks):
     def __call__(
         self, components: PAN2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
     ) -> tuple[PAN2ModularPipeline, BlockState]:
-        # PAN2 keeps the latents in float32 across the loop: the scheduler returns the sample in the dtype of the
+        # PAN 2 keeps the latents in float32 across the loop: the scheduler returns the sample in the dtype of the
         # prediction, so it is upcast first.
         block_state.latents = components.scheduler.step(
             block_state.noise_pred.float(), t, block_state.latents, return_dict=False

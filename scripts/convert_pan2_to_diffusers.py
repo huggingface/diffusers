@@ -1,4 +1,4 @@
-"""Convert an original PAN2 checkpoint into the diffusers layout.
+"""Convert an original PAN 2 checkpoint into the diffusers layout.
 
 The transformer checkpoint can be a torch distributed checkpoint (DCP) folder, a `model_state.pt` state dict, or a
 `.safetensors` file. Every key maps onto a diffusers module by renaming alone, except for:
@@ -251,7 +251,7 @@ def main(args):
 
     from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler
 
-    # PAN2 only reads text hidden states, so only the language model of Qwen3.5 is kept.
+    # PAN 2 only reads text hidden states, so only the language model of Qwen3.5 is kept.
     text_encoder = Qwen3_5ForConditionalGeneration.from_pretrained(args.text_encoder_path, dtype=dtype)
     text_encoder.model.language_model.save_pretrained(
         os.path.join(args.output_path, "text_encoder"), max_shard_size="5GB"

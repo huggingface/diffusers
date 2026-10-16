@@ -23,7 +23,7 @@ else:
     class PAN2SafetyChecker:
         def __init__(self, *args, **kwargs):
             raise ImportError(
-                "`pan2_guardrail` is not installed. Please install it to use the safety checker for PAN2: "
+                "`pan2_guardrail` is not installed. Please install it to use the safety checker for PAN 2: "
                 "`pip install git+https://github.com/ifm-ai/pan2-guardrail`."
             )
 
@@ -37,7 +37,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class PAN2ModularPipeline(ModularPipeline):
     """
-    A ModularPipeline for PAN2: text-to-video, and image-to-video from a first frame.
+    A ModularPipeline for PAN 2: text-to-video, and image-to-video from a first frame.
 
     ```py
     import torch
@@ -101,17 +101,17 @@ class PAN2ModularPipeline(ModularPipeline):
         return False
 
     def enable_safety_checker(self):
-        r"""Check the prompt and the generated videos with the PAN2 guardrail."""
+        r"""Check the prompt and the generated videos with the PAN 2 guardrail."""
         if getattr(self, "safety_checker", None) is None:
             self.safety_checker = PAN2SafetyChecker.from_pretrained()
         self._is_safety_checker_enabled = True
 
     def load_safety_checker(self):
-        r"""Load the PAN2 guardrail if it is not loaded yet, as the checks are on by default."""
+        r"""Load the PAN 2 guardrail if it is not loaded yet, as the checks are on by default."""
         if getattr(self, "safety_checker", None) is None:
             if not is_pan2_guardrail_available():
                 raise ValueError(
-                    "PAN2 requires a safety checker by default. Install it with "
+                    "PAN 2 requires a safety checker by default. Install it with "
                     "`pip install git+https://github.com/ifm-ai/pan2-guardrail`, or disable the checks at your own "
                     "risk with `pipe.disable_safety_checker()`."
                 )
@@ -132,5 +132,5 @@ class PAN2ModularPipeline(ModularPipeline):
 
     @property
     def text_encoder_num_hidden_layers_to_skip(self):
-        r"""PAN2 conditions on `hidden_states[-3]` of the text encoder, i.e. it skips the last two layers."""
+        r"""PAN 2 conditions on `hidden_states[-3]` of the text encoder, i.e. it skips the last two layers."""
         return 2

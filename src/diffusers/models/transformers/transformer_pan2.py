@@ -68,7 +68,7 @@ def _get_qkv_projections(attn: "PAN2Attention", hidden_states, encoder_hidden_st
 
 class PAN2AttnProcessor:
     r"""
-    Attention processor for PAN2. Without `encoder_hidden_states` it runs plain self-attention (token refiner). With
+    Attention processor for PAN 2. Without `encoder_hidden_states` it runs plain self-attention (token refiner). With
     `encoder_hidden_states` it runs joint attention over `[video; text]`, where each stream has its own projections and
     only the video stream is rotated.
     """
@@ -314,7 +314,7 @@ class PAN2TransformerBlock(nn.Module):
 
 class PAN2Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapterMixin, CacheMixin):
     r"""
-    The diffusion transformer of PAN2.
+    The diffusion transformer of PAN 2.
 
     A stack of joint-attention blocks over the concatenation of the patchified video latents and the refined text
     tokens. The video input carries the noisy latents, the conditioning latents and a conditioning mask stacked along
