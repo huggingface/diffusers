@@ -342,16 +342,16 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
     AttentionBackendName.FLASH_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_func",
-        wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_forward",
-        wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_backward",
-        version=1,
+        wrapped_forward_attr="flash_attn_interface._flash_attn_forward",
+        wrapped_backward_attr="flash_attn_interface._flash_attn_backward",
+        version=3,
     ),
     AttentionBackendName.FLASH_VARLEN_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_varlen_func",
-        wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_varlen_forward",
-        wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_varlen_backward",
-        version=1,
+        wrapped_forward_attr="flash_attn_interface._flash_attn_varlen_forward",
+        wrapped_backward_attr="flash_attn_interface._flash_attn_varlen_backward",
+        version=3,
     ),
     AttentionBackendName.SAGE_HUB: _HubKernelConfig(
         repo_id="SageAttention/sage-attention",
@@ -1203,10 +1203,6 @@ def _flash_attention_forward_op(
     if scale is None:
         scale = query.shape[-1] ** (-0.5)
 
-    # flash-attn only returns LSE if dropout_p > 0. So, we need to workaround.
-    if grad_enabled or (_parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1):
-        dropout_p = dropout_p if dropout_p > 0 else 1e-30
-
     with torch.set_grad_enabled(grad_enabled):
         out, lse, S_dmask, rng_state = _wrapped_flash_attn_forward(
             query,
@@ -1219,7 +1215,7 @@ def _flash_attention_forward_op(
             window_size[1],
             softcap,
             alibi_slopes,
-            return_lse,
+            False,
         )
         lse = lse.permute(0, 2, 1)
 
@@ -1327,9 +1323,6 @@ def _flash_attention_hub_forward_op(
     deterministic = False
     grad_enabled = any(x.requires_grad for x in (query, key, value))
 
-    if grad_enabled or (_parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1):
-        dropout_p = dropout_p if dropout_p > 0 else 1e-30
-
     with torch.set_grad_enabled(grad_enabled):
         out, lse, S_dmask, rng_state = wrapped_forward_fn(
             query,
@@ -1342,7 +1335,7 @@ def _flash_attention_hub_forward_op(
             window_size[1],
             softcap,
             alibi_slopes,
-            return_lse,
+            False,
         )
         lse = lse.permute(0, 2, 1).contiguous()
 
@@ -1452,9 +1445,6 @@ def _flash_varlen_attention_hub_forward_op(
     deterministic = False
     grad_enabled = any(x.requires_grad for x in (query, key, value))
 
-    if grad_enabled or (_parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1):
-        dropout_p = dropout_p if dropout_p > 0 else 1e-30
-
     batch_size, seq_len_q, num_heads, _ = query.shape
     _, seq_len_kv, _, _ = key.shape
 
@@ -1493,7 +1483,7 @@ def _flash_varlen_attention_hub_forward_op(
             window_size[1],
             softcap,
             alibi_slopes,
-            return_lse,
+            False,
         )
 
     out = out_packed.view(batch_size, seq_len_q, *out_packed.shape[1:])
