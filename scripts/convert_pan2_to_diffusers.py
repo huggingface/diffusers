@@ -1,4 +1,4 @@
-"""Convert an original PAN2 video generation checkpoint into the diffusers layout.
+"""Convert an original PAN2 checkpoint into the diffusers layout.
 
 The transformer checkpoint can be a torch distributed checkpoint (DCP) folder, a `model_state.pt` state dict, or a
 `.safetensors` file. Every key maps onto a diffusers module by renaming alone, except for:

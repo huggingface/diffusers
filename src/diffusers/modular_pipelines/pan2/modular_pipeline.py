@@ -37,7 +37,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class PAN2ModularPipeline(ModularPipeline):
     """
-    A ModularPipeline for the video generator of PAN2: text-to-video, and image-to-video from a first frame.
+    A ModularPipeline for PAN2: text-to-video, and image-to-video from a first frame.
 
     ```py
     import torch
@@ -112,6 +112,7 @@ class PAN2ModularPipeline(ModularPipeline):
         self._is_safety_checker_enabled = True
 
     def disable_safety_checker(self):
+        r"""Turn off the prompt and video checks, at your own risk."""
         self._is_safety_checker_enabled = False
 
     @property

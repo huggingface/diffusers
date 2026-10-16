@@ -114,7 +114,7 @@ class PAN2TextEncoderStep(ModularPipelineBlocks):
             if getattr(components, "safety_checker", None) is None:
                 raise ValueError(
                     "PAN2 requires a safety checker by default. Call `pipe.enable_safety_checker()` to load it (or pass "
-                    "your own), or opt out explicitly with `pipe.disable_safety_checker()`."
+                    "your own), or disable the checks at your own risk with `pipe.disable_safety_checker()`."
                 )
             components.safety_checker.to(device)
             try:

@@ -314,7 +314,7 @@ class PAN2TransformerBlock(nn.Module):
 
 class PAN2Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapterMixin, CacheMixin):
     r"""
-    The video generation transformer of PAN2.
+    The diffusion transformer of PAN2.
 
     A stack of joint-attention blocks over the concatenation of the patchified video latents and the refined text
     tokens. The video input carries the noisy latents, the conditioning latents and a conditioning mask stacked along

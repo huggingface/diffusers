@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License. -->
 
 # PAN2
 
-PAN2 is a video generation model paired with a prompt rewriter. Only the video generator is integrated here: it takes a prompt, encoded with Qwen3.5, and optionally a first frame, and generates a video with the Wan2.2 VAE.
+PAN2 is a foundation world model that simulates how a scene evolves under a time-grounded plan of actions and camera movements. Its 29B generative simulator is a dual-stream multimodal diffusion transformer, integrated here; the [reasoning backbone](https://huggingface.co/IFM/PAN2#reasoning-backbone) that writes its prompts is not.
 
 PAN2 is integrated as [Modular Diffusers](../../modular_diffusers/overview) blocks only. [`PAN2Blocks`] supports two workflows:
 
@@ -56,13 +56,13 @@ pipe.transformer.set_attention_backend("flash_hub")  # FlashAttention-2
 
 ## Safety checker
 
-PAN2 checks the prompt before generation and every generated video after it with the [PAN2 guardrail](https://github.com/ifm-ai/pan2-guardrail): Qwen3Guard-Gen-4B classifies the prompt, and the Cosmos-Guardrail1 video content safety filter classifies 16 uniformly spaced frames of each video. A blocked prompt or video raises a `ValueError`. The check is on by default, so the pipeline raises until a checker is loaded with `enable_safety_checker()`, which needs the guardrail package:
+PAN2 runs guardrails on the prompt before generation and on every generated video after it, and a blocked prompt or video raises a `ValueError`. The checks are on by default, so the pipeline raises until a checker is loaded with `enable_safety_checker()`, which needs the [PAN2 guardrail](https://github.com/ifm-ai/pan2-guardrail) package:
 
 ```bash
 pip install git+https://github.com/ifm-ai/pan2-guardrail
 ```
 
-The Cosmos-Guardrail1 weights are gated: accept their license on the [Hub](https://huggingface.co/nvidia/Cosmos-Guardrail1) first. The checker waits on the CPU and moves to the pipeline device only for the checks. `enable_safety_checker(safety_checker)` uses your own checker instead, and `disable_safety_checker()` turns the checks off. A custom checker needs `.to(device)`, `check_text_safety(prompt)` returning `True` for a safe prompt, and `check_video_safety(frames)` taking the uint8 `(num_frames, height, width, 3)` frames of one video and returning `None` for an unsafe video.
+`disable_safety_checker()` turns the checks off at your own risk.
 
 ## Context parallelism
 
