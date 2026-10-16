@@ -23,15 +23,17 @@ import torch.multiprocessing as mp
 import torch.nn.functional as F
 
 from diffusers.models._modeling_parallel import ContextParallelConfig, ParallelConfig
+from diffusers.models.attention_dispatch import _cudnn_attention_forward_op, dispatch_attention_fn
 from diffusers.models.attention_dispatch import attention_backend as attention_backend_ctx
-from diffusers.models.attention_dispatch import dispatch_attention_fn
 
 from ..testing_utils import (
+    assert_tensors_close,
     is_attention,
     is_context_parallel,
     is_kernels_available,
     is_torch_compile,
     require_torch_accelerator,
+    require_torch_gpu,
     require_torch_multi_accelerator,
     torch_device,
 )
@@ -40,6 +42,33 @@ from .testing_utils.parallelism import DEVICE_CONFIG, _find_free_port
 
 # Max allowed relative error between the context parallel gradients and the single-process reference.
 GRAD_RTOL = 2e-2
+
+
+@is_attention
+@require_torch_gpu
+class TestCudnnAttentionForwardOp:
+    @pytest.mark.parametrize("mask_type", ["partial", "fully_masked_row"])
+    def test_boolean_attn_mask_matches_sdpa(self, mask_type):
+        batch_size, num_heads, seq_len, head_dim = 1, 2, 16, 64
+        torch.manual_seed(0)
+
+        # The forward op takes `(batch_size, seq_len, num_heads, head_dim)`.
+        query, key, value = (
+            torch.randn(batch_size, seq_len, num_heads, head_dim, device=torch_device, dtype=torch.bfloat16)
+            for _ in range(3)
+        )
+        attn_mask = torch.ones(batch_size, num_heads, seq_len, seq_len, device=torch_device, dtype=torch.bool)
+        if mask_type == "partial":
+            attn_mask[..., 3, 5:] = False
+        else:
+            attn_mask[..., 7, :] = False
+
+        out = _cudnn_attention_forward_op(None, query, key, value, attn_mask=attn_mask, _save_ctx=False)
+        expected = F.scaled_dot_product_attention(
+            query.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2), attn_mask=attn_mask
+        ).transpose(1, 2)
+
+        assert_tensors_close(out, expected, atol=1e-2, rtol=1e-2, msg=f"cuDNN forward op with {mask_type} mask")
 
 
 def _attention_backward_parity_worker(rank, world_size, master_port, cp_dict, attention_backend, return_dict):
