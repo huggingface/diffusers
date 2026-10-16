@@ -12,52 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License. -->
 
-# FLUX.3
+# FLUX 3 Image Klein
 
-FLUX.3 is an image generation model from Black Forest Labs: a single transformer ([`Flux3Transformer2DModel`]) generates images from a text prompt, alone or together with one or more reference images. Text conditioning comes from Qwen3-VL, and images use the FLUX.2 packed autoencoder ([`AutoencoderKLFlux2`]).
+FLUX 3 Image Klein is a 5.6B image generation model from Black Forest Labs: a single transformer ([`Flux3Transformer2DModel`]) generates images from a text prompt, alone or together with one or more reference images. Text conditioning comes from Qwen3-VL, and images use the FLUX.2 packed autoencoder ([`AutoencoderKLFlux2`]).
 
-FLUX.3 ships as a modular pipeline. Prompting matters: the model responds best to full scene captions that describe the subject, composition, lighting, and atmosphere. Black Forest Labs provides a [prompt upsampler](https://huggingface.co/black-forest-labs/flux-3-image-klein-pup) that expands short prompts automatically; see [Prompt upsampling](#prompt-upsampling). Get started with a text-to-image generation:
-
-```python
-import torch
-from diffusers import ModularPipeline
-
-pipe = ModularPipeline.from_pretrained("black-forest-labs/flux-3-image-klein-base")
-pipe.load_components(dtype={"vae": torch.float32, "default": torch.bfloat16})
-pipe.to("cuda")
-
-image = pipe(
-    prompt=(
-        "A wide-angle wildlife photograph of a red fox standing alert in a snow-covered forest "
-        "clearing at golden hour. The fox is centered in the frame, its thick orange winter coat "
-        "contrasting with the fresh white snow, breath visible in the cold air. Snow-laden pine "
-        "trees fill the softly blurred background, and low warm sunlight rakes across the scene "
-        "from the left, casting long blue shadows."
-    ),
-    generator=torch.Generator().manual_seed(0),
-    output="images",
-)[0]
-image.save("fox.png")
-```
-
-`prompt` is the only required input: the pipeline carries the recommended sampling settings (50 steps, guidance scale 3.5, scheduler shift 6.93) and generates 1024 x 1024 images by default. It takes one prompt per call; use `num_images_per_prompt` for several images of the same prompt.
-
-## Prompt upsampling
-
-The prompt upsampler, [black-forest-labs/flux-3-image-klein-pup](https://huggingface.co/black-forest-labs/flux-3-image-klein-pup), turns the user prompt, together with the reference images when editing, into a full scene caption. It is a separate model; run it with Transformers and pass its output as `prompt`:
+FLUX 3 Image Klein ships as a modular pipeline. It takes full scene captions, not short prompts: a request sent as typed gives generic output. We strongly advise running the [prompt upsampler](#prompt-upsampling) on every request, text-to-image and editing alike, or any LLM with the same system prompts; every example on this page does. The upsampler is a separate 9B model ([black-forest-labs/flux-3-image-klein-pup](https://huggingface.co/black-forest-labs/flux-3-image-klein-pup)) that the pipeline does not run on its own. Load it beside the pipeline, then generate:
 
 ```python
 import json
 
 import torch
+from diffusers import ModularPipeline
 from huggingface_hub import hf_hub_download
 from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
 
+pipe = ModularPipeline.from_pretrained("black-forest-labs/flux-3-image-klein-base")
+pipe.load_components(dtype={"vae": torch.float32, "default": torch.bfloat16})
+pipe.to("cuda")
 
-model_id = "black-forest-labs/flux-3-image-klein-pup"
-processor = AutoProcessor.from_pretrained(model_id)
-upsampler = Qwen3_5ForConditionalGeneration.from_pretrained(model_id, dtype=torch.bfloat16, device_map="auto").eval()
-system_prompts = json.load(open(hf_hub_download(model_id, "system_prompts.json")))
+pup_id = "black-forest-labs/flux-3-image-klein-pup"
+processor = AutoProcessor.from_pretrained(pup_id)
+upsampler = Qwen3_5ForConditionalGeneration.from_pretrained(pup_id, dtype=torch.bfloat16, device_map="auto").eval()
+system_prompts = json.load(open(hf_hub_download(pup_id, "system_prompts.json")))
 
 
 def upsample(prompt, images=()):
@@ -83,33 +59,37 @@ def upsample(prompt, images=()):
     return processor.decode(output[0, inputs["input_ids"].shape[1] :], skip_special_tokens=True).strip()
 
 
-image = pipe(prompt=upsample("An astronaut riding a horse"), output="images")[0]
+caption = upsample("A red fox in a snow-covered forest clearing at golden hour")
+image = pipe(prompt=caption, generator=torch.Generator().manual_seed(0), output="images")[0]
+image.save("fox.png")
 ```
 
-For an edit, pass the same reference images to both: `pipe(prompt=upsample(instruction, [image]), image=image, ...)`. The upsampler also writes the [layout](#layout-control) captions from a list of boxes; see its model card.
+`prompt` is the only required input of the pipeline: it carries the recommended sampling settings (50 steps, guidance scale 3.5, scheduler shift 6.93) and generates 1024 x 1024 images by default. It takes one prompt per call; use `num_images_per_prompt` for several images of the same prompt.
+
+## Prompt upsampling
+
+The prompt upsampler turns a short request, together with the reference images when editing, into the full scene caption the model takes: medium and style, scene, lighting and camera, each subject with its colors, materials and position in the frame. `upsample` above runs it with Transformers: `system_prompts["t2i"]` for text-to-image, `system_prompts["i2i"]` with the references first in the user message for an edit, greedy decoding, thinking off. The [model card](https://huggingface.co/black-forest-labs/flux-3-image-klein-pup) has the decoding settings and the layout form (`t2i_bbox`, `i2i_bbox`), which keeps a list of boxes you pass as a box table after the caption.
+
+Any other LLM can take its place: give it `system_prompts["t2i"]` (or `"i2i"` with the references) as the system prompt and the request as the user message, and pass the caption it returns as `prompt`.
 
 ## Image-to-image
 
-Pass one or more reference images with `image`. Every reference keeps its own resolution (center-cropped to the 16-pixel grid; references above 16 megapixels are downscaled first), and the generation size defaults to one megapixel at the first reference's aspect ratio. Describe the *target* image as a complete caption of the reference with your edit folded in, rather than a one-line instruction, or let the [prompt upsampler](#prompt-upsampling) write it from the instruction and the references:
+Pass one or more reference images with `image`. Every reference keeps its own resolution (center-cropped to the 16-pixel grid; references above 16 megapixels are downscaled first), and the generation size defaults to one megapixel at the first reference's aspect ratio. The prompt is the *target* image as a complete caption of the reference with the edit folded in, not a one-line instruction; the [prompt upsampler](#prompt-upsampling) writes it from the instruction and the references:
 
 ```python
 night = pipe(
-    prompt=(
-        "The same red fox in the same snow-covered forest clearing, now at night under a full moon: "
-        "cool blue moonlight, deep shadows, stars visible through the pine branches, the fox's eyes "
-        "catching the light."
-    ),
+    prompt=upsample("the same scene at night under a full moon", [image]),
     image=image,
     generator=torch.Generator().manual_seed(0),
     output="images",
 )[0]
 ```
 
-With several references, refer to them in the prompt as `<ref_image_0>`, `<ref_image_1>`, ... in the order they are passed to `image`:
+With several references, name them by position in the request, the first image, the second image, ... in the order they are passed to both `upsample` and `image`:
 
 ```python
 combined = pipe(
-    prompt="The fox from <ref_image_0> sitting on the wooden bench from <ref_image_1>, in the same snowy clearing.",
+    prompt=upsample("put the fox from the first image on the wooden bench from the second image", [image, bench]),
     image=[image, bench],
     height=768,
     width=1360,
@@ -121,7 +101,7 @@ Pass `height` and/or `width` to override the derived size.
 
 ## Layout control
 
-To place content explicitly, tag regions in the caption with `<id>` and append a JSON list of regions to the prompt. Each region has an `id`, a `bbox` of `[y0, x0, y1, x1]` (top-left and bottom-right corners, origin top-left) normalized to 0-1000 on both axes so it is independent of the output size, and a `desc`:
+To place content explicitly, the caption tags regions with `<id>` and ends with a JSON list of regions. Each region has an `id`, a `bbox` of `[y0, x0, y1, x1]` (top-left and bottom-right corners, origin top-left) normalized to 0-1000 on both axes so it is independent of the output size, and a `desc`. This is the form the upsampler writes with its `t2i_bbox` and `i2i_bbox` system prompts from a request and a list of boxes (scaffold on its [model card](https://huggingface.co/black-forest-labs/flux-3-image-klein-pup)); the prompts below are that output, passed as `prompt`:
 
 ```python
 prompt = (
@@ -165,7 +145,7 @@ pipe = ModularPipeline.from_pretrained("black-forest-labs/flux-3-image-klein")
 pipe.load_components(dtype=torch.bfloat16)
 pipe.to("cuda")
 
-image = pipe(prompt=prompt, generator=torch.Generator().manual_seed(0), output="images")[0]
+image = pipe(prompt=upsample("An astronaut riding a horse"), generator=torch.Generator().manual_seed(0), output="images")[0]
 ```
 
 It serves the same two workflows as the base model. `num_inference_steps` defaults to 16; the model is trained for 4 to 16 steps.
@@ -181,7 +161,7 @@ h, w = height // 16, width // 16
 noise = torch.randn((h * w, 128), generator=torch.Generator().manual_seed(0)).to(torch.bfloat16)
 latents = noise.T.reshape(1, 128, h, w)
 
-image = pipe(prompt=prompt, latents=latents, height=height, width=width, output="images")[0]
+image = pipe(prompt=caption, latents=latents, height=height, width=width, output="images")[0]
 ```
 
 ## Workflows
@@ -200,7 +180,7 @@ print(t2i.blocks.doc)
 
 ## Memory
 
-Loading everything in bf16 takes about 20 GB of weights (the transformer is 5.5B parameters, the Qwen3-VL-4B text encoder 4B), with the image VAE in fp32. For GPUs with less memory, enable component offloading:
+Loading everything in bf16 takes about 20 GB of weights (the transformer is 5.5B parameters, the Qwen3-VL-4B text encoder 4B), with the image VAE in fp32; the prompt upsampler is another 18.8 GB, placed by `device_map="auto"`. For GPUs with less memory, enable component offloading:
 
 ```python
 pipe = ModularPipeline.from_pretrained("black-forest-labs/flux-3-image-klein-base")
