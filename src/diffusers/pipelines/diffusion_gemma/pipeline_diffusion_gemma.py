@@ -344,9 +344,12 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
             )
 
             # Start from a fully random canvas and denoise it; the scheduler resets its committed state at step 0.
+            # `torch.randint` requires the generator and the output device to match, so (as with `randn_tensor`) a
+            # CPU generator samples on CPU and the result is moved to `device` afterwards.
+            rand_device = generator.device if generator is not None else device
             canvas = torch.randint(
-                0, text_config.vocab_size, (batch_size, canvas_length), device=device, generator=generator
-            )
+                0, text_config.vocab_size, (batch_size, canvas_length), device=rand_device, generator=generator
+            ).to(device)
             self_conditioning_logits = None
             finished_denoising = torch.zeros(batch_size, dtype=torch.bool, device=device)
             argmax_canvas = canvas
