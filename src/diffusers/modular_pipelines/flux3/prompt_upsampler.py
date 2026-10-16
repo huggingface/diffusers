@@ -432,12 +432,16 @@ def upsample_prompt(
     if locked:
         request = format_layout_request(request, locked)
 
+    # content as lists of parts throughout: processor chat templates in transformers < 5.8 do not take plain strings
     if images:
         scaffold = I2I_SCAFFOLD[bool(locked)].format(instruction=request)
         content = [{"type": "image", "image": image} for image in images] + [{"type": "text", "text": scaffold}]
     else:
-        content = request
-    messages = [{"role": "system", "content": SYSTEM_PROMPTS[mode]}, {"role": "user", "content": content}]
+        content = [{"type": "text", "text": request}]
+    messages = [
+        {"role": "system", "content": [{"type": "text", "text": SYSTEM_PROMPTS[mode]}]},
+        {"role": "user", "content": content},
+    ]
     inputs = processor.apply_chat_template(
         messages,
         add_generation_prompt=True,
