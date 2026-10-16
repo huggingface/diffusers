@@ -163,7 +163,7 @@ class WanLoopDenoiser(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[tuple[str, Any]]:
         inputs = [
-            InputParam("attention_kwargs"),
+            InputParam("attention_kwargs", description="Additional kwargs for attention processors."),
             InputParam(
                 "num_inference_steps",
                 required=True,
