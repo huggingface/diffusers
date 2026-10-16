@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import torch
@@ -21,7 +21,7 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import BaseOutput, apply_lora_scale, logging
-from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
+from .._modeling_parallel import ContextParallelInput, ContextParallelOutput, ParallelConfig, gather_size_by_comm
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
@@ -171,6 +171,7 @@ class MiniMaxH3AttnProcessor:
         hidden_states: torch.Tensor,
         rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         attention_mask: torch.Tensor | None = None,
+        parallel_config: ParallelConfig | None = None,
     ) -> torch.Tensor:
         if attn.fused_projections:
             query, key, value = attn.to_qkv(hidden_states).chunk(3, dim=-1)
@@ -201,7 +202,7 @@ class MiniMaxH3AttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
-            parallel_config=self._parallel_config,
+            parallel_config=parallel_config if parallel_config is not None else self._parallel_config,
         )
         hidden_states = hidden_states.flatten(2, 3).type_as(query)
         hidden_states = attn.to_out[0](hidden_states)
@@ -243,8 +244,11 @@ class MiniMaxH3Attention(nn.Module, AttentionModuleMixin):
         hidden_states: torch.Tensor,
         rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         attention_mask: torch.Tensor | None = None,
+        parallel_config: ParallelConfig | None = None,
     ) -> torch.Tensor:
-        return self.processor(self, hidden_states, rotary_emb, attention_mask)
+        if parallel_config is None:
+            return self.processor(self, hidden_states, rotary_emb, attention_mask)
+        return self.processor(self, hidden_states, rotary_emb, attention_mask, parallel_config=parallel_config)
 
 
 class MiniMaxH3TokenRefinerBlock(nn.Module):
@@ -351,6 +355,7 @@ class MiniMaxH3TransformerBlock(nn.Module):
         adaln_indices: torch.Tensor,
         rotary_emb: tuple[torch.Tensor, torch.Tensor],
         attention_mask: torch.Tensor | None = None,
+        parallel_config: ParallelConfig | None = None,
     ) -> torch.Tensor:
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaln_proj(temb)
 
@@ -359,7 +364,7 @@ class MiniMaxH3TransformerBlock(nn.Module):
         norm_hidden_states = norm_hidden_states * (
             1.0 + scale_msa.index_select(0, adaln_indices)
         ) + shift_msa.index_select(0, adaln_indices)
-        attn_output = self.attn(norm_hidden_states, rotary_emb, attention_mask)
+        attn_output = self.attn(norm_hidden_states, rotary_emb, attention_mask, parallel_config=parallel_config)
         hidden_states = residual + gate_msa.index_select(0, adaln_indices) * attn_output
 
         residual = hidden_states
@@ -601,7 +606,8 @@ class MiniMaxH3Transformer3DModel(
             text_indices (`torch.Tensor` of shape `(num_text_tokens,)`):
                 Positions of the text rows in the packed sequence.
             attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that, if specified, may carry a `scale` entry which is applied to the LoRA layers.
+                May carry a LoRA `scale` and `reuse_ulysses_metadata=True` to reuse packed-sequence shard lengths
+                within this inference forward when using Ulysses Anything context parallelism.
             return_dict (`bool`, defaults to `True`):
                 Whether to return a [`MiniMaxH3TransformerOutput`] instead of a plain tuple.
 
@@ -646,13 +652,29 @@ class MiniMaxH3Transformer3DModel(
         # 3. Row -> AdaLN table row.
         adaln_indices = timestep_indices * MINIMAX_H3_MODALITY_NUM + token_tags
 
+        parallel_config = None
+        if attention_kwargs is not None and attention_kwargs.get("reuse_ulysses_metadata", False):
+            parallel_config = self._parallel_config
+            cp_config = parallel_config.context_parallel_config if parallel_config is not None else None
+            if torch.is_grad_enabled() or cp_config is None or not cp_config.ulysses_anything:
+                raise ValueError("Sequence metadata reuse requires inference with Ulysses Anything enabled.")
+            group = cp_config._ulysses_mesh.get_group()
+            global_lengths = gather_size_by_comm(sequence_length, group)
+            if any(length != sequence_length for length in global_lengths):
+                raise ValueError("All Ulysses ranks must agree on the packed sequence length for this forward.")
+            degree = len(global_lengths)
+            shard_lengths = tuple(
+                sequence_length // degree + int(rank < sequence_length % degree) for rank in range(degree)
+            )
+            parallel_config = replace(parallel_config, _ulysses_sequence_lengths=shard_lengths)
+
         for block in self.transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 hidden_states = self._gradient_checkpointing_func(
                     block, hidden_states, temb, adaln_indices, rotary_emb
                 )
             else:
-                hidden_states = block(hidden_states, temb, adaln_indices, rotary_emb)
+                hidden_states = block(hidden_states, temb, adaln_indices, rotary_emb, parallel_config=parallel_config)
 
         # 5. Both heads run over every row, then the rows of each modality are selected. The heads are listed in
         # `_keep_in_fp32_modules`, so they stay float32 while the block stack runs in the requested `torch_dtype`;

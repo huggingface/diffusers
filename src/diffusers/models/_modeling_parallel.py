@@ -210,6 +210,8 @@ class ParallelConfig:
     context_parallel_config: ContextParallelConfig | None = None
     tensor_parallel_config: TensorParallelConfig | None = None
 
+    _ulysses_sequence_lengths: tuple[int, ...] | None = None
+
     _rank: int = None
     _world_size: int = None
     _device: torch.device = None
