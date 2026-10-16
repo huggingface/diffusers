@@ -1,4 +1,4 @@
-# Copyright 2026 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The VAST-AI Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -1497,3 +1497,311 @@ class EdenLiveFlowMatchEulerDiscreteSchedulerTests(unittest.TestCase):
         ):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
                 scheduler.set_timesteps(**kwargs)
+
+
+class TestEdenLiveStreaming(EdenLiveChunkCausalPipelineTesterConfig):
+    def setup_stream(self, profile="5b", output_type="latent", guidance=1.0):
+        self.profile = profile
+        components = self.get_dummy_components()
+        components["decoder"] = EdenLiveLightTAEDecoder(latent_channels=4, block_out_channels=(4, 4, 4, 4))
+        pipe = self.get_pipeline(**components).to(torch_device)
+        inputs = self.get_dummy_inputs()
+        options = {
+            "image": inputs["image"],
+            "prompt": "snow",
+            "height": 16,
+            "width": 16,
+            "num_inference_steps": 2,
+            "max_sequence_length": 16,
+            "output_type": output_type,
+            "guidance_scale": guidance,
+        }
+        state = pipe.create_stream_state(**options, generator=torch.Generator().manual_seed(12))
+        return pipe, state, inputs["video"][:3], options
+
+    @pytest.mark.parametrize("profile", ["5b", "14b"])
+    @pytest.mark.parametrize("guidance", [1.0, 2.0])
+    def test_eight_chunks_prompt_and_bounded_history(self, profile, guidance):
+        from unittest.mock import patch
+
+        pipe, state, proxy, _ = self.setup_stream(profile, guidance=guidance)
+        cache = state.condition_encoder_cache
+        with patch.object(pipe, "encode_prompt", wraps=pipe.encode_prompt) as encode:
+            capacities = []
+            for index in range(8):
+                result = pipe(stream_state=state, proxy_frames=proxy, prompt="snow" if index < 4 else "fire")
+                assert result.frames.shape == (1, 4, 3, 2, 2)
+                assert torch.isfinite(result.frames).all()
+                assert all(s.next_frame == (index + 1) * 3 for s in state.causal_states)
+                capacities.append(
+                    sum(layer.key.numel() + layer.value.numel() for s in state.causal_states for layer in s.layers)
+                )
+            assert encode.call_count == 1
+            assert capacities[-1] == capacities[-2]
+            pipe(stream_state=state, proxy_frames=proxy, prompt_embeds=state.prompt_embeds)
+            assert state.encoded_prompt is None
+            pipe(stream_state=state, proxy_frames=proxy, prompt="fire")
+            assert encode.call_count == 2
+        assert state.condition_encoder_cache is cache
+        assert state.image is None
+        pipe.close_stream(state)
+        pipe.close_stream(state)
+        assert state.closed and not state.valid and not state.causal_states
+        with pytest.raises(ValueError):
+            pipe(stream_state=state, proxy_frames=proxy)
+
+    @pytest.mark.parametrize("profile", ["5b", "14b"])
+    def test_interleaved_streams_and_dynamic_prompt(self, profile):
+        pipe, first, proxy, options = self.setup_stream(profile)
+        second = pipe.create_stream_state(**options, generator=torch.Generator().manual_seed(12))
+        for _ in range(2):
+            a = pipe(stream_state=first, proxy_frames=proxy).frames
+            b = pipe(stream_state=second, proxy_frames=proxy).frames
+            torch.testing.assert_close(a, b, rtol=1e-4, atol=1e-5)
+        a = pipe(stream_state=first, proxy_frames=proxy, prompt="fire").frames
+        b = pipe(stream_state=second, proxy_frames=proxy, prompt="ocean").frames
+        assert (a - b).abs().max() > 1e-6
+        pipe.close_stream(first)
+        assert pipe(stream_state=second, proxy_frames=proxy).frames.shape[2] == 3
+        pipe.close_stream(second)
+
+    @pytest.mark.parametrize("profile", ["5b", "14b"])
+    def test_rgb_frames_and_invalid_input_then_execution_failure(self, profile):
+        from unittest.mock import patch
+
+        pipe, state, proxy, _ = self.setup_stream(profile, output_type="pt")
+        rng = state.generator.get_state().clone()
+        for kwargs in (
+            {"proxy_frames": proxy[:2]},
+            {"proxy_frames": proxy, "latents": torch.zeros(1)},
+            {"proxy_frames": proxy, "prompt_embeds": torch.zeros(2, 4, 32)},
+        ):
+            with pytest.raises(ValueError):
+                pipe(stream_state=state, **kwargs)
+            assert state.valid and state.causal_states[0].next_frame == 0
+            assert torch.equal(rng, state.generator.get_state())
+        assert pipe(stream_state=state, proxy_frames=proxy).frames.shape == (1, 9, 3, 16, 16)
+        assert pipe(stream_state=state, proxy_frames=proxy).frames.shape == (1, 12, 3, 16, 16)
+        with patch.object(pipe.proxy_encoder, "forward", side_effect=RuntimeError("injected failure")):
+            with pytest.raises(RuntimeError, match="injected failure"):
+                pipe(stream_state=state, proxy_frames=proxy)
+        assert not state.valid
+        with pytest.raises(ValueError, match="invalid"):
+            pipe(stream_state=state, proxy_frames=proxy)
+        pipe.close_stream(state)
+
+    @pytest.mark.parametrize("profile", ["5b", "14b"])
+    def test_offline_stream_numerics_with_fixed_noise(self, profile):
+        from unittest.mock import patch
+
+        from diffusers.pipelines.edenlive import pipeline_utils
+
+        pipe, state, proxy, options = self.setup_stream(profile, guidance=2.0)
+        full_proxy = np.concatenate(
+            [proxy[:1].repeat(4, axis=0), proxy[1:2].repeat(4, axis=0), proxy[2:3].repeat(13, axis=0)]
+        )
+
+        def noise(pipe, shape, generator, device, dtype):
+            return torch.full(shape, 0.25, device=device, dtype=dtype)
+
+        with patch.object(pipeline_utils, "sample_noise", side_effect=noise):
+            expected = pipe(**options, video=full_proxy, num_frames=21).frames
+            chunks = [
+                pipe(stream_state=state, proxy_frames=full_proxy[:9:4]).frames,
+                pipe(stream_state=state, proxy_frames=full_proxy[12:21:4]).frames,
+            ]
+        torch.testing.assert_close(torch.cat(chunks, dim=2), expected, rtol=1e-4, atol=1e-5)
+        pipe.close_stream(state)
+
+    @pytest.mark.parametrize("patch_size", [1, 2])
+    @torch.no_grad()
+    def test_lighttae_continuity_reset_and_isolation(self, patch_size):
+        from diffusers import EdenLiveLightTAEDecodeCache
+
+        decoder = EdenLiveLightTAEDecoder(
+            latent_channels=4, patch_size=patch_size, block_out_channels=(4, 4, 4, 4)
+        ).to(torch_device)
+        latents = torch.randn(1, 4, 9, 2, 2, device=torch_device)
+        expected = decoder.decode(latents).sample
+        cache = EdenLiveLightTAEDecodeCache()
+        outputs = []
+        for chunk in latents.split(3, dim=2):
+            outputs.append(decoder.decode(chunk, cache=cache).sample)
+            decoder.decode(chunk + 1, cache=EdenLiveLightTAEDecodeCache())
+        assert [x.shape[2] for x in outputs] == [9, 12, 12]
+        torch.testing.assert_close(torch.cat(outputs, dim=2), expected, rtol=1e-4, atol=1e-5)
+        cache.reset()
+        torch.testing.assert_close(decoder.decode(latents, cache=cache).sample, expected, rtol=1e-4, atol=1e-5)
+
+    def test_proxy_chunk_is_not_subsampled(self):
+        from diffusers.pipelines.edenlive.video_processor import EdenLiveVideoProcessor
+
+        processor = EdenLiveVideoProcessor()
+        frames = np.stack([np.full((16, 16, 3), x, dtype=np.float32) for x in (0.0, 0.5, 1.0)])
+        result = processor.preprocess_proxy_chunk(frames)
+        assert result.shape == (1, 3, 3, 16, 16)
+        torch.testing.assert_close(result[0, 0, :, 0, 0], torch.tensor([0.0, 0.5, 1.0]))
+
+    def test_initialization_validation_and_owner_lifetime(self):
+        import gc
+        import weakref
+        from unittest.mock import patch
+
+        pipe, state, proxy, options = self.setup_stream()
+        for image in (np.full((16, 16, 3), np.nan, dtype=np.float32), np.ones((16, 16, 3), dtype=np.float32) * 2):
+            with patch.object(pipe.vae, "encode", side_effect=AssertionError("must validate before encoding")):
+                with pytest.raises(ValueError, match="reference image"):
+                    pipe.create_stream_state(**{**options, "image": image})
+        with patch.object(pipe.decoder, "decode", side_effect=AssertionError("latent output must bypass decode")):
+            pipe(stream_state=state, proxy_frames=proxy)
+        pipe.close_stream(state)
+        owner = weakref.ref(pipe)
+        del pipe
+        gc.collect()
+        assert owner() is None
+
+    def test_rejects_foreign_state_and_component_replacement(self):
+        pipe, state, proxy, _ = self.setup_stream()
+        other = self.get_pipeline().to(torch_device)
+        with pytest.raises(ValueError, match="belong"):
+            other(stream_state=state, proxy_frames=proxy)
+        original = pipe.scheduler
+        pipe.scheduler = EdenLiveFlowMatchEulerDiscreteScheduler(default_timesteps=[1000, 500])
+        with pytest.raises(ValueError, match="components"):
+            pipe(stream_state=state, proxy_frames=proxy)
+        assert state.valid and state.causal_states[0].next_frame == 0
+        pipe.scheduler = original
+        pipe.close_stream(state)
+
+    @torch.no_grad()
+    def test_condition_encoding_continuity_isolation_and_root_hook(self):
+        from unittest.mock import Mock, patch
+
+        from diffusers.pipelines.edenlive.pipeline_edenlive import (
+            _EdenLiveConditionEncoderCache,
+            _encode_condition_chunk,
+        )
+
+        self.profile = "14b"
+        vae = self.get_dummy_components()["vae"].to(torch_device).eval()
+        video = randn_tensor((1, 3, 33, 16, 16), generator=torch.Generator().manual_seed(12), device=torch_device)
+        expected = vae.encode(video).latent_dist.mode()
+        internal_map, internal_index = vae._enc_feat_map, vae._enc_conv_idx
+        map_values, index_values = list(internal_map), list(internal_index)
+        cache, other = _EdenLiveConditionEncoderCache(), _EdenLiveConditionEncoderCache()
+        hook = Mock()
+        with patch.object(vae, "_hf_hook", hook, create=True):
+            first = _encode_condition_chunk(vae, video[:, :, :9], cache)
+            cache_map = cache.feat_map
+            _encode_condition_chunk(vae, video[:, :, :9] + 1, other)
+            middle = _encode_condition_chunk(vae, video[:, :, 9:21], cache)
+            tail = _encode_condition_chunk(vae, video[:, :, 21:], cache)
+            assert cache.feat_map is cache_map
+            assert hook.pre_forward.call_count == 4
+            hook.pre_forward.assert_called_with(vae)
+        torch.testing.assert_close(torch.cat([first, middle, tail], dim=2), expected, rtol=1e-4, atol=1e-5)
+        assert vae._enc_feat_map is internal_map and vae._enc_conv_idx is internal_index
+        assert vae._enc_feat_map == map_values and vae._enc_conv_idx == index_values
+        cache.reset()
+        seed = _encode_condition_chunk(vae, video[:, :, :1], cache)
+        rest = _encode_condition_chunk(vae, video[:, :, 1:], cache)
+        torch.testing.assert_close(torch.cat([seed, rest], dim=2), expected, rtol=1e-4, atol=1e-5)
+
+    @torch.no_grad()
+    def test_condition_encoding_rejects_invalid_chunks_and_memory_modes(self):
+        from diffusers.pipelines.edenlive.pipeline_edenlive import (
+            _EdenLiveConditionEncoderCache,
+            _encode_condition_chunk,
+        )
+
+        self.profile = "14b"
+        vae = self.get_dummy_components()["vae"].to(torch_device).eval()
+        video = torch.zeros(1, 3, 9, 16, 16, device=torch_device)
+        cache = _EdenLiveConditionEncoderCache()
+        with pytest.raises(ValueError):
+            _encode_condition_chunk(vae, video[:, :, :4], cache)
+        assert cache.feat_map is None
+        _encode_condition_chunk(vae, video[:, :, :1], cache)
+        with pytest.raises(ValueError):
+            _encode_condition_chunk(vae, video[:, :, :1], cache)
+        for mode in ("slicing", "tiling"):
+            getattr(vae, f"enable_{mode}")()
+            with pytest.raises(ValueError):
+                _encode_condition_chunk(vae, video, _EdenLiveConditionEncoderCache())
+            getattr(vae, f"disable_{mode}")()
+
+    def test_stream_dispatch_conflicts_are_preflight_and_tuple_output(self):
+        from unittest.mock import patch
+
+        pipe, state, proxy, options = self.setup_stream("14b", output_type="pt")
+        rng = state.generator.get_state().clone()
+        fixed = {
+            "image": options["image"],
+            "video": proxy,
+            "height": 16,
+            "width": 16,
+            "num_frames": 9,
+            "num_inference_steps": 2,
+            "guidance_scale": 1.0,
+            "negative_prompt": "",
+            "negative_prompt_embeds": state.prompt_embeds,
+            "generator": state.generator,
+            "text_timeline": {},
+            "chunk_prompts": [],
+            "max_sequence_length": 512,
+            "output_type": "np",
+            "attention_kwargs": {},
+            "callback_on_step_end": lambda *args: {},
+            "callback_on_step_end_tensor_inputs": ["latents"],
+        }
+        with patch.object(pipe.proxy_encoder, "forward", side_effect=AssertionError("must validate before encoding")):
+            for name, value in fixed.items():
+                with pytest.raises(ValueError, match=name):
+                    pipe(stream_state=state, proxy_frames=proxy, **{name: value})
+            with pytest.raises(ValueError, match="stream_state"):
+                pipe(proxy_frames=proxy)
+            with pytest.raises(ValueError):
+                pipe(stream_state=state)
+        assert state.valid and state.causal_states[0].next_frame == 0
+        assert state.condition_encoder_cache.feat_map is None and not state.decoder_cache.dec_state
+        assert torch.equal(rng, state.generator.get_state())
+        result = pipe(stream_state=state, proxy_frames=proxy, return_dict=False)
+        assert isinstance(result, tuple) and len(result) == 1
+        assert result[0].shape == (1, 9, 3, 16, 16)
+        pipe.close_stream(state)
+
+    def test_offline_effective_defaults(self):
+        from unittest.mock import patch
+
+        pipe, state, _, options = self.setup_stream()
+        pipe.close_stream(state)
+        inputs = self.get_dummy_inputs()
+        inputs.pop("output_type")
+        inputs.pop("max_sequence_length")
+        with patch.object(pipe, "encode_prompt", wraps=pipe.encode_prompt) as encode:
+            actual = pipe(**inputs).frames
+            assert encode.call_args.args[-1] == 512
+        inputs = self.get_dummy_inputs()
+        inputs.update(max_sequence_length=512, output_type="np", callback_on_step_end_tensor_inputs=["latents"])
+        expected = pipe(**inputs).frames
+        assert isinstance(actual, np.ndarray)
+        np.testing.assert_allclose(actual, expected, rtol=1e-4, atol=1e-5)
+
+    @pytest.mark.parametrize("profile", ["5b", "14b"])
+    def test_model_cpu_offload_matches_device_placement(self, profile):
+        if torch.device(torch_device).type == "cpu":
+            pytest.skip("Model CPU offload requires an accelerator.")
+        pipe, state, proxy, options = self.setup_stream(profile, output_type="pt", guidance=2.0)
+        expected = [pipe(stream_state=state, proxy_frames=proxy).frames.cpu() for _ in range(2)]
+        pipe.close_stream(state)
+        pipe.enable_model_cpu_offload(device=torch_device)
+        state = pipe.create_stream_state(**options, generator=torch.Generator().manual_seed(12))
+        cache = state.condition_encoder_cache
+        try:
+            for chunk in expected:
+                actual = pipe(stream_state=state, proxy_frames=proxy).frames.cpu()
+                torch.testing.assert_close(actual, chunk, rtol=1e-4, atol=1e-5)
+                assert state.condition_encoder_cache is cache
+        finally:
+            pipe.close_stream(state)
+        assert pipe.vae.device.type == "cpu" and pipe.transformer.device.type == "cpu"

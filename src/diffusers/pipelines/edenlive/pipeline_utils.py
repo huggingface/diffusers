@@ -1,4 +1,4 @@
-# Copyright 2026 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The VAST-AI Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -217,7 +217,7 @@ def sample_noise(pipe, shape, generator, device, dtype):
     return noise
 
 
-def prepare_conditions(pipe, image, proxy_video, height, width, num_frames, batch_size, device, dtype):
+def prepare_reference_pixels(pipe, image, height, width, batch_size, device):
     pixels = pipe.proxy_video_processor.preprocess(image).float() * 255
     scale = max(height / pixels.shape[-2], width / pixels.shape[-1])
     resized_height = max(height, math.ceil(pixels.shape[-2] * scale))
@@ -228,8 +228,12 @@ def prepare_conditions(pipe, image, proxy_video, height, width, num_frames, batc
     pixels = pixels.to(device=device)
     if pixels.shape[0] == 1:
         pixels = pixels.expand(batch_size, -1, -1, -1)
-    if pixels.shape[0] != batch_size or proxy_video.shape[0] not in (1, batch_size):
-        raise ValueError("Image and proxy-video batch sizes must be one or match the prompt batch.")
+    if pixels.shape[0] != batch_size:
+        raise ValueError("Image batch size must be one or match the prompt batch.")
+    return pixels
+
+
+def encode_image_embeds(pipe, pixels, device, dtype):
     clip_embeds = None
     if pipe.model_size == "14b":
         if pipe.image_encoder is None or pipe.image_processor is None:
@@ -243,20 +247,10 @@ def prepare_conditions(pipe, image, proxy_video, height, width, num_frames, batc
             .hidden_states[-2]
             .to(dtype)
         )
-        condition_video = torch.cat(
-            [pixels.unsqueeze(2), pixels.new_zeros(batch_size, 3, num_frames - 1, height, width)], dim=2
-        )
-    else:
-        condition_video = pixels.unsqueeze(2)
-    condition = pipe.vae.encode(condition_video.to(pipe.vae.dtype)).latent_dist.mode()
-    mean = condition.new_tensor(pipe.vae.config.latents_mean).view(1, -1, 1, 1, 1)
-    inverse_std = 1 / condition.new_tensor(pipe.vae.config.latents_std).view(1, -1, 1, 1, 1)
-    condition = ((condition - mean) * inverse_std).to(dtype)
-    first_frame = condition[:, :, :1]
-    if pipe.model_size == "14b":
-        mask = condition.new_zeros(batch_size, pipe.vae_scale_factor_temporal, *condition.shape[2:])
-        mask[:, :, 0] = 1
-        condition = torch.cat([mask, condition], dim=1)
+    return clip_embeds
+
+
+def encode_proxy_features(pipe, proxy_video, batch_size, device):
     proxy_video = proxy_video.expand(batch_size, -1, -1, -1, -1)
     proxy_height, proxy_width = pipe.config.proxy_image_size
     proxy_features = []
@@ -279,17 +273,44 @@ def prepare_conditions(pipe, image, proxy_video, height, width, num_frames, batc
         ):
             projected = pipe.proxy_projection(hidden if pipe.config.proxy_projection_autocast else hidden.float())
         proxy_features.append(projected.float().permute(0, 3, 1, 2))
-    return condition, first_frame, clip_embeds, torch.stack(proxy_features, dim=2)
+    return torch.stack(proxy_features, dim=2)
 
 
-def prepare_model_input(pipe, latents, condition, first_frame, timestep, start=0, causal=False):
+def prepare_conditions(pipe, image, proxy_video, height, width, num_frames, batch_size, device, dtype):
+    pixels = prepare_reference_pixels(pipe, image, height, width, batch_size, device)
+    if proxy_video.shape[0] not in (1, batch_size):
+        raise ValueError("Proxy-video batch size must be one or match the prompt batch.")
+    clip_embeds = encode_image_embeds(pipe, pixels, device, dtype)
+    if pipe.model_size == "14b":
+        condition_video = torch.cat(
+            [pixels.unsqueeze(2), pixels.new_zeros(batch_size, 3, num_frames - 1, height, width)], dim=2
+        )
+    else:
+        condition_video = pixels.unsqueeze(2)
+    condition = pipe.vae.encode(condition_video.to(pipe.vae.dtype)).latent_dist.mode()
+    mean = condition.new_tensor(pipe.vae.config.latents_mean).view(1, -1, 1, 1, 1)
+    inverse_std = 1 / condition.new_tensor(pipe.vae.config.latents_std).view(1, -1, 1, 1, 1)
+    condition = ((condition - mean) * inverse_std).to(dtype)
+    first_frame = condition[:, :, :1]
+    if pipe.model_size == "14b":
+        mask = condition.new_zeros(batch_size, pipe.vae_scale_factor_temporal, *condition.shape[2:])
+        mask[:, :, 0] = 1
+        condition = torch.cat([mask, condition], dim=1)
+    proxy_features = encode_proxy_features(pipe, proxy_video, batch_size, device)
+    return condition, first_frame, clip_embeds, proxy_features
+
+
+def prepare_model_input(
+    pipe, latents, condition, first_frame, timestep, start=0, causal=False, *, condition_start=None
+):
     model_input = latents
     pin_first = start == 0 and (causal or pipe.model_size == "5b")
     if pin_first:
         model_input = model_input.clone()
         model_input[:, :, :1] = first_frame
     if pipe.model_size == "14b":
-        model_input = torch.cat([model_input, condition[:, :, start : start + latents.shape[2]]], dim=1)
+        offset = start if condition_start is None else condition_start
+        model_input = torch.cat([model_input, condition[:, :, offset : offset + latents.shape[2]]], dim=1)
     timestep = timestep.expand(latents.shape[0])
     if pin_first:
         patch = pipe.transformer.config.patch_size
@@ -299,7 +320,7 @@ def prepare_model_input(pipe, latents, condition, first_frame, timestep, start=0
     return model_input, timestep
 
 
-def decode_latents(pipe, latents, output_type):
+def decode_latents(pipe, latents, output_type, *, decoder_cache=None):
     if output_type == "latent":
         return latents
     latents = latents.to(pipe.vae.dtype)
@@ -314,7 +335,8 @@ def decode_latents(pipe, latents, output_type):
     if dtype is None:
         parameter = next(decoder.parameters(), None)
         dtype = parameter.dtype if parameter is not None else raw_latents.dtype
-    video = decoder.decode(raw_latents.to(dtype=dtype), return_dict=False)[0]
+    decode_kwargs = {} if decoder_cache is None else {"cache": decoder_cache}
+    video = decoder.decode(raw_latents.to(dtype=dtype), return_dict=False, **decode_kwargs)[0]
     return pipe.video_processor.postprocess_video(video, output_type=output_type)
 
 

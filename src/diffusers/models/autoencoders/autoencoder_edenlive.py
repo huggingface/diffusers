@@ -1,4 +1,4 @@
-# Copyright 2026 NVIDIA CORPORATION & AFFILIATES and The HuggingFace Team. All rights reserved.
+# Copyright 2026 The VAST-AI Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from dataclasses import dataclass, field
+
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -20,6 +22,17 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils.accelerate_utils import apply_forward_hook
 from ..modeling_utils import ModelMixin
 from .vae import DecoderOutput
+
+
+@dataclass
+class EdenLiveLightTAEDecodeCache:
+    """Temporal memory for one LightTAE stream with a fixed model, batch, shape, device and dtype."""
+
+    dec_state: dict[int, torch.Tensor] = field(default_factory=dict)
+
+    def reset(self):
+        """Discard temporal memory and restore first-chunk trimming."""
+        self.dec_state.clear()
 
 
 class EdenLiveTAEClamp(nn.Module):
@@ -67,7 +80,7 @@ class EdenLiveLightTAEDecoder(ModelMixin, ConfigMixin):
 
     Input latents use the VAE's raw (unnormalized) scale and `[batch, channels, frames, height, width]` layout. Decoded
     RGB samples use the same layout, range `[-1, 1]`, and `(frames - 1) * 4 + 1` frames. Temporal state belongs to each
-    `decode` call and is never retained on the model.
+    `decode` call unless an explicit cache is supplied, and is never retained on the model.
 
     Parameters:
         latent_channels (`int`, *optional*, defaults to 16):
@@ -141,8 +154,10 @@ class EdenLiveLightTAEDecoder(ModelMixin, ConfigMixin):
         return frames.permute(0, 2, 1, 3, 4) * 2 - 1
 
     @apply_forward_hook
-    def decode(self, latents: torch.Tensor, return_dict: bool = True):
-        """Decode raw VAE latents using fresh temporal state for each call.
+    def decode(
+        self, latents: torch.Tensor, return_dict: bool = True, *, cache: EdenLiveLightTAEDecodeCache | None = None
+    ):
+        """Decode raw VAE latents, optionally continuing an existing stream.
 
         Args:
             latents (`torch.Tensor`):
@@ -152,31 +167,39 @@ class EdenLiveLightTAEDecoder(ModelMixin, ConfigMixin):
                 deviation. The pipeline performs this conversion automatically when decoding frames.
             return_dict (`bool`, defaults to `True`):
                 Return a [`DecoderOutput`] when true; otherwise return a one-element tuple containing the sample.
+            cache (`EdenLiveLightTAEDecodeCache`, *optional*):
+                Temporal memory shared across calls. Only the first chunk is trimmed; subsequent calls produce
+                `T_latent * scale_factor_temporal` frames. Without a cache, every call starts a new video.
 
         Returns:
             [`DecoderOutput`] or `tuple[torch.Tensor]`:
                 RGB sample in `(B, 3, T, H, W)` layout and [-1, 1] range. The output has `(T_latent - 1) *
-                scale_factor_temporal + 1` frames and spatial dimensions multiplied by `scale_factor_spatial`. Internal
-                chunks share temporal state only within this call, including a short final chunk.
+                scale_factor_temporal + 1` frames for a new video, or `T_latent * scale_factor_temporal` for an
+                existing cache, and spatial dimensions multiplied by `scale_factor_spatial`. Internal
+                chunks share temporal state, including a short final chunk.
         """
         if latents.ndim != 5 or latents.shape[1] != self.config.latent_channels or latents.shape[2] < 1:
             raise ValueError("Expected nonempty NCTHW latents with the configured latent channel count.")
-        state = {}
+        state = {} if cache is None else cache.dec_state
         sample = torch.cat([self._decode_chunk(chunk, state) for chunk in latents.split(3, dim=2)], dim=2)
         if not return_dict:
             return (sample,)
         return DecoderOutput(sample=sample)
 
-    def forward(self, latents: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor]:
+    def forward(
+        self, latents: torch.Tensor, return_dict: bool = True, *, cache: EdenLiveLightTAEDecodeCache | None = None
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         """
         Args:
             latents (`torch.Tensor`):
                 Raw video latents in `[batch, channels, frames, height, width]` layout.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`DecoderOutput`] instead of a tuple containing the decoded sample.
+            cache (`EdenLiveLightTAEDecodeCache`, *optional*):
+                Temporal memory carried across decode calls.
 
         Returns:
             [`DecoderOutput`] or `tuple[torch.Tensor]`:
                 The decoded RGB video in NCTHW layout and `[-1, 1]` range.
         """
-        return self.decode(latents, return_dict=return_dict)
+        return self.decode(latents, return_dict=return_dict, cache=cache)

@@ -1,22 +1,24 @@
 # EdenLive inference
 
-`inference_edenlive.py` runs offline video generation from a reference image, text, and a proxy video. It supports
-the four released profiles through `EdenLivePipeline`, with single-GPU execution or Ulysses context parallelism
-and PyTorch FSDP2 across two or four GPUs. See the [pipeline guide](../../docs/source/en/api/pipelines/edenlive.md)
-for the Python API, component loading, decoder overrides, and output formats.
+Render game from a reference image, prompt, and proxy video with `EdenLivePipeline`.
+See the [pipeline guide](../../docs/source/en/api/pipelines/edenlive.md) for the Python API.
 
 ## Setup
 
-Run these commands from the Diffusers repository root in an environment with a CUDA-compatible PyTorch build:
+Install a CUDA-compatible [PyTorch](https://pytorch.org/get-started/locally/) build and matching torchvision.
+From the Diffusers repository root, install the pipeline dependencies:
 
 ```bash
-pip install -e .
-pip install --upgrade -r examples/edenlive/requirements.txt
+pip install -e . "transformers>=4.56.0" accelerate sentencepiece ftfy
 ```
 
-Transformers must provide `DINOv3ViTModel`, `UMT5EncoderModel`, and `CLIPVisionModel`. Multi-GPU execution also
-requires PyTorch's composable FSDP2 API (`torch.distributed.fsdp.fully_shard`). The release directory or Hub repository
-must contain EdenLive's root `model_index.json` and the original weights for the selected profile.
+For the CLI examples, add video reading and writing:
+
+```bash
+pip install av imageio imageio-ffmpeg
+```
+
+The [example requirements](requirements.txt) collect both groups, plus PyTorch and torchvision.
 
 ## Single GPU
 
@@ -28,8 +30,8 @@ python examples/edenlive/inference_edenlive.py \
   --num-frames 49 --output edenlive.mp4
 ```
 
-`--model` also accepts a local release or saved Diffusers pipeline. Add `--local-files-only` to use only local or
-cached weights. The CLI requires `--profile`; for a saved pipeline it must match the saved configuration.
+`--model` accepts a Hub repository, local release, or saved Diffusers pipeline. Select its profile with `--profile`.
+Use `--local-files-only` for local or cached weights.
 
 | Profile | Default height x width | Default fps | Default steps | Guidance scale |
 |---|---|---|---|---|
@@ -38,18 +40,16 @@ cached weights. The CLI requires `--profile`; for a saved pipeline it must match
 | `5b-causal` | 704 x 1280 | 24 | 4 per chunk | 1 |
 | `14b-causal` | 480 x 832 | 16 | 4 per chunk | 1 |
 
-The CLI resamples source timestamps to `--fps`, center-crops to the output aspect ratio, and resizes the frames.
-`--num-frames` must be positive, have the form $4k+1$, and fit the clip at the selected frame rate. If omitted, the
-largest valid prefix is used. Output height and width must be multiples of 32 for 5B or 16 for 14B. Unlike this CLI,
-the Python pipeline expects frames that are already sampled at the desired output frame rate.
+The CLI resamples to `--fps`, center-crops, and resizes the input. Set `--num-frames` to a positive $4k+1$ within
+the resampled clip, or omit it to use the largest valid prefix. Custom height and width use multiples of 32 for 5B
+and 16 for 14B.
 
-The released causal schedules contain four fixed evaluation points. Keep `--num-inference-steps` at four or omit it
-for causal profiles. The bidirectional profiles accept a different positive step count. `--guidance-scale` above
-one enables the negative prompt branch; supply its text with `--negative-prompt`.
+Causal profiles use four fixed steps per chunk. Bidirectional profiles support `--num-inference-steps`.
+Set `--guidance-scale` above one to use `--negative-prompt`.
 
 ## Multiple GPUs
 
-Launch one process per GPU, with two or four processes:
+Use two or four GPUs with Ulysses context parallelism and PyTorch FSDP2 (`torch.distributed.fsdp.fully_shard`):
 
 ```bash
 torchrun --standalone --nproc_per_node=2 examples/edenlive/inference_edenlive.py \
@@ -59,10 +59,7 @@ torchrun --standalone --nproc_per_node=2 examples/edenlive/inference_edenlive.py
   --num-frames 81 --output edenlive.mp4
 ```
 
-Set `--nproc_per_node=4` for four GPUs. The transformer uses Ulysses context parallelism and FSDP2 over the same
-ranks; other components are replicated. Add `--no-fsdp` to retain context parallelism with replicated transformer
-weights. Only rank zero writes the video and JSON report. When comparing seeded results, keep the parallel degree
-and attention backend fixed because BF16 matrix multiplication shapes can affect predictions.
+Set `--nproc_per_node=4` for four GPUs. Add `--no-fsdp` to use context parallelism with replicated transformer weights.
 
 ## Temporal prompts
 
@@ -79,12 +76,11 @@ For `5b-bidir`, pass `--text-timeline timeline.json`. This example describes 49 
 }
 ```
 
-Match the JSON `fps` and `num_frames` to `--fps` and `--num-frames`. Segments start at zero, are contiguous, and
-cover the last frame timestamp; each segment must include at least one latent frame. A latent frame at an exact
-segment boundary uses the segment on its left. Other profiles do not accept timelines.
+Match the JSON `fps` and `num_frames` to the CLI values. Use contiguous segments covering zero through the last
+frame timestamp, with at least one latent frame per segment.
 
-For either causal profile, pass `--chunk-prompts prompts.json` containing a JSON list of complete prompts. A 49-frame
-video has 13 latent frames, so the released three-frame chunks require five prompts:
+For either causal profile, pass `--chunk-prompts prompts.json` with one prompt per chunk. A 49-frame video uses
+five chunks, including a shorter final chunk:
 
 ```json
 [
@@ -96,18 +92,33 @@ video has 13 latent frames, so the released three-frame chunks require five prom
 ]
 ```
 
-The final chunk may be shorter. The CLI still requires `--prompt` when either temporal format is supplied; the
-timeline or chunk prompts determine the positive captions used for those segments or chunks. Each invocation
-starts a fresh causal history.
+Include `--prompt` in the command; the timeline or chunk prompts supply the text used during generation.
 
-## Decoding and reports
+## Streaming from proxy images
 
-LightTAE is the default decoder for original releases. Add `--full-vae` to use the full Wan VAE for output decoding.
-The VAE always encodes the reference image. `--vae-tiling` enables tiling on that VAE; it does not enable LightTAE
-tiling. Use `--seed` to select the noise seed and `--attention-backend` to select an available Diffusers attention
-backend. Run `python examples/edenlive/inference_edenlive.py --help` for all options.
+`inference_edenlive_streaming.py` supports both causal profiles. Pass ordered RGB images with `--proxy-frames`,
+already sampled at latent cadence: three images per chunk.
 
-The output path selects the video filename. A JSON file with the same stem records the CLI arguments, resampled
-source frame indices, output fps and frame count, world size, FSDP2 status, and per-rank elapsed seconds and peak
-allocated/reserved GPU memory in bytes. Timing covers the pipeline call, including conditioning and decoding;
-it excludes checkpoint loading, input video preprocessing, and video export.
+```bash
+python examples/edenlive/inference_edenlive_streaming.py \
+  --model /path/to/EdenLive --profile 5b-causal \
+  --image reference.png --prompt "A character walks through snow" \
+  --proxy-frames proxy/000.png proxy/004.png proxy/008.png proxy/012.png proxy/016.png proxy/020.png \
+  --chunk-prompts stream_prompts.json --output stream.mp4 --fps 24 --local-files-only
+```
+
+The optional `stream_prompts.json` contains one string per chunk, for example
+`["A character walks through snow", "A character walks through fire"]`. Omit it to use `--prompt` throughout.
+
+The script writes video incrementally: 9 frames for the first chunk, then 12 per chunk. Set `--fps` to the desired
+playback rate (24 by default). For application integration, see the
+[streaming API](../../docs/source/en/api/pipelines/edenlive.md#streaming-causal-video).
+
+## Offline options and reports
+
+LightTAE is the default decoder for original releases. Use `--full-vae` for Wan VAE decoding and `--vae-tiling` for
+tiling on the Wan VAE. Set the noise seed with `--seed` and the attention backend with `--attention-backend`.
+Run `python examples/edenlive/inference_edenlive.py --help` for all options.
+
+The offline script writes a JSON report beside the video with arguments, sampled frame indices, timing, and peak GPU
+memory. Timing covers the pipeline call, including conditioning and decoding.

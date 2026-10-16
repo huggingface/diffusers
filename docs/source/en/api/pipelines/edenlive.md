@@ -12,124 +12,108 @@ specific language governing permissions and limitations under the License.
 
 # EdenLive
 
-[EdenLive](https://github.com/VAST-AI-Research/EdenLive-Official) generates video from a reference image, text, and a
-proxy video. It uses a trained DINOv3 encoder and projection to condition a Wan-based diffusion transformer.
+[EdenLive](https://github.com/VAST-AI-Research/EdenLive-Official) generates video from a reference image, prompt, and
+RGB proxy video. [`EdenLivePipeline`] supports bidirectional generation and causal generation with persistent history.
 
-[`EdenLivePipeline`] supports both bidirectional generation and successive causal chunks with clean latent history.
-Select a released configuration with `profile` when loading the original checkpoint repository. Defaults apply when
-`num_inference_steps` and `guidance_scale` are omitted:
+## Basic usage
 
-| Profile | Sampling | Default steps | Guidance scale | Default height x width |
-|---|---|---|---|---|
-| `5b-bidir` | UniPC over the full video | 48 | 3 | 704 x 1280 |
-| `14b-bidir` | Euler over the full video | 30 | 3 | 480 x 832 |
-| `5b-causal` | Stochastic Euler per chunk | 4 | 1 | 704 x 1280 |
-| `14b-causal` | Stochastic Euler per chunk | 4 | 1 | 480 x 832 |
+Prepare an RGB reference image and a proxy video with at least 49 frames sampled at 24 fps. The reference image
+provides appearance; the proxy video provides scene structure and motion. For installation, see the
+[example README](https://github.com/huggingface/diffusers/tree/main/examples/edenlive#setup).
 
-The released causal checkpoints use fixed four-step schedules. Changing `num_inference_steps` alone to another
-value raises an error; it does not select a new distilled schedule. Guidance greater than one enables the negative
-prompt branch.
-
-## Generate a video
-
-```py
+```python
 import torch
 from diffusers import EdenLivePipeline
 from diffusers.utils import export_to_video, load_image, load_video
 
-pipe = EdenLivePipeline.from_pretrained(
-    "VAST-AI/EdenLive", profile="5b-causal"
-).to("cuda")
+pipe = EdenLivePipeline.from_pretrained("VAST-AI/EdenLive", profile="5b-causal")
+pipe.to("cuda")
+
+image = load_image("reference.png")
+video = load_video("proxy-24fps.mp4")
+prompt = "A character explores a snowy landscape."
 
 frames = pipe(
-    prompt="A character explores a snowy landscape.",
-    image=load_image("reference.png"),
-    video=load_video("proxy-24fps.mp4"),
+    image=image,
+    video=video,
+    prompt=prompt,
     num_frames=49,
-    generator=torch.Generator("cuda").manual_seed(42),
+    generator=torch.Generator().manual_seed(42),
 ).frames[0]
 export_to_video(frames, "edenlive.mp4", fps=24)
 ```
 
-## Load and save checkpoints
+`from_pretrained()` loads the model, `pipe(...)` generates the video, and `.frames[0]` selects the first video in
+the output batch. Each offline call starts a new video. Use the [streaming API](#streaming-causal-video) to continue
+generation across calls.
 
-Use `EdenLivePipeline.from_pretrained()` for both formats:
+## Choose a profile
 
-| Format | Required metadata | Profile selection |
-|---|---|---|
-| Original release | Root `model_index.json` with the EdenLive original-format marker | Pass one of the four complete profile names |
-| Saved Diffusers pipeline | `model_index.json` and saved component directories | Omit `profile` to use the saved value |
+Select `profile` when loading an original release. These defaults apply when generation options are omitted:
 
-The original release loader reads the existing checkpoint files without writing converted weights. It fetches only
-the files needed for the selected profile and components. The same entry accepts a Hub repository ID or local
-directory, plus `revision`, `cache_dir`, `token`, and `local_files_only=True` for cached or offline loading.
+| Profile | Sampling | Steps | Guidance scale | Height × width | Example fps |
+|---|---|---|---|---|---|
+| `5b-bidir` | Bidirectional | 48 | 3 | 704 × 1280 | 24 |
+| `14b-bidir` | Bidirectional | 30 | 3 | 480 × 832 | 16 |
+| `5b-causal` | Causal | 4 per chunk | 1 | 704 × 1280 | 24 |
+| `14b-causal` | Causal | 4 per chunk | 1 | 480 × 832 | 16 |
 
-The original release's default precision is BF16 for the transformer, VAE, UMT5 text encoder, CLIP encoder, and
-LightTAE, with FP32 parameters for the DINO encoder and projection. An explicit `dtype` (or `torch_dtype`) can be
-a single dtype or a mapping by component name. Initialized component overrides retain their identity and dtype.
-Active `device_map`, `variant`, and quantization options are not supported by the original-format loader. Load on CPU
-and then place the pipeline on the desired device, as in the example above.
-
-Save and reload a standard pipeline with:
-
-```py
-pipe.save_pretrained("edenlive-saved")
-pipe = EdenLivePipeline.from_pretrained("edenlive-saved").to("cuda")
-```
-
-The saved configuration retains the full profile and decoder choice. A conflicting explicit profile raises an error.
-Older standard snapshots with size-only profiles or the former causal class name are normalized in memory; newly
-saved snapshots use `EdenLivePipeline`. The generic `DiffusionPipeline.from_pretrained()` entry is not supported for
-original releases.
+Causal profiles use four fixed denoising steps per chunk. Bidirectional profiles support `num_inference_steps`.
+Set `guidance_scale` above one to use a `negative_prompt`.
 
 ## Prepare the inputs
 
-The reference image and proxy video should depict the same composition. Supply a full RGB proxy video already
-sampled at the desired output frame rate. The Python pipeline does not resample timestamps; the command-line
-example below does. The pipeline then selects proxy frames at the VAE temporal stride once.
+Supply proxy frames sampled at the desired output frame rate. The pipeline selects frames at the VAE temporal
+stride; timestamp resampling is handled by the [CLI example](#multiple-gpus-and-the-command-line-example).
 
 | Input | Accepted layout and values |
 |---|---|
-| `image` | RGB PIL image, or floating-point NumPy/tensor image with values in [0, 1] |
+| `image` | RGB PIL image, or floating-point NumPy/tensor image in [0, 1] |
 | `video` | List of RGB PIL frames; tensor `(T, 3, H, W)` or `(B, T, 3, H, W)`; NumPy `(T, H, W, 3)` or `(B, T, H, W, 3)` with floating-point values in [0, 1] |
-| `prompt` | String or list of strings; alternatively provide `prompt_embeds` or a supported temporal prompt format |
-| `height`, `width` | Output dimensions, both multiples of 32 for 5B or 16 for 14B |
-| `num_frames` | Positive frame count of the form \\(4k+1\\), no greater than the input video length |
+| `prompt` | String or list of strings; use `prompt_embeds` for precomputed text embeddings |
+| `height`, `width` | Output dimensions, multiples of 32 for 5B or 16 for 14B |
+| `num_frames` | Positive frame count of the form $4k+1$, within the input video length |
 
-Here `B` is the video batch size, `T` the decoded frame count, and `H` and `W` the frame height and width. The reference
-image is resized and center-cropped to the output dimensions. Proxy RGB frames are processed at `proxy_image_size`
-(480 x 832 by default) with the profile's `proxy_resize_mode` before DINO encoding. The command-line example also
-crops and resizes proxy frames to the output aspect ratio before passing them to the pipeline. Omitting `num_frames`
-selects the largest valid input prefix; missing frames are not padded or repeated by the pipeline.
+Here `B` is batch size, `T` is frame count, and `H` and `W` are image height and width. The reference image is
+resized and center-cropped to the output dimensions. Omitting `num_frames` uses the largest valid input prefix.
 
-Both model sizes use temporal compression by four. A video of \\(F\\) frames has
-\\(T_{\mathrm{latent}}=(F-1)/4+1\\) latent frames. The 5B model uses 48 latent channels and spatial compression by 16;
-the 14B model uses 16 channels and spatial compression by 8.
+## Change prompts during a video
 
-## Choose a decoder
+### Causal chunk prompts
 
-Original releases load the matching [`EdenLiveLightTAEDecoder`] by default. Use the full Wan VAE with:
+Use `chunk_prompts` for either causal profile. This example reuses the pipeline, image, and video from
+[Basic usage](#basic-usage). A 49-frame video has five chunks, so it takes five prompts:
 
-```py
-pipe = EdenLivePipeline.from_pretrained(
-    "VAST-AI/EdenLive", profile="14b-causal", decoder=None
-)
+```python
+chunk_prompts = [
+    "A character walks through snow.",
+    "A character walks through snow.",
+    "The character approaches a campfire.",
+    "The character warms their hands beside the campfire.",
+    "The character rests beside the campfire.",
+]
+
+frames = pipe(
+    image=image,
+    video=video,
+    chunk_prompts=chunk_prompts,
+    num_frames=49,
+    generator=torch.Generator().manual_seed(42),
+).frames[0]
+export_to_video(frames, "chunk-prompts.mp4", fps=24)
 ```
 
-Pass `decoder=my_decoder` to use an initialized compatible decoder. The full VAE remains available to encode the
-reference image. A custom decoder must implement `decode(latents, return_dict=False)` and return a tuple whose
-first item is an RGB tensor in `(B, 3, T, H, W)` layout and `[-1, 1]` range. Its `config.latent_channels`, `scale_factor_temporal`, and
-`scale_factor_spatial` must match the VAE. Use a compatible `ModelMixin` decoder for pipeline-wide device placement
-and standard serialization. Plain `torch.nn.Module` decoders support instance loading and decoding with explicit
-component placement. A decoder receives raw, unnormalized VAE latents; the pipeline applies the inverse latent
-normalization before calling it. Selecting `output_type="latent"` bypasses this conversion and decoding.
+`chunk_prompts` supplies one text prompt per chunk for a single video.
 
-## Temporal prompts
+### Bidirectional text timeline
 
-The `5b-bidir` profile accepts `text_timeline` instead of a single prompt. Each segment contains `start_sec`, `end_sec`,
-and `text`. For example, this timeline describes 49 frames sampled at 24 fps:
+For `5b-bidir`, use `text_timeline` to assign prompts to time ranges. Reuse the image and video from Basic usage
+and load the bidirectional profile:
 
-```py
+```python
+pipe = EdenLivePipeline.from_pretrained("VAST-AI/EdenLive", profile="5b-bidir")
+pipe.to("cuda")
+
 timeline = {
     "fps": 24,
     "num_frames": 49,
@@ -138,29 +122,127 @@ timeline = {
         {"start_sec": 1.0, "end_sec": 2.0, "text": "The character approaches a warm campfire."},
     ],
 }
+
+frames = pipe(
+    image=image,
+    video=video,
+    text_timeline=timeline,
+    num_frames=49,
+    generator=torch.Generator().manual_seed(42),
+).frames[0]
+export_to_video(frames, "timeline.mp4", fps=24)
 ```
 
-Pass it as `text_timeline=timeline` with the image and video. Segments must start at zero, be contiguous, and cover
-the timestamp of the last requested frame. Each segment must receive at least one latent frame. A latent frame
-exactly at a segment end belongs to the segment on its left. The timeline frame count must match the requested
-video, and its `fps` describes the supplied frames; it does not trigger resampling. For a batch, provide one timeline
-dictionary per video. Timeline prompts cannot be combined with precomputed text embeddings. Other profiles reject
-`text_timeline`.
+Match the timeline's `fps` and `num_frames` to the input and requested output. Use contiguous segments from zero
+through the last frame timestamp, with at least one latent frame per segment.
 
-Causal profiles accept `chunk_prompts`, a list containing one complete prompt per latent chunk. For the released
-three-frame chunk size, 49 decoded frames produce 13 latent frames and require five prompts; the last chunk has
-one latent frame. This interface requires batch size one and cannot be combined with precomputed positive text
-embeddings. A single `prompt` applies to all chunks when `chunk_prompts` is omitted. Bidirectional profiles reject
-`chunk_prompts`.
+## Streaming causal video
 
-Each pipeline call starts with fresh causal history. The released 18-frame latent context includes six retained
-sink frames and the current chunk. Within a call, completed clean chunks are committed to the cache before the
-next chunk is generated.
+Both causal profiles support successive calls with shared history. Initialize one state, then pass three already
+sampled RGB proxy images per chunk. This example changes the prompt for the second chunk and saves the 21 output
+frames as one video:
+
+```python
+import numpy as np
+import torch
+from diffusers import EdenLivePipeline
+from diffusers.utils import export_to_video, load_image
+
+pipe = EdenLivePipeline.from_pretrained("VAST-AI/EdenLive", profile="5b-causal")
+pipe.to("cuda")
+
+proxy_paths = [
+    ["proxy/chunk-0-0.png", "proxy/chunk-0-1.png", "proxy/chunk-0-2.png"],
+    ["proxy/chunk-1-0.png", "proxy/chunk-1-1.png", "proxy/chunk-1-2.png"],
+]
+prompts = ["A character walks through snow.", "The character approaches a campfire."]
+
+state = pipe.create_stream_state(
+    image=load_image("reference.png"),
+    prompt=prompts[0],
+    generator=torch.Generator().manual_seed(42),
+    output_type="np",
+)
+chunks = []
+try:
+    for paths, current_prompt in zip(proxy_paths, prompts):
+        result = pipe(
+            stream_state=state,
+            proxy_frames=[load_image(path) for path in paths],
+            prompt=current_prompt,
+        )
+        chunks.append(result.frames[0])
+finally:
+    pipe.close_stream(state)
+
+export_to_video(np.concatenate(chunks, axis=0), "stream.mp4", fps=24)
+```
+
+Each call returns its chunk immediately: 9 RGB frames initially, then 12 per call. For incremental video-file
+writing, see [`inference_edenlive_streaming.py`](https://github.com/huggingface/diffusers/blob/main/examples/edenlive/inference_edenlive_streaming.py).
+
+Set resolution, guidance, negative prompt, generator, and output format in `create_stream_state()`. Keep these
+settings and the pipeline's device and dtype fixed for the stream. Update `prompt` or `prompt_embeds` in each
+generation call; omitting both retains the current prompt. Run calls sharing a pipeline serially.
+
+Streaming uses batch size one and three proxy images per call. Tensor inputs have shape `(3, 3, H, W)`; NumPy
+inputs use `(3, H, W, 3)`, with finite floating-point RGB values in [0, 1]. RGB output uses LightTAE.
+Set `output_type="latent"` at initialization to receive three latent frames per call. For 14B, keep VAE slicing
+and tiling disabled. Close a state after a model execution failure and initialize a new one.
+
+## Load and save checkpoints
+
+`EdenLivePipeline.from_pretrained()` accepts a Hub repository or a local directory. Original releases use a root
+`model_index.json` and the selected profile's original weights. Saved Diffusers pipelines retain their profile and
+decoder choice:
+
+```python
+pipe.save_pretrained("edenlive-saved")
+pipe = EdenLivePipeline.from_pretrained("edenlive-saved").to("cuda")
+```
+
+For local or cached weights:
+
+```python
+pipe = EdenLivePipeline.from_pretrained(
+    "/path/to/EdenLive", profile="14b-causal", local_files_only=True
+).to("cuda")
+```
+
+Original releases load the transformer, VAE, text encoder, CLIP, and LightTAE in BF16, with DINO and its projection
+in FP32. Use `dtype` for an explicit dtype or per-component mapping. Original-release loading supports
+`revision`, `cache_dir`, and `token`; `device_map`, `variant`, and quantization options require a saved
+Diffusers pipeline.
+
+### CPU offload
+
+Load the pipeline on CPU and enable model offload before generation:
+
+```python
+pipe = EdenLivePipeline.from_pretrained("VAST-AI/EdenLive", profile="5b-causal")
+pipe.enable_model_cpu_offload()
+```
+
+The offline and streaming calls above use the same interface with CPU offload enabled.
+
+### Offline decoder selection
+
+Original releases use [`EdenLiveLightTAEDecoder`] by default. To decode offline videos with the full Wan VAE,
+pass `decoder=None` when loading:
+
+```python
+pipe = EdenLivePipeline.from_pretrained(
+    "VAST-AI/EdenLive", profile="5b-causal", decoder=None
+).to("cuda")
+```
+
+Pass an initialized decoder as `decoder=my_decoder` to use a compatible custom decoder.
+`output_type="latent"` returns normalized diffusion latents before decoding.
 
 ## Multiple GPUs and the command-line example
 
-The inference example resamples video timestamps and uses Ulysses context parallelism with PyTorch FSDP2 on the
-same ranks. Run with Python for one GPU or `torchrun` for two or four GPUs:
+The CLI resamples proxy video timestamps and supports Ulysses context parallelism with PyTorch FSDP2 on two or four
+GPUs. From the Diffusers repository root:
 
 ```bash
 torchrun --standalone --nproc_per_node=2 examples/edenlive/inference_edenlive.py \
@@ -170,58 +252,51 @@ torchrun --standalone --nproc_per_node=2 examples/edenlive/inference_edenlive.py
   --num-frames 81 --output edenlive.mp4
 ```
 
-Use `--full-vae` for full VAE decoding. Only rank zero exports the video; the example also records timing and peak
-memory. Keep the parallel degree fixed when comparing reproducible outputs: BF16 matrix multiplication shapes
-can change predictions, as also observed in the reference implementation.
-
-The example defaults to 24 fps for 5B and 16 fps for 14B. See the
-[example README](https://github.com/huggingface/diffusers/tree/main/examples/edenlive) for installation, single-GPU
-usage, temporal prompt JSON files, and the timing report format.
+See the [example README](https://github.com/huggingface/diffusers/tree/main/examples/edenlive) for installation,
+single-GPU commands, prompt files, and output reports.
 
 ## EdenLivePipeline
 
-The constructor registers initialized components. `from_pretrained()` loads a release or saved pipeline;
-`__call__()` prepares the image, proxy features, text, and initial noise before running the profile's sampling path.
-Use `generator` for reproducible noise and `callback_on_step_end` to inspect or replace supported tensors after a
-step. In causal mode callbacks receive the current chunk, while their step indices count across all chunks.
+Load weights with `from_pretrained()`. Generate a complete video with `pipe(image=..., video=..., prompt=...)`,
+or initialize a stream with `create_stream_state()` and generate chunks with
+`pipe(stream_state=..., proxy_frames=..., prompt=...)`. Call `close_stream()` when the stream ends.
 
 [[autodoc]] EdenLivePipeline
     - all
     - __call__
+    - create_stream_state
+    - close_stream
 
 ## EdenLiveLightTAEDecoder
 
-This decoder implements the released Tiny decoding path without an encoder. The 5B variant uses 48 latent channels
-and `patch_size=2`; the 14B variant uses 16 channels and `patch_size=1`. `decode()` accepts raw VAE latents in
-`(B, C, T_latent, H_latent, W_latent)` layout and returns `DecoderOutput.sample` in `(B, 3, T, H, W)` layout with
-values in `[-1, 1]`. Unlike pipeline frame output, its channel axis precedes the time axis.
+`decode()` takes raw VAE latents in `(B, C, T_latent, H_latent, W_latent)` layout and returns RGB in
+`(B, 3, T, H, W)`, with values in [-1, 1]. To decode the pipeline's `output_type="latent"` yourself, first invert
+the VAE normalization:
 
-To decode `output_type="latent"` yourself, invert the VAE normalization first:
-
-\\[
+$$
 z_{\mathrm{raw}} = z_{\mathrm{diffusion}} \odot \sigma + \mu.
-\\]
+$$
 
-Here \\(\mu\\) and \\(\sigma\\) are the channel-wise `vae.config.latents_mean` and `vae.config.latents_std`, and
-\\(\odot\\) denotes element-wise multiplication with broadcasting. Move the unnormalized latents to the decoder's
-device and dtype before decoding. The pipeline handles this when returning decoded frames. Every `decode()` call
-creates fresh temporal state and supports a short final chunk; separate calls do not share decoder history.
+Here $\mu$ and $\sigma$ are `vae.config.latents_mean` and `vae.config.latents_std`, broadcast over batch, time,
+and spatial dimensions; $\odot$ is element-wise multiplication. Match the latents to the decoder's device and dtype.
+
+Pass an `EdenLiveLightTAEDecodeCache` to retain decoder history across calls. Without a cache, each decode starts
+a new video. The pipeline manages this cache for streaming generation.
 
 [[autodoc]] EdenLiveLightTAEDecoder
     - decode
 
 ## EdenLivePipelineOutput
 
-With `return_dict=True`, read the result from `.frames`:
+Read generated frames from `.frames`, or use `return_dict=False` to receive `(frames,)`:
 
 | `output_type` | `.frames` layout | Values |
 |---|---|---|
 | `"np"` (default) | NumPy `(B, T, H, W, 3)` | Floating-point RGB in [0, 1] |
 | `"pt"` | Tensor `(B, T, 3, H, W)` | Floating-point RGB in [0, 1] |
 | `"pil"` | One list of PIL RGB frames per video | PIL images |
-| `"latent"` | Tensor `(B, C, T_latent, H_latent, W_latent)` | Normalized diffusion latents, without RGB bounds |
+| `"latent"` | Tensor `(B, C, T_latent, H_latent, W_latent)` | Normalized diffusion latents |
 
-With `return_dict=False`, the pipeline returns `(frames,)` with the same selected representation. Select
-`result.frames[0]` to export the first decoded video with `export_to_video()`.
+Use `result.frames[0]` to select the first video for `export_to_video()`.
 
 [[autodoc]] pipelines.edenlive.pipeline_output.EdenLivePipelineOutput

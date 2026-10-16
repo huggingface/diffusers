@@ -1,4 +1,4 @@
-# Copyright 2026 The HuggingFace Team. All rights reserved.
+# Copyright 2026 The VAST-AI Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,6 +26,37 @@ class EdenLiveVideoProcessor(VideoProcessor):
 
     def __init__(self, vae_scale_factor=1, do_normalize=False, do_convert_rgb=True):
         super().__init__(vae_scale_factor=vae_scale_factor, do_normalize=do_normalize, do_convert_rgb=do_convert_rgb)
+
+    def preprocess_proxy_chunk(self, proxy_frames):
+        """Convert three already sampled RGB condition frames to BCTHW without temporal subsampling."""
+        if isinstance(proxy_frames, (np.ndarray, torch.Tensor)):
+            if proxy_frames.ndim == 5 and proxy_frames.shape[0] == 1:
+                proxy_frames = proxy_frames[0]
+            if proxy_frames.ndim != 4:
+                raise ValueError("Pass a single proxy chunk with three RGB frames.")
+        elif not isinstance(proxy_frames, list):
+            raise ValueError("Pass three RGB proxy frames as a list, NumPy array, or tensor.")
+        if len(proxy_frames) != 3:
+            raise ValueError("Each streaming chunk requires exactly three already sampled proxy frames.")
+        frame_type = type(proxy_frames[0])
+        if not all(isinstance(frame, frame_type) for frame in proxy_frames):
+            raise ValueError("All proxy frames must use the same image format.")
+        for frame in proxy_frames:
+            if isinstance(frame, PIL.Image.Image):
+                if frame.mode != "RGB":
+                    raise ValueError("Proxy frames must be RGB images.")
+                continue
+            if not isinstance(frame, (np.ndarray, torch.Tensor)) or frame.ndim != 3:
+                raise ValueError("Each proxy frame must be an RGB image.")
+            channel_axis = 0 if isinstance(frame, torch.Tensor) else -1
+            if frame.shape[channel_axis] != 3 or any(size == 0 for size in frame.shape):
+                raise ValueError("Proxy frames must have three RGB channels.")
+            values = torch.as_tensor(frame)
+            if not torch.is_floating_point(values) or not torch.isfinite(values).all():
+                raise ValueError("NumPy and tensor proxy frames must contain finite floating-point RGB in [0, 1].")
+            if values.min() < 0 or values.max() > 1:
+                raise ValueError("Proxy frames must contain RGB values in [0, 1].")
+        return self.preprocess_video([proxy_frames])
 
     def preprocess_proxy_video(self, video, num_frames=None, temporal_scale_factor=4):
         if isinstance(video, (np.ndarray, torch.Tensor)) and video.ndim in (4, 5):
