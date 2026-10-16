@@ -16,7 +16,7 @@
 
 FLUX.3 is an image generation model from Black Forest Labs: a single transformer ([`Flux3Transformer2DModel`]) generates images from a text prompt, alone or together with one or more reference images. Text conditioning comes from Qwen3-VL, and images use the FLUX.2 packed autoencoder ([`AutoencoderKLFlux2`]).
 
-FLUX.3 ships as a modular pipeline. It takes full scene captions, not short prompts: a request sent as typed gives generic output. Every request on this page goes through the [prompt upsampler](#prompt-upsampling) first, a separate 9B model ([black-forest-labs/flux-3-image-klein-pup](https://huggingface.co/black-forest-labs/flux-3-image-klein-pup)) that the pipeline does not run on its own. Load it beside the pipeline, then generate:
+FLUX.3 ships as a modular pipeline. It takes full scene captions, not short prompts: a request sent as typed gives generic output. We strongly advise running the [prompt upsampler](#prompt-upsampling) on every request, text-to-image and editing alike, or any LLM with the same system prompts; every example on this page does. The upsampler is a separate 9B model ([black-forest-labs/flux-3-image-klein-pup](https://huggingface.co/black-forest-labs/flux-3-image-klein-pup)) that the pipeline does not run on its own. Load it beside the pipeline, then generate:
 
 ```python
 import json
