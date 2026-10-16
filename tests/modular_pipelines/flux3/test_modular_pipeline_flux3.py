@@ -17,6 +17,7 @@ import numpy as np
 import PIL.Image
 import pytest
 import torch
+from transformers import Qwen3_5ForConditionalGeneration
 
 from diffusers.modular_pipelines import (
     Flux3AutoBlocks,
@@ -45,6 +46,7 @@ FLUX3_DISTILLED_TINY_REPO = "hf-internal-testing/tiny-flux3-image-distilled-modu
 
 FLUX3_WORKFLOWS = {
     "text2image": [
+        ("prompt_upsampler", "Flux3Text2ImagePromptUpsampleStep"),
         ("text_encoder", "Flux3TextEncoderStep"),
         ("denoise.input", "Flux3TextInputStep"),
         ("denoise.prepare_latents", "Flux3PrepareLatentsStep"),
@@ -55,6 +57,7 @@ FLUX3_WORKFLOWS = {
         ("decode", "Flux3DecodeStep"),
     ],
     "image_conditioned": [
+        ("prompt_upsampler", "Flux3ImageConditionedPromptUpsampleStep"),
         ("text_encoder", "Flux3TextEncoderStep"),
         ("vae_encoder.preprocess", "Flux3ProcessImagesInputStep"),
         ("vae_encoder.encode", "Flux3VaeEncoderStep"),
@@ -72,6 +75,8 @@ FLUX3_WORKFLOWS = {
 
 # `expected_workflow_defaults`: the components, inputs and component configs each workflow's blocks carry
 FLUX3_COMPONENTS = {
+    "prompt_upsampler": "Qwen3_5ForConditionalGeneration",
+    "prompt_upsampler_processor": "AutoProcessor",
     "text_encoder": "Qwen3VLForConditionalGeneration",
     "tokenizer": "AutoProcessor",
     "transformer": "Flux3Transformer2DModel",
@@ -85,6 +90,8 @@ FLUX3_SAMPLING = {"scheduler": {"shift": 6.93}, "guider": {"guidance_scale": 3.5
 # every optional input with its declared default. text2image declares the 1024 x 1024 size; image_conditioned derives the
 # size from the first reference image, so its branch declares none
 FLUX3_INPUTS = {
+    "boxes": None,
+    "max_new_tokens": 3584,
     "negative_prompt": None,
     "max_sequence_length": 8192,
     "text_encoder_out_layers": (4, 8, 12, 16, 20, 24, 28, 32),
@@ -118,6 +125,7 @@ FLUX3_WORKFLOW_DEFAULTS = {
 # guider, no negative prompt, 16 steps by default)
 FLUX3_DISTILLED_WORKFLOWS = {
     "text2image": [
+        ("prompt_upsampler", "Flux3Text2ImagePromptUpsampleStep"),
         ("text_encoder", "Flux3DistilledTextEncoderStep"),
         ("denoise.input", "Flux3DistilledTextInputStep"),
         ("denoise.prepare_latents", "Flux3PrepareLatentsStep"),
@@ -128,6 +136,7 @@ FLUX3_DISTILLED_WORKFLOWS = {
         ("decode", "Flux3DecodeStep"),
     ],
     "image_conditioned": [
+        ("prompt_upsampler", "Flux3ImageConditionedPromptUpsampleStep"),
         ("text_encoder", "Flux3DistilledTextEncoderStep"),
         ("vae_encoder.preprocess", "Flux3ProcessImagesInputStep"),
         ("vae_encoder.encode", "Flux3VaeEncoderStep"),
@@ -182,6 +191,7 @@ class Flux3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     def get_dummy_inputs(self, seed=0):
         return {
             "prompt": "a tiny fox in the snow",
+            "max_new_tokens": 16,  # the tiny upsampler's caption; the real default would take minutes on CPU
             "generator": self.get_generator(seed),
             "num_inference_steps": 2,
             "height": 64,
@@ -217,6 +227,27 @@ class TestFlux3ModularPipelineFast(Flux3ModularPipelineTesterConfig, ModularPipe
         # only using the first reference changes the result
         single = pipe(**inputs, image=references[:1], output="images")
         assert not torch.allclose(images, single)
+
+    def test_prompt_upsampling(self):
+        # the prompt upsampler step, first in the default blocks, expands `prompt` into the caption the pipeline then
+        # encodes. The tiny repos point the upsampler components at a tiny random Qwen3.5
+        pipe = self.get_pipeline().to(torch_device)
+        assert isinstance(pipe.prompt_upsampler, Qwen3_5ForConditionalGeneration)
+        inputs = self.get_dummy_inputs()
+        out = pipe(**inputs, output=["images", "prompt"])
+        assert len(out["prompt"]) > len(inputs["prompt"])
+
+        # without the step, the prompt is encoded as given and the image differs
+        blocks = self.pipeline_blocks_class()
+        blocks.sub_blocks.pop("prompt_upsampler")
+        plain = blocks.init_pipeline(self.pretrained_model_name_or_path)
+        plain.load_components(dtype=torch.float32)
+        plain.to(torch_device)
+        assert "prompt_upsampler" not in plain.components
+        inputs = self.get_dummy_inputs()
+        direct = plain(**inputs, output=["images", "prompt"])
+        assert direct["prompt"] == inputs["prompt"]
+        assert not torch.allclose(out["images"], direct["images"])
 
     def test_image_to_image_default_size(self):
         # without a size, image-to-image generates at the default area (1024 x 1024 for the real model) at the first
@@ -287,6 +318,7 @@ class TestFlux3ModularPipelineFast(Flux3ModularPipelineTesterConfig, ModularPipe
         # node graph as in the docs: embeddings from a standalone text node (no negative prompt) fed to a
         # generation node whose guider needs unconditional embeddings -> a clear error, not a crash in the transformer
         blocks = self.pipeline_blocks_class()
+        blocks.sub_blocks.pop("prompt_upsampler")  # the prompt side of the graph stops at the text node
         text_node = blocks.sub_blocks.pop("text_encoder").init_pipeline(self.pretrained_model_name_or_path)
         blocks.sub_blocks.pop("decode")
         generate_node = blocks.init_pipeline(self.pretrained_model_name_or_path)
