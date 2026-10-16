@@ -25,10 +25,31 @@ The temporal geometry is fixed by `clip_length` (17 pixel frames per encoder chu
 import torch
 from diffusers import AutoencoderKLMiniMaxH3
 
-vae = AutoencoderKLMiniMaxH3.from_pretrained(
-    "MiniMaxAI/MiniMax-H3", subfolder="vae", dtype=torch.float32
-).to("cuda")  # or "mps", "xpu", "cpu"
+vae = AutoencoderKLMiniMaxH3.from_pretrained("MiniMaxAI/MiniMax-H3", subfolder="vae", dtype=torch.float32).to(
+    "cuda"
+)  # or "mps", "xpu", "cpu"
 ```
+
+## Parallel tiled decoding
+
+Pass an initialized PyTorch distributed process group to `enable_tiling` to distribute the original spatial tiles
+across its ranks. Temporal chunks, tile overlaps, and blending stay unchanged. Each rank holds the full VAE and
+receives the complete decoded output; encoding remains local.
+
+Initialize the process group and select each rank's device before loading the VAE. Every member must use identical
+weights, latents, and tile settings and call `decode` together. For example, in an existing distributed application:
+
+```python
+import torch.distributed as dist
+
+vae.enable_tiling(process_group=dist.group.WORLD)  # or an existing subgroup
+with torch.inference_mode():
+    decoded = vae.decode(latents).sample
+```
+
+This option requires inference without gradients and runs outside a full-graph `torch.compile` region. Call
+`vae.enable_tiling()` without a process group to return to local tiled decoding, or `vae.disable_tiling()` to disable
+spatial tiling altogether.
 
 ## AutoencoderKLMiniMaxH3
 
