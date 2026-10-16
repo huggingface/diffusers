@@ -40,7 +40,7 @@ class PAN2TransformerTesterConfig(BaseModelTesterConfig):
 
     @property
     def pretrained_model_name_or_path(self):
-        return "wuqing157/tiny-pan2-modular-pipe"
+        return "hf-internal-testing/tiny-pan2-modular-pipe"
 
     @property
     def pretrained_model_kwargs(self):

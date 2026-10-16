@@ -57,7 +57,7 @@ PAN2_WORKFLOWS = {
 class PAN2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = PAN2ModularPipeline
     pipeline_blocks_class = PAN2Blocks
-    pretrained_model_name_or_path = "wuqing157/tiny-pan2-modular-pipe"
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-pan2-modular-pipe"
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset()
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
