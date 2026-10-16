@@ -45,6 +45,18 @@ image
 
 Learn more about creating and loading pipelines in the [Creating a pipeline](https://huggingface.co/docs/diffusers/modular_diffusers/modular_pipeline#creating-a-pipeline) and [Loading components](https://huggingface.co/docs/diffusers/modular_diffusers/modular_pipeline#loading-components) guides.
 
+## Coming from DiffusionPipeline
+
+If you are familiar with [`DiffusionPipeline`] and are working with a [`ModularPipeline`] for the first time, a few things work differently. They are listed here so that you have them in mind before you continue.
+
+- **Loading is lazy and flexible.** [`~ModularPipeline.from_pretrained`] builds the pipeline from the repository's `modular_model_index.json` without loading any weights. [`~ModularPipeline.load_components`] then loads them, and it doesn't have to be all at once: by default it loads everything, but you can load only the components you name with `names`, or the set one workflow needs with `workflow`. [`~ModularPipeline.update_components`] lets you reuse a component you already have, or one that differs from the repository's spec. See [Loading components](./modular_pipeline#loading-components) and [Updating components](./modular_pipeline#updating-components).
+- **[`ModularPipeline`] reads a different index, `modular_model_index.json`.** [`DiffusionPipeline`] and the `AutoPipeline` classes don't. However, [`ModularPipeline`] also loads a regular diffusers repository with a `model_index.json`, as long as the model has a modular pipeline.
+- **A call returns the pipeline state**, which holds the intermediate values too (`prompt_embeds`, `latents`, ...). Ask for what you need with the `output` argument, `output="images"` or `output=["images", "latents"]`, or read an attribute of the state as above. See [States](./modular_diffusers_states).
+- **Classifier-free guidance is supported in the `guider` component**, not a `guidance_scale` call argument: `pipe.update_components(guider=ClassifierFreeGuidance(guidance_scale=5.0))`. See the [guiders guide](../using-diffusers/guiders).
+- **There is no `callback_on_step_end`**; however, you can insert a block into the denoising loop to use your existing callback functions. See [Modular pipelines](../using-diffusers/callback#modular-pipelines) in the callbacks guide.
+- **The pipeline is a graph of blocks** that you can change (pop, insert, replace) before building it with [`~ModularPipelineBlocks.init_pipeline`]; `pipe.blocks` returns a copy, so edit the blocks first. See [Compose new workflows](#compose-new-workflows).
+- **Offloading is handled by a [`ComponentsManager`]**, which can serve several pipelines that share components. See the [ComponentsManager guide](./components_manager#offloading).
+
 ## Understand the structure
 
 A [`ModularPipeline`] has two parts: a **definition** (the blocks) and a **state** (the loaded components and configs).

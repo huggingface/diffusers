@@ -36,15 +36,10 @@ image.save("fox.png")
 
 `prompt` is the only required input: the pipeline carries the recommended sampling settings (50 steps, guidance scale 3.5, scheduler shift 6.93) and generates 1024 x 1024 images by default. It takes one prompt per call; use `num_images_per_prompt` for several images of the same prompt.
 
+As you can see in the example above, loading and running differ a little from a `DiffusionPipeline`. Loading is lazy: [`~ModularPipeline.from_pretrained`] only builds the pipeline, and you call [`~ModularPipeline.load_components`] to load the weights. A call returns the pipeline state, and you ask for what you need with `output`: `output="images"` here, or `output=["images", "prompt"]` to also get the caption the prompt upsampler wrote.
+
 > [!TIP]
-> There are a few things `ModularPipeline` working different from a `DiffusionPipeline`; please read the [quickstart](../../modular_diffusers/quickstart) if you're working with ModularPipeline for the first time.
-> - Loading is lazy: [`~ModularPipeline.from_pretrained`] reads the repository's `modular_model_index.json` and builds the pipeline without loading any weights, and [`~ModularPipeline.load_components`] then loads them. You don't have to load all the components: [`~ModularPipeline.load_components`] takes `names` to load a subset, or `workflow` to load one workflow's components. You can also use [`~ModularPipeline.update_components`] reuse component you already have, or one that differs from the default (e.g. another guider, a quantized transformer). See [Loading components](../../modular_diffusers/modular_pipeline#loading-components) and [Updating components](../../modular_diffusers/modular_pipeline#updating-components).
-> - `__call__` returns the pipeline state, which holds the intermediate values too (for example, `prompt_embeds`, `latents`, ...). Ask for what you need with `output` argument, as above: `output="images"`, `output=["images", "prompt"]`, or `output="latents"`.
-> - Classifier-free guidance is supported through the `guider` component, not a call argument `guidance_scale`. See [Guidance scale](#guidance-scale).
-> - There is no `callback_on_step_end`; You can insert a block in the denoising loop to support callbakcs. See [callbacks](#per-step-callbacks).
-> - The pipeline is a graph of blocks that you can change (pop, insert, replace) before building it, as [Prompt upsampling](#prompt-upsampling) does to drop the upsampler step. See [Compose new workflows](../../modular_diffusers/quickstart#compose-new-workflows).
-> - Offloading is handled by a [`ComponentsManager`] to be able to handle multipe workflows with shared components. See [Memory](#memory) and the [ComponentsManager guide](../../modular_diffusers/components_manager#offloading).
-> - `DiffusionPipeline.from_pretrained` and the `AutoPipeline` classes don't read `modular_model_index.json`; load with [`ModularPipeline`] as above.
+> If you're working with `ModularPipeline` for the first time, read [Coming from DiffusionPipeline](../../modular_diffusers/quickstart#coming-from-diffusionpipeline) in the quickstart. Besides loading and outputs, a few other things differ: [guidance](#guidance-scale), [callbacks](#per-step-callbacks) and [offloading](#memory).
 
 ## Prompt upsampling
 
@@ -52,7 +47,7 @@ Prompting matters: FLUX 3 Image Klein takes full scene captions that describe th
 
 The prompt upsampler turns a short request, together with the reference images when editing, into the full scene caption the model takes: medium and style, scene, lighting and camera, each subject with its colors, materials and position in the frame. One model covers text-to-image, editing with reference images and layout with boxes. The caption it wrote comes back as the `prompt` output: in the example above, pass `output=["images", "prompt"]` and read `out["prompt"]` to see the caption the image model received. `max_new_tokens` caps its length (3584 by default).
 
-you can print out the `doc` to see what it takes and what it writes:
+You can print the step's `doc` to see what it takes and what it writes:
 
 ```python
 print(pipe.blocks.sub_blocks["prompt_upsampler"].doc)
@@ -199,65 +194,18 @@ print(t2i.blocks.doc)
 
 ## Per-step callbacks
 
-Modular pipelines don't carry the `callback_on_step_end` and `interrupt` mechanism of `DiffusionPipeline`. It will come with first-class streaming support instead: [huggingface/diffusers#14159](https://github.com/huggingface/diffusers/pull/14159). For now, to reuse your existing callback functions, you can insert a block into the denoising loop: it receives the loop's `BlockState` with the step index and timestep, and can read or edit `latents`. 
-
-> [!TIP]
-> Edit the blocks *before* [`~ModularPipelineBlocks.init_pipeline`]: `pipe.blocks` returns a copy, so changing it after the pipeline exists has no effect.
-
-The block below takes the callback as a pipeline input and calls it with the same signature as the [callbacks guide](../../using-diffusers/callback): the pipeline, the step index, the timestep and a dict of tensors, whose returned values are written back.
+To use an existing callback function, insert a block into the denoising loop. The [callbacks guide](../../using-diffusers/callback#modular-pipelines) has a simple example with the `CallbackOnStepEnd` block and the `walk_denoise_loops` helper:
 
 ```python
-from typing import Callable
-
-from diffusers.modular_pipelines import Flux3AutoBlocks, InputParam, LoopSequentialPipelineBlocks, ModularPipelineBlocks
-
-
-class CallbackOnStepEnd(ModularPipelineBlocks):
-    @property
-    def inputs(self):
-        return [
-            InputParam(
-                "callback_on_step_end",
-                type_hint=Callable,
-                description="Called after each scheduler step as `callback(pipe, i, t, {'latents': ...})`; the dict it returns is written back.",
-            ),
-            InputParam("latents", required=True),
-        ]
-
-    def __call__(self, components, block_state, i, t):
-        if block_state.callback_on_step_end is not None:
-            outputs = block_state.callback_on_step_end(components, i, t, {"latents": block_state.latents})
-            block_state.latents = outputs.get("latents", block_state.latents)
-        return components, block_state
-
-
-def walk_denoise_loops(block):
-    """Every denoising loop in the blocks, whichever workflow it belongs to."""
-    if isinstance(block, LoopSequentialPipelineBlocks) and "denoiser" in block.sub_blocks:
-        yield block
-    for sub in getattr(block, "sub_blocks", {}).values():
-        yield from walk_denoise_loops(sub)
-
-
-blocks = Flux3AutoBlocks()
+blocks = Flux3AutoBlocks()  # or Flux3DistilledAutoBlocks
 for loop in walk_denoise_loops(blocks):
-    loop.sub_blocks["callback"] = CallbackOnStepEnd()  # appended after the last step of the loop
+    loop.sub_blocks["callback"] = CallbackOnStepEnd()
 pipe = blocks.init_pipeline("black-forest-labs/flux-3-image-klein-base")
+
+image = pipe(prompt=caption, callback_on_step_end=my_callback, output="images")[0]
 ```
 
-`walk_denoise_loops` walks the blocks so the same snippet works for other modular pipelines. `callback_on_step_end` is now an input of the pipeline, and a callback written for a `DiffusionPipeline` works as is:
-
-```python
-def decode_tensors(pipe, step, timestep, callback_kwargs):
-    latents = callback_kwargs["latents"]
-    ...  # preview, log or edit the latents
-    return callback_kwargs
-
-
-image = pipe(prompt=caption, callback_on_step_end=decode_tensors, output="images")[0]
-```
-
-[Early stopping](../../using-diffusers/callback#early-stopping) works differently: a `DiffusionPipeline` sets `pipeline._interrupt = True` and its loop skips the remaining steps, but a block cannot skip the loop it runs in. Raise from the callback instead: the exception propagates out of `pipe(...)` (no image is decoded), and the pipeline stays usable afterwards.
+To stop early, raise from the callback; there is no `interrupt` flag.
 
 ## Memory
 
