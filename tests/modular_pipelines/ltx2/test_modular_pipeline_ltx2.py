@@ -25,6 +25,7 @@ from diffusers.modular_pipelines import ComponentSpec, LTX2AutoBlocks, LTX2Modul
 from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
 from diffusers.pipelines.ltx2.pipeline_ltx2_ic_lora import LTX2ReferenceCondition
 
+from ...testing_utils import assert_tensors_close
 from ..testing_utils import (
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
@@ -153,6 +154,15 @@ class TestLTX2Text2VideoModularPipelineFast(
         assert audio.shape[0] == 1
         assert audio.shape[1] == pipe.vocoder.config.out_channels
         assert torch.isnan(audio).sum() == 0
+
+    def test_decode_audio_false_skips_the_audio_only(self):
+        pipe = self.get_pipeline().to("cpu")
+
+        with_audio = pipe(**self.get_dummy_inputs(), output=["videos", "audio"])
+        without_audio = pipe(**self.get_dummy_inputs(), decode_audio=False, output=["videos", "audio"])
+
+        assert without_audio["audio"] is None
+        assert_tensors_close(without_audio["videos"], with_audio["videos"], atol=0, rtol=0)
 
     def test_auto_duration_predicts_a_grid_valid_frame_count(self):
         pipe = self.get_pipeline().to("cpu")
