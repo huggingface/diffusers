@@ -209,7 +209,7 @@ The block below takes the callback as a pipeline input and calls it with the sam
 ```python
 from typing import Callable
 
-from diffusers.modular_pipelines import Flux3AutoBlocks, InputParam, ModularPipelineBlocks
+from diffusers.modular_pipelines import Flux3AutoBlocks, InputParam, LoopSequentialPipelineBlocks, ModularPipelineBlocks
 
 
 class CallbackOnStepEnd(ModularPipelineBlocks):
@@ -231,14 +231,21 @@ class CallbackOnStepEnd(ModularPipelineBlocks):
         return components, block_state
 
 
+def walk_denoise_loops(block):
+    """Every denoising loop in the blocks, whichever workflow it belongs to."""
+    if isinstance(block, LoopSequentialPipelineBlocks) and "denoiser" in block.sub_blocks:
+        yield block
+    for sub in getattr(block, "sub_blocks", {}).values():
+        yield from walk_denoise_loops(sub)
+
+
 blocks = Flux3AutoBlocks()
-for workflow in ("text2image", "image_conditioned"):
-    loop = blocks.sub_blocks["denoise"].sub_blocks[workflow].sub_blocks["denoise"]
-    loop.sub_blocks.insert("callback", CallbackOnStepEnd(), 2)  # after the scheduler step
+for loop in walk_denoise_loops(blocks):
+    loop.sub_blocks["callback"] = CallbackOnStepEnd()  # appended after the last step of the loop
 pipe = blocks.init_pipeline("black-forest-labs/flux-3-image-klein-base")
 ```
 
-`callback_on_step_end` is now an input of the pipeline, and a callback written for a `DiffusionPipeline` works as is:
+`walk_denoise_loops` walks the blocks so the same snippet works for other modular pipelines. `callback_on_step_end` is now an input of the pipeline, and a callback written for a `DiffusionPipeline` works as is:
 
 ```python
 def decode_tensors(pipe, step, timestep, callback_kwargs):
