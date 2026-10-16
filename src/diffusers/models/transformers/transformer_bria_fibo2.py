@@ -223,13 +223,11 @@ class BriaFibo2AttnProcessor:
         query = attn.norm_q(query)
         key = attn.norm_k(key)
 
-        # Apply RoPE
+        # Apply RoPE in float32, then cast back to the input's dtype
         def apply_rotary_emb(x_in: torch.Tensor, freqs_cis: torch.Tensor) -> torch.Tensor:
-            with torch.amp.autocast("cuda", enabled=False):
-                x = torch.view_as_complex(x_in.float().reshape(*x_in.shape[:-1], -1, 2))
-                freqs_cis = freqs_cis.unsqueeze(2)
-                x_out = torch.view_as_real(x * freqs_cis).flatten(3)
-                return x_out.type_as(x_in)
+            x = torch.view_as_complex(x_in.float().reshape(*x_in.shape[:-1], -1, 2))
+            x_out = torch.view_as_real(x * freqs_cis.unsqueeze(2)).flatten(3)
+            return x_out.type_as(x_in)
 
         if freqs_cis is not None:
             query = apply_rotary_emb(query, freqs_cis)
