@@ -2326,7 +2326,9 @@ def all_to_all_single_any_qkv_async(
     # S_LOCAL maybe not equal for all ranks in dynamic shape case,
     # since we don't know the actual shape before this timing, thus,
     # we have to use all gather to collect the S_LOCAL first.
-    output_split_sizes = gather_size_by_comm(S_LOCAL, group)
+    output_split_sizes = kwargs.get("seq_lengths")
+    if output_split_sizes is None:
+        output_split_sizes = gather_size_by_comm(S_LOCAL, group)
     x = x.flatten(0, 1)  # (world_size * S_LOCAL, B, H_LOCAL, D)
     x = funcol.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
 
@@ -2365,7 +2367,9 @@ def all_to_all_single_any_o_async(x: torch.Tensor, group: dist.ProcessGroup, **k
     # b.tensor_split(4)[0].shape[1])
 
     S_LOCAL = kwargs.get("Q_S_LOCAL")
-    input_split_sizes = gather_size_by_comm(S_LOCAL, group)
+    input_split_sizes = kwargs.get("seq_lengths")
+    if input_split_sizes is None:
+        input_split_sizes = gather_size_by_comm(S_LOCAL, group)
     x = x.permute(1, 0, 2, 3).contiguous()  # (S_GLOBAL, B, H_LOCAL, D)
     output_split_sizes = [S_LOCAL] * world_size
     x = funcol.all_to_all_single(x, output_split_sizes, input_split_sizes, group)
@@ -2780,6 +2784,12 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         _, S_KV_LOCAL, _, _ = key.shape
 
         metadata = ulysses_anything_metadata(query)
+        sequence_lengths = _parallel_config._ulysses_sequence_lengths
+        if sequence_lengths is not None:
+            local_length = sequence_lengths[dist.get_rank(group)]
+            if query.shape[1] != local_length or key.shape[1] != local_length:
+                raise ValueError("The forward sequence plan requires matching self-attention shard lengths.")
+            metadata = {**metadata, "seq_lengths": list(sequence_lengths)}
         query_wait = all_to_all_single_any_qkv_async(query, group, **metadata)
         key_wait = all_to_all_single_any_qkv_async(key, group, **metadata)
         value_wait = all_to_all_single_any_qkv_async(value, group, **metadata)
