@@ -871,7 +871,7 @@ class DreamBoothDataset(Dataset):
 
                 if dest_image.shape[0] == 1:
                     # Gray scale image
-                    dest_image = Image.fromarray(dest_image.squeeze().numpy(), mode="L")
+                    dest_image = Image.fromarray(dest_image.squeeze(0).numpy(), mode="L")
                 else:
                     # RGB scale image: (C, H, W) -> (H, W, C)
                     dest_image = TF.to_pil_image(dest_image)
