@@ -69,7 +69,7 @@ EXAMPLE_DOC_STRING = """
         ...     motion_adapter=motion_adapter,
         ...     scheduler=scheduler,
         ...     pag_applied_layers=["mid"],
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ... ).to("cuda")
 
         >>> video = pipe(

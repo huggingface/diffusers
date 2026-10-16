@@ -155,7 +155,7 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
         >>> image = Image.open(BytesIO(response.content)).convert("RGB")
 
         >>> pipe = VersatileDiffusionPipeline.from_pretrained(
-        ...     "shi-labs/versatile-diffusion", torch_dtype=torch.float16
+        ...     "shi-labs/versatile-diffusion", dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 
@@ -258,7 +258,7 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
         >>> import torch
 
         >>> pipe = VersatileDiffusionPipeline.from_pretrained(
-        ...     "shi-labs/versatile-diffusion", torch_dtype=torch.float16
+        ...     "shi-labs/versatile-diffusion", dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 
@@ -377,7 +377,7 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
         >>> text = "a red car in the sun"
 
         >>> pipe = VersatileDiffusionPipeline.from_pretrained(
-        ...     "shi-labs/versatile-diffusion", torch_dtype=torch.float16
+        ...     "shi-labs/versatile-diffusion", dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 

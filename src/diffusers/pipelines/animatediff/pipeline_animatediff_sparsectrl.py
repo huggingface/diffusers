@@ -69,9 +69,9 @@ EXAMPLE_DOC_STRING = """
         >>> vae_id = "stabilityai/sd-vae-ft-mse"
         >>> device = "cuda"
 
-        >>> motion_adapter = MotionAdapter.from_pretrained(motion_adapter_id, torch_dtype=torch.float16).to(device)
-        >>> controlnet = SparseControlNetModel.from_pretrained(controlnet_id, torch_dtype=torch.float16).to(device)
-        >>> vae = AutoencoderKL.from_pretrained(vae_id, torch_dtype=torch.float16).to(device)
+        >>> motion_adapter = MotionAdapter.from_pretrained(motion_adapter_id, dtype=torch.float16).to(device)
+        >>> controlnet = SparseControlNetModel.from_pretrained(controlnet_id, dtype=torch.float16).to(device)
+        >>> vae = AutoencoderKL.from_pretrained(vae_id, dtype=torch.float16).to(device)
         >>> scheduler = DPMSolverMultistepScheduler.from_pretrained(
         ...     model_id,
         ...     subfolder="scheduler",
@@ -85,7 +85,7 @@ EXAMPLE_DOC_STRING = """
         ...     controlnet=controlnet,
         ...     vae=vae,
         ...     scheduler=scheduler,
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ... ).to(device)
         >>> pipe.load_lora_weights(lora_adapter_id, adapter_name="motion_lora")
         >>> pipe.fuse_lora(lora_scale=1.0)

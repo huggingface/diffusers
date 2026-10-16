@@ -52,7 +52,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # Load the Motif-Video pipeline
         >>> motif_video_model_id = "Motif-Technologies/Motif-Video-2B"
-        >>> pipe = MotifVideoPipeline.from_pretrained(motif_video_model_id, torch_dtype=torch.bfloat16)
+        >>> pipe = MotifVideoPipeline.from_pretrained(motif_video_model_id, dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A woman with long brown hair and light skin smiles at another woman with long blonde hair. The woman with brown hair wears a black jacket and has a small, barely noticeable mole on her right cheek. The camera angle is a close-up, focused on the woman with brown hair's face. The lighting is warm and natural, likely from the setting sun, casting a soft glow on the scene. The scene appears to be real-life footage"

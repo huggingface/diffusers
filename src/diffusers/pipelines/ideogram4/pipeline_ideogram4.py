@@ -57,7 +57,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import Ideogram4Pipeline
 
-        >>> pipe = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-v4", torch_dtype=torch.bfloat16)
+        >>> pipe = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-v4", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A photo of a cat holding a sign that says hello world"

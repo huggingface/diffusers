@@ -62,7 +62,7 @@ Examples:
 >>> import torch
 
 >>> pipe = diffusers.MarigoldIntrinsicsPipeline.from_pretrained(
-...     "prs-eth/marigold-iid-appearance-v1-1", variant="fp16", torch_dtype=torch.float16
+...     "prs-eth/marigold-iid-appearance-v1-1", variant="fp16", dtype=torch.float16
 ... ).to("cuda")
 
 >>> image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")
@@ -78,7 +78,7 @@ Examples:
 >>> import torch
 
 >>> pipe = diffusers.MarigoldIntrinsicsPipeline.from_pretrained(
-...     "prs-eth/marigold-iid-lighting-v1-1", variant="fp16", torch_dtype=torch.float16
+...     "prs-eth/marigold-iid-lighting-v1-1", variant="fp16", dtype=torch.float16
 ... ).to("cuda")
 
 >>> image = diffusers.utils.load_image("https://marigoldmonodepth.github.io/images/einstein.jpg")

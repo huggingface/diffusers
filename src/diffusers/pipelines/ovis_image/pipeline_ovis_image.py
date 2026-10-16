@@ -44,7 +44,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import OvisImagePipeline
 
-        >>> pipe = OvisImagePipeline.from_pretrained("AIDC-AI/Ovis-Image-7B", torch_dtype=torch.bfloat16)
+        >>> pipe = OvisImagePipeline.from_pretrained("AIDC-AI/Ovis-Image-7B", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> prompt = 'A creative 3D artistic render where the text "OVIS-IMAGE" is written in a bold, expressive handwritten brush style using thick, wet oil paint. The paint is a mix of vibrant rainbow colors (red, blue, yellow) swirling together like toothpaste or impasto art. You can see the ridges of the brush bristles and the glossy, wet texture of the paint. The background is a clean artist\'s canvas. Dynamic lighting creates soft shadows behind the floating paint strokes. Colorful, expressive, tactile texture, 4k detail.'
         >>> image = pipe(prompt, negative_prompt="", num_inference_steps=50, guidance_scale=5.0).images[0]
