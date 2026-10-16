@@ -23,14 +23,13 @@ import torch
 from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
 
 from ...utils import logging
-from ..modular_pipeline import ConditionalPipelineBlocks, ModularPipelineBlocks, PipelineState
+from ..modular_pipeline import AutoPipelineBlocks, ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import Flux3ModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-PROMPT_UPSAMPLER_REPO = "black-forest-labs/flux-3-image-klein-pup"
 MAX_REFERENCES = 10
 MAX_NEW_TOKENS = 3584
 
@@ -476,29 +475,14 @@ class Flux3Text2ImagePromptUpsampleStep(ModularPipelineBlocks):
     @property
     def expected_components(self) -> list[ComponentSpec]:
         return [
-            ComponentSpec(
-                "prompt_upsampler",
-                Qwen3_5ForConditionalGeneration,
-                pretrained_model_name_or_path=PROMPT_UPSAMPLER_REPO,
-                description="The prompt upsampler.",
-            ),
-            ComponentSpec(
-                "prompt_upsampler_processor",
-                AutoProcessor,
-                pretrained_model_name_or_path=PROMPT_UPSAMPLER_REPO,
-                description="The processor of the prompt upsampler.",
-            ),
+            ComponentSpec("prompt_upsampler", Qwen3_5ForConditionalGeneration, description="The prompt upsampler."),
+            ComponentSpec("prompt_upsampler_processor", AutoProcessor, description="Its processor."),
         ]
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(
-                "prompt_to_upsample",
-                type_hint=str,
-                required=True,
-                description="The request to expand into the prompt of the pipeline (one request per call).",
-            ),
+            InputParam.template("prompt", description="The request to expand into the full caption (one per call)."),
             InputParam(
                 "boxes",
                 type_hint=list[dict],
@@ -515,7 +499,7 @@ class Flux3Text2ImagePromptUpsampleStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam("prompt", type_hint=str, description="The upsampled caption, the prompt of the pipeline.")]
+        return [OutputParam("prompt", type_hint=str, description="The full caption, replacing the request.")]
 
     @torch.no_grad()
     def __call__(
@@ -525,7 +509,7 @@ class Flux3Text2ImagePromptUpsampleStep(ModularPipelineBlocks):
         block_state.prompt = upsample_prompt(
             components.prompt_upsampler,
             components.prompt_upsampler_processor,
-            request=block_state.prompt_to_upsample,
+            request=block_state.prompt,
             boxes=block_state.boxes,
             max_new_tokens=block_state.max_new_tokens,
         )
@@ -547,28 +531,15 @@ class Flux3ImageConditionedPromptUpsampleStep(ModularPipelineBlocks):
     @property
     def expected_components(self) -> list[ComponentSpec]:
         return [
-            ComponentSpec(
-                "prompt_upsampler",
-                Qwen3_5ForConditionalGeneration,
-                pretrained_model_name_or_path=PROMPT_UPSAMPLER_REPO,
-                description="The prompt upsampler.",
-            ),
-            ComponentSpec(
-                "prompt_upsampler_processor",
-                AutoProcessor,
-                pretrained_model_name_or_path=PROMPT_UPSAMPLER_REPO,
-                description="The processor of the prompt upsampler.",
-            ),
+            ComponentSpec("prompt_upsampler", Qwen3_5ForConditionalGeneration, description="The prompt upsampler."),
+            ComponentSpec("prompt_upsampler_processor", AutoProcessor, description="Its processor."),
         ]
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(
-                "prompt_to_upsample",
-                type_hint=str,
-                required=True,
-                description="The edit instruction to expand into the prompt of the pipeline (one request per call).",
+            InputParam.template(
+                "prompt", description="The edit instruction to expand into the full caption (one per call)."
             ),
             InputParam.template(
                 "image",
@@ -592,7 +563,7 @@ class Flux3ImageConditionedPromptUpsampleStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam("prompt", type_hint=str, description="The upsampled caption, the prompt of the pipeline.")]
+        return [OutputParam("prompt", type_hint=str, description="The full caption, replacing the request.")]
 
     @torch.no_grad()
     def __call__(
@@ -602,7 +573,7 @@ class Flux3ImageConditionedPromptUpsampleStep(ModularPipelineBlocks):
         block_state.prompt = upsample_prompt(
             components.prompt_upsampler,
             components.prompt_upsampler_processor,
-            request=block_state.prompt_to_upsample,
+            request=block_state.prompt,
             images=prepare_references(block_state.image),
             boxes=block_state.boxes,
             max_new_tokens=block_state.max_new_tokens,
@@ -611,36 +582,31 @@ class Flux3ImageConditionedPromptUpsampleStep(ModularPipelineBlocks):
         return components, state
 
 
-class Flux3PromptUpsampleStep(ConditionalPipelineBlocks):
+class Flux3AutoPromptUpsampleStep(AutoPipelineBlocks):
     """
-    Prompt upsampling step: expands `prompt_to_upsample` into `prompt`, the detailed caption FLUX.3 is trained on, with
-    the prompt upsampler (black-forest-labs/flux-3-image-klein-pup, a Qwen3.5-9B fine-tune). The task follows the
-    inputs, like the rest of the pipeline:
-       - `Flux3ImageConditionedPromptUpsampleStep` with `image` (an edit, written from the reference images).
+    Prompt upsampling step: expands `prompt` into the detailed caption FLUX.3 is trained on, with the prompt upsampler
+    (a Qwen3.5-9B fine-tune, black-forest-labs/flux-3-image-klein-pup). The task follows the inputs, like the rest of
+    the pipeline:
+       - `Flux3ImageConditionedPromptUpsampleStep` is used when `image` is provided (an edit, written from the
+         reference images).
        - `Flux3Text2ImagePromptUpsampleStep` otherwise (text-to-image).
        - Both take `boxes` for the layout form of the caption.
-       - Without `prompt_to_upsample` the step is skipped and `prompt` goes to the pipeline as given.
-    Insert it before the text encoder: `blocks.sub_blocks.insert("prompt_upsampler", Flux3PromptUpsampleStep(), 0)`.
+    To encode `prompt` as given, remove the step from the blocks: `blocks.sub_blocks.pop("prompt_upsampler")`.
     """
 
     model_name = "flux3"
     block_classes = [Flux3ImageConditionedPromptUpsampleStep, Flux3Text2ImagePromptUpsampleStep]
     block_names = ["image_conditioned", "text2image"]
-    block_trigger_inputs = ["prompt_to_upsample", "image"]
+    block_trigger_inputs = ["image", None]
 
     @property
     def description(self) -> str:
         return (
-            "Prompt upsampling step: expands `prompt_to_upsample` into `prompt`, the detailed caption FLUX.3 is "
-            "trained on, with the prompt upsampler (a Qwen3.5-9B fine-tune). The task follows the inputs, like the "
-            "rest of the pipeline:\n"
-            " - `Flux3ImageConditionedPromptUpsampleStep` with `image` (an edit, written from the reference images).\n"
+            "Prompt upsampling step: expands `prompt` into the detailed caption FLUX.3 is trained on, with the prompt "
+            "upsampler (a Qwen3.5-9B fine-tune). The task follows the inputs, like the rest of the pipeline:\n"
+            " - `Flux3ImageConditionedPromptUpsampleStep` is used when `image` is provided (an edit, written from the "
+            "reference images).\n"
             " - `Flux3Text2ImagePromptUpsampleStep` otherwise (text-to-image).\n"
             " - Both take `boxes` for the layout form of the caption.\n"
-            " - Without `prompt_to_upsample` the step is skipped and `prompt` goes to the pipeline as given."
+            'To encode `prompt` as given, remove the step from the blocks: `blocks.sub_blocks.pop("prompt_upsampler")`.'
         )
-
-    def select_block(self, prompt_to_upsample=None, image=None) -> str | None:
-        if prompt_to_upsample is None:
-            return None
-        return "image_conditioned" if image is not None else "text2image"

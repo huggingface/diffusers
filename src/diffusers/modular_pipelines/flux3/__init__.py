@@ -24,7 +24,6 @@ else:
     _import_structure["modular_blocks_flux3"] = ["Flux3AutoBlocks"]
     _import_structure["modular_blocks_flux3_distilled"] = ["Flux3DistilledAutoBlocks"]
     _import_structure["modular_pipeline"] = ["Flux3DistilledModularPipeline", "Flux3ModularPipeline"]
-    _import_structure["prompt_upsampler"] = ["Flux3PromptUpsampleStep"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -36,7 +35,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_blocks_flux3 import Flux3AutoBlocks
         from .modular_blocks_flux3_distilled import Flux3DistilledAutoBlocks
         from .modular_pipeline import Flux3DistilledModularPipeline, Flux3ModularPipeline
-        from .prompt_upsampler import Flux3PromptUpsampleStep
 else:
     import sys
 

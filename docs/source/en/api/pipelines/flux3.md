@@ -67,7 +67,7 @@ caption = pup(prompt="A red fox in a snow-covered forest clearing at golden hour
 
 ## Image-to-image
 
-Pass one or more reference images with `image`. Every reference keeps its own resolution (center-cropped to the 16-pixel grid; references above 16 megapixels are downscaled first), and the generation size defaults to one megapixel at the first reference's aspect ratio. The upsampler sees the references too and writes the caption of the target image from your instruction: what to keep, what to change.
+Pass one or more reference images with `image`. Every reference keeps its own resolution (center-cropped to the 16-pixel grid; references above 16 megapixels are downscaled first), and the generation size defaults to one megapixel at the first reference's aspect ratio. The prompt the image model takes is the *target* image as a complete caption of the reference with the edit folded in, not a one-line instruction; the upsampler sees the references too and writes it from your instruction: what to keep, what to change.
 
 ```python
 night = pipe(
