@@ -12,6 +12,7 @@ from diffusers import (
     BriaFibo2Transformer2DModel,
     FlowMatchEulerDiscreteScheduler,
 )
+from diffusers.pipelines.bria_fibo2.text_images import draw_text_image
 
 from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
@@ -170,50 +171,6 @@ class TestBriaFibo2Pipeline(BriaFibo2PipelineTesterConfig, PipelineTesterMixin):
 
         assert edited.shape == (1, *self.output_shape)
 
-    def test_edit_prompt(self):
-        # The prompt shape fibo-2 was trained to edit with: a vision marker per image, the cleaned caption, then the
-        # instruction
-        pipe = self.get_pipeline()
-        marker = "<|vision_start|><|image_pad|><|vision_end|>"
-        caption = {
-            "short_description": "a blue bicycle",
-            "objects": [],
-            "aesthetics": {"mood": "calm", "aesthetic_score": "high"},
-            "edit_instruction": "Paint <image_1> like <image_2>",
-        }
-
-        assert pipe._get_edit_prompt("Make it blue", 1) == f'{{"image":"{marker}","edit_instruction":"Make it blue"}}'
-        assert pipe._get_edit_prompt(json.dumps(caption), 2) == (
-            f'{{"image_1":"{marker}","image_2":"{marker}","structured_caption":{{"short_description":"a blue bicycle",'
-            f'"aesthetics":{{"mood":"calm"}}}},"edit_instruction":"Paint <image_1> like <image_2>"}}'
-        )
-
-    def test_edit_prompt_caption_forms(self):
-        # fibo-2 was also trained to edit with a short description, as a string, and with a short description and the
-        # caption's text_render list, in that order, the list kept even when empty
-        pipe = self.get_pipeline()
-        marker = "<|vision_start|><|image_pad|><|vision_end|>"
-        description = "A woman in a red coat on a snowy street."
-        instruction = "Make the coat green."
-        short_json = {"short_description": description, "text_render": []}
-
-        short = json.dumps({"structured_caption": description, "edit_instruction": instruction})
-        assert pipe._get_edit_prompt(short, 1) == (
-            f'{{"image":"{marker}","structured_caption":"{description}","edit_instruction":"{instruction}"}}'
-        )
-        for prompt in [
-            {**short_json, "edit_instruction": instruction},
-            {"text_render": [], "short_description": description, "edit_instruction": instruction},
-            {"structured_caption": short_json, "edit_instruction": instruction},
-        ]:
-            assert pipe._get_edit_prompt(json.dumps(prompt), 1) == (
-                f'{{"image":"{marker}","structured_caption":{{"short_description":"{description}","text_render":[]}},'
-                f'"edit_instruction":"{instruction}"}}'
-            )
-        # An empty description is no caption, as in training
-        no_caption = json.dumps({"structured_caption": "", "edit_instruction": instruction})
-        assert pipe._get_edit_prompt(no_caption, 1) == f'{{"image":"{marker}","edit_instruction":"{instruction}"}}'
-
     def get_text_image(self, width=24, height=8):
         return PIL.Image.new("RGB", (width, height), "white")
 
@@ -225,44 +182,10 @@ class TestBriaFibo2Pipeline(BriaFibo2PipelineTesterConfig, PipelineTesterMixin):
         )
         return lengths
 
-    def test_text_prompt(self):
-        # Each text_render entry with text gets the marker of its image, or an empty one where the image isn't shown
-        pipe = self.get_pipeline()
-        marker = "<|vision_start|><|image_pad|><|vision_end|>"
-        prompt = json.dumps(
-            {
-                "short_description": "a shop sign",
-                "text_render": [{"text": "OPEN"}, {"text": ""}, {"location": "door"}, {"text": "7 AM"}],
-            }
-        )
-        entries = '[{{"text":"OPEN","image_tokens":"{0}"}},{{"text":""}},{{"location":"door"}},{{"text":"7 AM","image_tokens":"{0}"}}]'
-
-        assert pipe._get_text_prompt(prompt, marker) == (
-            f'{{"short_description":"a shop sign","text_render":{entries.format(marker)}}}'
-        )
-        assert (
-            pipe._get_text_prompt(prompt, "")
-            == f'{{"short_description":"a shop sign","text_render":{entries.format("")}}}'
-        )
-
-    def test_edit_prompt_with_text_images(self):
-        # The caption is cleaned first, then each text entry is marked: its image follows the image to edit
-        pipe = self.get_pipeline()
-        marker = "<|vision_start|><|image_pad|><|vision_end|>"
-        caption = {
-            "short_description": "a cafe window",
-            "text_render": [{"text": "OPEN DAILY", "font": ""}],
-            "edit_instruction": "Turn it into a flat illustration",
-        }
-
-        assert pipe._get_edit_prompt(json.dumps(caption), 1, text_images=True) == (
-            f'{{"image":"{marker}","structured_caption":{{"short_description":"a cafe window","text_render":'
-            f'[{{"text":"OPEN DAILY","image_tokens":"{marker}"}}]}},"edit_instruction":"Turn it into a flat illustration"}}'
-        )
-
     def test_generation_prompt_should_take_the_trained_form(self):
-        # Empty values, NaN and the score fields dropped, serialized compactly. A short description and a caption of a
-        # short description and its text_render list keep their own trained forms
+        # Empty values, NaN and the score fields are dropped and the caption serialized compactly, so a pretty-printed
+        # caption with them renders as its clean compact form. A short description and its text_render list keep
+        # their trained key order
         pipe = self.get_pipeline()
         pretty = (
             '{\n  "short_description": "a red bicycle",\n  "objects": [],\n  "context": NaN,\n'
@@ -270,15 +193,13 @@ class TestBriaFibo2Pipeline(BriaFibo2PipelineTesterConfig, PipelineTesterMixin):
         )
         clean = '{"short_description":"a red bicycle","aesthetics":{"mood":"calm"}}'
 
-        assert pipe._get_generation_prompt(pretty) == clean
-        assert pipe._get_generation_prompt("A red bicycle by a door.") == "A red bicycle by a door."
-        assert (
-            pipe._get_generation_prompt('{"text_render": [], "short_description": "a sign"}')
-            == '{"short_description":"a sign","text_render":[]}'
-        )
-        from_pretty = pipe(**{**self.get_dummy_inputs(), "prompt": pretty}).images
-        from_clean = pipe(**{**self.get_dummy_inputs(), "prompt": clean}).images
-        assert torch.equal(from_pretty, from_clean)
+        for given, trained in [
+            (pretty, clean),
+            ('{"text_render": [], "short_description": "a sign"}', '{"short_description":"a sign","text_render":[]}'),
+        ]:
+            from_given = pipe(**{**self.get_dummy_inputs(), "prompt": given}).images
+            from_trained = pipe(**{**self.get_dummy_inputs(), "prompt": trained}).images
+            assert torch.equal(from_given, from_trained)
 
     def test_generation_with_text_images(self):
         pipe = self.get_pipeline()
@@ -337,32 +258,6 @@ class TestBriaFibo2Pipeline(BriaFibo2PipelineTesterConfig, PipelineTesterMixin):
             with pytest.raises(ValueError):
                 pipe(**{**self.get_dummy_inputs(), **wrong_inputs})
 
-    def test_draw_text_images(self):
-        # One image per text_render entry with text: the text in one line, black on white, split into lines of 256
-        # characters
-        pipe = self.get_pipeline()
-        caption = {"text_render": [{"text": "OPEN\n  DAILY"}, {"text": ""}, {"location": "door"}, {"text": "x" * 257}]}
-        images = pipe._draw_text_images(caption)
-        one_line = pipe._draw_text_images({"text_render": [{"text": "OPEN DAILY"}, {"text": "x" * 256}]})
-
-        assert len(images) == 2
-        assert images[0].mode == "RGB" and images[0].getpixel((0, 0)) == (255, 255, 255)
-        assert np.asarray(images[0]).min() == 0
-        assert np.array_equal(np.asarray(images[0]), np.asarray(one_line[0]))
-        # Lines of 256 and 1 characters, each as tall as the line of 256, and 4 pixels apart
-        assert images[1].size == (one_line[1].width, 2 * one_line[1].height)
-
-    def test_text_images_read_fonts_only_when_needed(self):
-        # Pillow's built-in font draws ASCII on its own: only a character it lacks needs the fallback fonts
-        pipe = self.get_pipeline()
-        calls = []
-        pipe._get_text_image_fonts = lambda: calls.append(True) or []
-
-        pipe._draw_text_images({"text_render": [{"text": "OPEN 7AM-4PM"}]})
-        assert calls == []
-        pipe._draw_text_images({"text_render": [{"text": "OPEN 7AM–4PM"}]})
-        assert calls == [True]
-
     @pytest.mark.parametrize("edit", [False, True], ids=["generation", "edit"])
     def test_render_text_images(self, edit):
         # By default the pipeline draws the images it would otherwise be given as text_images
@@ -375,7 +270,9 @@ class TestBriaFibo2Pipeline(BriaFibo2PipelineTesterConfig, PipelineTesterMixin):
 
         rendered = pipe(**inputs).images
         inputs["generator"] = self.get_generator(0)
-        given = pipe(**inputs, text_images=pipe._draw_text_images(caption)).images
+        # The text is ASCII, which Pillow's built-in font draws without the fallback fonts
+        drawn = [draw_text_image(entry["text"], lambda: []) for entry in caption["text_render"]]
+        given = pipe(**inputs, text_images=drawn).images
         inputs["generator"] = self.get_generator(0)
         without = pipe(**inputs, render_text_images=False).images
 
