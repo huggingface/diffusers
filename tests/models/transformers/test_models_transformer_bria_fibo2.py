@@ -156,23 +156,29 @@ class TestBriaFibo2TransformerTorchCompile(BriaFibo2TransformerTesterConfig, Tor
     def different_shapes_for_compilation(self):
         return [(4, 4), (4, 8), (8, 8)]
 
-    @pytest.mark.skip(
-        "RopeEmbedder, copied from Z-Image, builds its frequency table under a `torch.device` context on first use, "
-        "which Dynamo cannot trace in a full graph. Z-Image skips this test too."
+    @pytest.mark.xfail(
+        reason=(
+            "RopeEmbedder, copied from Z-Image, builds its frequency table under a `torch.device` context on first "
+            "use, which Dynamo cannot trace in a full graph."
+        ),
+        raises=torch._dynamo.exc.Unsupported,
+        strict=True,
     )
     def test_torch_compile_recompilation_and_graph_break(self):
-        pass
+        super().test_torch_compile_recompilation_and_graph_break()
 
     def test_torch_compile_repeated_blocks(self):
         # BriaFibo2TransformerBlock runs three ways: in the noise refiner (one timestep for every token), in the main
         # blocks (per-token timesteps) and in the injection blocks (plus cross-attention), so it compiles three times
         super().test_torch_compile_repeated_blocks(recompile_limit=3)
 
-    @pytest.mark.skip(
-        "RopeEmbedder, copied from Z-Image, cannot be traced in a full graph (see above). Z-Image skips this test too."
+    @pytest.mark.xfail(
+        reason="RopeEmbedder, copied from Z-Image, cannot be traced in a full graph (see above).",
+        raises=torch._dynamo.exc.Unsupported,
+        strict=True,
     )
     def test_compile_on_different_shapes(self):
-        pass
+        super().test_compile_on_different_shapes()
 
 
 class TestBriaFibo2TransformerTraining(BriaFibo2TransformerTesterConfig, TrainingTesterMixin):
