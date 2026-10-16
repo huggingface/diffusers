@@ -85,6 +85,8 @@
       title: Getting started
     - local: quantization/bitsandbytes
       title: bitsandbytes
+    - local: quantization/bfl
+      title: BFL (fp8r / nvfp4)
     - local: quantization/gguf
       title: gguf
     - local: quantization/nunchaku
@@ -351,6 +353,8 @@
         title: ErnieImageTransformer2DModel
       - local: api/models/flux2_transformer
         title: Flux2Transformer2DModel
+      - local: api/models/flux3_transformer
+        title: Flux3Transformer2DModel
       - local: api/models/flux_transformer
         title: FluxTransformer2DModel
       - local: api/models/glm_image_transformer2d
@@ -589,6 +593,8 @@
         title: Flux
       - local: api/pipelines/flux2
         title: Flux2
+      - local: api/pipelines/flux3
+        title: Flux3
       - local: api/pipelines/control_flux_inpaint
         title: FluxControlInpaint
       - local: api/pipelines/glm_image
