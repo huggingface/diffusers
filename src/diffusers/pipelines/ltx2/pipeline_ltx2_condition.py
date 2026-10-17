@@ -1825,7 +1825,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                 t_audio = audio_timesteps[i]
                 audio_timestep = t_audio.expand(latent_model_input.shape[0])
 
-                with self.transformer.cache_context("cond_uncond"):
+                with self.transformer.cache_context("cond_uncond", timestep=t):
                     noise_pred_video, noise_pred_audio = self.transformer(
                         hidden_states=latent_model_input,
                         audio_hidden_states=audio_latent_model_input,
@@ -1901,7 +1901,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                     noise_pred_audio = self.convert_velocity_to_x0(audio_latents, noise_pred_audio, i, audio_scheduler)
 
                 if self.do_spatio_temporal_guidance:
-                    with self.transformer.cache_context("uncond_stg"):
+                    with self.transformer.cache_context("uncond_stg", timestep=t):
                         noise_pred_video_uncond_stg, noise_pred_audio_uncond_stg = self.transformer(
                             hidden_states=latents.to(dtype=prompt_embeds.dtype),
                             audio_hidden_states=audio_latents.to(dtype=prompt_embeds.dtype),
@@ -1943,7 +1943,7 @@ class LTX2ConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                     video_stg_delta = audio_stg_delta = 0
 
                 if self.do_modality_isolation_guidance:
-                    with self.transformer.cache_context("uncond_modality"):
+                    with self.transformer.cache_context("uncond_modality", timestep=t):
                         noise_pred_video_uncond_modality, noise_pred_audio_uncond_modality = self.transformer(
                             hidden_states=latents.to(dtype=prompt_embeds.dtype),
                             audio_hidden_states=audio_latents.to(dtype=prompt_embeds.dtype),

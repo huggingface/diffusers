@@ -644,7 +644,7 @@ class OvisImagePipeline(
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                with self.transformer.cache_context("cond"):
+                with self.transformer.cache_context("cond", timestep=t):
                     noise_pred = self.transformer(
                         hidden_states=latents,
                         timestep=timestep / 1000,
@@ -656,7 +656,7 @@ class OvisImagePipeline(
                     )[0]
 
                 if do_classifier_free_guidance:
-                    with self.transformer.cache_context("uncond"):
+                    with self.transformer.cache_context("uncond", timestep=t):
                         neg_noise_pred = self.transformer(
                             hidden_states=latents,
                             timestep=timestep / 1000,

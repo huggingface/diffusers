@@ -32,14 +32,14 @@ class CacheTesterMixin(BasePipelineOutputMixin):
     Shared machinery for cache-hook tester mixins. Each cache backend subclasses this and supplies its own config,
     mirroring the model-level `cache.py` layout. Backends store their config *kwargs* as a dict class attribute and
     build a fresh config instance per test via `_get_cache_config()`; a shared config instance would leak per-test
-    mutations (e.g. `current_timestep_callback`) across tests. The denoiser-level enable/disable inference comparison
+    mutations across tests. The denoiser-level enable/disable inference comparison
     is shared via `_test_cache_inference`; backend-specific state/layer checks live on the subclasses.
     """
 
     def _get_cache_config(self):
         raise NotImplementedError("Subclass must implement `_get_cache_config`.")
 
-    def _test_cache_inference(self, cache_config, num_inference_steps, expected_atol=0.1, set_timestep_callback=False):
+    def _test_cache_inference(self, cache_config, num_inference_steps, expected_atol=0.1):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         def create_pipe():
@@ -59,8 +59,6 @@ class CacheTesterMixin(BasePipelineOutputMixin):
 
         # Run inference with cache enabled
         pipe = create_pipe()
-        if set_timestep_callback:
-            cache_config.current_timestep_callback = lambda: pipe.current_timestep
         pipe.transformer.enable_cache(cache_config)
         output = run_forward(pipe).flatten()
         image_slice_enabled = torch.cat((output[:8], output[-8:]))
@@ -112,7 +110,6 @@ class PyramidAttentionBroadcastTesterMixin(CacheTesterMixin):
         pipe = self.get_pipeline(**self.get_dummy_components(**dummy_component_kwargs))
 
         pab_config = self._get_cache_config()
-        pab_config.current_timestep_callback = lambda: pipe.current_timestep
         denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
         denoiser.enable_cache(pab_config)
 
@@ -135,7 +132,7 @@ class PyramidAttentionBroadcastTesterMixin(CacheTesterMixin):
                 assert isinstance(hook, PyramidAttentionBroadcastHook), (
                     "Hook should be of type PyramidAttentionBroadcastHook."
                 )
-                assert hook.state.cache is None, "Cache should be None at initialization."
+                assert not hook.state_manager._state_cache, "Cache should be None at initialization."
         assert count == expected_hooks, "Number of hooks should match the expected number."
 
         # Perform dummy inference step to ensure state is updated
@@ -145,8 +142,13 @@ class PyramidAttentionBroadcastTesterMixin(CacheTesterMixin):
                     hook = module._diffusers_hook.get_hook("pyramid_attention_broadcast")
                     if hook is None:
                         continue
-                    assert hook.state.cache is not None, "Cache should have updated during inference."
-                    assert hook.state.iteration == i + 1, "Hook iteration state should have updated during inference."
+                    assert hook.state_manager._state_cache
+                    assert all(state.cache is not None for state in hook.state_manager._state_cache.values()), (
+                        "Cache should have updated during inference."
+                    )
+                    assert all(state.iteration == i + 1 for state in hook.state_manager._state_cache.values()), (
+                        "Hook iteration state should have updated during inference."
+                    )
             return {}
 
         inputs = self.get_dummy_inputs()
@@ -160,8 +162,7 @@ class PyramidAttentionBroadcastTesterMixin(CacheTesterMixin):
                 hook = module._diffusers_hook.get_hook("pyramid_attention_broadcast")
                 if hook is None:
                     continue
-                assert hook.state.cache is None, "Cache should be reset to None after inference."
-                assert hook.state.iteration == 0, "Iteration should be reset to 0 after inference."
+                assert not hook.state_manager._state_cache, "Cache should be reset to None after inference."
 
     def test_pyramid_attention_broadcast_inference(self, base_pipe_output, expected_atol: float = 0.2):
         # We need to use higher tolerance because we are using a random model. With a converged/trained model, the
@@ -177,7 +178,6 @@ class PyramidAttentionBroadcastTesterMixin(CacheTesterMixin):
 
         # Run inference with PAB enabled
         pab_config = self._get_cache_config()
-        pab_config.current_timestep_callback = lambda: pipe.current_timestep
         denoiser = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
         denoiser.enable_cache(pab_config)
 
@@ -223,9 +223,7 @@ class FasterCacheTesterMixin(CacheTesterMixin):
         return FasterCacheConfig(**self.FASTER_CACHE_CONFIG)
 
     def test_faster_cache_inference(self, expected_atol: float = 0.1):
-        self._test_cache_inference(
-            self._get_cache_config(), num_inference_steps=4, expected_atol=expected_atol, set_timestep_callback=True
-        )
+        self._test_cache_inference(self._get_cache_config(), num_inference_steps=4, expected_atol=expected_atol)
 
     def test_faster_cache_state(self):
         from diffusers.hooks.faster_cache import _FASTER_CACHE_BLOCK_HOOK, _FASTER_CACHE_DENOISER_HOOK
@@ -244,7 +242,6 @@ class FasterCacheTesterMixin(CacheTesterMixin):
         pipe = self.get_pipeline(**self.get_dummy_components(**dummy_component_kwargs))
 
         faster_cache_config = self._get_cache_config()
-        faster_cache_config.current_timestep_callback = lambda: pipe.current_timestep
         pipe.transformer.enable_cache(faster_cache_config)
 
         # Hook registration/removal is covered at the model level (`_test_cache_hooks_registered`). Here we only
@@ -257,17 +254,19 @@ class FasterCacheTesterMixin(CacheTesterMixin):
             for name, module in denoiser.named_modules():
                 if not hasattr(module, "_diffusers_hook"):
                     continue
-                if name == "":
-                    # Root denoiser module
-                    state = module._diffusers_hook.get_hook(_FASTER_CACHE_DENOISER_HOOK).state
-                    if not faster_cache_config.is_guidance_distilled:
-                        assert state.low_frequency_delta is not None, "Low frequency delta should be set."
-                        assert state.high_frequency_delta is not None, "High frequency delta should be set."
-                else:
-                    # Internal blocks
-                    state = module._diffusers_hook.get_hook(_FASTER_CACHE_BLOCK_HOOK).state
-                    assert state.cache is not None and len(state.cache) == 2, "Cache should be set."
-                assert state.iteration == i + 1, "Hook iteration state should have updated during inference."
+                hook_name = _FASTER_CACHE_DENOISER_HOOK if name == "" else _FASTER_CACHE_BLOCK_HOOK
+                hook = module._diffusers_hook.get_hook(hook_name)
+                assert hook.state_manager._state_cache
+                for state in hook.state_manager._state_cache.values():
+                    if name == "":
+                        # Root denoiser module
+                        if not faster_cache_config.is_guidance_distilled:
+                            assert state.low_frequency_delta is not None, "Low frequency delta should be set."
+                            assert state.high_frequency_delta is not None, "High frequency delta should be set."
+                    else:
+                        # Internal blocks
+                        assert state.cache is not None and len(state.cache) == 2, "Cache should be set."
+                    assert state.iteration == i + 1, "Hook iteration state should have updated during inference."
             return {}
 
         inputs = self.get_dummy_inputs()
@@ -275,23 +274,12 @@ class FasterCacheTesterMixin(CacheTesterMixin):
         inputs["callback_on_step_end"] = faster_cache_state_check_callback
         _ = pipe(**inputs)[0]
 
-        # After inference, reset_stateful_hooks is called within the pipeline, which should have reset the states
         for name, module in denoiser.named_modules():
             if not hasattr(module, "_diffusers_hook"):
                 continue
-
-            if name == "":
-                # Root denoiser module
-                state = module._diffusers_hook.get_hook(_FASTER_CACHE_DENOISER_HOOK).state
-                assert state.iteration == 0, "Iteration should be reset to 0."
-                assert state.low_frequency_delta is None, "Low frequency delta should be reset to None."
-                assert state.high_frequency_delta is None, "High frequency delta should be reset to None."
-            else:
-                # Internal blocks
-                state = module._diffusers_hook.get_hook(_FASTER_CACHE_BLOCK_HOOK).state
-                assert state.iteration == 0, "Iteration should be reset to 0."
-                assert state.batch_size is None, "Batch size should be reset to None."
-                assert state.cache is None, "Cache should be reset to None."
+            hook_name = _FASTER_CACHE_DENOISER_HOOK if name == "" else _FASTER_CACHE_BLOCK_HOOK
+            hook = module._diffusers_hook.get_hook(hook_name)
+            assert not hook.state_manager._state_cache
 
 
 # TODO(aryan, dhruv): the cache tester mixins should probably be rewritten so that more models can be tested out
