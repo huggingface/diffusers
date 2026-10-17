@@ -353,14 +353,17 @@ def parse_args(input_args=None):
         "--max_sequence_length",
         type=int,
         default=512,
-        help="Maximum sequence length to use with the T5 text encoder",
+        help="Maximum sequence length to use with the Qwen3 text encoder",
     )
     parser.add_argument(
         "--text_encoder_out_layers",
         type=int,
         nargs="+",
-        default=[10, 20, 30],
-        help="Text encoder hidden layers to compute the final text embeddings.",
+        default=[9, 18, 27],
+        help=(
+            "Qwen3 text-encoder hidden layers used to build prompt embeddings. "
+            "Defaults match Flux2KleinPipeline (9, 18, 27); FLUX.2 [dev]/Mistral uses 10, 20, 30."
+        ),
     )
     parser.add_argument(
         "--validation_prompt",
