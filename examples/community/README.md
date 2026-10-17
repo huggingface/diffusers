@@ -89,6 +89,7 @@ PIXART-α Controlnet pipeline | Implementation of the controlnet model for pixar
 | Stable Diffusion 3 InstructPix2Pix Pipeline | Implementation of Stable Diffusion 3 InstructPix2Pix Pipeline | [Stable Diffusion 3 InstructPix2Pix Pipeline](#stable-diffusion-3-instructpix2pix-pipeline) | [![Hugging Face Models](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-blue)](https://huggingface.co/BleachNick/SD3_UltraEdit_freeform) [![Hugging Face Models](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-blue)](https://huggingface.co/CaptainZZZ/sd3-instructpix2pix) | [Jiayu Zhang](https://github.com/xduzhangjiayu) and [Haozhe Zhao](https://github.com/HaozheZhao)|
 | Flux Kontext multiple images | A modified version of the `FluxKontextPipeline` that supports calling Flux Kontext with multiple reference images.| [Flux Kontext multiple input Pipeline](#flux-kontext-multiple-images) | - |  [Net-Mist](https://github.com/Net-Mist) |
 | Flux Fill ControlNet Pipeline | A modified version of the `FluxFillPipeline` and `FluxControlNetInpaintPipeline` that supports Controlnet with Flux Fill model.| [Flux Fill ControlNet Pipeline](#Flux-Fill-ControlNet-Pipeline) | - |  [pratim4dasude](https://github.com/pratim4dasude) |
+| Rectified-CFG++ Pipelines (SD3 / SD3.5, Flux, Lumina 2, Qwen-Image, Wan) | Sample rectified-flow image and video models with [Rectified-CFG++](https://huggingface.co/papers/2510.07631) (NeurIPS 2025), a training-free predictor-corrector replacement for classifier-free guidance that keeps samples on the conditional flow's data manifold and removes the over-saturation and structural artifacts of CFG at high guidance scales. | [Rectified-CFG++ Pipelines](#rectified-cfg-pipelines) | - | [Shreshth Saini](https://github.com/shreshthsaini) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 
@@ -5629,3 +5630,79 @@ from datetime import datetime
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 result.images[0].save(f"flux_fill_controlnet_inpaint_depth{timestamp}.jpg")
 ```
+
+# Rectified-CFG++ Pipelines
+
+[Rectified-CFG++](https://huggingface.co/papers/2510.07631) (Saini, Gupta, Bovik; NeurIPS 2025) replaces the classifier-free guidance extrapolation in each ODE step of a rectified-flow model with a predictor-corrector update. The predictor steps along the conditional velocity; the corrector evaluates the conditional and unconditional velocities at that predicted point and adds their scaled difference to the conditional velocity at the current point. Because the update never leaves the neighbourhood of the conditional flow, high guidance scales keep prompt alignment without the over-saturated colours and broken structure that standard CFG produces. The method is training-free. Reference implementation: https://github.com/shreshthsaini/Rectified-CFGpp
+
+Each step costs one conditional forward pass plus one conditional and one unconditional pass at the predicted point, so about 1.5x the model evaluations of standard CFG. Every pipeline below keeps the full argument set of its upstream counterpart (LoRA, IP-Adapter, custom sigmas, callbacks) and adds one argument, `sigma_noise` (default `0.005`), the standard deviation of the Gaussian perturbation added to the predicted point before the corrector evaluation; `0` disables it. Guidance disabled (`guidance_scale <= 1`, or `true_cfg_scale <= 1` where applicable) reproduces plain conditional sampling.
+
+| Backbone | File | Guidance argument |
+|---|---|---|
+| Stable Diffusion 3 / 3.5 | `pipeline_stable_diffusion_3_rectified_cfgpp` | `guidance_scale` (default 4.5); skip-layer guidance supported |
+| Flux (FLUX.1-dev, FLUX.1-schnell) | `pipeline_flux_rectified_cfgpp` | `true_cfg_scale` with a `negative_prompt` (an empty string works); `guidance_scale` stays the distilled guidance embedding |
+| Lumina-Image-2.0 | `pipeline_lumina2_rectified_cfgpp` | `guidance_scale`; `cfg_trunc_ratio` and `cfg_normalization` behave as upstream |
+| Qwen-Image | `pipeline_qwenimage_rectified_cfgpp` | `true_cfg_scale` with a `negative_prompt` |
+| Wan 2.1 / 2.2 (video) | `pipeline_wan_rectified_cfgpp` | `guidance_scale` (and `guidance_scale_2` for Wan 2.2 two-stage checkpoints) |
+
+```py
+import torch
+from diffusers import DiffusionPipeline
+
+# Stable Diffusion 3.5
+pipe = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-3.5-medium",
+    custom_pipeline="pipeline_stable_diffusion_3_rectified_cfgpp",
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+prompt = "A red fox standing on a mossy log in a misty pine forest, morning light, photograph"
+image = pipe(prompt, guidance_scale=4.5, num_inference_steps=28, generator=torch.Generator("cuda").manual_seed(0)).images[0]
+image.save("rectified_cfgpp_sd35.png")
+
+# Flux
+pipe = DiffusionPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-dev",
+    custom_pipeline="pipeline_flux_rectified_cfgpp",
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+image = pipe(prompt, negative_prompt="", true_cfg_scale=4.5, guidance_scale=3.5, num_inference_steps=28).images[0]
+
+# Lumina-Image-2.0
+pipe = DiffusionPipeline.from_pretrained(
+    "Alpha-VLLM/Lumina-Image-2.0",
+    custom_pipeline="pipeline_lumina2_rectified_cfgpp",
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+image = pipe(prompt, guidance_scale=4.0, num_inference_steps=50).images[0]
+
+# Qwen-Image
+pipe = DiffusionPipeline.from_pretrained(
+    "Qwen/Qwen-Image",
+    custom_pipeline="pipeline_qwenimage_rectified_cfgpp",
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+image = pipe(prompt, negative_prompt=" ", true_cfg_scale=4.0, num_inference_steps=50).images[0]
+
+# Wan 2.1 (video)
+from diffusers import FlowMatchEulerDiscreteScheduler
+from diffusers.utils import export_to_video
+
+pipe = DiffusionPipeline.from_pretrained(
+    "Wan-AI/Wan2.1-T2V-1.3B-Diffusers",
+    custom_pipeline="pipeline_wan_rectified_cfgpp",
+    torch_dtype=torch.bfloat16,
+).to("cuda")
+pipe.scheduler = FlowMatchEulerDiscreteScheduler.from_config(pipe.scheduler.config, shift=5.0)
+frames = pipe(
+    prompt="A cat walks on the grass, realistic",
+    negative_prompt="blurry, low quality",
+    height=480,
+    width=832,
+    num_frames=81,
+    guidance_scale=5.0,
+    num_inference_steps=50,
+).frames[0]
+export_to_video(frames, "rectified_cfgpp_wan.mp4", fps=16)
+```
+
+The predictor takes a flow-matching Euler step from the scheduler's sigma schedule, so the pipelines expect `FlowMatchEulerDiscreteScheduler` (Wan checkpoints ship with a multistep scheduler by default; swap it as above).
