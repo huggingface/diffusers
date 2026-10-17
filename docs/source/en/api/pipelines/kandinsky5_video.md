@@ -64,7 +64,7 @@ from diffusers.utils import export_to_video
 model_id = "kandinskylab/Kandinsky-5.0-T2V-Pro-sft-5s-Diffusers"
 pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, dtype=torch.bfloat16)
 
-pipe = pipe.to("cuda")
+pipe = pipe.to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.transformer.set_attention_backend("flex")                            # <--- Set attention backend to Flex
 pipeline.enable_model_cpu_offload()                                           # <--- Enable cpu offloading for single GPU inference
 pipeline.transformer.compile(mode="max-autotune-no-cudagraphs", dynamic=True) # <--- Compile with max-autotune-no-cudagraphs
@@ -95,7 +95,7 @@ from diffusers.utils import export_to_video
 # Load the pipeline
 model_id = "kandinskylab/Kandinsky-5.0-T2V-Lite-sft-5s-Diffusers"
 pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, dtype=torch.bfloat16)
-pipe = pipe.to("cuda")
+pipe = pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 # Generate video
 prompt = "A cat and a dog baking a cake together in a kitchen."
@@ -122,7 +122,7 @@ pipe = Kandinsky5T2VPipeline.from_pretrained(
     "kandinskylab/Kandinsky-5.0-T2V-Lite-sft-10s-Diffusers", 
     dtype=torch.bfloat16
 )
-pipe = pipe.to("cuda")
+pipe = pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 pipe.transformer.set_attention_backend(
     "flex"
@@ -154,7 +154,7 @@ export_to_video(output, "output.mp4", fps=24, quality=9)
 ```python
 model_id = "kandinskylab/Kandinsky-5.0-T2V-Lite-distilled16steps-5s-Diffusers"
 pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, dtype=torch.bfloat16)
-pipe = pipe.to("cuda")
+pipe = pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 output = pipe(
     prompt="A beautiful sunset over mountains",
@@ -177,7 +177,7 @@ from diffusers.utils import export_to_video
 model_id = "kandinskylab/Kandinsky-5.0-I2V-Pro-sft-5s-Diffusers"
 pipe = Kandinsky5T2VPipeline.from_pretrained(model_id, dtype=torch.bfloat16)
 
-pipe = pipe.to("cuda")
+pipe = pipe.to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.transformer.set_attention_backend("flex")                            # <--- Set attention backend to Flex
 pipeline.enable_model_cpu_offload()                                           # <--- Enable cpu offloading for single GPU inference
 pipeline.transformer.compile(mode="max-autotune-no-cudagraphs", dynamic=True) # <--- Compile with max-autotune-no-cudagraphs

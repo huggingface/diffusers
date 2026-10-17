@@ -36,13 +36,14 @@ from ...testing_utils import (
     torch_device,
 )
 from ..testing_utils import (
+    AttentionTesterMixin,
     BaseModelTesterConfig,
     MemoryTesterMixin,
     ModelTesterMixin,
     SingleFileTesterMixin,
     TrainingTesterMixin,
 )
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -203,7 +204,11 @@ class TestAutoencoderKLMemory(AutoencoderKLTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for AutoencoderKL."""
 
 
-class TestAutoencoderKLSlicingTiling(AutoencoderKLTesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderKLAttention(AutoencoderKLTesterConfig, AttentionTesterMixin):
+    """Attention processor tests for AutoencoderKL."""
+
+
+class TestAutoencoderKLSlicingTiling(AutoencoderKLTesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderKL."""
 
 

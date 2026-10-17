@@ -42,7 +42,7 @@ import torch
 from diffusers import QwenImagePipeline
 
 pipeline = QwenImagePipeline.from_pretrained(
-    "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
+    "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipeline.transformer.set_attention_backend("_flash_3_hub")
 
@@ -68,7 +68,7 @@ import torch
 from diffusers import QwenImagePipeline
 
 pipeline = QwenImagePipeline.from_pretrained(
-    "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"
+    "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 prompt = """
 cinematic film still of a cat sipping a margarita in a pool in Palm Springs, California
@@ -115,7 +115,7 @@ The checks are run now before every attention operation.
 ```py
 import torch
 
-query = torch.randn(1, 10, 8, 64, dtype=torch.bfloat16, device="cuda")
+query = torch.randn(1, 10, 8, 64, dtype=torch.bfloat16, device="cuda")  # or "mps", "xpu", "cpu"
 key = torch.randn(1, 10, 8, 64, dtype=torch.bfloat16, device="cuda")
 value = torch.randn(1, 10, 8, 64, dtype=torch.bfloat16, device="cuda")
 
@@ -164,6 +164,7 @@ Refer to the table below for a complete list of available attention backends and
 | `_flash_3_varlen_hub` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | Variable length FlashAttention-3 from kernels |
 | `sage` | [SageAttention](https://github.com/thu-ml/SageAttention) | Quantized attention (INT8 QK) |
 | `sage_hub` | [SageAttention](https://github.com/thu-ml/SageAttention) | Quantized attention (INT8 QK) from kernels |
+| `sage_blackwell_hub` | [SageAttention](https://github.com/thu-ml/SageAttention) | SageAttention3 FP4 attention for SM120 Blackwell GPUs from kernels |
 | `sage_varlen` | [SageAttention](https://github.com/thu-ml/SageAttention) | Variable length SageAttention |
 | `_sage_qk_int8_pv_fp8_cuda` | [SageAttention](https://github.com/thu-ml/SageAttention) | INT8 QK + FP8 PV (CUDA) |
 | `_sage_qk_int8_pv_fp8_cuda_sm90` | [SageAttention](https://github.com/thu-ml/SageAttention) | INT8 QK + FP8 PV (SM90) |

@@ -149,7 +149,10 @@ class TaylorSeerState:
                     prev_factors = self.taylor_factors.get(i, {})
                     for j in range(self.max_order):
                         prev = prev_factors.get(j)
-                        if prev is None:
+                        # The feature shape can change between steps, e.g. Qwen-Image 2.1 returns prefix + target
+                        # tokens on the KV-cache prefill step and target tokens only afterwards. Stale factors
+                        # cannot be differenced against the new features, so restart the expansion from order 0.
+                        if prev is None or prev.shape != new_factors[j].shape:
                             break
                         new_factors[j + 1] = (new_factors[j] - prev.to(features.dtype)) / delta_step
                 self.taylor_factors[i] = {

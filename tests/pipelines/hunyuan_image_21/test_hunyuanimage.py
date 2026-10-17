@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
-import numpy as np
+import pytest
 import torch
 from transformers import (
     ByT5Tokenizer,
@@ -33,36 +31,23 @@ from diffusers import (
     HunyuanImageTransformer2DModel,
 )
 
-from ...testing_utils import enable_full_determinism
-from ..test_pipelines_common import FirstBlockCacheTesterMixin, PipelineTesterMixin, to_np
+from ...testing_utils import assert_tensors_close, enable_full_determinism
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    FirstBlockCacheTesterMixin,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
-class HunyuanImagePipelineFastTests(
-    PipelineTesterMixin,
-    FirstBlockCacheTesterMixin,
-    unittest.TestCase,
-):
+class HunyuanImagePipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = HunyuanImagePipeline
-    params = frozenset(["prompt", "height", "width"])
-    batch_params = frozenset(["prompt", "negative_prompt"])
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "generator",
-            "latents",
-            "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
-        ]
-    )
-
-    test_xformers_attention = False
-    test_layerwise_casting = True
-    test_group_offloading = True
-    test_attention_slicing = False
+    required_input_params_in_call_signature = frozenset(["prompt", "height", "width"])
+    batch_input_params = frozenset(["prompt", "negative_prompt"])
+    output_shape = (3, 16, 16)
 
     def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1, guidance_embeds: bool = False):
         torch.manual_seed(0)
@@ -153,7 +138,7 @@ class HunyuanImagePipelineFastTests(
         text_encoder_2 = T5EncoderModel(t5_config)
         tokenizer_2 = ByT5Tokenizer()
 
-        components = {
+        return {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
@@ -164,122 +149,93 @@ class HunyuanImagePipelineFastTests(
             "guider": guider,
             "ocr_guider": ocr_guider,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "A painting of a squirrel eating a burger",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 5,
             "height": 16,
             "width": 16,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
-        return inputs
 
+
+class TestHunyuanImagePipeline(HunyuanImagePipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
+        image = pipe(**self.get_dummy_inputs()).images
         generated_image = image[0]
-        self.assertEqual(generated_image.shape, (3, 16, 16))
+        assert generated_image.shape == self.output_shape
 
-        expected_slice_np = np.array(
-            [0.6252659, 0.51482046, 0.60799813, 0.59267783, 0.488082, 0.5857634, 0.523781, 0.58028054, 0.5674121]
-        )
-        output_slice = generated_image[0, -3:, -3:].flatten().cpu().numpy()
+        # fmt: off
+        expected_slice = torch.tensor([0.6252659, 0.51482046, 0.60799813, 0.59267783, 0.488082, 0.5857634, 0.523781, 0.58028054, 0.5674121])
+        # fmt: on
 
-        self.assertTrue(
-            np.abs(output_slice - expected_slice_np).max() < 1e-3,
-            f"output_slice: {output_slice}, expected_slice_np: {expected_slice_np}",
-        )
+        generated_slice = generated_image[0, -3:, -3:].flatten()
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_guider(self):
-        device = "cpu"
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
         pipe.guider = pipe.guider.new(guidance_scale=1000)
         pipe.ocr_guider = pipe.ocr_guider.new(guidance_scale=1000)
 
-        inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
+        image = pipe(**self.get_dummy_inputs()).images
         generated_image = image[0]
-        self.assertEqual(generated_image.shape, (3, 16, 16))
+        assert generated_image.shape == self.output_shape
 
-        expected_slice_np = np.array(
-            [0.6068114, 0.48716035, 0.5984431, 0.60241306, 0.48849544, 0.5624479, 0.53696984, 0.58964247, 0.54248774]
-        )
-        output_slice = generated_image[0, -3:, -3:].flatten().cpu().numpy()
+        # fmt: off
+        expected_slice = torch.tensor([0.6068114, 0.48716035, 0.5984431, 0.60241306, 0.48849544, 0.5624479, 0.53696984, 0.58964247, 0.54248774])
+        # fmt: on
 
-        self.assertTrue(
-            np.abs(output_slice - expected_slice_np).max() < 1e-3,
-            f"output_slice: {output_slice}, expected_slice_np: {expected_slice_np}",
-        )
+        generated_slice = generated_image[0, -3:, -3:].flatten()
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_with_distilled_guidance(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline(**self.get_dummy_components(guidance_embeds=True))
 
-        components = self.get_dummy_components(guidance_embeds=True)
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        inputs["distilled_guidance_scale"] = 3.5
-        image = pipe(**inputs).images
+        image = pipe(**self.get_dummy_inputs(), distilled_guidance_scale=3.5).images
         generated_image = image[0]
-        self.assertEqual(generated_image.shape, (3, 16, 16))
+        assert generated_image.shape == self.output_shape
 
-        expected_slice_np = np.array(
-            [0.63667065, 0.5187377, 0.66757566, 0.6320319, 0.4913387, 0.54813194, 0.5335031, 0.5736143, 0.5461346]
-        )
-        output_slice = generated_image[0, -3:, -3:].flatten().cpu().numpy()
+        # fmt: off
+        expected_slice = torch.tensor([0.63667065, 0.5187377, 0.66757566, 0.6320319, 0.4913387, 0.54813194, 0.5335031, 0.5736143, 0.5461346])
+        # fmt: on
 
-        self.assertTrue(
-            np.abs(output_slice - expected_slice_np).max() < 1e-3,
-            f"output_slice: {output_slice}, expected_slice_np: {expected_slice_np}",
-        )
+        generated_slice = generated_image[0, -3:, -3:].flatten()
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_vae_tiling(self, expected_diff_max: float = 0.2):
-        generator_device = "cpu"
-        components = self.get_dummy_components()
-
-        pipe = self.pipeline_class(**components)
-        pipe.to("cpu")
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline()
 
         # Without tiling
-        inputs = self.get_dummy_inputs(generator_device)
-        inputs["height"] = inputs["width"] = 128
-        output_without_tiling = pipe(**inputs)[0]
+        output_without_tiling = self.run_pipe(pipe, height=128, width=128)
 
         # With tiling
         pipe.vae.enable_tiling(tile_sample_min_size=96)
-        inputs = self.get_dummy_inputs(generator_device)
-        inputs["height"] = inputs["width"] = 128
-        output_with_tiling = pipe(**inputs)[0]
+        output_with_tiling = self.run_pipe(pipe, height=128, width=128)
 
-        self.assertLess(
-            (to_np(output_without_tiling) - to_np(output_with_tiling)).max(),
-            expected_diff_max,
-            "VAE tiling should not affect the inference results",
+        assert_tensors_close(
+            output_with_tiling,
+            output_without_tiling,
+            atol=expected_diff_max,
+            msg="VAE tiling should not affect the inference results.",
         )
 
-    @unittest.skip("TODO: Test not supported for now because needs to be adjusted to work with guiders.")
+    @pytest.mark.skip("TODO: Test not supported for now because needs to be adjusted to work with guiders.")
     def test_encode_prompt_works_in_isolation(self):
         pass
+
+
+class TestHunyuanImagePipelineMemory(HunyuanImagePipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the HunyuanImage pipeline."""
+
+
+class TestHunyuanImagePipelineFirstBlockCache(HunyuanImagePipelineTesterConfig, FirstBlockCacheTesterMixin):
+    """First Block Cache tests for the HunyuanImage pipeline."""

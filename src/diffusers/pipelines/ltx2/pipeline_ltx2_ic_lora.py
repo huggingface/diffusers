@@ -96,7 +96,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import LTX2InContextPipeline
         >>> from diffusers.pipelines.ltx2.pipeline_ltx2_ic_lora import LTX2ReferenceCondition
-        >>> from diffusers.pipelines.ltx2.export_utils import encode_video
+        >>> from diffusers.utils import encode_video
         >>> from diffusers.pipelines.ltx2.utils import DEFAULT_NEGATIVE_PROMPT
         >>> from diffusers.utils import load_video
 
@@ -1822,7 +1822,7 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 1024,
-    ):
+    ) -> LTX2PipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

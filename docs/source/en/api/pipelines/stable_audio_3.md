@@ -62,7 +62,7 @@ import soundfile as sf
 from diffusers import StableAudio3Pipeline
 
 pipe = StableAudio3Pipeline.from_pretrained("/tmp/sa3-diffusers-euler", torch_dtype=torch.float32)
-pipe = pipe.to("cuda")
+pipe = pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 generator = torch.Generator("cuda").manual_seed(0)
 audio = pipe(

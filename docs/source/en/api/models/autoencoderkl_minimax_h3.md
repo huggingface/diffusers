@@ -27,7 +27,7 @@ from diffusers import AutoencoderKLMiniMaxH3
 
 vae = AutoencoderKLMiniMaxH3.from_pretrained(
     "MiniMaxAI/MiniMax-H3", subfolder="vae", dtype=torch.float32
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 ## AutoencoderKLMiniMaxH3

@@ -15,9 +15,9 @@
 
 import gc
 import random
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -25,6 +25,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from diffusers import AutoencoderKL, PNDMScheduler, StableDiffusionInpaintPipeline, UNet2DConditionModel
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     backend_max_memory_allocated,
     backend_reset_max_memory_allocated,
@@ -40,25 +41,23 @@ from ...testing_utils import (
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
-    TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
 )
-from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
-class StableDiffusion2InpaintPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
-):
+class StableDiffusion2InpaintPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableDiffusionInpaintPipeline
-    params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
-    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
-    image_params = frozenset(
-        []
-    )  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
-    image_latents_params = frozenset([])
-    callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union({"mask", "masked_image_latents"})
+    required_input_params_in_call_signature = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
+    batch_input_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
+    callback_cfg_params = frozenset(["prompt_embeds", "mask", "masked_image_latents"])
+    output_shape = (3, 64, 64)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -104,7 +103,7 @@ class StableDiffusion2InpaintPipelineFastTests(
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        components = {
+        return {
             "unet": unet,
             "scheduler": scheduler,
             "vae": vae,
@@ -114,68 +113,63 @@ class StableDiffusion2InpaintPipelineFastTests(
             "feature_extractor": None,
             "image_encoder": None,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
+    def get_dummy_inputs(self):
         # TODO: use tensor inputs instead of PIL, this is here just to leave the old expected_slices untouched
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
-        image = image.cpu().permute(0, 2, 3, 1)[0]
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(0))
+        image = image.permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((64, 64))
         mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((64, 64))
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+        return {
             "prompt": "A painting of a squirrel eating a burger",
             "image": init_image,
             "mask_image": mask_image,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
         }
-        return inputs
 
+
+class TestStableDiffusion2InpaintPipeline(StableDiffusion2InpaintPipelineTesterConfig, PipelineTesterMixin):
     def test_stable_diffusion_inpaint(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionInpaintPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        # Run on CPU: the expected slice below is CPU-specific.
+        sd_pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1]
+        image = sd_pipe(**self.get_dummy_inputs()).images
+        image_slice = image[0, -1, -3:, -3:]
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4858, 0.5739, 0.3934, 0.5437, 0.5925, 0.4369, 0.5121, 0.4742, 0.4538])
+        assert image.shape == (1, *self.output_shape)
+        expected_slice = torch.tensor([0.4858, 0.5739, 0.3934, 0.5437, 0.5925, 0.4369, 0.5121, 0.4742, 0.4538])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert_tensors_close(image_slice.flatten(), expected_slice, atol=1e-2)
 
-    def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=3e-3):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
     def test_encode_prompt_works_in_isolation(self):
         extra_required_param_value_dict = {
             "device": torch.device(torch_device).type,
-            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+            "do_classifier_free_guidance": self.get_dummy_inputs().get("guidance_scale", 1.0) > 1.0,
         }
         return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict)
 
 
+class TestStableDiffusion2InpaintPipelineMemory(StableDiffusion2InpaintPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the SD2 inpaint pipeline."""
+
+
 @slow
 @require_torch_accelerator
-class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
-    def setUp(self):
-        # clean up the VRAM before each test
-        super().setUp()
+class TestStableDiffusion2InpaintPipelineIntegration:
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        # clean up the VRAM before and after each test
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

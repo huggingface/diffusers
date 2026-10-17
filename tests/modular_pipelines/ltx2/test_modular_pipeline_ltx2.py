@@ -13,12 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
+
 import numpy as np
 import PIL.Image
 import pytest
 import torch
 
-from diffusers.modular_pipelines import LTX2AutoBlocks, LTX2ModularPipeline
+from diffusers import LTX2Guidance, ModularPipeline
+from diffusers.modular_pipelines import ComponentSpec, LTX2AutoBlocks, LTX2ModularPipeline
 from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
 from diffusers.pipelines.ltx2.pipeline_ltx2_ic_lora import LTX2ReferenceCondition
 
@@ -166,7 +169,38 @@ class TestLTX2Text2VideoModularPipelineFast(
 
 
 class TestLTX2Text2VideoModularPipelineLoading(LTX2Text2VideoModularPipelineTesterConfig, ModularLoadingTesterMixin):
-    pass
+    def test_guiders_round_trip_as_pretrained_components(self, tmp_path):
+        # `guider` and `audio_guider` default to `from_config`, so a checkpoint that ships non-default guidance
+        # scales has to declare them as `from_pretrained` components instead. That path records the class as a
+        # (library, class_name) pair in `modular_model_index.json`, which only resolves back to `LTX2Guidance`
+        # while the class lives in `diffusers.guiders` and is exported from the top-level namespace.
+        pipe = self.get_pipeline()
+
+        staging = tmp_path / "guiders"
+        pipe.guider.new(guidance_scale=4.0).save_pretrained(str(staging / "guider"))
+        pipe.audio_guider.new(guidance_scale=8.0).save_pretrained(str(staging / "audio_guider"))
+        pipe.update_components(
+            guider=ComponentSpec(
+                "guider", LTX2Guidance, pretrained_model_name_or_path=str(staging), subfolder="guider"
+            ).load(),
+            audio_guider=ComponentSpec(
+                "audio_guider", LTX2Guidance, pretrained_model_name_or_path=str(staging), subfolder="audio_guider"
+            ).load(),
+        )
+
+        repo = tmp_path / "repo"
+        pipe.save_pretrained(str(repo), overwrite_modular_index=True)
+
+        index = json.loads((repo / "modular_model_index.json").read_text())
+        for name in ("guider", "audio_guider"):
+            assert index[name][2]["type_hint"] == ["diffusers", "LTX2Guidance"]
+            assert index[name][2]["pretrained_model_name_or_path"] == str(repo)
+            assert index[name][2]["subfolder"] == name
+
+        loaded_pipe = ModularPipeline.from_pretrained(str(repo))
+        loaded_pipe.load_components(names=["guider", "audio_guider"])
+        assert loaded_pipe.guider.config.guidance_scale == 4.0
+        assert loaded_pipe.audio_guider.config.guidance_scale == 8.0
 
 
 class TestLTX2Text2VideoModularPipelineMemory(LTX2Text2VideoModularPipelineTesterConfig, ModularMemoryTesterMixin):

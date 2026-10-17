@@ -62,7 +62,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 # compile
 pipeline.transformer.to(memory_format=torch.channels_last)
@@ -103,7 +103,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 # model CPU offloading
 pipeline.enable_model_cpu_offload()
@@ -148,7 +148,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     "Wan-AI/Wan2.1-T2V-14B-Diffusers",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 # group offloading
 onload_device = torch.device("cuda")

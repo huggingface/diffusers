@@ -31,7 +31,7 @@ from diffusers import DiffusionPipeline
 pipeline = DiffusionPipeline.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
   dtype=torch.bfloat16,
-  device_map="cuda"
+  device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipeline.enable_model_cpu_offload()
 
@@ -93,7 +93,7 @@ Many modern diffusion models deliver high-quality images out-of-the-box. However
     pipeline = DiffusionPipeline.from_pretrained(
         "stabilityai/stable-diffusion-xl-base-1.0",
         dtype=torch.bfloat16,
-        device_map="cuda"
+        device_map="cuda"  # or "mps", "xpu", "cpu"
     )
 
     prompt = """
@@ -115,7 +115,7 @@ Many modern diffusion models deliver high-quality images out-of-the-box. However
     pipeline = DiffusionPipeline.from_pretrained(
         "stabilityai/stable-diffusion-xl-base-1.0",
         dtype=torch.bfloat16,
-        device_map="cuda"
+        device_map="cuda"  # or "mps", "xpu", "cpu"
     )
     pipeline.scheduler = HeunDiscreteScheduler.from_config(pipeline.scheduler.config)
 

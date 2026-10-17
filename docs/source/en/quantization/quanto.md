@@ -13,6 +13,10 @@ specific language governing permissions and limitations under the License.
 
 # Quanto
 
+> [!WARNING]
+> The Quanto backend is deprecated and will be removed in version 1.0.0. Consider switching to one of the other
+> supported [quantization backends](./overview), such as [bitsandbytes](./bitsandbytes) or [torchao](./torchao).
+
 [Quanto](https://github.com/huggingface/optimum-quanto) is a PyTorch quantization backend for [Optimum](https://huggingface.co/docs/optimum/en/index). It has been designed with versatility and simplicity in mind:
 
 - All features are available in eager mode (works with non-traceable models)
@@ -42,7 +46,7 @@ transformer = FluxTransformer2DModel.from_pretrained(
 )
 
 pipe = FluxPipeline.from_pretrained(model_id, transformer=transformer, dtype=dtype)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "A cat holding a sign that says hello world"
 image = pipe(
@@ -131,7 +135,7 @@ transformer = torch.compile(transformer, mode="max-autotune", fullgraph=True)
 pipe = FluxPipeline.from_pretrained(
     model_id, transformer=transformer, dtype=dtype
 )
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 images = pipe("A cat holding a sign that says hello").images[0]
 images.save("flux-quanto-compile.png")
 ```

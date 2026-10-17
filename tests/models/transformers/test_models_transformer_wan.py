@@ -24,8 +24,10 @@ from ..testing_utils import (
     BitsAndBytesTesterMixin,
     GGUFCompileTesterMixin,
     GGUFTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SeaCacheTesterMixin,
     SingleFileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
@@ -105,6 +107,10 @@ class WanTransformer3DTesterConfig(BaseModelTesterConfig):
 
 class TestWanTransformer3D(WanTransformer3DTesterConfig, ModelTesterMixin):
     """Core model tests for Wan Transformer 3D."""
+
+
+class TestWanTransformer3DSeaCache(WanTransformer3DTesterConfig, SeaCacheTesterMixin):
+    cache_input_key = "hidden_states"
 
 
 class TestWanTransformer3DMemory(WanTransformer3DTesterConfig, MemoryTesterMixin):
@@ -229,6 +235,10 @@ class TestWanTransformer3DGGUFCompile(WanTransformer3DTesterConfig, GGUFCompileT
             ),
             "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype),
         }
+
+
+class TestWanTransformer3DLoRA(WanTransformer3DTesterConfig, LoraTesterMixin):
+    pass
 
 
 class TestWanTransformer3DText2VideoSingleFile(WanTransformer3DTesterConfig, SingleFileTesterMixin):

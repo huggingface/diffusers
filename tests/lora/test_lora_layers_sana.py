@@ -20,7 +20,7 @@ from transformers import Gemma2Model, GemmaTokenizer
 
 from diffusers import AutoencoderDC, FlowMatchEulerDiscreteScheduler, SanaPipeline, SanaTransformer2DModel
 
-from ..testing_utils import IS_GITHUB_ACTIONS, floats_tensor, require_peft_backend
+from ..testing_utils import floats_tensor, require_peft_backend
 
 
 sys.path.append(".")
@@ -108,17 +108,9 @@ class SanaLoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
         return noise, input_ids, pipeline_inputs
 
     @unittest.skip("Not supported in SANA.")
-    def test_modify_padding_mode(self):
-        pass
-
-    @unittest.skip("Not supported in SANA.")
     def test_simple_inference_with_text_denoiser_block_scale(self):
         pass
 
     @unittest.skip("Not supported in SANA.")
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
-
-    @unittest.skipIf(IS_GITHUB_ACTIONS, reason="Skipping test inside GitHub Actions environment")
-    def test_layerwise_casting_inference_denoiser(self):
-        return super().test_layerwise_casting_inference_denoiser()

@@ -127,6 +127,7 @@ CHECKPOINT_KEY_NAMES = {
     ],
     "z-image-turbo-controlnet": "control_all_x_embedder.2-1.weight",
     "z-image-turbo-controlnet-2.x": "control_layers.14.adaLN_modulation.0.weight",
+    "minimax-h3": "token_refiner.blocks.0.attn.qkv_proj.weight",
     "sana": [
         "blocks.0.cross_attn.q_linear.weight",
         "blocks.0.cross_attn.q_linear.bias",
@@ -160,6 +161,8 @@ CHECKPOINT_KEY_NAMES = {
         "vae.per_channel_statistics.mean-of-means",
         "audio_vae.per_channel_statistics.mean-of-means",
     ],
+    "qwen-image-2.1": ["model.diffusion_model.txt_in.text_norm.weight", "txt_in.text_norm.weight"],
+    "krea2": ["model.diffusion_model.txtfusion.projector.weight", "txtfusion.projector.weight"],
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
@@ -210,6 +213,8 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "flux-depth": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-Depth-dev"},
     "flux-schnell": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.1-schnell"},
     "flux-2-dev": {"pretrained_model_name_or_path": "black-forest-labs/FLUX.2-dev"},
+    "flux-3-image": {"pretrained_model_name_or_path": "black-forest-labs/flux-3-image-klein-base"},
+    "flux-3-image-distilled": {"pretrained_model_name_or_path": "black-forest-labs/flux-3-image-klein"},
     "chroma": {"pretrained_model_name_or_path": "lodestones/Chroma1-HD"},
     "ltx-video": {"pretrained_model_name_or_path": "diffusers/LTX-Video-0.9.0"},
     "ltx-video-0.9.1": {"pretrained_model_name_or_path": "diffusers/LTX-Video-0.9.1"},
@@ -791,6 +796,12 @@ def infer_diffusers_model_type(checkpoint):
         else:
             model_type = "wan-i2v-14B"
 
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["qwen-image-2.1"]):
+        model_type = "qwen-image-2.1"
+
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["krea2"]):
+        model_type = "krea2"
+
     elif CHECKPOINT_KEY_NAMES["wan_vae"] in checkpoint:
         # All Wan models use the same VAE so we can use the same default model repo to fetch the config
         model_type = "wan-t2v-14B"
@@ -830,6 +841,9 @@ def infer_diffusers_model_type(checkpoint):
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["ltx2"]):
         model_type = "ltx2-dev"
+
+    elif CHECKPOINT_KEY_NAMES["minimax-h3"] in checkpoint:
+        model_type = "minimax-h3"
 
     else:
         model_type = "v1"
@@ -3988,6 +4002,69 @@ def convert_flux2_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
             if special_key not in key:
                 continue
             handler_fn_inplace(key, converted_state_dict)
+
+    return converted_state_dict
+
+
+def convert_flux3_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    # inner-module renames shared by the per-mode blocks and the joint single blocks
+    FLUX3_TRANSFORMER_BLOCK_KEY_MAP = {
+        "q_proj.weight": "attn.to_q.weight",
+        "k_proj.weight": "attn.to_k.weight",
+        "v_proj.weight": "attn.to_v.weight",
+        "attn_out.weight": "attn.to_out.0.weight",
+        "norm.query_norm.scale": "attn.norm_q.weight",
+        "norm.key_norm.scale": "attn.norm_k.weight",
+        "mlp_in.weight": "ff.linear_in.weight",
+        "mlp_out.weight": "ff.linear_out.weight",
+    }
+
+    # module-prefix renames
+    FLUX3_TRANSFORMER_PREFIX_MAP = {
+        "emb_in.": "x_embedders.",
+        "txt_in.": "context_embedder.",
+        "content_mode_blocks.": "mode_blocks.",
+        "single_blocks.": "single_transformer_blocks.",
+    }
+
+    # exact-key renames
+    FLUX3_TRANSFORMER_KEYS_RENAME_DICT = {
+        "time_in.in_layer.weight": "timestep_embedder.linear_1.weight",
+        "time_in.out_layer.weight": "timestep_embedder.linear_2.weight",
+        # flow map (step-distilled packages): the embedder of the timestep each step jumps to
+        "ref_time_in.in_layer.weight": "target_timestep_embedder.linear_1.weight",
+        "ref_time_in.out_layer.weight": "target_timestep_embedder.linear_2.weight",
+        "final_layer.image.linear.weight": "proj_out.weight",
+        # original adaLN weights produce [shift, scale]; Flux3AdaLayerNorm expects [scale, shift]
+        "final_layer.image.adaLN_modulation.1.weight": "norm_out.linear.weight",
+    }
+
+    converted_state_dict = {}
+    for key in list(checkpoint.keys()):
+        # training-only REPA projection heads, not part of the inference model
+        if key.startswith("repa_projectors."):
+            checkpoint.pop(key)
+            continue
+
+        value = checkpoint.pop(key)
+        if key in FLUX3_TRANSFORMER_KEYS_RENAME_DICT:
+            if key.endswith("adaLN_modulation.1.weight"):
+                value = swap_scale_shift(value, dim=0)
+            converted_state_dict[FLUX3_TRANSFORMER_KEYS_RENAME_DICT[key]] = value
+            continue
+
+        new_key = key
+        for old_prefix, new_prefix in FLUX3_TRANSFORMER_PREFIX_MAP.items():
+            if new_key.startswith(old_prefix):
+                new_key = new_prefix + new_key[len(old_prefix) :]
+                break
+        new_key = new_key.replace(".lin.weight", ".linear.weight")
+        for old_suffix, new_suffix in FLUX3_TRANSFORMER_BLOCK_KEY_MAP.items():
+            if new_key.endswith(old_suffix):
+                new_key = new_key[: -len(old_suffix)] + new_suffix
+                break
+
+        converted_state_dict[new_key] = value
 
     return converted_state_dict
 

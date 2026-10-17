@@ -271,7 +271,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         self.vae_temporal_compression_ratio = (
             self.vae.temporal_compression_ratio if getattr(self, "vae", None) is not None else 8
         )
-        # TODO: check whether the MEL compression ratio logic here is corrct
+        # TODO: check whether the MEL compression ratio logic here is correct
         self.audio_vae_mel_compression_ratio = (
             self.audio_vae.mel_compression_ratio if getattr(self, "audio_vae", None) is not None else 4
         )
@@ -970,7 +970,7 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 1024,
-    ):
+    ) -> LTX2PipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

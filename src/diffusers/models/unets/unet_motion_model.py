@@ -484,7 +484,7 @@ class CrossAttnDownBlockMotion(nn.Module):
         encoder_attention_mask: torch.Tensor | None = None,
         cross_attention_kwargs: dict[str, Any] | None = None,
         additional_residuals: torch.Tensor | None = None,
-    ):
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, ...]]:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -1190,7 +1190,7 @@ class MotionAdapter(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         self.down_blocks = nn.ModuleList(down_blocks)
         self.up_blocks = nn.ModuleList(up_blocks)
 
-    def forward(self, sample):
+    def forward(self, sample) -> None:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.
