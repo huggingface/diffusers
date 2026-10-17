@@ -29,7 +29,11 @@ import unittest
 import torch
 
 from diffusers import Ideogram4Transformer2DModel
-from diffusers.loaders.single_file_utils import convert_ideogram4_transformer_checkpoint_to_diffusers
+from diffusers.loaders.single_file_utils import (
+    DIFFUSERS_DEFAULT_PIPELINE_PATHS,
+    convert_ideogram4_transformer_checkpoint_to_diffusers,
+    infer_diffusers_model_type,
+)
 
 from ..testing_utils import enable_full_determinism
 
@@ -270,6 +274,19 @@ class TestIdeogram4ConversionFunction(unittest.TestCase):
         extra = converted_keys - diffusers_keys
         self.assertEqual(missing, set(), msg=f"Keys in diffusers model but missing from conversion: {missing}")
         self.assertEqual(extra, set(), msg=f"Keys produced by conversion but not in diffusers model: {extra}")
+
+
+class TestIdeogram4ModelTypeInference(unittest.TestCase):
+    """Offline unit tests for detecting Ideogram4 checkpoints in infer_diffusers_model_type."""
+
+    def test_infers_ideogram4_for_all_prefixes(self):
+        for prefix in ("diffusion_model.", "conditional_transformer.", ""):
+            with self.subTest(prefix=prefix):
+                sd = _make_ideogram4_original_state_dict(prefix=prefix)
+                self.assertEqual(infer_diffusers_model_type(sd), "ideogram4")
+
+    def test_default_pipeline_path_registered(self):
+        self.assertIn("ideogram4", DIFFUSERS_DEFAULT_PIPELINE_PATHS)
 
 
 # ---------------------------------------------------------------------------
