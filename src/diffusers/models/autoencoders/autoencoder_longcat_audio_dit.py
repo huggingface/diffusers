@@ -39,6 +39,19 @@ def _wn_conv_transpose1d(*args, **kwargs):
     return weight_norm(nn.ConvTranspose1d(*args, **kwargs))
 
 
+def _normalize_vae_strides(c_mults: list[int], strides: list[int] | None = None) -> list[int]:
+    default_strides = [2, 4, 4, 8, 8]
+    num_blocks = len(c_mults) - 1
+    if strides is None:
+        strides = default_strides
+    strides = list(strides)
+    if len(strides) < num_blocks:
+        strides.extend([strides[-1] if strides else 2] * (num_blocks - len(strides)))
+    else:
+        strides = strides[:num_blocks]
+    return strides
+
+
 class Snake1d(nn.Module):
     def __init__(self, channels: int, alpha_logscale: bool = True):
         super().__init__()
@@ -200,11 +213,7 @@ class AudioDiTVaeEncoder(nn.Module):
     ):
         super().__init__()
         c_mults = [1] + (c_mults or [1, 2, 4, 8, 16])
-        strides = list(strides or [2] * (len(c_mults) - 1))
-        if len(strides) < len(c_mults) - 1:
-            strides.extend([strides[-1] if strides else 2] * (len(c_mults) - 1 - len(strides)))
-        else:
-            strides = strides[: len(c_mults) - 1]
+        strides = _normalize_vae_strides(c_mults, strides)
         channels_base = channels
         layers = [_wn_conv1d(in_channels, c_mults[0] * channels_base, kernel_size=7, padding=3)]
         for idx in range(len(c_mults) - 1):
@@ -249,11 +258,7 @@ class AudioDiTVaeDecoder(nn.Module):
     ):
         super().__init__()
         c_mults = [1] + (c_mults or [1, 2, 4, 8, 16])
-        strides = list(strides or [2] * (len(c_mults) - 1))
-        if len(strides) < len(c_mults) - 1:
-            strides.extend([strides[-1] if strides else 2] * (len(c_mults) - 1 - len(strides)))
-        else:
-            strides = strides[: len(c_mults) - 1]
+        strides = _normalize_vae_strides(c_mults, strides)
         channels_base = channels
 
         self.shortcut = (
@@ -317,6 +322,18 @@ class LongCatAudioDiTVae(ModelMixin, AutoencoderMixin, ConfigMixin):
         scale: float = 0.71,
     ):
         super().__init__()
+        c_mults = c_mults or [1, 2, 4, 8, 16]
+        normalized_strides = _normalize_vae_strides([1] + c_mults, strides)
+        actual_downsampling_ratio = math.prod(normalized_strides)
+        if actual_downsampling_ratio != downsampling_ratio:
+            raise ValueError(
+                f"`downsampling_ratio` must match the product of normalized `strides`. Got "
+                f"`downsampling_ratio={downsampling_ratio}` but `strides={normalized_strides}` have product "
+                f"{actual_downsampling_ratio}."
+            )
+        self.register_to_config(
+            c_mults=c_mults, strides=normalized_strides, downsampling_ratio=actual_downsampling_ratio
+        )
         if act_fn is None:
             if use_snake is None:
                 act_fn = "snake"
@@ -326,7 +343,7 @@ class LongCatAudioDiTVae(ModelMixin, AutoencoderMixin, ConfigMixin):
             in_channels=in_channels,
             channels=channels,
             c_mults=c_mults,
-            strides=strides,
+            strides=normalized_strides,
             latent_dim=latent_dim,
             encoder_latent_dim=encoder_latent_dim,
             act_fn=act_fn,
@@ -337,7 +354,7 @@ class LongCatAudioDiTVae(ModelMixin, AutoencoderMixin, ConfigMixin):
             in_channels=in_channels,
             channels=channels,
             c_mults=c_mults,
-            strides=strides,
+            strides=normalized_strides,
             latent_dim=latent_dim,
             act_fn=act_fn,
             in_shortcut=in_shortcut,
