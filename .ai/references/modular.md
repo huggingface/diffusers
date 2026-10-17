@@ -193,10 +193,19 @@ Don't fall back to the standard-pipeline habit of a config flag branching inside
 
 ## Key pattern: One canonical latents form
 
-Two transformations can sit between a VAE and a transformer: normalize/denormalize (the VAE's latent statistics) and pack/unpack (`[B, C, F, H, W]` <-> a token sequence `[B, S, D]`). Each is applied and undone in mirrored pairs, and the core denoise group hands latents back in the same form it received them. So the `latents` a family leaves in the state always has one consistent form that any block (a decoder, a latent upsampler, a second denoise group) can consume, and no block outside the group needs `height`/`width`/`num_frames` just to interpret tokens.
+Three transformations can sit between a VAE and a transformer:
 
-- Pattern 1 (the common one): `encode -> norm -> pack -> denoise -> unpack -> denorm -> decode`. The pack/unpack lives in the core denoise group, either at block level (a prepare-latents step packs, an unpack step such as `Flux2UnpackLatentsStep` closes the group) or inside the transformer's forward.
-- Pattern 2 (packed-space statistics): when the VAE's statistics are defined over the packed channels, norm/denorm can only run on packed tensors, so pack/unpack happens inside the VAE blocks as well: `encode -> pack -> norm -> denoise -> denorm -> unpack -> decode`.
+- normalize / denormalize: apply or undo the VAE's latent statistics.
+- patchify / unpatchify: fold a `p x p` spatial patch into channels, `[B, C, H, W]` <-> `[B, C*p*p, H/p, W/p]`. The result is still a grid.
+- pack / unpack: collapse the grid into a token sequence, `[B, C, F, H, W]` <-> `[B, S, D]`.
+
+Each should be applied and undone in mirrored pairs, and the core denoise group hands latents back in the same form it received them. The `latents` output of the denoise group should always be in one form: unpacked and still normalized, the same form its VAE encoder blocks produce. Whatever runs next (a decoder, a latent upsampler, a second denoise group) consumes that form, and no block outside the group needs `height`/`width`/`num_frames` just to interpret tokens.
+
+The pattern: `encode -> norm -> pack -> denoise -> unpack -> denorm -> decode`
+
+- Normalize / denormalize belong to the VAE blocks. The encoder step normalizes right after `vae.encode`, the decoder step denormalizes right before `vae.decode`. Denormalized latents never sit in the state.
+- Pack / unpack belong to the denoise group, either at block level (a prepare-latents step packs, an unpack step such as `FluxUnpackLatentsStep` closes the group) or inside the transformer's forward. Packing is a transformer layout detail; nothing outside the group should see tokens.
+- Patchify / unpatchify can sit on either side, as long as it is mirrored: usually it is fused with pack in the denoise group (Flux, Krea2, LTX, QwenImage); when the VAE statistics are defined over patchified channels (`AutoencoderKLFlux2`: Flux2, FLUX.3, Ernie-Image) it lives in the VAE blocks and the canonical form is the patchified grid.
 
 Don't pack inside the denoise group and unpack inside the decoder: that strands packed latents in the state and makes the decoder carry geometry inputs it doesn't otherwise need. `test_latents_output_in_canonical_form` in `tests/modular_pipelines/testing_utils/common.py` pins each family's form through the tester's `expected_latents_shape`.
 

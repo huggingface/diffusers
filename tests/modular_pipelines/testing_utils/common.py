@@ -63,8 +63,9 @@ class BaseModularPipelineTesterConfig:
         raise NotImplementedError(
             "You need to set the attribute `expected_latents_shape` in the child test class: the one canonical form "
             "this family keeps latents in after the denoise group, for the geometry `get_dummy_inputs()` produces. "
-            "That is the VAE form (e.g. `(1, 4, 32, 32)`) for pipelines that pack/unpack inside the denoise group or "
-            "the transformer, or the channel-packed form for pipelines whose VAE statistics live there."
+            "That is the form the VAE encoder blocks produce and the decoder step takes: the plain grid (e.g. "
+            "`(1, 4, 32, 32)`) for most families, or the patchified grid for families whose VAE statistics are "
+            "defined over patchified channels (e.g. `AutoencoderKLFlux2`)."
         )
 
     # ==================== Required interface ====================
