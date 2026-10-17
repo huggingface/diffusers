@@ -2573,6 +2573,26 @@ def _convert_non_diffusers_flux2_lora_to_diffusers(state_dict):
     return converted_state_dict
 
 
+def _convert_non_diffusers_flux3_lora_to_diffusers(state_dict):
+    block_mapping = {
+        ".q_proj.": ".attn.to_q.",
+        ".k_proj.": ".attn.to_k.",
+        ".v_proj.": ".attn.to_v.",
+        ".attn_out.": ".attn.to_out.0.",
+        ".mlp_in.": ".ff.linear_in.",
+        ".mlp_out.": ".ff.linear_out.",
+    }
+    converted_state_dict = {}
+    for key, value in state_dict.items():
+        key = key.removeprefix("diffusion_model.")
+        key = key.replace("content_mode_blocks.", "mode_blocks.")
+        key = key.replace("single_blocks.", "single_transformer_blocks.")
+        for original_name, diffusers_name in block_mapping.items():
+            key = key.replace(original_name, diffusers_name)
+        converted_state_dict[f"transformer.{key}"] = value
+    return converted_state_dict
+
+
 def _convert_kohya_flux2_lora_to_diffusers(state_dict):
     def _convert_to_ai_toolkit(sds_sd, ait_sd, sds_key, ait_key):
         if sds_key + ".lora_down.weight" not in sds_sd:
