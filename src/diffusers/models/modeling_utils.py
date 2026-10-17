@@ -821,6 +821,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
             # Clean the folder from a previous save
             if is_main_process:
+                # Precompute expected index names for the current variant
+                expected_index_safetensors = _add_variant(SAFE_WEIGHTS_INDEX_NAME, variant)
+                expected_index_bin = _add_variant(WEIGHTS_INDEX_NAME, variant)
+
                 for filename in os.listdir(save_directory):
                     if filename in state_dict_split.filename_to_tensors.keys():
                         continue
@@ -830,11 +834,20 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     weights_without_ext = weights_name_pattern.replace(".bin", "").replace(".safetensors", "")
                     weights_without_ext = weights_without_ext.replace("{suffix}", "")
                     filename_without_ext = filename.replace(".bin", "").replace(".safetensors", "")
+
+                    sharded_match = _REGEX_SHARD.fullmatch(filename_without_ext)
                     # make sure that file to be deleted matches format of sharded file, e.g. pytorch_model-00001-of-00005
-                    if (
-                        filename.startswith(weights_without_ext)
-                        and _REGEX_SHARD.fullmatch(filename_without_ext) is not None
-                    ):
+                    if sharded_match is not None and sharded_match.group(1) == weights_without_ext:
+                        os.remove(full_filename)
+
+                    # Clean up stale index files for this variant
+                    if filename == expected_index_safetensors and (not state_dict_split.is_sharded or not safe_serialization):
+                        os.remove(full_filename)
+                    elif filename == expected_index_bin and (not state_dict_split.is_sharded or safe_serialization):
+                        os.remove(full_filename)
+
+                    # Clean up stale unsharded weights for this variant
+                    if filename == weights_name and state_dict_split.is_sharded:
                         os.remove(full_filename)
 
             for filename, tensors in state_dict_split.filename_to_tensors.items():
