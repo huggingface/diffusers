@@ -103,8 +103,10 @@ class StableAudio3RotaryEmbedding(nn.Module):
         self.register_buffer("inv_freq", inv_freq, persistent=True)
 
     def forward(self, seq_len: int, device: torch.device) -> torch.Tensor:
-        t = torch.arange(seq_len, device=device, dtype=self.inv_freq.dtype)
-        freqs = torch.outer(t, self.inv_freq)
+        # bf16/fp16 cannot represent large integer positions exactly, so build the
+        # angles in fp32 even when `inv_freq` was cast with the rest of the model.
+        t = torch.arange(seq_len, device=device, dtype=torch.float32)
+        freqs = torch.outer(t, self.inv_freq.float())
         return torch.cat((freqs, freqs), dim=-1)  # (seq_len, rot_dim)
 
 
@@ -434,6 +436,9 @@ class StableAudio3DiTModel(ModelMixin, ConfigMixin, AttentionMixin):
     _supports_gradient_checkpointing = True
     _no_split_modules = ["StableAudio3DiTBlock"]
     _repeated_blocks = ["StableAudio3DiTBlock"]
+    # `inv_freq` is a persistent buffer. Keep it fp32 so `from_pretrained(torch_dtype=...)`
+    # does not round the rotary frequencies.
+    _keep_in_fp32_modules = ["rotary_pos_emb"]
 
     @register_to_config
     def __init__(
