@@ -196,14 +196,6 @@ class TestZImagePipelineLoRA(ZImagePipelineTesterConfig, LoraTesterMixin):
             base_pipe_output, lora_scale, expected_atol=5e-2, expected_rtol=5e-2
         )
 
-    @pytest.mark.skip("Needs to be debugged.")
-    def test_set_adapters_match_attention_kwargs(self, tmp_path, base_pipe_output):
-        pass
-
-    @pytest.mark.skip("Needs to be debugged.")
-    def test_simple_inference_with_text_denoiser_lora_and_scale(self, base_pipe_output):
-        pass
-
 
 class TestZImagePipelineLoRAMemory(ZImagePipelineTesterConfig, LoraMemoryTesterMixin):
     """LoRA x memory-optimization tests (group offload, CPU offload) for the Z-Image pipeline."""

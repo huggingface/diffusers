@@ -23,7 +23,6 @@ import warnings
 from pathlib import Path
 from uuid import uuid4
 
-import httpx
 from huggingface_hub import (
     ModelCard,
     ModelCardData,
@@ -43,6 +42,7 @@ from huggingface_hub.utils import (
     HFValidationError,
     RepositoryNotFoundError,
     RevisionNotFoundError,
+    httpx,
     is_jinja_available,
     validate_hf_hub_args,
 )

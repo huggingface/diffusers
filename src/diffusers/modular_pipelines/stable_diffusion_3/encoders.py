@@ -364,7 +364,9 @@ class StableDiffusion3ProcessImagesInputStep(ModularPipelineBlocks):
             raise ValueError(f"Width must be divisible by {vae_scale_factor * patch_size} but is {width}")
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusion3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         if block_state.image is None:
@@ -432,7 +434,9 @@ class StableDiffusion3VaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusion3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         image = getattr(block_state, self._image_input_name)
 
@@ -526,7 +530,9 @@ class StableDiffusion3TextEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusion3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         block_state.device = components._execution_device
 

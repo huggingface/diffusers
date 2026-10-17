@@ -7,18 +7,20 @@ on:
       - main
       - update_diffusers_metadata*
 
-permissions:
-  contents: read
+
+permissions: {}
 
 jobs:
   update_metadata:
+    permissions:
+      contents: read
     runs-on: ubuntu-22.04
     defaults:
       run:
         shell: bash -l {0}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup environment
         run: |

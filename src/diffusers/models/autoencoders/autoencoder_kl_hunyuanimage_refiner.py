@@ -86,7 +86,7 @@ class HunyuanImageRefinerRMS_norm(nn.Module):
         self.gamma = nn.Parameter(torch.ones(shape))
         self.bias = nn.Parameter(torch.zeros(shape)) if bias else 0.0
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         needs_fp32_normalize = x.dtype in (torch.float16, torch.bfloat16) or any(
             t in str(x.dtype) for t in ("float4_", "float8_")
         )
@@ -162,7 +162,7 @@ class HunyuanImageRefinerUpsampleDCAE(nn.Module):
         tensor = tensor.permute(0, 4, 5, 1, 6, 2, 7, 3)
         return tensor.reshape(b, c, f * r1, h * r2, w * r3)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         r1 = 2 if self.add_temporal_upsample else 1
         h = self.conv(x)
         if self.add_temporal_upsample:
@@ -205,7 +205,7 @@ class HunyuanImageRefinerDownsampleDCAE(nn.Module):
         tensor = tensor.permute(0, 3, 5, 7, 1, 2, 4, 6)
         return tensor.reshape(b, r1 * r2 * r3 * c, f, h, w)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         r1 = 2 if self.add_temporal_downsample else 1
         h = self.conv(x)
         if self.add_temporal_downsample:
@@ -846,13 +846,9 @@ class AutoencoderKLHunyuanImageRefiner(ModelMixin, AutoencoderMixin, ConfigMixin
 
         Args:
             z (`torch.Tensor`): Input batch of latent vectors.
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.vae.DecoderOutput`] instead of a plain tuple.
 
         Returns:
-            [`~models.vae.DecoderOutput`] or `tuple`:
-                If return_dict is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
-                returned.
+            `torch.Tensor`: The decoded images.
         """
 
         _, _, _, height, width = z.shape

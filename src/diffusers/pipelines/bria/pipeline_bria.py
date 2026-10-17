@@ -469,7 +469,7 @@ class BriaPipeline(DiffusionPipeline):
         max_sequence_length: int = 128,
         clip_value: None | float = None,
         normalize: bool = False,
-    ):
+    ) -> BriaPipelineOutput | tuple:
         r"""
                 Function invoked when calling the pipeline for generation.
 

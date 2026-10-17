@@ -244,7 +244,9 @@ class ZImageTextEncoderStep(ModularPipelineBlocks):
         return prompt_embeds, negative_prompt_embeds
 
     @torch.no_grad()
-    def __call__(self, components: ZImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: ZImageModularPipeline, state: PipelineState
+    ) -> tuple[ZImageModularPipeline, PipelineState]:
         # Get inputs and intermediates
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
@@ -316,7 +318,9 @@ class ZImageVaeImageEncoderStep(ModularPipelineBlocks):
                 f"`height` and `width` have to be divisible by {components.vae_scale_factor_spatial} but are {block_state.height} and {block_state.width}."
             )
 
-    def __call__(self, components: ZImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: ZImageModularPipeline, state: PipelineState
+    ) -> tuple[ZImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(components, block_state)
 

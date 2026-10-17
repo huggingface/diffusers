@@ -699,7 +699,7 @@ class KolorsPAGPipeline(
         pag_scale: float = 3.0,
         pag_adaptive_scale: float = 0.0,
         max_sequence_length: int = 256,
-    ):
+    ) -> KolorsPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
