@@ -1473,3 +1473,85 @@ class PixArtImageProcessor(VaeImageProcessor):
             samples = samples[:, :, start_y:end_y, start_x:end_x]
 
         return samples
+
+
+class TripoSplatImageProcessor(VaeImageProcessor):
+    """Prepare foreground images and convert prepared RGB images to tensors in `[0, 1]`.
+
+    Args:
+        canvas_size (`int`, defaults to `1024`):
+            Side length of the prepared RGB images.
+    """
+
+    @register_to_config
+    def __init__(self, canvas_size: int = 1024) -> None:
+        super().__init__(do_resize=False, do_normalize=False, vae_scale_factor=16)
+
+    def to_pil(self, image: PipelineImageInput) -> list[Image.Image]:
+        """Convert an image or batch to a list of PIL images."""
+        if isinstance(image, (np.ndarray, torch.Tensor)) and image.ndim == 4:
+            image = list(image)
+        images = image if isinstance(image, list) else [image]
+        converted = []
+        for item in images:
+            if isinstance(item, Image.Image):
+                item = item.copy()
+            else:
+                if isinstance(item, torch.Tensor):
+                    if item.ndim != 3:
+                        raise ValueError("An individual tensor image must have three dimensions.")
+                    dtype = item.dtype
+                    item = self.pt_to_numpy(item.detach().unsqueeze(0))[0]
+                    if dtype == torch.uint8:
+                        item = item.astype(np.uint8)
+                if not isinstance(item, np.ndarray):
+                    raise TypeError(f"Unsupported image type: {type(item)}")
+                if item.dtype != np.uint8:
+                    item = (item.clip(0, 1) * 255).astype(np.uint8)
+                item = Image.fromarray(item)
+            converted.append(item)
+        return converted
+
+    def resize_shortest_edge(self, images: list[Image.Image]) -> list[Image.Image]:
+        """Resize PIL images so their shorter side matches the canvas size."""
+        resized = []
+        for image in images:
+            scale = self.config.canvas_size / min(image.size)
+            resized.append(self.resize(image, height=round(image.height * scale), width=round(image.width * scale)))
+        return resized
+
+    def prepare_foreground(
+        self, image: PipelineImageInput, erode_radius: int = 1, is_preprocessed: bool = False
+    ) -> list[Image.Image]:
+        """Crop RGBA foregrounds or resize prepared RGB images onto black square canvases."""
+        if not isinstance(erode_radius, int) or erode_radius < 0:
+            raise ValueError("erode_radius must be a nonnegative integer.")
+        images = self.to_pil(image)
+        if not is_preprocessed:
+            images = self.resize_shortest_edge(images)
+        prepared = []
+        for item in images:
+            size = self.config.canvas_size
+            if is_preprocessed:
+                item = self.resize(item.convert("RGB"), height=size, width=size)
+            else:
+                if item.mode != "RGBA":
+                    raise ValueError(
+                        "Foreground images require an alpha mask; prepare RGB images through the pipeline."
+                    )
+                if erode_radius:
+                    item.putalpha(item.getchannel("A").filter(ImageFilter.MinFilter(2 * erode_radius + 1)))
+                ys, xs = np.nonzero(np.asarray(item.getchannel("A")))
+                if len(xs) == 0:
+                    raise ValueError("The foreground mask is empty.")
+                cx, cy = (xs.min() + xs.max()) / 2, (ys.min() + ys.max()) / 2
+                half = max(xs.max() - xs.min(), ys.max() - ys.min()) / 2 * 1.2
+                if half == 0:
+                    raise ValueError("The foreground mask must span more than one pixel.")
+                item = item.crop([int(cx - half), int(cy - half), int(cx + half), int(cy + half)])
+                item = self.resize(item, height=size, width=size)
+                background = Image.new("RGB", (size, size), (0, 0, 0))
+                background.paste(item, mask=item.getchannel("A"))
+                item = background
+            prepared.append(item)
+        return prepared
