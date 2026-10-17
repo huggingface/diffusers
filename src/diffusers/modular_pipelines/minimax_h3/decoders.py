@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import numpy as np
 import torch
 
 from ...configuration_utils import FrozenDict
@@ -190,8 +191,25 @@ class MiniMaxH3VideoDecodeStep(ModularPipelineBlocks):
         video = components.vae.decode(latents, return_dict=False)[0]
         pixel_mean = torch.tensor(components.pixel_mean, device=device).view(1, -1, 1, 1, 1)
         pixel_std = torch.tensor(components.pixel_std, device=device).view(1, -1, 1, 1, 1)
-        video = (video.float() * pixel_std + pixel_mean).clamp(0, 1)
-        block_state.videos = components.video_processor.postprocess_video(video, output_type=block_state.output_type)
+        # Keep the FP32 pixel intermediates bounded, including when the final output lives on the CPU.
+        for start in range(0, video.shape[2], 16):
+            frames = (video[:, :, start : start + 16].float() * pixel_std + pixel_mean).clamp(0, 1)
+            frames = components.video_processor.postprocess_video(frames, output_type=block_state.output_type)
+            if start == 0:
+                if block_state.output_type == "pt":
+                    videos = frames.new_empty((frames.shape[0], video.shape[2], *frames.shape[2:]))
+                elif block_state.output_type == "np":
+                    videos = np.empty((frames.shape[0], video.shape[2], *frames.shape[2:]), dtype=frames.dtype)
+                else:
+                    videos = [[] for _ in range(video.shape[0])]
+
+            if block_state.output_type == "pil":
+                for batch_idx, batch_frames in enumerate(frames):
+                    videos[batch_idx].extend(batch_frames)
+            else:
+                videos[:, start : start + frames.shape[1]] = frames
+
+        block_state.videos = videos
 
         self.set_block_state(state, block_state)
         return components, state
