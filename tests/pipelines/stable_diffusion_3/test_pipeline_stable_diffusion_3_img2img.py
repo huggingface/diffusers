@@ -26,8 +26,12 @@ from ...testing_utils import (
     assert_tensors_close,
     backend_empty_cache,
     floats_tensor,
+    is_lora,
+    nightly,
     numpy_cosine_similarity_distance,
     require_big_accelerator,
+    require_peft_backend,
+    require_torch_accelerator,
     slow,
     torch_device,
 )
@@ -209,3 +213,57 @@ class TestStableDiffusion3Img2ImgPipelineSlow:
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
 
         assert max_diff < 1e-4, f"Outputs are not close enough, got {max_diff}"
+
+
+@is_lora
+@nightly
+@require_torch_accelerator
+@require_peft_backend
+@require_big_accelerator
+class TestStableDiffusion3Img2ImgLoRAIntegration:
+    pipeline_class = StableDiffusion3Img2ImgPipeline
+    repo_id = "stabilityai/stable-diffusion-3-medium-diffusers"
+
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+        yield
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+    def get_inputs(self, device, seed=0):
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
+        )
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device="cpu").manual_seed(seed)
+
+        return {
+            "prompt": "corgi",
+            "num_inference_steps": 2,
+            "guidance_scale": 5.0,
+            "output_type": "np",
+            "generator": generator,
+            "image": init_image,
+        }
+
+    def test_sd3_img2img_lora(self):
+        pipe = self.pipeline_class.from_pretrained(self.repo_id, torch_dtype=torch.float16)
+        pipe.load_lora_weights("zwloong/sd3-lora-training-rank16-v2")
+        pipe.fuse_lora()
+        pipe.unload_lora_weights()
+        pipe = pipe.to(torch_device)
+
+        inputs = self.get_inputs(torch_device)
+
+        image = pipe(**inputs).images[0]
+        image_slice = image[0, -3:, -3:]
+        expected_slice = np.array([0.5649, 0.5405, 0.5488, 0.5688, 0.5449, 0.5513, 0.5337, 0.5107, 0.5059])
+
+        max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), image_slice.flatten())
+
+        assert max_diff < 1e-4, f"Outputs are not close enough, got {max_diff}"
+        pipe.unload_lora_weights()
