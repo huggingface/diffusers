@@ -299,7 +299,7 @@ class Flux2KleinBaseAutoCoreDenoiseStep(AutoPipelineBlocks):
               TODO: Add description.
           num_inference_steps (`None`):
               TODO: Add description.
-          timesteps (`None`):
+          timesteps (`None`, *optional*):
               TODO: Add description.
           sigmas (`None`, *optional*):
               TODO: Add description.
@@ -373,7 +373,7 @@ class Flux2KleinBaseAutoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           num_inference_steps (`None`):
               TODO: Add description.
-          timesteps (`None`):
+          timesteps (`None`, *optional*):
               TODO: Add description.
           sigmas (`None`, *optional*):
               TODO: Add description.
