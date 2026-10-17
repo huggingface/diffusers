@@ -27,6 +27,7 @@ from .denoise import Flux3DistilledDenoiseStep
 from .encoders import Flux3DistilledTextEncoderStep
 from .inputs import Flux3DistilledTextInputStep, Flux3ImageCondInputStep
 from .modular_blocks_flux3 import Flux3AutoVaeEncoderStep
+from .prompt_upsampler import Flux3AutoPromptUpsampleStep
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -244,6 +245,7 @@ class Flux3DistilledAutoCoreDenoiseStep(AutoPipelineBlocks):
 
 DISTILLED_AUTO_BLOCKS = InsertableDict(
     [
+        ("prompt_upsampler", Flux3AutoPromptUpsampleStep()),
         ("text_encoder", Flux3DistilledTextEncoderStep()),
         ("vae_encoder", Flux3AutoVaeEncoderStep()),
         ("denoise", Flux3DistilledAutoCoreDenoiseStep()),
@@ -256,27 +258,34 @@ DISTILLED_AUTO_BLOCKS = InsertableDict(
 class Flux3DistilledAutoBlocks(SequentialPipelineBlocks):
     """
     Auto blocks that perform text-to-image and image-to-image generation using the step-distilled FLUX.3 model (16
-    steps, no classifier-free guidance).
+    steps, no classifier-free guidance). `prompt` goes through the prompt upsampler first; pop the `prompt_upsampler`
+    step to encode it as given.
 
       Supported workflows:
         - `text2image`: requires `prompt`
         - `image_conditioned`: requires `prompt`, `image`
 
       Components:
-          text_encoder (`Qwen3VLForConditionalGeneration`) tokenizer (`AutoProcessor`) image_processor
-          (`Flux3ImageProcessor`) vae (`AutoencoderKLFlux2`) transformer (`Flux3Transformer2DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`)
+          prompt_upsampler (`Qwen3_5ForConditionalGeneration`): The prompt upsampler. prompt_upsampler_processor
+          (`AutoProcessor`): Its processor. text_encoder (`Qwen3VLForConditionalGeneration`) tokenizer
+          (`AutoProcessor`) image_processor (`Flux3ImageProcessor`) vae (`AutoencoderKLFlux2`) transformer
+          (`Flux3Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           prompt (`str`):
-              The prompt to guide the generation (one prompt per call)
+              The edit instruction to expand into the full caption (one per call).
+          image (`Image | list`, *optional*):
+              The reference image(s) of the edit, at most 10; the same ones the pipeline receives.
+          boxes (`list`, *optional*):
+              Layout boxes, each {'id', 'desc', 'from', 'src_bbox', 'tgt_bbox'} with the boxes as [y_min, x_min, y_max,
+              x_max] in 0-1: 'from': 'target' with `tgt_bbox` adds an element there, 'from': 'ref_image_0', ... with
+              `src_bbox` and `tgt_bbox` moves one from a reference image.
+          max_new_tokens (`int`, *optional*, defaults to 3584):
+              The most tokens the upsampler may generate for the caption.
           max_sequence_length (`int`, *optional*, defaults to 8192):
               Maximum number of prompt tokens; longer prompts are truncated.
           text_encoder_out_layers (`tuple`, *optional*, defaults to (4, 8, 12, 16, 20, 24, 28, 32)):
               Indices of the text-encoder hidden layers whose states are stacked to form the text embeddings
-          image (`Image | list`, *optional*):
-              The reference image or images to condition the generation on; each keeps its own resolution
-              (center-cropped to the 16-pixel grid)
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           image_cond_latents (`list`, *optional*):
@@ -322,7 +331,8 @@ class Flux3DistilledAutoBlocks(SequentialPipelineBlocks):
     def description(self):
         return (
             "Auto blocks that perform text-to-image and image-to-image generation using the step-distilled FLUX.3 "
-            "model (16 steps, no classifier-free guidance)."
+            "model (16 steps, no classifier-free guidance). `prompt` goes through the prompt upsampler first; pop the "
+            "`prompt_upsampler` step to encode it as given."
         )
 
     @property
