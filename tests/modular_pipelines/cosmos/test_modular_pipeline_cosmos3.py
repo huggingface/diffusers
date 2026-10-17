@@ -514,7 +514,7 @@ class TestCosmos3OmniModularPipelineFast(Cosmos3OmniModularPipelineTesterConfig,
 class TestCosmos3OmniModularPipelineLoading(Cosmos3OmniModularPipelineTesterConfig, ModularLoadingTesterMixin):
     def test_save_from_pretrained(self, tmp_path):
         base_pipe = self.get_pipeline().to(torch_device)
-        base_pipe.save_pretrained(str(tmp_path))
+        base_pipe.save_pretrained(str(tmp_path), overwrite_modular_index=True)
 
         loaded_pipe = ModularPipeline.from_pretrained(str(tmp_path))
         loaded_pipe.load_components(dtype=torch.float32)

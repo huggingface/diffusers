@@ -162,7 +162,7 @@ class TestFluxImg2ImgModularPipelineFast(FluxImg2ImgModularPipelineTesterConfig,
 class TestFluxImg2ImgModularPipelineLoading(FluxImg2ImgModularPipelineTesterConfig, ModularLoadingTesterMixin):
     def test_save_from_pretrained(self, tmp_path, base_pipe_output):
         base_pipe = self.get_pipeline().to(torch_device)
-        base_pipe.save_pretrained(str(tmp_path))
+        base_pipe.save_pretrained(str(tmp_path), overwrite_modular_index=True)
 
         pipe = ModularPipeline.from_pretrained(tmp_path)
         pipe.load_components(dtype=torch.float32)
@@ -249,7 +249,7 @@ class TestFluxKontextModularPipelineFast(FluxKontextModularPipelineTesterConfig,
 class TestFluxKontextModularPipelineLoading(FluxKontextModularPipelineTesterConfig, ModularLoadingTesterMixin):
     def test_save_from_pretrained(self, tmp_path, base_pipe_output):
         base_pipe = self.get_pipeline().to(torch_device)
-        base_pipe.save_pretrained(str(tmp_path))
+        base_pipe.save_pretrained(str(tmp_path), overwrite_modular_index=True)
 
         pipe = ModularPipeline.from_pretrained(tmp_path)
         pipe.load_components(dtype=torch.float32)
