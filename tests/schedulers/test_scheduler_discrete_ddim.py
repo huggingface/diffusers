@@ -16,8 +16,29 @@ class DiscreteDDIMSchedulerTest(unittest.TestCase):
         scheduler.set_timesteps(16)
         self.assertEqual(scheduler.num_inference_steps, 16)
         self.assertEqual(len(scheduler.timesteps), 16)
-        self.assertEqual(scheduler.timesteps[0].item(), 0)
-        self.assertEqual(scheduler.timesteps[-1].item(), 15)
+        # Continuous corruption level: 1 is fully noised, 0 is clean, and the grid decreases.
+        self.assertEqual(scheduler.timesteps.dtype, torch.float32)
+        self.assertEqual(scheduler.timesteps[0].item(), 1.0)
+        self.assertEqual(scheduler.timesteps[-1].item(), 1.0 / 16)
+        self.assertTrue(bool((scheduler.timesteps[1:] < scheduler.timesteps[:-1]).all()))
+
+    def test_step_index_round_trips_every_timestep(self):
+        # A pipeline iterating `scheduler.timesteps` must recover the matching index for each entry.
+        for num_inference_steps in (1, 3, 8, 31):
+            scheduler = self.get_scheduler()
+            scheduler.set_timesteps(num_inference_steps)
+            self.assertIsNone(scheduler.step_index)
+            for index, timestep in enumerate(scheduler.timesteps):
+                scheduler._step_index = None
+                scheduler._init_step_index(timestep)
+                self.assertEqual(scheduler.step_index, index)
+
+    def test_set_begin_index(self):
+        scheduler = self.get_scheduler()
+        scheduler.set_timesteps(8)
+        scheduler.set_begin_index(3)
+        scheduler._init_step_index(scheduler.timesteps[0])
+        self.assertEqual(scheduler.step_index, 3)
 
     def test_set_timesteps_invalid(self):
         scheduler = self.get_scheduler()
@@ -31,8 +52,10 @@ class DiscreteDDIMSchedulerTest(unittest.TestCase):
         scheduler.set_timesteps(n)
         sample = torch.randint(0, 100, (2, 16))
         logits = torch.zeros(2, 16, 100)
-        out = scheduler.step(logits, timestep=n - 1, sample=sample, temperature=0.0)
-        self.assertTrue(torch.equal(out.prev_sample, out.sampled_tokens))
+        out = scheduler.step(logits, timestep=scheduler.timesteps[n - 1], sample=sample)
+        self.assertTrue(torch.equal(out.prev_sample, out.pred_original_sample))
+        # alpha_s = 1 leaves the clean route as the only one with mass, so every position commits.
+        self.assertTrue(bool(out.committed_mask.all()))
 
     def test_intermediate_step_keeps_agreeing_positions(self):
         # Where the prediction agrees with the current token, almost all posterior mass is on the clean route.
@@ -43,7 +66,7 @@ class DiscreteDDIMSchedulerTest(unittest.TestCase):
         logits = torch.zeros(1, 256, 100)
         # argmax of zero logits is token 0; make the sample already equal token 0 everywhere
         sample = torch.zeros_like(sample)
-        out = scheduler.step(logits, timestep=n // 2, sample=sample, temperature=0.0)
+        out = scheduler.step(logits, timestep=scheduler.timesteps[n // 2], sample=sample)
         kept = (out.prev_sample == sample).sum().item()
         self.assertGreaterEqual(kept, 250)
 
@@ -52,19 +75,23 @@ class DiscreteDDIMSchedulerTest(unittest.TestCase):
         scheduler.set_timesteps(8)
         sample = torch.randint(0, 100, (3, 16))
         logits = torch.randn(3, 16, 100)
-        out = scheduler.step(logits, timestep=2, sample=sample, temperature=1.0)
+        out = scheduler.step(logits, timestep=scheduler.timesteps[2], sample=sample)
         self.assertEqual(out.prev_sample.shape, sample.shape)
-        self.assertEqual(out.sampled_tokens.shape, sample.shape)
+        self.assertEqual(out.pred_original_sample.shape, sample.shape)
         self.assertEqual(out.sampled_probs.shape, sample.shape)
+        self.assertEqual(out.committed_mask.shape, sample.shape)
+        self.assertIsNone(out.edited_mask)
 
     def test_return_tuple(self):
         scheduler = self.get_scheduler()
         scheduler.set_timesteps(8)
         sample = torch.randint(0, 100, (1, 16))
         logits = torch.randn(1, 16, 100)
-        out = scheduler.step(logits, timestep=2, sample=sample, return_dict=False)
+        out = scheduler.step(logits, timestep=scheduler.timesteps[2], sample=sample, return_dict=False)
         self.assertIsInstance(out, tuple)
-        self.assertEqual(len(out), 4)
+        # Fixed arity, always including the trailing `edited_mask` even when it is None (matches AmusedScheduler).
+        self.assertEqual(len(out), 6)
+        self.assertIsNone(out[-1])
 
     def test_to_loo_only_shifts_observed_token(self):
         # The denoiser->LOO conversion moves only the observed token's logit at each position (eq. 13).
@@ -81,9 +108,13 @@ class DiscreteDDIMSchedulerTest(unittest.TestCase):
         scheduler.set_timesteps(8)
         sample = torch.randint(0, 100, (3, 16))
         logits = torch.randn(3, 16, 100)
-        out = scheduler.step_correct(logits, timestep=2, sample=sample)
+        out = scheduler.step_correct(logits, timestep=scheduler.timesteps[2], sample=sample)
         self.assertEqual(out.prev_sample.shape, sample.shape)
         self.assertEqual(out.prev_sample.dtype, sample.dtype)
+        # A sweep reports at full sequence length, not `(batch, corrector_k)`.
+        self.assertEqual(out.pred_original_sample.shape, sample.shape)
+        self.assertEqual(out.sampled_probs.shape, sample.shape)
+        self.assertEqual(out.committed_mask.shape, sample.shape)
 
     def test_step_correct_resamples_at_most_k(self):
         # A corrector sweep holds all but `corrector_k` positions per row fixed.
@@ -92,15 +123,46 @@ class DiscreteDDIMSchedulerTest(unittest.TestCase):
         scheduler.set_timesteps(8)
         sample = torch.randint(0, 100, (4, 16))
         logits = torch.randn(4, 16, 100)
-        out = scheduler.step_correct(logits, timestep=2, sample=sample)
+        out = scheduler.step_correct(logits, timestep=scheduler.timesteps[2], sample=sample)
         changed = (out.prev_sample != sample).sum(dim=-1)
         self.assertTrue(torch.all(changed <= k))
+        self.assertTrue(torch.all(out.committed_mask.sum(dim=-1) == k))
 
     def test_step_correct_return_tuple(self):
         scheduler = self.get_scheduler(corrector_steps=1)
         scheduler.set_timesteps(8)
         sample = torch.randint(0, 100, (1, 16))
         logits = torch.randn(1, 16, 100)
-        out = scheduler.step_correct(logits, timestep=2, sample=sample, return_dict=False)
+        out = scheduler.step_correct(logits, timestep=scheduler.timesteps[2], sample=sample, return_dict=False)
         self.assertIsInstance(out, tuple)
-        self.assertEqual(len(out), 4)
+        self.assertEqual(len(out), 6)
+        self.assertIsNone(out[-1])
+
+    def test_step_advances_step_index(self):
+        n = 4
+        scheduler = self.get_scheduler(num_inference_steps=n)
+        scheduler.set_timesteps(n)
+        sample = torch.randint(0, 100, (1, 8))
+        logits = torch.randn(1, 8, 100)
+        for index, timestep in enumerate(scheduler.timesteps):
+            out = scheduler.step(logits, timestep=timestep, sample=sample)
+            sample = out.prev_sample
+            self.assertEqual(scheduler.step_index, index + 1)
+
+    def test_step_correct_is_independent_of_step_index(self):
+        # The sweep resolves its grid point from `timestep`, so running it before or after predictor steps
+        # have advanced `step_index` must give the same result.
+        scheduler = self.get_scheduler(corrector_steps=1, corrector_k=2)
+        scheduler.set_timesteps(8)
+        sample = torch.randint(0, 100, (2, 16))
+        logits = torch.randn(2, 16, 100)
+        timestep = scheduler.timesteps[2]
+
+        fresh = scheduler.step_correct(
+            logits, timestep=timestep, sample=sample, generator=torch.Generator().manual_seed(0)
+        )
+        scheduler._step_index = 5
+        advanced = scheduler.step_correct(
+            logits, timestep=timestep, sample=sample, generator=torch.Generator().manual_seed(0)
+        )
+        self.assertTrue(torch.equal(fresh.prev_sample, advanced.prev_sample))
