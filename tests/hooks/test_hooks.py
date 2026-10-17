@@ -19,6 +19,8 @@ import pytest
 import torch
 
 from diffusers.hooks import HookRegistry, ModelHook
+from diffusers.hooks.layerwise_casting import LayerwiseCastingHook
+from diffusers.hooks.sea_cache import SeaCacheRootHook
 from diffusers.training_utils import free_memory
 from diffusers.utils.logging import get_logger
 
@@ -436,3 +438,49 @@ class TestHooks:
 
         exported_output = exported.module()(hidden_states=hidden_states, timestep=timestep)
         assert torch.allclose(exported_output, eager_output)
+
+    def test_deinitialize_hook_alias(self):
+        assert ModelHook.deinitialize_hook is ModelHook.deinitalize_hook
+        assert LayerwiseCastingHook.deinitialize_hook is LayerwiseCastingHook.deinitalize_hook
+        assert LayerwiseCastingHook.deinitialize_hook is not ModelHook.deinitialize_hook
+        assert SeaCacheRootHook.deinitialize_hook is SeaCacheRootHook.deinitalize_hook
+        assert SeaCacheRootHook.deinitialize_hook is not ModelHook.deinitialize_hook
+
+        class LegacyHook(ModelHook):
+            def deinitalize_hook(self, module):
+                module.saw_legacy = True
+                return module
+
+        class RenamedHook(ModelHook):
+            def deinitialize_hook(self, module):
+                module.saw_renamed = True
+                return module
+
+        class ChildOfRenamed(RenamedHook):
+            def deinitalize_hook(self, module):
+                module.saw_child = True
+                return module
+
+        assert LegacyHook.deinitialize_hook is LegacyHook.deinitalize_hook
+        assert RenamedHook.deinitialize_hook is RenamedHook.deinitalize_hook
+        assert ChildOfRenamed.deinitialize_hook is ChildOfRenamed.deinitalize_hook
+        assert ChildOfRenamed.deinitialize_hook is not RenamedHook.deinitialize_hook
+
+        legacy_module = torch.nn.Linear(2, 2)
+        registry = HookRegistry.check_if_exists_or_initialize(legacy_module)
+        registry.register_hook(LegacyHook(), "legacy")
+        registry.remove_hook("legacy")
+        assert legacy_module.saw_legacy is True
+
+        renamed_module = torch.nn.Linear(2, 2)
+        registry = HookRegistry.check_if_exists_or_initialize(renamed_module)
+        renamed_hook = RenamedHook()
+        registry.register_hook(renamed_hook, "renamed")
+        renamed_hook.deinitalize_hook(renamed_module)
+        assert renamed_module.saw_renamed is True
+
+        child_module = torch.nn.Linear(2, 2)
+        registry = HookRegistry.check_if_exists_or_initialize(child_module)
+        registry.register_hook(ChildOfRenamed(), "child")
+        registry.remove_hook("child")
+        assert child_module.saw_child is True

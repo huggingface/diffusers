@@ -112,7 +112,7 @@ class ModelHook:
         """
         return module
 
-    def deinitalize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
+    def deinitialize_hook(self, module: torch.nn.Module) -> torch.nn.Module:
         r"""
         Hook that is executed when a model is deinitialized.
 
@@ -121,6 +121,20 @@ class ModelHook:
                 The module attached to this hook.
         """
         return module
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        # A subclass may still override the misspelled `deinitalize_hook`. Point the other name at
+        # that override so `HookRegistry.remove_hook` and existing callers both reach it.
+        super().__init_subclass__(**kwargs)
+        defines_new = "deinitialize_hook" in cls.__dict__
+        defines_old = "deinitalize_hook" in cls.__dict__
+        if defines_old and not defines_new:
+            cls.deinitialize_hook = cls.__dict__["deinitalize_hook"]
+        elif defines_new and not defines_old:
+            cls.deinitalize_hook = cls.__dict__["deinitialize_hook"]
+
+    # Historical misspelling of `deinitialize_hook`. Same function, so existing callers keep working.
+    deinitalize_hook = deinitialize_hook
 
     def pre_forward(self, module: torch.nn.Module, *args, **kwargs) -> tuple[tuple[Any], dict[str, Any]]:
         r"""
@@ -263,7 +277,7 @@ class HookRegistry:
             else:
                 self._fn_refs[index + 1].forward = old_forward
 
-            self._module_ref = hook.deinitalize_hook(self._module_ref)
+            self._module_ref = hook.deinitialize_hook(self._module_ref)
             del self.hooks[name]
             self._hook_order.pop(index)
             self._fn_refs.pop(index)

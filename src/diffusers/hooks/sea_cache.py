@@ -492,7 +492,7 @@ class SeaCacheRootHook(ModelHook):
         unwrapped_module._run_decoder_stack = self._installed_decoder_stack
         return module
 
-    def deinitalize_hook(self, module: torch.nn.Module):
+    def deinitialize_hook(self, module: torch.nn.Module):
         if self.use_stack_boundary:
             unwrapped_module = unwrap_module(module)
             if unwrapped_module.__dict__.get("_run_decoder_stack") is self._installed_decoder_stack:
