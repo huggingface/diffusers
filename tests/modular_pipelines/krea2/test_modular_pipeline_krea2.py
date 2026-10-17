@@ -14,8 +14,14 @@
 # limitations under the License.
 
 
+import copy
+
+import pytest
+import torch
+
 from diffusers.modular_pipelines import Krea2AutoBlocks, Krea2ModularPipeline
 
+from ...testing_utils import torch_device
 from ..testing_utils import (
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
@@ -33,6 +39,7 @@ KREA2_WORKFLOWS = {
         ("denoise.set_timesteps", "Krea2SetTimestepsStep"),
         ("denoise.prepare_position_ids", "Krea2PreparePositionIdsStep"),
         ("denoise.denoise", "Krea2DenoiseStep"),
+        ("denoise.unpack_latents", "Krea2UnpackLatentsStep"),
         ("decode", "Krea2DecodeStep"),
     ],
 }
@@ -42,6 +49,7 @@ class Krea2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = Krea2ModularPipeline
     pipeline_blocks_class = Krea2AutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-krea2-modular-pipe"
+    expected_latents_shape = (1, 4, 1, 8, 8)
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
     expected_workflow_blocks = KREA2_WORKFLOWS
@@ -61,6 +69,22 @@ class Krea2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestKrea2ModularPipelineFast(Krea2ModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    def test_decode_accepts_packed_latents_with_deprecation(self):
+        # The old packed `[B, S, C]` form is still accepted by the decode step for a deprecation window.
+        inputs = self.get_dummy_inputs()
+        expected = self.get_pipeline().to(torch_device)(**inputs, output=self.output_name)
+
+        # Blocksets can be composed from shared block instances, so pop from a copy.
+        blocks = copy.deepcopy(self.pipeline_blocks_class())
+        blocks.sub_blocks["denoise"].sub_blocks.pop("unpack_latents")
+        pipe = blocks.init_pipeline(self.pretrained_model_name_or_path)
+        pipe.load_components(dtype=torch.float32)
+        pipe.to(torch_device)
+        with pytest.warns(FutureWarning, match="packed latents"):
+            output = pipe(**self.get_dummy_inputs(), output=self.output_name)
+
+        assert torch.equal(output, expected)
+
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-3)
 
