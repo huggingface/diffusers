@@ -2269,8 +2269,9 @@ def main(args):
 
                     # Compute prior loss
                     if weighting is not None:
+                        weighting, weighting_prior = torch.chunk(weighting, 2, dim=0)
                         prior_loss = torch.mean(
-                            (weighting.float() * (model_pred_prior.float() - target_prior.float()) ** 2).reshape(
+                            (weighting_prior.float() * (model_pred_prior.float() - target_prior.float()) ** 2).reshape(
                                 target_prior.shape[0], -1
                             ),
                             1,
