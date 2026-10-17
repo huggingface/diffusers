@@ -2323,19 +2323,18 @@ def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
     has_non_diffusers_lora_id = any(down_key in k or up_key in k for k in all_keys)
     has_diffusers_lora_id = any(a_key in k or b_key in k for k in all_keys)
 
+    def get_alpha_scales(down_weight, alpha_key):
+        rank = down_weight.shape[0]
+        alpha = state_dict.pop(alpha_key).item()
+        scale = alpha / rank  # LoRA is scaled by 'alpha / rank' in forward pass, so we need to scale it back here
+        scale_down = scale
+        scale_up = 1.0
+        while scale_down * 2 < scale_up:
+            scale_down *= 2
+            scale_up /= 2
+        return scale_down, scale_up
+
     if has_non_diffusers_lora_id:
-
-        def get_alpha_scales(down_weight, alpha_key):
-            rank = down_weight.shape[0]
-            alpha = state_dict.pop(alpha_key).item()
-            scale = alpha / rank  # LoRA is scaled by 'alpha / rank' in forward pass, so we need to scale it back here
-            scale_down = scale
-            scale_up = 1.0
-            while scale_down * 2 < scale_up:
-                scale_down *= 2
-                scale_up /= 2
-            return scale_down, scale_up
-
         for k in all_keys:
             if k.endswith(down_key):
                 diffusers_down_key = k.replace(down_key, ".lora_A.weight")
@@ -2348,12 +2347,24 @@ def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
                 converted_state_dict[diffusers_down_key] = down_weight * scale_down
                 converted_state_dict[diffusers_up_key] = up_weight * scale_up
 
-    # Already in diffusers format (lora_A/lora_B), just pop
+    # Already in diffusers format (lora_A/lora_B). ai-toolkit and ComfyUI LoRAs can still carry a per-module
+    # `.alpha`, which has to be folded into the weights like above or the LoRA loads at `rank / alpha` strength.
     elif has_diffusers_lora_id:
         for k in all_keys:
-            if a_key in k or b_key in k:
-                converted_state_dict[k] = state_dict.pop(k)
-            elif ".alpha" in k:
+            if k.endswith(a_key):
+                diffusers_up_key = k.replace(a_key, b_key)
+                alpha_key = k.replace(a_key, ".alpha")
+
+                down_weight = state_dict.pop(k)
+                up_weight = state_dict.pop(diffusers_up_key)
+                if alpha_key in state_dict:
+                    scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
+                    down_weight = down_weight * scale_down
+                    up_weight = up_weight * scale_up
+                converted_state_dict[k] = down_weight
+                converted_state_dict[diffusers_up_key] = up_weight
+        for k in list(state_dict):
+            if k.endswith(".alpha"):
                 state_dict.pop(k)
 
     if len(state_dict) > 0:
