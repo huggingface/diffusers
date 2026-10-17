@@ -29,7 +29,14 @@ from diffusers.modular_pipelines import (
 )
 
 from ...testing_utils import floats_tensor, torch_device
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularAutoOffloadTesterMixin,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 FLUX_TEXT2IMAGE_WORKFLOWS = {
@@ -45,7 +52,7 @@ FLUX_TEXT2IMAGE_WORKFLOWS = {
 }
 
 
-class TestFluxModularPipelineFast(ModularPipelineTesterMixin):
+class FluxModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = FluxModularPipeline
     pipeline_blocks_class = FluxAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-modular"
@@ -68,8 +75,26 @@ class TestFluxModularPipelineFast(ModularPipelineTesterMixin):
         }
         return inputs
 
+
+class TestFluxModularPipelineFast(FluxModularPipelineTesterConfig, ModularPipelineTesterMixin):
     def test_float16_inference(self):
         super().test_float16_inference(9e-2)
+
+
+class TestFluxModularPipelineLoading(FluxModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestFluxModularPipelineWorkflow(FluxModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestFluxModularPipelineMemory(FluxModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
+
+
+class TestFluxModularPipelineAutoOffload(FluxModularPipelineTesterConfig, ModularAutoOffloadTesterMixin):
+    pass
 
 
 FLUX_IMAGE2IMAGE_WORKFLOWS = {
@@ -89,7 +114,7 @@ FLUX_IMAGE2IMAGE_WORKFLOWS = {
 }
 
 
-class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
+class FluxImg2ImgModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = FluxModularPipeline
     pipeline_blocks_class = FluxAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-modular"
@@ -98,8 +123,8 @@ class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
     batch_params = frozenset(["prompt", "image"])
     expected_workflow_blocks = FLUX_IMAGE2IMAGE_WORKFLOWS
 
-    def get_pipeline(self, components_manager=None, torch_dtype=torch.float32):
-        pipeline = super().get_pipeline(components_manager, torch_dtype)
+    def get_pipeline(self, components_manager=None, dtype=torch.float32):
+        pipeline = super().get_pipeline(components_manager, dtype)
 
         # Override `vae_scale_factor` here as currently, `image_processor` is initialized with
         # fixed constants instead of
@@ -128,30 +153,36 @@ class TestFluxImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
 
         return inputs
 
-    def test_save_from_pretrained(self, tmp_path):
-        pipes = []
-        base_pipe = self.get_pipeline().to(torch_device)
-        pipes.append(base_pipe)
 
-        base_pipe.save_pretrained(str(tmp_path))
-        pipe = ModularPipeline.from_pretrained(tmp_path).to(torch_device)
-        pipe.load_components(torch_dtype=torch.float32)
-        pipe.to(torch_device)
-        pipe.image_processor = VaeImageProcessor(vae_scale_factor=2)
-
-        pipes.append(pipe)
-
-        image_slices = []
-        for pipe in pipes:
-            inputs = self.get_dummy_inputs()
-            image = pipe(**inputs, output="images")
-
-            image_slices.append(image[0, -3:, -3:, -1].flatten())
-
-        assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
-
+class TestFluxImg2ImgModularPipelineFast(FluxImg2ImgModularPipelineTesterConfig, ModularPipelineTesterMixin):
     def test_float16_inference(self):
         super().test_float16_inference(8e-2)
+
+
+class TestFluxImg2ImgModularPipelineLoading(FluxImg2ImgModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    def test_save_from_pretrained(self, tmp_path, base_pipe_output):
+        base_pipe = self.get_pipeline().to(torch_device)
+        base_pipe.save_pretrained(str(tmp_path))
+
+        pipe = ModularPipeline.from_pretrained(tmp_path)
+        pipe.load_components(dtype=torch.float32)
+        pipe.to(torch_device)
+        # Re-apply the `vae_scale_factor` override `get_pipeline` makes (see the comment there).
+        pipe.image_processor = VaeImageProcessor(vae_scale_factor=2)
+
+        image = pipe(**self.get_dummy_inputs(), output=self.output_name)
+
+        expected_slice = base_pipe_output[0, -3:, -3:, -1].flatten()
+        image_slice = image[0, -3:, -3:, -1].flatten()
+        assert torch.abs(expected_slice - image_slice).max() < 1e-3
+
+
+class TestFluxImg2ImgModularPipelineWorkflow(FluxImg2ImgModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestFluxImg2ImgModularPipelineMemory(FluxImg2ImgModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
 
 
 FLUX_KONTEXT_WORKFLOWS = {
@@ -180,7 +211,7 @@ FLUX_KONTEXT_WORKFLOWS = {
 }
 
 
-class TestFluxKontextModularPipelineFast(ModularPipelineTesterMixin):
+class FluxKontextModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = FluxKontextModularPipeline
     pipeline_blocks_class = FluxKontextAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-kontext-pipe"
@@ -209,27 +240,32 @@ class TestFluxKontextModularPipelineFast(ModularPipelineTesterMixin):
 
         return inputs
 
-    def test_save_from_pretrained(self, tmp_path):
-        pipes = []
-        base_pipe = self.get_pipeline().to(torch_device)
-        pipes.append(base_pipe)
 
+class TestFluxKontextModularPipelineFast(FluxKontextModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    def test_float16_inference(self):
+        super().test_float16_inference(9e-2)
+
+
+class TestFluxKontextModularPipelineLoading(FluxKontextModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    def test_save_from_pretrained(self, tmp_path, base_pipe_output):
+        base_pipe = self.get_pipeline().to(torch_device)
         base_pipe.save_pretrained(str(tmp_path))
-        pipe = ModularPipeline.from_pretrained(tmp_path).to(torch_device)
-        pipe.load_components(torch_dtype=torch.float32)
+
+        pipe = ModularPipeline.from_pretrained(tmp_path)
+        pipe.load_components(dtype=torch.float32)
         pipe.to(torch_device)
         pipe.image_processor = VaeImageProcessor(vae_scale_factor=2)
 
-        pipes.append(pipe)
+        image = pipe(**self.get_dummy_inputs(), output=self.output_name)
 
-        image_slices = []
-        for pipe in pipes:
-            inputs = self.get_dummy_inputs()
-            image = pipe(**inputs, output="images")
+        expected_slice = base_pipe_output[0, -3:, -3:, -1].flatten()
+        image_slice = image[0, -3:, -3:, -1].flatten()
+        assert torch.abs(expected_slice - image_slice).max() < 1e-3
 
-            image_slices.append(image[0, -3:, -3:, -1].flatten())
 
-        assert torch.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+class TestFluxKontextModularPipelineWorkflow(FluxKontextModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
 
-    def test_float16_inference(self):
-        super().test_float16_inference(9e-2)
+
+class TestFluxKontextModularPipelineMemory(FluxKontextModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass

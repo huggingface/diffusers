@@ -22,7 +22,13 @@ from diffusers.modular_pipelines import (
     HeliosPyramidModularPipeline,
 )
 
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 HELIOS_WORKFLOWS = {
@@ -61,11 +67,10 @@ HELIOS_WORKFLOWS = {
 }
 
 
-class TestHeliosModularPipelineFast(ModularPipelineTesterMixin):
+class HeliosModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = HeliosModularPipeline
     pipeline_blocks_class = HeliosAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-helios-modular-pipe"
-
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
@@ -86,9 +91,23 @@ class TestHeliosModularPipelineFast(ModularPipelineTesterMixin):
         }
         return inputs
 
+
+class TestHeliosModularPipelineFast(HeliosModularPipelineTesterConfig, ModularPipelineTesterMixin):
     @pytest.mark.skip(reason="num_videos_per_prompt")
     def test_num_images_per_prompt(self):
         pass
+
+
+class TestHeliosModularPipelineLoading(HeliosModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestHeliosModularPipelineWorkflow(HeliosModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestHeliosModularPipelineMemory(HeliosModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
 
 
 HELIOS_PYRAMID_WORKFLOWS = {
@@ -124,11 +143,10 @@ HELIOS_PYRAMID_WORKFLOWS = {
 }
 
 
-class TestHeliosPyramidModularPipelineFast(ModularPipelineTesterMixin):
+class HeliosPyramidModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = HeliosPyramidModularPipeline
     pipeline_blocks_class = HeliosPyramidAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-helios-pyramid-modular-pipe"
-
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["pyramid_num_inference_steps_list", "num_videos_per_prompt", "latents"])
@@ -149,18 +167,28 @@ class TestHeliosPyramidModularPipelineFast(ModularPipelineTesterMixin):
         }
         return inputs
 
+
+class TestHeliosPyramidModularPipelineFast(HeliosPyramidModularPipelineTesterConfig, ModularPipelineTesterMixin):
     def test_inference_batch_single_identical(self):
         # Pyramid pipeline injects noise at each stage, so batch vs single can differ more
         super().test_inference_batch_single_identical(expected_max_diff=5e-1)
 
-    @pytest.mark.skip(reason="Pyramid multi-stage noise makes offload comparison unreliable with tiny models")
-    def test_components_auto_cpu_offload_inference_consistent(self):
+    @pytest.mark.skip(reason="num_videos_per_prompt")
+    def test_num_images_per_prompt(self):
         pass
 
+
+class TestHeliosPyramidModularPipelineLoading(HeliosPyramidModularPipelineTesterConfig, ModularLoadingTesterMixin):
     @pytest.mark.skip(reason="Pyramid multi-stage noise makes save/load comparison unreliable with tiny models")
     def test_save_from_pretrained(self):
         pass
 
-    @pytest.mark.skip(reason="num_videos_per_prompt")
-    def test_num_images_per_prompt(self):
+
+class TestHeliosPyramidModularPipelineWorkflow(HeliosPyramidModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestHeliosPyramidModularPipelineMemory(HeliosPyramidModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    @pytest.mark.skip(reason="Pyramid multi-stage noise makes offload comparison unreliable with tiny models")
+    def test_components_auto_cpu_offload_inference_consistent(self):
         pass

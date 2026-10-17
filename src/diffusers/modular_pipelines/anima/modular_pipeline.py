@@ -20,7 +20,6 @@ class AnimaModularPipeline(ModularPipeline, AnimaLoraLoaderMixin):
     """
     A ModularPipeline for Anima.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     default_blocks_name = "AnimaAutoBlocks"
@@ -40,7 +39,7 @@ class AnimaModularPipeline(ModularPipeline, AnimaLoraLoaderMixin):
     @property
     def vae_scale_factor(self):
         vae_scale_factor = 8
-        if self.vae is not None:
+        if getattr(self, "vae", None) is not None:
             vae_scale_factor = 2 ** len(self.vae.temperal_downsample)
         return vae_scale_factor
 

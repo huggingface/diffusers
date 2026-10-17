@@ -398,7 +398,7 @@ class DreamLiteMobilePipeline(DiffusionPipeline, FromSingleFileMixin, TextualInv
         return_dict: bool = True,
         max_sequence_length: int = 200,
         text_pad_embedding: Optional[torch.Tensor] = None,
-    ):
+    ) -> DreamLitePipelineOutput | tuple:
         r"""Run the distilled DreamLite Mobile pipeline.
 
         Args:

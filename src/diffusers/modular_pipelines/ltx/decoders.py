@@ -23,7 +23,7 @@ from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import LTXVideoPachifier
+from .modular_pipeline import LTXModularPipeline, LTXVideoPachifier
 
 
 logger = logging.get_logger(__name__)
@@ -84,7 +84,7 @@ class LTXVaeDecoderStep(ModularPipelineBlocks):
         return [OutputParam.template("videos")]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTXModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         vae = components.vae
 

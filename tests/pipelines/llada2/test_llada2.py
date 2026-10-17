@@ -1,5 +1,4 @@
-import unittest
-
+import pytest
 import torch
 
 from diffusers import BlockRefinementScheduler, LLaDA2Pipeline
@@ -41,7 +40,7 @@ def _make_pipeline(tokenizer=None):
     return LLaDA2Pipeline(model=model, scheduler=scheduler, tokenizer=tokenizer)
 
 
-class LLaDA2PipelineTest(unittest.TestCase):
+class TestLLaDA2Pipeline:
     def test_pipeline_runs(self):
         pipe = _make_pipeline().to("cpu")
 
@@ -61,8 +60,8 @@ class LLaDA2PipelineTest(unittest.TestCase):
             output_type="seq",
         )
 
-        self.assertEqual(out.sequences.shape, (2, 24))
-        self.assertFalse((out.sequences == 31).any().item())
+        assert out.sequences.shape == (2, 24)
+        assert not (out.sequences == 31).any().item()
 
     def test_pipeline_return_tuple(self):
         pipe = _make_pipeline().to("cpu")
@@ -83,8 +82,8 @@ class LLaDA2PipelineTest(unittest.TestCase):
             return_dict=False,
         )
 
-        self.assertEqual(sequences.shape, (1, 16))
-        self.assertIsNone(texts)
+        assert sequences.shape == (1, 16)
+        assert texts is None
 
     def test_output_type_seq(self):
         """output_type='seq' should return sequences but no texts."""
@@ -104,9 +103,9 @@ class LLaDA2PipelineTest(unittest.TestCase):
             output_type="seq",
         )
 
-        self.assertIsNotNone(out.sequences)
-        self.assertEqual(out.sequences.shape, (1, 16))
-        self.assertIsNone(out.texts)
+        assert out.sequences is not None
+        assert out.sequences.shape == (1, 16)
+        assert out.texts is None
 
     def test_output_type_text_without_tokenizer(self):
         """output_type='text' without a tokenizer should return texts=None."""
@@ -126,8 +125,8 @@ class LLaDA2PipelineTest(unittest.TestCase):
             output_type="text",
         )
 
-        self.assertIsNotNone(out.sequences)
-        self.assertIsNone(out.texts)
+        assert out.sequences is not None
+        assert out.texts is None
 
     def test_output_type_text_with_tokenizer(self):
         """output_type='text' with a tokenizer should return decoded texts."""
@@ -155,16 +154,16 @@ class LLaDA2PipelineTest(unittest.TestCase):
             output_type="text",
         )
 
-        self.assertIsNotNone(out.sequences)
-        self.assertIsNotNone(out.texts)
-        self.assertEqual(len(out.texts), 1)
-        self.assertTrue(out.texts[0].startswith("decoded_"))
+        assert out.sequences is not None
+        assert out.texts is not None
+        assert len(out.texts) == 1
+        assert out.texts[0].startswith("decoded_")
 
     def test_output_type_invalid_raises(self):
         """Invalid output_type should raise ValueError."""
         pipe = _make_pipeline().to("cpu")
 
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             pipe(
                 input_ids=torch.tensor([[5, 6, 7, 8]], dtype=torch.long),
                 use_chat_template=False,
@@ -186,9 +185,9 @@ class LLaDA2PipelineTest(unittest.TestCase):
             add_generation_prompt=False,
             chat_template_kwargs=None,
         )
-        self.assertTrue(torch.equal(result_ids, ids))
-        self.assertEqual(result_mask.shape, ids.shape)
-        self.assertTrue((result_mask == 1).all().item())
+        assert torch.equal(result_ids, ids)
+        assert result_mask.shape == ids.shape
+        assert (result_mask == 1).all().item()
 
     def test_prepare_input_ids_from_1d_tensor(self):
         pipe = _make_pipeline()
@@ -201,12 +200,12 @@ class LLaDA2PipelineTest(unittest.TestCase):
             add_generation_prompt=False,
             chat_template_kwargs=None,
         )
-        self.assertEqual(result_ids.shape, (1, 3))
-        self.assertEqual(result_mask.shape, (1, 3))
+        assert result_ids.shape == (1, 3)
+        assert result_mask.shape == (1, 3)
 
     def test_prepare_input_ids_no_tokenizer_raises(self):
         pipe = _make_pipeline(tokenizer=None)
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             pipe._prepare_input_ids(
                 prompt="hello",
                 messages=None,
@@ -220,7 +219,7 @@ class LLaDA2PipelineTest(unittest.TestCase):
         pipe = _make_pipeline()
         # Manually set tokenizer to a simple object so _prepare_input_ids doesn't short-circuit
         pipe.tokenizer = type("Tok", (), {"eos_token_id": None, "mask_token_id": None})()
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             pipe._prepare_input_ids(
                 prompt="hello",
                 messages=[{"role": "user", "content": "hi"}],
@@ -233,7 +232,7 @@ class LLaDA2PipelineTest(unittest.TestCase):
     def test_prepare_input_ids_neither_raises(self):
         pipe = _make_pipeline()
         pipe.tokenizer = type("Tok", (), {"eos_token_id": None, "mask_token_id": None})()
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             pipe._prepare_input_ids(
                 prompt=None,
                 messages=None,
@@ -244,7 +243,7 @@ class LLaDA2PipelineTest(unittest.TestCase):
             )
 
 
-class LLaDA2RegressionTest(unittest.TestCase):
+class TestLLaDA2Regression:
     """Pin the regressions identified in https://github.com/huggingface/diffusers/issues/13598."""
 
     def test_attention_mask_carried_through_for_pre_tokenized_input(self):
@@ -278,16 +277,16 @@ class LLaDA2RegressionTest(unittest.TestCase):
             output_type="seq",
         )
 
-        self.assertGreater(len(captured), 0)
+        assert len(captured) > 0
         first_mask = captured[0]
         # Padded prompt positions stay zero in the runtime mask (Issue #1).
-        self.assertEqual(first_mask[0, 3].item(), 0)
-        self.assertEqual(first_mask[1, 1].item(), 0)
-        self.assertEqual(first_mask[1, 2].item(), 0)
-        self.assertEqual(first_mask[1, 3].item(), 0)
+        assert first_mask[0, 3].item() == 0
+        assert first_mask[1, 1].item() == 0
+        assert first_mask[1, 2].item() == 0
+        assert first_mask[1, 3].item() == 0
         # Real prompt positions stay one.
-        self.assertEqual(first_mask[0, 0].item(), 1)
-        self.assertEqual(first_mask[1, 0].item(), 1)
+        assert first_mask[0, 0].item() == 1
+        assert first_mask[1, 0].item() == 1
 
     def test_block_length_routes_into_scheduler_transfer_schedule(self):
         """Issue #2: the per-call `block_length` must drive the scheduler's `_transfer_schedule`."""
@@ -313,9 +312,9 @@ class LLaDA2RegressionTest(unittest.TestCase):
             callback_on_step_end_tensor_inputs=["transfer_index"],
         )
         # With block_length=num_inference_steps=8 the schedule commits exactly one token per step.
-        self.assertEqual(commits[0], 1)
-        self.assertEqual(commits[1], 1)
-        self.assertEqual(commits[2], 1)
+        assert commits[0] == 1
+        assert commits[1] == 1
+        assert commits[2] == 1
 
     def test_callback_tensor_inputs_advertised_keys_resolve(self):
         """Issue #3: every advertised callback key must be a bound local at callback time."""
@@ -341,7 +340,7 @@ class LLaDA2RegressionTest(unittest.TestCase):
             callback_on_step_end=cb,
             callback_on_step_end_tensor_inputs=keys,
         )
-        self.assertEqual(set(observed), set(keys))
+        assert set(observed) == set(keys)
 
     def test_eos_at_first_generated_position_triggers_finished(self):
         """Issue #4: EOS exactly at index `prompt_length` must mark the row finished."""
@@ -357,7 +356,7 @@ class LLaDA2RegressionTest(unittest.TestCase):
             mask_token_id=99,
             prompt_length=1,
         )
-        self.assertTrue(bool(finished[0].item()))
+        assert bool(finished[0].item())
 
     def test_finished_rows_are_frozen_for_subsequent_blocks(self):
         """Issue #5: once a row emits EOS, later blocks must not overwrite its committed tokens."""
@@ -393,7 +392,7 @@ class LLaDA2RegressionTest(unittest.TestCase):
             output_type="seq",
         )
         # Row 0's first generated tokens must not be overwritten by later-block sampling (token 7).
-        self.assertNotIn(7, out.sequences[0].tolist()[:2])
+        assert 7 not in out.sequences[0].tolist()[:2]
 
     def test_progress_bar_disable_is_preserved_after_call(self):
         """Issue #6: calling the pipeline must not mutate `_progress_bar_config`."""
@@ -412,8 +411,4 @@ class LLaDA2RegressionTest(unittest.TestCase):
             eos_early_stop=False,
             output_type="seq",
         )
-        self.assertEqual(pipe._progress_bar_config, before)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert pipe._progress_bar_config == before

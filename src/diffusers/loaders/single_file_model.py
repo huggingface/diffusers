@@ -39,6 +39,7 @@ from .single_file_utils import (
     convert_cosmos_transformer_checkpoint_to_diffusers,
     convert_ernie_image_transformer_checkpoint_to_diffusers,
     convert_flux2_transformer_checkpoint_to_diffusers,
+    convert_flux3_transformer_checkpoint_to_diffusers,
     convert_flux_transformer_checkpoint_to_diffusers,
     convert_hidream_transformer_to_diffusers,
     convert_hunyuan_video_transformer_to_diffusers,
@@ -52,10 +53,13 @@ from .single_file_utils import (
     convert_ltx_transformer_checkpoint_to_diffusers,
     convert_ltx_vae_checkpoint_to_diffusers,
     convert_lumina2_to_diffusers,
+    convert_minimax_h3_transformer_checkpoint_to_diffusers,
     convert_mochi_transformer_checkpoint_to_diffusers,
+    convert_qwen_image21_transformer_checkpoint_to_diffusers,
     convert_sana_transformer_to_diffusers,
     convert_sd3_transformer_checkpoint_to_diffusers,
     convert_stable_cascade_unet_single_file_to_diffusers,
+    convert_wan_animate_2_transformer_to_diffusers,
     convert_wan_transformer_to_diffusers,
     convert_wan_vae_to_diffusers,
     convert_z_image_controlnet_checkpoint_to_diffusers,
@@ -174,6 +178,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_wan_transformer_to_diffusers,
         "default_subfolder": "transformer",
     },
+    "WanAnimate2Transformer3DModel": {
+        "checkpoint_mapping_fn": convert_wan_animate_2_transformer_to_diffusers,
+        "default_subfolder": "transformer",
+    },
     "AutoencoderKLWan": {
         "checkpoint_mapping_fn": convert_wan_vae_to_diffusers,
         "default_subfolder": "vae",
@@ -190,8 +198,24 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": lambda checkpoint, **kwargs: checkpoint,
         "default_subfolder": "transformer",
     },
+    "QwenImage21Transformer2DModel": {
+        "checkpoint_mapping_fn": convert_qwen_image21_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "Ideogram4Transformer2DModel": {
+        "checkpoint_mapping_fn": convert_ideogram4_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "Krea2Transformer2DModel": {
+        "checkpoint_mapping_fn": convert_krea2_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
     "Flux2Transformer2DModel": {
         "checkpoint_mapping_fn": convert_flux2_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "Flux3Transformer2DModel": {
+        "checkpoint_mapping_fn": convert_flux3_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
     "ZImageTransformer2DModel": {
@@ -217,12 +241,8 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": lambda checkpoint, **kwargs: checkpoint,
         "default_subfolder": "transformer",
     },
-    "Ideogram4Transformer2DModel": {
-        "checkpoint_mapping_fn": convert_ideogram4_transformer_checkpoint_to_diffusers,
-        "default_subfolder": "transformer",
-    },
-    "Krea2Transformer2DModel": {
-        "checkpoint_mapping_fn": convert_krea2_transformer_checkpoint_to_diffusers,
+    "MiniMaxH3Transformer3DModel": {
+        "checkpoint_mapping_fn": convert_minimax_h3_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
 }
@@ -287,7 +307,7 @@ class FromOriginalModelMixin:
             original_config (`str`, *optional*):
                 Dict or path to a yaml file containing the configuration for the model in its original format.
                     If a dict is provided, it will be used to initialize the model configuration.
-            torch_dtype (`torch.dtype`, *optional*):
+            dtype (`torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
@@ -361,6 +381,8 @@ class FromOriginalModelMixin:
         revision = kwargs.pop("revision", None)
         config_revision = kwargs.pop("config_revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
+        dtype = kwargs.pop("dtype", None)
+        torch_dtype = dtype if dtype is not None else torch_dtype
         quantization_config = kwargs.pop("quantization_config", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         device = kwargs.pop("device", None)
@@ -397,9 +419,12 @@ class FromOriginalModelMixin:
                 user_agent=user_agent,
             )
         if quantization_config is not None:
+            if not low_cpu_mem_usage:
+                raise ValueError("`low_cpu_mem_usage` cannot be False when using quantization.")
             hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config)
             hf_quantizer.validate_environment()
             torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
+            checkpoint = hf_quantizer.maybe_update_state_dict(checkpoint)
 
         else:
             hf_quantizer = None

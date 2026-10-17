@@ -131,7 +131,7 @@ from diffusers import DiffusionPipeline, UniPCMultistepScheduler
 import torch
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "andite/anything-v4.0", torch_dtype=torch.float16, safety_checker=None
+    "andite/anything-v4.0", dtype=torch.float16, safety_checker=None
 ).to("cuda")
 pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
 ```

@@ -117,7 +117,7 @@ from diffusers import StableDiffusionPipeline
 import torch
 
 model_ckpt = "CompVis/stable-diffusion-v1-4"
-sd_pipeline = StableDiffusionPipeline.from_pretrained(model_ckpt, torch_dtype=torch.float16).to("cuda")
+sd_pipeline = StableDiffusionPipeline.from_pretrained(model_ckpt, dtype=torch.float16).to("cuda")
 ```
 
 여러 개의 프롬프트를 사용하여 이미지를 생성합니다:
@@ -171,7 +171,7 @@ images = sd_pipeline(prompts, num_images_per_prompt=1, generator=generator, outp
 
 ```python
 model_ckpt_1_5 = "stable-diffusion-v1-5/stable-diffusion-v1-5"
-sd_pipeline_1_5 = StableDiffusionPipeline.from_pretrained(model_ckpt_1_5, torch_dtype=weight_dtype).to(device)
+sd_pipeline_1_5 = StableDiffusionPipeline.from_pretrained(model_ckpt_1_5, dtype=weight_dtype).to(device)
 
 images_1_5 = sd_pipeline_1_5(prompts, num_images_per_prompt=1, generator=generator, output_type="np").images
 ```
@@ -263,7 +263,7 @@ dataset[idx]["image"]
 from diffusers import StableDiffusionInstructPix2PixPipeline
 
 instruct_pix2pix_pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
-    "timbrooks/instruct-pix2pix", torch_dtype=torch.float16
+    "timbrooks/instruct-pix2pix", dtype=torch.float16
 ).to(device)
 ```
 
@@ -474,7 +474,7 @@ print(real_images.shape)
 ```python
 from diffusers import DiTPipeline, DPMSolverMultistepScheduler
 
-dit_pipeline = DiTPipeline.from_pretrained("facebook/DiT-XL-2-256", torch_dtype=torch.float16)
+dit_pipeline = DiTPipeline.from_pretrained("facebook/DiT-XL-2-256", dtype=torch.float16)
 dit_pipeline.scheduler = DPMSolverMultistepScheduler.from_config(dit_pipeline.scheduler.config)
 dit_pipeline = dit_pipeline.to("cuda")
 

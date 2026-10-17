@@ -102,7 +102,7 @@ class StableDiffusion3LoopDenoiser(ModularPipelineBlocks):
         block_state: BlockState,
         i: int,
         t: torch.Tensor,
-    ) -> PipelineState:
+    ) -> tuple[StableDiffusion3ModularPipeline, BlockState]:
         do_cfg = block_state.negative_prompt_embeds is not None
 
         guider_inputs = {
@@ -174,7 +174,7 @@ class StableDiffusion3LoopAfterDenoiser(ModularPipelineBlocks):
         block_state: BlockState,
         i: int,
         t: torch.Tensor,
-    ):
+    ) -> tuple[StableDiffusion3ModularPipeline, BlockState]:
         latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(
             block_state.noise_pred,
@@ -207,7 +207,9 @@ class StableDiffusion3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusion3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         block_state.num_warmup_steps = max(
             len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order,

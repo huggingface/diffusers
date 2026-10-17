@@ -298,7 +298,7 @@ class StableDiffusion3AutoBlocks(SequentialPipelineBlocks):
       Components:
           text_encoder (`CLIPTextModelWithProjection`) tokenizer (`CLIPTokenizer`) text_encoder_2
           (`CLIPTextModelWithProjection`) tokenizer_2 (`CLIPTokenizer`) text_encoder_3 (`T5EncoderModel`) tokenizer_3
-          (`T5TokenizerFast`) image_processor (`VaeImageProcessor`) vae (`AutoencoderKL`) scheduler
+          (`T5Tokenizer`) image_processor (`VaeImageProcessor`) vae (`AutoencoderKL`) scheduler
           (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer (`SD3Transformer2DModel`)
 
       Inputs:

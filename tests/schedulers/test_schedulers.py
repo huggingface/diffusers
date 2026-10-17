@@ -35,6 +35,7 @@ from diffusers import (
     EulerDiscreteScheduler,
     IPNDMScheduler,
     LMSDiscreteScheduler,
+    PNDMScheduler,
     UniPCMultistepScheduler,
     VQDiffusionScheduler,
 )
@@ -216,11 +217,11 @@ class SchedulerBaseTests(unittest.TestCase):
 
     def test_default_arguments_not_in_config(self):
         pipe = DiffusionPipeline.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-pipe", torch_dtype=torch.float16
+            "hf-internal-testing/tiny-stable-diffusion-torch", torch_dtype=torch.float16
         )
-        assert pipe.scheduler.__class__ == DDIMScheduler
+        assert pipe.scheduler.__class__ == PNDMScheduler
 
-        # Default for DDIMScheduler
+        # Default for PNDMScheduler
         assert pipe.scheduler.config.timestep_spacing == "leading"
 
         # Switch to a different one, verify we use the default for that class
@@ -241,9 +242,9 @@ class SchedulerBaseTests(unittest.TestCase):
 
     def test_default_solver_type_after_switch(self):
         pipe = DiffusionPipeline.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-pipe", torch_dtype=torch.float16
+            "hf-internal-testing/tiny-stable-diffusion-torch", torch_dtype=torch.float16
         )
-        assert pipe.scheduler.__class__ == DDIMScheduler
+        assert pipe.scheduler.__class__ == PNDMScheduler
 
         pipe.scheduler = DEISMultistepScheduler.from_config(pipe.scheduler.config)
         assert pipe.scheduler.config.solver_type == "logrho"

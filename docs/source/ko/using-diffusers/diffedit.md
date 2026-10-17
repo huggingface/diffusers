@@ -46,7 +46,7 @@ from diffusers import DDIMScheduler, DDIMInverseScheduler, StableDiffusionDiffEd
 
 pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-1",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     safety_checker=None,
     use_safetensors=True,
 )
@@ -122,7 +122,7 @@ import torch
 from transformers import AutoTokenizer, T5ForConditionalGeneration
 
 tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-large")
-model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-large", device_map="auto", torch_dtype=torch.float16)
+model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-large", device_map="auto", dtype=torch.float16)
 ```
 
 모델에 프롬프트할 source와 target 프롬프트를 생성하기 위해 초기 텍스트들을 제공합니다.
@@ -166,7 +166,7 @@ import torch
 from diffusers import StableDiffusionDiffEditPipeline
 
 pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16, use_safetensors=True
+    "stabilityai/stable-diffusion-2-1", dtype=torch.float16, use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
 pipeline.vae.enable_slicing()
@@ -241,7 +241,7 @@ import torch
 from transformers import BlipForConditionalGeneration, BlipProcessor
 
 processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base", torch_dtype=torch.float16, low_cpu_mem_usage=True)
+model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base", dtype=torch.float16, low_cpu_mem_usage=True)
 ```
 
 입력 이미지에서 캡션을 생성하는 유틸리티 함수를 만듭니다:

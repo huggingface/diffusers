@@ -985,7 +985,7 @@ class MochiAttention(nn.Module):
         encoder_hidden_states: torch.Tensor | None = None,
         attention_mask: torch.Tensor | None = None,
         **kwargs,
-    ):
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         return self.processor(
             self,
             hidden_states,

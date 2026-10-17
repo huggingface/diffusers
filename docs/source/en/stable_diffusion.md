@@ -30,8 +30,8 @@ from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
-  torch_dtype=torch.bfloat16,
-  device_map="cuda"
+  dtype=torch.bfloat16,
+  device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 pipeline.enable_model_cpu_offload()
 
@@ -48,7 +48,7 @@ print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} G
 Denoising is the most computationally demanding process during diffusion. Methods that optimizes this process accelerates inference speed. Try the following methods for a speed up.
 
 - Add `device_map="cuda"` to place the pipeline on a GPU. Placing a model on an accelerator, like a GPU, increases speed because it performs computations in parallel.
-- Set `torch_dtype=torch.bfloat16` to execute the pipeline in half-precision. Reducing the data type precision increases speed because it takes less time to perform computations in a lower precision.
+- Set `dtype=torch.bfloat16` to execute the pipeline in half-precision. Reducing the data type precision increases speed because it takes less time to perform computations in a lower precision.
 
 ```py
 import torch
@@ -57,7 +57,7 @@ from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 
 pipeline = DiffusionPipeline.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
-  torch_dtype=torch.bfloat16,
+  dtype=torch.bfloat16,
   device_map="cuda
 )
 ```
@@ -92,8 +92,8 @@ Many modern diffusion models deliver high-quality images out-of-the-box. However
 
     pipeline = DiffusionPipeline.from_pretrained(
         "stabilityai/stable-diffusion-xl-base-1.0",
-        torch_dtype=torch.bfloat16,
-        device_map="cuda"
+        dtype=torch.bfloat16,
+        device_map="cuda"  # or "mps", "xpu", "cpu"
     )
 
     prompt = """
@@ -114,8 +114,8 @@ Many modern diffusion models deliver high-quality images out-of-the-box. However
 
     pipeline = DiffusionPipeline.from_pretrained(
         "stabilityai/stable-diffusion-xl-base-1.0",
-        torch_dtype=torch.bfloat16,
-        device_map="cuda"
+        dtype=torch.bfloat16,
+        device_map="cuda"  # or "mps", "xpu", "cpu"
     )
     pipeline.scheduler = HeunDiscreteScheduler.from_config(pipeline.scheduler.config)
 

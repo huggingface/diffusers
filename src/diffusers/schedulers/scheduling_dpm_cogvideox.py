@@ -106,8 +106,8 @@ def rescale_zero_terminal_snr(alphas_cumprod):
     Rescales betas to have zero terminal SNR Based on https://huggingface.co/papers/2305.08891 (Algorithm 1)
 
     Args:
-        betas (`torch.Tensor`):
-            the betas that the scheduler is being initialized with.
+        alphas_cumprod (`torch.Tensor`):
+            the cumulative product of alphas that the scheduler is being initialized with.
 
     Returns:
         `torch.Tensor`: rescaled betas with zero terminal SNR

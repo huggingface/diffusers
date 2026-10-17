@@ -19,11 +19,11 @@ The model can be loaded with the following code snippet.
 from diffusers import HeliosTransformer3DModel
 
 # Best Quality
-transformer = HeliosTransformer3DModel.from_pretrained("BestWishYsh/Helios-Base", subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer = HeliosTransformer3DModel.from_pretrained("BestWishYsh/Helios-Base", subfolder="transformer", dtype=torch.bfloat16)
 # Intermediate Weight
-transformer = HeliosTransformer3DModel.from_pretrained("BestWishYsh/Helios-Mid", subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer = HeliosTransformer3DModel.from_pretrained("BestWishYsh/Helios-Mid", subfolder="transformer", dtype=torch.bfloat16)
 # Best Efficiency
-transformer = HeliosTransformer3DModel.from_pretrained("BestWishYsh/Helios-Distilled", subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer = HeliosTransformer3DModel.from_pretrained("BestWishYsh/Helios-Distilled", subfolder="transformer", dtype=torch.bfloat16)
 ```
 
 ## HeliosTransformer3DModel

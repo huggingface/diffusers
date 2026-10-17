@@ -24,7 +24,7 @@ from ...configuration_utils import FrozenDict
 from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
 from ...utils import deprecate, logging
 from ..onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 
 
@@ -53,7 +53,9 @@ def preprocess(image):
     return image
 
 
-class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
+class OnnxStableDiffusionUpscalePipeline(DeprecatedPipelineMixin, DiffusionPipeline):
+    _last_supported_version = "0.43.0"
+
     vae: OnnxRuntimeModel
     text_encoder: OnnxRuntimeModel
     tokenizer: CLIPTokenizer
@@ -364,7 +366,7 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Callable[[int, int, np.ndarray], None] | None = None,
         callback_steps: int | None = 1,
-    ):
+    ) -> StableDiffusionPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

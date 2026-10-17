@@ -19,24 +19,31 @@ https://github.com/huggingface/transformers/blob/c409cd81777fb27aadc043ed3d8339d
 import warnings
 
 from .autoround import AutoRoundQuantizer
+from .bfl import BFLQuantizer
 from .bitsandbytes import BnB4BitDiffusersQuantizer, BnB8BitDiffusersQuantizer
 from .gguf import GGUFQuantizer
 from .modelopt import NVIDIAModelOptQuantizer
+from .nunchaku import NunchakuLiteQuantizer
 from .quantization_config import (
     AutoRoundConfig,
+    BFLQuantizationConfig,
     BitsAndBytesConfig,
     GGUFQuantizationConfig,
+    NunchakuLiteQuantizationConfig,
     NVIDIAModelOptConfig,
     QuantizationConfigMixin,
     QuantizationMethod,
     QuantoConfig,
+    SDNQConfig,
     TorchAoConfig,
 )
 from .quanto import QuantoQuantizer
+from .sdnq import SDNQQuantizer
 from .torchao import TorchAoHfQuantizer
 
 
 AUTO_QUANTIZER_MAPPING = {
+    "bfl": BFLQuantizer,
     "bitsandbytes_4bit": BnB4BitDiffusersQuantizer,
     "bitsandbytes_8bit": BnB8BitDiffusersQuantizer,
     "gguf": GGUFQuantizer,
@@ -44,9 +51,12 @@ AUTO_QUANTIZER_MAPPING = {
     "torchao": TorchAoHfQuantizer,
     "modelopt": NVIDIAModelOptQuantizer,
     "auto-round": AutoRoundQuantizer,
+    "nunchaku_lite": NunchakuLiteQuantizer,
+    "sdnq": SDNQQuantizer,
 }
 
 AUTO_QUANTIZATION_CONFIG_MAPPING = {
+    "bfl": BFLQuantizationConfig,
     "bitsandbytes_4bit": BitsAndBytesConfig,
     "bitsandbytes_8bit": BitsAndBytesConfig,
     "gguf": GGUFQuantizationConfig,
@@ -54,6 +64,8 @@ AUTO_QUANTIZATION_CONFIG_MAPPING = {
     "torchao": TorchAoConfig,
     "modelopt": NVIDIAModelOptConfig,
     "auto-round": AutoRoundConfig,
+    "nunchaku_lite": NunchakuLiteQuantizationConfig,
+    "sdnq": SDNQConfig,
 }
 
 

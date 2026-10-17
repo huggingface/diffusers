@@ -20,6 +20,7 @@ from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
 from ...models import AutoencoderKLFlux2
 from ...utils import logging
+from ...utils.torch_utils import get_module_execution_device
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import Flux2KleinModularPipeline, Flux2ModularPipeline
@@ -151,7 +152,9 @@ class Flux2TextEncoderStep(ModularPipelineBlocks):
         return prompt_embeds
 
     @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2ModularPipeline, state: PipelineState
+    ) -> tuple[Flux2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
 
@@ -213,7 +216,9 @@ class Flux2RemoteTextEncoderStep(ModularPipelineBlocks):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(block_state.prompt)}")
 
     @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2ModularPipeline, state: PipelineState
+    ) -> tuple[Flux2ModularPipeline, PipelineState]:
         import io
 
         import requests
@@ -330,8 +335,9 @@ class Flux2KleinTextEncoderStep(ModularPipelineBlocks):
             all_input_ids.append(inputs["input_ids"])
             all_attention_masks.append(inputs["attention_mask"])
 
-        input_ids = torch.cat(all_input_ids, dim=0).to(device)
-        attention_mask = torch.cat(all_attention_masks, dim=0).to(device)
+        model_device = get_module_execution_device(text_encoder)
+        input_ids = torch.cat(all_input_ids, dim=0).to(model_device)
+        attention_mask = torch.cat(all_attention_masks, dim=0).to(model_device)
 
         # Forward pass through the model
         output = text_encoder(
@@ -351,7 +357,9 @@ class Flux2KleinTextEncoderStep(ModularPipelineBlocks):
         return prompt_embeds
 
     @torch.no_grad()
-    def __call__(self, components: Flux2KleinModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2KleinModularPipeline, state: PipelineState
+    ) -> tuple[Flux2KleinModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
 
@@ -471,8 +479,9 @@ class Flux2KleinBaseTextEncoderStep(ModularPipelineBlocks):
             all_input_ids.append(inputs["input_ids"])
             all_attention_masks.append(inputs["attention_mask"])
 
-        input_ids = torch.cat(all_input_ids, dim=0).to(device)
-        attention_mask = torch.cat(all_attention_masks, dim=0).to(device)
+        model_device = get_module_execution_device(text_encoder)
+        input_ids = torch.cat(all_input_ids, dim=0).to(model_device)
+        attention_mask = torch.cat(all_attention_masks, dim=0).to(model_device)
 
         # Forward pass through the model
         output = text_encoder(
@@ -492,7 +501,9 @@ class Flux2KleinBaseTextEncoderStep(ModularPipelineBlocks):
         return prompt_embeds
 
     @torch.no_grad()
-    def __call__(self, components: Flux2KleinModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2KleinModularPipeline, state: PipelineState
+    ) -> tuple[Flux2KleinModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
 
@@ -582,7 +593,9 @@ class Flux2VaeEncoderStep(ModularPipelineBlocks):
         return image_latents
 
     @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2ModularPipeline, state: PipelineState
+    ) -> tuple[Flux2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         condition_images = block_state.condition_images
 

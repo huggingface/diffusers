@@ -32,7 +32,7 @@ from ...testing_utils import (
     torch_device,
 )
 from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TrainingTesterMixin
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -98,7 +98,7 @@ class TestAutoencoderOobleckMemory(AutoencoderOobleckTesterConfig, MemoryTesterM
         super().test_layerwise_casting_memory()
 
 
-class TestAutoencoderOobleckSlicingTiling(AutoencoderOobleckTesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderOobleckSlicingTiling(AutoencoderOobleckTesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for AutoencoderOobleck."""
 
     def test_enable_disable_slicing(self):

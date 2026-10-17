@@ -40,7 +40,9 @@ class AnimaLoopBeforeDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: AnimaModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: AnimaModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[AnimaModularPipeline, BlockState]:
         block_state.latent_model_input = block_state.latents.to(block_state.dtype)
 
         timestep = t.expand(block_state.latents.shape[0]).to(block_state.dtype)
@@ -117,7 +119,7 @@ class AnimaLoopDenoiser(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(
         self, components: AnimaModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
-    ) -> PipelineState:
+    ) -> tuple[AnimaModularPipeline, BlockState]:
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
         guider_state = components.guider.prepare_inputs_from_block_state(block_state, self._guider_input_fields)
 
@@ -151,7 +153,9 @@ class AnimaLoopAfterDenoiser(ModularPipelineBlocks):
         return "Step within the denoising loop that updates Anima latents."
 
     @torch.no_grad()
-    def __call__(self, components: AnimaModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: AnimaModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[AnimaModularPipeline, BlockState]:
         latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(
             block_state.noise_pred, t, block_state.latents, return_dict=False
@@ -181,7 +185,9 @@ class AnimaDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: AnimaModularPipeline, state: PipelineState
+    ) -> tuple[AnimaModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         num_warmup_steps = len(block_state.timesteps) - block_state.num_inference_steps * components.scheduler.order
