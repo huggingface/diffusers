@@ -105,3 +105,11 @@ image.save("chroma-single-file.png")
 [[autodoc]] ChromaInpaintPipeline
   - all
   - __call__
+
+## ChromaModularPipeline
+
+[[autodoc]] ChromaModularPipeline
+
+## ChromaAutoBlocks
+
+[[autodoc]] ChromaAutoBlocks
