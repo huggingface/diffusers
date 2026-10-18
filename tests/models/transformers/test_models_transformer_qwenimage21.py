@@ -98,6 +98,36 @@ class QwenImage21TransformerTesterConfig(BaseModelTesterConfig):
             "img_mask": img_mask,
         }
 
+    def get_generation_inputs(self, index: int, device=torch_device) -> dict[str, torch.Tensor]:
+        """
+        Inputs for the `index`-th generation of a multi-size session: prompt length, condition-image size and target
+        size all vary, so the prefix length (text + condition-image tokens) differs from one generation to the next.
+        """
+        text_len = 4 + (index % 4)
+        condition_tokens = 4 * (1 + index // 4)
+        condition_hw = {4: (2, 2), 8: (2, 4), 12: (3, 4), 16: (4, 4)}[condition_tokens]
+        target_hw = [(2, 2), (2, 4), (4, 2), (4, 4)][index % 4]
+        target_tokens = target_hw[0] * target_hw[1]
+
+        # The vision-language sequence is the text followed by one slot per 2x2 group of condition-image latents; the
+        # target image's slots are appended after it, so `img_mask` is longer than `encoder_hidden_states`.
+        vlm_len = text_len + condition_tokens // 4
+
+        hidden_states = randn_tensor((1, condition_tokens + target_tokens, 4), generator=self.generator, device=device)
+        encoder_hidden_states = randn_tensor((1, vlm_len, 8), generator=self.generator, device=device)
+        encoder_hidden_states_mask = torch.ones((1, vlm_len), device=device, dtype=torch.long)
+        img_mask = torch.zeros((1, vlm_len + target_tokens // 4), device=device, dtype=torch.bool)
+        img_mask[:, text_len:] = True
+
+        return {
+            "hidden_states": hidden_states,
+            "encoder_hidden_states": encoder_hidden_states,
+            "encoder_hidden_states_mask": encoder_hidden_states_mask,
+            "timestep": torch.tensor([1.0], device=device),
+            "img_shapes": [[(1, *condition_hw), (1, *target_hw)]],
+            "img_mask": img_mask,
+        }
+
 
 class TestQwenImage21Transformer(QwenImage21TransformerTesterConfig, ModelTesterMixin):
     @pytest.mark.skip(
@@ -217,6 +247,47 @@ class TestQwenImage21Transformer(QwenImage21TransformerTesterConfig, ModelTester
                 outputs.append(model(**inputs, kv_cache=kv_cache, kv_cache_mode="cached", return_dict=False)[0])
 
         torch.testing.assert_close(outputs[0], outputs[1])
+
+    @pytest.mark.parametrize("processor_name", ["QwenImage21FlexAttnProcessor", "QwenImage21AttnProcessor"])
+    def test_compiled_blocks_do_not_recompile_per_generation(self, processor_name):
+        """
+        Regression test for https://github.com/huggingface/diffusers/issues/15027.
+
+        `prefix_len` (text + condition-image tokens) changes with every prompt length and condition-image size.
+        Values Dynamo guards by constant — the old `cache_write_slice.stop` — recompiled the repeated blocks for
+        every distinct prefix length, so a session of different-sized generations exhausted the recompile limit
+        (8) and `fullgraph=True` hard-failed. Plain `int` arguments become dynamic after their second distinct
+        value, so the compiled graph count must plateau instead of growing per generation.
+        """
+        import diffusers.models.transformers.transformer_qwenimage21 as transformer_module
+        from diffusers.models.transformers.transformer_qwenimage21 import QwenImage21KVCache
+
+        init_dict = self.get_init_dict()
+        model = self.model_class(**init_dict).to(torch_device).eval()
+        model.set_attn_processor(getattr(transformer_module, processor_name)())
+
+        # `backend="eager"`: the guard behavior under test is backend- and device-independent, and it keeps the
+        # flex path's uncompiled CPU fallback (a dense fp32 score matrix) out of the picture.
+        model.compile_repeated_blocks(fullgraph=True, backend="eager")
+
+        torch._dynamo.reset()
+        from torch._dynamo.utils import counters as dynamo_counters
+
+        dynamo_counters.clear()
+
+        graph_counts = []
+        for index in range(12):
+            inputs = self.get_generation_inputs(index)
+            kv_cache = QwenImage21KVCache(init_dict["num_layers"])
+            with torch.no_grad():
+                model(**inputs, kv_cache=kv_cache, kv_cache_mode="extract", return_dict=False)
+                model(**inputs, kv_cache=kv_cache, kv_cache_mode="cached", return_dict=False)
+            graph_counts.append(dynamo_counters["stats"]["unique_graphs"])
+
+        # Before the fix this loop raises `torch._dynamo.exc.FailOnRecompileLimitHit` (recompile limit 8) part-way
+        # through: every new prefix length added a graph. The first two generations legitimately specialize
+        # (static shapes, then dynamic shapes); afterwards the count must plateau.
+        assert graph_counts[-1] - graph_counts[1] <= 4
 
 
 class TestQwenImage21BlockCausalMask:
