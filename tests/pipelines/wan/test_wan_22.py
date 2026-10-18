@@ -105,7 +105,6 @@ class Wan22PipelineTesterConfig(BasePipelineTesterConfig):
             "width": 16,
             "num_frames": 9,
             "max_sequence_length": 16,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 
@@ -236,7 +235,6 @@ class Wan225BPipelineTesterConfig(BasePipelineTesterConfig):
             "width": 32,
             "num_frames": 9,
             "max_sequence_length": 16,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 

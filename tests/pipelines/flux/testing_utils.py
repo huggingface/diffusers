@@ -52,7 +52,6 @@ class FluxIPAdapterTesterMixin(BasePipelineOutputMixin):
         inputs["negative_prompt"] = ""
         if "true_cfg_scale" in inspect.signature(self.pipeline_class.__call__).parameters:
             inputs["true_cfg_scale"] = 4.0
-        # Request torch outputs so comparisons run on torch tensors directly (see `BasePipelineTesterConfig`).
         inputs["output_type"] = "pt"
         inputs["return_dict"] = False
         return inputs

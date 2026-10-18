@@ -130,7 +130,6 @@ class ZImagePipelineTesterConfig(BasePipelineTesterConfig):
             "height": 32,
             "width": 32,
             "max_sequence_length": 16,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 

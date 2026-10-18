@@ -106,8 +106,6 @@ class FluxKontextPipelineTesterConfig(BasePipelineTesterConfig):
             "width": 8,
             "max_area": 8 * 8,
             "max_sequence_length": 48,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
-            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
             "output_type": "pt",
             "_auto_resize": False,
         }

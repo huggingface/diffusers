@@ -144,7 +144,6 @@ class HunyuanVideo15PipelineTesterConfig(BasePipelineTesterConfig):
             "height": 16,
             "width": 16,
             "num_frames": 9,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 

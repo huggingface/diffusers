@@ -105,7 +105,6 @@ class BriaFiboEditPipelineTesterConfig(BasePipelineTesterConfig):
             "guidance_scale": 5.0,
             "height": 192,
             "width": 336,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
         inputs["image"] = Image.new("RGB", (336, 192), (255, 255, 255))
