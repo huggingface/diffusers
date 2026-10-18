@@ -399,8 +399,8 @@ class StableDiffusion3ControlNetPipeline(
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
             negative_prompt (`str` or `list[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                The prompt or prompts not to guide the image generation. If not defined, it defaults to an
+                empty string. Alternatively, one can pass `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
             negative_prompt_2 (`str` or `list[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
