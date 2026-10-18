@@ -136,6 +136,18 @@ else:
     _import_structure["quantizers.quantization_config"].append("NunchakuLiteQuantizationConfig")
 
 try:
+    if not is_torch_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_bfl_objects
+
+    _import_structure["utils.dummy_bfl_objects"] = [
+        name for name in dir(dummy_bfl_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("BFLQuantizationConfig")
+
+try:
     if not is_auto_round_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -291,6 +303,7 @@ else:
             "EasyAnimateTransformer3DModel",
             "ErnieImageTransformer2DModel",
             "Flux2Transformer2DModel",
+            "Flux3Transformer2DModel",
             "FluxControlNetModel",
             "FluxMultiControlNetModel",
             "FluxTransformer2DModel",
@@ -351,6 +364,8 @@ else:
             "SanaControlNetModel",
             "SanaTransformer2DModel",
             "SanaVideoTransformer3DModel",
+            "SanaWMLTX2RefinerTransformer3DModel",
+            "SanaWMTransformer3DModel",
             "SD3ControlNetModel",
             "SD3MultiControlNetModel",
             "SD3Transformer2DModel",
@@ -555,6 +570,10 @@ else:
             "Flux2KleinBaseModularPipeline",
             "Flux2KleinModularPipeline",
             "Flux2ModularPipeline",
+            "Flux3AutoBlocks",
+            "Flux3DistilledAutoBlocks",
+            "Flux3DistilledModularPipeline",
+            "Flux3ModularPipeline",
             "FluxAutoBlocks",
             "FluxKontextAutoBlocks",
             "FluxKontextModularPipeline",
@@ -583,6 +602,10 @@ else:
             "MiniMaxH3ModularPipeline",
             "MiniMaxMusic3Blocks",
             "MiniMaxMusic3ModularPipeline",
+            "QwenImage21AutoBlocks",
+            "QwenImage21ModularPipeline",
+            "QwenImage21TurboAutoBlocks",
+            "QwenImage21TurboModularPipeline",
             "QwenImageAutoBlocks",
             "QwenImageEditAutoBlocks",
             "QwenImageEditModularPipeline",
@@ -817,6 +840,9 @@ else:
             "SanaSprintPipeline",
             "SanaVideoPipeline",
             "SanaVideoPipeline",
+            "SanaWMLTX2Refiner",
+            "SanaWMPipeline",
+            "SanaWMPipelineOutput",
             "SemanticStableDiffusionPipeline",
             "ShapEImg2ImgPipeline",
             "ShapEPipeline",
@@ -1070,6 +1096,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers.quantization_config import NunchakuLiteQuantizationConfig
 
     try:
+        if not is_torch_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_bfl_objects import *
+    else:
+        from .quantizers.quantization_config import BFLQuantizationConfig
+
+    try:
         if not is_auto_round_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
@@ -1204,6 +1238,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EasyAnimateTransformer3DModel,
             ErnieImageTransformer2DModel,
             Flux2Transformer2DModel,
+            Flux3Transformer2DModel,
             FluxControlNetModel,
             FluxMultiControlNetModel,
             FluxTransformer2DModel,
@@ -1264,6 +1299,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaControlNetModel,
             SanaTransformer2DModel,
             SanaVideoTransformer3DModel,
+            SanaWMLTX2RefinerTransformer3DModel,
+            SanaWMTransformer3DModel,
             SD3ControlNetModel,
             SD3MultiControlNetModel,
             SD3Transformer2DModel,
@@ -1443,6 +1480,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Flux2KleinBaseModularPipeline,
             Flux2KleinModularPipeline,
             Flux2ModularPipeline,
+            Flux3AutoBlocks,
+            Flux3DistilledAutoBlocks,
+            Flux3DistilledModularPipeline,
+            Flux3ModularPipeline,
             FluxAutoBlocks,
             FluxKontextAutoBlocks,
             FluxKontextModularPipeline,
@@ -1471,6 +1512,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MiniMaxH3ModularPipeline,
             MiniMaxMusic3Blocks,
             MiniMaxMusic3ModularPipeline,
+            QwenImage21AutoBlocks,
+            QwenImage21ModularPipeline,
+            QwenImage21TurboAutoBlocks,
+            QwenImage21TurboModularPipeline,
             QwenImageAutoBlocks,
             QwenImageEditAutoBlocks,
             QwenImageEditModularPipeline,
@@ -1700,6 +1745,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaSprintImg2ImgPipeline,
             SanaSprintPipeline,
             SanaVideoPipeline,
+            SanaWMLTX2Refiner,
+            SanaWMPipeline,
+            SanaWMPipelineOutput,
             SemanticStableDiffusionPipeline,
             ShapEImg2ImgPipeline,
             ShapEPipeline,

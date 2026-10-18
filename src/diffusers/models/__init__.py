@@ -124,6 +124,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_ernie_image"] = ["ErnieImageTransformer2DModel"]
     _import_structure["transformers.transformer_flux"] = ["FluxTransformer2DModel"]
     _import_structure["transformers.transformer_flux2"] = ["Flux2Transformer2DModel"]
+    _import_structure["transformers.transformer_flux3"] = ["Flux3Transformer2DModel"]
     _import_structure["transformers.transformer_glm_image"] = ["GlmImageTransformer2DModel"]
     _import_structure["transformers.transformer_helios"] = ["HeliosTransformer3DModel"]
     _import_structure["transformers.transformer_hidream_image"] = ["HiDreamImageTransformer2DModel"]
@@ -154,6 +155,8 @@ if is_torch_available():
     _import_structure["transformers.transformer_qwenimage"] = ["QwenImageTransformer2DModel"]
     _import_structure["transformers.transformer_qwenimage21"] = ["QwenImage21Transformer2DModel"]
     _import_structure["transformers.transformer_sana_video"] = ["SanaVideoTransformer3DModel"]
+    _import_structure["transformers.transformer_sana_wm"] = ["SanaWMTransformer3DModel"]
+    _import_structure["transformers.transformer_sana_wm_refiner"] = ["SanaWMLTX2RefinerTransformer3DModel"]
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
     _import_structure["transformers.transformer_skyreels_v2"] = ["SkyReelsV2Transformer3DModel"]
     _import_structure["transformers.transformer_stable_audio3"] = ["StableAudio3DiTModel"]
@@ -271,6 +274,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EasyAnimateTransformer3DModel,
             ErnieImageTransformer2DModel,
             Flux2Transformer2DModel,
+            Flux3Transformer2DModel,
             FluxTransformer2DModel,
             GlmImageTransformer2DModel,
             HeliosTransformer3DModel,
@@ -309,6 +313,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageTransformer2DModel,
             SanaTransformer2DModel,
             SanaVideoTransformer3DModel,
+            SanaWMLTX2RefinerTransformer3DModel,
+            SanaWMTransformer3DModel,
             SD3Transformer2DModel,
             SkyReelsV2Transformer3DModel,
             StableAudio3DiTModel,

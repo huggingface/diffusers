@@ -85,6 +85,8 @@
       title: Getting started
     - local: quantization/bitsandbytes
       title: bitsandbytes
+    - local: quantization/bfl
+      title: BFL (fp8r / nvfp4)
     - local: quantization/gguf
       title: gguf
     - local: quantization/nunchaku
@@ -135,6 +137,8 @@
     title: Overview
   - local: modular_diffusers/quickstart
     title: Quickstart
+  - local: modular_diffusers/coming_from_diffusion_pipeline
+    title: Coming from DiffusionPipeline
   - local: modular_diffusers/modular_diffusers_states
     title: States
   - local: modular_diffusers/pipeline_block
@@ -349,6 +353,8 @@
         title: ErnieImageTransformer2DModel
       - local: api/models/flux2_transformer
         title: Flux2Transformer2DModel
+      - local: api/models/flux3_transformer
+        title: Flux3Transformer2DModel
       - local: api/models/flux_transformer
         title: FluxTransformer2DModel
       - local: api/models/glm_image_transformer2d
@@ -411,6 +417,10 @@
         title: SanaTransformer2DModel
       - local: api/models/sana_video_transformer3d
         title: SanaVideoTransformer3DModel
+      - local: api/models/sana_wm_refiner_transformer3d
+        title: SanaWMLTX2RefinerTransformer3DModel
+      - local: api/models/sana_wm_transformer3d
+        title: SanaWMTransformer3DModel
       - local: api/models/sd3_transformer2d
         title: SD3Transformer2DModel
       - local: api/models/skyreels_v2_transformer_3d
@@ -585,6 +595,8 @@
         title: Flux
       - local: api/pipelines/flux2
         title: Flux2
+      - local: api/pipelines/flux3
+        title: Flux3
       - local: api/pipelines/control_flux_inpaint
         title: FluxControlInpaint
       - local: api/pipelines/glm_image
@@ -655,6 +667,8 @@
         title: Sana Sprint
       - local: api/pipelines/sana_video
         title: Sana Video
+      - local: api/pipelines/sana_wm
+        title: SANA-WM
       - local: api/pipelines/shap_e
         title: Shap-E
       - local: api/pipelines/stable_cascade
