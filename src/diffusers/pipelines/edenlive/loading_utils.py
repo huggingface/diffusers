@@ -43,7 +43,7 @@ _EDENLIVE_PROFILES = {
     "5b-bidir": {"size": "5b", "causal": False, "transformer": "dit-5b-bidir", "resize": "bilinear"},
     "14b-bidir": {"size": "14b", "causal": False, "transformer": "dit-14b-bidir", "resize": "bicubic"},
     "5b-causal": {"size": "5b", "causal": True, "transformer": "dit-5b", "resize": "bilinear"},
-    "14b-causal": {"size": "14b", "causal": True, "transformer": "dit-14b", "resize": "bicubic_center_crop"},
+    "14b-causal": {"size": "14b", "causal": True, "transformer": "dit-14b", "resize": "bicubic"},
 }
 
 _COMPONENT_CLASSES = {
@@ -398,7 +398,7 @@ def resolve_original_checkpoint(config_dict, *, profile, passed_components, load
         _class_name="EdenLivePipeline",
         profile=profile,
         proxy_resize_mode=preset["resize"],
-        proxy_unconditional="zero" if profile == "14b-causal" else "same",
+        proxy_unconditional="same",
         proxy_projection_autocast=True,
         proxy_image_size=(480, 832),
     )

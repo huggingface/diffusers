@@ -122,7 +122,7 @@ def parse_args():
     parser.add_argument("--fps", type=float)
     parser.add_argument("--num-inference-steps", type=int)
     parser.add_argument("--guidance-scale", type=float)
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--seed", type=int, help="Noise seed; defaults to 42 for 14b-causal and 0 otherwise.")
     parser.add_argument("--attention-backend")
     parser.add_argument("--no-fsdp", action="store_true", help="Use replicated DiT weights with context parallelism.")
     parser.add_argument("--local-files-only", action="store_true")
@@ -162,6 +162,7 @@ def main():
         args.height = args.height if args.height is not None else (704 if is_5b else 480)
         args.width = args.width if args.width is not None else (1280 if is_5b else 832)
         args.fps = args.fps if args.fps is not None else (24 if is_5b else 16)
+        args.seed = args.seed if args.seed is not None else (42 if args.profile == "14b-causal" else 0)
         video, video_info = load_video(args.video, args.fps, args.height, args.width, args.num_frames)
         inputs = {
             "prompt": args.prompt,

@@ -175,8 +175,8 @@ class EdenLiveLightTAEDecoder(ModelMixin, ConfigMixin):
             [`DecoderOutput`] or `tuple[torch.Tensor]`:
                 RGB sample in `(B, 3, T, H, W)` layout and [-1, 1] range. The output has `(T_latent - 1) *
                 scale_factor_temporal + 1` frames for a new video, or `T_latent * scale_factor_temporal` for an
-                existing cache, and spatial dimensions multiplied by `scale_factor_spatial`. Internal
-                chunks share temporal state, including a short final chunk.
+                existing cache, and spatial dimensions multiplied by `scale_factor_spatial`. Internal chunks share
+                temporal state, including a short final chunk.
         """
         if latents.ndim != 5 or latents.shape[1] != self.config.latent_channels or latents.shape[2] < 1:
             raise ValueError("Expected nonempty NCTHW latents with the configured latent channel count.")

@@ -37,10 +37,11 @@ def main():
     parser.add_argument("--height", type=int)
     parser.add_argument("--width", type=int)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--fps", type=int, default=24)
+    parser.add_argument("--fps", type=int, help="Playback rate; defaults to 16 for 14b-causal and 24 for 5b-causal.")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--local-files-only", action="store_true")
     args = parser.parse_args()
+    args.fps = args.fps if args.fps is not None else (16 if args.profile == "14b-causal" else 24)
     if len(args.proxy_frames) % 3:
         parser.error("--proxy-frames must contain a multiple of three image paths.")
     if args.fps <= 0:

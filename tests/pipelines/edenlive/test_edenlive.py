@@ -315,10 +315,8 @@ class EdenLivePipelineTesterConfig(BasePipelineTesterConfig):
             **(components or self.get_dummy_components()),
             profile=f"{self.profile}-{'causal' if causal else 'bidir'}",
             proxy_image_size=(32, 32),
-            proxy_resize_mode=("bicubic_center_crop" if causal else "bicubic")
-            if self.profile == "14b"
-            else "bilinear",
-            proxy_unconditional="zero" if self.profile == "14b" and causal else "same",
+            proxy_resize_mode="bicubic" if self.profile == "14b" else "bilinear",
+            proxy_unconditional="same",
         )
         for component in pipe.components.values():
             if hasattr(component, "eval"):
@@ -513,6 +511,7 @@ class TestEdenLive14BChunkCausalPipeline(
 
     def test_zero_proxy_changes_unconditional_prediction(self):
         pipe = self.get_pipeline().to(torch_device)
+        pipe.register_to_config(proxy_unconditional="zero")
         inputs = self.get_dummy_inputs()
         inputs["output_type"] = "latent"
         zero_proxy = pipe(**inputs).frames
@@ -721,10 +720,11 @@ class TestEdenLiveNativeNumerics:
         assert not torch.equal(conditional[0], conditional[1])
 
     @pytest.mark.parametrize("profile", ["5b", "14b"])
-    def test_clean_commit_timestep_shape_and_cfg(self, profile):
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+    def test_clean_commit_timestep_shape_and_cfg(self, profile, dtype):
         fixture = EdenLiveChunkCausalPipelineTesterConfig()
         fixture.profile = profile
-        pipe = fixture.get_pipeline().to(torch_device)
+        pipe = fixture.get_pipeline().to(torch_device, dtype=dtype)
         calls = []
 
         def capture(module, args, kwargs):
@@ -742,7 +742,7 @@ class TestEdenLiveNativeNumerics:
         commits = [time for time, commit in calls if commit]
         assert len(commits) == 4
         assert all(time.dtype == torch.float32 and not time.any() for time in commits)
-        assert commits[0].shape == ((1,) if profile == "14b" else (1, 3))
+        assert all(time.shape == (1,) for time in commits)
         noisy = calls[0][0]
         assert noisy.shape == (1, 3) and noisy[0, 0] == 0 and (noisy[0, 1:] > 0).all()
 
@@ -964,12 +964,8 @@ class TestEdenLiveOriginalLoading:
             assert (pipe.config.chunk_size, pipe.config.max_context_frames, pipe.config.sink_frames) == (3, 18, 6)
         else:
             assert pipe.scheduler.config.shift == 3 and not pipe.scheduler.config.stochastic_sampling
-        assert pipe.config.proxy_unconditional == ("zero" if fixture.profile == "14b-causal" else "same")
-        expected_resize = (
-            "bilinear"
-            if fixture.profile.startswith("5b")
-            else ("bicubic_center_crop" if fixture.profile.endswith("causal") else "bicubic")
-        )
+        assert pipe.config.proxy_unconditional == "same"
+        expected_resize = "bilinear" if fixture.profile.startswith("5b") else "bicubic"
         assert pipe.config.proxy_resize_mode == expected_resize
         assert tuple(pipe.config.proxy_image_size) == (480, 832)
         assert file_digests(fixture.source) == fixture.hashes
@@ -1372,8 +1368,11 @@ class TestEdenLiveContextParallel(EdenLiveTransformerTesterConfig):
     )
     @pytest.mark.parametrize("num_layers,token_time", [(2, False), (1, True)])
     def test_context_parallel_inference(self, tmp_path, world_size, backend, use_fsdp, num_layers, token_time):
+        from diffusers.models.attention_dispatch import _AttentionBackendRegistry
+
         if not dist.is_available() or not dist.is_nccl_available() or torch.cuda.device_count() < world_size:
             pytest.skip(f"This case requires {world_size} CUDA devices with NCCL.")
+        previous_backend, _ = _AttentionBackendRegistry.get_active_backend()
         deterministic = torch.are_deterministic_algorithms_enabled()
         warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
         try:
@@ -1412,6 +1411,7 @@ class TestEdenLiveContextParallel(EdenLiveTransformerTesterConfig):
                 # Keep the existing small-model CP backend tolerance.
                 torch.testing.assert_close(output, reference, atol=1e-2, rtol=1e-2)
         finally:
+            _AttentionBackendRegistry.set_active_backend(previous_backend)
             torch.use_deterministic_algorithms(deterministic, warn_only=warn_only)
 
 

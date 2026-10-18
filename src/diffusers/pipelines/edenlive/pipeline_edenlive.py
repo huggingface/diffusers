@@ -34,6 +34,7 @@ from .loading_utils import load_original_pipeline, normalize_saved_profile, read
 from .pipeline_output import EdenLivePipelineOutput
 
 
+# docstyle-ignore: Keep the continuation prompt on the try/finally example.
 EXAMPLE_DOC_STRING = """
     Examples:
         ```python
@@ -113,8 +114,9 @@ class EdenLiveStreamState:
     """Mutable, single-video rollout owned by one pipeline. Create with `pipe.create_stream_state()`.
 
     The attention states own the only time cursor (`next_frame`). Encoder and decoder caches retain temporal history
-    independently of the attention window. Calls sharing a pipeline must be serial, including calls for different streams.
-    Close the state in a `finally` block to release its tensors. States are runtime objects and are not serialized.
+    independently of the attention window. Calls sharing a pipeline must be serial, including calls for different
+    streams. Close the state in a `finally` block to release its tensors. States are runtime objects and are not
+    serialized.
     """
 
     causal_states: list[EdenLiveCausalState]
@@ -677,14 +679,14 @@ class EdenLivePipeline(DiffusionPipeline):
 
         Args:
             stream_state (`EdenLiveStreamState`, *optional*):
-                State from `create_stream_state`. Returns one chunk: 9 RGB frames initially and 12 thereafter, or
-                3 latent frames. Invalid inputs leave the state usable; model execution failures invalidate it.
+                State from `create_stream_state`. Returns one chunk: 9 RGB frames initially and 12 thereafter, or 3
+                latent frames. Invalid inputs leave the state usable; model execution failures invalidate it.
             proxy_frames (`list[PIL.Image.Image]`, `np.ndarray`, or `torch.Tensor`, *optional*):
-                Exactly three already sampled RGB frames, required with `stream_state`. No temporal subsampling.
-                Tensor layout is `(3, 3, H, W)`; NumPy layout is `(3, H, W, 3)`. Float values must be in [0, 1].
+                Exactly three already sampled RGB frames, required with `stream_state`. No temporal subsampling. Tensor
+                layout is `(3, 3, H, W)`; NumPy layout is `(3, H, W, 3)`. Float values must be in [0, 1].
             prompt (`str` or `list[str]`, *optional*):
-                Text describing the output video. Supply this or `prompt_embeds` unless using temporal prompts.
-                In a stream, new text takes effect in this chunk; None retains the current text.
+                Text describing the output video. Supply this or `prompt_embeds` unless using temporal prompts. In a
+                stream, new text takes effect in this chunk; None retains the current text.
             image (`PIL.Image.Image`, `np.ndarray`, or `torch.Tensor`):
                 Photoreal first-frame reference. Tensor and NumPy RGB values are in [0, 1]. The image is resized with
                 tensor bilinear interpolation and center-cropped to the output dimensions.
@@ -1080,9 +1082,8 @@ class EdenLivePipeline(DiffusionPipeline):
             causal=True,
             condition_start=condition_start,
         )
-        if self.model_size == "14b":
-            # A clean cache commit uses one zero timestep per sample, not per token.
-            model_timestep = torch.zeros(latents.shape[0], device=latents.device, dtype=torch.float32)
+        # A clean cache commit uses one zero timestep per sample, not per token.
+        model_timestep = torch.zeros(latents.shape[0], device=latents.device, dtype=torch.float32)
         self.transformer(
             model_input,
             model_timestep,
