@@ -18,54 +18,36 @@ import numpy as np
 import PIL.Image
 import torch
 
-from ...image_processor import PIL_INTERPOLATION, PipelineImageInput, VaeImageProcessor
+from ...image_processor import VaeImageProcessor
 
 
 class Flux3ImageProcessor(VaeImageProcessor):
     r"""
     Image processor for FLUX.3: preprocesses the reference images of image-to-image generation and postprocesses the
-    generated images. `resize_mode="fill"` pads the image to the given size with its reflection, and `preprocess` also
-    returns the `reference_crop` box of the image inside the padded canvas, which `postprocess` takes to crop the
-    generated image back to it.
+    generated images. `resize_mode="fill"` keeps a reference whole: it is downscaled so that its canvas (its size
+    rounded up to the token grid) fits under 4 megapixels, then reflect-padded to the canvas, and `preprocess` also
+    returns the `reference_crop` box of the image inside the canvas, which `postprocess` takes to crop the generated
+    image back to it. `resize_mode="crop"` downscales a reference to fit under 1 megapixel and center-crops it to the
+    token grid.
 
     Args:
-        do_resize (`bool`, *optional*, defaults to `True`):
-            Whether to downscale the image's (height, width) dimensions to multiples of `vae_scale_factor`. Can accept
-            `height` and `width` arguments from [`image_processor.VaeImageProcessor.preprocess`] method.
         vae_scale_factor (`int`, *optional*, defaults to `16`):
-            VAE (spatial) scale factor, including the 2x2 packing of the latents. If `do_resize` is `True`, the image
-            is automatically resized to multiples of this factor.
+            VAE (spatial) scale factor, including the 2x2 packing of the latents: one token. Images are resized to
+            multiples of this factor.
         vae_latent_channels (`int`, *optional*, defaults to `32`):
             VAE latent channels.
-        do_normalize (`bool`, *optional*, defaults to `True`):
-            Whether to normalize the image to [-1,1].
-        do_binarize (`bool`, *optional*, defaults to `False`):
-            Whether to binarize the image to 0/1.
-        do_convert_rgb (`bool`, *optional*, defaults to be `True`):
-            Whether to convert the images to RGB format.
-        do_convert_grayscale (`bool`, *optional*, defaults to be `False`):
-            Whether to convert the images to grayscale format.
     """
 
-    # Copied from diffusers.pipelines.flux2.image_processor.Flux2ImageProcessor.__init__
-    def __init__(
-        self,
-        do_resize: bool = True,
-        vae_scale_factor: int = 16,
-        vae_latent_channels: int = 32,
-        do_normalize: bool = True,
-        do_binarize: bool = False,
-        do_convert_rgb: bool = True,
-        do_convert_grayscale: bool = False,
-    ):
+    def __init__(self, vae_scale_factor: int = 16, vae_latent_channels: int = 32):
+        # `preprocess` always passes the size to resize to, and the VAE takes RGB images in [-1, 1]
         super().__init__(
-            do_resize=do_resize,
+            do_resize=True,
             vae_scale_factor=vae_scale_factor,
             vae_latent_channels=vae_latent_channels,
-            do_normalize=do_normalize,
-            do_binarize=do_binarize,
-            do_convert_rgb=do_convert_rgb,
-            do_convert_grayscale=do_convert_grayscale,
+            do_normalize=True,
+            do_binarize=False,
+            do_convert_rgb=True,
+            do_convert_grayscale=False,
         )
 
     @staticmethod
@@ -119,38 +101,68 @@ class Flux3ImageProcessor(VaeImageProcessor):
 
         return image.crop((left, top, right, bottom))
 
+    def _get_canvas_height_width(
+        self, image_height: int, image_width: int, max_side: int = 4096, min_side: int = 64
+    ) -> tuple[int, int]:
+        r"""
+        The canvas of an image kept whole: its size rounded up to the token grid, clamped to [`min_side`, `max_side`].
+        """
+        multiple_of = self.config.vae_scale_factor
+        return tuple(
+            min(max_side, max(min_side, -(-side // multiple_of) * multiple_of)) for side in (image_height, image_width)
+        )
+
+    def _resize_if_canvas_exceeds_area(
+        self, image: PIL.Image.Image, target_area: int = 4 * 1024 * 1024, max_side: int = 4096
+    ) -> PIL.Image.Image:
+        r"""
+        Downscale the image, keeping its aspect ratio, so that its canvas fits under `target_area` and its sides under
+        `max_side`.
+        """
+        image_width, image_height = image.size
+        scale = min(1.0, math.sqrt(target_area / (image_width * image_height)), max_side / max(image.size))
+        while True:
+            height, width = (max(1, round(side * scale)) for side in (image_height, image_width))
+            canvas_height, canvas_width = self._get_canvas_height_width(height, width, max_side=max_side)
+            if canvas_height * canvas_width <= target_area:
+                break
+            scale *= 0.995
+        if (width, height) == image.size:
+            return image
+        return self.resize(image, height=height, width=width)
+
     def _get_fill_region(self, image: PIL.Image.Image, height: int, width: int) -> tuple[int, int, int, int]:
         r"""
         The (left, top, right, bottom) box the image occupies once padded to `height` x `width` with
-        `resize_mode="fill"`: downscaled to fit within the dimensions, maintaining the aspect ratio, and centered.
+        `resize_mode="fill"`: centered.
         """
         image_width, image_height = image.size
         if image_width > width or image_height > height:
-            scale = min(width / image_width, height / image_height)
-            image_width, image_height = max(1, round(image_width * scale)), max(1, round(image_height * scale))
+            raise ValueError(
+                f"resize_mode='fill' pads the image to the given size, got a {image_width} x {image_height} image for "
+                f"a {width} x {height} canvas"
+            )
         left, top = (width - image_width) // 2, (height - image_height) // 2
         return left, top, left + image_width, top + image_height
 
     def _resize_and_fill(self, image: PIL.Image.Image, width: int, height: int) -> PIL.Image.Image:
         r"""
-        Resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center
-        the image within the dimensions, filling the rest with its reflection.
+        Center the image within the specified width and height, filling the rest with its reflection. The image is not
+        resized: it must fit within the dimensions.
 
         Args:
             image (`PIL.Image.Image`):
-                The image to resize and fill.
+                The image to fill.
             width (`int`):
-                The width to resize the image to.
+                The width to pad the image to.
             height (`int`):
-                The height to resize the image to.
+                The height to pad the image to.
 
         Returns:
             `PIL.Image.Image`:
-                The resized and filled image.
+                The filled image.
         """
         left, top, right, bottom = self._get_fill_region(image, height, width)
-        if (right - left, bottom - top) != image.size:
-            image = image.resize((right - left, bottom - top), resample=PIL_INTERPOLATION[self.config.resample])
         if image.size == (width, height):
             return image
 
@@ -161,14 +173,14 @@ class Flux3ImageProcessor(VaeImageProcessor):
 
     def preprocess(
         self,
-        image: PipelineImageInput,
-        height: int | None = None,
-        width: int | None = None,
-        resize_mode: str = "default",  # "default", "fill", "crop"
-        crops_coords: tuple[int, int, int, int] | None = None,
+        image: PIL.Image.Image | list[PIL.Image.Image],
+        resize_mode: str = "fill",  # "fill" (one reference, kept whole), "crop" (several references)
     ) -> tuple[torch.Tensor, dict]:
         """
-        Preprocess the image input as [`~image_processor.VaeImageProcessor.preprocess`] does.
+        Preprocess the reference image(s) as [`~image_processor.VaeImageProcessor.preprocess`] does. With
+        `resize_mode="fill"`, the image is downscaled so that its canvas fits under 4 megapixels and reflect-padded to
+        the canvas; with `resize_mode="crop"`, it is downscaled to fit under 1 megapixel and center-cropped to the
+        token grid.
 
         Returns:
             `tuple[torch.Tensor, dict]`:
@@ -176,16 +188,19 @@ class Flux3ImageProcessor(VaeImageProcessor):
                 (left, top, right, bottom) box of the (first) image inside its canvas when it was padded
                 (`resize_mode="fill"`), else `None`.
         """
-        reference_crop = None
+        images = image if isinstance(image, list) else [image]
+        if not all(isinstance(image, PIL.Image.Image) for image in images):
+            raise ValueError(f"Only PIL image input is supported, got {[type(image) for image in images]}")
+        height = width = None
         if resize_mode == "fill":
-            first = image[0] if isinstance(image, list) else image
-            if not isinstance(first, PIL.Image.Image):
-                raise ValueError(f"Only PIL image input is supported for resize_mode {resize_mode}")
-            height, width = self.get_default_height_width(first, height, width)
-            reference_crop = self._get_fill_region(first, height, width)
-        image = super().preprocess(
-            image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
-        )
+            images = [self._resize_if_canvas_exceeds_area(image) for image in images]
+            height, width = self._get_canvas_height_width(images[0].height, images[0].width)
+        elif resize_mode == "crop":
+            images = [self._resize_if_exceeds_area(image, 1024 * 1024) for image in images]
+        else:
+            raise ValueError(f"resize_mode must be 'fill' or 'crop', got {resize_mode}")
+        image = super().preprocess(images, height=height, width=width, resize_mode=resize_mode)
+        reference_crop = self._get_fill_region(images[0], *image.shape[-2:]) if resize_mode == "fill" else None
         return image, {"reference_crop": reference_crop}
 
     def postprocess(

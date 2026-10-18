@@ -18,7 +18,6 @@ import PIL.Image
 import torch
 from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
 
-from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKLFlux2
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
@@ -46,12 +45,7 @@ class Flux3ProcessImagesInputStep(ModularPipelineBlocks):
     @property
     def expected_components(self) -> list[ComponentSpec]:
         return [
-            ComponentSpec(
-                "image_processor",
-                Flux3ImageProcessor,
-                config=FrozenDict({"vae_scale_factor": 16, "vae_latent_channels": 32}),
-                default_creation_method="from_config",
-            ),
+            ComponentSpec("image_processor", Flux3ImageProcessor, default_creation_method="from_config"),
         ]
 
     @property
@@ -92,35 +86,11 @@ class Flux3ProcessImagesInputStep(ModularPipelineBlocks):
         for image in images:
             if not isinstance(image, PIL.Image.Image):
                 raise ValueError(f"`image` must be a `PIL.Image.Image` or a list of them, got {type(image)}")
-        image_processor = components.image_processor
-        multiple_of = image_processor.config.vae_scale_factor  # one token: the VAE downsampling and the 2 x 2 packing
-        if len(images) == 1:
-            # one reference is kept whole: downscaled so that its canvas (the size rounded up to the token grid) fits
-            # under 4 megapixels, then reflect-padded to the canvas (`resize_mode="fill"` for this processor); the
-            # generation defaults to the canvas and the decode step crops back to the reference
-            image = images[0]
-            max_area, max_side, min_side = 4 * 1024 * 1024, 4096, 64
-            scale = min(1.0, math.sqrt(max_area / (image.width * image.height)), max_side / max(image.size))
-            while True:
-                reference_height, reference_width = (
-                    max(1, round(side * scale)) for side in (image.height, image.width)
-                )
-                height, width = (
-                    min(max_side, max(min_side, -(-side // multiple_of) * multiple_of))
-                    for side in (reference_height, reference_width)
-                )
-                if height * width <= max_area:
-                    break
-                scale *= 0.995
-            images = [image_processor.resize(image, height=reference_height, width=reference_width)]
-            preprocess_kwargs = {"height": height, "width": width, "resize_mode": "fill"}
-        else:
-            # several references are downscaled to fit under 1 megapixel each and center-cropped to the token grid
-            # (the default size rounds down to the grid; `resize_mode="crop"` is a pure crop for this processor)
-            images = [image_processor._resize_if_exceeds_area(image, 1024 * 1024) for image in images]
-            preprocess_kwargs = {"resize_mode": "crop"}
+        # one reference is kept whole (`resize_mode="fill"`: downscaled so that its canvas fits under 4 megapixels and
+        # reflect-padded to it); several are each downscaled to fit under 1 megapixel and center-cropped to the grid
+        resize_mode = "fill" if len(images) == 1 else "crop"
         condition_images, postprocessing_kwargs = zip(
-            *(image_processor.preprocess(image, **preprocess_kwargs) for image in images)
+            *(components.image_processor.preprocess(image, resize_mode=resize_mode) for image in images)
         )
         block_state.condition_images = list(condition_images)
         block_state.reference_crop = [kwargs["reference_crop"] for kwargs in postprocessing_kwargs]

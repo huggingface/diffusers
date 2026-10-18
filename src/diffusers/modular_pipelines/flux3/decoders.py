@@ -20,7 +20,6 @@ import numpy as np
 import PIL
 import torch
 
-from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKLFlux2
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
@@ -100,12 +99,7 @@ class Flux3DecodeStep(ModularPipelineBlocks):
     def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKLFlux2),
-            ComponentSpec(
-                "image_processor",
-                Flux3ImageProcessor,
-                config=FrozenDict({"vae_scale_factor": 16, "vae_latent_channels": 32}),
-                default_creation_method="from_config",
-            ),
+            ComponentSpec("image_processor", Flux3ImageProcessor, default_creation_method="from_config"),
         ]
 
     @property
