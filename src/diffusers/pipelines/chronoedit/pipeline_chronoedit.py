@@ -56,14 +56,14 @@ EXAMPLE_DOC_STRING = """
         >>> # Available models: nvidia/ChronoEdit-14B-Diffusers
         >>> model_id = "nvidia/ChronoEdit-14B-Diffusers"
         >>> image_encoder = CLIPVisionModel.from_pretrained(
-        ...     model_id, subfolder="image_encoder", torch_dtype=torch.float32
+        ...     model_id, subfolder="image_encoder", dtype=torch.float32
         ... )
-        >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
+        >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
         >>> transformer = ChronoEditTransformer3DModel.from_pretrained(
-        ...     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
+        ...     model_id, subfolder="transformer", dtype=torch.bfloat16
         ... )
         >>> pipe = ChronoEditPipeline.from_pretrained(
-        ...     model_id, vae=vae, image_encoder=image_encoder, transformer=transformer, torch_dtype=torch.bfloat16
+        ...     model_id, vae=vae, image_encoder=image_encoder, transformer=transformer, dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
 

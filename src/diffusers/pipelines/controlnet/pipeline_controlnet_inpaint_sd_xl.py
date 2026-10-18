@@ -118,10 +118,10 @@ EXAMPLE_DOC_STRING = """
         >>> control_image = make_canny_condition(init_image)
 
         >>> controlnet = ControlNetModel.from_pretrained(
-        ...     "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16
+        ...     "diffusers/controlnet-canny-sdxl-1.0", dtype=torch.float16
         ... )
         >>> pipe = StableDiffusionXLControlNetInpaintPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, torch_dtype=torch.float16
+        ...     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, dtype=torch.float16
         ... )
 
         >>> pipe.enable_model_cpu_offload()

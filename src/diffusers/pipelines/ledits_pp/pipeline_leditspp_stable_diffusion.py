@@ -49,7 +49,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import load_image
 
         >>> pipe = LEditsPPPipelineStableDiffusion.from_pretrained(
-        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", variant="fp16", dtype=torch.float16
         ... )
         >>> pipe.vae.enable_tiling()
         >>> pipe = pipe.to("cuda")

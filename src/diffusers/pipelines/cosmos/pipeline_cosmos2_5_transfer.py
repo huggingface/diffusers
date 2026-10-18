@@ -90,10 +90,10 @@ EXAMPLE_DOC_STRING = """
         >>> model_id = "nvidia/Cosmos-Transfer2.5-2B"
         >>> # Load a Transfer2.5 controlnet variant (edge, depth, seg, or blur)
         >>> controlnet = AutoModel.from_pretrained(
-        ...     model_id, revision="diffusers/controlnet/general/edge", torch_dtype=torch.bfloat16
+        ...     model_id, revision="diffusers/controlnet/general/edge", dtype=torch.bfloat16
         ... )
         >>> pipe = Cosmos2_5_TransferPipeline.from_pretrained(
-        ...     model_id, controlnet=controlnet, revision="diffusers/general", torch_dtype=torch.bfloat16
+        ...     model_id, controlnet=controlnet, revision="diffusers/general", dtype=torch.bfloat16
         ... )
         >>> pipe = pipe.to("cuda")
 

@@ -55,7 +55,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # Load the Motif-Video image-to-video pipeline
         >>> motif_video_model_id = "Motif-Technologies/Motif-Video-2B"
-        >>> pipe = MotifVideoImage2VideoPipeline.from_pretrained(motif_video_model_id, torch_dtype=torch.bfloat16)
+        >>> pipe = MotifVideoImage2VideoPipeline.from_pretrained(motif_video_model_id, dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> # Load an image

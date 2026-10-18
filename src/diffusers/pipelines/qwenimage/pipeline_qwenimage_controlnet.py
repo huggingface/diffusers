@@ -49,10 +49,10 @@ EXAMPLE_DOC_STRING = """
 
         >>> # QwenImageControlNetModel
         >>> controlnet = QwenImageControlNetModel.from_pretrained(
-        ...     "InstantX/Qwen-Image-ControlNet-Union", torch_dtype=torch.bfloat16
+        ...     "InstantX/Qwen-Image-ControlNet-Union", dtype=torch.bfloat16
         ... )
         >>> pipe = QwenImageControlNetPipeline.from_pretrained(
-        ...     "Qwen/Qwen-Image", controlnet=controlnet, torch_dtype=torch.bfloat16
+        ...     "Qwen/Qwen-Image", controlnet=controlnet, dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
         >>> prompt = "Aesthetics art, traditional asian pagoda, elaborate golden accents, sky blue and white color palette, swirling cloud pattern, digital illustration, east asian architecture, ornamental rooftop, intricate detailing on building, cultural representation."
@@ -74,11 +74,11 @@ EXAMPLE_DOC_STRING = """
 
         >>> # QwenImageMultiControlNetModel
         >>> controlnet = QwenImageControlNetModel.from_pretrained(
-        ...     "InstantX/Qwen-Image-ControlNet-Union", torch_dtype=torch.bfloat16
+        ...     "InstantX/Qwen-Image-ControlNet-Union", dtype=torch.bfloat16
         ... )
         >>> controlnet = QwenImageMultiControlNetModel([controlnet])
         >>> pipe = QwenImageControlNetPipeline.from_pretrained(
-        ...     "Qwen/Qwen-Image", controlnet=controlnet, torch_dtype=torch.bfloat16
+        ...     "Qwen/Qwen-Image", controlnet=controlnet, dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
         >>> prompt = "Aesthetics art, traditional asian pagoda, elaborate golden accents, sky blue and white color palette, swirling cloud pattern, digital illustration, east asian architecture, ornamental rooftop, intricate detailing on building, cultural representation."

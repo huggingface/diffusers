@@ -70,10 +70,10 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import AutoencoderKL, ControlNetModel, MotionAdapter, LCMScheduler
 
         >>> controlnet = ControlNetModel.from_pretrained(
-        ...     "lllyasviel/sd-controlnet-openpose", torch_dtype=torch.float16
+        ...     "lllyasviel/sd-controlnet-openpose", dtype=torch.float16
         ... )
         >>> motion_adapter = MotionAdapter.from_pretrained("wangfuyun/AnimateLCM")
-        >>> vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
+        >>> vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", dtype=torch.float16)
 
         >>> pipe = AnimateDiffVideoToVideoControlNetPipeline.from_pretrained(
         ...     "SG161222/Realistic_Vision_V5.1_noVAE",

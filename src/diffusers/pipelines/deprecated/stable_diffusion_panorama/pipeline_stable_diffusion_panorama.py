@@ -57,7 +57,7 @@ EXAMPLE_DOC_STRING = """
         >>> model_ckpt = "stabilityai/stable-diffusion-2-base"
         >>> scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
         >>> pipe = StableDiffusionPanoramaPipeline.from_pretrained(
-        ...     model_ckpt, scheduler=scheduler, torch_dtype=torch.float16
+        ...     model_ckpt, scheduler=scheduler, dtype=torch.float16
         ... )
 
         >>> pipe = pipe.to("cuda")

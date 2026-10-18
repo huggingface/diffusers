@@ -47,7 +47,7 @@ EXAMPLE_DOC_STRING = """
         ...         "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
         ...         filename="Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors",
         ...     ),
-        ...     torch_dtype=torch.bfloat16,
+        ...     dtype=torch.bfloat16,
         ... )
 
         >>> # 2.0
@@ -56,11 +56,11 @@ EXAMPLE_DOC_STRING = """
         >>> #         "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
         >>> #         filename="Z-Image-Turbo-Fun-Controlnet-Union-2.0.safetensors",
         >>> #     ),
-        >>> #     torch_dtype=torch.bfloat16,
+        >>> #     dtype=torch.bfloat16,
         >>> # )
 
         >>> pipe = ZImageControlNetInpaintPipeline.from_pretrained(
-        ...     "Tongyi-MAI/Z-Image-Turbo", controlnet=controlnet, torch_dtype=torch.bfloat16
+        ...     "Tongyi-MAI/Z-Image-Turbo", controlnet=controlnet, dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
 
