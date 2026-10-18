@@ -680,7 +680,11 @@ class LEditsPPPipelineStableDiffusion(
                     # representations. The `last_hidden_states` that we typically use for
                     # obtaining the final prompt representations passes through the LayerNorm
                     # layer.
-                    editing_prompt_embeds = self.text_encoder.text_model.final_layer_norm(editing_prompt_embeds)
+                    # CLIPTextModel was flattened in transformers>=5.6 (no longer wrapped in .text_model).
+                    text_model = (
+                        self.text_encoder.text_model if hasattr(self.text_encoder, "text_model") else self.text_encoder
+                    )
+                    editing_prompt_embeds = text_model.final_layer_norm(editing_prompt_embeds)
 
             editing_prompt_embeds = editing_prompt_embeds.to(dtype=negative_prompt_embeds.dtype, device=device)
 
