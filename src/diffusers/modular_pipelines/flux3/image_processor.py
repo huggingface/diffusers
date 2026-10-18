@@ -14,15 +14,19 @@
 
 import math
 
+import numpy as np
 import PIL.Image
+import torch
 
-from ...image_processor import VaeImageProcessor
+from ...image_processor import PIL_INTERPOLATION, PipelineImageInput, VaeImageProcessor
 
 
 class Flux3ImageProcessor(VaeImageProcessor):
     r"""
     Image processor for FLUX.3: preprocesses the reference images of image-to-image generation and postprocesses the
-    generated images.
+    generated images. `resize_mode="fill"` pads the image to the given size with its reflection, and `preprocess` also
+    returns the `reference_crop` box of the image inside the padded canvas, which `postprocess` takes to crop the
+    generated image back to it.
 
     Args:
         do_resize (`bool`, *optional*, defaults to `True`):
@@ -114,3 +118,97 @@ class Flux3ImageProcessor(VaeImageProcessor):
         bottom = top + height
 
         return image.crop((left, top, right, bottom))
+
+    def _get_fill_region(self, image: PIL.Image.Image, height: int, width: int) -> tuple[int, int, int, int]:
+        r"""
+        The (left, top, right, bottom) box the image occupies once padded to `height` x `width` with
+        `resize_mode="fill"`: downscaled to fit within the dimensions, maintaining the aspect ratio, and centered.
+        """
+        image_width, image_height = image.size
+        if image_width > width or image_height > height:
+            scale = min(width / image_width, height / image_height)
+            image_width, image_height = max(1, round(image_width * scale)), max(1, round(image_height * scale))
+        left, top = (width - image_width) // 2, (height - image_height) // 2
+        return left, top, left + image_width, top + image_height
+
+    def _resize_and_fill(self, image: PIL.Image.Image, width: int, height: int) -> PIL.Image.Image:
+        r"""
+        Resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center
+        the image within the dimensions, filling the rest with its reflection.
+
+        Args:
+            image (`PIL.Image.Image`):
+                The image to resize and fill.
+            width (`int`):
+                The width to resize the image to.
+            height (`int`):
+                The height to resize the image to.
+
+        Returns:
+            `PIL.Image.Image`:
+                The resized and filled image.
+        """
+        left, top, right, bottom = self._get_fill_region(image, height, width)
+        if (right - left, bottom - top) != image.size:
+            image = image.resize((right - left, bottom - top), resample=PIL_INTERPOLATION[self.config.resample])
+        if image.size == (width, height):
+            return image
+
+        padding = ((top, height - bottom), (left, width - right), (0, 0))
+        # reflection excludes the edge pixel; an image smaller than one token is mirrored instead
+        mode = "reflect" if min(image.size) > self.config.vae_scale_factor else "symmetric"
+        return PIL.Image.fromarray(np.pad(np.asarray(image.convert("RGB")), padding, mode=mode))
+
+    def preprocess(
+        self,
+        image: PipelineImageInput,
+        height: int | None = None,
+        width: int | None = None,
+        resize_mode: str = "default",  # "default", "fill", "crop"
+        crops_coords: tuple[int, int, int, int] | None = None,
+    ) -> tuple[torch.Tensor, dict]:
+        """
+        Preprocess the image input as [`~image_processor.VaeImageProcessor.preprocess`] does.
+
+        Returns:
+            `tuple[torch.Tensor, dict]`:
+                The preprocessed image and the kwargs for [`~Flux3ImageProcessor.postprocess`]: `reference_crop`, the
+                (left, top, right, bottom) box of the (first) image inside its canvas when it was padded
+                (`resize_mode="fill"`), else `None`.
+        """
+        reference_crop = None
+        if resize_mode == "fill":
+            first = image[0] if isinstance(image, list) else image
+            if not isinstance(first, PIL.Image.Image):
+                raise ValueError(f"Only PIL image input is supported for resize_mode {resize_mode}")
+            height, width = self.get_default_height_width(first, height, width)
+            reference_crop = self._get_fill_region(first, height, width)
+        image = super().preprocess(
+            image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
+        )
+        return image, {"reference_crop": reference_crop}
+
+    def postprocess(
+        self,
+        image: torch.Tensor,
+        output_type: str = "pil",
+        do_denormalize: list[bool] | None = None,
+        reference_crop: tuple[int, int, int, int] | list[tuple[int, int, int, int] | None] | None = None,
+    ) -> PIL.Image.Image | np.ndarray | torch.Tensor:
+        """
+        Postprocess the image output as [`~image_processor.VaeImageProcessor.postprocess`] does, cropped to the
+        `reference_crop` box returned by [`~Flux3ImageProcessor.preprocess`] when given. For several references, pass
+        the list of their boxes: at most one may be a box (the padded reference), the others `None`.
+        """
+        if isinstance(reference_crop, list):
+            boxes = [box for box in reference_crop if box is not None]
+            if len(boxes) > 1:
+                raise ValueError(
+                    f"The generated image can be cropped back to one reference only, got {len(boxes)} boxes in "
+                    f"`reference_crop`: {reference_crop}"
+                )
+            reference_crop = boxes[0] if boxes else None
+        if reference_crop is not None:
+            left, top, right, bottom = reference_crop
+            image = image[..., top:bottom, left:right]
+        return super().postprocess(image, output_type=output_type, do_denormalize=do_denormalize)

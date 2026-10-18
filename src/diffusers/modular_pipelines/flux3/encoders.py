@@ -36,9 +36,11 @@ class Flux3ProcessImagesInputStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Image preprocess step for FLUX.3 image-to-image generation. Each reference image keeps its own "
-            "resolution: it is converted to RGB, downscaled only when it exceeds 4096 x 4096 pixels, and "
-            "center-cropped to a multiple of 16 pixels."
+            "Image preprocess step for FLUX.3 image-to-image generation. A single reference is downscaled to fit "
+            "under 4 megapixels (sides at most 4096) and reflect-padded to the 16-pixel grid, so nothing is cut; the "
+            "generation defaults to that canvas and the decoded image is cropped back to the reference "
+            "(`reference_crop`). Each reference of a multi-reference edit is downscaled to fit under 1 megapixel "
+            "and center-cropped to the grid."
         )
 
     @property
@@ -57,8 +59,9 @@ class Flux3ProcessImagesInputStep(ModularPipelineBlocks):
         return [
             InputParam.template(
                 "image",
-                description="The reference image or images to condition the generation on; each keeps its own "
-                "resolution (center-cropped to the 16-pixel grid)",
+                description="The reference image or images to condition the generation on. One reference is kept "
+                "whole (padded to the 16-pixel grid, up to 4 megapixels); several are fitted under 1 megapixel each "
+                "and cropped to the grid",
             ),
         ]
 
@@ -69,7 +72,14 @@ class Flux3ProcessImagesInputStep(ModularPipelineBlocks):
                 "condition_images",
                 type_hint=list[torch.Tensor],
                 description="The preprocessed reference images, one tensor of shape (1, 3, height_i, width_i) in [-1, 1] per image",
-            )
+            ),
+            OutputParam(
+                "reference_crop",
+                type_hint=list[tuple[int, int, int, int] | None],
+                description="Per reference, the (left, top, right, bottom) box of the reference inside its padded "
+                "canvas (a single reference) or None (several, cropped); the decoded image is cropped back to the box "
+                "when the generation size was not given",
+            ),
         ]
 
     @torch.no_grad()
@@ -79,15 +89,41 @@ class Flux3ProcessImagesInputStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
 
         images = block_state.image if isinstance(block_state.image, list) else [block_state.image]
-        condition_images = []
         for image in images:
             if not isinstance(image, PIL.Image.Image):
                 raise ValueError(f"`image` must be a `PIL.Image.Image` or a list of them, got {type(image)}")
-            # references keep their own resolution: downscaled only above 4096 x 4096 pixels, then center-cropped to
-            # the 16-pixel grid (`resize_mode="crop"` is a pure crop for this processor)
-            image = components.image_processor._resize_if_exceeds_area(image, 4096 * 4096)
-            condition_images.append(components.image_processor.preprocess(image, resize_mode="crop"))
-        block_state.condition_images = condition_images
+        image_processor = components.image_processor
+        multiple_of = image_processor.config.vae_scale_factor  # one token: the VAE downsampling and the 2 x 2 packing
+        if len(images) == 1:
+            # one reference is kept whole: downscaled so that its canvas (the size rounded up to the token grid) fits
+            # under 4 megapixels, then reflect-padded to the canvas (`resize_mode="fill"` for this processor); the
+            # generation defaults to the canvas and the decode step crops back to the reference
+            image = images[0]
+            max_area, max_side, min_side = 4 * 1024 * 1024, 4096, 64
+            scale = min(1.0, math.sqrt(max_area / (image.width * image.height)), max_side / max(image.size))
+            while True:
+                reference_height, reference_width = (
+                    max(1, round(side * scale)) for side in (image.height, image.width)
+                )
+                height, width = (
+                    min(max_side, max(min_side, -(-side // multiple_of) * multiple_of))
+                    for side in (reference_height, reference_width)
+                )
+                if height * width <= max_area:
+                    break
+                scale *= 0.995
+            images = [image_processor.resize(image, height=reference_height, width=reference_width)]
+            preprocess_kwargs = {"height": height, "width": width, "resize_mode": "fill"}
+        else:
+            # several references are downscaled to fit under 1 megapixel each and center-cropped to the token grid
+            # (the default size rounds down to the grid; `resize_mode="crop"` is a pure crop for this processor)
+            images = [image_processor._resize_if_exceeds_area(image, 1024 * 1024) for image in images]
+            preprocess_kwargs = {"resize_mode": "crop"}
+        condition_images, postprocessing_kwargs = zip(
+            *(image_processor.preprocess(image, **preprocess_kwargs) for image in images)
+        )
+        block_state.condition_images = list(condition_images)
+        block_state.reference_crop = [kwargs["reference_crop"] for kwargs in postprocessing_kwargs]
 
         self.set_block_state(state, block_state)
         return components, state

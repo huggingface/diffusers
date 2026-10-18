@@ -125,6 +125,12 @@ class Flux3DecodeStep(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The denoised latents from the denoising step",
             ),
+            InputParam(
+                "reference_crop",
+                type_hint=list[tuple[int, int, int, int] | None] | None,
+                description="For image-to-image, per reference, the (left, top, right, bottom) box to crop the "
+                "decoded image back to (a single padded reference) or None",
+            ),
         ]
 
     @property
@@ -162,8 +168,9 @@ class Flux3DecodeStep(ModularPipelineBlocks):
         latents = self._unpatchify_latents(latents)
 
         block_state.images = vae.decode(latents.to(vae.dtype), return_dict=False)[0]
+        # a single padded reference is cropped back to its own size when the generation size was not given
         block_state.images = components.image_processor.postprocess(
-            block_state.images, output_type=block_state.output_type
+            block_state.images, output_type=block_state.output_type, reference_crop=block_state.reference_crop
         )
 
         self.set_block_state(state, block_state)
