@@ -105,6 +105,7 @@ This is non-invasive — it monkey-patches bound methods without modifying sourc
 | Wan | 480x832 | 81 | 2 | — |
 | LTX2 | 768x512 | 121 | 2 | `guidance_scale=4.0` |
 | QwenImage | 1024x1024 | — | 2 | `true_cfg_scale=4.0` |
+| CogVideoX | 720x480 | 49 | 4 | `guidance_scale=6.0`, `use_dynamic_cfg=True` |
 
 All configs use `output_type="latent"` by default (skip VAE decode for cleaner denoising-loop traces).
 
