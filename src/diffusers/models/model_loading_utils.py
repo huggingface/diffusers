@@ -166,7 +166,8 @@ def load_state_dict(
         file_extension = os.path.basename(checkpoint_file).split(".")[-1]
         if file_extension == SAFETENSORS_FILE_EXTENSION:
             if disable_mmap:
-                return safetensors.torch.load(open(checkpoint_file, "rb").read())
+                with open(checkpoint_file, "rb") as f:
+                    return safetensors.torch.load(f.read())
             else:
                 return safetensors.torch.load_file(checkpoint_file, device=map_location)
         elif file_extension == GGUF_FILE_EXTENSION:
