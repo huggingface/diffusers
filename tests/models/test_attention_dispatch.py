@@ -40,6 +40,7 @@ from ..testing_utils import (
     require_torch_multi_accelerator,
     torch_device,
 )
+from .testing_utils.attention import _IS_GFX1201
 from .testing_utils.parallelism import DEVICE_CONFIG, _find_free_port
 
 
@@ -295,3 +296,19 @@ class TestAiterSageHubFallback:
         config = ParallelConfig(context_parallel_config=ContextParallelConfig(ring_degree=2))
         with pytest.raises(NotImplementedError, match="ring_degree"):
             self._run(*self._qkv(), _parallel_config=config)
+
+
+@is_attention
+@pytest.mark.skipif(not _IS_GFX1201, reason="A gfx1201 GPU is required for the aiter_sage_hub kernel.")
+@pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available.")
+class TestAiterSageHubKernel:
+    def test_output_close_to_native(self):
+        torch.manual_seed(0)
+        query, key, value = (torch.randn(1, 1024, 4, 128, device=torch_device, dtype=torch.bfloat16) for _ in range(3))
+        ref = dispatch_attention_fn(query, key, value, backend=AttentionBackendName.NATIVE)
+        with attention_backend_ctx(AttentionBackendName.AITER_SAGE_HUB):
+            out = dispatch_attention_fn(query, key, value)
+        # The quantized kernel never matches SDPA exactly, so equality would mean the fallback ran.
+        assert not torch.equal(out, ref)
+        cos = F.cosine_similarity(out.float().flatten(), ref.float().flatten(), dim=0)
+        assert cos > 0.99
