@@ -12,27 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 import inspect
 import json
 import math
-import os
 from typing import Callable
 
 import numpy as np
 import PIL.Image
 import torch
-from huggingface_hub import hf_hub_download
 from transformers import Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 
-from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLFlux2, BriaFibo2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
+from .image_processor import BriaFibo2ImageProcessor
 from .pipeline_output import BriaFibo2PipelineOutput
-from .text_images import FALLBACK_FONT_FILES, FONTS_REPO_ID, draw_text_image, load_font
+from .text_images import draw_text_image, load_font
 
 
 if is_torch_xla_available():
@@ -208,7 +205,7 @@ class BriaFibo2Pipeline(DiffusionPipeline):
             processor=processor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
+        self.image_processor = BriaFibo2ImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
         self.default_sample_size = 128
         self.tokenizer_max_length = 4096
         self.prompt_template_encode = PROMPT_TEMPLATE
@@ -219,11 +216,24 @@ class BriaFibo2Pipeline(DiffusionPipeline):
         # Images of the caption's text: a generation shows them to Qwen3-VL only once the noise level is at or below
         # this, as research renders; an edit shows them at every step
         self.text_images_max_noise_level = 0.9
-        # The fallback fonts the pipeline draws those images with, loaded when a text first needs them
-        self._text_image_fonts = None
 
     @staticmethod
-    def _clean_caption(caption: dict) -> dict:
+    def _parse_prompt(prompt: str) -> tuple[dict | str | None, str | None]:
+        # A prompt's caption, in the form fibo-2 was trained with, and its edit instruction. A prompt that isn't a JSON
+        # object comes back as it is, with no instruction: a short description, or an edit's instruction alone. An edit
+        # prompt's caption is its other keys or its "structured_caption" key, a JSON caption or a short description
+        try:
+            caption = json.loads(prompt)
+        except json.JSONDecodeError:
+            return prompt, None
+        if not isinstance(caption, dict):
+            return prompt, None
+        instruction = caption.pop("edit_instruction", None)
+        if "structured_caption" in caption:
+            caption = caption.pop("structured_caption")
+            if not isinstance(caption, dict):
+                return caption or None, instruction
+
         # Training captions hold no empty values (None, "", {}, [] or NaN), and no aesthetic_score or preference_score:
         # training removes them from the caption and from its sections
         def empty(value):
@@ -239,122 +249,43 @@ class BriaFibo2Pipeline(DiffusionPipeline):
                 return [v for v in map(clean, value) if not empty(v)]
             return value
 
+        keys = set(caption)
         scores = ("aesthetic_score", "preference_score")
         caption = {
             key: {k: v for k, v in value.items() if k not in scores} if isinstance(value, dict) else value
             for key, value in clean(caption).items()
             if key not in scores
         }
-        return {key: value for key, value in caption.items() if value != {}}
-
-    @classmethod
-    def _normalize_caption(cls, caption: dict) -> dict:
-        # A caption in the form fibo-2 was trained with. One of exactly a "short_description" and a "text_render" list
-        # keeps those keys in that order, and the list even when it's empty: it then says the image has no text. Any
-        # other caption is cleaned
-        if caption.keys() == {"short_description", "text_render"}:
-            caption = cls._clean_caption(caption)
-            return {
+        caption = {key: value for key, value in caption.items() if value != {}}
+        # A caption of exactly a "short_description" and a "text_render" list keeps those keys in that order, and the
+        # list even when it's empty: it then says the image has no text
+        if keys == {"short_description", "text_render"}:
+            caption = {
                 "short_description": caption.get("short_description") or "",
                 "text_render": caption.get("text_render") or [],
             }
-        return cls._clean_caption(caption)
-
-    @classmethod
-    def _get_generation_prompt(cls, prompt: str) -> str:
-        # A generation prompt as fibo-2 was trained on it: a JSON caption in its trained form, serialized compactly. A
-        # prompt that isn't a JSON caption, such as a short description, stays as it is
-        try:
-            caption = json.loads(prompt)
-        except json.JSONDecodeError:
-            return prompt
-        if not isinstance(caption, dict):
-            return prompt
-        return json.dumps(cls._normalize_caption(caption), separators=(",", ":"), ensure_ascii=False)
+        return caption or None, instruction
 
     @staticmethod
-    def _text_render_entries(caption: dict) -> list[dict]:
-        # The caption's text_render entries that have text: each one gets an image of its text
-        return [
-            entry
-            for entry in caption.get("text_render") or []
-            if isinstance(entry, dict) and isinstance(entry.get("text"), str) and entry["text"]
-        ]
-
-    @classmethod
-    def _mark_text_images(cls, caption: dict, marker: str) -> dict:
-        # A copy of the caption with an "image_tokens" entry on each text_render entry that has text: the vision marker
-        # of its image, or empty where the image isn't shown
-        caption = copy.deepcopy(caption)
-        for entry in cls._text_render_entries(caption):
-            entry["image_tokens"] = marker
+    def _mark_text_images(caption: dict, marker: str) -> dict:
+        # Marks, in place, each text_render entry that has text with an "image_tokens" entry: the vision marker of the
+        # image of its text, or empty where the image isn't shown
+        for entry in caption.get("text_render") or []:
+            if isinstance(entry, dict) and isinstance(entry.get("text"), str) and entry["text"]:
+                entry["image_tokens"] = marker
         return caption
-
-    @classmethod
-    def _get_text_prompt(cls, prompt: str, marker: str) -> str:
-        # A generation caption with its text entries marked, serialized compactly the way fibo-2 was trained
-        caption = cls._mark_text_images(json.loads(prompt), marker)
-        return json.dumps(caption, separators=(",", ":"), ensure_ascii=False)
-
-    @classmethod
-    def _split_edit_prompt(cls, prompt: str) -> tuple[dict | str | None, str]:
-        # An edit prompt's caption of the result, if it has one, and its instruction. The prompt is the instruction
-        # alone, or a JSON object with an "edit_instruction" key and the caption: the object's other keys, or its
-        # "structured_caption" key. A short description, as a string, is kept as it is, and a JSON caption takes its
-        # trained form
-        try:
-            edit = json.loads(prompt)
-        except json.JSONDecodeError:
-            edit = None
-        if not isinstance(edit, dict):
-            return None, prompt
-        edit = dict(edit)
-        instruction = edit.pop("edit_instruction")
-        caption = edit.pop("structured_caption") if "structured_caption" in edit else edit
-        if isinstance(caption, str):
-            return caption or None, instruction
-        return cls._normalize_caption(caption) or None, instruction
-
-    def _get_caption(self, prompt: str, edit: bool) -> dict | None:
-        # The JSON caption whose text_render entries get images: the prompt for a generation, the caption of the result
-        # for an edit. None for a prompt without one, or with a short description
-        if edit:
-            caption = self._split_edit_prompt(prompt)[0]
-        else:
-            try:
-                caption = json.loads(prompt)
-            except json.JSONDecodeError:
-                caption = None
-        return caption if isinstance(caption, dict) else None
-
-    def _get_text_image_fonts(self) -> list:
-        # The fallback fonts, read on first need from the `fonts` folder of the folder the pipeline was loaded from, or
-        # downloaded from fibo-2's repo when it has none
-        if self._text_image_fonts is None:
-            folder = os.path.join(self.name_or_path, "fonts") if self.name_or_path else None
-            paths = [
-                os.path.join(folder, name)
-                if folder is not None and os.path.isdir(folder)
-                else hf_hub_download(FONTS_REPO_ID, name, subfolder="fonts")
-                for name in FALLBACK_FONT_FILES
-            ]
-            self._text_image_fonts = [load_font(path) for path in paths]
-        return self._text_image_fonts
-
-    def _draw_text_images(self, caption: dict) -> list[PIL.Image.Image]:
-        # An image of each text_render entry's text, as fibo-2's training drew them
-        return [
-            draw_text_image(entry["text"], self._get_text_image_fonts) for entry in self._text_render_entries(caption)
-        ]
 
     @classmethod
     def _get_edit_prompt(cls, prompt: str, num_images: int, text_images: bool = False) -> str:
         # An edit prompt is one JSON object: a vision marker per image, the caption of the result when the prompt has
         # one, then the edit instruction. With images of the caption's text, each text entry gets the marker of its
         # image, which follows the images to edit
-        caption, instruction = cls._split_edit_prompt(prompt)
+        caption, instruction = cls._parse_prompt(prompt)
+        if instruction is None:
+            # The prompt is the instruction alone
+            caption, instruction = None, prompt
         if text_images and isinstance(caption, dict):
-            caption = cls._mark_text_images(caption, VISION_MARKER)
+            cls._mark_text_images(caption, VISION_MARKER)
 
         marker = VISION_MARKER
         if num_images == 1:
@@ -393,7 +324,8 @@ class BriaFibo2Pipeline(DiffusionPipeline):
                 p = BriaFibo2Pipeline._get_edit_prompt(p, len(image), text_images=bool(own_text_images))
                 images += image
             elif own_text_images:
-                p = BriaFibo2Pipeline._get_text_prompt(p, VISION_MARKER)
+                caption = BriaFibo2Pipeline._mark_text_images(json.loads(p), VISION_MARKER)
+                p = json.dumps(caption, separators=(",", ":"), ensure_ascii=False)
             text.append(prompt_template.format(p))
             images += own_text_images
         text_inputs = processor(
@@ -492,36 +424,6 @@ class BriaFibo2Pipeline(DiffusionPipeline):
         latents = latents.permute(0, 1, 4, 2, 5, 3)
         latents = latents.reshape(batch_size, num_channels_latents // (2 * 2), height * 2, width * 2)
         return latents
-
-    def _get_image_size(self, aspect_ratio: float) -> tuple[int, int]:
-        # The (width, height) fibo-2 was trained at for an aspect ratio: of the sizes divisible by 16, at least 64
-        # pixels a side and within 10% of the default 1024x1024 area, the one that crops the least from a picture with
-        # that aspect ratio, then the one closest to the default area
-        multiple = self.vae_scale_factor * 2
-        min_side = 4 * multiple
-        area = (self.default_sample_size * self.vae_scale_factor) ** 2
-        sizes = [
-            (width, height)
-            for width in range(min_side, 2 * area // min_side, multiple)
-            for height in range(min_side, 2 * area // width, multiple)
-            if 0.9 * area <= width * height <= 1.1 * area
-        ]
-
-        def crop(size):
-            ratio = size[0] / size[1]
-            return 1 - min(ratio / aspect_ratio, aspect_ratio / ratio)
-
-        return min(sizes, key=lambda size: (round(crop(size), 9), abs(size[0] * size[1] - area), -size[0]))
-
-    @staticmethod
-    def _resize_and_crop(image: PIL.Image.Image, width: int, height: int) -> PIL.Image.Image:
-        # Scale the image to cover (width, height), keeping its aspect ratio, then crop the center, as in training
-        image = image.convert("RGB")
-        scale = max(height / image.height, width / image.width)
-        resized_width, resized_height = math.ceil(image.width * scale), math.ceil(image.height * scale)
-        image = image.resize((resized_width, resized_height), resample=PIL.Image.LANCZOS)
-        left, top = (resized_width - width) // 2, (resized_height - height) // 2
-        return image.crop((left, top, left + width, top + height))
 
     def prepare_image_latents(self, image, batch_size, device, dtype):
         # The images to edit are normalized with the VAE's BatchNorm statistics, like the image being generated. The
@@ -623,10 +525,13 @@ class BriaFibo2Pipeline(DiffusionPipeline):
                 raise ValueError(f"`text_images` belong to a single caption, but `prompt` is {prompt}")
             if not all(isinstance(img, PIL.Image.Image) for img in text_images):
                 raise ValueError("`text_images` has to be a list of `PIL.Image.Image`.")
-            caption = self._get_caption(prompt, edit=image is not None)
-            if caption is None:
+            caption = self._parse_prompt(prompt)[0]
+            if not isinstance(caption, dict):
                 raise ValueError(f"`text_images` needs a JSON caption in `prompt`, but it is {prompt}")
-            num_texts = len(self._text_render_entries(caption))
+            num_texts = sum(
+                isinstance(entry, dict) and isinstance(entry.get("text"), str) and bool(entry["text"])
+                for entry in caption.get("text_render") or []
+            )
             if len(text_images) != num_texts:
                 raise ValueError(
                     f"`text_images` holds {len(text_images)} images, but the caption has {num_texts} `text_render`"
@@ -670,6 +575,7 @@ class BriaFibo2Pipeline(DiffusionPipeline):
         mask: PIL.Image.Image | None = None,
         text_images: list[PIL.Image.Image] | None = None,
         render_text_images: bool = True,
+        fonts: list[str] | None = None,
         height: int | None = None,
         width: int | None = None,
         num_inference_steps: int = 30,
@@ -712,10 +618,13 @@ class BriaFibo2Pipeline(DiffusionPipeline):
                 step.
             render_text_images (`bool`, *optional*, defaults to `True`):
                 Whether to draw the `text_images` of each caption, the way fibo-2's training drew them: each text in
-                one line, black on white, in Pillow's built-in font at size 20. Characters that font lacks are drawn in
-                Aileron, then DejaVu Sans, read on first need from the `fonts` folder of the folder the pipeline was
-                loaded from, or downloaded from `briaai/Fibo-2.0-dev`. A caption without text, and a prompt without a
-                JSON caption, such as a short description, get no images, as in training.
+                one line, black on white, in Pillow's built-in font at size 20, and the characters that font lacks in
+                the first of `fonts` that has them. A caption without text, and a prompt without a JSON caption, such
+                as a short description, get no images, as in training.
+            fonts (`list[str]`, *optional*):
+                Paths of the fonts to draw the characters of `text_images` that Pillow's built-in font lacks, in order.
+                Training drew them in Aileron, then DejaVu Sans, which are in the `fonts` folder of
+                `briaai/Fibo-2.0-dev`. Without them, such characters are drawn as Pillow's built-in font draws them.
             height (`int`, *optional*):
                 The height in pixels of the generated image. Must be divisible by 16. Defaults to 1024, or when
                 editing, to the size fibo-2 was trained at for the aspect ratio of the first image, about one
@@ -775,24 +684,37 @@ class BriaFibo2Pipeline(DiffusionPipeline):
             callback_on_step_end_tensor_inputs,
             text_images,
         )
+        prompts = [prompt] if isinstance(prompt, str) else prompt
         if prompt is not None and image is None:
-            # A generation caption in its trained form. An edit prompt's caption takes it when the prompt is encoded
-            prompt = (
-                self._get_generation_prompt(prompt)
-                if isinstance(prompt, str)
-                else [self._get_generation_prompt(p) for p in prompt]
-            )
-        # The images of each prompt's text: the caller's, or drawn from its caption
+            # A generation caption in its trained form, serialized compactly. A prompt that isn't a JSON caption, such
+            # as a short description, stays as it is. An edit prompt's caption takes it when the prompt is encoded
+            prompts = [
+                p if isinstance(caption, str) else json.dumps(caption or {}, separators=(",", ":"), ensure_ascii=False)
+                for p, (caption, _) in zip(prompts, map(self._parse_prompt, prompts))
+            ]
+            prompt = prompts[0] if isinstance(prompt, str) else prompts
+        # The images of each prompt's text: the caller's, or drawn from its caption's text_render entries that have
+        # text, as fibo-2's training drew them
         if text_images is not None:
             text_images = [list(text_images)]
         elif render_text_images and prompt is not None:
-            prompts = [prompt] if isinstance(prompt, str) else prompt
-            captions = [self._get_caption(p, edit=image is not None) for p in prompts]
-            text_images = [[] if caption is None else self._draw_text_images(caption) for caption in captions]
+            fallback_fonts = [load_font(path) for path in fonts or []]
+            text_images = []
+            for caption, _ in map(self._parse_prompt, prompts):
+                entries = (caption.get("text_render") or []) if isinstance(caption, dict) else []
+                text_images.append(
+                    [
+                        draw_text_image(entry["text"], fallback_fonts)
+                        for entry in entries
+                        if isinstance(entry, dict) and isinstance(entry.get("text"), str) and entry["text"]
+                    ]
+                )
         if not any(text_images or []):
             text_images = None
+        # The size fibo-2 was trained at for an aspect ratio, about the default area
+        default_area = (self.default_sample_size * self.vae_scale_factor) ** 2
         if image is not None and height is None and width is None:
-            width, height = self._get_image_size(image[0].width / image[0].height)
+            width, height = self.image_processor.get_image_size(image[0].width / image[0].height, area=default_area)
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
         self._guidance_scale = guidance_scale
@@ -805,15 +727,18 @@ class BriaFibo2Pipeline(DiffusionPipeline):
         vae_images = text_encoder_images = None
         if image is not None:
             if mask is not None:
-                # As in training: flat (128, 128, 128) grey, through a binary mask
-                grey = PIL.Image.new("RGB", image[0].size, (128, 128, 128))
-                binary_mask = mask.convert("L").point(lambda value: 255 if value >= 128 else 0)
-                image = [PIL.Image.composite(grey, image[0].convert("RGB"), binary_mask)]
+                # Greyed out at the image's own size, before the crop, as in training
+                image = [self.image_processor.grey_out(image[0], mask)]
             if len(image) == 1:
                 image_sizes = [(width, height)]
             else:
-                image_sizes = [self._get_image_size(img.width / img.height) for img in image]
-            vae_images = [self._resize_and_crop(img, *size) for img, size in zip(image, image_sizes)]
+                image_sizes = [
+                    self.image_processor.get_image_size(img.width / img.height, area=default_area) for img in image
+                ]
+            vae_images = [
+                self.image_processor.resize(img, height=size[1], width=size[0], resize_mode="crop")
+                for img, size in zip(image, image_sizes)
+            ]
             text_encoder_images = [img.copy() for img in vae_images]
             for img in text_encoder_images:
                 img.thumbnail((self.text_encoder_image_size, self.text_encoder_image_size))
@@ -837,8 +762,12 @@ class BriaFibo2Pipeline(DiffusionPipeline):
         # marker left empty
         base_prompt_embeds = base_prompt_embeds_mask = None
         if text_images is not None and image is None:
-            prompts = [prompt] if isinstance(prompt, str) else prompt
-            base_prompts = [self._get_text_prompt(p, "") if own else p for p, own in zip(prompts, text_images)]
+            base_prompts = [
+                json.dumps(self._mark_text_images(json.loads(p), ""), separators=(",", ":"), ensure_ascii=False)
+                if own
+                else p
+                for p, own in zip(prompts, text_images)
+            ]
             base_prompt_embeds, base_prompt_embeds_mask = self.encode_prompt(
                 base_prompts, device=device, num_images_per_prompt=num_images_per_prompt
             )

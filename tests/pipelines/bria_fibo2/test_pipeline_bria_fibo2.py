@@ -12,8 +12,11 @@ from diffusers import (
     BriaFibo2Transformer2DModel,
     FlowMatchEulerDiscreteScheduler,
 )
+from diffusers.pipelines.bria_fibo2.image_processor import BriaFibo2ImageProcessor
 from diffusers.pipelines.bria_fibo2.text_images import draw_text_image
+from diffusers.utils import logging
 
+from ...testing_utils import CaptureLogger
 from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
@@ -270,8 +273,8 @@ class TestBriaFibo2Pipeline(BriaFibo2PipelineTesterConfig, PipelineTesterMixin):
 
         rendered = pipe(**inputs).images
         inputs["generator"] = self.get_generator(0)
-        # The text is ASCII, which Pillow's built-in font draws without the fallback fonts
-        drawn = [draw_text_image(entry["text"], lambda: []) for entry in caption["text_render"]]
+        # The text is ASCII, which Pillow's built-in font draws without fallback fonts
+        drawn = [draw_text_image(entry["text"]) for entry in caption["text_render"]]
         given = pipe(**inputs, text_images=drawn).images
         inputs["generator"] = self.get_generator(0)
         without = pipe(**inputs, render_text_images=False).images
@@ -296,6 +299,19 @@ class TestBriaFibo2Pipeline(BriaFibo2PipelineTesterConfig, PipelineTesterMixin):
             without = pipe(**inputs, render_text_images=False).images
 
             assert torch.equal(rendered, without)
+
+    def test_text_the_built_in_font_lacks_should_warn_without_fonts(self):
+        # The pipeline doesn't fetch fallback fonts itself: drawing a text that needs them warns when none are given
+        pipe = self.get_pipeline()
+        inputs = {
+            **self.get_dummy_inputs(),
+            "prompt": '{"short_description":"a shop sign","text_render":[{"text":"ΑΡΤΟΠΟΙΕΙΟ"}]}',
+        }
+        logger = logging.get_logger("diffusers.pipelines.bria_fibo2.text_images")
+        with CaptureLogger(logger) as captured:
+            pipe(**inputs)
+
+        assert "`fonts`" in captured.out
 
     def test_given_text_images_should_take_precedence_over_drawn_ones(self):
         pipe = self.get_pipeline()
@@ -353,3 +369,11 @@ class TestBriaFibo2Pipeline(BriaFibo2PipelineTesterConfig, PipelineTesterMixin):
 
 class TestBriaFibo2PipelineMemory(BriaFibo2PipelineTesterConfig, MemoryTesterMixin):
     pass
+
+
+class TestBriaFibo2ImageProcessor:
+    @pytest.mark.parametrize(
+        "aspect_ratio, size", [(16 / 9, (1424, 800)), (1.0, (1024, 1024)), (4 / 3, (1152, 864)), (1 / 5, (464, 2320))]
+    )
+    def test_get_image_size_should_be_the_size_fibo2_was_trained_at(self, aspect_ratio, size):
+        assert BriaFibo2ImageProcessor().get_image_size(aspect_ratio) == size

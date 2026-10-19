@@ -77,7 +77,18 @@ image = pipe(prompt, render_text_images=False).images[0]
 Training showed fibo-2 these images for some captions with text and not for others, so it works either way.
 
 - Each `text_render` entry that has `text` gets an image: the text in one line, black on white, in Pillow's built-in font at size 20. A text longer than 256 characters is split into lines of 256.
-- Characters that font lacks are drawn in Aileron, then DejaVu Sans. The pipeline reads these fonts when a text first needs them, from the `fonts` folder of the folder it was loaded from, or else from [`briaai/Fibo-2.0-dev`](https://huggingface.co/briaai/Fibo-2.0-dev).
+- Characters that font lacks are drawn with the first of `fonts` that has them. Training used Aileron, then DejaVu Sans, which are in the `fonts` folder of [`briaai/Fibo-2.0-dev`](https://huggingface.co/briaai/Fibo-2.0-dev). Without `fonts`, such characters are drawn as Pillow's built-in font draws them, and the pipeline warns:
+
+  ```py
+  from huggingface_hub import hf_hub_download
+
+  fonts = [
+      hf_hub_download("briaai/Fibo-2.0-dev", name, subfolder="fonts")
+      for name in ("Aileron-Regular.otf", "DejaVuSans.ttf")
+  ]
+  image = pipe(prompt, fonts=fonts).images[0]
+  ```
+
 - The pipeline marks each entry with an `image_tokens` field for its image, and Qwen3-VL sees the images after any images to edit.
 - A generation runs its first steps, while the noise level is above `pipe.text_images_max_noise_level` (0.9), on the caption without the images. An edit uses them at every step.
 - A caption without text gets no images, nor does a short description, as in training.

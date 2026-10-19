@@ -15,46 +15,53 @@
 """
 Images of the text a fibo-2 caption asks for, drawn the way fibo-2's training drew them: each text on its own, in one
 line, black on white. Pillow's built-in font draws the text. A character it lacks is drawn with the first of the
-fallback fonts that has it: Aileron, the full version of the built-in font, then DejaVu Sans.
+fallback fonts that has it: training used Aileron, the full version of the built-in font, then DejaVu Sans.
 """
 
 import functools
-from typing import Callable, Sequence
+from typing import Sequence
 
 import PIL.Image
 from PIL import ImageDraw, ImageFont
+
+from ...utils import logging
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 # The size the text is drawn at, and the number of characters longer texts are split into lines of
 FONT_SIZE = 20
 MAX_LINE_CHARS = 256
-# The fallback fonts, in order, from the `fonts` folder of fibo-2's repo: Aileron (CC0) and DejaVu Sans (Bitstream
-# Vera license)
-FONTS_REPO_ID = "briaai/Fibo-2.0-dev"
-FALLBACK_FONT_FILES = ("Aileron-Regular.otf", "DejaVuSans.ttf")
 _PADDING = 2
 _LINE_SPACING = 4
 
 
+@functools.lru_cache(maxsize=None)
 def load_font(path: str) -> ImageFont.FreeTypeFont:
     # With the basic layout, as Pillow's built-in font, so the text doesn't set differently where libraqm is installed
     return ImageFont.truetype(path, FONT_SIZE, layout_engine=ImageFont.Layout.BASIC)
 
 
-def draw_text_image(text: str, get_fallback_fonts: Callable[[], Sequence[ImageFont.FreeTypeFont]]) -> PIL.Image.Image:
+def draw_text_image(text: str, fallback_fonts: Sequence[ImageFont.FreeTypeFont] = ()) -> PIL.Image.Image:
     """
     Draws a text the way fibo-2's training drew each `text_render` entry's text.
 
     The text is drawn in one line, its whitespace collapsed, black on white with 2 pixels of padding. A text longer
-    than 256 characters is split into lines of 256. `get_fallback_fonts` is only called for a text with a character
-    Pillow's built-in font lacks, and returns the fonts to try for it, in order.
+    than 256 characters is split into lines of 256. A character Pillow's built-in font lacks is drawn with the first of
+    `fallback_fonts` that has it.
     """
     font = _get_default_font()
     line = " ".join(text.split())
     lines = [line[i : i + MAX_LINE_CHARS] for i in range(0, len(line), MAX_LINE_CHARS)] or [""]
     if all(ord(character) < 128 or _has_glyph(font, character) for character in line):
         return _draw_one_font(lines, font)
-    return _draw_mixed(lines, [font, *get_fallback_fonts()])
+    if not fallback_fonts:
+        logger.warning(
+            "A text to draw has characters Pillow's built-in font lacks, which are drawn as it draws them. Pass the"
+            " `fonts` fibo-2 was trained with to draw them as training did."
+        )
+    return _draw_mixed(lines, [font, *fallback_fonts])
 
 
 @functools.lru_cache(maxsize=None)
