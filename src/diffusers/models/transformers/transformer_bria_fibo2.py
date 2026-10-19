@@ -505,7 +505,7 @@ class BriaFibo2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Att
         encoder_attention_mask: torch.Tensor | None = None,
         context_latents: list[torch.Tensor] | None = None,
         return_dict: bool = True,
-    ) -> torch.Tensor | Transformer2DModelOutput:
+    ) -> tuple[torch.Tensor] | Transformer2DModelOutput:
         """
         Args:
             hidden_states (`torch.Tensor` of shape `(batch_size, in_channels, height, width)`):
