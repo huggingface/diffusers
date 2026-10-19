@@ -28,7 +28,9 @@ class Flux3ImageProcessor(VaeImageProcessor):
     rounded up to the token grid) fits under 4 megapixels, then reflect-padded to the canvas, and `preprocess` also
     returns the `reference_crop` box of the image inside the canvas, which `postprocess` takes to crop the generated
     image back to it. `resize_mode="crop"` downscales a reference to fit under 1 megapixel and center-crops it to the
-    token grid.
+    token grid. The sizing follows the released BFL code, `reference_canvas` / `prepare_reference` for one reference
+    and `prepare_multi_reference` for several, in
+    https://github.com/black-forest-labs/flux-3-image-klein/blob/main/src/flux3/pipeline.py.
 
     Args:
         vae_scale_factor (`int`, *optional*, defaults to `16`):
@@ -105,7 +107,8 @@ class Flux3ImageProcessor(VaeImageProcessor):
         self, image_height: int, image_width: int, max_side: int = 4096, min_side: int = 64
     ) -> tuple[int, int]:
         r"""
-        The canvas of an image kept whole: its size rounded up to the token grid, clamped to [`min_side`, `max_side`].
+        The canvas of an image kept whole: its size rounded up to the token grid, clamped to [`min_side`, `max_side`]
+        (the `canvas` of BFL's `reference_canvas`).
         """
         multiple_of = self.config.vae_scale_factor
         return tuple(
@@ -116,8 +119,12 @@ class Flux3ImageProcessor(VaeImageProcessor):
         self, image: PIL.Image.Image, target_area: int = 4 * 1024 * 1024, max_side: int = 4096
     ) -> PIL.Image.Image:
         r"""
-        Downscale the image, keeping its aspect ratio, so that its canvas fits under `target_area` and its sides under
-        `max_side`.
+        Downscale the image, keeping its aspect ratio, so that its canvas (its size rounded up to the token grid) fits
+        under `target_area` and its sides under `max_side`, as BFL's `reference_canvas` does.
+
+        The scale that fits the image itself under `target_area` can still leave the canvas over it once the sides are
+        rounded up, so it is backed off by 0.5% until the canvas fits. The first pass already fits unless the image is
+        within a token of the cap.
         """
         image_width, image_height = image.size
         scale = min(1.0, math.sqrt(target_area / (image_width * image_height)), max_side / max(image.size))
