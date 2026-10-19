@@ -55,7 +55,7 @@ pipe.transformer = transformer
 pipe.text_encoder_2 = text_encoder_2
 pipe.enable_model_cpu_offload()
 # ---------------------------------------------------------------
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "a blue robot singing opera with human-like expressions"
 image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/robot.png")

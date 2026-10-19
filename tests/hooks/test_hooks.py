@@ -206,6 +206,26 @@ class TestHooks:
         assert registry.get_hook("stateful_add_hook").increment == 1
         assert torch.allclose(output1, output2)
 
+    def test_child_registries_cache_invalidation(self):
+        # Unit-level part of the regression test for
+        # https://github.com/huggingface/diffusers/issues/14037: the parent registry caches its
+        # child registries, so a hook registered on a child block after the cache was built is
+        # invisible to the parent until the cache is invalidated.
+        parent = HookRegistry.check_if_exists_or_initialize(self.model)
+
+        # Build the parent's child-registry cache while no block carries a hook yet.
+        assert parent._get_child_registries() == []
+
+        # Register a hook on a child block. The parent's cached (empty) list is now stale.
+        block = self.model.blocks[0]
+        child = HookRegistry.check_if_exists_or_initialize(block)
+        child.register_hook(AddHook(1), "add_hook")
+        assert parent._get_child_registries() == []  # still stale before invalidation
+
+        # Invalidating across the tree makes the new child registry reachable from the parent.
+        parent.invalidate_child_registries_cache()
+        assert child in parent._get_child_registries()
+
     def test_inference(self):
         registry = HookRegistry.check_if_exists_or_initialize(self.model)
         registry.register_hook(AddHook(1), "add_hook")

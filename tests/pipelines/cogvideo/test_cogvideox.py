@@ -14,7 +14,6 @@
 
 import gc
 
-import numpy as np
 import pytest
 import torch
 from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
@@ -22,21 +21,22 @@ from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 from diffusers import AutoencoderKLCogVideoX, CogVideoXPipeline, CogVideoXTransformer3DModel, DDIMScheduler
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
+    nightly,
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
-    slow,
     torch_device,
 )
 from ..testing_utils import (
     BasePipelineTesterConfig,
     FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
     PyramidAttentionBroadcastTesterMixin,
-    check_qkv_fusion_matches_attn_procs_length,
-    check_qkv_fusion_processors_exist,
 )
 
 
@@ -46,6 +46,7 @@ class CogVideoXPipelineTesterConfig(BasePipelineTesterConfig):
         ["prompt", "negative_prompt", "height", "width", "guidance_scale", "prompt_embeds", "negative_prompt_embeds"]
     )
     batch_input_params = frozenset(["prompt"])
+    output_shape = (8, 3, 16, 16)
     # CogVideoX is a video pipeline: it exposes `num_videos_per_prompt`, not the base default `num_images_per_prompt`.
     optional_input_params = frozenset(
         ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
@@ -134,7 +135,7 @@ class TestCogVideoXPipeline(CogVideoXPipelineTesterConfig, PipelineTesterMixin):
         inputs = self.get_dummy_inputs()
         video = pipe(**inputs).frames
         generated_video = video[0]
-        assert generated_video.shape == (8, 3, 16, 16)
+        assert generated_video.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.4370, 0.3687, 0.3268, 0.3554, 0.3712, 0.3622, 0.3604, 0.3981, 0.5380, 0.5220, 0.5235, 0.5247, 0.5405, 0.5487, 0.5489, 0.5326])
@@ -142,7 +143,7 @@ class TestCogVideoXPipeline(CogVideoXPipelineTesterConfig, PipelineTesterMixin):
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-3)
@@ -170,40 +171,6 @@ class TestCogVideoXPipeline(CogVideoXPipelineTesterConfig, PipelineTesterMixin):
             "VAE tiling should not affect the inference results"
         )
 
-    def test_fused_qkv_projections(self):
-        pipe = self.get_pipeline()
-
-        inputs = self.get_dummy_inputs()
-        frames = pipe(**inputs).frames  # [B, F, C, H, W]
-        original_image_slice = frames[0, -2:, -1, -3:, -3:]
-
-        pipe.fuse_qkv_projections()
-        assert check_qkv_fusion_processors_exist(pipe.transformer), (
-            "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
-        )
-        assert check_qkv_fusion_matches_attn_procs_length(
-            pipe.transformer, pipe.transformer.original_attn_processors
-        ), "Something wrong with the attention processors concerning the fused QKV projections."
-
-        inputs = self.get_dummy_inputs()
-        frames = pipe(**inputs).frames
-        image_slice_fused = frames[0, -2:, -1, -3:, -3:]
-
-        pipe.transformer.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs()
-        frames = pipe(**inputs).frames
-        image_slice_disabled = frames[0, -2:, -1, -3:, -3:]
-
-        assert np.allclose(original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3), (
-            "Fusion of QKV projections shouldn't affect the outputs."
-        )
-        assert np.allclose(image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3), (
-            "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        )
-        assert np.allclose(original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2), (
-            "Original outputs should match when fused QKV projections are disabled."
-        )
-
 
 class TestCogVideoXPipelineMemory(CogVideoXPipelineTesterConfig, MemoryTesterMixin):
     pass
@@ -223,9 +190,24 @@ class TestCogVideoXPipelineFirstBlockCache(CogVideoXPipelineTesterConfig, FirstB
     pass
 
 
-@slow
+class TestCogVideoXPipelineLoRA(CogVideoXPipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the CogVideoX pipeline."""
+
+
+class TestCogVideoXPipelineLoRAMemory(CogVideoXPipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests for the CogVideoX pipeline."""
+
+    # `(leaf_level, True)` is left out on purpose, see
+    # https://github.com/huggingface/diffusers/pull/11804#issuecomment-3013325338
+    @pytest.mark.parametrize("offload_type,use_stream", [("block_level", True), ("leaf_level", False)])
+    @require_torch_accelerator
+    def test_group_offloading_inference_denoiser(self, tmp_path, offload_type, use_stream):
+        super().test_group_offloading_inference_denoiser(tmp_path, offload_type, use_stream)
+
+
+@nightly
 @require_torch_accelerator
-class TestCogVideoXPipelineSlow:
+class TestCogVideoXPipelineIntegration:
     prompt = "A painting of a squirrel eating a burger."
 
     @pytest.fixture(autouse=True)

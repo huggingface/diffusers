@@ -57,7 +57,9 @@ class QwenImageLoopBeforeDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[QwenImageModularPipeline, BlockState]:
         # one timestep
         block_state.timestep = t.expand(block_state.latents.shape[0]).to(block_state.latents.dtype)
         block_state.latent_model_input = block_state.latents
@@ -88,7 +90,9 @@ class QwenImageEditLoopBeforeDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[QwenImageModularPipeline, BlockState]:
         # one timestep
 
         block_state.latent_model_input = torch.cat([block_state.latents, block_state.image_latents], dim=1)
@@ -138,7 +142,9 @@ class QwenImageLoopBeforeDenoiserControlNet(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: int):
+    def __call__(
+        self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: int
+    ) -> tuple[QwenImageModularPipeline, BlockState]:
         # cond_scale for the timestep (controlnet input)
         if isinstance(block_state.controlnet_keep[i], list):
             block_state.cond_scale = [
@@ -205,7 +211,9 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[QwenImageModularPipeline, BlockState]:
         guider_inputs = {
             "encoder_hidden_states": (
                 getattr(block_state, "prompt_embeds", None),
@@ -290,7 +298,9 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[QwenImageModularPipeline, BlockState]:
         guider_inputs = {
             "encoder_hidden_states": (
                 getattr(block_state, "prompt_embeds", None),
@@ -366,7 +376,9 @@ class QwenImageLoopAfterDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[QwenImageModularPipeline, BlockState]:
         latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(
             block_state.noise_pred,
@@ -419,7 +431,9 @@ class QwenImageLoopAfterDenoiserInpaint(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[QwenImageModularPipeline, BlockState]:
         block_state.init_latents_proper = block_state.image_latents
         if i < len(block_state.timesteps) - 1:
             block_state.noise_timestep = block_state.timesteps[i + 1]
@@ -466,7 +480,9 @@ class QwenImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.num_warmup_steps = max(

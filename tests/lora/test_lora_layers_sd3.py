@@ -125,10 +125,6 @@ class SD3LoRATests(unittest.TestCase, PeftLoraLoaderMixinTests):
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         pass
 
-    @unittest.skip("Not supported in SD3.")
-    def test_modify_padding_mode(self):
-        pass
-
     @is_flaky
     def test_multiple_wrong_adapter_name_raises_error(self):
         super().test_multiple_wrong_adapter_name_raises_error()

@@ -57,7 +57,8 @@ diffusers-cli custom_blocks [--block_module_name <file.py>] [--block_class_name 
 ### What it does
 
 1. **AST scan**: parses `<file>` without executing it, walks top-level `ClassDef` nodes, and collects every
-   class whose `bases` include `ModularPipelineBlocks`.
+   class whose `bases` include `ModularPipelineBlocks` or one of its composite subclasses
+   (`SequentialPipelineBlocks`, `AutoPipelineBlocks`, `ConditionalPipelineBlocks`, `LoopSequentialPipelineBlocks`).
 2. **Pick a class**: uses `--block_class_name` if given, else the first found. Errors with the list of available
    classes if your name doesn't match.
 3. **Load and save**: imports the file via `importlib.util.spec_from_file_location` (this does execute the
@@ -137,21 +138,23 @@ diffusers-cli run --model my-user/my-denoise-block --trust-remote-code \
 - **`block_class_name could not be retrieved. Available classes from <file>: [ClassA, ClassB]`** — your
   `--block_class_name` doesn't match any `ModularPipelineBlocks` subclass found. Pick from the list shown.
 - **No classes found**: silent — the command will try to use the first entry in an empty list and raise
-  `IndexError`. If you hit that, double-check your class actually inherits from `ModularPipelineBlocks`
-  (the AST scan looks for that literal base-class name; aliased imports like `from diffusers import ...
-  as MPB` won't be picked up).
+  `IndexError`. If you hit that, double-check your class actually inherits from `ModularPipelineBlocks` or one
+  of the composite classes listed above (the AST scan looks for those literal class names; aliased imports like
+  `from diffusers import ... as MPB` won't be picked up).
 - **Block requires constructor args**: the command calls `<ClassName>()` with no args. If your block needs
   `__init__` parameters, refactor to take them from `state`/`components` at `__call__` time instead, or
   hardcode defaults in `__init__`.
 
 ## Verifying the install
 
-If `diffusers-cli` isn't on PATH, see the install verification section of
-[`../diffusers-cli/SKILL.md`](../diffusers-cli/SKILL.md#verifying-the-cli-is-installed).
+If `diffusers-cli` isn't on PATH after `pip install -e .`, reinstall with
+`pip install -e . --force-reinstall --no-deps` and check `which diffusers-cli`. If the binary is missing recent
+features (e.g. `unrecognized arguments: --lora`), reinstall. See the
+[`diffusers-cli` skill](https://github.com/huggingface/diffusers/blob/main/.ai/skills/diffusers-cli/SKILL.md#verifying-the-cli-is-installed) for more.
 
 ## Related
 
-- [`diffusers-cli` skill](../diffusers-cli/SKILL.md) — once your block is uploaded, `schema`/`run`
-  let you call it from the terminal without writing Python.
-- diffusers' [modular pipelines docs](../../../docs/source/en/modular_diffusers) — for writing the block
+- the [`diffusers-cli` docs](https://github.com/huggingface/diffusers/blob/main/docs/source/en/using-diffusers/cli.md) — once your block
+  is uploaded, `schema` and `run` call it from the terminal without writing Python.
+- diffusers' [modular pipelines docs](https://huggingface.co/docs/diffusers/main/en/modular_diffusers/overview) — for writing the block
   class itself.

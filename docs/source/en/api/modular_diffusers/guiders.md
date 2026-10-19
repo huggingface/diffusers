@@ -37,3 +37,7 @@ Guiders are components in Modular Diffusers that control how the diffusion proce
 ## TangentialClassifierFreeGuidance
 
 [[autodoc]] diffusers.guiders.tangential_classifier_free_guidance.TangentialClassifierFreeGuidance
+
+## LTX2Guidance
+
+[[autodoc]] diffusers.guiders.ltx2_guidance.LTX2Guidance

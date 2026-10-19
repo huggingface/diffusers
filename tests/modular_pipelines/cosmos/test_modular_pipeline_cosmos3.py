@@ -13,11 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import contextmanager
+from unittest import mock
+
+import numpy as np
 import pytest
 import torch
 from PIL import Image
 
-from diffusers import ModularPipeline, UniPCMultistepScheduler
+from diffusers import CosmosActionCondition, ModularPipeline, UniPCMultistepScheduler
 from diffusers.modular_pipelines import (
     Cosmos3OmniBlocks,
     Cosmos3OmniModularPipeline,
@@ -26,15 +30,25 @@ from diffusers.modular_pipelines import (
 from diffusers.modular_pipelines.cosmos.before_denoise import (
     Cosmos3ActionDenoiseInputStep,
     Cosmos3ActionPackSequenceStep,
+    Cosmos3ActionPrepareLatentsStep,
     Cosmos3SetTimestepsStep,
     Cosmos3SoundDenoiseInputStep,
+    Cosmos3SoundPrepareLatentsStep,
+    Cosmos3TransferPrepareLatentsStep,
     Cosmos3VisionDenoiseInputStep,
     Cosmos3VisionPackSequenceStep,
 )
 from diffusers.modular_pipelines.cosmos.encoders import Cosmos3TextEncoderStep
+from diffusers.modular_pipelines.cosmos.modular_blocks_cosmos3 import Cosmos3TransferChunkDenoiseStep
 
 from ...testing_utils import torch_device
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 TEXT_VISION_WORKFLOW = [
@@ -114,11 +128,10 @@ COSMOS3_OMNI_WORKFLOWS = {
 }
 
 
-class TestCosmos3OmniModularPipelineFast(ModularPipelineTesterMixin):
+class Cosmos3OmniModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = Cosmos3OmniModularPipeline
     pipeline_blocks_class = Cosmos3OmniBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-cosmos3-modular-pipe"
-
     params = frozenset(["prompt", "height", "width", "num_frames", "guidance_scale"])
     batch_params = frozenset()
     optional_params = frozenset(["num_inference_steps", "output_type"])
@@ -143,6 +156,8 @@ class TestCosmos3OmniModularPipelineFast(ModularPipelineTesterMixin):
             "output_type": "latent",
         }
 
+
+class TestCosmos3OmniModularPipelineFast(Cosmos3OmniModularPipelineTesterConfig, ModularPipelineTesterMixin):
     @pytest.mark.skip(reason="Cosmos3 does not support batched prompts.")
     def test_inference_batch_consistent(self):
         pass
@@ -159,19 +174,111 @@ class TestCosmos3OmniModularPipelineFast(ModularPipelineTesterMixin):
     def test_float16_inference(self):
         pass
 
-    def test_save_from_pretrained(self, tmp_path):
-        base_pipe = self.get_pipeline().to(torch_device)
-        base_pipe.save_pretrained(str(tmp_path))
+    def test_transformer_cache_contexts_receive_exact_scheduler_info(self):
+        pipe = self.get_pipeline().to(torch_device)
+        observed = []
 
-        loaded_pipe = ModularPipeline.from_pretrained(str(tmp_path))
-        loaded_pipe.load_components(dtype=torch.float32)
-        loaded_pipe.disable_safety_checker()
-        loaded_pipe.to(torch_device)
+        @contextmanager
+        def record_context(name, **info):
+            observed.append((name, info.get("step_index"), info.get("sigma"), info.get("num_inference_steps")))
+            yield
 
-        base_output = base_pipe(**self.get_dummy_inputs(), output=self.output_name)
-        loaded_output = loaded_pipe(**self.get_dummy_inputs(), output=self.output_name)
+        with mock.patch.object(pipe.transformer, "cache_context", side_effect=record_context):
+            pipe(**self.get_dummy_inputs(), output=self.output_name)
 
-        assert torch.abs(base_output - loaded_output).max() < 1e-3
+        assert [name for name, _, _, _ in observed] == ["cond", "uncond", "cond", "uncond"]
+        for call_index, (_, step_index, sigma, num_steps) in enumerate(observed):
+            expected_step = call_index // 2
+            assert step_index == expected_step
+            torch.testing.assert_close(sigma, float(pipe.scheduler.sigmas[expected_step]))
+            assert num_steps is not None
+
+    def test_pipeline_resets_stateful_cache(self):
+        pipe = self.get_pipeline().to(torch_device)
+
+        with mock.patch.object(pipe.transformer, "_reset_stateful_cache") as reset_cache:
+            pipe(**self.get_dummy_inputs(), output=self.output_name)
+
+        reset_cache.assert_called_once_with()
+
+    def _get_sampling_state_block_pipe(self, block):
+        pipe = block.init_pipeline(self.pretrained_model_name_or_path)
+        pipe.load_components(torch_dtype=torch.bfloat16)
+        pipe.to(torch_device)
+        return pipe
+
+    def test_sound_prepare_latents_uses_fp32(self):
+        pipe = self._get_sampling_state_block_pipe(Cosmos3SoundPrepareLatentsStep())
+
+        outputs = pipe(
+            num_frames=5,
+            fps=24.0,
+            generator=self.get_generator(0),
+            output=["sound_latents", "sound_condition_mask"],
+        )
+
+        assert outputs["sound_latents"].dtype == torch.float32
+        assert outputs["sound_condition_mask"].dtype == torch.float32
+
+    def test_action_prepare_latents_uses_fp32(self):
+        pipe = self._get_sampling_state_block_pipe(Cosmos3ActionPrepareLatentsStep())
+        action = CosmosActionCondition(
+            mode="policy",
+            chunk_size=2,
+            domain_name="av",
+            image=torch.zeros(3, 16, 16),
+        )
+
+        outputs = pipe(
+            action=action,
+            action_condition_frame_indexes=[],
+            generator=self.get_generator(0),
+            output=["action_latents", "action_condition_mask"],
+        )
+
+        assert outputs["action_latents"].dtype == torch.float32
+        assert outputs["action_condition_mask"].dtype == torch.float32
+
+    def test_transfer_prepare_latents_uses_fp32(self):
+        pipe = self._get_sampling_state_block_pipe(Cosmos3TransferPrepareLatentsStep())
+
+        outputs = pipe(
+            x0_tokens_vision=torch.zeros(1, 4, 2, 2, 2),
+            current_conditional_frames=1,
+            generator=self.get_generator(0),
+            output=["latents", "velocity_mask", "condition_latents"],
+        )
+
+        assert outputs["latents"].dtype == torch.float32
+        assert outputs["velocity_mask"].dtype == torch.float32
+        assert outputs["condition_latents"].dtype == torch.float32
+
+    def test_transfer_chunks_reset_stateful_cache_at_boundaries(self):
+        block = Cosmos3TransferChunkDenoiseStep()
+        child_block = mock.Mock(side_effect=lambda components, state: (components, state))
+        block.sub_blocks = {"child": child_block}
+        components = mock.Mock()
+        state = mock.Mock()
+        state.get.return_value = 3
+
+        block(components, state)
+
+        assert child_block.call_count == 3
+        assert components.transformer._reset_stateful_cache.call_count == 2
+        assert [call.args for call in state.set.call_args_list if call.args[0] == "chunk_id"] == [
+            ("chunk_id", 0),
+            ("chunk_id", 1),
+            ("chunk_id", 2),
+        ]
+
+    def test_sampling_state_uses_fp32_for_modular_cfg_and_scheduler(self):
+        pipe = self.get_pipeline(dtype=torch.bfloat16).to(torch_device)
+        inputs = self.get_dummy_inputs()
+
+        outputs = pipe(**inputs, output=["velocity_vision", "latents"])
+
+        assert outputs["velocity_vision"].dtype == torch.float32
+        assert outputs["latents"].dtype == torch.float32
 
     def test_vae_encoder_is_standalone_and_validates_conditioning_inputs(self):
         pipe = self.get_pipeline()
@@ -214,6 +321,35 @@ class TestCosmos3OmniModularPipelineFast(ModularPipelineTesterMixin):
         inputs.update(image=Image.new("RGB", (32, 32)), num_frames=1)
         with pytest.raises(ValueError, match="image-to-image generation is not supported"):
             pipe(**inputs, output=self.output_name)
+
+    def test_image_encoder_uses_native_aspect_preserving_center_crop(self):
+        pipe = self.get_pipeline()
+        image_encoder = pipe.blocks.sub_blocks["vae_encoder"].sub_blocks["image_conditioning"]
+        image_pipe = image_encoder.init_pipeline(self.pretrained_model_name_or_path)
+        image_pipe.load_components(dtype=torch.float32)
+
+        image = np.zeros((32, 64, 3), dtype=np.uint8)
+        image[:, :16] = [255, 0, 0]
+        image[:, 16:48] = [0, 255, 0]
+        image[:, 48:] = [0, 0, 255]
+        center_crop = Image.fromarray(image[:, 16:48])
+
+        wide_outputs = image_pipe(
+            image=Image.fromarray(image),
+            num_frames=5,
+            height=32,
+            width=32,
+            output=["x0_tokens_vision"],
+        )
+        crop_outputs = image_pipe(
+            image=center_crop,
+            num_frames=5,
+            height=32,
+            width=32,
+            output=["x0_tokens_vision"],
+        )
+
+        torch.testing.assert_close(wide_outputs["x0_tokens_vision"], crop_outputs["x0_tokens_vision"])
 
     @pytest.mark.parametrize("prompt_name", ["prompt", "negative_prompt"])
     def test_rejects_batched_prompts(self, prompt_name):
@@ -373,3 +509,27 @@ class TestCosmos3OmniModularPipelineFast(ModularPipelineTesterMixin):
         torch.testing.assert_close(timesteps_pipe.scheduler.sigmas[:-1], expected_sigmas)
         assert native_timesteps.tolist() == [99, 74, 49, 24]
         assert not torch.equal(native_timesteps, default_timesteps)
+
+
+class TestCosmos3OmniModularPipelineLoading(Cosmos3OmniModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    def test_save_from_pretrained(self, tmp_path):
+        base_pipe = self.get_pipeline().to(torch_device)
+        base_pipe.save_pretrained(str(tmp_path))
+
+        loaded_pipe = ModularPipeline.from_pretrained(str(tmp_path))
+        loaded_pipe.load_components(dtype=torch.float32)
+        loaded_pipe.disable_safety_checker()
+        loaded_pipe.to(torch_device)
+
+        base_output = base_pipe(**self.get_dummy_inputs(), output=self.output_name)
+        loaded_output = loaded_pipe(**self.get_dummy_inputs(), output=self.output_name)
+
+        assert torch.abs(base_output - loaded_output).max() < 1e-3
+
+
+class TestCosmos3OmniModularPipelineWorkflow(Cosmos3OmniModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestCosmos3OmniModularPipelineMemory(Cosmos3OmniModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass

@@ -23,9 +23,9 @@ from ...testing_utils import (
 )
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    MagCacheTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
-    check_qkv_fused_layers_exist,
 )
 
 
@@ -35,6 +35,7 @@ class Flux2KleinPipelineTesterConfig(BasePipelineTesterConfig):
         ["prompt", "height", "width", "guidance_scale", "prompt_embeds"]
     )
     batch_input_params = frozenset(["prompt"])
+    output_shape = (3, 8, 8)
 
     def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)
@@ -112,49 +113,6 @@ class Flux2KleinPipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestFlux2KleinPipeline(Flux2KleinPipelineTesterConfig, PipelineTesterMixin):
-    def test_fused_qkv_projections(self):
-        pipe = self.get_pipeline()
-
-        inputs = self.get_dummy_inputs()
-        image = pipe(**inputs).images
-        original_image_slice = image[0, -1, -3:, -3:]
-
-        pipe.transformer.fuse_qkv_projections()
-        assert check_qkv_fused_layers_exist(pipe.transformer, ["to_qkv"]), (
-            "Something wrong with the fused attention layers. Expected all the attention projections to be fused."
-        )
-
-        inputs = self.get_dummy_inputs()
-        image = pipe(**inputs).images
-        image_slice_fused = image[0, -1, -3:, -3:]
-
-        pipe.transformer.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs()
-        image = pipe(**inputs).images
-        image_slice_disabled = image[0, -1, -3:, -3:]
-
-        assert_tensors_close(
-            original_image_slice,
-            image_slice_fused,
-            atol=1e-3,
-            rtol=1e-3,
-            msg="Fusion of QKV projections shouldn't affect the outputs.",
-        )
-        assert_tensors_close(
-            image_slice_fused,
-            image_slice_disabled,
-            atol=1e-3,
-            rtol=1e-3,
-            msg="Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled.",
-        )
-        assert_tensors_close(
-            original_image_slice,
-            image_slice_disabled,
-            atol=1e-2,
-            rtol=1e-2,
-            msg="Original outputs should match when fused QKV projections are disabled.",
-        )
-
     def test_image_output_shape(self):
         pipe = self.get_pipeline().to(torch_device)
         inputs = self.get_dummy_inputs()
@@ -282,3 +240,7 @@ class TestFlux2KleinPipelineIntegration:
         assert image.shape == (1, 128, 128, 3)
         assert not np.isnan(image).any(), "Output contains NaN values"
         assert (image >= 0.0).all() and (image <= 1.0).all(), "Output pixel values outside [0, 1]"
+
+
+class TestFlux2KleinPipelineMagCache(Flux2KleinPipelineTesterConfig, MagCacheTesterMixin):
+    """MagCache tests for the Flux2 Klein pipeline."""

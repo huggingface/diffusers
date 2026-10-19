@@ -24,13 +24,14 @@ from ..utils import (
 _import_structure = {}
 
 if is_torch_available():
-    _import_structure["_modeling_parallel"] = ["ContextParallelConfig", "ParallelConfig"]
+    _import_structure["_modeling_parallel"] = ["ContextParallelConfig", "ParallelConfig", "TensorParallelConfig"]
     _import_structure["adapter"] = ["MultiAdapter", "T2IAdapter"]
     _import_structure["attention_dispatch"] = ["AttentionBackendName", "attention_backend"]
     _import_structure["auto_model"] = ["AutoModel"]
     _import_structure["autoencoders.autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
     _import_structure["autoencoders.autoencoder_cosmos3_audio"] = ["Cosmos3AVAEAudioTokenizer"]
     _import_structure["autoencoders.autoencoder_dc"] = ["AutoencoderDC"]
+    _import_structure["autoencoders.autoencoder_kandinsky6_sr"] = ["Kandinsky6SRVAE"]
     _import_structure["autoencoders.autoencoder_kl"] = ["AutoencoderKL"]
     _import_structure["autoencoders.autoencoder_kl_allegro"] = ["AutoencoderKLAllegro"]
     _import_structure["autoencoders.autoencoder_kl_cogvideox"] = ["AutoencoderKLCogVideoX"]
@@ -47,19 +48,28 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_ltx2"] = ["AutoencoderKLLTX2Video"]
     _import_structure["autoencoders.autoencoder_kl_ltx2_audio"] = ["AutoencoderKLLTX2Audio"]
     _import_structure["autoencoders.autoencoder_kl_magvit"] = ["AutoencoderKLMagvit"]
+    _import_structure["autoencoders.autoencoder_kl_minimax_h3"] = ["AutoencoderKLMiniMaxH3"]
+    _import_structure["autoencoders.autoencoder_kl_minimax_h3_audio"] = ["AutoencoderKLMiniMaxH3Audio"]
     _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
     _import_structure["autoencoders.autoencoder_kl_qwenimage"] = ["AutoencoderKLQwenImage"]
+    _import_structure["autoencoders.autoencoder_kl_qwenimage21"] = ["AutoencoderKLQwenImage21"]
     _import_structure["autoencoders.autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
     _import_structure["autoencoders.autoencoder_kl_wan"] = ["AutoencoderKLWan"]
     _import_structure["autoencoders.autoencoder_longcat_audio_dit"] = ["LongCatAudioDiTVae"]
+    _import_structure["autoencoders.autoencoder_mmaudio"] = ["MMAudioVAE"]
     _import_structure["autoencoders.autoencoder_oobleck"] = ["AutoencoderOobleck"]
     _import_structure["autoencoders.autoencoder_rae"] = ["AutoencoderRAE"]
+    _import_structure["autoencoders.autoencoder_same"] = ["AutoencoderSAME"]
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
     _import_structure["autoencoders.autoencoder_vidtok"] = ["AutoencoderVidTok"]
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
+    _import_structure["autoencoders.ltx2_diffusion_decoder"] = ["LTX2VideoDiffusionDecoderModel"]
+    _import_structure["autoencoders.minimax_music3_vocoder"] = ["MiniMaxMusic3Vocoder"]
+    _import_structure["autoencoders.mmaudio_vocoder"] = ["MMAudioVocoder"]
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
     _import_structure["cache_utils"] = ["CacheMixin"]
     _import_structure["condition_embedders.condition_embedder_anima"] = ["AnimaTextConditioner"]
+    _import_structure["condition_embedders.condition_embedder_minimax_music3"] = ["MiniMaxMusic3ConditionEncoder"]
     _import_structure["controlnets.controlnet"] = ["ControlNetModel"]
     _import_structure["controlnets.controlnet_cosmos"] = ["CosmosControlNetModel"]
     _import_structure["controlnets.controlnet_flux"] = ["FluxControlNetModel", "FluxMultiControlNetModel"]
@@ -80,6 +90,7 @@ if is_torch_available():
     _import_structure["controlnets.multicontrolnet"] = ["MultiControlNetModel"]
     _import_structure["controlnets.multicontrolnet_union"] = ["MultiControlNetUnionModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
+    _import_structure["latent_upscaler.latent_upscaler_kandinsky6_sr"] = ["Kandinsky6SRLatentUpscalerBank"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["transformers.ace_step_transformer"] = ["AceStepTransformer1DModel"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
@@ -90,6 +101,7 @@ if is_torch_available():
     _import_structure["transformers.hunyuan_transformer_2d"] = ["HunyuanDiT2DModel"]
     _import_structure["transformers.latte_transformer_3d"] = ["LatteTransformer3DModel"]
     _import_structure["transformers.lumina_nextdit2d"] = ["LuminaNextDiT2DModel"]
+    _import_structure["transformers.minimax_music3_rvq_depth_decoder"] = ["MiniMaxMusic3RVQDepthDecoder"]
     _import_structure["transformers.pixart_transformer_2d"] = ["PixArtTransformer2DModel"]
     _import_structure["transformers.prior_transformer"] = ["PriorTransformer"]
     _import_structure["transformers.sana_transformer"] = ["SanaTransformer2DModel"]
@@ -112,6 +124,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_ernie_image"] = ["ErnieImageTransformer2DModel"]
     _import_structure["transformers.transformer_flux"] = ["FluxTransformer2DModel"]
     _import_structure["transformers.transformer_flux2"] = ["Flux2Transformer2DModel"]
+    _import_structure["transformers.transformer_flux3"] = ["Flux3Transformer2DModel"]
     _import_structure["transformers.transformer_glm_image"] = ["GlmImageTransformer2DModel"]
     _import_structure["transformers.transformer_helios"] = ["HeliosTransformer3DModel"]
     _import_structure["transformers.transformer_hidream_image"] = ["HiDreamImageTransformer2DModel"]
@@ -123,12 +136,16 @@ if is_torch_available():
     _import_structure["transformers.transformer_joyimage"] = ["JoyImageEditTransformer3DModel"]
     _import_structure["transformers.transformer_joyimage_edit_plus"] = ["JoyImageEditPlusTransformer3DModel"]
     _import_structure["transformers.transformer_kandinsky"] = ["Kandinsky5Transformer3DModel"]
+    _import_structure["transformers.transformer_kandinsky6"] = ["Kandinsky6Transformer3DModel"]
+    _import_structure["transformers.transformer_kandinsky6_sr"] = ["Kandinsky6SRTransformer3DModel"]
     _import_structure["transformers.transformer_krea2"] = ["Krea2Transformer2DModel"]
     _import_structure["transformers.transformer_longcat_audio_dit"] = ["LongCatAudioDiTTransformer"]
     _import_structure["transformers.transformer_longcat_image"] = ["LongCatImageTransformer2DModel"]
     _import_structure["transformers.transformer_ltx"] = ["LTXVideoTransformer3DModel"]
     _import_structure["transformers.transformer_ltx2"] = ["LTX2VideoTransformer3DModel"]
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
+    _import_structure["transformers.transformer_minimax_h3"] = ["MiniMaxH3Transformer3DModel"]
+    _import_structure["transformers.transformer_minimax_music3"] = ["MiniMaxMusic3Transformer1DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
     _import_structure["transformers.transformer_motif_video"] = ["MotifVideoTransformer3DModel"]
     _import_structure["transformers.transformer_nucleusmoe_image"] = ["NucleusMoEImageTransformer2DModel"]
@@ -136,12 +153,17 @@ if is_torch_available():
     _import_structure["transformers.transformer_ovis_image"] = ["OvisImageTransformer2DModel"]
     _import_structure["transformers.transformer_prx"] = ["PRXTransformer2DModel"]
     _import_structure["transformers.transformer_qwenimage"] = ["QwenImageTransformer2DModel"]
+    _import_structure["transformers.transformer_qwenimage21"] = ["QwenImage21Transformer2DModel"]
     _import_structure["transformers.transformer_sana_video"] = ["SanaVideoTransformer3DModel"]
+    _import_structure["transformers.transformer_sana_wm"] = ["SanaWMTransformer3DModel"]
+    _import_structure["transformers.transformer_sana_wm_refiner"] = ["SanaWMLTX2RefinerTransformer3DModel"]
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
     _import_structure["transformers.transformer_skyreels_v2"] = ["SkyReelsV2Transformer3DModel"]
+    _import_structure["transformers.transformer_stable_audio3"] = ["StableAudio3DiTModel"]
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
     _import_structure["transformers.transformer_wan"] = ["WanTransformer3DModel"]
     _import_structure["transformers.transformer_wan_animate"] = ["WanAnimateTransformer3DModel"]
+    _import_structure["transformers.transformer_wan_animate_2"] = ["WanAnimate2Transformer3DModel"]
     _import_structure["transformers.transformer_wan_vace"] = ["WanVACETransformer3DModel"]
     _import_structure["transformers.transformer_z_image"] = ["ZImageTransformer2DModel"]
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
@@ -159,7 +181,7 @@ if is_torch_available():
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     if is_torch_available():
-        from ._modeling_parallel import ContextParallelConfig, ParallelConfig
+        from ._modeling_parallel import ContextParallelConfig, ParallelConfig, TensorParallelConfig
         from .adapter import MultiAdapter, T2IAdapter
         from .attention_dispatch import AttentionBackendName, attention_backend
         from .auto_model import AutoModel
@@ -182,21 +204,30 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLLTX2Video,
             AutoencoderKLLTXVideo,
             AutoencoderKLMagvit,
+            AutoencoderKLMiniMaxH3,
+            AutoencoderKLMiniMaxH3Audio,
             AutoencoderKLMochi,
             AutoencoderKLQwenImage,
+            AutoencoderKLQwenImage21,
             AutoencoderKLTemporalDecoder,
             AutoencoderKLWan,
             AutoencoderOobleck,
             AutoencoderRAE,
+            AutoencoderSAME,
             AutoencoderTiny,
             AutoencoderVidTok,
             ConsistencyDecoderVAE,
             Cosmos3AVAEAudioTokenizer,
+            Kandinsky6SRVAE,
             LongCatAudioDiTVae,
+            LTX2VideoDiffusionDecoderModel,
+            MiniMaxMusic3Vocoder,
+            MMAudioVAE,
+            MMAudioVocoder,
             VQModel,
         )
         from .cache_utils import CacheMixin
-        from .condition_embedders import AnimaTextConditioner
+        from .condition_embedders import AnimaTextConditioner, MiniMaxMusic3ConditionEncoder
         from .controlnets import (
             ControlNetModel,
             ControlNetUnionModel,
@@ -218,6 +249,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageControlNetModel,
         )
         from .embeddings import ImageProjection
+        from .latent_upscaler import Kandinsky6SRLatentUpscalerBank
         from .modeling_utils import ModelMixin
         from .transformers import (
             AceStepTransformer1DModel,
@@ -241,6 +273,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EasyAnimateTransformer3DModel,
             ErnieImageTransformer2DModel,
             Flux2Transformer2DModel,
+            Flux3Transformer2DModel,
             FluxTransformer2DModel,
             GlmImageTransformer2DModel,
             HeliosTransformer3DModel,
@@ -254,6 +287,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             JoyImageEditPlusTransformer3DModel,
             JoyImageEditTransformer3DModel,
             Kandinsky5Transformer3DModel,
+            Kandinsky6SRTransformer3DModel,
+            Kandinsky6Transformer3DModel,
             Krea2Transformer2DModel,
             LatteTransformer3DModel,
             LongCatAudioDiTTransformer,
@@ -262,6 +297,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
+            MiniMaxH3Transformer3DModel,
+            MiniMaxMusic3RVQDepthDecoder,
+            MiniMaxMusic3Transformer1DModel,
             MochiTransformer3DModel,
             MotifVideoTransformer3DModel,
             NucleusMoEImageTransformer2DModel,
@@ -270,15 +308,20 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtTransformer2DModel,
             PriorTransformer,
             PRXTransformer2DModel,
+            QwenImage21Transformer2DModel,
             QwenImageTransformer2DModel,
             SanaTransformer2DModel,
             SanaVideoTransformer3DModel,
+            SanaWMLTX2RefinerTransformer3DModel,
+            SanaWMTransformer3DModel,
             SD3Transformer2DModel,
             SkyReelsV2Transformer3DModel,
+            StableAudio3DiTModel,
             StableAudioDiTModel,
             T5FilmDecoder,
             Transformer2DModel,
             TransformerTemporalModel,
+            WanAnimate2Transformer3DModel,
             WanAnimateTransformer3DModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,

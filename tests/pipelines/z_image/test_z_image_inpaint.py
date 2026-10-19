@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
 import os
-import unittest
+import random
 
-import numpy as np
+import pytest
 import torch
 from transformers import Qwen2Tokenizer, Qwen3Config, Qwen3Model
 
@@ -26,20 +25,17 @@ from diffusers import (
     ZImageInpaintPipeline,
     ZImageTransformer2DModel,
 )
-from diffusers.utils.testing_utils import floats_tensor
 
-from ...testing_utils import torch_device
-from ..pipeline_params import (
-    IMAGE_TO_IMAGE_IMAGE_PARAMS,
-    TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
-    TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
+from ...testing_utils import assert_tensors_close, floats_tensor, torch_device
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
 )
-from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 
 # Z-Image requires torch.use_deterministic_algorithms(False) due to complex64 RoPE operations
 # Cannot use enable_full_determinism() which sets it to True
-# Note: Z-Image does not support FP16 inference due to complex64 RoPE embeddings
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
 torch.use_deterministic_algorithms(False)
@@ -48,46 +44,36 @@ torch.backends.cudnn.benchmark = False
 if hasattr(torch.backends, "cuda"):
     torch.backends.cuda.matmul.allow_tf32 = False
 
+# Note: Some tests (test_half_precision_inference_no_nan, test_save_load_float16) may fail in full suite
+# due to RopeEmbedder cache state pollution between tests. They pass when run individually.
+# This is a known test isolation issue, not a functional bug.
 
-class ZImageInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+
+def get_dummy_mask(height=32, width=32):
+    """Mask marking the center region for inpainting (1 = inpaint, 0 = preserve)."""
+    mask_image = torch.zeros((1, 1, height, width), device=torch_device)
+    mask_image[:, :, height // 4 : 3 * height // 4, width // 4 : 3 * width // 4] = 1.0
+    return mask_image
+
+
+class ZImageInpaintPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = ZImageInpaintPipeline
-    params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
-    image_params = frozenset(["image", "mask_image"])
-    image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
-    required_optional_params = frozenset(
+    required_input_params_in_call_signature = frozenset(
         [
-            "num_inference_steps",
+            "prompt",
+            "image",
+            "mask_image",
             "strength",
-            "generator",
-            "latents",
-            "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
+            "height",
+            "width",
+            "guidance_scale",
+            "negative_prompt",
+            "prompt_embeds",
+            "negative_prompt_embeds",
         ]
     )
-    test_xformers_attention = False
-    test_layerwise_casting = True
-    test_group_offloading = True
-
-    def setUp(self):
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
+    batch_input_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -108,8 +94,9 @@ class ZImageInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             axes_dims=[8, 4, 4],
             axes_lens=[256, 32, 32],
         )
-        # `x_pad_token` and `cap_pad_token` are initialized with `torch.empty` which contains
-        # uninitialized memory. Set them to known values for deterministic test behavior.
+        # `x_pad_token` and `cap_pad_token` are initialized with `torch.empty`.
+        # This can cause NaN data values in our testing environment. Fixating them
+        # helps prevent that issue.
         with torch.no_grad():
             transformer.x_pad_token.copy_(torch.ones_like(transformer.x_pad_token.data))
             transformer.cap_pad_token.copy_(torch.ones_like(transformer.cap_pad_token.data))
@@ -145,35 +132,22 @@ class ZImageInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_encoder = Qwen3Model(config)
         tokenizer = Qwen2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration")
 
-        components = {
+        return {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        import random
-
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
-        # Create mask: 1 = inpaint region, 0 = preserve region
-        mask_image = torch.zeros((1, 1, 32, 32), device=device)
-        mask_image[:, :, 8:24, 8:24] = 1.0  # Inpaint center region
-
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "dance monkey",
             "negative_prompt": "bad quality",
-            "image": image,
-            "mask_image": mask_image,
+            "image": floats_tensor((1, 3, 32, 32), rng=random.Random(0)).to(torch_device),
+            "mask_image": get_dummy_mask(),
             "strength": 1.0,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 3.0,
             "cfg_normalization": False,
@@ -181,215 +155,90 @@ class ZImageInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "height": 32,
             "width": 32,
             "max_sequence_length": 16,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            "output_type": "pt",
         }
 
-        return inputs
 
+class TestZImageInpaintPipeline(ZImageInpaintPipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
         generated_image = image[0]
-        self.assertEqual(generated_image.shape, (32, 32, 3))
+        assert generated_image.shape == self.output_shape
 
-    def test_inference_batch_single_identical(self):
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-        self._test_inference_batch_single_identical(batch_size=3, expected_max_diff=1e-1)
+        # fmt: off
+        expected_slice = torch.tensor([0.5002, 0.5153, 0.5248, 0.5328, 0.5400, 0.5032, 0.4884, 0.4892, 0.4327, 0.4214, 0.5545, 0.6027, 0.4683, 0.4561, 0.4936, 0.4785])
+        # fmt: on
 
-    def test_num_images_per_prompt(self):
-        import inspect
+        generated_slice = generated_image.flatten()
+        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+        assert_tensors_close(generated_slice, expected_slice, atol=5e-2)
 
-        sig = inspect.signature(self.pipeline_class.__call__)
-
-        if "num_images_per_prompt" not in sig.parameters:
-            return
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        batch_sizes = [1, 2]
-        num_images_per_prompts = [1, 2]
-
-        for batch_size in batch_sizes:
-            for num_images_per_prompt in num_images_per_prompts:
-                inputs = self.get_dummy_inputs(torch_device)
-
-                for key in inputs.keys():
-                    if key in self.batch_params:
-                        inputs[key] = batch_size * [inputs[key]]
-
-                images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt)[0]
-
-                assert images.shape[0] == batch_size * num_images_per_prompt
-
-        del pipe
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.synchronize()
-
-    def test_attention_slicing_forward_pass(
-        self, test_max_difference=True, test_mean_pixel_difference=True, expected_max_diff=1e-3
-    ):
-        if not self.test_attention_slicing:
-            return
-
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        for component in pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        generator_device = "cpu"
-        inputs = self.get_dummy_inputs(generator_device)
-        output_without_slicing = pipe(**inputs)[0]
-
-        pipe.enable_attention_slicing(slice_size=1)
-        inputs = self.get_dummy_inputs(generator_device)
-        output_with_slicing1 = pipe(**inputs)[0]
-
-        pipe.enable_attention_slicing(slice_size=2)
-        inputs = self.get_dummy_inputs(generator_device)
-        output_with_slicing2 = pipe(**inputs)[0]
-
-        if test_max_difference:
-            max_diff1 = np.abs(to_np(output_with_slicing1) - to_np(output_without_slicing)).max()
-            max_diff2 = np.abs(to_np(output_with_slicing2) - to_np(output_without_slicing)).max()
-            self.assertLess(
-                max(max_diff1, max_diff2),
-                expected_max_diff,
-                "Attention slicing should not affect the inference results",
-            )
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-1):
+        # Z-Image pads the batch to a common sequence length, so batched and single runs diverge slightly more.
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
     def test_vae_tiling(self, expected_diff_max: float = 0.7):
-        import random
-
-        generator_device = "cpu"
-        components = self.get_dummy_components()
-
-        pipe = self.pipeline_class(**components)
-        pipe.to("cpu")
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device)
 
         # Without tiling
-        inputs = self.get_dummy_inputs(generator_device)
+        inputs = self.get_dummy_inputs()
         inputs["height"] = inputs["width"] = 128
-        # Generate a larger image for the input
-        inputs["image"] = floats_tensor((1, 3, 128, 128), rng=random.Random(0)).to("cpu")
-        # Generate a larger mask for the input
-        mask = torch.zeros((1, 1, 128, 128), device="cpu")
-        mask[:, :, 32:96, 32:96] = 1.0
-        inputs["mask_image"] = mask
+        # Generate a larger image and mask for the input
+        inputs["image"] = floats_tensor((1, 3, 128, 128), rng=random.Random(0)).to(torch_device)
+        inputs["mask_image"] = get_dummy_mask(128, 128)
         output_without_tiling = pipe(**inputs)[0]
 
         # With tiling (standard AutoencoderKL doesn't accept parameters)
         pipe.vae.enable_tiling()
-        inputs = self.get_dummy_inputs(generator_device)
+        inputs = self.get_dummy_inputs()
         inputs["height"] = inputs["width"] = 128
-        inputs["image"] = floats_tensor((1, 3, 128, 128), rng=random.Random(0)).to("cpu")
-        inputs["mask_image"] = mask
+        inputs["image"] = floats_tensor((1, 3, 128, 128), rng=random.Random(0)).to(torch_device)
+        inputs["mask_image"] = get_dummy_mask(128, 128)
         output_with_tiling = pipe(**inputs)[0]
 
-        self.assertLess(
-            (to_np(output_without_tiling) - to_np(output_with_tiling)).max(),
-            expected_diff_max,
-            "VAE tiling should not affect the inference results",
+        assert (output_without_tiling - output_with_tiling).abs().max() < expected_diff_max, (
+            "VAE tiling should not affect the inference results."
         )
 
-    def test_pipeline_with_accelerator_device_map(self, expected_max_difference=1e-3):
-        # Z-Image RoPE embeddings (complex64) have slightly higher numerical tolerance
-        # Inpainting mask blending adds additional numerical variance
-        super().test_pipeline_with_accelerator_device_map(expected_max_difference=expected_max_difference)
-
-    def test_group_offloading_inference(self):
-        # Block-level offloading conflicts with RoPE cache. Pipeline-level offloading (tested separately) works fine.
-        self.skipTest("Using test_pipeline_level_group_offloading_inference instead")
-
-    def test_save_load_float16(self, expected_max_diff=1e-2):
-        # Z-Image does not support FP16 due to complex64 RoPE embeddings
-        self.skipTest("Z-Image does not support FP16 inference")
-
-    def test_float16_inference(self, expected_max_diff=5e-2):
-        # Z-Image does not support FP16 due to complex64 RoPE embeddings
-        self.skipTest("Z-Image does not support FP16 inference")
-
     def test_strength_parameter(self):
-        """Test that strength parameter affects the output correctly."""
-        device = "cpu"
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        """`strength` controls how much of the input image is kept, so it must change the output."""
+        pipe = self.get_pipeline().to(torch_device)
 
-        # Test with different strength values
-        inputs_low_strength = self.get_dummy_inputs(device)
-        inputs_low_strength["strength"] = 0.2
+        output_low = self.run_pipe(pipe, strength=0.2)
+        output_high = self.run_pipe(pipe, strength=0.8)
 
-        inputs_high_strength = self.get_dummy_inputs(device)
-        inputs_high_strength["strength"] = 0.8
+        assert not torch.allclose(output_low, output_high, atol=1e-3)
 
-        # Both should complete without errors
-        output_low = pipe(**inputs_low_strength).images[0]
-        output_high = pipe(**inputs_high_strength).images[0]
+    @pytest.mark.parametrize("strength", [-0.1, 1.5])
+    def test_invalid_strength(self, strength):
+        """`strength` outside of [0, 1] is rejected."""
+        pipe = self.get_pipeline().to(torch_device)
 
-        # Outputs should be different (different amount of transformation)
-        self.assertFalse(np.allclose(output_low, output_high, atol=1e-3))
-
-    def test_invalid_strength(self):
-        """Test that invalid strength values raise appropriate errors."""
-        device = "cpu"
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-
-        inputs = self.get_dummy_inputs(device)
-
-        # Test strength < 0
-        inputs["strength"] = -0.1
-        with self.assertRaises(ValueError):
-            pipe(**inputs)
-
-        # Test strength > 1
-        inputs["strength"] = 1.5
-        with self.assertRaises(ValueError):
-            pipe(**inputs)
+        with pytest.raises(ValueError):
+            self.run_pipe(pipe, strength=strength)
 
     def test_mask_inpainting(self):
-        """Test that the mask properly controls which regions are inpainted."""
-        device = "cpu"
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        """The mask controls which regions get inpainted, so an all-ones and an all-zeros mask must differ."""
+        pipe = self.get_pipeline().to(torch_device)
 
-        # Generate with full mask (inpaint everything)
-        inputs_full = self.get_dummy_inputs(device)
-        inputs_full["mask_image"] = torch.ones((1, 1, 32, 32), device=device)
+        # Inpaint everything vs. preserve everything.
+        output_full = self.run_pipe(pipe, mask_image=torch.ones((1, 1, 32, 32), device=torch_device))
+        output_none = self.run_pipe(pipe, mask_image=torch.zeros((1, 1, 32, 32), device=torch_device))
 
-        # Generate with no mask (preserve everything)
-        inputs_none = self.get_dummy_inputs(device)
-        inputs_none["mask_image"] = torch.zeros((1, 1, 32, 32), device=device)
+        assert not torch.allclose(output_full, output_none, atol=1e-3)
 
-        # Both should complete without errors
-        output_full = pipe(**inputs_full).images[0]
-        output_none = pipe(**inputs_none).images[0]
 
-        # Outputs should be different (full inpaint vs preserve)
-        self.assertFalse(np.allclose(output_full, output_none, atol=1e-3))
+class TestZImageInpaintPipelineMemory(ZImageInpaintPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Z-Image inpaint pipeline."""
+
+    def test_pipeline_with_accelerator_device_map(self, tmp_path, base_pipe_output, expected_max_difference=1e-3):
+        # Z-Image RoPE embeddings (complex64) have slightly higher numerical tolerance and inpainting mask blending
+        # adds additional numerical variance.
+        super().test_pipeline_with_accelerator_device_map(
+            tmp_path, base_pipe_output, expected_max_difference=expected_max_difference
+        )

@@ -49,7 +49,7 @@ from diffusers.utils import export_to_video
 
 pipe = AnyFlowPipeline.from_pretrained(
     "nvidia/AnyFlow-Wan2.1-T2V-1.3B-Diffusers", dtype=torch.bfloat16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = (
     "An astronaut runs smoothly and appears almost weightless on the lunar surface, "
@@ -85,7 +85,7 @@ from diffusers.utils import export_to_video
 
 pipe = AnyFlowFARPipeline.from_pretrained(
     "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", dtype=torch.bfloat16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = (
     "An astronaut runs smoothly and appears almost weightless on the lunar surface, "
@@ -106,7 +106,7 @@ from diffusers.utils import export_to_video, load_image
 
 pipe = AnyFlowFARPipeline.from_pretrained(
     "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", dtype=torch.bfloat16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 # Example conditioning image from the AnyFlow repo.
 first_frame = load_image(
@@ -140,7 +140,7 @@ from diffusers.utils import export_to_video, load_video
 
 pipe = AnyFlowFARPipeline.from_pretrained(
     "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", dtype=torch.bfloat16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 # Example conditioning clip from the AnyFlow repo — take the first 9 frames (3 latent frames at VAE temporal stride 4).
 context_frames = load_video(

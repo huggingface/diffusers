@@ -46,7 +46,7 @@ from diffusers import FluxPipeline
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     dtype=torch.bfloat16,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
 
@@ -98,7 +98,7 @@ pipe = HunyuanVideoPipeline.from_pretrained(
     transformer=transformer,
     dtype=torch.float16,
     revision="refs/pr/18",
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
 
@@ -172,7 +172,7 @@ from diffusers import FluxPipeline
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     dtype=torch.bfloat16,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
 
@@ -232,7 +232,7 @@ pipe = HunyuanVideoPipeline.from_pretrained(
     transformer=transformer,
     dtype=torch.float16,
     revision="refs/pr/18",
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
 
@@ -304,7 +304,7 @@ torch.cuda.set_device(dist.get_rank())
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     dtype=torch.bfloat16,
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 from para_attn.context_parallel import init_context_parallel_mesh
 from para_attn.context_parallel.diffusers_adapters import parallelize_pipe
@@ -398,7 +398,7 @@ pipe = HunyuanVideoPipeline.from_pretrained(
     transformer=transformer,
     dtype=torch.float16,
     revision="refs/pr/18",
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 from para_attn.context_parallel import init_context_parallel_mesh
 from para_attn.context_parallel.diffusers_adapters import parallelize_pipe

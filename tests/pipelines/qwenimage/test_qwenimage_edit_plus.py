@@ -24,7 +24,7 @@ from diffusers import (
     QwenImageTransformer2DModel,
 )
 
-from ...testing_utils import torch_device
+from ...testing_utils import assert_tensors_close, require_accelerator_memory, torch_device
 from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
@@ -34,6 +34,7 @@ class QwenImageEditPlusPipelineTesterConfig(BasePipelineTesterConfig):
         ["prompt", "negative_prompt", "true_cfg_scale", "height", "width", "guidance_scale", "prompt_embeds"]
     )
     batch_input_params = frozenset(["prompt", "image"])
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self):
         tiny_ckpt_id = "hf-internal-testing/tiny-random-Qwen2VLForConditionalGeneration"
@@ -131,7 +132,7 @@ class TestQwenImageEditPlusPipeline(QwenImageEditPlusPipelineTesterConfig, Pipel
         inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
         generated_image = image[0]
-        assert generated_image.shape == (3, 32, 32)
+        assert generated_image.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.5640, 0.6339, 0.5997, 0.5607, 0.5799, 0.5496, 0.5760, 0.6393, 0.4172, 0.3595, 0.5655, 0.4896, 0.4971, 0.5255, 0.4088, 0.4987])
@@ -139,7 +140,7 @@ class TestQwenImageEditPlusPipeline(QwenImageEditPlusPipelineTesterConfig, Pipel
 
         generated_slice = generated_image.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_vae_tiling(self, expected_diff_max: float = 0.2):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
@@ -162,6 +163,15 @@ class TestQwenImageEditPlusPipeline(QwenImageEditPlusPipelineTesterConfig, Pipel
         assert (output_without_tiling - output_with_tiling).abs().max() < expected_diff_max, (
             "VAE tiling should not affect the inference results."
         )
+
+    # The condition image is always resized to ~1 megapixel before it is encoded, so the VAE attention runs over
+    # 65k tokens no matter how small the dummy inputs are. On GPUs without bf16 SDPA support that attention falls
+    # back to the math backend, which materializes the full attention matrix (~16GB).
+    @require_accelerator_memory(24)
+    @pytest.mark.skipif(torch_device not in ["cuda", "xpu"], reason="half-precision inference requires CUDA or XPU")
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=str)
+    def test_half_precision_inference_no_nan(self, dtype):
+        super().test_half_precision_inference_no_nan(dtype)
 
     @pytest.mark.xfail(condition=True, reason="Preconfigured embeddings need to be revisited.", strict=True)
     def test_encode_prompt_works_in_isolation(self, extra_required_param_value_dict=None, atol=1e-4, rtol=1e-4):
@@ -205,4 +215,7 @@ class TestQwenImageEditPlusPipeline(QwenImageEditPlusPipelineTesterConfig, Pipel
 
 
 class TestQwenImageEditPlusPipelineMemory(QwenImageEditPlusPipelineTesterConfig, MemoryTesterMixin):
-    pass
+    # Runs the pipeline in bf16, see the note on `test_half_precision_inference_no_nan` above.
+    @require_accelerator_memory(24)
+    def test_layerwise_casting_inference(self):
+        super().test_layerwise_casting_inference()

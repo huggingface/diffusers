@@ -21,6 +21,7 @@ class Flux2KleinInpaintPipelineTesterConfig(BasePipelineTesterConfig):
         ["prompt", "image", "image_reference", "mask_image", "height", "width", "guidance_scale", "prompt_embeds"]
     )
     batch_input_params = frozenset(["prompt", "image", "image_reference", "mask_image"])
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self, num_layers: int = 1, num_single_layers: int = 1):
         torch.manual_seed(0)

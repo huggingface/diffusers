@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 import torch
 
-from diffusers import BitsAndBytesConfig, FluxTransformer2DModel
+from diffusers import BitsAndBytesConfig, FluxTransformer2DModel, GGUFQuantizationConfig
 from diffusers.models.embeddings import ImageProjection
 from diffusers.models.transformers.transformer_flux import FluxIPAdapterAttnProcessor
 from diffusers.utils.torch_utils import randn_tensor
@@ -45,12 +45,13 @@ from ..testing_utils import (
     ModelOptCompileTesterMixin,
     ModelOptTesterMixin,
     ModelTesterMixin,
-    QuantoCompileTesterMixin,
-    QuantoTesterMixin,
     SDNQCompileTesterMixin,
     SDNQTesterMixin,
     SingleFileTesterMixin,
     TaylorSeerCacheTesterMixin,
+    TensorParallelNeuronTesterMixin,
+    TensorParallelTesterMixin,
+    TensorParallelTPUTesterMixin,
     TorchAoCompileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
@@ -62,7 +63,7 @@ enable_full_determinism()
 
 
 # TODO: This standalone function maintains backward compatibility with pipeline tests
-# (tests/pipelines/test_pipelines_common.py) and will be refactored.
+# (tests/pipelines/testing_utils/ip_adapter.py) and will be refactored.
 def create_flux_ip_adapter_state_dict(model) -> dict[str, dict[str, Any]]:
     """Create a dummy IP Adapter state dict for Flux transformer testing."""
     ip_cross_attn_state_dict = {}
@@ -157,7 +158,7 @@ class FluxTransformerTesterConfig(BaseModelTesterConfig):
             "axes_dims_rope": [4, 4, 8],
         }
 
-    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
+    def get_dummy_inputs(self, batch_size: int = 1, device=torch_device) -> dict[str, torch.Tensor]:
         height = width = 4
         num_latent_channels = 4
         num_image_channels = 3
@@ -168,34 +169,34 @@ class FluxTransformerTesterConfig(BaseModelTesterConfig):
             "hidden_states": randn_tensor(
                 (batch_size, height * width, num_latent_channels),
                 generator=self.generator,
-                device=torch_device,
+                device=device,
                 dtype=self.torch_dtype,
             ),
             "encoder_hidden_states": randn_tensor(
                 (batch_size, sequence_length, embedding_dim),
                 generator=self.generator,
-                device=torch_device,
+                device=device,
                 dtype=self.torch_dtype,
             ),
             "pooled_projections": randn_tensor(
                 (batch_size, embedding_dim),
                 generator=self.generator,
-                device=torch_device,
+                device=device,
                 dtype=self.torch_dtype,
             ),
             "img_ids": randn_tensor(
                 (height * width, num_image_channels),
                 generator=self.generator,
-                device=torch_device,
+                device=device,
                 dtype=self.torch_dtype,
             ),
             "txt_ids": randn_tensor(
                 (sequence_length, num_image_channels),
                 generator=self.generator,
-                device=torch_device,
+                device=device,
                 dtype=self.torch_dtype,
             ),
-            "timestep": torch.tensor([1.0]).to(torch_device, self.torch_dtype).expand(batch_size),
+            "timestep": torch.tensor([1.0]).to(device, self.torch_dtype).expand(batch_size),
         }
 
 
@@ -251,6 +252,14 @@ class TestFluxTransformerAttention(FluxTransformerTesterConfig, AttentionTesterM
 class TestFluxTransformerAttentionBackend(FluxTransformerTesterConfig, AttentionBackendTesterMixin):
     """Attention backend tests for Flux Transformer."""
 
+    def get_init_dict(self) -> dict[str, int | list[int]]:
+        # `sage_blackwell_hub` runs a kernel that only accepts head dims of 64 or 128, so widen the
+        # shared dummy config's `attention_head_dim` of 16. `axes_dims_rope` has to keep summing to it.
+        init_dict = super().get_init_dict()
+        init_dict["attention_head_dim"] = 64
+        init_dict["axes_dims_rope"] = [16, 16, 32]
+        return init_dict
+
 
 class TestFluxTransformerContextParallel(FluxTransformerTesterConfig, ContextParallelTesterMixin):
     """Context Parallel inference tests for Flux Transformer"""
@@ -260,6 +269,22 @@ class TestFluxTransformerContextParallelAttnBackends(
     FluxTransformerTesterConfig, ContextParallelAttentionBackendsTesterMixin
 ):
     """Context Parallel inference x attention backends tests for Flux Transformer"""
+
+
+class TestFluxTransformerTensorParallel(FluxTransformerTesterConfig, TensorParallelTesterMixin):
+    """Tensor Parallel inference tests for Flux Transformer (CUDA/XPU multi-accelerator)."""
+
+
+class TestFluxTransformerTensorParallelTPU(FluxTransformerTesterConfig, TensorParallelTPUTesterMixin):
+    """Tensor Parallel inference test for Flux Transformer on TPU."""
+
+    def get_init_dict(self):
+        # One head per chip.
+        return {**super().get_init_dict(), "num_attention_heads": self.tp_world_size}
+
+
+class TestFluxTransformerTensorParallelNeuron(FluxTransformerTesterConfig, TensorParallelNeuronTesterMixin):
+    """Tensor Parallel inference test for Flux Transformer on AWS Neuron."""
 
 
 class TestFluxTransformerIPAdapter(FluxTransformerTesterConfig, IPAdapterTesterMixin):
@@ -341,10 +366,6 @@ class TestFluxSingleFile(FluxTransformerTesterConfig, SingleFileTesterMixin):
         return "https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/flux1-dev.safetensors"
 
     @property
-    def alternate_ckpt_paths(self):
-        return ["https://huggingface.co/Comfy-Org/flux1-dev/blob/main/flux1-dev-fp8.safetensors"]
-
-    @property
     def pretrained_model_name_or_path(self):
         return "black-forest-labs/FLUX.1-dev"
 
@@ -356,29 +377,33 @@ class TestFluxSingleFile(FluxTransformerTesterConfig, SingleFileTesterMixin):
 class TestFluxTransformerBitsAndBytes(FluxTransformerTesterConfig, BitsAndBytesTesterMixin):
     """BitsAndBytes quantization tests for Flux Transformer."""
 
+    modules_to_not_convert_for_test = ["proj_out"]
+
     @property
     def torch_dtype(self):
         return torch.float16
 
-
-class TestFluxTransformerQuanto(FluxTransformerTesterConfig, QuantoTesterMixin):
-    """Quanto quantization tests for Flux Transformer."""
-
-    @property
-    def pretrained_model_name_or_path(self):
-        return "hf-internal-testing/tiny-flux-transformer"
-
-    @property
-    def pretrained_model_kwargs(self):
-        return {}
+    def get_dummy_inputs(self):
+        """Override to build inputs in the quantizer compute dtype (excluded/unquantized linears
+        do strict-dtype matmuls)."""
+        inputs = super().get_dummy_inputs()
+        return {k: v.to(self.torch_dtype) if torch.is_floating_point(v) else v for k, v in inputs.items()}
 
 
 class TestFluxTransformerTorchAo(FluxTransformerTesterConfig, TorchAoTesterMixin):
     """TorchAO quantization tests for Flux Transformer."""
 
+    modules_to_not_convert_for_test = ["proj_out"]
+
     @property
     def torch_dtype(self):
         return torch.bfloat16
+
+    def get_dummy_inputs(self):
+        """Override to build inputs in the quantizer compute dtype (excluded/unquantized linears
+        do strict-dtype matmuls)."""
+        inputs = super().get_dummy_inputs()
+        return {k: v.to(self.torch_dtype) if torch.is_floating_point(v) else v for k, v in inputs.items()}
 
 
 class TestFluxTransformerGGUF(FluxTransformerTesterConfig, GGUFTesterMixin):
@@ -408,9 +433,16 @@ class TestFluxTransformerGGUF(FluxTransformerTesterConfig, GGUFTesterMixin):
             "guidance": torch.tensor([3.5]).to(torch_device, self.torch_dtype),
         }
 
-
-class TestFluxTransformerQuantoCompile(FluxTransformerTesterConfig, QuantoCompileTesterMixin):
-    """Quanto + compile tests for Flux Transformer."""
+    @torch.no_grad()
+    def test_loading_gguf_diffusers_format(self):
+        model = self.model_class.from_single_file(
+            "https://huggingface.co/sayakpaul/flux-diffusers-gguf/blob/main/model-Q4_0.gguf",
+            subfolder="transformer",
+            quantization_config=GGUFQuantizationConfig(compute_dtype=self.torch_dtype),
+            config="black-forest-labs/FLUX.1-dev",
+        )
+        model.to(torch_device)
+        model(**self.get_dummy_inputs())
 
 
 class TestFluxTransformerTorchAoCompile(FluxTransformerTesterConfig, TorchAoCompileTesterMixin):

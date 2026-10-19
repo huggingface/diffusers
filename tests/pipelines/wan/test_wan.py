@@ -13,13 +13,22 @@
 # limitations under the License.
 
 
+from contextlib import contextmanager
+from unittest import mock
+
 import torch
 from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, WanPipeline, WanTransformer3DModel
 
 from ...testing_utils import assert_tensors_close, torch_device
-from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 class WanPipelineTesterConfig(BasePipelineTesterConfig):
@@ -28,6 +37,7 @@ class WanPipelineTesterConfig(BasePipelineTesterConfig):
         ["prompt", "negative_prompt", "height", "width", "guidance_scale", "prompt_embeds", "negative_prompt_embeds"]
     )
     batch_input_params = frozenset(["prompt"])
+    output_shape = (9, 3, 16, 16)
     # Wan is a video pipeline: it exposes `num_videos_per_prompt`, not the base default `num_images_per_prompt`.
     optional_input_params = frozenset(
         ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
@@ -47,7 +57,9 @@ class WanPipelineTesterConfig(BasePipelineTesterConfig):
         # TODO: impl FlowDPMSolverMultistepScheduler
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
         config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
-        text_encoder = T5EncoderModel(config)
+        # `eval()` because a directly constructed model stays in training mode, which leaves T5's
+        # dropout active and makes the pipeline outputs non-deterministic across calls.
+        text_encoder = T5EncoderModel(config).eval()
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
@@ -92,6 +104,25 @@ class WanPipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestWanPipeline(WanPipelineTesterConfig, PipelineTesterMixin):
+    def test_transformer_cache_contexts_receive_exact_scheduler_info(self):
+        pipe = self.get_pipeline().to(torch_device)
+        observed = []
+
+        @contextmanager
+        def record_context(name, **info):
+            observed.append((name, info.get("step_index"), info.get("sigma"), info.get("num_inference_steps")))
+            yield
+
+        with mock.patch.object(pipe.transformer, "cache_context", side_effect=record_context):
+            pipe(**self.get_dummy_inputs())
+
+        assert [name for name, _, _, _ in observed] == ["cond", "uncond", "cond", "uncond"]
+        for call_index, (_, step_index, sigma, num_inference_steps) in enumerate(observed):
+            expected_step = call_index // 2
+            assert step_index == expected_step
+            torch.testing.assert_close(sigma, float(pipe.scheduler.sigmas[expected_step]))
+            assert num_inference_steps == 2
+
     def test_inference(self):
         # Run on CPU: the expected slice below is CPU-specific.
         pipe = self.get_pipeline()
@@ -99,7 +130,7 @@ class TestWanPipeline(WanPipelineTesterConfig, PipelineTesterMixin):
         inputs = self.get_dummy_inputs()
         video = pipe(**inputs).frames
         generated_video = video[0]
-        assert generated_video.shape == (9, 3, 16, 16)
+        assert generated_video.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.4525, 0.452, 0.4485, 0.4534, 0.4524, 0.4529, 0.454, 0.453, 0.5127, 0.5326, 0.5204, 0.5253, 0.5439, 0.5424, 0.5133, 0.5078])
@@ -107,7 +138,7 @@ class TestWanPipeline(WanPipelineTesterConfig, PipelineTesterMixin):
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=1e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
     def test_save_load_optional_components(self, tmp_path, expected_max_difference=1e-4):
         # `_optional_components` lists both `transformer` and `transformer_2`, but only `transformer_2` is optional
@@ -139,3 +170,11 @@ class TestWanPipeline(WanPipelineTesterConfig, PipelineTesterMixin):
 
 class TestWanPipelineMemory(WanPipelineTesterConfig, MemoryTesterMixin):
     pass
+
+
+class TestWanPipelineLoRA(WanPipelineTesterConfig, LoraTesterMixin):
+    """LoRA tests for the Wan pipeline."""
+
+
+class TestWanPipelineLoRAMemory(WanPipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests for the Wan pipeline."""

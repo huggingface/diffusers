@@ -35,7 +35,7 @@ class MagnitudeAwareGuidance(BaseGuidance):
             prompt, while lower values allow for more freedom in generation. Higher values may lead to saturation and
             deterioration of image quality.
         alpha (`float`, defaults to `8.0`):
-            The alpha parameter for the magnitude-aware guidance. Higher values cause more aggressive supression of
+            The alpha parameter for the magnitude-aware guidance. Higher values cause more aggressive suppression of
             guidance scale when the magnitude of the guidance update is large.
         guidance_rescale (`float`, defaults to `0.0`):
             The rescale factor applied to the noise predictions. This is used to improve image quality and fix

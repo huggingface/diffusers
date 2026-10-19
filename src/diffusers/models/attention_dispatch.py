@@ -30,10 +30,12 @@ import torch.nn.functional as F
 if torch.distributed.is_available():
     import torch.distributed._functional_collectives as funcol
 
+from huggingface_hub import get_organization_overview
+from huggingface_hub.constants import HF_HUB_OFFLINE
+
+from .. import __version__
 from ..utils import (
     get_logger,
-    is_aiter_available,
-    is_aiter_version,
     is_flash_attn_3_available,
     is_flash_attn_available,
     is_flash_attn_version,
@@ -48,7 +50,7 @@ from ..utils import (
     is_xformers_available,
     is_xformers_version,
 )
-from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS
+from ..utils.constants import DIFFUSERS_ATTN_BACKEND, DIFFUSERS_ATTN_CHECKS, DIFFUSERS_TRUST_REMOTE_KERNELS
 from ..utils.torch_utils import lru_cache_unless_export, maybe_allow_in_graph
 from ._modeling_parallel import gather_size_by_comm
 
@@ -57,7 +59,6 @@ if TYPE_CHECKING:
     from ._modeling_parallel import ParallelConfig
 
 _REQUIRED_FLASH_VERSION = "2.6.3"
-_REQUIRED_AITER_VERSION = "0.1.5"
 _REQUIRED_SAGE_VERSION = "2.1.1"
 _REQUIRED_FLEX_VERSION = "2.5.0"
 _REQUIRED_XLA_VERSION = "2.2"
@@ -67,12 +68,15 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 _CAN_USE_FLASH_ATTN = is_flash_attn_available() and is_flash_attn_version(">=", _REQUIRED_FLASH_VERSION)
 _CAN_USE_FLASH_ATTN_3 = is_flash_attn_3_available()
-_CAN_USE_AITER_ATTN = is_aiter_available() and is_aiter_version(">=", _REQUIRED_AITER_VERSION)
 _CAN_USE_SAGE_ATTN = is_sageattention_available() and is_sageattention_version(">=", _REQUIRED_SAGE_VERSION)
 _CAN_USE_FLEX_ATTN = is_torch_version(">=", _REQUIRED_FLEX_VERSION)
 _CAN_USE_NPU_ATTN = is_torch_npu_available()
 _CAN_USE_XLA_ATTN = is_torch_xla_available() and is_torch_xla_version(">=", _REQUIRED_XLA_VERSION)
 _CAN_USE_XFORMERS_ATTN = is_xformers_available() and is_xformers_version(">=", _REQUIRED_XFORMERS_VERSION)
+# torch>=2.9 hands the LSE to the cuDNN kernels with a trailing dim, (B, H, S, 1); before that the
+# forward returns (B, H, S) and the aten backward wrapper adds the trailing dim itself. Module-level
+# constant to avoid Dynamo tracing into the lru_cache-wrapped `is_torch_version` during torch.compile.
+_CUDNN_LSE_HAS_TRAILING_DIM = is_torch_version(">=", "2.9.0")
 
 
 if _CAN_USE_FLASH_ATTN:
@@ -107,16 +111,6 @@ if _CAN_USE_FLASH_ATTN_3:
 else:
     flash_attn_3_func = None
     flash_attn_3_varlen_func = None
-
-if _CAN_USE_AITER_ATTN:
-    try:
-        from aiter import flash_attn_func as aiter_flash_attn_func
-    except (ImportError, OSError, RuntimeError) as e:
-        logger.warning(f"aiter failed to import: {e}. Falling back to native attention.")
-        _CAN_USE_AITER_ATTN = False
-        aiter_flash_attn_func = None
-else:
-    aiter_flash_attn_func = None
 
 if _CAN_USE_SAGE_ATTN:
     try:
@@ -235,8 +229,8 @@ class AttentionBackendName(str, Enum):
     _FLASH_3_HUB = "_flash_3_hub"
     _FLASH_3_VARLEN_HUB = "_flash_3_varlen_hub"
 
-    # `aiter`
-    AITER = "aiter"
+    # `aiter` (via the `kernels-community/aiter-flash-attn-ck` Hub kernel)
+    AITER_FA2_HUB = "aiter_fa2_hub"
 
     # PyTorch native
     FLEX = "flex"
@@ -251,6 +245,7 @@ class AttentionBackendName(str, Enum):
     # `sageattention`
     SAGE = "sage"
     SAGE_HUB = "sage_hub"
+    SAGE_BLACKWELL_HUB = "sage_blackwell_hub"
     SAGE_VARLEN = "sage_varlen"
     _SAGE_QK_INT8_PV_FP8_CUDA = "_sage_qk_int8_pv_fp8_cuda"
     _SAGE_QK_INT8_PV_FP8_CUDA_SM90 = "_sage_qk_int8_pv_fp8_cuda_sm90"
@@ -347,26 +342,36 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
     AttentionBackendName.FLASH_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_func",
-        wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_forward",
-        wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_backward",
-        version=1,
+        wrapped_forward_attr="flash_attn_interface._flash_attn_forward",
+        wrapped_backward_attr="flash_attn_interface._flash_attn_backward",
+        version=3,
     ),
     AttentionBackendName.FLASH_VARLEN_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_varlen_func",
-        wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_varlen_forward",
-        wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_varlen_backward",
-        version=1,
+        wrapped_forward_attr="flash_attn_interface._flash_attn_varlen_forward",
+        wrapped_backward_attr="flash_attn_interface._flash_attn_varlen_backward",
+        version=3,
     ),
     AttentionBackendName.SAGE_HUB: _HubKernelConfig(
-        repo_id="kernels-community/sage-attention",
+        repo_id="SageAttention/sage-attention",
         function_attr="sageattn",
+        version=3,
+    ),
+    AttentionBackendName.SAGE_BLACKWELL_HUB: _HubKernelConfig(
+        repo_id="SageAttention/sage-blackwell",
+        function_attr="sageattn3_blackwell",
         version=1,
     ),
     AttentionBackendName.FLASH_4_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn4",
         function_attr="flash_attn_func",
         version=0,
+    ),
+    AttentionBackendName.AITER_FA2_HUB: _HubKernelConfig(
+        repo_id="kernels-community/aiter-flash-attn-ck",
+        function_attr="flash_attn_func",
+        version=1,
     ),
 }
 
@@ -477,6 +482,13 @@ def _check_device_cuda_atleast_smXY(major: int, minor: int) -> Callable:
     return check_device_cuda
 
 
+def _check_head_dim_64_or_128(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, **kwargs) -> None:
+    # The SM120 SageAttention3 kernel rejects head dims below 64 outright, fails to compile its
+    # Triton pre-pass on non-power-of-two dims, and silently falls back to SDPA at 256 and above.
+    if query.shape[-1] not in (64, 128):
+        raise ValueError(f"Query, key, and value must have a head dimension of 64 or 128, got {query.shape[-1]}.")
+
+
 def _check_qkv_dtype_match(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, **kwargs) -> None:
     if query.dtype != key.dtype:
         raise ValueError("Query and key must have the same dtype.")
@@ -488,6 +500,12 @@ def _check_qkv_dtype_bf16_or_fp16(query: torch.Tensor, key: torch.Tensor, value:
     _check_qkv_dtype_match(query, key, value)
     if query.dtype not in (torch.bfloat16, torch.float16):
         raise ValueError("Query, key, and value must be either bfloat16 or float16.")
+
+
+def _check_qkv_dtype_bf16(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, **kwargs) -> None:
+    _check_qkv_dtype_match(query, key, value)
+    if query.dtype != torch.bfloat16:
+        raise ValueError("Query, key, and value must be bfloat16.")
 
 
 def _check_shape(
@@ -533,7 +551,9 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
         AttentionBackendName._FLASH_3_HUB,
         AttentionBackendName._FLASH_3_VARLEN_HUB,
         AttentionBackendName.SAGE_HUB,
+        AttentionBackendName.SAGE_BLACKWELL_HUB,
         AttentionBackendName.FLASH_4_HUB,
+        AttentionBackendName.AITER_FA2_HUB,
     ]:
         if not is_kernels_available():
             raise RuntimeError(
@@ -547,12 +567,6 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
         if backend == AttentionBackendName.FLASH_4_HUB and not is_kernels_version(">=", "0.12.3"):
             raise RuntimeError(
                 f"Backend '{backend.value}' needs to be used with a `kernels` version of at least 0.12.3. Please update with `pip install -U kernels`."
-            )
-
-    elif backend == AttentionBackendName.AITER:
-        if not _CAN_USE_AITER_ATTN:
-            raise RuntimeError(
-                f"Aiter Attention backend '{backend.value}' is not usable because of missing package or the version is too old. Please install `aiter>={_REQUIRED_AITER_VERSION}`."
             )
 
     elif backend in [
@@ -602,13 +616,13 @@ def _prepare_for_flash_attn_or_sage_varlen_without_mask(
 ):
     seqlens_q = torch.full((batch_size,), seq_len_q, dtype=torch.int32, device=device)
     seqlens_k = torch.full((batch_size,), seq_len_kv, dtype=torch.int32, device=device)
-    cu_seqlens_q = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
-    cu_seqlens_k = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
-    cu_seqlens_q[1:] = torch.cumsum(seqlens_q, dim=0)
-    cu_seqlens_k[1:] = torch.cumsum(seqlens_k, dim=0)
-    max_seqlen_q = seqlens_q.max().item()
-    max_seqlen_k = seqlens_k.max().item()
-    return (seqlens_q, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k)
+    # Built with arange instead of cumsum(full(...)): inductor rewrites that pattern into
+    # `arange * fill_value`, which raises under dynamic shapes because the fill value is a
+    # symbolic sequence length. The lengths are uniform here, so arange is also cheaper.
+    offsets = torch.arange(0, batch_size + 1, dtype=torch.int32, device=device)
+    cu_seqlens_q = offsets * seq_len_q
+    cu_seqlens_k = offsets * seq_len_kv
+    return (seqlens_q, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (seq_len_q, seq_len_kv)
 
 
 def _prepare_for_flash_attn_or_sage_varlen_with_mask(
@@ -619,13 +633,13 @@ def _prepare_for_flash_attn_or_sage_varlen_with_mask(
 ):
     seqlens_q = torch.full((batch_size,), seq_len_q, dtype=torch.int32, device=device)
     seqlens_k = attn_mask.sum(dim=1, dtype=torch.int32)
-    cu_seqlens_q = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
+    # Queries are uniform, so arange (see the no-mask helper: cumsum(full(...)) breaks inductor
+    # under dynamic shapes). Keys are data-dependent and keep the cumsum.
+    cu_seqlens_q = torch.arange(0, batch_size + 1, dtype=torch.int32, device=device) * seq_len_q
     cu_seqlens_k = torch.zeros(batch_size + 1, dtype=torch.int32, device=device)
-    cu_seqlens_q[1:] = torch.cumsum(seqlens_q, dim=0)
     cu_seqlens_k[1:] = torch.cumsum(seqlens_k, dim=0)
-    max_seqlen_q = seqlens_q.max().item()
     max_seqlen_k = seqlens_k.max().item()
-    return (seqlens_q, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (max_seqlen_q, max_seqlen_k)
+    return (seqlens_q, seqlens_k), (cu_seqlens_q, cu_seqlens_k), (seq_len_q, max_seqlen_k)
 
 
 def _prepare_for_flash_attn_or_sage_varlen(
@@ -728,7 +742,29 @@ def _maybe_download_kernel_for_backend(backend: AttentionBackendName) -> None:
     try:
         from kernels import get_kernel
 
-        kernel_module = get_kernel(config.repo_id, revision=config.revision, version=config.version)
+        repo_id = config.repo_id
+
+        if not HF_HUB_OFFLINE and not DIFFUSERS_TRUST_REMOTE_KERNELS:
+            publisher = repo_id.split("/")[0]
+            org_info = get_organization_overview(publisher)
+            if not getattr(org_info, "trustedKernelPublisher", False):
+                raise ValueError(
+                    f"Backend '{backend.value}' loads `{config.repo_id}`, which is not published by a trusted kernel "
+                    "publisher on the Hub, so loading it downloads and executes remote code. Set "
+                    "`DIFFUSERS_TRUST_REMOTE_KERNELS=true` to allow it."
+                )
+
+        trust_kwargs = (
+            {"trust_remote_code": DIFFUSERS_TRUST_REMOTE_KERNELS} if is_kernels_version(">=", "0.14.0") else {}
+        )
+
+        kernel_module = get_kernel(
+            repo_id,
+            revision=config.revision,
+            version=config.version,
+            user_agent={"diffusers": __version__},
+            **trust_kwargs,
+        )
         if needs_kernel:
             config.kernel_fn = _resolve_kernel_attr(kernel_module, config.function_attr)
 
@@ -920,22 +956,30 @@ def _cudnn_attention_forward_op(
     if enable_gqa:
         raise ValueError("`enable_gqa` is not yet supported for cuDNN attention.")
 
-    tensors_to_save = ()
+    # The backward pass always needs the log-sum-exp, so compute it whenever a gradient may be
+    # required — not only when the caller asked for it via `return_lse`. Otherwise training with
+    # this backend (e.g. under context parallelism) would save `lse=None` and produce wrong grads.
+    # Under context parallelism the QKV entering this op are intermediates created inside a custom
+    # autograd.Function.forward (which runs under no-grad), so `requires_grad` is False even during
+    # training; the `_world_size > 1` guard forces LSE in that case, mirroring the flash backend.
+    grad_enabled = any(x.requires_grad for x in (query, key, value))
+    cp_enabled = _parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1
+    compute_log_sumexp = return_lse or grad_enabled or cp_enabled
 
     # Contiguous is a must here! Calling cuDNN backend with aten ops produces incorrect results
-    # if the input tensors are not contiguous.
-    query = query.transpose(1, 2).contiguous()
-    key = key.transpose(1, 2).contiguous()
-    value = value.transpose(1, 2).contiguous()
-    tensors_to_save += (query, key, value)
+    # if the input tensors are not contiguous. Keep the model-layout (B, S, H, D) inputs to save
+    # for backward; the kernel needs (B, H, S, D).
+    query_t = query.transpose(1, 2).contiguous()
+    key_t = key.transpose(1, 2).contiguous()
+    value_t = value.transpose(1, 2).contiguous()
 
     out, lse, cum_seq_q, cum_seq_k, max_q, max_k, philox_seed, philox_offset, debug_attn_mask = (
         torch.ops.aten._scaled_dot_product_cudnn_attention(
-            query=query,
-            key=key,
-            value=value,
+            query=query_t,
+            key=key_t,
+            value=value_t,
             attn_bias=attn_mask,
-            compute_log_sumexp=return_lse,
+            compute_log_sumexp=compute_log_sumexp,
             dropout_p=dropout_p,
             is_causal=is_causal,
             return_debug_mask=False,
@@ -943,9 +987,18 @@ def _cudnn_attention_forward_op(
         )
     )
 
-    tensors_to_save += (out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset)
+    out = out.transpose(1, 2).contiguous()
+    if compute_log_sumexp:
+        # cuDNN returns LSE as (B, H, S, 1) on torch>=2.9 and (B, H, S) before that; normalize to
+        # model layout (B, S, H) like the other backends. The backward pass restores whichever
+        # trailing dim the running torch version expects.
+        if _CUDNN_LSE_HAS_TRAILING_DIM:
+            lse = lse.squeeze(-1)
+        lse = lse.transpose(1, 2).contiguous()
+    # Everything is saved in model layout (B, S, H, D) / (B, S, H) so the ring backward can
+    # override query/key/value/out/lse with its per-iteration tensors in the same layout.
     if _save_ctx:
-        ctx.save_for_backward(*tensors_to_save)
+        ctx.save_for_backward(query, key, value, out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset)
         ctx.dropout_p = dropout_p
         ctx.is_causal = is_causal
         ctx.scale = scale
@@ -953,9 +1006,6 @@ def _cudnn_attention_forward_op(
         ctx.max_q = max_q
         ctx.max_k = max_k
 
-    out = out.transpose(1, 2).contiguous()
-    if lse is not None:
-        lse = lse.transpose(1, 2).contiguous()
     return (out, lse) if return_lse else out
 
 
@@ -965,13 +1015,33 @@ def _cudnn_attention_backward_op(
     ctx: torch.autograd.function.FunctionCtx,
     grad_out: torch.Tensor,
     *args,
+    query: torch.Tensor | None = None,
+    key: torch.Tensor | None = None,
+    value: torch.Tensor | None = None,
+    out: torch.Tensor | None = None,
+    lse: torch.Tensor | None = None,
     **kwargs,
 ):
-    query, key, value, out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset = ctx.saved_tensors
+    # See `_flash_attention_backward_op` for why these tensors may be overridden by the ring loop.
+    # All saved/overridden tensors are in model layout (B, S, H, D) / (B, S, H); transpose once here.
+    saved_query, saved_key, saved_value, saved_out, saved_lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset = (
+        ctx.saved_tensors
+    )
+    query = saved_query if query is None else query
+    key = saved_key if key is None else key
+    value = saved_value if value is None else value
+    out = saved_out if out is None else out
+    lse = saved_lse if lse is None else lse
 
     grad_out = grad_out.transpose(1, 2).contiguous()
+    query = query.transpose(1, 2).contiguous()
     key = key.transpose(1, 2).contiguous()
     value = value.transpose(1, 2).contiguous()
+    out = out.transpose(1, 2).contiguous()
+    # Model layout (B, S, H) -> the layout the cuDNN backward kernel expects on this torch version.
+    lse = lse.transpose(1, 2).contiguous()
+    if _CUDNN_LSE_HAS_TRAILING_DIM:
+        lse = lse.unsqueeze(-1)
 
     # Cannot pass first 5 arguments as kwargs because: https://github.com/pytorch/pytorch/blob/d26ca5de058dbcf56ac52bb43e84dd98df2ace97/torch/_dynamo/variables/torch.py#L1341
     grad_query, grad_key, grad_value = torch.ops.aten._scaled_dot_product_cudnn_attention_backward(
@@ -1017,18 +1087,16 @@ def _native_flash_attention_forward_op(
     if enable_gqa:
         raise ValueError("`enable_gqa` is not yet supported for native flash attention.")
 
-    tensors_to_save = ()
-
-    query = query.transpose(1, 2).contiguous()
-    key = key.transpose(1, 2).contiguous()
-    value = value.transpose(1, 2).contiguous()
-    tensors_to_save += (query, key, value)
+    # Keep the model-layout (B, S, H, D) inputs to save for backward; the kernel needs (B, H, S, D).
+    query_t = query.transpose(1, 2).contiguous()
+    key_t = key.transpose(1, 2).contiguous()
+    value_t = value.transpose(1, 2).contiguous()
 
     out, lse, cum_seq_q, cum_seq_k, max_q, max_k, philox_seed, philox_offset, debug_attn_mask = (
         torch.ops.aten._scaled_dot_product_flash_attention(
-            query=query,
-            key=key,
-            value=value,
+            query=query_t,
+            key=key_t,
+            value=value_t,
             dropout_p=dropout_p,
             is_causal=is_causal,
             return_debug_mask=False,
@@ -1036,18 +1104,18 @@ def _native_flash_attention_forward_op(
         )
     )
 
-    tensors_to_save += (out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset)
+    out = out.transpose(1, 2).contiguous()
+    lse = lse.transpose(1, 2).contiguous()
+    # Everything is saved in model layout (B, S, H, D) / (B, S, H) so the ring backward can
+    # override query/key/value/out/lse with its per-iteration tensors in the same layout.
     if _save_ctx:
-        ctx.save_for_backward(*tensors_to_save)
+        ctx.save_for_backward(query, key, value, out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset)
         ctx.dropout_p = dropout_p
         ctx.is_causal = is_causal
         ctx.scale = scale
         ctx.max_q = max_q
         ctx.max_k = max_k
 
-    out = out.transpose(1, 2).contiguous()
-    if lse is not None:
-        lse = lse.transpose(1, 2).contiguous()
     return (out, lse) if return_lse else out
 
 
@@ -1058,13 +1126,30 @@ def _native_flash_attention_backward_op(
     ctx: torch.autograd.function.FunctionCtx,
     grad_out: torch.Tensor,
     *args,
+    query: torch.Tensor | None = None,
+    key: torch.Tensor | None = None,
+    value: torch.Tensor | None = None,
+    out: torch.Tensor | None = None,
+    lse: torch.Tensor | None = None,
     **kwargs,
 ):
-    query, key, value, out, lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset = ctx.saved_tensors
+    # See `_flash_attention_backward_op` for why these tensors may be overridden by the ring loop.
+    # All saved/overridden tensors are in model layout (B, S, H, D) / (B, S, H); transpose once here.
+    saved_query, saved_key, saved_value, saved_out, saved_lse, cum_seq_q, cum_seq_k, philox_seed, philox_offset = (
+        ctx.saved_tensors
+    )
+    query = saved_query if query is None else query
+    key = saved_key if key is None else key
+    value = saved_value if value is None else value
+    out = saved_out if out is None else out
+    lse = saved_lse if lse is None else lse
 
     grad_out = grad_out.transpose(1, 2).contiguous()
+    query = query.transpose(1, 2).contiguous()
     key = key.transpose(1, 2).contiguous()
     value = value.transpose(1, 2).contiguous()
+    out = out.transpose(1, 2).contiguous()
+    lse = lse.transpose(1, 2).contiguous()
 
     grad_query, grad_key, grad_value = torch.ops.aten._scaled_dot_product_flash_attention_backward(
         grad_out,
@@ -1118,10 +1203,6 @@ def _flash_attention_forward_op(
     if scale is None:
         scale = query.shape[-1] ** (-0.5)
 
-    # flash-attn only returns LSE if dropout_p > 0. So, we need to workaround.
-    if grad_enabled or (_parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1):
-        dropout_p = dropout_p if dropout_p > 0 else 1e-30
-
     with torch.set_grad_enabled(grad_enabled):
         out, lse, S_dmask, rng_state = _wrapped_flash_attn_forward(
             query,
@@ -1134,7 +1215,7 @@ def _flash_attention_forward_op(
             window_size[1],
             softcap,
             alibi_slopes,
-            return_lse,
+            False,
         )
         lse = lse.permute(0, 2, 1)
 
@@ -1155,9 +1236,24 @@ def _flash_attention_backward_op(
     ctx: torch.autograd.function.FunctionCtx,
     grad_out: torch.Tensor,
     *args,
+    query: torch.Tensor | None = None,
+    key: torch.Tensor | None = None,
+    value: torch.Tensor | None = None,
+    out: torch.Tensor | None = None,
+    lse: torch.Tensor | None = None,
     **kwargs,
 ):
-    query, key, value, out, lse, rng_state = ctx.saved_tensors
+    # Ring attention re-drives this op once per KV chunk, passing the rotated key/value and the
+    # fully-reduced out/lse for the current iteration. When not overridden (Ulysses / non-CP), we
+    # fall back to the tensors saved during the forward pass.
+    saved_query, saved_key, saved_value, saved_out, saved_lse, rng_state = ctx.saved_tensors
+    query = saved_query if query is None else query
+    key = saved_key if key is None else key
+    value = saved_value if value is None else value
+    out = saved_out if out is None else out
+    lse = saved_lse if lse is None else lse
+    # The backward kernel expects LSE in (B, H, S); the forward saves it in model layout (B, S, H).
+    lse = lse.permute(0, 2, 1).contiguous()
     grad_query, grad_key, grad_value = torch.empty_like(query), torch.empty_like(key), torch.empty_like(value)
 
     lse_d = _wrapped_flash_attn_backward(  # noqa: F841
@@ -1227,9 +1323,6 @@ def _flash_attention_hub_forward_op(
     deterministic = False
     grad_enabled = any(x.requires_grad for x in (query, key, value))
 
-    if grad_enabled or (_parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1):
-        dropout_p = dropout_p if dropout_p > 0 else 1e-30
-
     with torch.set_grad_enabled(grad_enabled):
         out, lse, S_dmask, rng_state = wrapped_forward_fn(
             query,
@@ -1242,7 +1335,7 @@ def _flash_attention_hub_forward_op(
             window_size[1],
             softcap,
             alibi_slopes,
-            return_lse,
+            False,
         )
         lse = lse.permute(0, 2, 1).contiguous()
 
@@ -1263,6 +1356,11 @@ def _flash_attention_hub_backward_op(
     ctx: torch.autograd.function.FunctionCtx,
     grad_out: torch.Tensor,
     *args,
+    query: torch.Tensor | None = None,
+    key: torch.Tensor | None = None,
+    value: torch.Tensor | None = None,
+    out: torch.Tensor | None = None,
+    lse: torch.Tensor | None = None,
     **kwargs,
 ):
     config = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_HUB]
@@ -1272,7 +1370,15 @@ def _flash_attention_hub_backward_op(
             "Flash attention hub kernels must expose `_wrapped_flash_attn_backward` for context parallel execution."
         )
 
-    query, key, value, out, lse, rng_state = ctx.saved_tensors
+    # See `_flash_attention_backward_op` for why these tensors may be overridden by the ring loop.
+    saved_query, saved_key, saved_value, saved_out, saved_lse, rng_state = ctx.saved_tensors
+    query = saved_query if query is None else query
+    key = saved_key if key is None else key
+    value = saved_value if value is None else value
+    out = saved_out if out is None else out
+    lse = saved_lse if lse is None else lse
+    # The backward kernel expects LSE in (B, H, S); the forward saves it in model layout (B, S, H).
+    lse = lse.permute(0, 2, 1).contiguous()
     grad_query, grad_key, grad_value = torch.empty_like(query), torch.empty_like(key), torch.empty_like(value)
 
     _ = wrapped_backward_fn(
@@ -1339,9 +1445,6 @@ def _flash_varlen_attention_hub_forward_op(
     deterministic = False
     grad_enabled = any(x.requires_grad for x in (query, key, value))
 
-    if grad_enabled or (_parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1):
-        dropout_p = dropout_p if dropout_p > 0 else 1e-30
-
     batch_size, seq_len_q, num_heads, _ = query.shape
     _, seq_len_kv, _, _ = key.shape
 
@@ -1380,7 +1483,7 @@ def _flash_varlen_attention_hub_forward_op(
             window_size[1],
             softcap,
             alibi_slopes,
-            return_lse,
+            False,
         )
 
     out = out_packed.view(batch_size, seq_len_q, *out_packed.shape[1:])
@@ -1415,6 +1518,11 @@ def _flash_varlen_attention_hub_backward_op(
     ctx: torch.autograd.function.FunctionCtx,
     grad_out: torch.Tensor,
     *args,
+    query: torch.Tensor | None = None,
+    key: torch.Tensor | None = None,
+    value: torch.Tensor | None = None,
+    out: torch.Tensor | None = None,
+    lse: torch.Tensor | None = None,
     **kwargs,
 ):
     config = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_VARLEN_HUB]
@@ -1425,7 +1533,20 @@ def _flash_varlen_attention_hub_backward_op(
             "for context parallel execution."
         )
 
-    query_packed, key_packed, value_packed, out_packed, lse, rng_state, cu_seqlens_q, cu_seqlens_k = ctx.saved_tensors
+    # See `_flash_attention_backward_op` for why these tensors may be overridden by the ring loop.
+    # The ring loop rotates the tensors saved via `_save_ctx`, so query/key/value overrides already
+    # arrive in the packed varlen layout (total_tokens, H, D) they were saved in; out/lse are the
+    # fully-reduced tensors in model layout (B, S, H, D) / (B, S, H) and are packed back to the
+    # kernel layout here.
+    saved_query, saved_key, saved_value, saved_out, saved_lse, rng_state, cu_seqlens_q, cu_seqlens_k = (
+        ctx.saved_tensors
+    )
+    query_packed = saved_query if query is None else query
+    key_packed = saved_key if key is None else key
+    value_packed = saved_value if value is None else value
+    out_packed = saved_out if out is None else out.flatten(0, 1)
+    # Model layout (B, S, H) -> kernel layout (num_heads, total_q).
+    lse = saved_lse if lse is None else lse.permute(2, 0, 1).reshape(ctx.num_heads, -1).contiguous()
 
     grad_out_packed = grad_out.flatten(0, 1)
     grad_query, grad_key, grad_value = (
@@ -1549,10 +1670,12 @@ def _flash_attention_3_hub_forward_op(
         sm_margin=sm_margin,
     )
 
-    lse = softmax_lse.permute(0, 2, 1).contiguous() if return_lse else None
+    # Save LSE in model layout (B, S, H) so the backward pass — including the ring loop, which
+    # overrides it with the reduced LSE — always sees the same layout regardless of `return_lse`.
+    lse = softmax_lse.permute(0, 2, 1).contiguous()
 
     if _save_ctx:
-        ctx.save_for_backward(query, key, value, out, softmax_lse)
+        ctx.save_for_backward(query, key, value, out, lse)
         ctx.scale = scale
         ctx.is_causal = is_causal
         ctx.window_size = window_size
@@ -1567,6 +1690,11 @@ def _flash_attention_3_hub_backward_op(
     ctx: torch.autograd.function.FunctionCtx,
     grad_out: torch.Tensor,
     *args,
+    query: torch.Tensor | None = None,
+    key: torch.Tensor | None = None,
+    value: torch.Tensor | None = None,
+    out: torch.Tensor | None = None,
+    lse: torch.Tensor | None = None,
     **kwargs,
 ):
     config = _HUB_KERNELS_REGISTRY[AttentionBackendName._FLASH_3_HUB]
@@ -1577,7 +1705,15 @@ def _flash_attention_3_hub_backward_op(
             "for context parallel execution."
         )
 
-    query, key, value, out, softmax_lse = ctx.saved_tensors
+    # See `_flash_attention_backward_op` for why these tensors may be overridden by the ring loop.
+    saved_query, saved_key, saved_value, saved_out, saved_lse = ctx.saved_tensors
+    query = saved_query if query is None else query
+    key = saved_key if key is None else key
+    value = saved_value if value is None else value
+    out = saved_out if out is None else out
+    lse = saved_lse if lse is None else lse
+    # FA3's backward kernel expects LSE in (B, H, S); forward saves it in model layout (B, S, H).
+    softmax_lse = lse.permute(0, 2, 1).contiguous()
     grad_query = torch.empty_like(query)
     grad_key = torch.empty_like(key)
     grad_value = torch.empty_like(value)
@@ -1742,6 +1878,11 @@ def _flash_attention_3_varlen_hub_backward_op(
     ctx: torch.autograd.function.FunctionCtx,
     grad_out: torch.Tensor,
     *args,
+    query: torch.Tensor | None = None,
+    key: torch.Tensor | None = None,
+    value: torch.Tensor | None = None,
+    out: torch.Tensor | None = None,
+    lse: torch.Tensor | None = None,
     **kwargs,
 ):
     config = _HUB_KERNELS_REGISTRY[AttentionBackendName._FLASH_3_VARLEN_HUB]
@@ -1752,7 +1893,18 @@ def _flash_attention_3_varlen_hub_backward_op(
             "for context parallel execution."
         )
 
-    query_packed, key_packed, value_packed, out_packed, softmax_lse, cu_seqlens_q, cu_seqlens_k = ctx.saved_tensors
+    # See `_flash_attention_backward_op` for why these tensors may be overridden by the ring loop.
+    # The ring loop rotates the tensors saved via `_save_ctx`, so query/key/value overrides already
+    # arrive in the packed varlen layout (total_tokens, H, D) they were saved in; out/lse are the
+    # fully-reduced tensors in model layout (B, S, H, D) / (B, S, H) and are packed back to the
+    # kernel layout here.
+    saved_query, saved_key, saved_value, saved_out, saved_lse, cu_seqlens_q, cu_seqlens_k = ctx.saved_tensors
+    query_packed = saved_query if query is None else query
+    key_packed = saved_key if key is None else key
+    value_packed = saved_value if value is None else value
+    out_packed = saved_out if out is None else out.flatten(0, 1)
+    # Model layout (B, S, H) -> kernel layout (num_heads, total_q).
+    softmax_lse = saved_lse if lse is None else lse.permute(2, 0, 1).reshape(ctx.num_heads, -1).contiguous()
 
     grad_out_packed = grad_out.flatten(0, 1)
     grad_query, grad_key, grad_value = (
@@ -1893,13 +2045,17 @@ def _maybe_modify_attn_mask_npu(query: torch.Tensor, key: torch.Tensor, attn_mas
     if attn_mask is not None and torch.all(attn_mask != 0):
         attn_mask = None
 
-    # Reshape Attention Mask: [batch_size, seq_len_k] or [batch_size, 1, 1, seq_len_k] -> [batch_size, 1, sqe_len_q, seq_len_k]
+    # Reshape Attention Mask: [B, Skv] or [B, 1|N, 1, Skv] -> [B, 1|N, Sq, Skv]
     # https://www.hiascend.com/document/detail/zh/Pytorch/730/apiref/torchnpuCustomsapi/docs/context/torch_npu-npu_fusion_attention.md
     if attn_mask is not None:
         if attn_mask.ndim == 2 and attn_mask.shape[0] == query.shape[0] and attn_mask.shape[1] == key.shape[1]:
             batch_size, seq_len_q, seq_len_kv = attn_mask.shape[0], query.shape[1], key.shape[1]
             attn_mask = attn_mask.unsqueeze(1).expand(batch_size, seq_len_q, seq_len_kv).unsqueeze(1).contiguous()
-        elif attn_mask.ndim == 4 and attn_mask.shape[1:3] == (1, 1):
+        elif (
+            attn_mask.ndim == 4
+            and attn_mask.shape[1] in (1, query.shape[2])  # head: 1 (broadcast) or N
+            and attn_mask.shape[2] == 1  # singleton query length
+        ):
             attn_mask = attn_mask.expand(-1, -1, query.shape[1], -1).contiguous()
 
         attn_mask = ~attn_mask.to(torch.bool)
@@ -2061,7 +2217,7 @@ class SeqAllToAllDim(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, group, input, scatter_id=2, gather_id=1):
+    def forward(ctx, group, input, scatter_id=2, gather_id=1) -> torch.Tensor:
         ctx.group = group
         ctx.scatter_id = scatter_id
         ctx.gather_id = gather_id
@@ -2078,7 +2234,7 @@ class SeqAllToAllDim(torch.autograd.Function):
         return (None, grad_input, None, None)
 
 
-# Below are helper functions to handle abritrary head num and abritrary sequence length for Ulysses Anything Attention.
+# Below are helper functions to handle arbitrary head num and arbitrary sequence length for Ulysses Anything Attention.
 def _maybe_pad_qkv_head(x: torch.Tensor, H: int, group: dist.ProcessGroup) -> tuple[torch.Tensor, int]:
     r"""Maybe pad the head dimension to be divisible by world_size.
     x: torch.Tensor, shape (B, S_LOCAL, H, D) H: int, original global head num return: tuple[torch.Tensor, int], padded
@@ -2242,7 +2398,7 @@ class TemplatedRingAttention(torch.autograd.Function):
         forward_op,
         backward_op,
         _parallel_config: "ParallelConfig" | None = None,
-    ):
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         ring_mesh = _parallel_config.context_parallel_config._ring_mesh
         rank = _parallel_config.context_parallel_config._ring_local_rank
         world_size = _parallel_config.context_parallel_config.ring_degree
@@ -2302,6 +2458,13 @@ class TemplatedRingAttention(torch.autograd.Function):
         out = out.to(query.dtype)
         lse = lse.squeeze(-1)
 
+        # The backward op reconstructs each ring iteration's attention from the fully-reduced
+        # out/lse (the global softmax normalizer) and the per-iteration KV chunk. The KV chunk
+        # saved via `_save_ctx` at iteration 0 is only the local chunk, so stash the reduced
+        # out/lse here (detached to avoid a reference cycle through the returned output).
+        ctx.ring_out = out.detach()
+        ctx.ring_lse = lse.detach()
+
         return (out, lse) if return_lse else out
 
     @staticmethod
@@ -2322,7 +2485,11 @@ class TemplatedRingAttention(torch.autograd.Function):
         grad_value = torch.zeros(ctx.kv_shape, dtype=accum_dtype, device=grad_out.device)
         next_grad_kv = None
 
+        # `query` stays fixed across ring iterations; `out`/`lse` are the fully-reduced tensors
+        # (global softmax normalizer). Only key/value rotate, mirroring the forward pass — the
+        # backward op recomputes each iteration's attention against the correct remote KV chunk.
         query, key, value, *_ = ctx.saved_tensors
+        out, lse = ctx.ring_out, ctx.ring_lse
         kv_buffer = torch.cat([key.flatten(), value.flatten()]).contiguous()
         kv_buffer = funcol.all_gather_tensor(kv_buffer, gather_dim=0, group=ring_mesh.get_group())
         kv_buffer = kv_buffer.chunk(world_size)
@@ -2335,7 +2502,9 @@ class TemplatedRingAttention(torch.autograd.Function):
                 value = kv[key_numel:].reshape_as(value)
                 next_rank = (next_rank + 1) % world_size
 
-            grad_query_op, grad_key_op, grad_value_op, *_ = ctx.backward_op(ctx, grad_out)
+            grad_query_op, grad_key_op, grad_value_op, *_ = ctx.backward_op(
+                ctx, grad_out, query=query, key=key, value=value, out=out, lse=lse
+            )
 
             if i > 0:
                 grad_kv_buffer = _wait_tensor(next_grad_kv)
@@ -2350,6 +2519,16 @@ class TemplatedRingAttention(torch.autograd.Function):
             if i < world_size - 1:
                 grad_kv_buffer = torch.cat([grad_key.flatten(), grad_value.flatten()]).contiguous()
                 next_grad_kv = funcol.permute_tensor(grad_kv_buffer, next_ranks, group=ring_mesh.get_group())
+
+        # After the loop, rank r holds the fully-accumulated gradient for the KV chunk owned by
+        # rank (r - 1) % world_size (the accumulator travels one hop per iteration for world_size - 1
+        # hops). One final rotation returns each chunk's gradient to its owning rank so it lines up
+        # with that rank's local key/value inputs.
+        grad_kv_buffer = torch.cat([grad_key.flatten(), grad_value.flatten()]).contiguous()
+        grad_kv_buffer = _wait_tensor(funcol.permute_tensor(grad_kv_buffer, next_ranks, group=ring_mesh.get_group()))
+        grad_key_numel = grad_key.numel()
+        grad_key = grad_kv_buffer[:grad_key_numel].reshape_as(grad_key)
+        grad_value = grad_kv_buffer[grad_key_numel:].reshape_as(grad_value)
 
         grad_query, grad_key, grad_value = (x.to(grad_out.dtype) for x in (grad_query, grad_key, grad_value))
 
@@ -2372,7 +2551,7 @@ class TemplatedUlyssesAttention(torch.autograd.Function):
         forward_op,
         backward_op,
         _parallel_config: "ParallelConfig" | None = None,
-    ):
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
         world_size = _parallel_config.context_parallel_config.ulysses_degree
         group = ulysses_mesh.get_group()
@@ -2473,7 +2652,7 @@ class TemplatedRingAnythingAttention(torch.autograd.Function):
         forward_op,
         backward_op,
         _parallel_config: "ParallelConfig" | None = None,
-    ):
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         # Ring attention for arbitrary sequence lengths.
         if attn_mask is not None:
             raise ValueError(
@@ -2548,7 +2727,10 @@ class TemplatedRingAnythingAttention(torch.autograd.Function):
                 out = out.to(torch.float32)
                 lse = lse.to(torch.float32)
 
-            if is_torch_version("<", "2.9.0"):
+            # lse must be 4-D to broadcast with out (B, S, H, D). Every forward op returns it in
+            # model layout (B, S, H), so add the dim here; the rank check keeps this correct for
+            # any backend that already carries a trailing one.
+            if lse.ndim == 3:
                 lse = lse.unsqueeze(-1)
             if prev_out is not None:
                 out = prev_out - torch.nn.functional.sigmoid(lse - prev_lse) * (prev_out - out)
@@ -2587,7 +2769,7 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         backward_op,
         _parallel_config: "ParallelConfig" | None = None,
         **kwargs,
-    ):
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         ulysses_mesh = _parallel_config.context_parallel_config._ulysses_mesh
         group = ulysses_mesh.get_group()
 
@@ -2963,8 +3145,16 @@ def _flash_varlen_attention_hub(
     return_lse: bool = False,
     _parallel_config: "ParallelConfig" | None = None,
 ) -> torch.Tensor:
-    if _parallel_config is not None and _parallel_config.context_parallel_config.ring_degree > 1:
-        raise NotImplementedError("`ring_degree > 1` is not yet supported for the FLASH_VARLEN_HUB backend.")
+    # The ring loop reuses the local attention mask and packed KV sizes for every rotated KV chunk,
+    # which is only correct without a mask.
+    if (
+        attn_mask is not None
+        and _parallel_config is not None
+        and _parallel_config.context_parallel_config.ring_degree > 1
+    ):
+        raise NotImplementedError(
+            "`attn_mask` is not yet supported for the FLASH_VARLEN_HUB backend with `ring_degree > 1`."
+        )
 
     lse = None
     batch_size, seq_len_q, _, _ = query.shape
@@ -3209,8 +3399,16 @@ def _flash_attention_3_varlen_hub(
     return_lse: bool = False,
     _parallel_config: "ParallelConfig" | None = None,
 ) -> torch.Tensor:
-    if _parallel_config is not None and _parallel_config.context_parallel_config.ring_degree > 1:
-        raise NotImplementedError("`ring_degree > 1` is not yet supported for the _FLASH_3_VARLEN_HUB backend.")
+    # The ring loop reuses the local attention mask and packed KV sizes for every rotated KV chunk,
+    # which is only correct without a mask.
+    if (
+        attn_mask is not None
+        and _parallel_config is not None
+        and _parallel_config.context_parallel_config.ring_degree > 1
+    ):
+        raise NotImplementedError(
+            "`attn_mask` is not yet supported for the _FLASH_3_VARLEN_HUB backend with `ring_degree > 1`."
+        )
 
     batch_size, seq_len_q, _, _ = query.shape
     _, seq_len_kv, _, _ = key.shape
@@ -3371,8 +3569,10 @@ def _flash_varlen_attention_3(
 
 
 @_AttentionBackendRegistry.register(
-    AttentionBackendName.AITER,
-    constraints=[_check_device_cuda, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+    AttentionBackendName.AITER_FA2_HUB,
+    # The `kernels-community/aiter-flash-attn-ck` CK kernel only ships bf16 `mha_fwd` instances;
+    # fp16 raises a cryptic "invalid argument for fmha_fwd" from CK, so reject it up front.
+    constraints=[_check_device_cuda, _check_qkv_dtype_bf16, _check_shape],
 )
 def _aiter_flash_attention(
     query: torch.Tensor,
@@ -3388,31 +3588,20 @@ def _aiter_flash_attention(
     if attn_mask is not None:
         raise ValueError("`attn_mask` is not supported for aiter attention")
 
-    if not return_lse and torch.is_grad_enabled():
-        # aiter requires return_lse=True by assertion when gradients are enabled.
-        out, lse, *_ = aiter_flash_attn_func(
-            q=query,
-            k=key,
-            v=value,
-            dropout_p=dropout_p,
-            softmax_scale=scale,
-            causal=is_causal,
-            return_lse=True,
-        )
-    else:
-        out = aiter_flash_attn_func(
-            q=query,
-            k=key,
-            v=value,
-            dropout_p=dropout_p,
-            softmax_scale=scale,
-            causal=is_causal,
-            return_lse=return_lse,
-        )
-        if return_lse:
-            out, lse, *_ = out
-
-    return (out, lse) if return_lse else out
+    func = _HUB_KERNELS_REGISTRY[AttentionBackendName.AITER_FA2_HUB].kernel_fn
+    out = func(
+        q=query,
+        k=key,
+        v=value,
+        dropout_p=dropout_p,
+        softmax_scale=scale,
+        causal=is_causal,
+        return_lse=return_lse,
+    )
+    if return_lse:
+        out, lse, *_ = out
+        return out, lse
+    return out
 
 
 @_AttentionBackendRegistry.register(
@@ -3463,6 +3652,23 @@ def _native_flex_attention(
     else:
         raise ValueError("Attention mask must be either None, a BlockMask, or a 2D/4D tensor.")
 
+    # A `BlockMask`'s own block size is the sparsity granularity the caller built it around (e.g. NABLA's 64-token
+    # fractal blocks). The forward kernel's tile sizes must divide that granularity evenly; torch's autotuned
+    # defaults are only overridden when they don't already divide the mask's block size, to avoid unintended side
+    # effects from pinning tile sizes that otherwise would have been fine (e.g. the default 128x128 mask size would
+    # otherwise always force `BLOCK_N` to 128, even though 64 is a valid size).
+    kernel_options = None
+    if block_mask is not None:
+        q_block_size, kv_block_size = block_mask.BLOCK_SIZE
+        default_block_m = 64 if query.dtype == torch.float32 else 128
+        default_block_n = 64
+        kernel_options = {}
+        if q_block_size % default_block_m != 0:
+            kernel_options["BLOCK_M"] = q_block_size
+        if kv_block_size % default_block_n != 0:
+            kernel_options["BLOCK_N"] = kv_block_size
+        kernel_options = kernel_options or None
+
     query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
     out = flex_attention.flex_attention(
         query=query,
@@ -3473,6 +3679,7 @@ def _native_flex_attention(
         scale=scale,
         enable_gqa=enable_gqa,
         return_lse=return_lse,
+        kernel_options=kernel_options,
     )
     out = out.permute(0, 2, 1, 3)
     return out
@@ -3684,7 +3891,7 @@ def _native_flash_attention(
     _parallel_config: "ParallelConfig" | None = None,
 ) -> torch.Tensor:
     if attn_mask is not None:
-        raise ValueError("`attn_mask` is not supported for aiter attention")
+        raise ValueError("`attn_mask` is not supported for native flash attention")
 
     lse = None
     if _parallel_config is None and not return_lse:
@@ -3940,6 +4147,40 @@ def _sage_attention_hub(
             out, lse = out
 
     return (out, lse) if return_lse else out
+
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.SAGE_BLACKWELL_HUB,
+    constraints=[_check_device_cuda, _check_qkv_dtype_bf16_or_fp16, _check_head_dim_64_or_128, _check_shape],
+)
+def _sage_attention_blackwell_hub(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: torch.Tensor | None = None,
+    is_causal: bool = False,
+    scale: float | None = None,
+    return_lse: bool = False,
+    _parallel_config: "ParallelConfig" | None = None,
+) -> torch.Tensor:
+    if attn_mask is not None:
+        raise ValueError("`attn_mask` is not supported for sage attention")
+    if return_lse:
+        # `sageattn3_blackwell` returns the output only, so there is no LSE to hand back. This
+        # also rules out context parallelism, hence `supports_context_parallel` is not set above.
+        raise ValueError("`return_lse` is not supported by the `sage_blackwell_hub` backend.")
+    if scale is not None and scale != query.shape[-1] ** -0.5:
+        # The kernel derives the softmax scale from the head dimension internally and silently
+        # swallows unknown kwargs, so a custom scale would be ignored rather than applied.
+        raise ValueError("A custom `scale` is not supported by the `sage_blackwell_hub` backend.")
+
+    func = _HUB_KERNELS_REGISTRY[AttentionBackendName.SAGE_BLACKWELL_HUB].kernel_fn
+    # The kernel works on the HND layout, unlike the other Sage backends which take NHD. It also
+    # subtracts the per-token mean from `key` in place, so the transposed copies we build here
+    # double as protection for the caller's tensors.
+    query, key, value = (x.transpose(1, 2).contiguous() for x in (query, key, value))
+    out = func(query, key, value, is_causal=is_causal)
+    return out.transpose(1, 2).contiguous()
 
 
 @_AttentionBackendRegistry.register(

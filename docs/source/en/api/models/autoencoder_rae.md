@@ -34,7 +34,7 @@ from diffusers import AutoencoderRAE
 
 model = AutoencoderRAE.from_pretrained(
     "nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08"
-).to("cuda").eval()
+).to("cuda").eval()  # or "mps", "xpu", "cpu"
 ```
 
 ## Encoding and decoding a real image
@@ -47,7 +47,7 @@ from torchvision.transforms.functional import to_tensor, to_pil_image
 
 model = AutoencoderRAE.from_pretrained(
     "nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08"
-).to("cuda").eval()
+).to("cuda").eval()  # or "mps", "xpu", "cpu"
 
 image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png")
 image = image.convert("RGB").resize((224, 224))
@@ -68,7 +68,7 @@ Some pretrained checkpoints include per-channel `latents_mean` and `latents_std`
 ```python
 model = AutoencoderRAE.from_pretrained(
     "nyu-visionx/RAE-dinov2-wReg-base-ViTXL-n08"
-).to("cuda").eval()
+).to("cuda").eval()  # or "mps", "xpu", "cpu"
 
 # Latent normalization is handled automatically inside encode/decode
 # when the checkpoint config includes latents_mean/latents_std.

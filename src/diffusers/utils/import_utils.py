@@ -178,6 +178,7 @@ except importlib_metadata.PackageNotFoundError:
 _torch_xla_available, _torch_xla_version = _is_package_available("torch_xla")
 _torch_npu_available, _torch_npu_version = _is_package_available("torch_npu")
 _torch_mlu_available, _torch_mlu_version = _is_package_available("torch_mlu")
+_torch_tpu_available, _torch_tpu_version = _is_package_available("torch_tpu")
 _torch_neuronx_available, _torch_neuronx_version = _is_package_available("torch_neuronx")
 _transformers_available, _transformers_version = _is_package_available("transformers")
 _hf_hub_available, _hf_hub_version = _is_package_available("huggingface_hub")
@@ -213,8 +214,8 @@ _nltk_available, _nltk_version = _is_package_available("nltk")
 _cosmos_guardrail_available, _cosmos_guardrail_version = _is_package_available("cosmos_guardrail")
 _sageattention_available, _sageattention_version = _is_package_available("sageattention")
 _flash_attn_available, _flash_attn_version = _is_package_available("flash_attn")
+_flashinfer_available, _flashinfer_version = _is_package_available("flashinfer", get_dist_name=True)
 _flash_attn_3_available, _flash_attn_3_version = _is_package_available("flash_attn_3")
-_aiter_available, _aiter_version = _is_package_available("aiter", get_dist_name=True)
 _kornia_available, _kornia_version = _is_package_available("kornia")
 _nvidia_modelopt_available, _nvidia_modelopt_version = _is_package_available("modelopt", get_dist_name=True)
 _auto_round_available, _auto_round_version = _is_package_available("auto_round")
@@ -237,6 +238,10 @@ def is_torch_npu_available():
 
 def is_torch_mlu_available():
     return _torch_mlu_available
+
+
+def is_torch_tpu_available():
+    return _torch_tpu_available
 
 
 def is_torch_neuronx_available():
@@ -355,6 +360,10 @@ def is_gguf_available():
     return _gguf_available
 
 
+def is_flashinfer_available():
+    return _flashinfer_available
+
+
 def is_flashpack_available():
     return _flashpack_available
 
@@ -413,10 +422,6 @@ def is_flash_attn_available():
 
 def is_flash_attn_3_available():
     return _flash_attn_3_available
-
-
-def is_aiter_available():
-    return _aiter_available
 
 
 def is_kornia_available():
@@ -939,22 +944,6 @@ def is_flash_attn_version(operation: str, version: str):
     if not _flash_attn_available:
         return False
     return compare_versions(parse(_flash_attn_version), operation, version)
-
-
-@cache
-def is_aiter_version(operation: str, version: str):
-    """
-    Compares the current aiter version to a given reference with an operation.
-
-    Args:
-        operation (`str`):
-            A string representation of an operator, such as `">"` or `"<="`
-        version (`str`):
-            A version string
-    """
-    if not _aiter_available:
-        return False
-    return compare_versions(parse(_aiter_version), operation, version)
 
 
 def get_objects_from_module(module):

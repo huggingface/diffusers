@@ -25,7 +25,7 @@ from diffusers import (
 )
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import torch_device
+from ...testing_utils import assert_tensors_close, torch_device
 from ..testing_utils import (
     BasePipelineTesterConfig,
     MemoryTesterMixin,
@@ -49,6 +49,7 @@ class QwenImageControlNetPipelineTesterConfig(BasePipelineTesterConfig):
         ]
     )
     batch_input_params = frozenset(["prompt", "control_image"])
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -165,7 +166,7 @@ class TestQwenImageControlNetPipeline(QwenImageControlNetPipelineTesterConfig, P
         inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
         generated_image = image[0]
-        assert generated_image.shape == (3, 32, 32)
+        assert generated_image.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.4726, 0.5549, 0.6324, 0.6548, 0.4968, 0.4639, 0.4749, 0.4898, 0.4725, 0.4645, 0.4435, 0.3339, 0.3400, 0.4630, 0.3879, 0.4406])
@@ -173,7 +174,7 @@ class TestQwenImageControlNetPipeline(QwenImageControlNetPipelineTesterConfig, P
 
         generated_slice = generated_image.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=5e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=5e-3)
 
     def test_qwen_controlnet_multicondition(self):
         # Run on CPU: the expected slice below is CPU-specific.
@@ -188,7 +189,7 @@ class TestQwenImageControlNetPipeline(QwenImageControlNetPipelineTesterConfig, P
 
         image = pipe(**inputs).images
         generated_image = image[0]
-        assert generated_image.shape == (3, 32, 32)
+        assert generated_image.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.6239, 0.6642, 0.5768, 0.6039, 0.5270, 0.5070, 0.5006, 0.5271, 0.4506, 0.3085, 0.3435, 0.5152, 0.5096, 0.5422, 0.4286, 0.5752])
@@ -196,7 +197,7 @@ class TestQwenImageControlNetPipeline(QwenImageControlNetPipelineTesterConfig, P
 
         generated_slice = generated_image.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=5e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=5e-3)
 
     def test_vae_tiling(self, expected_diff_max: float = 0.2):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)

@@ -24,7 +24,7 @@ from diffusers import (
     QwenImageTransformer2DModel,
 )
 
-from ...testing_utils import floats_tensor, torch_device
+from ...testing_utils import assert_tensors_close, floats_tensor, torch_device
 from ..testing_utils import (
     BasePipelineTesterConfig,
     MemoryTesterMixin,
@@ -38,6 +38,7 @@ class QwenImageImg2ImgPipelineTesterConfig(BasePipelineTesterConfig):
         ["prompt", "image", "height", "width", "guidance_scale", "true_cfg_scale", "strength"]
     )
     batch_input_params = frozenset(["prompt", "image"])
+    output_shape = (3, 32, 32)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -133,7 +134,7 @@ class TestQwenImageImg2ImgPipeline(QwenImageImg2ImgPipelineTesterConfig, Pipelin
         inputs = self.get_dummy_inputs()
         image = pipe(**inputs).images
         generated_image = image[0]
-        assert generated_image.shape == (3, 32, 32)
+        assert generated_image.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.5832, 0.6525, 0.5760, 0.5546, 0.5763, 0.5743, 0.4986, 0.4591, 0.4371, 0.4667, 0.4898, 0.3232, 0.4333, 0.5274, 0.4735, 0.4937])
@@ -141,7 +142,7 @@ class TestQwenImageImg2ImgPipeline(QwenImageImg2ImgPipelineTesterConfig, Pipelin
 
         generated_slice = generated_image.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        assert torch.allclose(generated_slice, expected_slice, atol=5e-3)
+        assert_tensors_close(generated_slice, expected_slice, atol=5e-3)
 
     def test_vae_tiling(self, expected_diff_max: float = 0.2):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)

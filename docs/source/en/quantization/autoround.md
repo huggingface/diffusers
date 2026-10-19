@@ -43,7 +43,7 @@ pipe = DiffusionPipeline.from_pretrained(
     "INCModel/Z-Image-W4A16-AutoRound",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-    device_map="cuda",
+    device_map="cuda",  # or "mps", "xpu", "cpu"
 )
 
 image = pipe("a cat holding a sign that says hello").images[0]
@@ -64,7 +64,7 @@ transformer = ZImageTransformer2DModel.from_pretrained(
     subfolder="transformer",
     quantization_config=quantization_config,
     dtype=torch.bfloat16,
-    device_map="cuda",
+    device_map="cuda",  # or "mps", "xpu", "cpu"
 )
 
 pipe = ZImagePipeline.from_pretrained(
@@ -96,7 +96,7 @@ pipe = DiffusionPipeline.from_pretrained(
     "INCModel/Z-Image-W4A16-AutoRound",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-    device_map="cuda",
+    device_map="cuda",  # or "mps", "xpu", "cpu"
 )
 
 pipe.transformer = torch.compile(pipe.transformer, mode="default", fullgraph=False)
@@ -172,7 +172,7 @@ model_id = "INCModel/Z-Image-W4A16-AutoRound"
 pipe = ZImagePipeline.from_pretrained(
     model_id,
     dtype=torch.bfloat16,
-    device_map="cuda",
+    device_map="cuda",  # or "mps", "xpu", "cpu"
 )
 
 image = pipe("a cat holding a sign that says hello").images[0]
