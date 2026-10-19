@@ -7,3 +7,7 @@
 ## BlockState
 
 [[autodoc]] diffusers.modular_pipelines.modular_pipeline.BlockState 
+
+## StreamEvent
+
+[[autodoc]] diffusers.modular_pipelines.modular_pipeline.StreamEvent

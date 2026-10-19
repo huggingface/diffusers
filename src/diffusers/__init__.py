@@ -402,11 +402,14 @@ else:
             "ConditionalPipelineBlocks",
             "ConfigSpec",
             "InputParam",
+            "IterativePipelineBlocks",
             "LoopSequentialPipelineBlocks",
+            "ModularLoopPipelineBlocks",
             "ModularPipeline",
             "ModularPipelineBlocks",
             "OutputParam",
             "SequentialPipelineBlocks",
+            "StreamEvent",
         ]
     )
     _import_structure["optimization"] = [
@@ -1314,11 +1317,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ConditionalPipelineBlocks,
             ConfigSpec,
             InputParam,
+            IterativePipelineBlocks,
             LoopSequentialPipelineBlocks,
+            ModularLoopPipelineBlocks,
             ModularPipeline,
             ModularPipelineBlocks,
             OutputParam,
             SequentialPipelineBlocks,
+            StreamEvent,
         )
         from .optimization import (
             get_constant_schedule,
