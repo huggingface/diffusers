@@ -280,15 +280,15 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = self.precondition_noise(sigmas)
 
         if self.config.final_sigmas_type == "sigma_min":
-            sigma_last = self.config.sigma_min
+            sigma_last = sigmas[-1:]
         elif self.config.final_sigmas_type == "zero":
-            sigma_last = 0
+            sigma_last = torch.zeros(1, dtype=torch.float32, device=device)
         else:
             raise ValueError(
                 f"`final_sigmas_type` must be one of 'zero', or 'sigma_min', but got {self.config.final_sigmas_type}"
             )
 
-        self.sigmas = torch.cat([sigmas, torch.tensor([sigma_last], dtype=torch.float32, device=device)])
+        self.sigmas = torch.cat([sigmas, sigma_last])
 
         self.model_outputs = [
             None,
@@ -643,6 +643,7 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             self.config.euler_at_final
             or (self.config.lower_order_final and len(self.timesteps) < 15)
             or self.config.final_sigmas_type == "zero"
+            or bool(self.sigmas[self.step_index + 1] == self.sigmas[self.step_index])
         )
         lower_order_second = (
             (self.step_index == len(self.timesteps) - 2) and self.config.lower_order_final and len(self.timesteps) < 15
@@ -665,9 +666,12 @@ class CosineDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 sigma_max=self.config.sigma_max,
                 seed=seed,
             )
-        noise = self.noise_sampler(self.sigmas[self.step_index], self.sigmas[self.step_index + 1]).to(
-            model_output.device
-        )
+        if self.sigmas[self.step_index + 1] == self.sigmas[self.step_index]:
+            noise = torch.zeros_like(model_output)
+        else:
+            noise = self.noise_sampler(self.sigmas[self.step_index], self.sigmas[self.step_index + 1]).to(
+                model_output.device
+            )
 
         if self.config.solver_order == 1 or self.lower_order_nums < 1 or lower_order_final:
             prev_sample = self.dpm_solver_first_order_update(model_output, sample=sample, noise=noise)
