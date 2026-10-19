@@ -38,7 +38,7 @@ class Snake1d(nn.Module):
         super().__init__()
         self.alpha = nn.Parameter(torch.ones(1, channels, 1))
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states) -> torch.Tensor:
         shape = hidden_states.shape
         hidden_states = hidden_states.reshape(shape[0], shape[1], -1)
         hidden_states = hidden_states + (self.alpha + 1e-9).reciprocal() * torch.sin(self.alpha * hidden_states).pow(2)
@@ -61,7 +61,7 @@ class KVAEAudioResidualUnit(nn.Module):
         self.snake2 = Snake1d(dimension)
         self.conv2 = weight_norm(nn.Conv1d(dimension, dimension, kernel_size=1))
 
-    def forward(self, hidden_state):
+    def forward(self, hidden_state) -> torch.Tensor:
         """
         Forward pass through the residual unit.
 
@@ -99,7 +99,7 @@ class KVAEAudioEncoderBlock(nn.Module):
             nn.Conv1d(input_dim, output_dim, kernel_size=2 * stride, stride=stride, padding=math.ceil(stride / 2))
         )
 
-    def forward(self, hidden_state):
+    def forward(self, hidden_state) -> torch.Tensor:
         hidden_state = self.res_unit1(hidden_state)
         hidden_state = self.res_unit2(hidden_state)
         hidden_state = self.snake1(self.res_unit3(hidden_state))
@@ -130,7 +130,7 @@ class KVAEAudioDecoderBlock(nn.Module):
         self.res_unit2 = KVAEAudioResidualUnit(output_dim, dilation=3)
         self.res_unit3 = KVAEAudioResidualUnit(output_dim, dilation=9)
 
-    def forward(self, hidden_state):
+    def forward(self, hidden_state) -> torch.Tensor:
         hidden_state = self.snake1(hidden_state)
         hidden_state = self.conv_t1(hidden_state)
         hidden_state = self.res_unit1(hidden_state)
@@ -159,7 +159,7 @@ class KVAEAudioEncoder(nn.Module):
         self.snake1 = Snake1d(d_model)
         self.conv2 = weight_norm(nn.Conv1d(d_model, latent_dim, kernel_size=3, padding=1))
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states) -> torch.Tensor:
         hidden_states = self.conv1(hidden_states)
 
         for block in self.block:
@@ -190,7 +190,7 @@ class KVAEAudioDecoder(nn.Module):
         self.conv2 = weight_norm(nn.Conv1d(d_model, num_channels, kernel_size=7, padding=3))
         self.tanh = nn.Tanh()
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states) -> torch.Tensor:
         hidden_states = self.conv1(hidden_states)
 
         for block in self.block:

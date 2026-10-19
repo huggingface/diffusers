@@ -20,7 +20,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TorchCompileTesterMixin
-from .testing_utils import NewAutoencoderTesterMixin
+from .testing_utils import AutoencoderTesterMixin
 
 
 enable_full_determinism()
@@ -92,7 +92,7 @@ class TestAutoencoderKLKVAEAudioTorchCompile(AutoencoderKLKVAEAudioTesterConfig,
     pass
 
 
-class TestAutoencoderKLKVAEAudioSlicing(AutoencoderKLKVAEAudioTesterConfig, NewAutoencoderTesterMixin):
+class TestAutoencoderKLKVAEAudioSlicing(AutoencoderKLKVAEAudioTesterConfig, AutoencoderTesterMixin):
     pass
 
 
