@@ -646,7 +646,7 @@ class StableUnCLIPImg2ImgPipeline(
         noise_level: int = 0,
         image_embeds: torch.Tensor | None = None,
         clip_skip: int | None = None,
-    ):
+    ) -> ImagePipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

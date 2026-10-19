@@ -475,7 +475,7 @@ class StableAudio3InpaintPipeline(DiffusionPipeline):
         callback_on_step_end: Optional[Callable[[int, int, dict], dict]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         output_type: str = "pt",
-    ) -> Union[AudioPipelineOutput, tuple]:
+    ) -> AudioPipelineOutput | tuple:
         r"""
         Generate inpainted audio conditioned on a text prompt and reference.
 

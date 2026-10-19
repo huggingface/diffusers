@@ -272,7 +272,7 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline, StableDiffusionMi
         return_dict: bool = True,
         callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
-    ):
+    ) -> StableDiffusionPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

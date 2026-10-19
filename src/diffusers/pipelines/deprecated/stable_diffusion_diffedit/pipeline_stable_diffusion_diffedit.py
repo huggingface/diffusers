@@ -882,10 +882,10 @@ class StableDiffusionDiffEditPipeline(
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             source_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide semantic mask generation using DiffEdit. If not defined, you need to
-                pass `source_prompt_embeds` or `source_image` instead.
+                pass `source_prompt_embeds` or `image` instead.
             source_negative_prompt (`str` or `list[str]`, *optional*):
                 The prompt or prompts to guide semantic mask generation away from using DiffEdit. If not defined, you
-                need to pass `source_negative_prompt_embeds` or `source_image` instead.
+                need to pass `source_negative_prompt_embeds` or `image` instead.
             source_prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings to guide the semantic mask generation. Can be used to easily tweak text
                 inputs (prompt weighting). If not provided, text embeddings are generated from `source_prompt` input

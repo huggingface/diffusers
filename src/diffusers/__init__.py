@@ -1,4 +1,4 @@
-__version__ = "0.41.0.dev0"
+__version__ = "0.42.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -135,6 +135,18 @@ else:
     _import_structure["quantizers.quantization_config"].append("NunchakuLiteQuantizationConfig")
 
 try:
+    if not is_torch_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_bfl_objects
+
+    _import_structure["utils.dummy_bfl_objects"] = [
+        name for name in dir(dummy_bfl_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("BFLQuantizationConfig")
+
+try:
     if not is_auto_round_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -204,6 +216,7 @@ else:
             "LayerSkipConfig",
             "MagCacheConfig",
             "PyramidAttentionBroadcastConfig",
+            "SeaCacheConfig",
             "SmoothedEnergyGuidanceConfig",
             "TaylorSeerCacheConfig",
             "TextKVCacheConfig",
@@ -212,6 +225,7 @@ else:
             "apply_layer_skip",
             "apply_mag_cache",
             "apply_pyramid_attention_broadcast",
+            "apply_sea_cache",
             "apply_taylorseer_cache",
             "apply_text_kv_cache",
         ]
@@ -253,6 +267,7 @@ else:
             "AutoencoderKLMiniMaxH3Audio",
             "AutoencoderKLMochi",
             "AutoencoderKLQwenImage",
+            "AutoencoderKLQwenImage21",
             "AutoencoderKLTemporalDecoder",
             "AutoencoderKLWan",
             "AutoencoderOobleck",
@@ -285,6 +300,7 @@ else:
             "EasyAnimateTransformer3DModel",
             "ErnieImageTransformer2DModel",
             "Flux2Transformer2DModel",
+            "Flux3Transformer2DModel",
             "FluxControlNetModel",
             "FluxMultiControlNetModel",
             "FluxTransformer2DModel",
@@ -304,6 +320,10 @@ else:
             "JoyImageEditTransformer3DModel",
             "Kandinsky3UNet",
             "Kandinsky5Transformer3DModel",
+            "Kandinsky6SRLatentUpscalerBank",
+            "Kandinsky6SRTransformer3DModel",
+            "Kandinsky6SRVAE",
+            "Kandinsky6Transformer3DModel",
             "Krea2Transformer2DModel",
             "LatteTransformer3DModel",
             "LongCatAudioDiTTransformer",
@@ -319,6 +339,8 @@ else:
             "MiniMaxMusic3RVQDepthDecoder",
             "MiniMaxMusic3Transformer1DModel",
             "MiniMaxMusic3Vocoder",
+            "MMAudioVAE",
+            "MMAudioVocoder",
             "MochiTransformer3DModel",
             "ModelMixin",
             "MotifVideoTransformer3DModel",
@@ -332,12 +354,15 @@ else:
             "PixArtTransformer2DModel",
             "PriorTransformer",
             "PRXTransformer2DModel",
+            "QwenImage21Transformer2DModel",
             "QwenImageControlNetModel",
             "QwenImageMultiControlNetModel",
             "QwenImageTransformer2DModel",
             "SanaControlNetModel",
             "SanaTransformer2DModel",
             "SanaVideoTransformer3DModel",
+            "SanaWMLTX2RefinerTransformer3DModel",
+            "SanaWMTransformer3DModel",
             "SD3ControlNetModel",
             "SD3MultiControlNetModel",
             "SD3Transformer2DModel",
@@ -457,6 +482,7 @@ else:
             "LCMScheduler",
             "LTXEulerAncestralRFScheduler",
             "MiniMaxH3Scheduler",
+            "PiflowScheduler",
             "PNDMScheduler",
             "RePaintScheduler",
             "SASolverScheduler",
@@ -517,6 +543,8 @@ else:
             "Cosmos3DistilledModularPipeline",
             "Cosmos3OmniBlocks",
             "Cosmos3OmniModularPipeline",
+            "EchoBlocks",
+            "EchoModularPipeline",
             "ErnieImageAutoBlocks",
             "ErnieImageModularPipeline",
             "Flux2AutoBlocks",
@@ -525,6 +553,10 @@ else:
             "Flux2KleinBaseModularPipeline",
             "Flux2KleinModularPipeline",
             "Flux2ModularPipeline",
+            "Flux3AutoBlocks",
+            "Flux3DistilledAutoBlocks",
+            "Flux3DistilledModularPipeline",
+            "Flux3ModularPipeline",
             "FluxAutoBlocks",
             "FluxKontextAutoBlocks",
             "FluxKontextModularPipeline",
@@ -553,6 +585,10 @@ else:
             "MiniMaxH3ModularPipeline",
             "MiniMaxMusic3Blocks",
             "MiniMaxMusic3ModularPipeline",
+            "QwenImage21AutoBlocks",
+            "QwenImage21ModularPipeline",
+            "QwenImage21TurboAutoBlocks",
+            "QwenImage21TurboModularPipeline",
             "QwenImageAutoBlocks",
             "QwenImageEditAutoBlocks",
             "QwenImageEditModularPipeline",
@@ -697,6 +733,10 @@ else:
             "Kandinsky5I2VPipeline",
             "Kandinsky5T2IPipeline",
             "Kandinsky5T2VPipeline",
+            "Kandinsky6SRPipeline",
+            "Kandinsky6SRPipelineOutput",
+            "Kandinsky6TI2VAPipeline",
+            "Kandinsky6TI2VAPipelineOutput",
             "KandinskyCombinedPipeline",
             "KandinskyImg2ImgCombinedPipeline",
             "KandinskyImg2ImgPipeline",
@@ -743,9 +783,7 @@ else:
             "LTXPipeline",
             "LucyEditPipeline",
             "Lumina2Pipeline",
-            "Lumina2Text2ImgPipeline",
             "LuminaPipeline",
-            "LuminaText2ImgPipeline",
             "MarigoldDepthPipeline",
             "MarigoldIntrinsicsPipeline",
             "MarigoldNormalsPipeline",
@@ -764,6 +802,7 @@ else:
             "PixArtSigmaPipeline",
             "PRXPipeline",
             "PRXPixelPipeline",
+            "QwenImage21Pipeline",
             "QwenImageControlNetInpaintPipeline",
             "QwenImageControlNetPipeline",
             "QwenImageEditInpaintPipeline",
@@ -782,6 +821,9 @@ else:
             "SanaSprintPipeline",
             "SanaVideoPipeline",
             "SanaVideoPipeline",
+            "SanaWMLTX2Refiner",
+            "SanaWMPipeline",
+            "SanaWMPipelineOutput",
             "SemanticStableDiffusionPipeline",
             "ShapEImg2ImgPipeline",
             "ShapEPipeline",
@@ -1033,6 +1075,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers.quantization_config import NunchakuLiteQuantizationConfig
 
     try:
+        if not is_torch_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_bfl_objects import *
+    else:
+        from .quantizers.quantization_config import BFLQuantizationConfig
+
+    try:
         if not is_auto_round_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
@@ -1083,6 +1133,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LayerSkipConfig,
             MagCacheConfig,
             PyramidAttentionBroadcastConfig,
+            SeaCacheConfig,
             SmoothedEnergyGuidanceConfig,
             TaylorSeerCacheConfig,
             TextKVCacheConfig,
@@ -1091,6 +1142,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             apply_layer_skip,
             apply_mag_cache,
             apply_pyramid_attention_broadcast,
+            apply_sea_cache,
             apply_taylorseer_cache,
             apply_text_kv_cache,
         )
@@ -1130,6 +1182,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLMiniMaxH3Audio,
             AutoencoderKLMochi,
             AutoencoderKLQwenImage,
+            AutoencoderKLQwenImage21,
             AutoencoderKLTemporalDecoder,
             AutoencoderKLWan,
             AutoencoderOobleck,
@@ -1162,6 +1215,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EasyAnimateTransformer3DModel,
             ErnieImageTransformer2DModel,
             Flux2Transformer2DModel,
+            Flux3Transformer2DModel,
             FluxControlNetModel,
             FluxMultiControlNetModel,
             FluxTransformer2DModel,
@@ -1181,6 +1235,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             JoyImageEditTransformer3DModel,
             Kandinsky3UNet,
             Kandinsky5Transformer3DModel,
+            Kandinsky6SRLatentUpscalerBank,
+            Kandinsky6SRTransformer3DModel,
+            Kandinsky6SRVAE,
+            Kandinsky6Transformer3DModel,
             Krea2Transformer2DModel,
             LatteTransformer3DModel,
             LongCatAudioDiTTransformer,
@@ -1196,6 +1254,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MiniMaxMusic3RVQDepthDecoder,
             MiniMaxMusic3Transformer1DModel,
             MiniMaxMusic3Vocoder,
+            MMAudioVAE,
+            MMAudioVocoder,
             MochiTransformer3DModel,
             ModelMixin,
             MotifVideoTransformer3DModel,
@@ -1209,12 +1269,15 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtTransformer2DModel,
             PriorTransformer,
             PRXTransformer2DModel,
+            QwenImage21Transformer2DModel,
             QwenImageControlNetModel,
             QwenImageMultiControlNetModel,
             QwenImageTransformer2DModel,
             SanaControlNetModel,
             SanaTransformer2DModel,
             SanaVideoTransformer3DModel,
+            SanaWMLTX2RefinerTransformer3DModel,
+            SanaWMTransformer3DModel,
             SD3ControlNetModel,
             SD3MultiControlNetModel,
             SD3Transformer2DModel,
@@ -1330,6 +1393,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LCMScheduler,
             LTXEulerAncestralRFScheduler,
             MiniMaxH3Scheduler,
+            PiflowScheduler,
             PNDMScheduler,
             RePaintScheduler,
             SASolverScheduler,
@@ -1373,6 +1437,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Cosmos3DistilledModularPipeline,
             Cosmos3OmniBlocks,
             Cosmos3OmniModularPipeline,
+            EchoBlocks,
+            EchoModularPipeline,
             ErnieImageAutoBlocks,
             ErnieImageModularPipeline,
             Flux2AutoBlocks,
@@ -1381,6 +1447,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Flux2KleinBaseModularPipeline,
             Flux2KleinModularPipeline,
             Flux2ModularPipeline,
+            Flux3AutoBlocks,
+            Flux3DistilledAutoBlocks,
+            Flux3DistilledModularPipeline,
+            Flux3ModularPipeline,
             FluxAutoBlocks,
             FluxKontextAutoBlocks,
             FluxKontextModularPipeline,
@@ -1409,6 +1479,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MiniMaxH3ModularPipeline,
             MiniMaxMusic3Blocks,
             MiniMaxMusic3ModularPipeline,
+            QwenImage21AutoBlocks,
+            QwenImage21ModularPipeline,
+            QwenImage21TurboAutoBlocks,
+            QwenImage21TurboModularPipeline,
             QwenImageAutoBlocks,
             QwenImageEditAutoBlocks,
             QwenImageEditModularPipeline,
@@ -1549,6 +1623,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky5I2VPipeline,
             Kandinsky5T2IPipeline,
             Kandinsky5T2VPipeline,
+            Kandinsky6SRPipeline,
+            Kandinsky6SRPipelineOutput,
+            Kandinsky6TI2VAPipeline,
+            Kandinsky6TI2VAPipelineOutput,
             KandinskyCombinedPipeline,
             KandinskyImg2ImgCombinedPipeline,
             KandinskyImg2ImgPipeline,
@@ -1595,9 +1673,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTXPipeline,
             LucyEditPipeline,
             Lumina2Pipeline,
-            Lumina2Text2ImgPipeline,
             LuminaPipeline,
-            LuminaText2ImgPipeline,
             MarigoldDepthPipeline,
             MarigoldIntrinsicsPipeline,
             MarigoldNormalsPipeline,
@@ -1616,6 +1692,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtSigmaPipeline,
             PRXPipeline,
             PRXPixelPipeline,
+            QwenImage21Pipeline,
             QwenImageControlNetInpaintPipeline,
             QwenImageControlNetPipeline,
             QwenImageEditInpaintPipeline,
@@ -1633,6 +1710,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaSprintImg2ImgPipeline,
             SanaSprintPipeline,
             SanaVideoPipeline,
+            SanaWMLTX2Refiner,
+            SanaWMPipeline,
+            SanaWMPipelineOutput,
             SemanticStableDiffusionPipeline,
             ShapEImg2ImgPipeline,
             ShapEPipeline,

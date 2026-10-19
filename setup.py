@@ -100,8 +100,7 @@ _deps = [
     "filelock",
     "ftfy",
     "hf-doc-builder>=0.3.0",
-    "httpx<1.0.0",
-    "huggingface-hub>=1.26.0,<2.0",
+    "huggingface-hub>=1.32.0,<3.0",
     "requests-mock==1.10.0",
     "importlib_metadata",
     "invisible-watermark>=0.2.0",
@@ -120,7 +119,7 @@ _deps = [
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
-    "python>=3.10.0",
+    "python>=3.11.0",
     "ruff==0.9.10",
     "safetensors>=0.8.0",
     "sentencepiece>=0.1.91,!=0.1.92",
@@ -130,7 +129,7 @@ _deps = [
     "optimum_quanto>=0.2.6",
     "gguf>=0.10.0",
     "auto-round>=0.13.0",
-    "torchao>=0.7.0",
+    "torchao>=0.15.0",
     "bitsandbytes>=0.43.3",
     "nvidia_modelopt[hf]>=0.33.1",
     "sdnq>=0.2.2",
@@ -260,7 +259,6 @@ extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras
 install_requires = [
     deps["importlib_metadata"],
     deps["filelock"],
-    deps["httpx"],
     deps["huggingface-hub"],
     deps["numpy"],
     deps["regex"],
@@ -269,11 +267,11 @@ install_requires = [
     deps["Pillow"],
 ]
 
-version_range_max = max(sys.version_info[1], 10) + 1
+version_range_max = max(sys.version_info[1], 11) + 1
 
 setup(
     name="diffusers",
-    version="0.41.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.42.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="State-of-the-art diffusion in PyTorch.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
@@ -286,7 +284,7 @@ setup(
     packages=find_packages("src"),
     package_data={"diffusers": ["py.typed"]},
     include_package_data=True,
-    python_requires=">=3.10.0",
+    python_requires=">=3.11.0",
     install_requires=list(install_requires),
     extras_require=extras,
     entry_points={"console_scripts": ["diffusers-cli=diffusers.commands.diffusers_cli:main"]},
@@ -300,6 +298,6 @@ setup(
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
         "Programming Language :: Python :: 3",
     ]
-    + [f"Programming Language :: Python :: 3.{i}" for i in range(8, version_range_max)],
+    + [f"Programming Language :: Python :: 3.{i}" for i in range(11, version_range_max)],
     cmdclass={"deps_table_update": DepsTableUpdateCommand},
 )

@@ -184,7 +184,8 @@ class TestStableDiffusionUpscalePipeline(StableDiffusionUpscalePipelineTesterCon
         assert image.shape[0] == 2
 
     def test_stable_diffusion_upscale_prompt_embeds(self):
-        sd_pipe = self.get_pipeline()
+        # `encode_prompt` is called with `torch_device` below, so the pipeline has to live there too.
+        sd_pipe = self.get_pipeline().to(torch_device)
 
         image = sd_pipe(**self.get_dummy_inputs()).images
 

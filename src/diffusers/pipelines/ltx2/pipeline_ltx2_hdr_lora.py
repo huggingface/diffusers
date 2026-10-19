@@ -1080,7 +1080,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 1024,
-    ):
+    ) -> LTX2PipelineOutput | tuple:
         r"""
         Run HDR IC-LoRA video generation.
 

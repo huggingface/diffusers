@@ -30,7 +30,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, randn_tensor
 from ..flux.pipeline_flux_fill import calculate_shift, retrieve_latents, retrieve_timesteps
 from ..flux.pipeline_output import FluxPipelineOutput
 from ..pipeline_utils import DiffusionPipeline
@@ -228,7 +228,8 @@ class VisualClozeGenerationPipeline(
                 f" {max_sequence_length} tokens: {removed_text}"
             )
 
-        prompt_embeds = self.text_encoder_2(text_input_ids.to(device), output_hidden_states=False)[0]
+        model_device = get_module_execution_device(self.text_encoder_2)
+        prompt_embeds = self.text_encoder_2(text_input_ids.to(model_device), output_hidden_states=False)[0]
 
         dtype = self.text_encoder_2.dtype
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
@@ -274,7 +275,8 @@ class VisualClozeGenerationPipeline(
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
                 f" {self.tokenizer_max_length} tokens: {removed_text}"
             )
-        prompt_embeds = self.text_encoder(text_input_ids.to(device), output_hidden_states=False)
+        model_device = get_module_execution_device(self.text_encoder)
+        prompt_embeds = self.text_encoder(text_input_ids.to(model_device), output_hidden_states=False)
 
         # Use pooled output of CLIPTextModel
         prompt_embeds = prompt_embeds.pooler_output
@@ -675,7 +677,7 @@ class VisualClozeGenerationPipeline(
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
-    ):
+    ) -> FluxPipelineOutput | tuple:
         r"""
         Function invoked when calling the VisualCloze pipeline for generation.
 

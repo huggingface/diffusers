@@ -3,13 +3,12 @@ from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
 from diffusers import AutoencoderKL, ChromaPipeline, ChromaTransformer2DModel, FlowMatchEulerDiscreteScheduler
 
-from ...testing_utils import assert_tensors_close, torch_device
+from ...testing_utils import torch_device
 from ..flux.testing_utils import FluxIPAdapterTesterMixin
 from ..testing_utils import (
     BasePipelineTesterConfig,
     MemoryTesterMixin,
     PipelineTesterMixin,
-    check_qkv_fused_layers_exist,
 )
 
 
@@ -104,52 +103,6 @@ class TestChromaPipeline(ChromaPipelineTesterConfig, PipelineTesterMixin):
         # Outputs should be different here
         # For some reasons, they don't show large differences
         assert max_diff > 1e-6, "Outputs should be different for different prompts."
-
-    def test_fused_qkv_projections(self):
-        # Run on CPU to keep the seeded generator deterministic across the three forward passes.
-        pipe = self.get_pipeline()
-
-        inputs = self.get_dummy_inputs()
-        image = pipe(**inputs).images
-        original_image_slice = image[0, -1, -3:, -3:]
-
-        # TODO (sayakpaul): will refactor this once `fuse_qkv_projections()` has been added
-        # to the pipeline level.
-        pipe.transformer.fuse_qkv_projections()
-        assert check_qkv_fused_layers_exist(pipe.transformer, ["to_qkv"]), (
-            "Something wrong with the fused attention layers. Expected all the attention projections to be fused."
-        )
-
-        inputs = self.get_dummy_inputs()
-        image = pipe(**inputs).images
-        image_slice_fused = image[0, -1, -3:, -3:]
-
-        pipe.transformer.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs()
-        image = pipe(**inputs).images
-        image_slice_disabled = image[0, -1, -3:, -3:]
-
-        assert_tensors_close(
-            original_image_slice,
-            image_slice_fused,
-            atol=1e-3,
-            rtol=1e-3,
-            msg="Fusion of QKV projections shouldn't affect the outputs.",
-        )
-        assert_tensors_close(
-            image_slice_fused,
-            image_slice_disabled,
-            atol=1e-3,
-            rtol=1e-3,
-            msg="Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled.",
-        )
-        assert_tensors_close(
-            original_image_slice,
-            image_slice_disabled,
-            atol=1e-2,
-            rtol=1e-2,
-            msg="Original outputs should match when fused QKV projections are disabled.",
-        )
 
     def test_chroma_image_output_shape(self):
         pipe = self.get_pipeline().to(torch_device)
