@@ -332,7 +332,7 @@ class AutoencoderKLKVAEAudio(ModelMixin, AttentionMixin, AutoencoderMixin, Confi
 
     @apply_forward_hook
     def encode(
-        self, audio_data: torch.Tensor, sample_rate: Optional[int] = None, return_dict: bool = True
+        self, audio_data: torch.Tensor, return_dict: bool = True
     ) -> AutoencoderKLOutput | tuple[DiagonalGaussianDistribution]:
         """
         Encode a batch of audio waveforms into latents.
@@ -340,8 +340,6 @@ class AutoencoderKLKVAEAudio(ModelMixin, AttentionMixin, AutoencoderMixin, Confi
         Args:
             audio_data (`torch.Tensor` of shape `(batch_size, num_channels, num_samples)`):
                 Input batch of raw audio waveforms.
-            sample_rate (`int`, *optional*):
-                Sample rate of `audio_data`, in Hz. If given, it must match `self.config.sample_rate`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether to return a [`~models.autoencoder_kl.AutoencoderKLOutput`] instead of a plain tuple.
 
@@ -349,12 +347,6 @@ class AutoencoderKLKVAEAudio(ModelMixin, AttentionMixin, AutoencoderMixin, Confi
                 The latent representations of the encoded audio. If `return_dict` is True, a
                 [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
         """
-        if sample_rate is not None and sample_rate != self.config.sample_rate:
-            raise ValueError(
-                f"`sample_rate` ({sample_rate}) does not match the model's configured sample rate "
-                f"({self.config.sample_rate})."
-            )
-
         if self.use_slicing and audio_data.shape[0] > 1:
             encoded_slices = [self._encode(x_slice) for x_slice in audio_data.split(1)]
             moments = torch.cat(encoded_slices)
@@ -399,7 +391,6 @@ class AutoencoderKLKVAEAudio(ModelMixin, AttentionMixin, AutoencoderMixin, Confi
     def forward(
         self,
         sample: torch.Tensor,
-        sample_rate: Optional[int] = None,
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
@@ -408,8 +399,6 @@ class AutoencoderKLKVAEAudio(ModelMixin, AttentionMixin, AutoencoderMixin, Confi
         Args:
             sample (`torch.Tensor` of shape `(batch_size, num_channels, num_samples)`):
                 Input batch of raw audio waveforms.
-            sample_rate (`int`, *optional*):
-                Sample rate of `sample`, in Hz. If given, it must match `self.config.sample_rate`.
             sample_posterior (`bool`, *optional*, defaults to `False`):
                 Whether to sample from the posterior.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -425,7 +414,7 @@ class AutoencoderKLKVAEAudio(ModelMixin, AttentionMixin, AutoencoderMixin, Confi
         """
         length = sample.shape[-1]
 
-        posterior = self.encode(sample, sample_rate=sample_rate).latent_dist
+        posterior = self.encode(sample).latent_dist
         if sample_posterior:
             z = posterior.sample(generator=generator)
         else:
