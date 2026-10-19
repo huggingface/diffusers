@@ -26,7 +26,6 @@ from diffusers.modular_pipelines import (
     Flux3ModularPipeline,
 )
 from diffusers.modular_pipelines.flux3.encoders import Flux3TextEncoderStep
-from diffusers.modular_pipelines.flux3.inputs import Flux3ImageCondInputStep
 from diffusers.utils import logging
 
 from ...testing_utils import CaptureLogger, torch_device
@@ -104,7 +103,8 @@ FLUX3_INPUTS = {
     "sigmas": None,
     "output_type": "pil",
 }
-FLUX3_TEXT2IMAGE_INPUTS = {**FLUX3_INPUTS, "height": 1024, "width": 1024}
+# the decode step's crop-back box is produced by the image branch; text2image exposes it as an optional input
+FLUX3_TEXT2IMAGE_INPUTS = {**FLUX3_INPUTS, "height": 1024, "width": 1024, "reference_crop": None}
 FLUX3_IMAGE_CONDITIONED_INPUTS = {**FLUX3_INPUTS, "height": None, "width": None}
 FLUX3_WORKFLOW_DEFAULTS = {
     "text2image": {
@@ -162,7 +162,7 @@ FLUX3_DISTILLED_WORKFLOW_DEFAULTS = {
     "text2image": {
         "components": FLUX3_DISTILLED_COMPONENTS,
         "required_inputs": ["prompt"],
-        "inputs": {**FLUX3_DISTILLED_INPUTS, "height": 1024, "width": 1024},
+        "inputs": {**FLUX3_DISTILLED_INPUTS, "height": 1024, "width": 1024, "reference_crop": None},
         "component_configs": FLUX3_DISTILLED_SAMPLING,
     },
     "image_conditioned": {
@@ -250,21 +250,30 @@ class TestFlux3ModularPipelineFast(Flux3ModularPipelineTesterConfig, ModularPipe
         assert not torch.allclose(out["images"], direct["images"])
 
     def test_image_to_image_default_size(self):
-        # without a size, image-to-image generates at the default area (1024 x 1024 for the real model) at the first
-        # reference's aspect ratio, rounded to the token grid; a given side overrides its default. The default area is
-        # shrunk to 64 x 64 for the tiny model.
-        blocks = self.pipeline_blocks_class().get_workflow("image_conditioned")
-        blocks.sub_blocks["denoise.cond_input"] = Flux3ImageCondInputStep(default_height=64, default_width=64)
-        pipe = blocks.init_pipeline(self.pretrained_model_name_or_path)
-        pipe.load_components(dtype=torch.float32)
-        pipe.to(torch_device)
+        # without a size, image-to-image generates at the first reference's own size; a given side overrides it.
+        # A single reference is padded to the image processor's 16-pixel grid and the image is cropped back
+        pipe = self.get_pipeline().to(torch_device)
         inputs = {k: v for k, v in self.get_dummy_inputs().items() if k not in ("height", "width")}
         inputs["num_inference_steps"] = 1
-        inputs["image"] = self.get_reference_images(sizes=((64, 48),))  # 64 x 48 pixels, 4 pixels per token
 
-        # 64 x 64 of area at the 4:3 aspect ratio: 72 x 56 on the 4-pixel grid
-        assert pipe(**inputs, output="images").shape[-2:] == (56, 72)
-        assert pipe(**inputs, height=32, width=32, output="images").shape[-2:] == (32, 32)
+        assert pipe(**inputs, image=self.get_reference_images(sizes=((64, 48),)), output="images").shape[-2:] == (
+            48,
+            64,
+        )
+        # 62 x 46 is padded to the 64 x 48 canvas, generated there and cropped back to 62 x 46
+        assert pipe(**inputs, image=self.get_reference_images(sizes=((62, 46),)), output="images").shape[-2:] == (
+            46,
+            62,
+        )
+        # a given size is used as is, without the crop-back
+        image = pipe(
+            **inputs, image=self.get_reference_images(sizes=((62, 46),)), height=32, width=32, output="images"
+        )
+        assert image.shape[-2:] == (32, 32)
+        # several references: the first one's size, each cropped to the grid
+        assert pipe(**inputs, image=self.get_reference_images(sizes=((62, 46), (32, 32))), output="images").shape[
+            -2:
+        ] == (32, 48)
 
     def test_text_window_pads_to_multiple(self):
         # the prompt is right-padded to the block's pad multiple (80 for the real model), capped at `max_sequence_length`
