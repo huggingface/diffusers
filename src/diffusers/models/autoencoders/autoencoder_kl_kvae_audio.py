@@ -258,7 +258,7 @@ class AutoencoderKLKVAEAudio(ModelMixin, AttentionMixin, AutoencoderMixin, Confi
         encoder_dim (`int`, *optional*, defaults to 64):
             Base channel dimension for the encoder; doubled at every downsampling stage.
         encoder_rates (`list[int]`, *optional*, defaults to `[2, 3, 4, 5, 8]`):
-            Strides for downsampling in the encoder. Used in reverse order for upsampling in the decoder.
+            Strides for downsampling in the encoder.
         latent_dim (`int`, *optional*, defaults to 2048):
             Channel dimension of the encoder output (before the `in_proj` bottleneck).
         codebook_dim (`int`, *optional*, defaults to 64):
