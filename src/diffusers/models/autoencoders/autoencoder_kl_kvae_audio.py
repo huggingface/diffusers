@@ -30,7 +30,7 @@ from ..modeling_utils import ModelMixin
 from .vae import AutoencoderMixin, DecoderOutput, DiagonalGaussianDistribution
 
 
-class Snake1d(nn.Module):
+class KVAEAudioSnake1d(nn.Module):
     """
     A 1-dimensional Snake activation function module.
     """
@@ -47,19 +47,19 @@ class Snake1d(nn.Module):
         return hidden_states
 
 
-# Copied from diffusers.models.autoencoders.autoencoder_oobleck.OobleckResidualUnit with Oobleck->KVAEAudio
+# Copied from diffusers.models.autoencoders.autoencoder_oobleck.OobleckResidualUnit with Oobleck->KVAEAudio, Snake1d->KVAEAudioSnake1d
 class KVAEAudioResidualUnit(nn.Module):
     """
-    A residual unit composed of Snake1d and weight-normalized Conv1d layers with dilations.
+    A residual unit composed of KVAEAudioSnake1d and weight-normalized Conv1d layers with dilations.
     """
 
     def __init__(self, dimension: int = 16, dilation: int = 1):
         super().__init__()
         pad = ((7 - 1) * dilation) // 2
 
-        self.snake1 = Snake1d(dimension)
+        self.snake1 = KVAEAudioSnake1d(dimension)
         self.conv1 = weight_norm(nn.Conv1d(dimension, dimension, kernel_size=7, dilation=dilation, padding=pad))
-        self.snake2 = Snake1d(dimension)
+        self.snake2 = KVAEAudioSnake1d(dimension)
         self.conv2 = weight_norm(nn.Conv1d(dimension, dimension, kernel_size=1))
 
     def forward(self, hidden_state) -> torch.Tensor:
@@ -85,7 +85,7 @@ class KVAEAudioResidualUnit(nn.Module):
         return output_tensor
 
 
-# Copied from diffusers.models.autoencoders.autoencoder_oobleck.OobleckEncoderBlock with Oobleck->KVAEAudio
+# Copied from diffusers.models.autoencoders.autoencoder_oobleck.OobleckEncoderBlock with Oobleck->KVAEAudio, Snake1d->KVAEAudioSnake1d
 class KVAEAudioEncoderBlock(nn.Module):
     """Encoder block used in KVAEAudio encoder."""
 
@@ -95,7 +95,7 @@ class KVAEAudioEncoderBlock(nn.Module):
         self.res_unit1 = KVAEAudioResidualUnit(input_dim, dilation=1)
         self.res_unit2 = KVAEAudioResidualUnit(input_dim, dilation=3)
         self.res_unit3 = KVAEAudioResidualUnit(input_dim, dilation=9)
-        self.snake1 = Snake1d(input_dim)
+        self.snake1 = KVAEAudioSnake1d(input_dim)
         self.conv1 = weight_norm(
             nn.Conv1d(input_dim, output_dim, kernel_size=2 * stride, stride=stride, padding=math.ceil(stride / 2))
         )
@@ -115,7 +115,7 @@ class KVAEAudioDecoderBlock(nn.Module):
     def __init__(self, input_dim, output_dim, stride: int = 1):
         super().__init__()
 
-        self.snake1 = Snake1d(input_dim)
+        self.snake1 = KVAEAudioSnake1d(input_dim)
         # odd strides need output_padding=1 to invert the encoder's downsampling exactly, or decode() silently truncates
         self.conv_t1 = weight_norm(
             nn.ConvTranspose1d(
@@ -157,7 +157,7 @@ class KVAEAudioEncoder(nn.Module):
             blocks.append(KVAEAudioEncoderBlock(input_dim, d_model, stride=stride))
         self.block = nn.ModuleList(blocks)
 
-        self.snake1 = Snake1d(d_model)
+        self.snake1 = KVAEAudioSnake1d(d_model)
         self.conv2 = weight_norm(nn.Conv1d(d_model, latent_dim, kernel_size=3, padding=1))
 
     def forward(self, hidden_states) -> torch.Tensor:
@@ -187,7 +187,7 @@ class KVAEAudioDecoder(nn.Module):
             blocks.append(KVAEAudioDecoderBlock(input_dim, d_model, stride=stride))
         self.block = nn.ModuleList(blocks)
 
-        self.snake1 = Snake1d(d_model)
+        self.snake1 = KVAEAudioSnake1d(d_model)
         self.conv2 = weight_norm(nn.Conv1d(d_model, num_channels, kernel_size=7, padding=3))
         self.tanh = nn.Tanh()
 
