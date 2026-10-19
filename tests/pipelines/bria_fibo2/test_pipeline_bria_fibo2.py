@@ -377,3 +377,19 @@ class TestBriaFibo2ImageProcessor:
     )
     def test_get_image_size_should_be_the_size_fibo2_was_trained_at(self, aspect_ratio, size):
         assert BriaFibo2ImageProcessor().get_image_size(aspect_ratio) == size
+
+    def test_preprocess_should_crop_several_images_each_to_its_own_trained_size(self):
+        images = [PIL.Image.new("RGB", (1600, 900)), PIL.Image.new("RGB", (500, 500))]
+        vae_images, text_encoder_images = BriaFibo2ImageProcessor().preprocess(images)
+
+        assert [tuple(img.shape) for img in vae_images] == [(1, 3, 800, 1424), (1, 3, 1024, 1024)]
+        assert [img.size for img in text_encoder_images] == [(768, 431), (768, 768)]
+
+    def test_preprocess_should_grey_out_the_masked_region(self):
+        image = PIL.Image.new("RGB", (1024, 1024), (255, 0, 0))
+        mask = PIL.Image.new("L", (1024, 1024))
+        mask.paste(255, (0, 0, 512, 1024))
+        _, (text_encoder_image,) = BriaFibo2ImageProcessor().preprocess(image, mask=mask)
+
+        assert text_encoder_image.getpixel((0, 0)) == (128, 128, 128)
+        assert text_encoder_image.getpixel((767, 0)) == (255, 0, 0)

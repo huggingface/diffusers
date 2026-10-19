@@ -426,11 +426,12 @@ class BriaFibo2Pipeline(DiffusionPipeline):
         return latents
 
     def prepare_image_latents(self, image, batch_size, device, dtype):
-        # The images to edit are normalized with the VAE's BatchNorm statistics, like the image being generated. The
-        # pixels are made contiguous so the VAE's convolutions run the same kernels as in the reference implementation
+        # The images to edit, as `image_processor.preprocess` prepared them, are normalized with the VAE's BatchNorm
+        # statistics, like the image being generated. The pixels are made contiguous so the VAE's convolutions run the
+        # same kernels as in the reference implementation
         image_latents = []
         for img in image:
-            img = self.image_processor.preprocess(img).contiguous().to(device=device, dtype=self.vae.dtype)
+            img = img.contiguous().to(device=device, dtype=self.vae.dtype)
             latents = self._patchify_latents(self.vae.encode(img).latent_dist.mode().float())
             latents_bn_mean = self.vae.bn.running_mean.view(1, -1, 1, 1).to(latents.device, latents.dtype)
             latents_bn_scale = (1 / torch.sqrt(self.vae.bn.running_var + self.vae.config.batch_norm_eps)).view(
@@ -721,27 +722,17 @@ class BriaFibo2Pipeline(DiffusionPipeline):
         self._interrupt = False
         device = self._execution_device
 
-        # 2. Prepare the images to edit. A single image is cropped to the size of the result, several images each to
-        # the size for their own aspect ratio. The VAE encodes the crops, and Qwen3-VL sees them at most 768 pixels a
-        # side
+        # 2. Prepare the images to edit, as fibo-2 was trained on them: the crops the VAE encodes, and Qwen3-VL's copies
         vae_images = text_encoder_images = None
         if image is not None:
-            if mask is not None:
-                # Greyed out at the image's own size, before the crop, as in training
-                image = [self.image_processor.grey_out(image[0], mask)]
-            if len(image) == 1:
-                image_sizes = [(width, height)]
-            else:
-                image_sizes = [
-                    self.image_processor.get_image_size(img.width / img.height, area=default_area) for img in image
-                ]
-            vae_images = [
-                self.image_processor.resize(img, height=size[1], width=size[0], resize_mode="crop")
-                for img, size in zip(image, image_sizes)
-            ]
-            text_encoder_images = [img.copy() for img in vae_images]
-            for img in text_encoder_images:
-                img.thumbnail((self.text_encoder_image_size, self.text_encoder_image_size))
+            vae_images, text_encoder_images = self.image_processor.preprocess(
+                image,
+                height=height,
+                width=width,
+                mask=mask,
+                area=default_area,
+                text_encoder_image_size=self.text_encoder_image_size,
+            )
 
         # 3. Encode the prompt with the images to edit, and the negative prompt, without them, when guidance is on
         if prompt is not None:

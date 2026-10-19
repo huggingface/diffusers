@@ -15,14 +15,16 @@
 import math
 
 import PIL.Image
+import torch
 
 from ...image_processor import VaeImageProcessor
 
 
 class BriaFibo2ImageProcessor(VaeImageProcessor):
     r"""
-    Image processor for fibo-2: sizes the result and the images to edit as fibo-2 was trained, greys out the masked
-    region of an image to edit the way training did, and postprocesses the generated images.
+    Image processor for fibo-2: preprocesses the images to edit as fibo-2 was trained on them, with the masked region
+    of an image greyed out the way training did, gives the size fibo-2 was trained at for an aspect ratio, and
+    postprocesses the generated images.
 
     Args:
         vae_scale_factor (`int`, *optional*, defaults to `16`):
@@ -64,6 +66,49 @@ class BriaFibo2ImageProcessor(VaeImageProcessor):
         image = image.resize((resized_width, resized_height), resample=PIL.Image.LANCZOS)
         left, top = (resized_width - width) // 2, (resized_height - height) // 2
         return image.crop((left, top, left + width, top + height))
+
+    def preprocess(
+        self,
+        image: PIL.Image.Image | list[PIL.Image.Image],
+        height: int | None = None,
+        width: int | None = None,
+        mask: PIL.Image.Image | None = None,
+        area: int = 1024 * 1024,
+        text_encoder_image_size: int = 768,
+    ) -> tuple[list[torch.Tensor], list[PIL.Image.Image]]:
+        r"""
+        Preprocess the images to edit as fibo-2 was trained on them.
+
+        With `mask`, the region it marks in the single image is greyed out first (`grey_out`). A single image is then
+        cropped to `width` x `height`, the size of the result, by default the size for its own aspect ratio; several
+        images each to the size fibo-2 was trained at for their own aspect ratio, about `area` (`get_image_size`). The
+        VAE encodes the crops, and Qwen3-VL sees each one at most `text_encoder_image_size` pixels a side.
+
+        Returns:
+            `tuple[list[torch.Tensor], list[PIL.Image.Image]]`:
+                The crops as the VAE takes them, one tensor each since their sizes can differ, and Qwen3-VL's copies.
+        """
+        images = image if isinstance(image, list) else [image]
+        if mask is not None:
+            images = [self.grey_out(images[0], mask)]
+        if len(images) == 1:
+            if height is None and width is None:
+                width, height = self.get_image_size(images[0].width / images[0].height, area=area)
+            sizes = [(width, height)]
+        else:
+            sizes = [self.get_image_size(img.width / img.height, area=area) for img in images]
+        crops = [
+            self.resize(img, height=size[1], width=size[0], resize_mode="crop") for img, size in zip(images, sizes)
+        ]
+
+        text_encoder_images = []
+        for crop in crops:
+            text_encoder_image = crop.copy()
+            text_encoder_image.thumbnail((text_encoder_image_size, text_encoder_image_size))
+            text_encoder_images.append(text_encoder_image)
+        # Bound first: a zero-argument super() can't be called inside a comprehension before Python 3.12
+        to_tensor = super().preprocess
+        return [to_tensor(crop) for crop in crops], text_encoder_images
 
     @staticmethod
     def grey_out(image: PIL.Image.Image, mask: PIL.Image.Image) -> PIL.Image.Image:
