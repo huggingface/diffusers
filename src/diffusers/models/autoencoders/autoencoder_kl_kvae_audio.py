@@ -23,7 +23,8 @@ from torch.nn.utils.parametrizations import weight_norm
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils.accelerate_utils import apply_forward_hook
-from ..attention_processor import Attention
+from ..attention import AttentionMixin, AttentionModuleMixin
+from ..attention_dispatch import dispatch_attention_fn
 from ..modeling_outputs import AutoencoderKLOutput
 from ..modeling_utils import ModelMixin
 from .vae import AutoencoderMixin, DecoderOutput, DiagonalGaussianDistribution
@@ -202,7 +203,50 @@ class KVAEAudioDecoder(nn.Module):
         return hidden_states
 
 
-class AutoencoderKLKVAEAudio(ModelMixin, AutoencoderMixin, ConfigMixin):
+class KVAEAudioAttnProcessor:
+    """Attention processor used by [`KVAEAudioAttention`]."""
+
+    _attention_backend = None
+    _parallel_config = None
+
+    def __call__(self, attn: "KVAEAudioAttention", hidden_states: torch.Tensor) -> torch.Tensor:
+        query = attn.to_q(hidden_states).unflatten(2, (attn.heads, -1))
+        key = attn.to_k(hidden_states).unflatten(2, (attn.heads, -1))
+        value = attn.to_v(hidden_states).unflatten(2, (attn.heads, -1))
+
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
+        hidden_states = hidden_states.flatten(2, 3)
+        return attn.to_out[0](hidden_states)
+
+
+class KVAEAudioAttention(nn.Module, AttentionModuleMixin):
+    """Global multi-head self-attention applied to the encoder output before the `in_proj` bottleneck."""
+
+    _default_processor_cls = KVAEAudioAttnProcessor
+    _available_processors = [KVAEAudioAttnProcessor]
+    _supports_qkv_fusion = False
+
+    def __init__(self, dim: int, heads: int):
+        super().__init__()
+        self.heads = heads
+        self.to_q = nn.Linear(dim, dim)
+        self.to_k = nn.Linear(dim, dim)
+        self.to_v = nn.Linear(dim, dim)
+        self.to_out = nn.ModuleList([nn.Linear(dim, dim), nn.Dropout(0.0)])
+
+        self.set_processor(KVAEAudioAttnProcessor())
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        return self.processor(self, hidden_states)
+
+
+class AutoencoderKLKVAEAudio(ModelMixin, AttentionMixin, AutoencoderMixin, ConfigMixin):
     r"""
     A 1D convolutional autoencoder for encoding raw audio waveforms into continuous latents and decoding them back into
     waveforms. Introduced in [KVAE-Audio](https://huggingface.co/kandinskylab/KVAE-Audio).
@@ -266,13 +310,7 @@ class AutoencoderKLKVAEAudio(ModelMixin, AutoencoderMixin, ConfigMixin):
 
         self.use_attn = use_attn
         if use_attn:
-            self.attn = Attention(
-                query_dim=latent_dim,
-                heads=attn_num_heads,
-                dim_head=latent_dim // attn_num_heads,
-                bias=True,
-                out_bias=True,
-            )
+            self.attn = KVAEAudioAttention(latent_dim, attn_num_heads)
 
         self.use_slicing = False
 

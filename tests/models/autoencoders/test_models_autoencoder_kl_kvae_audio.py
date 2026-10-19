@@ -13,13 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import AutoencoderKLKVAEAudio
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TorchCompileTesterMixin
+from ..testing_utils import (
+    AttentionTesterMixin,
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    TorchCompileTesterMixin,
+)
 from .testing_utils import AutoencoderTesterMixin
 
 
@@ -105,3 +112,12 @@ class AutoencoderKLKVAEAudioAttnTesterConfig(AutoencoderKLKVAEAudioTesterConfig)
 
 class TestAutoencoderKLKVAEAudioAttn(AutoencoderKLKVAEAudioAttnTesterConfig, ModelTesterMixin):
     pass
+
+
+class TestAutoencoderKLKVAEAudioAttention(AutoencoderKLKVAEAudioAttnTesterConfig, AttentionTesterMixin):
+    @pytest.mark.skip(
+        "The model has a single attention module, so a dict of processors can never mismatch the number of "
+        "attention layers."
+    )
+    def test_attention_processor_count_mismatch_raises_error(self):
+        pass
