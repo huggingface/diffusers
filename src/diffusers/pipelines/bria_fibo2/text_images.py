@@ -30,7 +30,7 @@ FONT_SIZE = 20
 MAX_LINE_CHARS = 256
 # The fallback fonts, in order, from the `fonts` folder of fibo-2's repo: Aileron (CC0) and DejaVu Sans (Bitstream
 # Vera license)
-FONTS_REPO_ID = "briaai/fibo-2"
+FONTS_REPO_ID = "briaai/Fibo-2.0-dev"
 FALLBACK_FONT_FILES = ("Aileron-Regular.otf", "DejaVuSans.ttf")
 _PADDING = 2
 _LINE_SPACING = 4

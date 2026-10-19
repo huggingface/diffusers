@@ -82,7 +82,7 @@ EXAMPLE_DOC_STRING = """
         >>> prompt = json.dumps(caption, separators=(",", ":"), ensure_ascii=False)
 
         >>> # 30 steps with guidance 5, the defaults
-        >>> pipe = BriaFibo2Pipeline.from_pretrained("briaai/fibo-2", dtype=torch.bfloat16).to("cuda")
+        >>> pipe = BriaFibo2Pipeline.from_pretrained("briaai/Fibo-2.0-dev", dtype=torch.bfloat16).to("cuda")
         >>> image = pipe(prompt).images[0]
         >>> image.save("fibo2.png")
 
@@ -714,8 +714,8 @@ class BriaFibo2Pipeline(DiffusionPipeline):
                 Whether to draw the `text_images` of each caption, the way fibo-2's training drew them: each text in
                 one line, black on white, in Pillow's built-in font at size 20. Characters that font lacks are drawn in
                 Aileron, then DejaVu Sans, read on first need from the `fonts` folder of the folder the pipeline was
-                loaded from, or downloaded from `briaai/fibo-2`. A caption without text, and a prompt without a JSON
-                caption, such as a short description, get no images, as in training.
+                loaded from, or downloaded from `briaai/Fibo-2.0-dev`. A caption without text, and a prompt without a
+                JSON caption, such as a short description, get no images, as in training.
             height (`int`, *optional*):
                 The height in pixels of the generated image. Must be divisible by 16. Defaults to 1024, or when
                 editing, to the size fibo-2 was trained at for the aspect ratio of the first image, about one

@@ -18,17 +18,20 @@ from diffusers.configuration_utils import FrozenDict
 
 
 """
+Converts an original fibo-2 checkpoint, with `transformer/`, `vae/`, `text_encoder/` and `scheduler/` folders, to
+diffusers. The converted checkpoints are released as briaai/Fibo-2.0-dev and briaai/Fibo-2.0-turbo.
+
 # Transformer only
 
 python scripts/convert_bria_fibo2_to_diffusers.py \
-  --original_repo_id briaai/fibo-2 \
-  --output_path fibo-2-diffusers
+  --checkpoint_path /path/to/original/checkpoint \
+  --output_path Fibo-2.0-dev
 
 # Full pipeline
 
 python scripts/convert_bria_fibo2_to_diffusers.py \
-  --original_repo_id briaai/fibo-2 \
-  --output_path fibo-2-diffusers \
+  --checkpoint_path /path/to/original/checkpoint \
+  --output_path Fibo-2.0-dev \
   --full_pipe
 """
 

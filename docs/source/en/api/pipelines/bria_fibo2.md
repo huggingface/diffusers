@@ -14,7 +14,12 @@ specific language governing permissions and limitations under the License.
 
 fibo-2 is an 8.1B parameter flow-matching transformer from [Bria](https://huggingface.co/briaai) that generates images from structured JSON captions. Its text encoder is [Qwen3-VL](https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct): a Perceiver condenses Qwen3-VL's hidden states into gist tokens that join the image tokens in one stream, and five of the transformer's blocks also read Qwen3-VL directly through gated cross-attention.
 
-The checkpoint, [`briaai/fibo-2`](https://huggingface.co/briaai/fibo-2), runs 30 steps with guidance 5, the pipeline's defaults. With guidance on, the default negative prompt is the null caption the model was trained with: the structured caption with every value left empty.
+There are two checkpoints:
+
+- [`briaai/Fibo-2.0-dev`](https://huggingface.co/briaai/Fibo-2.0-dev), the full model for text-to-image and editing, with classifier-free guidance. The pipeline's defaults, 30 steps with guidance 5, are for this checkpoint.
+- [`briaai/Fibo-2.0-turbo`](https://huggingface.co/briaai/Fibo-2.0-turbo), distilled for editing in 4 steps without guidance (`guidance_scale=1.0`).
+
+With guidance on, the default negative prompt is the null caption the model was trained with: the structured caption with every value left empty.
 
 fibo-2 is trained on structured JSON captions and will not work well with freeform text. Pass the caption serialized as JSON:
 
@@ -37,11 +42,18 @@ import torch
 from diffusers import BriaFibo2Pipeline
 from diffusers.utils import load_image
 
-pipe = BriaFibo2Pipeline.from_pretrained("briaai/fibo-2", dtype=torch.bfloat16).to("cuda")
+pipe = BriaFibo2Pipeline.from_pretrained("briaai/Fibo-2.0-dev", dtype=torch.bfloat16).to("cuda")
 image = load_image(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yarn-art-pikachu.png"
 )
 edited = pipe("Make the background a snowy forest", image=image).images[0]
+```
+
+For faster edits, load the turbo checkpoint and turn guidance off:
+
+```py
+pipe = BriaFibo2Pipeline.from_pretrained("briaai/Fibo-2.0-turbo", dtype=torch.bfloat16).to("cuda")
+edited = pipe("Make the background a snowy forest", image=image, num_inference_steps=4, guidance_scale=1.0).images[0]
 ```
 
 - The prompt can also be a JSON object with an `"edit_instruction"` key and a caption of the result, in any of the forms fibo-2 was trained to edit with. The pipeline turns it into the prompt fibo-2 was trained to edit with.
@@ -65,7 +77,7 @@ image = pipe(prompt, render_text_images=False).images[0]
 Training showed fibo-2 these images for some captions with text and not for others, so it works either way.
 
 - Each `text_render` entry that has `text` gets an image: the text in one line, black on white, in Pillow's built-in font at size 20. A text longer than 256 characters is split into lines of 256.
-- Characters that font lacks are drawn in Aileron, then DejaVu Sans. The pipeline reads these fonts when a text first needs them, from the `fonts` folder of the folder it was loaded from, or else from [`briaai/fibo-2`](https://huggingface.co/briaai/fibo-2).
+- Characters that font lacks are drawn in Aileron, then DejaVu Sans. The pipeline reads these fonts when a text first needs them, from the `fonts` folder of the folder it was loaded from, or else from [`briaai/Fibo-2.0-dev`](https://huggingface.co/briaai/Fibo-2.0-dev).
 - The pipeline marks each entry with an `image_tokens` field for its image, and Qwen3-VL sees the images after any images to edit.
 - A generation runs its first steps, while the noise level is above `pipe.text_images_max_noise_level` (0.9), on the caption without the images. An edit uses them at every step.
 - A caption without text gets no images, nor does a short description, as in training.
