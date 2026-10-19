@@ -86,8 +86,7 @@ Modular workflows can cache the VAE encoder's normalized, unpacked tensors. Vide
 The core `denoise` block packs those tensors, expands conditioning for `num_videos_per_prompt`, and unpacks
 denoised outputs back to the same VAE form. Pass initial `latents` and `audio_latents` in that unpacked form too.
 Decoders take normalized VAE tensors and denormalize immediately before
-decoding. `output=["latents", "audio_latents"]` returns normalized VAE tensors. With `output_type="latent"` and
-`output=["videos", "audio"]`, you get the denormalized VAE tensors without decoding.
+decoding. `output=["latents", "audio_latents"]` returns normalized VAE tensors.
 
 ## EchoModularPipeline
 
