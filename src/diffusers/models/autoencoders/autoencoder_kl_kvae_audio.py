@@ -259,9 +259,8 @@ class AutoencoderKLKVAEAudio(ModelMixin, AttentionMixin, AutoencoderMixin, Confi
             Base channel dimension for the encoder; doubled at every downsampling stage.
         encoder_rates (`list[int]`, *optional*, defaults to `[2, 3, 4, 5, 8]`):
             Strides for downsampling in the encoder. Used in reverse order for upsampling in the decoder.
-        latent_dim (`int`, *optional*):
-            Channel dimension of the encoder output (before the `in_proj` bottleneck). Defaults to `encoder_dim * 2 **
-            len(encoder_rates)` when not provided.
+        latent_dim (`int`, *optional*, defaults to 2048):
+            Channel dimension of the encoder output (before the `in_proj` bottleneck).
         codebook_dim (`int`, *optional*, defaults to 64):
             Channel dimension of the posterior distribution's latent space (after the `in_proj` bottleneck).
         decoder_dim (`int`, *optional*, defaults to 1536):
@@ -284,7 +283,7 @@ class AutoencoderKLKVAEAudio(ModelMixin, AttentionMixin, AutoencoderMixin, Confi
         self,
         encoder_dim: int = 64,
         encoder_rates: list[int] = [2, 3, 4, 5, 8],
-        latent_dim: Optional[int] = None,
+        latent_dim: int = 2048,
         codebook_dim: int = 64,
         decoder_dim: int = 1536,
         decoder_rates: list[int] = [8, 5, 4, 3, 2],
@@ -293,10 +292,6 @@ class AutoencoderKLKVAEAudio(ModelMixin, AttentionMixin, AutoencoderMixin, Confi
         attn_num_heads: int = 8,
     ):
         super().__init__()
-
-        if latent_dim is None:
-            latent_dim = encoder_dim * 2 ** len(encoder_rates)
-            self.register_to_config(latent_dim=latent_dim)
 
         self.hop_length = int(np.prod(encoder_rates))
 

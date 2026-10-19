@@ -57,6 +57,7 @@ class AutoencoderKLKVAEAudioTesterConfig(BaseModelTesterConfig):
             # `KVAEAudioDecoderBlock` (needed for the decoder to invert the encoder's downsampling
             # exactly) is actually exercised by the test suite.
             "encoder_rates": [2, 3],
+            "latent_dim": 16,
             "codebook_dim": 4,
             "decoder_dim": 16,
             "decoder_rates": [3, 2],
