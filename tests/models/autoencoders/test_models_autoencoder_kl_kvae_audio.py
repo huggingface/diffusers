@@ -62,6 +62,7 @@ class AutoencoderKLKVAEAudioTesterConfig(BaseModelTesterConfig):
             "decoder_rates": [3, 2],
             "sample_rate": 48000,
             "num_channels": 1,
+            "attn_num_heads": 2,
         }
 
     def get_dummy_inputs(self) -> dict:
@@ -103,18 +104,7 @@ class TestAutoencoderKLKVAEAudioSlicing(AutoencoderKLKVAEAudioTesterConfig, Auto
     pass
 
 
-class AutoencoderKLKVAEAudioAttnTesterConfig(AutoencoderKLKVAEAudioTesterConfig):
-    def get_init_dict(self) -> dict:
-        init_dict = super().get_init_dict()
-        init_dict.update({"use_attn": True, "attn_num_heads": 2})
-        return init_dict
-
-
-class TestAutoencoderKLKVAEAudioAttn(AutoencoderKLKVAEAudioAttnTesterConfig, ModelTesterMixin):
-    pass
-
-
-class TestAutoencoderKLKVAEAudioAttention(AutoencoderKLKVAEAudioAttnTesterConfig, AttentionTesterMixin):
+class TestAutoencoderKLKVAEAudioAttention(AutoencoderKLKVAEAudioTesterConfig, AttentionTesterMixin):
     @pytest.mark.skip(
         "The model has a single attention module, so a dict of processors can never mismatch the number of "
         "attention layers."

@@ -143,6 +143,7 @@ def convert_kvae_audio(checkpoint_path: str, output_path: str, dtype: str = "fp3
     with open(checkpoint_dir / "config.json") as f:
         config = json.load(f)
     config.pop("model_type", None)
+    config.pop("use_attn", None)
 
     original_state_dict = load_file(checkpoint_dir / "model.safetensors")
     converted_state_dict = convert_kvae_audio_state_dict(original_state_dict)

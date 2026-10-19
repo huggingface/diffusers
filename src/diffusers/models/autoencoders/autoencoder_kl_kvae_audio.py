@@ -272,10 +272,8 @@ class AutoencoderKLKVAEAudio(ModelMixin, AttentionMixin, AutoencoderMixin, Confi
             The sampling rate, in Hz, that the model was trained on.
         num_channels (`int`, *optional*, defaults to 1):
             Number of channels in the audio data (1 for mono).
-        use_attn (`bool`, *optional*, defaults to `False`):
-            Whether to apply a global self-attention block to the encoder output before the `in_proj` bottleneck.
         attn_num_heads (`int`, *optional*, defaults to 8):
-            Number of attention heads used when `use_attn=True`.
+            Number of heads in the self-attention block applied to the encoder output.
     """
 
     _supports_gradient_checkpointing = False
@@ -292,7 +290,6 @@ class AutoencoderKLKVAEAudio(ModelMixin, AttentionMixin, AutoencoderMixin, Confi
         decoder_rates: list[int] = [8, 5, 4, 3, 2],
         sample_rate: int = 48000,
         num_channels: int = 1,
-        use_attn: bool = False,
         attn_num_heads: int = 8,
     ):
         super().__init__()
@@ -307,10 +304,7 @@ class AutoencoderKLKVAEAudio(ModelMixin, AttentionMixin, AutoencoderMixin, Confi
         self.in_proj = weight_norm(nn.Conv1d(latent_dim, codebook_dim * 2, kernel_size=1))
         self.out_proj = weight_norm(nn.Conv1d(codebook_dim, latent_dim, kernel_size=1))
         self.decoder = KVAEAudioDecoder(latent_dim, decoder_dim, decoder_rates, num_channels)
-
-        self.use_attn = use_attn
-        if use_attn:
-            self.attn = KVAEAudioAttention(latent_dim, attn_num_heads)
+        self.attn = KVAEAudioAttention(latent_dim, attn_num_heads)
 
         self.use_slicing = False
 
@@ -323,10 +317,9 @@ class AutoencoderKLKVAEAudio(ModelMixin, AttentionMixin, AutoencoderMixin, Confi
         audio_data = self._pad_to_hop_length(audio_data)
         hidden_states = self.encoder(audio_data)
 
-        if self.use_attn:
-            hidden_states = hidden_states.transpose(1, 2)
-            hidden_states = self.attn(hidden_states)
-            hidden_states = hidden_states.transpose(1, 2).contiguous()
+        hidden_states = hidden_states.transpose(1, 2)
+        hidden_states = self.attn(hidden_states)
+        hidden_states = hidden_states.transpose(1, 2).contiguous()
 
         return self.in_proj(hidden_states)
 
