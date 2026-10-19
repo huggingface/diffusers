@@ -94,7 +94,12 @@ class TestAutoencoderKLKVAEAudio(AutoencoderKLKVAEAudioTesterConfig, ModelTester
 
 
 class TestAutoencoderKLKVAEAudioMemory(AutoencoderKLKVAEAudioTesterConfig, MemoryTesterMixin):
-    pass
+    @pytest.mark.skip(
+        "Not supported: training through weight_norm fails when layerwise casting stores its weights in float16 or "
+        "float8."
+    )
+    def test_layerwise_casting_training(self):
+        pass
 
 
 class TestAutoencoderKLKVAEAudioTorchCompile(AutoencoderKLKVAEAudioTesterConfig, TorchCompileTesterMixin):
