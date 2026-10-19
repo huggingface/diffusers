@@ -31,7 +31,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
     _import_structure["autoencoders.autoencoder_cosmos3_audio"] = ["Cosmos3AVAEAudioTokenizer"]
     _import_structure["autoencoders.autoencoder_dc"] = ["AutoencoderDC"]
-    _import_structure["autoencoders.autoencoder_edenlive"] = ["EdenLiveLightTAEDecodeCache", "EdenLiveLightTAEDecoder"]
+    _import_structure["autoencoders.autoencoder_edenlive"] = ["EdenLiveLightTAEDecoder"]
     _import_structure["autoencoders.autoencoder_kandinsky6_sr"] = ["Kandinsky6SRVAE"]
     _import_structure["autoencoders.autoencoder_kl"] = ["AutoencoderKL"]
     _import_structure["autoencoders.autoencoder_kl_allegro"] = ["AutoencoderKLAllegro"]
@@ -222,7 +222,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderVidTok,
             ConsistencyDecoderVAE,
             Cosmos3AVAEAudioTokenizer,
-            EdenLiveLightTAEDecodeCache,
             EdenLiveLightTAEDecoder,
             Kandinsky6SRVAE,
             LongCatAudioDiTVae,

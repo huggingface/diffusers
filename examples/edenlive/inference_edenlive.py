@@ -26,7 +26,14 @@ import torch
 import torch.distributed as dist
 from PIL import Image
 
-from diffusers import ContextParallelConfig, EdenLivePipeline
+from diffusers import (
+    ContextParallelConfig,
+    EdenLiveCausalPipeline,
+    EdenLiveFlowMatchEulerDiscreteScheduler,
+    EdenLiveLightTAEDecoder,
+    EdenLivePipeline,
+    EdenLiveTransformer3DModel,
+)
 from diffusers.utils import export_to_video
 
 
@@ -106,14 +113,15 @@ def configure_parallelism(transformer, device, world_size, use_fsdp):
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model", default="VAST-AI/EdenLive", help="EdenLive release directory or Hub repository.")
-    parser.add_argument("--profile", choices=("5b-bidir", "14b-bidir", "5b-causal", "14b-causal"), required=True)
-    parser.add_argument("--full-vae", action="store_true", help="Decode with the full Wan VAE instead of LightTAE.")
+    parser.add_argument("--model", required=True, help="Standard Diffusers model directory or Hub repository.")
+    parser.add_argument("--causal", action="store_true", help="Use the causal transformer and scheduler subfolders.")
+    parser.add_argument(
+        "--lighttae", action="store_true", help="Use the optional LightTAE decoder instead of the full Wan VAE."
+    )
     parser.add_argument("--video", type=Path, required=True)
     parser.add_argument("--image", type=Path, required=True)
-    parser.add_argument("--prompt", required=True)
+    parser.add_argument("--prompt")
     parser.add_argument("--negative-prompt", default="")
-    parser.add_argument("--text-timeline", type=Path, help="JSON timeline for 5B bidirectional inference.")
     parser.add_argument("--chunk-prompts", type=Path, help="JSON list of prompts for chunk-causal inference.")
     parser.add_argument("--output", type=Path, default=Path("edenlive.mp4"))
     parser.add_argument("--height", type=int)
@@ -127,7 +135,12 @@ def parse_args():
     parser.add_argument("--no-fsdp", action="store_true", help="Use replicated DiT weights with context parallelism.")
     parser.add_argument("--local-files-only", action="store_true")
     parser.add_argument("--vae-tiling", action="store_true")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.chunk_prompts is not None and not args.causal:
+        parser.error("--chunk-prompts requires --causal.")
+    if args.prompt is None and args.chunk_prompts is None:
+        parser.error("Provide --prompt or --chunk-prompts.")
+    return args
 
 
 def main():
@@ -142,11 +155,24 @@ def main():
         dist.init_process_group("nccl", device_id=device)
     rank = dist.get_rank() if dist.is_initialized() else 0
     try:
-        loading_kwargs = {"decoder": None} if args.full_vae else {}
-        pipeline = EdenLivePipeline.from_pretrained(
+        loading_kwargs = {"local_files_only": args.local_files_only}
+        components = {"decoder": None}
+        pipeline_class = EdenLiveCausalPipeline if args.causal else EdenLivePipeline
+        if args.causal:
+            components["transformer"] = EdenLiveTransformer3DModel.from_pretrained(
+                args.model, subfolder="transformer_causal", torch_dtype=torch.bfloat16, **loading_kwargs
+            )
+            components["scheduler"] = EdenLiveFlowMatchEulerDiscreteScheduler.from_pretrained(
+                args.model, subfolder="scheduler_causal", **loading_kwargs
+            )
+        if args.lighttae:
+            components["decoder"] = EdenLiveLightTAEDecoder.from_pretrained(
+                args.model, subfolder="decoder", torch_dtype=torch.bfloat16, **loading_kwargs
+            )
+        pipeline = pipeline_class.from_pretrained(
             args.model,
-            profile=args.profile,
-            local_files_only=args.local_files_only,
+            torch_dtype={"default": torch.bfloat16, "proxy_encoder": torch.float32, "proxy_projection": torch.float32},
+            **components,
             **loading_kwargs,
         )
         if args.attention_backend is not None:
@@ -158,11 +184,11 @@ def main():
         if args.vae_tiling:
             pipeline.vae.enable_tiling()
         pipeline.set_progress_bar_config(disable=rank != 0)
-        is_5b = args.profile.startswith("5b-")
+        is_5b = pipeline.transformer.config.image_dim is None
         args.height = args.height if args.height is not None else (704 if is_5b else 480)
         args.width = args.width if args.width is not None else (1280 if is_5b else 832)
         args.fps = args.fps if args.fps is not None else (24 if is_5b else 16)
-        args.seed = args.seed if args.seed is not None else (42 if args.profile == "14b-causal" else 0)
+        args.seed = args.seed if args.seed is not None else (42 if args.causal and not is_5b else 0)
         video, video_info = load_video(args.video, args.fps, args.height, args.width, args.num_frames)
         inputs = {
             "prompt": args.prompt,
@@ -178,10 +204,8 @@ def main():
         for name in ("num_inference_steps", "guidance_scale"):
             if getattr(args, name) is not None:
                 inputs[name] = getattr(args, name)
-        for name in ("text_timeline", "chunk_prompts"):
-            path = getattr(args, name)
-            if path is not None:
-                inputs[name] = json.loads(path.read_text())
+        if args.chunk_prompts is not None:
+            inputs["chunk_prompts"] = json.loads(args.chunk_prompts.read_text())
         torch.cuda.reset_peak_memory_stats(device)
         torch.cuda.synchronize(device)
         started = time.perf_counter()

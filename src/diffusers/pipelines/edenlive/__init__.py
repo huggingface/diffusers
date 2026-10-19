@@ -23,7 +23,8 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_edenlive"] = ["EdenLivePipeline", "EdenLiveStreamState"]
+    _import_structure["pipeline_edenlive"] = ["EdenLivePipeline"]
+    _import_structure["pipeline_edenlive_causal"] = ["EdenLiveCausalPipeline"]
     _import_structure["pipeline_output"] = ["EdenLivePipelineOutput"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -33,7 +34,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .pipeline_edenlive import EdenLivePipeline, EdenLiveStreamState
+        from .pipeline_edenlive import EdenLivePipeline
+        from .pipeline_edenlive_causal import EdenLiveCausalPipeline
         from .pipeline_output import EdenLivePipelineOutput
 else:
     import sys

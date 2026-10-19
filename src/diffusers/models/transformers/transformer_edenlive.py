@@ -105,16 +105,12 @@ class EdenLiveAttnProcessor:
         attention_mask=None,
         rotary_emb=None,
         *,
-        text_timeline=None,
-        query_start=0,
         text_context_length=512,
     ):
         image_context = None
         if attn.add_k_proj is not None:
             if encoder_hidden_states is None:
                 raise ValueError("Image cross-attention requires image and text embeddings.")
-            if text_timeline is not None:
-                raise ValueError("Temporal text conditioning is supported by the 5B model only.")
             image_length = encoder_hidden_states.shape[1] - text_context_length
             if image_length <= 0:
                 raise ValueError("The 14B model requires CLIP image embeddings before the text embeddings.")
@@ -149,48 +145,16 @@ class EdenLiveAttnProcessor:
                 .type_as(query)
             )
 
-        if text_timeline is None:
-            output = dispatch_attention_fn(
-                query,
-                key,
-                value,
-                attn_mask=attention_mask,
-                dropout_p=0.0,
-                is_causal=False,
-                backend=self._attention_backend,
-                parallel_config=self._parallel_config if encoder_hidden_states is None else None,
-            )
-        else:
-            if encoder_hidden_states is None or attention_mask is not None:
-                raise ValueError("Temporal text requires cross-attention without an additional attention mask.")
-            lengths = text_timeline["lengths"]
-            text_length = int(text_timeline["text_length"])
-            query_end = query_start + query.shape[1]
-            samples = []
-            for sample_index, segments in enumerate(lengths):
-                pieces = []
-                segment_start = 0
-                for segment_index, segment_length in enumerate(segments):
-                    segment_end = segment_start + segment_length
-                    start, end = max(query_start, segment_start), min(query_end, segment_end)
-                    if start < end:
-                        context_start = segment_index * text_length
-                        pieces.append(
-                            dispatch_attention_fn(
-                                query[sample_index : sample_index + 1, start - query_start : end - query_start],
-                                key[sample_index : sample_index + 1, context_start : context_start + text_length],
-                                value[sample_index : sample_index + 1, context_start : context_start + text_length],
-                                attn_mask=None,
-                                dropout_p=0.0,
-                                is_causal=False,
-                                backend=self._attention_backend,
-                                parallel_config=None,
-                            )
-                        )
-                    segment_start = segment_end
-                samples.append(torch.cat(pieces, dim=1))
-            output = torch.cat(samples, dim=0)
-
+        output = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config if encoder_hidden_states is None else None,
+        )
         output = output.flatten(2, 3).type_as(query)
         if image_output is not None:
             output = output + image_output
@@ -287,23 +251,32 @@ class EdenLiveProxyProjection(ModelMixin, ConfigMixin):
             Number of projected proxy feature channels.
     """
 
+    _no_split_modules = []
+
     @register_to_config
     def __init__(self, in_channels: int = 1024, out_channels: int = 1024):
         super().__init__()
         self.patch_projection = nn.Linear(in_channels, out_channels)
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, hidden_states: torch.Tensor, return_dict: bool = True
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         r"""
         Args:
             hidden_states (`torch.Tensor`):
                 DINO patch features with `in_channels` in the final dimension.
+            return_dict (`bool`, defaults to `True`):
+                Whether to return a structured output instead of a tuple.
 
         Returns:
-            `torch.Tensor`:
+            [`~models.modeling_outputs.Transformer2DModelOutput`] or `tuple`:
                 Unit-normalized projected features in float32, with `out_channels` in the final dimension.
         """
         hidden_states = self.patch_projection(hidden_states)
-        return F.normalize(hidden_states, p=2, dim=-1).float()
+        hidden_states = F.normalize(hidden_states, p=2, dim=-1).float()
+        if not return_dict:
+            return (hidden_states,)
+        return Transformer2DModelOutput(sample=hidden_states)
 
 
 class EdenLivePatchEmbedding(nn.Conv3d):
@@ -335,7 +308,6 @@ class EdenLiveAttention(torch.nn.Module, AttentionModuleMixin):
         added_kv_proj_dim: int | None = None,
         cross_attention_dim_head: int | None = None,
         processor=None,
-        is_cross_attention=None,
     ):
         super().__init__()
 
@@ -363,10 +335,7 @@ class EdenLiveAttention(torch.nn.Module, AttentionModuleMixin):
             self.add_v_proj = torch.nn.Linear(added_kv_proj_dim, self.inner_dim, bias=True)
             self.norm_added_k = torch.nn.RMSNorm(dim_head * heads, eps=eps)
 
-        if is_cross_attention is not None:
-            self.is_cross_attention = is_cross_attention
-        else:
-            self.is_cross_attention = cross_attention_dim_head is not None
+        self.is_cross_attention = cross_attention_dim_head is not None
 
         self.set_processor(processor or EdenLiveAttnProcessor())
 
@@ -480,9 +449,7 @@ class EdenLiveTimeTextImageEmbedding(nn.Module):
         if timestep_seq_len is not None:
             timestep = timestep.unflatten(0, (-1, timestep_seq_len))
 
-        time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
-        if timestep.dtype != time_embedder_dtype and time_embedder_dtype != torch.int8:
-            timestep = timestep.to(time_embedder_dtype)
+        timestep = timestep.to(dtype=encoder_hidden_states.dtype)
         temb = self.time_embedder(timestep).type_as(encoder_hidden_states)
         timestep_proj = self.time_proj(self.act_fn(temb))
 
@@ -567,7 +534,7 @@ class EdenLiveRotaryPosEmbed(nn.Module):
 
 @maybe_allow_in_graph
 class EdenLiveTransformerBlock(nn.Module):
-    def __init__(self, dim, ffn_dim, num_heads, cross_attn_norm=True, eps=1e-6, added_kv_proj_dim=None):
+    def __init__(self, dim, ffn_dim, num_heads, eps=1e-6, added_kv_proj_dim=None):
         super().__init__()
         self.norm1 = FP32LayerNorm(dim, eps, elementwise_affine=False)
         self.attn1 = EdenLiveAttention(
@@ -582,7 +549,7 @@ class EdenLiveTransformerBlock(nn.Module):
             cross_attention_dim_head=dim // num_heads,
             processor=EdenLiveAttnProcessor(),
         )
-        self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=True) if cross_attn_norm else nn.Identity()
+        self.norm2 = FP32LayerNorm(dim, eps, elementwise_affine=True)
         self.ffn = FeedForward(dim, inner_dim=ffn_dim, activation_fn="gelu-approximate")
         self.norm3 = FP32LayerNorm(dim, eps, elementwise_affine=False)
         self.scale_shift_table = nn.Parameter(torch.randn(1, 6, dim) / dim**0.5)
@@ -599,8 +566,6 @@ class EdenLiveTransformerBlock(nn.Module):
         cache_update=False,
         cache_window_tokens=None,
         cache_sink_tokens=0,
-        text_timeline=None,
-        query_start=0,
         text_context_length=512,
     ) -> torch.Tensor:
         if temb.ndim == 4:
@@ -628,8 +593,6 @@ class EdenLiveTransformerBlock(nn.Module):
         attn_output = self.attn2(
             norm_hidden_states,
             encoder_hidden_states,
-            text_timeline=text_timeline,
-            query_start=query_start,
             text_context_length=text_context_length,
         )
         hidden_states = hidden_states + attn_output
@@ -664,8 +627,6 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
             Feed-forward intermediate dimension.
         num_layers (`int`, defaults to `40`):
             Number of transformer blocks.
-        cross_attn_norm (`bool`, defaults to `True`):
-            Whether to normalize the hidden states before cross-attention.
         qk_norm (`str`, defaults to `"rms_norm_across_heads"`):
             Query and key normalization. Only the checkpoint's normalization across heads is supported.
         eps (`float`, defaults to `1e-6`):
@@ -683,7 +644,7 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
     """
 
     _supports_gradient_checkpointing = True
-    _no_split_modules = ["EdenLiveTransformerBlock", "EdenLiveTimeTextImageEmbedding"]
+    _no_split_modules = ["EdenLiveTransformerBlock", "EdenLiveTimeTextImageEmbedding", "EdenLivePatchEmbedding"]
     _repeated_blocks = ["EdenLiveTransformerBlock"]
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
     _skip_keys = ["causal_state"]
@@ -711,7 +672,6 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
         freq_dim: int = 256,
         ffn_dim: int = 13824,
         num_layers: int = 40,
-        cross_attn_norm: bool = True,
         qk_norm: str = "rms_norm_across_heads",
         eps: float = 1e-6,
         image_dim: int | None = None,
@@ -740,9 +700,7 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
         )
         self.blocks = nn.ModuleList(
             [
-                EdenLiveTransformerBlock(
-                    inner_dim, ffn_dim, num_attention_heads, cross_attn_norm, eps, added_kv_proj_dim
-                )
+                EdenLiveTransformerBlock(inner_dim, ffn_dim, num_attention_heads, eps, added_kv_proj_dim)
                 for _ in range(num_layers)
             ]
         )
@@ -840,7 +798,6 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: torch.Tensor | None = None,
         proxy_features: torch.Tensor | None = None,
-        text_timeline: dict[str, Any] | None = None,
         causal_state: EdenLiveCausalState | None = None,
         cache_update: bool = False,
         return_dict: bool = True,
@@ -863,9 +820,6 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
             proxy_features (`torch.Tensor`, *optional*):
                 Required proxy features of shape `(batch_size, proxy_channels, num_frames, proxy_height, proxy_width)`.
                 Spatial dimensions are interpolated to match the latent input.
-            text_timeline (`dict[str, Any]`, *optional*):
-                Bidirectional 5B prompt layout with `lengths`, a sequence of positive segment token counts per sample,
-                and `text_length`, the token count of each prompt in the concatenated text embedding bank.
             causal_state (`EdenLiveCausalState`, *optional*):
                 KV storage created by `create_causal_state`. Use separate states for different guidance branches.
             cache_update (`bool`, defaults to `False`):
@@ -906,20 +860,7 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
         num_tokens = num_frames * tokens_per_frame
         if num_tokens % cp_size:
             raise ValueError("The input token count must be divisible by the Ulysses degree.")
-        query_start = cp_rank * (num_tokens // cp_size)
         text_context_length = encoder_hidden_states.shape[1]
-        if text_timeline is not None:
-            if causal_state is not None or self.config.image_dim is not None:
-                raise ValueError("Temporal prompt banks are supported by bidirectional 5B inference only.")
-            lengths = text_timeline["lengths"]
-            text_length = int(text_timeline["text_length"])
-            if len(lengths) != batch_size or text_length < 1:
-                raise ValueError("A timeline must contain one nonempty prompt bank per sample.")
-            if any(not sample or min(sample) < 1 or sum(sample) != num_tokens for sample in lengths):
-                raise ValueError("Each timeline must partition all query tokens into positive-length segments.")
-            if text_context_length != max(map(len, lengths)) * text_length:
-                raise ValueError("The text embedding bank does not match the timeline layout.")
-
         key_rotary_emb = None
         cache_window_tokens = None
         cache_sink_tokens = 0
@@ -998,8 +939,6 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
                 "cache_update": cache_update,
                 "cache_window_tokens": cache_window_tokens,
                 "cache_sink_tokens": cache_sink_tokens,
-                "text_timeline": text_timeline,
-                "query_start": query_start,
                 "text_context_length": text_context_length,
             }
             if torch.is_grad_enabled() and self.gradient_checkpointing:
