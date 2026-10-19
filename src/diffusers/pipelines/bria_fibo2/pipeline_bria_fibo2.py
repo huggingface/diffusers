@@ -56,6 +56,12 @@ DEFAULT_NEGATIVE_PROMPT = (
 # Where an image stands in a Qwen3-VL prompt
 VISION_MARKER = "<|vision_start|><|image_pad|><|vision_end|>"
 
+# The chat turn each prompt is wrapped in for Qwen3-VL
+PROMPT_TEMPLATE = "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
+
+# Qwen3-VL layers behind the transformer's six text inputs: the Perceiver's, then one per injection block
+TEXT_ENCODER_OUT_LAYERS = ((9, 20, 31), (5, 16, 27), (7, 18, 29), (9, 20, 31), (11, 22, 33), (13, 24, 35))
+
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
@@ -205,9 +211,8 @@ class BriaFibo2Pipeline(DiffusionPipeline):
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor * 2)
         self.default_sample_size = 128
         self.tokenizer_max_length = 4096
-        self.prompt_template_encode = "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
-        # Qwen3-VL layers behind the transformer's six text inputs: the Perceiver's, then one per injection block
-        self.text_encoder_out_layers = ((9, 20, 31), (5, 16, 27), (7, 18, 29), (9, 20, 31), (11, 22, 33), (13, 24, 35))
+        self.prompt_template_encode = PROMPT_TEMPLATE
+        self.text_encoder_out_layers = TEXT_ENCODER_OUT_LAYERS
         # Editing: fibo-2 edits up to 5 images at once, and Qwen3-VL sees each one at most 768 pixels a side
         self.max_num_images = 5
         self.text_encoder_image_size = 768
@@ -285,9 +290,10 @@ class BriaFibo2Pipeline(DiffusionPipeline):
             entry["image_tokens"] = marker
         return caption
 
-    def _get_text_prompt(self, prompt: str, marker: str) -> str:
+    @classmethod
+    def _get_text_prompt(cls, prompt: str, marker: str) -> str:
         # A generation caption with its text entries marked, serialized compactly the way fibo-2 was trained
-        caption = self._mark_text_images(json.loads(prompt), marker)
+        caption = cls._mark_text_images(json.loads(prompt), marker)
         return json.dumps(caption, separators=(",", ":"), ensure_ascii=False)
 
     @classmethod
@@ -341,13 +347,14 @@ class BriaFibo2Pipeline(DiffusionPipeline):
             draw_text_image(entry["text"], self._get_text_image_fonts) for entry in self._text_render_entries(caption)
         ]
 
-    def _get_edit_prompt(self, prompt: str, num_images: int, text_images: bool = False) -> str:
+    @classmethod
+    def _get_edit_prompt(cls, prompt: str, num_images: int, text_images: bool = False) -> str:
         # An edit prompt is one JSON object: a vision marker per image, the caption of the result when the prompt has
         # one, then the edit instruction. With images of the caption's text, each text entry gets the marker of its
         # image, which follows the images to edit
-        caption, instruction = self._split_edit_prompt(prompt)
+        caption, instruction = cls._split_edit_prompt(prompt)
         if text_images and isinstance(caption, dict):
-            caption = self._mark_text_images(caption, VISION_MARKER)
+            caption = cls._mark_text_images(caption, VISION_MARKER)
 
         marker = VISION_MARKER
         if num_images == 1:
@@ -359,13 +366,19 @@ class BriaFibo2Pipeline(DiffusionPipeline):
         edit["edit_instruction"] = instruction
         return json.dumps(edit, separators=(",", ":"), ensure_ascii=False)
 
+    @staticmethod
     def _get_qwen_prompt_embeds(
-        self,
+        text_encoder: Qwen3VLForConditionalGeneration,
+        processor: Qwen3VLProcessor,
         prompt: str | list[str],
-        image: list[PIL.Image.Image] | None,
-        device: torch.device,
+        image: list[PIL.Image.Image] | None = None,
         text_images: list[list[PIL.Image.Image]] | None = None,
+        device: torch.device | None = None,
+        max_sequence_length: int = 4096,
+        prompt_template: str = PROMPT_TEMPLATE,
+        hidden_states_layers: tuple[tuple[int, ...], ...] = TEXT_ENCODER_OUT_LAYERS,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        device = device or text_encoder.device
         prompt = [prompt] if isinstance(prompt, str) else prompt
         text_images = text_images or [[]] * len(prompt)
         if len(text_images) != len(prompt):
@@ -377,31 +390,29 @@ class BriaFibo2Pipeline(DiffusionPipeline):
         text, images = [], []
         for p, own_text_images in zip(prompt, text_images):
             if image is not None:
-                p = self._get_edit_prompt(p, len(image), text_images=bool(own_text_images))
+                p = BriaFibo2Pipeline._get_edit_prompt(p, len(image), text_images=bool(own_text_images))
                 images += image
             elif own_text_images:
-                p = self._get_text_prompt(p, VISION_MARKER)
-            text.append(self.prompt_template_encode.format(p))
+                p = BriaFibo2Pipeline._get_text_prompt(p, VISION_MARKER)
+            text.append(prompt_template.format(p))
             images += own_text_images
-        text_inputs = self.processor(
+        text_inputs = processor(
             text=text,
             images=images or None,
             padding="longest",
-            max_length=self.tokenizer_max_length,
+            max_length=max_sequence_length,
             truncation=True,
             return_tensors="pt",
         ).to(device)
-        hidden_states = self.text_encoder(**text_inputs, output_hidden_states=True).hidden_states
+        hidden_states = text_encoder(**text_inputs, output_hidden_states=True).hidden_states
 
         # Each layer is scaled to unit RMS per token in float32, then every bundle concatenates its three layers
-        dtype = self.text_encoder.dtype
+        dtype = text_encoder.dtype
         normalized = {}
-        for layer in sorted({layer for layers in self.text_encoder_out_layers for layer in layers}):
+        for layer in sorted({layer for layers in hidden_states_layers for layer in layers}):
             states = hidden_states[layer].float()
             normalized[layer] = (states * torch.rsqrt(states.pow(2).mean(dim=-1, keepdim=True) + 1e-6)).to(dtype)
-        bundles = [
-            torch.cat([normalized[layer] for layer in layers], dim=-1) for layers in self.text_encoder_out_layers
-        ]
+        bundles = [torch.cat([normalized[layer] for layer in layers], dim=-1) for layers in hidden_states_layers]
         return torch.stack(bundles, dim=1), text_inputs.attention_mask.bool()
 
     def encode_prompt(
@@ -444,7 +455,17 @@ class BriaFibo2Pipeline(DiffusionPipeline):
             # The images of a single prompt's text
             text_images = [text_images]
         if prompt_embeds is None:
-            prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(prompt, image, device, text_images)
+            prompt_embeds, prompt_embeds_mask = self._get_qwen_prompt_embeds(
+                self.text_encoder,
+                self.processor,
+                prompt,
+                image,
+                text_images,
+                device,
+                max_sequence_length=self.tokenizer_max_length,
+                prompt_template=self.prompt_template_encode,
+                hidden_states_layers=self.text_encoder_out_layers,
+            )
 
         prompt_embeds = prompt_embeds.to(device).repeat_interleave(num_images_per_prompt, dim=0)
         if prompt_embeds_mask is not None:
