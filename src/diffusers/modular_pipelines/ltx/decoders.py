@@ -46,8 +46,7 @@ class LTXUnpackLatentsStep(ModularPipelineBlocks):
     def description(self) -> str:
         return (
             "Unpacks the denoised latents from the transformer's token layout back into the `[B, C, F, H, W]` form "
-            "the VAE takes (still normalized). Closes the core denoise group, so the blocks that follow take the same "
-            "form the VAE encoder produces and need no geometry inputs."
+            "the VAE takes (still normalized)."
         )
 
     @property
@@ -70,9 +69,9 @@ class LTXUnpackLatentsStep(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The denoised latents from the denoising step, packed, of shape `[B, S, C]`.",
             ),
-            InputParam.template("height", default=512),
-            InputParam.template("width", default=704),
-            InputParam("num_frames", type_hint=int, default=161),
+            InputParam.template("height", required=True),
+            InputParam.template("width", required=True),
+            InputParam("num_frames", type_hint=int, required=True),
         ]
 
     @property
@@ -152,7 +151,7 @@ class LTXVaeDecoderStep(ModularPipelineBlocks):
         if latents.ndim == 3:
             deprecate(
                 "packed latents",
-                "1.0.0",
+                "0.46.0",
                 "Passing packed latents of shape `[B, S, C]` to the decode step is deprecated; the denoise group "
                 "now unpacks them. Pass latents of shape `[B, C, F, H, W]` instead.",
             )

@@ -203,6 +203,8 @@ Each should be applied and undone in mirrored pairs, and the core denoise group 
 
 The pattern: `encode -> norm -> pack -> denoise -> unpack -> denorm -> decode`
 
+In `flux/`: `FluxVaeEncoderStep` encodes and normalizes, `FluxPrepareLatentsStep` packs, `FluxUnpackLatentsStep` closes `FluxCoreDenoiseStep`, and `FluxDecodeStep` denormalizes and decodes.
+
 - Normalize / denormalize belong to the VAE blocks. The encoder step normalizes right after `vae.encode`, the decoder step denormalizes right before `vae.decode`. Denormalized latents never sit in the state.
 - Pack / unpack belong to the denoise group, either at block level (a prepare-latents step packs, an unpack step such as `FluxUnpackLatentsStep` closes the group) or inside the transformer's forward. Packing is a transformer layout detail; nothing outside the group should see tokens.
 - Patchify / unpatchify can sit on either side, as long as it is mirrored: usually it is fused with pack in the denoise group (Flux, Krea2, LTX, QwenImage); when the VAE statistics are defined over patchified channels (`AutoencoderKLFlux2`: Flux2, FLUX.3, Ernie-Image) it lives in the VAE blocks and the canonical form is the patchified grid.

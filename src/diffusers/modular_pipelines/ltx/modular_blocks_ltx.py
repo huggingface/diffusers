@@ -299,11 +299,11 @@ class LTXAutoCoreDenoiseStep(AutoPipelineBlocks):
               Timesteps for the denoising process.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          height (`int`, *optional*, defaults to 512):
+          height (`int`):
               The height in pixels of the generated image.
-          width (`int`, *optional*, defaults to 704):
+          width (`int`):
               The width in pixels of the generated image.
-          num_frames (`int`, *optional*, defaults to 161):
+          num_frames (`int`):
               TODO: Add description.
           frame_rate (`int`, *optional*, defaults to 25):
               TODO: Add description.
@@ -372,7 +372,7 @@ class LTXAutoBlocks(SequentialPipelineBlocks):
               Timesteps for the denoising process.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          num_frames (`int`, *optional*, defaults to 161):
+          num_frames (`int`):
               TODO: Add description.
           frame_rate (`int`, *optional*, defaults to 25):
               TODO: Add description.

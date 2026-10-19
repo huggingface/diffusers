@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 import random
 
 import numpy as np
@@ -83,19 +82,16 @@ class FluxModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 class TestFluxModularPipelineFast(FluxModularPipelineTesterConfig, ModularPipelineTesterMixin):
     def test_decode_accepts_packed_latents_with_deprecation(self):
         # The old packed `[B, S, C]` form is still accepted by the decode step for a deprecation window.
-        inputs = self.get_dummy_inputs()
-        expected = self.get_pipeline().to(torch_device)(**inputs, output=self.output_name)
+        decoder = self.pipeline_blocks_class().sub_blocks["decode"].init_pipeline(self.pretrained_model_name_or_path)
+        decoder.load_components(dtype=torch.float32)
+        decoder.to(torch_device)
 
-        # Blocksets can be composed from shared block instances, so pop from a copy.
-        blocks = copy.deepcopy(self.pipeline_blocks_class())
-        blocks.sub_blocks["denoise"].sub_blocks.pop("unpack_latents")
-        pipe = blocks.init_pipeline(self.pretrained_model_name_or_path)
-        pipe.load_components(dtype=torch.float32)
-        pipe.to(torch_device)
+        # The 8x8 dummy canvas is a `[1, 1, 8, 8]` latent, packed in 2x2 patches to 16 tokens of 4 channels.
+        packed_latents = torch.randn(1, 16, 4, generator=self.get_generator())
         with pytest.warns(FutureWarning, match="packed latents"):
-            output = pipe(**self.get_dummy_inputs(), output=self.output_name)
+            images = decoder(latents=packed_latents, height=8, width=8, output_type="pt", output="images")
 
-        assert torch.equal(output, expected)
+        assert images.shape == (1, 3, 8, 8)
 
     def test_float16_inference(self):
         super().test_float16_inference(9e-2)

@@ -27,7 +27,6 @@ from .modular_pipeline import Krea2ModularPipeline
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# auto_docstring
 def _unpack_latents(latents, height, width, patch_size, vae_scale_factor):
     batch_size, _, channels = latents.shape
     p = patch_size
@@ -38,15 +37,32 @@ def _unpack_latents(latents, height, width, patch_size, vae_scale_factor):
     return latents.reshape(batch_size, channels // (p * p), 1, height, width)
 
 
+# auto_docstring
 class Krea2UnpackLatentsStep(ModularPipelineBlocks):
+    """
+    Unpacks the denoised latents from the transformer's token layout back into the `[B, C, 1, H, W]` form the VAE takes
+    (still normalized).
+
+      Inputs:
+          latents (`Tensor`):
+              The denoised packed latents (B, image_seq_len, in_channels) from the denoising loop.
+          height (`int`):
+              The height in pixels of the generated image.
+          width (`int`):
+              The width in pixels of the generated image.
+
+      Outputs:
+          latents (`Tensor`):
+              The denoised latents of shape `[B, C, 1, H, W]` (normalized, not packed).
+    """
+
     model_name = "krea2"
 
     @property
     def description(self) -> str:
         return (
             "Unpacks the denoised latents from the transformer's token layout back into the `[B, C, 1, H, W]` form "
-            "the VAE takes (still normalized). Closes the core denoise group, so the blocks that follow take the same "
-            "form the VAE produces and need no geometry inputs."
+            "the VAE takes (still normalized)."
         )
 
     @property
@@ -58,8 +74,8 @@ class Krea2UnpackLatentsStep(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The denoised packed latents (B, image_seq_len, in_channels) from the denoising loop.",
             ),
-            InputParam.template("height", default=1024),
-            InputParam.template("width", default=1024),
+            InputParam.template("height", required=True),
+            InputParam.template("width", required=True),
         ]
 
     @property
@@ -86,10 +102,11 @@ class Krea2UnpackLatentsStep(ModularPipelineBlocks):
         return components, state
 
 
+# auto_docstring
 class Krea2DecodeStep(ModularPipelineBlocks):
     """
-    Step that unpacks the denoised packed latents back to the spatial grid, de-normalizes them with the VAE's
-    per-channel statistics, and decodes them through the Qwen-Image VAE into images.
+    Step that de-normalizes the denoised latents with the VAE's per-channel statistics and decodes them through the
+    Qwen-Image VAE into images.
 
       Components:
           vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
@@ -97,12 +114,12 @@ class Krea2DecodeStep(ModularPipelineBlocks):
       Inputs:
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
+          latents (`Tensor`):
+              The denoised latents of shape `[B, C, 1, H, W]` from the denoising group.
           height (`int`, *optional*, defaults to 1024):
               The height in pixels of the generated image.
           width (`int`, *optional*, defaults to 1024):
               The width in pixels of the generated image.
-          latents (`Tensor`):
-              The denoised packed latents (B, image_seq_len, in_channels) from the denoising loop.
 
       Outputs:
           images (`list`):
@@ -114,8 +131,8 @@ class Krea2DecodeStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Step that unpacks the denoised packed latents back to the spatial grid, de-normalizes them with the "
-            "VAE's per-channel statistics, and decodes them through the Qwen-Image VAE into images."
+            "Step that de-normalizes the denoised latents with the VAE's per-channel statistics and decodes them "
+            "through the Qwen-Image VAE into images."
         )
 
     @property
@@ -161,7 +178,7 @@ class Krea2DecodeStep(ModularPipelineBlocks):
         if latents.ndim == 3:
             deprecate(
                 "packed latents",
-                "1.0.0",
+                "0.46.0",
                 "Passing packed latents of shape `[B, S, C]` to the decode step is deprecated; the denoise group "
                 "now unpacks them. Pass latents of shape `[B, C, 1, H, W]` instead.",
             )

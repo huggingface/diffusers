@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 
 import pytest
 import torch
@@ -83,20 +82,25 @@ class LTXModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 class TestLTXModularPipelineFast(LTXModularPipelineTesterConfig, ModularPipelineTesterMixin):
     def test_decode_accepts_packed_latents_with_deprecation(self):
         # The old packed `[B, S, C]` form is still accepted by the decode step for a deprecation window.
-        inputs = self.get_dummy_inputs()
-        expected = self.get_pipeline().to(torch_device)(**inputs, output=self.output_name)
+        decoder = self.pipeline_blocks_class().sub_blocks["decode"].init_pipeline(self.pretrained_model_name_or_path)
+        decoder.load_components(dtype=torch.float32)
+        decoder.to(torch_device)
 
-        # Blocksets can be composed from shared block instances, so pop from a copy.
-        blocks = copy.deepcopy(self.pipeline_blocks_class())
-        for workflow in blocks.sub_blocks["denoise"].sub_blocks.values():
-            workflow.sub_blocks.pop("unpack_latents")
-        pipe = blocks.init_pipeline(self.pretrained_model_name_or_path)
-        pipe.load_components(dtype=torch.float32)
-        pipe.to(torch_device)
+        # The 9-frame 32x32 dummy video is a `[1, 8, 5, 16, 16]` latent, packed to 1280 tokens of 8 channels.
+        packed_latents = torch.randn(1, 1280, 8, generator=self.get_generator())
         with pytest.warns(FutureWarning, match="packed latents"):
-            output = pipe(**self.get_dummy_inputs(), output=self.output_name)
+            videos = decoder(
+                latents=packed_latents,
+                height=32,
+                width=32,
+                num_frames=9,
+                batch_size=1,
+                dtype=torch.float32,
+                output_type="pt",
+                output="videos",
+            )
 
-        assert torch.equal(output, expected)
+        assert tuple(videos.shape[-2:]) == (32, 32)
 
     @pytest.mark.skip(reason="num_videos_per_prompt")
     def test_num_images_per_prompt(self):
