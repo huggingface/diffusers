@@ -19,7 +19,7 @@ from diffusers.configuration_utils import FrozenDict
 
 """
 Converts an original fibo-2 checkpoint, with `transformer/`, `vae/`, `text_encoder/` and `scheduler/` folders, to
-diffusers. The converted checkpoints are released as briaai/Fibo-2.0-dev and briaai/Fibo-2.0-turbo.
+diffusers. The converted checkpoints are released as briaai/Fibo-2.0-dev and briaai/Fibo-2.0-edit-turbo.
 
 # Transformer only
 

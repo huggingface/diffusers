@@ -17,7 +17,7 @@ fibo-2 is an 8.1B parameter flow-matching transformer from [Bria](https://huggin
 There are two checkpoints:
 
 - [`briaai/Fibo-2.0-dev`](https://huggingface.co/briaai/Fibo-2.0-dev), the full model for text-to-image and editing, with classifier-free guidance. The pipeline's defaults, 30 steps with guidance 5, are for this checkpoint.
-- [`briaai/Fibo-2.0-turbo`](https://huggingface.co/briaai/Fibo-2.0-turbo), distilled for editing in 4 steps without guidance (`guidance_scale=1.0`).
+- [`briaai/Fibo-2.0-edit-turbo`](https://huggingface.co/briaai/Fibo-2.0-edit-turbo), distilled for editing in 4 steps without guidance (`guidance_scale=1.0`).
 
 With guidance on, the default negative prompt is the null caption the model was trained with: the structured caption with every value left empty.
 
@@ -52,7 +52,7 @@ edited = pipe("Make the background a snowy forest", image=image).images[0]
 For faster edits, load the turbo checkpoint and turn guidance off:
 
 ```py
-pipe = BriaFibo2Pipeline.from_pretrained("briaai/Fibo-2.0-turbo", dtype=torch.bfloat16).to("cuda")
+pipe = BriaFibo2Pipeline.from_pretrained("briaai/Fibo-2.0-edit-turbo", dtype=torch.bfloat16).to("cuda")
 edited = pipe("Make the background a snowy forest", image=image, num_inference_steps=4, guidance_scale=1.0).images[0]
 ```
 
