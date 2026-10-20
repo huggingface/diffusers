@@ -134,6 +134,7 @@ class QwenImage21ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = QwenImage21ModularPipeline
     pipeline_blocks_class = QwenImage21AutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage21-modular"
+    expected_latents_shape = (1, 8, 1, 2, 2)
     params = frozenset(
         ["prompt", "negative_prompt", "height", "width", "output_resolution", "attention_kwargs", "image"]
     )
