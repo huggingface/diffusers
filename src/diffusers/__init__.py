@@ -1,4 +1,4 @@
-__version__ = "0.41.0.dev0"
+__version__ = "0.42.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -258,6 +258,7 @@ else:
             "AutoencoderKLHunyuanVideo",
             "AutoencoderKLHunyuanVideo15",
             "AutoencoderKLKVAE",
+            "AutoencoderKLKVAEAudio",
             "AutoencoderKLKVAEVideo",
             "AutoencoderKLLTX2Audio",
             "AutoencoderKLLTX2Video",
@@ -1173,6 +1174,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLHunyuanVideo,
             AutoencoderKLHunyuanVideo15,
             AutoencoderKLKVAE,
+            AutoencoderKLKVAEAudio,
             AutoencoderKLKVAEVideo,
             AutoencoderKLLTX2Audio,
             AutoencoderKLLTX2Video,
