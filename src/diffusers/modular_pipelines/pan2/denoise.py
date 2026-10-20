@@ -87,7 +87,7 @@ class PAN2LoopDenoiser(ModularPipelineBlocks):
             ComponentSpec(
                 "guider",
                 ClassifierFreeGuidance,
-                config=FrozenDict({"guidance_scale": 3.0}),
+                config=FrozenDict({"guidance_scale": 2.5}),
                 default_creation_method="from_config",
             ),
             ComponentSpec("transformer", PAN2Transformer3DModel),
@@ -107,6 +107,12 @@ class PAN2LoopDenoiser(ModularPipelineBlocks):
             InputParam.template(
                 "negative_prompt_embeds",
                 description="Negative text embeddings used to guide the video generation.",
+            ),
+            InputParam(
+                "num_condition_frames",
+                type_hint=int,
+                default=0,
+                description="The number of leading latent frames given by the conditioning latents.",
             ),
         ]
 
@@ -141,7 +147,12 @@ class PAN2LoopDenoiser(ModularPipelineBlocks):
                 )[0]
             components.guider.cleanup_models(components.transformer)
 
-        block_state.noise_pred = components.guider(guider_state).pred
+        guider_output = components.guider(guider_state)
+        noise_pred = guider_output.pred
+        # The given frames (the first frame for image-to-video) use the conditional prediction, without guidance.
+        num_condition_frames = block_state.num_condition_frames
+        noise_pred[:, :, :num_condition_frames] = guider_output.pred_cond[:, :, :num_condition_frames]
+        block_state.noise_pred = noise_pred
         return components, block_state
 
 

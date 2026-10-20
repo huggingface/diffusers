@@ -292,6 +292,11 @@ class PAN2PrepareConditionLatentsStep(ModularPipelineBlocks):
                     "noisy latents at every denoising step."
                 ),
             ),
+            OutputParam(
+                "num_condition_frames",
+                type_hint=int,
+                description="The number of leading latent frames given by the conditioning latents.",
+            ),
         ]
 
     @torch.no_grad()
@@ -303,6 +308,7 @@ class PAN2PrepareConditionLatentsStep(ModularPipelineBlocks):
         block_state.condition_latents = block_state.latents.new_zeros(
             batch_size, num_channels + 1, num_frames, height, width
         )
+        block_state.num_condition_frames = 0
 
         self.set_block_state(state, block_state)
         return components, state
@@ -341,6 +347,11 @@ class PAN2Image2VideoPrepareConditionLatentsStep(ModularPipelineBlocks):
                     "noisy latents at every denoising step."
                 ),
             ),
+            OutputParam(
+                "num_condition_frames",
+                type_hint=int,
+                description="The number of leading latent frames given by the conditioning latents.",
+            ),
         ]
 
     @torch.no_grad()
@@ -364,6 +375,7 @@ class PAN2Image2VideoPrepareConditionLatentsStep(ModularPipelineBlocks):
         condition_latents[:, :num_channels, :1] = image_latents
         condition_latents[:, num_channels:, :1] = 1.0
         block_state.condition_latents = condition_latents
+        block_state.num_condition_frames = image_latents.shape[2]
 
         self.set_block_state(state, block_state)
         return components, state

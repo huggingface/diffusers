@@ -263,7 +263,7 @@ def main(args):
     vae = AutoencoderKLWan.from_pretrained(args.vae_path, subfolder="vae", dtype=torch.float32)
     vae.save_pretrained(os.path.join(args.output_path, "vae"))
 
-    scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
+    scheduler = FlowMatchEulerDiscreteScheduler(shift=9.0)
     scheduler.save_pretrained(os.path.join(args.output_path, "scheduler"))
 
     write_modular_model_index(args.output_path, args.modular_repo_id or args.output_path)
