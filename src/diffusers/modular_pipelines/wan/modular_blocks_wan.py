@@ -48,7 +48,7 @@ class WanCoreDenoiseStep(SequentialPipelineBlocks):
 
       Inputs:
           num_videos_per_prompt (`None`, *optional*, defaults to 1):
-              TODO: Add description.
+              The number of videos to generate per prompt.
           prompt_embeds (`Tensor`):
               Pre-generated text embeddings. Can be generated from text_encoder step.
           negative_prompt_embeds (`Tensor`, *optional*):
@@ -70,7 +70,7 @@ class WanCoreDenoiseStep(SequentialPipelineBlocks):
           generator (`None`, *optional*):
               TODO: Add description.
           attention_kwargs (`None`, *optional*):
-              TODO: Add description.
+              Additional kwargs for attention processors.
 
       Outputs:
           latents (`Tensor`):
@@ -112,13 +112,13 @@ class WanBlocks(SequentialPipelineBlocks):
 
       Inputs:
           prompt (`None`, *optional*):
-              TODO: Add description.
+              The prompt or prompts to guide video generation.
           negative_prompt (`None`, *optional*):
-              TODO: Add description.
+              The prompt or prompts not to guide video generation.
           max_sequence_length (`None`, *optional*, defaults to 512):
-              TODO: Add description.
+              Maximum sequence length for prompt encoding.
           num_videos_per_prompt (`None`, *optional*, defaults to 1):
-              TODO: Add description.
+              The number of videos to generate per prompt.
           num_inference_steps (`None`, *optional*, defaults to 50):
               TODO: Add description.
           timesteps (`None`, *optional*):
@@ -136,7 +136,7 @@ class WanBlocks(SequentialPipelineBlocks):
           generator (`None`, *optional*):
               TODO: Add description.
           attention_kwargs (`None`, *optional*):
-              TODO: Add description.
+              Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to np):
               The output type of the decoded videos
 
