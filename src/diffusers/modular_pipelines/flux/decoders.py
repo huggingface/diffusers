@@ -143,7 +143,7 @@ class FluxDecodeStep(ModularPipelineBlocks):
             if latents.ndim == 3:
                 deprecate(
                     "packed latents",
-                    "0.46.0",
+                    "0.47.0",
                     "Passing packed latents of shape `[B, S, C]` to the decode step is deprecated; the denoise group "
                     "now unpacks them. Pass latents of shape `[B, C, H, W]` instead.",
                 )
