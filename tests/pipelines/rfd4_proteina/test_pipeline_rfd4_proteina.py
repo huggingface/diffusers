@@ -124,6 +124,19 @@ class RFD4ProteinaPipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterMixin):
+    def assert_rejected_before_rng(self, pipe, inputs, error, match):
+        before = inputs["generator"].get_state().clone()
+        with pytest.raises(error, match=match):
+            pipe(**inputs)
+        assert torch.equal(inputs["generator"].get_state(), before)
+
+    def coord_group_inputs(self):
+        inputs = prepared_inputs(torch_device)
+        groups = torch.zeros(1, 3, 37, dtype=torch.long)
+        groups[:, 1] = 1
+        inputs["conditioning_features"][CONDITION_KEYS["coordinate_group"]] = groups.to(torch_device)
+        return inputs, groups
+
     def test_components_function(self):
         # The shared test expects every dummy component to be a module, but `recycle_depths` is a list of ints that the
         # pipeline stores in its config, so it is left out of the comparison.
@@ -138,12 +151,6 @@ class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterM
     )
     def test_callback_inputs(self):
         pass
-
-    def assert_rejected_before_rng(self, pipe, inputs, error, match):
-        before = inputs["generator"].get_state().clone()
-        with pytest.raises(error, match=match):
-            pipe(**inputs)
-        assert torch.equal(inputs["generator"].get_state(), before)
 
     def test_pipeline_calls_model_once_per_step_and_recycles_inside_the_call(self):
         pipe = self.get_pipeline().to(torch_device)
@@ -186,13 +193,6 @@ class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterM
     def test_missing_sequence_condition_fails_before_sampling(self):
         inputs = {**self.get_dummy_inputs(), "generator": self.get_generator(7), "conditioning_features": {}}
         self.assert_rejected_before_rng(self.get_pipeline().to(torch_device), inputs, KeyError, SEQUENCE_KEY)
-
-    def coord_group_inputs(self):
-        inputs = prepared_inputs(torch_device)
-        groups = torch.zeros(1, 3, 37, dtype=torch.long)
-        groups[:, 1] = 1
-        inputs["conditioning_features"][CONDITION_KEYS["coordinate_group"]] = groups.to(torch_device)
-        return inputs, groups
 
     def test_pipeline_prepares_random_coord_groups_outside_transformer(self):
         pipe = self.get_pipeline(
