@@ -203,8 +203,8 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
         if output_type not in {"pt", "np"}:
             raise ValueError(f"output_type must be 'pt' or 'np', got {output_type!r}.")
 
+    @staticmethod
     def _sample_noise(
-        self,
         shape: tuple[int, ...],
         mask: torch.Tensor,
         generators: list[torch.Generator] | None,
@@ -217,8 +217,8 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
             noise -= noise.sum(dim=-2, keepdim=True) / count[..., None]
         return noise * mask[..., None]
 
+    @staticmethod
     def _center_noise(
-        self,
         noise: torch.Tensor,
         mask: torch.Tensor,
         generators: list[torch.Generator] | None,

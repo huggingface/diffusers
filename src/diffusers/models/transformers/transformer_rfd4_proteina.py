@@ -1145,9 +1145,8 @@ class RFD4ProteinaTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attenti
         local_latents = (
             self.local_latents_linear(values) * (emitted & features["supports_local_latent"].bool())[..., None]
         )
-        sequence_logits = self.sequence_readout(values.detach()) * mask[..., None]
-        detached = values.detach()
-        query, key = self.insertion_q_proj(detached), self.insertion_k_proj(detached)
+        sequence_logits = self.sequence_readout(values) * mask[..., None]
+        query, key = self.insertion_q_proj(values), self.insertion_k_proj(values)
         insertion_logits = torch.bmm(query, key.transpose(1, 2)) * self._insertion_head_scale
         output = RFD4ProteinaTransformerOutput(
             backbone=backbone,
