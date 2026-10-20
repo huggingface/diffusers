@@ -59,9 +59,9 @@ def allowed_residue_types():
 
 class RFD4ProteinaPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = RFD4ProteinaPipeline
-    required_input_params_in_call_signature = frozenset(["padding_mask", "generator", "num_inference_steps"])
+    required_input_params_in_call_signature = frozenset(["padding_mask", "generator"])
     # `generator` is required: every design needs its own random stream.
-    optional_input_params = frozenset(["num_inference_steps", "return_dict"])
+    optional_input_params = frozenset(["return_dict"])
     batch_input_params = frozenset(
         ["padding_mask", "is_in_context_conditioning", "supports_local_latent", "atom37_mask", "conditioning_features"]
     )
@@ -113,7 +113,6 @@ class RFD4ProteinaPipelineTesterConfig(BasePipelineTesterConfig):
         return {
             **prepared_inputs(torch_device),
             "generator": self.get_generator(0),
-            "num_inference_steps": 2,
         }
 
     def batch_input(self, value, batch_size):
@@ -136,6 +135,10 @@ class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterM
         groups[:, 1] = 1
         inputs["conditioning_features"][CONDITION_KEYS["coordinate_group"]] = groups.to(torch_device)
         return inputs, groups
+
+    def test_inference_batch_single_identical(self):
+        # The shared test copies `num_inference_steps` into the batched inputs, and this pipeline has no such argument.
+        super().test_inference_batch_single_identical(additional_params_copy_to_batched_inputs=[])
 
     def test_components_function(self):
         # The shared test expects every dummy component to be a module, but `recycle_depths` is a list of ints that the
@@ -210,7 +213,7 @@ class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterM
             with_kwargs=True,
         )
         actual_generator = self.get_generator(7)
-        pipe(**inputs, generator=actual_generator, num_inference_steps=2)
+        pipe(**inputs, generator=actual_generator)
         handle.remove()
         assert len(captured) == 2
         assert all(torch.equal(actual, wanted) for actual, wanted in zip(captured, expected))
@@ -232,7 +235,7 @@ class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterM
         pipe = self.get_pipeline().to(torch_device)
         coords_nm = torch.zeros(1, 3, 37, 3, device=torch_device)
         coords_nm[:, 0, 1] = torch.tensor([1.0, 2.0, 3.0], device=torch_device)
-        inputs = {**prepared_inputs(torch_device), "coords_nm": coords_nm, "num_inference_steps": 2}
+        inputs = {**prepared_inputs(torch_device), "coords_nm": coords_nm}
         partial = pipe(**inputs, generator=self.get_generator(13), partial_t_bb_ca=0.5, partial_t_local_latents=0.5)
         inverse = pipe(
             **inputs,
@@ -278,7 +281,7 @@ class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterM
                 lambda module, args: decoded_features.append(args[0][SEQUENCE_KEY].cpu())
             ),
         ]
-        pipe(**inputs, generator=self.get_generator(7), num_inference_steps=2)
+        pipe(**inputs, generator=self.get_generator(7))
         for handle in handles:
             handle.remove()
         # Position 0 is filled with the best protein residue (not the mask token or an RNA type); position 1 is user-fixed.

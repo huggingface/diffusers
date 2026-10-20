@@ -251,6 +251,7 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
         start_times: tuple[float, float] | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Draw the starting state: pure noise, or the clean input noised to `start_times` (backbone, latents).
+        `clean_latents` can be left out when the latent start time is zero.
 
         The draws follow the native sampler's order on every row generator: for a full generation the backbone noise
         and its stochastic offsets come before the latent noise, while partial diffusion draws both noises before the
@@ -265,9 +266,13 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
         latent_noise = self._sample_noise(latent_shape, latent_mask, generators)
         bb_noise = self._center_noise(bb_noise, bb_mask, generators, conditioning)
         bb = self.bb_ca_scheduler.add_noise(clean_bb * bb_mask[..., None], bb_noise, start_times[0])
-        latents = self.local_latents_scheduler.add_noise(
-            clean_latents * latent_mask[..., None], latent_noise, start_times[1]
-        )
+        if clean_latents is None:
+            # Inverse folding starts both modalities at time zero, where the noised latents are the noise itself.
+            latents = latent_noise
+        else:
+            latents = self.local_latents_scheduler.add_noise(
+                clean_latents * latent_mask[..., None], latent_noise, start_times[1]
+            )
         return bb * bb_mask[..., None], latents * latent_mask[..., None]
 
     def noise_backbone(self, target_backbone, bb_mask, conditioning, generators, index):
@@ -292,7 +297,6 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
         conditioning_features: dict[str, Any] | None = None,
         num_designs_per_prompt: int = 1,
         generator: torch.Generator | list[torch.Generator] | None = None,
-        num_inference_steps: int | None = None,
         partial_t_bb_ca: float | None = None,
         partial_t_local_latents: float | None = None,
         inverse_folding: bool = False,
@@ -334,8 +338,6 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
                 One distinct generator per output row, for reproducible designs. The generators advance and the global
                 PyTorch random stream is left untouched. Omit it to draw from the global stream.
-            num_inference_steps (`int`, *optional*):
-                Number of denoising steps. Defaults to, and must equal, the length of the `recycle_depths` config.
             partial_t_bb_ca (`float`, *optional*):
                 Start time in [0, 1) for the backbone, to start from a noised version of the input instead of pure
                 noise. Give it together with `partial_t_local_latents`; requires `coords_nm` and `atom37_mask`.
@@ -420,9 +422,7 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
         bb_mask = padding_mask & ~is_in_context_conditioning
         latent_mask = bb_mask & supports_local_latent
         recycle_depths = self.config.recycle_depths
-        steps = len(recycle_depths) if num_inference_steps is None else num_inference_steps
-        if steps != len(recycle_depths):
-            raise ValueError(f"num_inference_steps must equal the {len(recycle_depths)} entries of recycle_depths.")
+        steps = len(recycle_depths)
         is_partial = partial_t_bb_ca is not None
         start_times = (float(partial_t_bb_ca), float(partial_t_local_latents)) if is_partial else (None, None)
         self.bb_ca_scheduler.set_timesteps(steps, device=device, start_time=start_times[0])
@@ -432,16 +432,20 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
 
         target_backbone = clean_bb = clean_latents = None
         if is_partial:
-            encoded = self.vae.encode(
-                coords_nm=coords_nm,
-                padding_mask=padding_mask,
-                token_type=token_type,
-                atom37_mask=atom37_mask,
-                conditioning=conditioning,
-                generator=generators,
-            )
-            clean_bb, clean_latents = coords_nm[..., 1, :].float(), encoded.latent.float()
-            target_backbone = clean_bb.clone() if inverse_folding else None
+            clean_bb = coords_nm[..., 1, :].float()
+            if inverse_folding:
+                # Both start times are zero, so the starting latents are pure noise and need no encoded input.
+                target_backbone = clean_bb.clone()
+            else:
+                encoded = self.vae.encode(
+                    coords_nm=coords_nm,
+                    padding_mask=padding_mask,
+                    token_type=token_type,
+                    atom37_mask=atom37_mask,
+                    conditioning=conditioning,
+                    generator=generators,
+                )
+                clean_latents = encoded.latent.float()
         bb_ca, local_latents = self.prepare_latents(
             bb_mask,
             latent_mask,

@@ -66,8 +66,8 @@ write_cif(output, features, atoms, "design.cif")
   start, or `inverse_folding=True` with both start times at `0.0` to keep the backbone and design the sequence. Both
   encode the input, so they need clean `coords_nm` and reject coordinates that are not finite, which are usually
   unresolved residues.
-* `num_inference_steps` has to match the length of the `recycle_depths` pipeline config. Leave it unset to use the
-  released recipe of 60 steps and 180 trunk passes.
+* The number of steps is the length of the `recycle_depths` pipeline config, 60 for the released recipe (180 trunk
+  passes). Change the schedule by passing a different `recycle_depths` list when constructing the pipeline.
 * To generate several designs of each input, set `num_designs_per_prompt` and pass one distinct generator per
   design. The output has `batch * num_designs_per_prompt` rows, and row `r` is design `r % num_designs_per_prompt` of
   input row `r // num_designs_per_prompt`.
