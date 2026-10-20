@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
 
 import torch
 
@@ -243,19 +242,12 @@ class Flux3DistilledTextInputStep(ModularPipelineBlocks):
 class Flux3ImageCondInputStep(ModularPipelineBlocks):
     model_name = "flux3"
 
-    def __init__(self, default_height: int = 1024, default_width: int = 1024):
-        # the generation size defaults to this area at the first reference image's aspect ratio
-        self.default_height = default_height
-        self.default_width = default_width
-        super().__init__()
-
     @property
     def description(self) -> str:
         return (
             "Step that expands the reference image latents to the final batch size and sets the generation "
-            f"`height`/`width` when not provided: {self.default_height} x {self.default_width} pixels of area at the "
-            "first reference image's aspect ratio, on the 16-pixel grid (a given side overrides its default). The "
-            "reference images keep their own resolution, the generation size is independent of them."
+            "`height`/`width` when not provided: the first reference image's own size (its padded canvas for a "
+            "single reference, which the decode step crops back). A given size is used as is, without the crop-back."
         )
 
     @property
@@ -271,13 +263,19 @@ class Flux3ImageCondInputStep(ModularPipelineBlocks):
                 "height",
                 type_hint=int,
                 description="The height in pixels of the generated image; defaults to the first reference image's "
-                "aspect ratio at the default area",
+                "own height",
             ),
             InputParam(
                 "width",
                 type_hint=int,
                 description="The width in pixels of the generated image; defaults to the first reference image's "
-                "aspect ratio at the default area",
+                "own width",
+            ),
+            InputParam(
+                "reference_crop",
+                type_hint=list[tuple[int, int, int, int] | None] | None,
+                description="Per reference, the box of the reference inside its padded canvas or None, from the "
+                "preprocess step",
             ),
             InputParam.template("num_images_per_prompt"),
             InputParam("batch_size", required=True, type_hint=int),
@@ -293,20 +291,25 @@ class Flux3ImageCondInputStep(ModularPipelineBlocks):
             ),
             OutputParam("height", type_hint=int, description="The height in pixels of the generated image"),
             OutputParam("width", type_hint=int, description="The width in pixels of the generated image"),
+            OutputParam(
+                "reference_crop",
+                type_hint=list[tuple[int, int, int, int] | None] | None,
+                description="The crop-back boxes for the decode step; None when the generation size was given",
+            ),
         ]
 
     @torch.no_grad()
     def __call__(self, components: Flux3ModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        # the generation size defaults to the default area at the first reference's aspect ratio, rounded to a
-        # multiple of 16 pixels (one token); a given `height` or `width` overrides its side
-        if block_state.height is None or block_state.width is None:
-            multiple_of = components.vae_scale_factor * 2
-            latent_height, latent_width = block_state.image_cond_latents[0].shape[-2:]
-            scale = math.sqrt(self.default_height * self.default_width / (latent_height * latent_width)) / multiple_of
-            block_state.height = block_state.height or max(multiple_of, round(latent_height * scale) * multiple_of)
-            block_state.width = block_state.width or max(multiple_of, round(latent_width * scale) * multiple_of)
+        # the generation size defaults to the first (prepared) reference's own size; a given size is used as is and
+        # disables the crop-back of a padded reference
+        multiple_of = components.vae_scale_factor * 2
+        latent_height, latent_width = block_state.image_cond_latents[0].shape[-2:]
+        if block_state.height is not None or block_state.width is not None:
+            block_state.reference_crop = None
+        block_state.height = block_state.height or latent_height * multiple_of
+        block_state.width = block_state.width or latent_width * multiple_of
 
         block_state.image_cond_latents = [
             repeat_tensor_to_batch_size(
