@@ -270,7 +270,7 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
         )
         return bb * bb_mask[..., None], latents * latent_mask[..., None]
 
-    def _noise_backbone(self, target_backbone, bb_mask, conditioning, generators, index):
+    def noise_backbone(self, target_backbone, bb_mask, conditioning, generators, index):
         """Noise the preserved backbone to the scheduled time of step `index`, for inverse folding."""
         noise = self._sample_noise(tuple(target_backbone.shape), bb_mask, generators, zero_com=True)
         noise = self._center_noise(noise, bb_mask, generators, conditioning)
@@ -453,7 +453,7 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
         )
 
         if inverse_folding:
-            bb_ca = self._noise_backbone(target_backbone, bb_mask, conditioning, generators, 0)
+            bb_ca = self.noise_backbone(target_backbone, bb_mask, conditioning, generators, 0)
 
         if latents_bb_ca is not None:
             # A supplied starting point replaces the sampled one; the schedule is unchanged.
@@ -504,7 +504,7 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
                     if index == steps - 1:
                         bb_ca = target_backbone.clone()
                     else:
-                        bb_ca = self._noise_backbone(target_backbone, bb_mask, conditioning, generators, index + 1)
+                        bb_ca = self.noise_backbone(target_backbone, bb_mask, conditioning, generators, index + 1)
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
                     for name in callback_on_step_end_tensor_inputs:

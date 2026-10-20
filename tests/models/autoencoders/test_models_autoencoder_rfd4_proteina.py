@@ -19,7 +19,13 @@ from diffusers import RFD4ProteinaAutoencoder
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin
+from ..testing_utils import (
+    AttentionTesterMixin,
+    BaseModelTesterConfig,
+    MemoryTesterMixin,
+    ModelTesterMixin,
+    TorchCompileTesterMixin,
+)
 
 
 enable_full_determinism()
@@ -99,3 +105,11 @@ class TestRFD4ProteinaAutoencoderMemory(RFD4ProteinaAutoencoderTesterConfig, Mem
             "pair_repr_dim": 64,
             "dim_cond": 64,
         }
+
+
+class TestRFD4ProteinaAutoencoderAttention(RFD4ProteinaAutoencoderTesterConfig, AttentionTesterMixin):
+    pass
+
+
+class TestRFD4ProteinaAutoencoderCompile(RFD4ProteinaAutoencoderTesterConfig, TorchCompileTesterMixin):
+    pass

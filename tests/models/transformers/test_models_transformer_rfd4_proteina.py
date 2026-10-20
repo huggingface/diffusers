@@ -21,10 +21,11 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
+    AttentionTesterMixin,
     BaseModelTesterConfig,
-    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -135,5 +136,11 @@ class TestRFD4ProteinaTransformerTraining(RFD4ProteinaTransformerTesterConfig, T
         super().test_gradient_checkpointing_is_applied(expected_set={"RFD4ProteinaTransformer"})
 
 
-class TestRFD4ProteinaTransformerLoRA(RFD4ProteinaTransformerTesterConfig, LoraTesterMixin):
+class TestRFD4ProteinaTransformerAttention(RFD4ProteinaTransformerTesterConfig, AttentionTesterMixin):
+    def get_init_dict(self):
+        # The processor-count test needs more than one attention layer to build a dict of the wrong size.
+        return {**super().get_init_dict(), "nlayers": 2}
+
+
+class TestRFD4ProteinaTransformerCompile(RFD4ProteinaTransformerTesterConfig, TorchCompileTesterMixin):
     pass
