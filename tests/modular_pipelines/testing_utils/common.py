@@ -54,8 +54,8 @@ class BaseModularPipelineTesterConfig:
     # Subclasses can override this to change the expected output type
     output_name = "images"
     # State name of the latents the denoise group hands to the decoder. Chunked families that hand over a list of
-    # per-chunk latents (e.g. `latent_chunks`) are checked chunk by chunk. Families that decode inside their
-    # denoise loop and leave no latents in the state set this to `None`.
+    # per-chunk latents (e.g. `latent_chunks`) are checked chunk by chunk. A family that leaves no latents in the
+    # state, or not yet in its canonical form, skips `test_latents_output_in_canonical_form` with a reason.
     latents_output_name = "latents"
 
     @property
