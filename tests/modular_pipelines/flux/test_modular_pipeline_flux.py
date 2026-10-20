@@ -87,7 +87,7 @@ class TestFluxModularPipelineFast(FluxModularPipelineTesterConfig, ModularPipeli
         decoder.to(torch_device)
 
         # The 8x8 dummy canvas is a `[1, 1, 8, 8]` latent, packed in 2x2 patches to 16 tokens of 4 channels.
-        packed_latents = torch.randn(1, 16, 4, generator=self.get_generator())
+        packed_latents = torch.randn(1, 16, 4, generator=self.get_generator()).to(torch_device)
         with pytest.warns(FutureWarning, match="packed latents"):
             images = decoder(latents=packed_latents, height=8, width=8, output_type="pt", output="images")
 

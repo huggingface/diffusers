@@ -87,7 +87,7 @@ class TestLTXModularPipelineFast(LTXModularPipelineTesterConfig, ModularPipeline
         decoder.to(torch_device)
 
         # The 9-frame 32x32 dummy video is a `[1, 8, 5, 16, 16]` latent, packed to 1280 tokens of 8 channels.
-        packed_latents = torch.randn(1, 1280, 8, generator=self.get_generator())
+        packed_latents = torch.randn(1, 1280, 8, generator=self.get_generator()).to(torch_device)
         with pytest.warns(FutureWarning, match="packed latents"):
             videos = decoder(
                 latents=packed_latents,

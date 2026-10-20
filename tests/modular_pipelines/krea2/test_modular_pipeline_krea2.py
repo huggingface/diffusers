@@ -74,7 +74,7 @@ class TestKrea2ModularPipelineFast(Krea2ModularPipelineTesterConfig, ModularPipe
         decoder.to(torch_device)
 
         # The 32x32 dummy canvas is a `[1, 4, 1, 8, 8]` latent, packed in 2x2 patches to 16 tokens of 16 channels.
-        packed_latents = torch.randn(1, 16, 16, generator=self.get_generator())
+        packed_latents = torch.randn(1, 16, 16, generator=self.get_generator()).to(torch_device)
         with pytest.warns(FutureWarning, match="packed latents"):
             images = decoder(latents=packed_latents, height=32, width=32, output_type="pt", output="images")
 
