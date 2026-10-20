@@ -44,10 +44,17 @@ features, atoms = prepare_cif(input_cif, seed=42, device=pipe.device)
 
 # The masks and molecule tensors the pipeline always needs are arguments; the annotation tensors go in one mapping.
 required = ["padding_mask", "is_in_context_conditioning", "supports_local_latent", "token_type", "atom37_mask"]
-inputs = {name: features[name] for name in required}
 conditioning = {name: value for name, value in features.items() if name not in required}
 
-output = pipe(**inputs, conditioning_features=conditioning, generator=torch.Generator("cuda").manual_seed(42))
+output = pipe(
+    padding_mask=features["padding_mask"],
+    is_in_context_conditioning=features["is_in_context_conditioning"],
+    supports_local_latent=features["supports_local_latent"],
+    token_type=features["token_type"],
+    atom37_mask=features["atom37_mask"],
+    conditioning_features=conditioning,
+    generator=torch.Generator("cuda").manual_seed(42),
+)
 write_cif(output, features, atoms, "design.cif")
 ```
 
@@ -67,7 +74,16 @@ write_cif(output, features, atoms, "design.cif")
 
   ```py
   generators = [torch.Generator("cuda").manual_seed(seed) for seed in range(8)]
-  output = pipe(**inputs, conditioning_features=conditioning, num_designs_per_prompt=8, generator=generators)
+  output = pipe(
+      padding_mask=features["padding_mask"],
+      is_in_context_conditioning=features["is_in_context_conditioning"],
+      supports_local_latent=features["supports_local_latent"],
+      token_type=features["token_type"],
+      atom37_mask=features["atom37_mask"],
+      conditioning_features=conditioning,
+      num_designs_per_prompt=8,
+      generator=generators,
+  )
   ```
 
   `write_cif` reads the features of the row it writes, so repeat them the same way, with `repeat_interleave` rather

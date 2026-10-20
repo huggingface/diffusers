@@ -433,7 +433,8 @@ class RFD4ProteinaDecoder(nn.Module):
             values = layer(values, None, condition, attention)
         logits = self.logit_linear(values) * emit[..., None]
         if "token_type" in features:
-            allowed = self._allowed_residue_types[features["token_type"].long()]
+            token_type = features["token_type"].long()
+            allowed = self._allowed_residue_types.to(token_type.device)[token_type]
             logits = logits.masked_fill(~(allowed | ~emit[..., None]), torch.finfo(logits.dtype).min)
         coordinates = self.struct_linear(values).reshape(*values.shape[:2], 37, 3).float() * emit[..., None, None]
         ca = features["ca_coors_nm"]
@@ -543,7 +544,14 @@ class RFD4ProteinaAutoencoder(ModelMixin, ConfigMixin, AttentionMixin):
         dim_cond: int = 128,
         pair_repr_dim: int = 256,
         token_type_emb_dim: int = 32,
-        encoder_feats_seq: tuple[str, ...] = ("token_type", "x1_a37coors_nm", "x1_a37coors_nm_rel", "chain_idx_seq"),
+        encoder_feats_seq: tuple[str, ...] = (
+            "token_type",
+            "x1_a37coors_nm",
+            "x1_a37coors_nm_rel",
+            "chain_idx_seq",
+            "incident_bond_type_counts",
+            "atom37_element_charge_embedding",
+        ),
         decoder_feats_seq: tuple[str, ...] = ("ca_coors_nm", "z_latent_seq", "token_type", "cond_residue_type"),
     ) -> None:
         super().__init__()

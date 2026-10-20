@@ -18,19 +18,19 @@ import torch
 from diffusers import RFD4ProteinaScheduler
 
 
-def scheduler(stochastic=False, **kwargs):
+def scheduler(schedule_mode="log", noise_mode="1/t", stochastic=False):
     """A tiny backbone-style scheduler. With `stochastic=False`, `t_lim_ode_below=1` keeps every interval on the
     noise-free branch; `stochastic=True` uses the released thresholds."""
     config = {
-        "schedule_mode": "log",
-        "noise_mode": "1/t",
+        "schedule_mode": schedule_mode,
+        "noise_mode": noise_mode,
         "tsr_k": 16.0,
         "tsr_sigma": 3.0,
         "tail_steps": 0,
         "t_lim_ode": 0.98,
         "t_lim_ode_below": 0.02 if stochastic else 1.0,
     }
-    return RFD4ProteinaScheduler(**{**config, **kwargs})
+    return RFD4ProteinaScheduler(**config)
 
 
 def inputs():
@@ -65,10 +65,9 @@ def test_cuda_schedule_keeps_coefficients_on_cpu():
 
 @pytest.mark.parametrize("schedule_mode, noise_mode", [("log", "1/t"), ("power", "tan")])
 def test_partial_schedule_is_exact_nonlinear_full_grid_tail(schedule_mode, noise_mode):
-    kwargs = {"schedule_mode": schedule_mode, "noise_mode": noise_mode}
-    full = scheduler(stochastic=True, **kwargs)
+    full = scheduler(schedule_mode, noise_mode, stochastic=True)
     full.set_timesteps(4)
-    partial = scheduler(stochastic=True, **kwargs)
+    partial = scheduler(schedule_mode, noise_mode, stochastic=True)
     partial.set_timesteps(2, start_time=float(full._times[2]))
     torch.testing.assert_close(partial._times, full._times[2:], rtol=0, atol=0)
     torch.testing.assert_close(partial._noise, full._noise[2:], rtol=0, atol=0)
@@ -151,7 +150,7 @@ def test_stochastic_step_default_generator_matches_explicit_stream(device):
         assert not torch.equal(endpoint, initial_rng), "The test must exercise a stochastic interval."
 
 
-@pytest.mark.parametrize("kwargs", [{"schedule_mode": "uniform"}, {"noise_mode": "ode"}])
-def test_options_outside_the_released_recipe_are_rejected(kwargs):
+@pytest.mark.parametrize("schedule_mode, noise_mode", [("uniform", "1/t"), ("log", "ode")])
+def test_options_outside_the_released_recipe_are_rejected(schedule_mode, noise_mode):
     with pytest.raises(ValueError, match="must be"):
-        scheduler(**kwargs)
+        scheduler(schedule_mode, noise_mode)

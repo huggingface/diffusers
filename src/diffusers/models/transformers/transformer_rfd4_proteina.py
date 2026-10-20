@@ -185,10 +185,9 @@ def align_chirality(
 ) -> torch.Tensor:
     """Orient packed stereochemical vectors towards the current noisy backbone.
 
-    The released checkpoint sees the chirality feature rotated onto the noisy neighbour
-    directions rather than in its canonical frame, so the two are different inputs to the same weights. Needs
-    `chiral_frame_atoms` `(batch, tokens, slots, 2 + K)` and `chiral_slot_owner` `(batch, tokens, slots)` alongside the
-    `chirality` feature.
+    The released checkpoint sees the chirality feature rotated onto the noisy neighbour directions rather than in its
+    canonical frame, so the two are different inputs to the same weights. Needs `chiral_frame_atoms` `(batch, tokens,
+    slots, 2 + K)` and `chiral_slot_owner` `(batch, tokens, slots)` alongside the `chirality` feature.
 
     Args:
         chirality_vectors (`torch.Tensor`): Packed unit vectors `(batch, tokens, 3 * slots)`.
@@ -927,8 +926,8 @@ class RFD4ProteinaTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attenti
             Pair-distance range in nanometers.
         feats_seq, feats_cond_seq, feats_pair_repr, feats_pair_cond (`list[str]`):
             Names of the features projected into the token, conditioning, pair and pair-conditioning inputs.
-        update_pair_repr_every_n (`int`, defaults to `2`): How often the pair representation is updated from the tokens
-            between layers.
+        update_pair_repr_every_n (`int`, defaults to `2`):
+            How often the pair representation is updated from the tokens between layers.
         tri_mult_c (`int`, defaults to `256`): Hidden width of the triangle multiplication in those updates.
         num_token_types (`int`, defaults to `7`): Size of the token-type vocabulary: protein, RNA, DNA, atomized,
             unknown, glycan and non-canonical amino acid.
