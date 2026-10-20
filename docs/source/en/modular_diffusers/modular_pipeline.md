@@ -212,7 +212,8 @@ pipeline = ModularPipeline.from_pretrained(
 )
 ```
 
-**A modular repository.** These repositories contain a `modular_model_index.json` that specifies where to load each component from. For new repositories, prefer storing the components in the modular repository itself. Cross-repository references are supported when components are intentionally hosted elsewhere, as in [diffusers/flux2-bnb-4bit-modular](https://huggingface.co/diffusers/flux2-bnb-4bit-modular), which loads a quantized transformer from one repository and the remaining components from another. See [Modular repository](#modular-repository) for more details on the format and shared caching.
+**A modular repository.** These repositories contain a `modular_model_index.json` that specifies the class of each component and where to load it from, with the components stored alongside it. See [Modular repository](#modular-repository) for how to create one.
+
 
 ```py
 from diffusers import ModularPipeline, ComponentsManager
@@ -401,9 +402,7 @@ A repository is required if the pipeline blocks use *pretrained components*. The
 - `library` and `class` shows which library the component was loaded from and its class. If `null`, the component hasn't been loaded yet.
 - `loading_specs_dict` contains the information required to load the component such as the repository and subfolder it is loaded from.
 
-Prefer a self-contained modular repository with its components stored alongside `modular_model_index.json`. Avoid cross-repository references solely to save download traffic or disk space: with `huggingface_hub>=1.32.0`, identical Xet-backed files can share a cached payload across repositories. See [Save a self-contained copy](#save-a-self-contained-copy) for the cache requirements and limitations. Use external references only when you intentionally want to load components hosted elsewhere.
 
-To convert a regular diffusers repository into a self-contained modular one, create the pipeline using the regular repository, load its components, and then push to the Hub. The saved repository will contain the components and a `modular_model_index.json` with all the loading specifications.
 
 ```py
 from diffusers import ModularPipeline
