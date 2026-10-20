@@ -17,6 +17,7 @@ import pytest
 import torch
 
 from diffusers import Kandinsky6SRTransformer3DModel
+from diffusers.utils import is_torch_version
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -60,10 +61,11 @@ class Kandinsky6SRTransformerTesterConfig(BaseModelTesterConfig):
             "out_visual_dim": 8,
             "time_dim": 16,
             "patch_size": (1, 2, 2),
-            "model_dim": 24,
+            "model_dim": 32,
             "ff_dim": 32,
             "num_visual_blocks": 2,
-            "axes_dims": (4, 4, 4),
+            # head_dim = sum(axes_dims); Inductor lowers flex attention only for head dims of at least 16
+            "axes_dims": (4, 6, 6),
         }
 
     def _build_dummy_inputs(self, batch_size: int, num_frames: int, height: int, width: int) -> dict:
@@ -105,6 +107,35 @@ class TestKandinsky6SRTransformerTorchCompile(Kandinsky6SRTransformerTesterConfi
 
     def get_dummy_inputs(self, height: int = 16, width: int = 16) -> dict:
         return self._build_dummy_inputs(batch_size=1, num_frames=2, height=height, width=width)
+
+    @pytest.mark.xfail(
+        condition=is_torch_version("<", "2.12"),
+        reason="torch < 2.12 cannot trace `AttentionBackendName(backend)` in `dispatch_attention_fn` in a full graph.",
+        raises=torch._dynamo.exc.Unsupported,
+        strict=True,
+    )
+    def test_torch_compile_recompilation_and_graph_break(self):
+        super().test_torch_compile_recompilation_and_graph_break()
+
+    @pytest.mark.xfail(
+        condition=is_torch_version("<", "2.12"),
+        reason="torch < 2.12 cannot trace `AttentionBackendName(backend)` in `dispatch_attention_fn` in a full graph.",
+        raises=torch._dynamo.exc.Unsupported,
+        strict=True,
+    )
+    def test_torch_compile_repeated_blocks(self):
+        super().test_torch_compile_repeated_blocks()
+
+    @pytest.mark.xfail(
+        reason=(
+            "The token grid is split into 8x8 blocks and `sliding_tile_mask` sizes its table by `max(...)` of the block "
+            "counts, so the compiled graph specializes on the input shape and recompiles."
+        ),
+        raises=(torch._dynamo.exc.Unsupported, torch._dynamo.exc.RecompileError),
+        strict=True,
+    )
+    def test_compile_on_different_shapes(self):
+        super().test_compile_on_different_shapes()
 
 
 @pytest.mark.skipif(torch_device == "cpu", reason="FlexAttention does not support backward on CPU.")

@@ -13,9 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import MMAudioVAE
+from diffusers.utils import is_torch_version
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -93,4 +95,11 @@ class TestMMAudioVAEMemory(MMAudioVAETesterConfig, MemoryTesterMixin):
 
 
 class TestMMAudioVAETorchCompile(MMAudioVAETesterConfig, TorchCompileTesterMixin):
-    pass
+    @pytest.mark.xfail(
+        condition=is_torch_version("<", "2.12"),
+        reason="torch < 2.12 cannot trace `AttentionBackendName(backend)` in `dispatch_attention_fn` in a full graph.",
+        raises=torch._dynamo.exc.Unsupported,
+        strict=True,
+    )
+    def test_torch_compile_recompilation_and_graph_break(self):
+        super().test_torch_compile_recompilation_and_graph_break()

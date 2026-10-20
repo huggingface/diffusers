@@ -13,9 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import MMAudioVocoder
+from diffusers.utils import is_torch_version
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -83,4 +85,25 @@ class TestMMAudioVocoderMemory(MMAudioVocoderTesterConfig, MemoryTesterMixin):
 
 
 class TestMMAudioVocoderTorchCompile(MMAudioVocoderTesterConfig, TorchCompileTesterMixin):
-    pass
+    @pytest.mark.xfail(
+        condition=is_torch_version("<", "2.12"),
+        reason=(
+            'With deterministic algorithms on, torch < 2.12 routes `F.pad(mode="replicate")` through `importlib`, '
+            "which Dynamo cannot trace in a full graph."
+        ),
+        raises=torch._dynamo.exc.Unsupported,
+        strict=True,
+    )
+    def test_torch_compile_recompilation_and_graph_break(self):
+        super().test_torch_compile_recompilation_and_graph_break()
+
+    @pytest.mark.xfail(
+        reason=(
+            "Block-level offloading hooks each `ups[i]` `ModuleList`, but `forward` calls `ups[i][0]` directly, so the "
+            "hook never onloads the weights."
+        ),
+        raises=RuntimeError,
+        strict=True,
+    )
+    def test_compile_with_group_offloading(self):
+        super().test_compile_with_group_offloading()
