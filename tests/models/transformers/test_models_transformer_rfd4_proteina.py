@@ -52,9 +52,6 @@ class RFD4ProteinaTransformerTesterConfig(BaseModelTesterConfig):
             "feats_pair_cond": [],
             "dim_cond": 8,
             "latent_dim": 4,
-            "update_pair_repr": False,
-            "use_tri_mult": False,
-            "recycle": False,
         }
 
     def get_dummy_inputs(self):
@@ -84,7 +81,7 @@ class RFD4ProteinaTransformerTesterConfig(BaseModelTesterConfig):
 
 class TestRFD4ProteinaTransformerModel(RFD4ProteinaTransformerTesterConfig, ModelTesterMixin):
     def test_transformer_executes_requested_recycle_depth(self):
-        init_dict = {**self.get_init_dict(), "recycle": True, "feats_cond_seq": ["recycle_remaining"], "t_emb_dim": 8}
+        init_dict = {**self.get_init_dict(), "feats_cond_seq": ["recycle_remaining"], "t_emb_dim": 8}
         transformer = RFD4ProteinaTransformer(**init_dict).to(torch_device).eval()
         inputs = self.get_dummy_inputs()
         cycles = []
@@ -125,7 +122,6 @@ class TestRFD4ProteinaTransformerMemory(RFD4ProteinaTransformerTesterConfig, Mem
         return {
             **super().get_init_dict(),
             "nlayers": 3,
-            "update_pair_repr": True,
             "token_dim": 512,
             "nheads": 8,
             "pair_repr_dim": 64,

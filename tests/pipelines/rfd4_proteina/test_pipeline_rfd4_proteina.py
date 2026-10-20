@@ -83,9 +83,6 @@ class RFD4ProteinaPipelineTesterConfig(BasePipelineTesterConfig):
             latent_dim=4,
             num_sequence_classes=33,
             num_token_types=5,
-            update_pair_repr=False,
-            use_tri_mult=False,
-            recycle=True,
         )
         torch.manual_seed(0)
         vae = RFD4ProteinaAutoencoder(

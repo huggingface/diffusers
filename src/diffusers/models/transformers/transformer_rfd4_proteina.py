@@ -185,7 +185,7 @@ def align_chirality(
 ) -> torch.Tensor:
     """Orient packed stereochemical vectors towards the current noisy backbone.
 
-    Checkpoints trained with `noise_align_chirality` see the chirality feature rotated onto the noisy neighbour
+    The released checkpoint sees the chirality feature rotated onto the noisy neighbour
     directions rather than in its canonical frame, so the two are different inputs to the same weights. Needs
     `chiral_frame_atoms` `(batch, tokens, slots, 2 + K)` and `chiral_slot_owner` `(batch, tokens, slots)` alongside the
     `chirality` feature.
@@ -200,7 +200,7 @@ def align_chirality(
     missing = sorted({"chiral_frame_atoms", "chiral_slot_owner"} - features.keys())
     if missing:
         raise KeyError(
-            f"noise_align_chirality needs {missing} in the prepared features. The released checkpoint was trained "
+            f"The chirality feature needs {missing} in the prepared features. The released checkpoint was trained "
             "with chirality vectors oriented towards the noisy backbone; without these tensors the model would "
             "silently receive a different conditioning signal."
         )
@@ -805,17 +805,17 @@ class RFD4ProteinaTrunkLayer(nn.Module):
 
 
 class RFD4ProteinaTriangleMultiplication(nn.Module):
-    def __init__(self, width: int, hidden: int, outgoing: bool, bias: bool) -> None:
+    def __init__(self, width: int, hidden: int, outgoing: bool) -> None:
         super().__init__()
         self.outgoing = outgoing
-        self.linear_a_p = nn.Linear(width, hidden, bias=bias)
-        self.linear_a_g = nn.Linear(width, hidden, bias=bias)
-        self.linear_b_p = nn.Linear(width, hidden, bias=bias)
-        self.linear_b_g = nn.Linear(width, hidden, bias=bias)
-        self.linear_g = nn.Linear(width, width, bias=bias)
-        self.linear_z = nn.Linear(hidden, width, bias=bias)
-        self.layer_norm_in = nn.LayerNorm(width, eps=1e-5, bias=bias)
-        self.layer_norm_out = nn.LayerNorm(hidden, eps=1e-5, bias=bias)
+        self.linear_a_p = nn.Linear(width, hidden, bias=False)
+        self.linear_a_g = nn.Linear(width, hidden, bias=False)
+        self.linear_b_p = nn.Linear(width, hidden, bias=False)
+        self.linear_b_g = nn.Linear(width, hidden, bias=False)
+        self.linear_g = nn.Linear(width, width, bias=False)
+        self.linear_z = nn.Linear(hidden, width, bias=False)
+        self.layer_norm_in = nn.LayerNorm(width, eps=1e-5, bias=False)
+        self.layer_norm_out = nn.LayerNorm(hidden, eps=1e-5, bias=False)
 
     def forward(self, pairs: torch.Tensor, pair_mask: torch.Tensor) -> torch.Tensor:
         normalized = self.layer_norm_in(pairs)
@@ -841,30 +841,20 @@ class RFD4ProteinaPairTransition(nn.Module):
 
 
 class RFD4ProteinaPairUpdate(nn.Module):
-    def __init__(
-        self,
-        token_dim: int,
-        pair_repr_dim: int,
-        use_tri_mult: bool,
-        tri_mult_c: int,
-        tri_mult_bias: bool,
-    ) -> None:
+    def __init__(self, token_dim: int, pair_repr_dim: int, tri_mult_c: int) -> None:
         super().__init__()
         self.layer_norm_in = nn.LayerNorm(token_dim)
         self.linear_x = nn.Linear(token_dim, 2 * pair_repr_dim, bias=False)
-        self.use_tri_mult = use_tri_mult
-        if use_tri_mult:
-            self.tri_mult_out = RFD4ProteinaTriangleMultiplication(pair_repr_dim, tri_mult_c, True, tri_mult_bias)
-            self.tri_mult_in = RFD4ProteinaTriangleMultiplication(pair_repr_dim, tri_mult_c, False, tri_mult_bias)
+        self.tri_mult_out = RFD4ProteinaTriangleMultiplication(pair_repr_dim, tri_mult_c, True)
+        self.tri_mult_in = RFD4ProteinaTriangleMultiplication(pair_repr_dim, tri_mult_c, False)
         self.transition_out = RFD4ProteinaPairTransition(pair_repr_dim)
 
     def forward(self, values: torch.Tensor, pairs: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         pair_mask = mask[:, :, None] & mask[:, None, :]
         left, right = self.linear_x(self.layer_norm_in(values * mask[..., None])).chunk(2, dim=-1)
         pairs = (pairs + left[:, None] * right[:, :, None]) * pair_mask[..., None]
-        if self.use_tri_mult:
-            pairs = (pairs + self.tri_mult_out(pairs, pair_mask)) * pair_mask[..., None]
-            pairs = (pairs + self.tri_mult_in(pairs, pair_mask)) * pair_mask[..., None]
+        pairs = (pairs + self.tri_mult_out(pairs, pair_mask)) * pair_mask[..., None]
+        pairs = (pairs + self.tri_mult_in(pairs, pair_mask)) * pair_mask[..., None]
         return (pairs + self.transition_out(pairs, pair_mask)) * pair_mask[..., None]
 
 
@@ -937,17 +927,13 @@ class RFD4ProteinaTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attenti
             Pair-distance range in nanometers.
         feats_seq, feats_cond_seq, feats_pair_repr, feats_pair_cond (`list[str]`):
             Names of the features projected into the token, conditioning, pair and pair-conditioning inputs.
-        update_pair_repr (`bool`, defaults to `True`), update_pair_repr_every_n (`int`, defaults to `2`):
-            Whether and how often the pair representation is updated from the tokens between layers.
-        use_tri_mult (`bool`, defaults to `True`), tri_mult_c (`int`, defaults to `256`), tri_mult_bias
-        (`bool`, defaults to `False`): Triangle multiplication settings.
-        recycle (`bool`, defaults to `True`): Whether the trunk is re-run `recycle_depth` times per call.
+        update_pair_repr_every_n (`int`, defaults to `2`): How often the pair representation is updated from the tokens
+            between layers.
+        tri_mult_c (`int`, defaults to `256`): Hidden width of the triangle multiplication in those updates.
         num_token_types (`int`, defaults to `7`): Size of the token-type vocabulary: protein, RNA, DNA, atomized,
             unknown, glycan and non-canonical amino acid.
         recycle_conditioning_dim (`int`, defaults to `1`): Width of the `recycle_remaining` one-hot, when that
             feature is in `feats_cond_seq`.
-        noise_align_chirality (`bool`, defaults to `False`): Orient the chirality feature towards the noisy backbone.
-            Checkpoints trained this way need `chiral_frame_atoms` and `chiral_slot_owner` features.
         num_sequence_classes (`int`, defaults to `147`): Size of the residue vocabulary the sequence readout predicts.
     """
 
@@ -1017,16 +1003,11 @@ class RFD4ProteinaTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attenti
             "na_ss_pair",
         ),
         feats_pair_cond: tuple[str, ...] = ("time_emb_bb_ca", "time_emb_local_latents"),
-        update_pair_repr: bool = True,
         update_pair_repr_every_n: int = 2,
-        use_tri_mult: bool = True,
         tri_mult_c: int = 256,
-        tri_mult_bias: bool = False,
-        recycle: bool = True,
         num_sequence_classes: int = 147,
         num_token_types: int = 7,
         recycle_conditioning_dim: int = 1,
-        noise_align_chirality: bool = False,
     ) -> None:
         super().__init__()
         feature_kwargs = {
@@ -1042,7 +1023,6 @@ class RFD4ProteinaTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attenti
             "xt_pair_dist_max": xt_pair_dist_max,
         }
         self.nlayers = nlayers
-        self.update_pair_repr = update_pair_repr
         self.gradient_checkpointing = False
         self.init_repr_factory = RFD4ProteinaFeatureFactory(feats_seq, token_dim, "seq", **feature_kwargs)
         self.cond_factory = RFD4ProteinaFeatureFactory(feats_cond_seq, dim_cond, "seq", **feature_kwargs)
@@ -1055,26 +1035,20 @@ class RFD4ProteinaTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attenti
             RFD4ProteinaTrunkLayer(token_dim, pair_repr_dim, nheads, dim_cond, "rms_norm", True)
             for _ in range(nlayers)
         )
-        if update_pair_repr:
-            # Keyed by the index of the trunk layer each update follows, so only those layers have an entry.
-            self.pair_update_layers = nn.ModuleDict(
-                {
-                    str(index): RFD4ProteinaPairUpdate(
-                        token_dim, pair_repr_dim, use_tri_mult, tri_mult_c, tri_mult_bias
-                    )
-                    for index in range(0, nlayers - 1, update_pair_repr_every_n)
-                }
-            )
-        self.recycle_enabled = recycle
+        # Keyed by the index of the trunk layer each update follows, so only those layers have an entry.
+        self.pair_update_layers = nn.ModuleDict(
+            {
+                str(index): RFD4ProteinaPairUpdate(token_dim, pair_repr_dim, tri_mult_c)
+                for index in range(0, nlayers - 1, update_pair_repr_every_n)
+            }
+        )
         # The released checkpoint conditions the trunk on the passes still to come, so the conditioning vector is rebuilt
         # for every pass instead of once.
         self.condition_on_recycle_remaining = "recycle_remaining" in feats_cond_seq
-        self.noise_align_chirality = noise_align_chirality
-        if recycle:
-            self.s_cycle_norm = nn.RMSNorm(token_dim, eps=1e-5)
-            self.s_cycle_proj = nn.Linear(token_dim, token_dim, bias=False)
-            self.z_cycle_norm = nn.RMSNorm(pair_repr_dim, eps=1e-5)
-            self.z_cycle_proj = nn.Linear(pair_repr_dim, pair_repr_dim, bias=False)
+        self.s_cycle_norm = nn.RMSNorm(token_dim, eps=1e-5)
+        self.s_cycle_proj = nn.Linear(token_dim, token_dim, bias=False)
+        self.z_cycle_norm = nn.RMSNorm(pair_repr_dim, eps=1e-5)
+        self.z_cycle_proj = nn.Linear(pair_repr_dim, pair_repr_dim, bias=False)
         self.local_latents_linear = nn.Sequential(
             nn.RMSNorm(token_dim, eps=1e-5), nn.Linear(token_dim, latent_dim, bias=False)
         )
@@ -1135,22 +1109,18 @@ class RFD4ProteinaTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attenti
                 features[name] = value
         mask = padding_mask.bool()
         emitted = mask & ~features["is_in_context_conditioning"].bool()
-        # Checkpoints trained with `noise_align_chirality` see the chirality feature rotated onto the noisy neighbour
-        # frame, so the feature the trunk reads is replaced before any layer runs.
-        if self.noise_align_chirality and "chirality" in features:
+        # The released checkpoint sees the chirality feature rotated onto the noisy neighbour frame, so the feature the
+        # trunk reads is replaced before any layer runs.
+        if "chirality" in features:
             features["chirality"] = align_chirality(features["chirality"].float(), features)
 
-        cycles = max(1, recycle_depth) if self.recycle_enabled else 1
+        cycles = max(1, recycle_depth)
         values = self.init_repr_factory(features) * mask[..., None]
         pairs = self.pair_repr_builder(features)
-        if self.recycle_enabled:
-            previous_values, previous_pairs = torch.zeros_like(values), torch.zeros_like(pairs)
+        previous_values, previous_pairs = torch.zeros_like(values), torch.zeros_like(pairs)
         for cycle in range(cycles):
-            if self.recycle_enabled:
-                values_in = values + self.s_cycle_proj(self.s_cycle_norm(previous_values))
-                pairs_in = (pairs + self.z_cycle_proj(self.z_cycle_norm(previous_pairs))).contiguous()
-            else:
-                values_in, pairs_in = values, pairs
+            values_in = values + self.s_cycle_proj(self.s_cycle_norm(previous_values))
+            pairs_in = (pairs + self.z_cycle_proj(self.z_cycle_norm(previous_pairs))).contiguous()
             # Before the first pass the remaining-passes feature is absent (all-zero), which is distinct from "no passes
             # remain". Later passes carry the passes still to come.
             if cycle == 0 or self.condition_on_recycle_remaining:
@@ -1167,7 +1137,7 @@ class RFD4ProteinaTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attenti
                     hidden = self._gradient_checkpointing_func(layer, hidden, hidden_pairs, condition, mask)
                 else:
                     hidden = layer(hidden, hidden_pairs, condition, mask)
-                if self.update_pair_repr and str(index) in self.pair_update_layers:
+                if str(index) in self.pair_update_layers:
                     hidden_pairs = self.pair_update_layers[str(index)](hidden, hidden_pairs, mask)
             previous_values, previous_pairs = hidden, hidden_pairs
         values = previous_values

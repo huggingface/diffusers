@@ -16,8 +16,9 @@ The script refuses a checkpoint whose `nn` settings it does not recognise rather
 model trained with a feature this implementation lacks fails at conversion time instead of sampling from a different
 conditioning signal. Two cases to expect:
 
-- `noise_align_chirality` orients the chirality feature towards the noisy backbone. It needs `chiral_frame_atoms`
-  and `chiral_slot_owner` in the prepared features; without them the pipeline raises rather than falling back.
+- The chirality feature is oriented towards the noisy backbone, as in the released checkpoint. It needs
+  `chiral_frame_atoms` and `chiral_slot_owner` in the prepared features; without them the pipeline raises rather than
+  falling back.
 - `tri_mult_backend: cuequivariance` selects a fused triangle-multiplication kernel that this implementation does
   not have. Conversion prints a note and continues: results are unchanged, generation is slower.
 """
@@ -201,12 +202,21 @@ def _require(condition: bool, message: str) -> None:
 _COPIED_NN_KEYS = (
     "nlayers token_dim nheads dim_cond pair_repr_dim token_type_emb_dim cath_emb_dim t_emb_dim seq_sep_dim "
     "xt_pair_dist_dim xt_pair_dist_min xt_pair_dist_max feats_seq feats_cond_seq feats_pair_repr feats_pair_cond "
-    "update_pair_repr update_pair_repr_every_n use_tri_mult tri_mult_c tri_mult_bias"
+    "update_pair_repr_every_n tri_mult_c"
 ).split()
 
 # Settings checked against what this implementation supports, then dropped because they select
 # the one behaviour it implements.
-_VALIDATED_NN_KEYS = ("output_parameterization", "use_qkln", "parallel_mha_transition", "norm_type", "pair_write")
+_VALIDATED_NN_KEYS = (
+    "output_parameterization",
+    "use_qkln",
+    "parallel_mha_transition",
+    "norm_type",
+    "pair_write",
+    "update_pair_repr",
+    "use_tri_mult",
+    "tri_mult_bias",
+)
 
 # Settings turned into Diffusers config entries by hand below.
 _DERIVED_NN_KEYS = (
@@ -252,6 +262,15 @@ def build_transformer_config(nn_config: dict[str, Any], latent_dim: int, num_tok
     _require(not nn_config.get("parallel_mha_transition", False), "parallel_mha_transition is unsupported")
     _require(nn_config.get("norm_type") in _RMS_NORM_TYPES, f"unsupported norm_type {nn_config.get('norm_type')!r}")
     _require(nn_config.get("pair_write") == "hadamard", f"unsupported pair_write {nn_config.get('pair_write')!r}")
+    # The released checkpoint has these on (and no triangle-multiplication bias); the model implements only that.
+    _require(
+        nn_config.get("update_pair_repr", False)
+        and nn_config.get("use_tri_mult", False)
+        and not nn_config.get("tri_mult_bias", False)
+        and nn_config.get("noise_align_chirality", False)
+        and (nn_config.get("recycle") or {}).get("enabled", False),
+        "pair updates with triangle multiplication, chirality alignment and trunk recycling",
+    )
     _require(
         not nn_config.get("noise_align_internal_coords", False)
         and not nn_config.get("noise_align_internal_coords_translate", False)
@@ -272,9 +291,7 @@ def build_transformer_config(nn_config: dict[str, Any], latent_dim: int, num_tok
     config.update(
         latent_dim=latent_dim,
         num_token_types=num_token_types,
-        recycle=bool(recycle.get("enabled", False)),
         num_sequence_classes=readout.get("num_classes", 33),
-        noise_align_chirality=bool(nn_config.get("noise_align_chirality", False)),
     )
     if "recycle_remaining" in config.get("feats_cond_seq", ()):
         # The width of the one-hot is trained in. It is `nn.recycle.conditioning_dim` when set, and otherwise the depth
