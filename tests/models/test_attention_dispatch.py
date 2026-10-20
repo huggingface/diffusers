@@ -256,3 +256,16 @@ class TestAttentionModuleSetAttentionBackend:
 
         assert attn.processor._attention_backend == AttentionBackendName.SAGE_HUB
         assert config.kernel_fn is fake_sageattn
+
+    def test_backend_requirements_are_checked(self, monkeypatch):
+        attn = FluxAttention(query_dim=8, heads=2, dim_head=4)
+
+        monkeypatch.setattr(attention_dispatch, "_CAN_USE_FLASH_ATTN", False)
+        with pytest.raises(RuntimeError, match="Flash Attention backend 'flash' is not usable"):
+            attn.set_attention_backend("flash")
+
+        monkeypatch.setattr(attention_dispatch, "is_kernels_available", lambda: False)
+        with pytest.raises(RuntimeError, match="Backend 'sage_hub' is not usable because the `kernels` package"):
+            attn.set_attention_backend("sage_hub")
+
+        assert attn.processor._attention_backend is None
