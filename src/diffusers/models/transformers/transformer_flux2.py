@@ -339,7 +339,7 @@ class Flux2AttnProcessor:
         encoder_hidden_states: torch.Tensor = None,
         attention_mask: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor | None = None,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         query, key, value, encoder_query, encoder_key, encoder_value = _get_qkv_projections(
             attn, hidden_states, encoder_hidden_states
         )
@@ -421,7 +421,7 @@ class Flux2KVAttnProcessor:
         kv_cache: Flux2KVLayerCache | None = None,
         kv_cache_mode: str | None = None,
         num_ref_tokens: int = 0,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         query, key, value, encoder_query, encoder_key, encoder_value = _get_qkv_projections(
             attn, hidden_states, encoder_hidden_states
         )
@@ -558,7 +558,7 @@ class Flux2Attention(torch.nn.Module, AttentionModuleMixin):
         attention_mask: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor | None = None,
         **kwargs,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
         unused_kwargs = [k for k, _ in kwargs.items() if k not in attn_parameters]
         if len(unused_kwargs) > 0:
@@ -975,7 +975,7 @@ class Flux2PosEmbed(nn.Module):
         self.theta = theta
         self.axes_dim = axes_dim
 
-    def forward(self, ids: torch.Tensor) -> torch.Tensor:
+    def forward(self, ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         # Expected ids shape: [S, len(self.axes_dim)]
         cos_out = []
         sin_out = []
@@ -1237,7 +1237,7 @@ class Flux2Transformer2DModel(
         kv_cache_mode: str | None = None,
         num_ref_tokens: int = 0,
         ref_fixed_timestep: float = 0.0,
-    ) -> torch.Tensor | Flux2Transformer2DModelOutput:
+    ) -> Flux2Transformer2DModelOutput | tuple[torch.Tensor] | tuple[torch.Tensor, Flux2KVCache]:
         """
         The [`Flux2Transformer2DModel`] forward method.
 

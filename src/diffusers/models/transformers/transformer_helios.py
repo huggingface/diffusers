@@ -674,7 +674,7 @@ class HeliosTransformer3DModel(
         latents_history_long=None,
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
-    ) -> torch.Tensor | dict[str, torch.Tensor]:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`HeliosTransformer3DModel`] forward method.
 

@@ -991,7 +991,7 @@ class UNet2DConditionModel(
         down_intrablock_additional_residuals: tuple[torch.Tensor] | None = None,
         encoder_attention_mask: torch.Tensor | None = None,
         return_dict: bool = True,
-    ) -> UNet2DConditionOutput | tuple:
+    ) -> UNet2DConditionOutput | tuple[torch.Tensor]:
         r"""
         The [`UNet2DConditionModel`] forward method.
 

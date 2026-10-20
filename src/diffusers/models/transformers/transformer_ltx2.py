@@ -622,7 +622,7 @@ class LTX2VideoTransformerBlock(nn.Module):
         use_v2a_cross_attention: bool = True,
         perturbation_mask: torch.Tensor | None = None,
         all_perturbed: bool | None = None,
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         batch_size = hidden_states.size(0)
 
         # 1. Video and Audio Self-Attention
@@ -1390,7 +1390,7 @@ class LTX2VideoTransformer3DModel(
         video_self_attention_mask: torch.Tensor | None = None,
         video_keyframes_mask: torch.Tensor | None = None,
         return_dict: bool = True,
-    ) -> torch.Tensor:
+    ) -> AudioVisualModelOutput | tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass for LTX-2.0 audiovisual video transformer.
 

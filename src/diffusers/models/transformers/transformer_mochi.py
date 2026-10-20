@@ -282,7 +282,7 @@ class MochiRoPE(nn.Module):
         positions = torch.stack([grid_t, grid_h, grid_w], dim=-1).view(-1, 3)
         return positions
 
-    def _create_rope(self, freqs: torch.Tensor, pos: torch.Tensor) -> torch.Tensor:
+    def _create_rope(self, freqs: torch.Tensor, pos: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         with torch.autocast(freqs.device.type, torch.float32):
             # Always run ROPE freqs computation in FP32
             freqs = torch.einsum("nd,dhf->nhf", pos.to(torch.float32), freqs.to(torch.float32))
@@ -413,7 +413,7 @@ class MochiTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         encoder_attention_mask: torch.Tensor,
         attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> torch.Tensor:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`MochiTransformer3DModel`] forward method.
 

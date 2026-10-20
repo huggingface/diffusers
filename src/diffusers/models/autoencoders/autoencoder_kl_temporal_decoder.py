@@ -248,7 +248,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, AttentionMixin, AutoencoderMixin,
         z: torch.Tensor,
         num_frames: int,
         return_dict: bool = True,
-    ) -> DecoderOutput | torch.Tensor:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         """
         Decode a batch of images.
 
@@ -279,7 +279,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, AttentionMixin, AutoencoderMixin,
         return_dict: bool = True,
         generator: torch.Generator | None = None,
         num_frames: int = 1,
-    ) -> DecoderOutput | torch.Tensor:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.
