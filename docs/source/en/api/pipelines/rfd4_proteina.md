@@ -83,6 +83,24 @@ write_cif(output, features, atoms, "design.cif")
   kernel or batch size can end in a different design for the same seed.
 * A generated structure is not a validated design. Refold and score it for the intended task.
 
+## LoRA
+
+The released model is a rank-32 LoRA fine-tune of the pretrained base, merged into the weights. The base and the adapter
+are on the `pretrain-base` revision of the model repository, and the pipeline loads the adapter with
+`load_lora_weights` through `RFD4ProteinaLoraLoaderMixin`:
+
+```py
+pipe = RFD4ProteinaPipeline.from_pretrained(
+    "nvidia/RFD4-Proteina-Diffusers", revision="pretrain-base", dtype=torch.bfloat16
+).to("cuda")
+pipe.load_lora_weights(
+    "nvidia/RFD4-Proteina-Diffusers",
+    revision="pretrain-base",
+    subfolder="lora",
+    weight_name="pytorch_lora_weights.safetensors",
+)
+```
+
 ## RFD4ProteinaPipeline
 
 [[autodoc]] RFD4ProteinaPipeline

@@ -128,31 +128,28 @@ class RFD4ProteinaPipelineTesterConfig(BasePipelineTesterConfig):
 
 class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterMixin):
     def test_components_function(self):
-        # `recycle_depths` is a config value, not a component.
+        # The shared test expects every dummy component to be a module, but `recycle_depths` is a list of ints that the
+        # pipeline stores in its config, so it is left out of the comparison.
         init_components = self.get_dummy_components()
         init_components = {k: v for k, v in init_components.items() if k != "recycle_depths"}
         pipe = self.get_pipeline(**init_components)
         assert set(pipe.components.keys()) == set(init_components.keys())
 
-    @pytest.mark.skip(reason="Callbacks receive dictionaries of tensors; covered by `test_callback_on_step_end`.")
+    @pytest.mark.skip(
+        reason="The shared test passes `latents` and `output_type='latent'`, which this pipeline does not have; "
+        "`test_callback_on_step_end` covers callbacks."
+    )
     def test_callback_inputs(self):
         pass
 
-    def get_pipeline_with(self, **kwargs):
-        pipe = self.get_pipeline(**self.get_dummy_components(**kwargs)).to(torch_device)
-        return pipe
-
-    def assert_rejected_before_rng(self, pipe, error, match, seed=7, **overrides):
-        inputs = self.get_dummy_inputs()
-        inputs["generator"] = self.get_generator(seed)
-        inputs.update(overrides)
+    def assert_rejected_before_rng(self, pipe, inputs, error, match):
         before = inputs["generator"].get_state().clone()
         with pytest.raises(error, match=match):
             pipe(**inputs)
         assert torch.equal(inputs["generator"].get_state(), before)
 
     def test_pipeline_calls_model_once_per_step_and_recycles_inside_the_call(self):
-        pipe = self.get_pipeline_with()
+        pipe = self.get_pipeline().to(torch_device)
         calls, cycles = [], []
         handles = [
             pipe.transformer.register_forward_hook(lambda *_: calls.append(None)),
@@ -165,23 +162,23 @@ class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterM
         assert len(cycles) == 3  # recycle depths (1, 2) execute 1 + 2 trunk passes
 
     def test_callback_on_step_end(self):
-        pipe = self.get_pipeline_with()
+        pipe = self.get_pipeline().to(torch_device)
         seen = []
 
         def callback(pipe, step, timestep, callback_kwargs):
-            assert set(callback_kwargs) == {"sample", "last_clean"}
+            assert set(callback_kwargs) == {"bb_ca", "last_clean_bb_ca"}
             seen.append(step)
             if step == 0:
-                return {"sample": {name: torch.zeros_like(value) for name, value in callback_kwargs["sample"].items()}}
+                return {"bb_ca": torch.zeros_like(callback_kwargs["bb_ca"])}
             return None
 
         output = pipe(
             **self.get_dummy_inputs(),
             callback_on_step_end=callback,
-            callback_on_step_end_tensor_inputs=["sample", "last_clean"],
+            callback_on_step_end_tensor_inputs=["bb_ca", "last_clean_bb_ca"],
         )
         assert seen == [0, 1]
-        assert torch.isfinite(output.state["bb_ca"]).all()
+        assert torch.isfinite(output.bb_ca).all()
         with pytest.raises(ValueError, match="callback_on_step_end_tensor_inputs"):
             pipe(
                 **self.get_dummy_inputs(),
@@ -190,7 +187,8 @@ class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterM
             )
 
     def test_missing_sequence_condition_fails_before_sampling(self):
-        self.assert_rejected_before_rng(self.get_pipeline_with(), KeyError, SEQUENCE_KEY, conditioning_features={})
+        inputs = {**self.get_dummy_inputs(), "generator": self.get_generator(7), "conditioning_features": {}}
+        self.assert_rejected_before_rng(self.get_pipeline().to(torch_device), inputs, KeyError, SEQUENCE_KEY)
 
     def coord_group_inputs(self):
         inputs = prepared_inputs(torch_device)
@@ -200,7 +198,9 @@ class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterM
         return inputs, groups
 
     def test_pipeline_prepares_random_coord_groups_outside_transformer(self):
-        pipe = self.get_pipeline_with(depths=(0, 1), feats_seq=["xt_bb_ca", "xt_local_latents", "coord_group_seq"])
+        pipe = self.get_pipeline(
+            **self.get_dummy_components(depths=(0, 1), feats_seq=["xt_bb_ca", "xt_local_latents", "coord_group_seq"])
+        ).to(torch_device)
         inputs, groups = self.coord_group_inputs()
         expected_generator = self.get_generator(7)
         torch.randn((1, 3, 3), generator=expected_generator)
@@ -232,7 +232,7 @@ class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterM
         assert torch.equal(before, torch.get_rng_state())
 
     def test_partial_and_inverse_initialization_use_clean_tensor_inputs(self):
-        pipe = self.get_pipeline_with()
+        pipe = self.get_pipeline().to(torch_device)
         coords_nm = torch.zeros(1, 3, 37, 3, device=torch_device)
         coords_nm[:, 0, 1] = torch.tensor([1.0, 2.0, 3.0], device=torch_device)
         inputs = {**prepared_inputs(torch_device), "coords_nm": coords_nm, "num_inference_steps": 2}
@@ -244,24 +244,22 @@ class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterM
             partial_t_local_latents=0.0,
             inverse_folding=True,
         )
-        assert all(torch.isfinite(value).all() for value in partial.state.values())
-        assert torch.equal(inverse.state["bb_ca"][:, 0], coords_nm[:, 0, 1])
+        assert torch.isfinite(partial.bb_ca).all() and torch.isfinite(partial.local_latents).all()
+        assert torch.equal(inverse.bb_ca[:, 0], coords_nm[:, 0, 1])
+        rejected = {**self.get_dummy_inputs(), "generator": self.get_generator(7), "coords_nm": coords_nm}
         self.assert_rejected_before_rng(
-            pipe, ValueError, "inverse_folding requires partial_t", coords_nm=coords_nm, inverse_folding=True
+            pipe, {**rejected, "inverse_folding": True}, ValueError, "inverse_folding requires partial_t"
         )
         self.assert_rejected_before_rng(
             pipe,
+            {**rejected, "partial_t_bb_ca": 0.5, "partial_t_local_latents": 0.0, "inverse_folding": True},
             ValueError,
             "zero start time",
-            coords_nm=coords_nm,
-            partial_t_bb_ca=0.5,
-            partial_t_local_latents=0.0,
-            inverse_folding=True,
         )
-        self.assert_rejected_before_rng(pipe, ValueError, "both modalities", coords_nm=coords_nm, partial_t_bb_ca=0.5)
+        self.assert_rejected_before_rng(pipe, {**rejected, "partial_t_bb_ca": 0.5}, ValueError, "both modalities")
 
     def test_decoder_sequence_prediction_obeys_token_type_and_user_condition(self):
-        pipe = self.get_pipeline_with()
+        pipe = self.get_pipeline().to(torch_device)
         inputs = prepared_inputs(torch_device)
         inputs["conditioning_features"][SEQUENCE_KEY] = torch.tensor([[0, 8, 0]], device=torch_device)
         inputs["token_type"] = torch.zeros(1, 3, dtype=torch.long, device=torch_device)
@@ -290,7 +288,7 @@ class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterM
         assert torch.equal(decoded_features[0], torch.tensor([[1, 8, 0]]))
 
     def test_pipeline_preserves_inputs_and_independent_batch_rows(self):
-        pipe = self.get_pipeline_with()
+        pipe = self.get_pipeline().to(torch_device)
         inputs = self.get_dummy_inputs()
         original = {name: value.clone() for name, value in inputs["conditioning_features"].items()}
         single_generator = self.get_generator(7)
@@ -300,12 +298,12 @@ class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterM
         generators = [self.get_generator(7), self.get_generator(8)]
         batched = {name: self.batch_input(inputs[name], 2) for name in self.batch_input_params}
         output = pipe(**{**inputs, **batched, "generator": generators})
-        for name, value in single.state.items():
-            torch.testing.assert_close(output.state[name][:1], value, rtol=0, atol=1e-6)
+        torch.testing.assert_close(output.bb_ca[:1], single.bb_ca, rtol=0, atol=1e-6)
+        torch.testing.assert_close(output.local_latents[:1], single.local_latents, rtol=0, atol=1e-6)
         assert torch.equal(generators[0].get_state(), single_generator.get_state())
 
     def test_num_designs_per_prompt_repeats_every_input_row(self):
-        pipe = self.get_pipeline_with()
+        pipe = self.get_pipeline().to(torch_device)
         inputs = self.get_dummy_inputs()
         inputs.pop("generator")
         two_rows = {name: self.batch_input(inputs[name], 2) for name in self.batch_input_params}
@@ -326,7 +324,7 @@ class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterM
             for name, value in two_rows.items()
         }
         by_hand = pipe(**{**inputs, **repeated}, generator=[self.get_generator(seed) for seed in range(4)])
-        torch.testing.assert_close(output.state["bb_ca"], by_hand.state["bb_ca"], rtol=0, atol=0)
+        torch.testing.assert_close(output.bb_ca, by_hand.bb_ca, rtol=0, atol=0)
         with pytest.raises(ValueError, match="one distinct generator per batch row"):
             pipe(**{**inputs, **two_rows}, num_designs_per_prompt=2, generator=generators[:2])
         with pytest.raises(ValueError, match="num_designs_per_prompt"):
@@ -335,7 +333,7 @@ class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterM
     @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
     def test_numpy_output_from_reduced_precision(self, dtype):
         """numpy has no bfloat16 or float16 path, and the released recipe runs in bfloat16."""
-        pipe = self.get_pipeline_with().to(dtype)
+        pipe = self.get_pipeline().to(torch_device).to(dtype)
         output = pipe(**self.get_dummy_inputs(), output_type="np")
         assert isinstance(output.coords_nm, np.ndarray)
         assert output.coords_nm.dtype == np.float32
@@ -346,14 +344,14 @@ class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterM
         turns the whole latent NaN. The encode paths must say so rather than return a NaN structure."""
         coords_nm = torch.zeros(1, 3, 37, 3, device=torch_device)
         coords_nm[0, 0, 1] = float("nan")
-        self.assert_rejected_before_rng(
-            self.get_pipeline_with(),
-            ValueError,
-            "not finite",
-            coords_nm=coords_nm,
-            partial_t_bb_ca=0.3,
-            partial_t_local_latents=0.6,
-        )
+        inputs = {
+            **self.get_dummy_inputs(),
+            "generator": self.get_generator(7),
+            "coords_nm": coords_nm,
+            "partial_t_bb_ca": 0.3,
+            "partial_t_local_latents": 0.6,
+        }
+        self.assert_rejected_before_rng(self.get_pipeline().to(torch_device), inputs, ValueError, "not finite")
 
     @pytest.mark.parametrize("invalid", ["rank", "dtype", "shape", "device", "empty"])
     def test_invalid_sampling_masks_rejected_before_rng(self, invalid):
@@ -368,20 +366,23 @@ class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterM
             inputs["supports_local_latent"] = inputs["supports_local_latent"].to("meta")
         else:
             inputs["padding_mask"] = inputs["padding_mask"][:, :0]
-        self.assert_rejected_before_rng(self.get_pipeline_with(), ValueError, "sampling masks|padding_mask", **inputs)
+        inputs = {**self.get_dummy_inputs(), "generator": self.get_generator(7), **inputs}
+        self.assert_rejected_before_rng(
+            self.get_pipeline().to(torch_device), inputs, ValueError, "sampling masks|padding_mask"
+        )
 
     def test_generators_must_be_distinct_per_row(self):
         inputs = self.get_dummy_inputs()
         shared = self.get_generator(1)
         batched = {name: self.batch_input(inputs[name], 2) for name in self.batch_input_params}
         with pytest.raises(ValueError, match="one distinct generator per batch row"):
-            self.get_pipeline_with()(**{**inputs, **batched, "generator": [shared, shared]})
+            self.get_pipeline().to(torch_device)(**{**inputs, **batched, "generator": [shared, shared]})
 
     def test_stochastic_centering_offsets_each_molecule_by_one_shared_vector(self):
-        pipe = self.get_pipeline_with()
+        pipe = self.get_pipeline().to(torch_device)
         mask = torch.ones(1, 4, dtype=torch.bool, device=torch_device)
         conditioning = {"molecule_iid": torch.tensor([[0, 0, 1, 1]], device=torch_device)}
-        centered = pipe.prepare_latents(mask, mask, conditioning, [self.get_generator(3)])["bb_ca"]
+        centered, _ = pipe.prepare_latents(mask, mask, conditioning, [self.get_generator(3)])
         base = pipe._sample_noise((1, 4, 3), mask, [self.get_generator(3)], zero_com=True)
         offset = centered - base
         # Tokens of one molecule move together, and the two molecules move differently.
@@ -390,16 +391,16 @@ class TestRFD4ProteinaPipeline(RFD4ProteinaPipelineTesterConfig, PipelineTesterM
         assert not torch.allclose(offset[:, 0], offset[:, 2])
 
     def test_prepare_latents_replays_distinct_row_generators(self):
-        pipe = self.get_pipeline_with()
+        pipe = self.get_pipeline().to(torch_device)
         mask = torch.tensor([[True, False], [True, False]], device=torch_device)
         conditioning = {"molecule_iid": torch.zeros(2, 2, dtype=torch.long, device=torch_device)}
         left = [torch.Generator().manual_seed(7), torch.Generator().manual_seed(11)]
         right = [torch.Generator().manual_seed(7), torch.Generator().manual_seed(11)]
         first = pipe.prepare_latents(mask, mask, conditioning, left)
         second = pipe.prepare_latents(mask, mask, conditioning, right)
-        for name in first:
-            torch.testing.assert_close(first[name], second[name], rtol=0, atol=0)
-            assert first[name][:, 1].count_nonzero() == 0
+        for first_value, second_value in zip(first, second):
+            torch.testing.assert_close(first_value, second_value, rtol=0, atol=0)
+            assert first_value[:, 1].count_nonzero() == 0
         assert all(a.get_state().equal(b.get_state()) for a, b in zip(left, right))
 
 

@@ -52,7 +52,11 @@ EXAMPLE_DOC_STRING = """
         >>> required = ["padding_mask", "is_in_context_conditioning", "supports_local_latent", "token_type"]
         >>> required += ["atom37_mask"]
         >>> output = pipe(
-        ...     **{name: features[name] for name in required},
+        ...     padding_mask=features["padding_mask"],
+        ...     is_in_context_conditioning=features["is_in_context_conditioning"],
+        ...     supports_local_latent=features["supports_local_latent"],
+        ...     token_type=features["token_type"],
+        ...     atom37_mask=features["atom37_mask"],
         ...     conditioning_features={name: value for name, value in features.items() if name not in required},
         ...     generator=torch.Generator("cuda").manual_seed(42),
         ... )
@@ -79,21 +83,14 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
     """
 
     model_cpu_offload_seq = "transformer->vae"
-    _callback_tensor_inputs = ["sample", "last_clean", "sequence_logits", "insertion_logits"]
-
-    @property
-    def num_timesteps(self) -> int:
-        """Steps the current call will take, for progress reporting from a callback."""
-        return self._num_timesteps
-
-    @property
-    def attention_kwargs(self):
-        return self._attention_kwargs
-
-    @property
-    def interrupt(self) -> bool:
-        """Set from a callback to stop the denoising loop at the next step boundary."""
-        return self._interrupt
+    _callback_tensor_inputs = [
+        "bb_ca",
+        "local_latents",
+        "last_clean_bb_ca",
+        "last_clean_local_latents",
+        "sequence_logits",
+        "insertion_logits",
+    ]
 
     def __init__(
         self,
@@ -115,6 +112,20 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
         self.register_to_config(
             recycle_depths=list(RELEASED_RECYCLE_DEPTHS if recycle_depths is None else recycle_depths)
         )
+
+    @property
+    def num_timesteps(self) -> int:
+        """Steps the current call will take, for progress reporting from a callback."""
+        return self._num_timesteps
+
+    @property
+    def attention_kwargs(self):
+        return self._attention_kwargs
+
+    @property
+    def interrupt(self) -> bool:
+        """Set from a callback to stop the denoising loop at the next step boundary."""
+        return self._interrupt
 
     def check_inputs(
         self,
@@ -238,7 +249,7 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
         clean_bb: torch.Tensor | None = None,
         clean_latents: torch.Tensor | None = None,
         start_times: tuple[float, float] | None = None,
-    ) -> dict[str, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Draw the starting state: pure noise, or the clean input noised to `start_times` (backbone, latents).
 
         The draws follow the native sampler's order on every row generator: for a full generation the backbone noise
@@ -250,14 +261,14 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
         bb_noise = self._sample_noise(bb_shape, bb_mask, generators, zero_com=True)
         if start_times is None:
             bb_noise = self._center_noise(bb_noise, bb_mask, generators, conditioning)
-            return {"bb_ca": bb_noise, "local_latents": self._sample_noise(latent_shape, latent_mask, generators)}
+            return bb_noise, self._sample_noise(latent_shape, latent_mask, generators)
         latent_noise = self._sample_noise(latent_shape, latent_mask, generators)
         bb_noise = self._center_noise(bb_noise, bb_mask, generators, conditioning)
         bb = self.bb_ca_scheduler.add_noise(clean_bb * bb_mask[..., None], bb_noise, start_times[0])
         latents = self.local_latents_scheduler.add_noise(
             clean_latents * latent_mask[..., None], latent_noise, start_times[1]
         )
-        return {"bb_ca": bb * bb_mask[..., None], "local_latents": latents * latent_mask[..., None]}
+        return bb * bb_mask[..., None], latents * latent_mask[..., None]
 
     def _noise_backbone(self, target_backbone, bb_mask, conditioning, generators, index):
         """Noise the preserved backbone to the scheduled time of step `index`, for inverse folding."""
@@ -289,7 +300,7 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
         latents_local_latents: torch.Tensor | None = None,
         attention_kwargs: dict[str, Any] | None = None,
         callback_on_step_end: Callable[[DiffusionPipeline, int, torch.Tensor, dict], dict | None] | None = None,
-        callback_on_step_end_tensor_inputs: list[str] = ["sample"],
+        callback_on_step_end_tensor_inputs: list[str] = ["bb_ca", "local_latents"],
         output_type: str = "pt",
         return_dict: bool = True,
     ) -> RFD4ProteinaPipelineOutput | tuple:
@@ -313,7 +324,9 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
             conditioning_features (`dict[str, Any]`, *optional*):
                 The remaining topology and conditioning tensors under the keys the preprocessor emits. It must hold the
                 sequence condition, `condition_sequence_1_residue`, and `molecule_iid`. Which of the rest are read is
-                fixed by the checkpoint's feature configuration.
+                fixed by the checkpoint's feature configuration. It is one mapping because the preprocessor emits about
+                30 optional tensors under fixed names, and a signature with that many arguments would tie the pipeline
+                to the preprocessor's naming.
             num_designs_per_prompt (`int`, defaults to `1`):
                 Number of designs to generate for each input row. The inputs are repeated along the batch axis, so the
                 output has `batch * num_designs_per_prompt` rows and row `r` is design `r % num_designs_per_prompt` of
@@ -341,11 +354,12 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
             callback_on_step_end (`Callable`, *optional*):
                 Called as `callback_on_step_end(pipeline, step, timestep, callback_kwargs)` after each step.
                 `callback_kwargs` holds the tensors named in `callback_on_step_end_tensor_inputs`; a returned dict may
-                replace `"sample"`.
+                replace `"bb_ca"` and `"local_latents"`.
             output_type (`str`, defaults to `"pt"`):
                 `"pt"` returns torch tensors and `"np"` returns numpy arrays.
-            callback_on_step_end_tensor_inputs (`list[str]`, defaults to `["sample"]`):
-                Tensors passed to the callback: `"sample"`, `"last_clean"`, `"sequence_logits"`, `"insertion_logits"`.
+            callback_on_step_end_tensor_inputs (`list[str]`, defaults to `["bb_ca", "local_latents"]`):
+                Tensors passed to the callback: `"bb_ca"`, `"local_latents"`, `"last_clean_bb_ca"`,
+                `"last_clean_local_latents"`, `"sequence_logits"`, `"insertion_logits"`.
             return_dict (`bool`, defaults to `True`): Return a typed output, or a tuple of its non-None fields.
 
         Examples:
@@ -403,8 +417,8 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
             "supports_local_latent": supports_local_latent,
         }
         batch_size = padding_mask.shape[0]
-        emitted = padding_mask & ~is_in_context_conditioning
-        emit_masks = {"bb_ca": emitted, "local_latents": emitted & supports_local_latent}
+        bb_mask = padding_mask & ~is_in_context_conditioning
+        latent_mask = bb_mask & supports_local_latent
         recycle_depths = self.config.recycle_depths
         steps = len(recycle_depths) if num_inference_steps is None else num_inference_steps
         if steps != len(recycle_depths):
@@ -413,12 +427,10 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
         start_times = (float(partial_t_bb_ca), float(partial_t_local_latents)) if is_partial else (None, None)
         self.bb_ca_scheduler.set_timesteps(steps, device=device, start_time=start_times[0])
         self.local_latents_scheduler.set_timesteps(steps, device=device, start_time=start_times[1])
-        schedulers = {"bb_ca": self.bb_ca_scheduler, "local_latents": self.local_latents_scheduler}
 
         use_coord_group_seq = "coord_group_seq" in self.transformer.config.feats_seq
 
-        target_backbone = None
-        clean_state = None
+        target_backbone = clean_bb = clean_latents = None
         if is_partial:
             encoded = self.vae.encode(
                 coords_nm=coords_nm,
@@ -428,24 +440,26 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
                 conditioning=conditioning,
                 generator=generators,
             )
-            clean_state = {"bb_ca": coords_nm[..., 1, :].float(), "local_latents": encoded.latent.float()}
-            target_backbone = clean_state["bb_ca"].clone() if inverse_folding else None
-        sample = self.prepare_latents(
-            emit_masks["bb_ca"],
-            emit_masks["local_latents"],
+            clean_bb, clean_latents = coords_nm[..., 1, :].float(), encoded.latent.float()
+            target_backbone = clean_bb.clone() if inverse_folding else None
+        bb_ca, local_latents = self.prepare_latents(
+            bb_mask,
+            latent_mask,
             conditioning,
             generators,
-            *((clean_state["bb_ca"], clean_state["local_latents"], start_times) if is_partial else ()),
+            clean_bb,
+            clean_latents,
+            start_times if is_partial else None,
         )
 
         if inverse_folding:
-            sample["bb_ca"] = self._noise_backbone(target_backbone, emit_masks["bb_ca"], conditioning, generators, 0)
+            bb_ca = self._noise_backbone(target_backbone, bb_mask, conditioning, generators, 0)
 
         if latents_bb_ca is not None:
             # A supplied starting point replaces the sampled one; the schedule is unchanged.
-            sample = {"bb_ca": latents_bb_ca.to(device), "local_latents": latents_local_latents.to(device)}
+            bb_ca, local_latents = latents_bb_ca.to(device), latents_local_latents.to(device)
 
-        sequence_logits = insertion_logits = last_clean = None
+        sequence_logits = insertion_logits = last_clean_bb_ca = last_clean_local_latents = None
         self._num_timesteps = steps
         self._interrupt = False
         self._attention_kwargs = attention_kwargs
@@ -453,8 +467,8 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
             for index in range(steps):
                 if self.interrupt:
                     continue
-                timesteps = {name: scheduler.timesteps[index] for name, scheduler in schedulers.items()}
-                times = {name: timestep.expand(batch_size) for name, timestep in timesteps.items()}
+                bb_time = self.bb_ca_scheduler.timesteps[index]
+                latents_time = self.local_latents_scheduler.timesteps[index]
                 step_conditioning = conditioning
                 if use_coord_group_seq:
                     # Draws from the row generators each step, so it must stay inside the loop.
@@ -462,10 +476,10 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
                     if coord_group_seq is not None:
                         step_conditioning = {**conditioning, "_prepared_coord_group_seq": coord_group_seq}
                 prediction = self.transformer(
-                    bb_ca=sample["bb_ca"],
-                    local_latents=sample["local_latents"],
-                    bb_ca_time=times["bb_ca"],
-                    local_latents_time=times["local_latents"],
+                    bb_ca=bb_ca,
+                    local_latents=local_latents,
+                    bb_ca_time=bb_time.expand(batch_size),
+                    local_latents_time=latents_time.expand(batch_size),
                     padding_mask=padding_mask,
                     token_type=token_type,
                     atom37_mask=atom37_mask,
@@ -473,35 +487,32 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
                     recycle_depth=recycle_depths[index],
                     attention_kwargs=self.attention_kwargs,
                 )
-                velocity = {"bb_ca": prediction.backbone.float(), "local_latents": prediction.local_latents.float()}
-                model_input = sample
-                sample = {
-                    name: scheduler.step(
-                        velocity[name], timesteps[name], sample[name], emit_masks[name], generator=generators
-                    ).prev_sample
-                    for name, scheduler in schedulers.items()
-                }
+                bb_velocity, latents_velocity = prediction.backbone.float(), prediction.local_latents.float()
+                last_clean_bb_ca = (bb_ca + (1 - bb_time) * bb_velocity) * bb_mask[..., None]
+                last_clean_local_latents = (local_latents + (1 - latents_time) * latents_velocity) * latent_mask[
+                    ..., None
+                ]
+                bb_ca = self.bb_ca_scheduler.step(
+                    bb_velocity, bb_time, bb_ca, bb_mask, generator=generators
+                ).prev_sample
+                local_latents = self.local_latents_scheduler.step(
+                    latents_velocity, latents_time, local_latents, latent_mask, generator=generators
+                ).prev_sample
                 sequence_logits = prediction.sequence_logits
                 insertion_logits = prediction.insertion_logits
-                last_clean = {
-                    name: (model_input[name] + (1 - times[name][..., None, None]) * velocity[name])
-                    * emit_masks[name][..., None]
-                    for name in schedulers
-                }
                 if target_backbone is not None:
                     if index == steps - 1:
-                        sample["bb_ca"] = target_backbone.clone()
+                        bb_ca = target_backbone.clone()
                     else:
-                        sample["bb_ca"] = self._noise_backbone(
-                            target_backbone, emit_masks["bb_ca"], conditioning, generators, index + 1
-                        )
+                        bb_ca = self._noise_backbone(target_backbone, bb_mask, conditioning, generators, index + 1)
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
                     for name in callback_on_step_end_tensor_inputs:
                         callback_kwargs[name] = locals()[name]
-                    callback_outputs = callback_on_step_end(self, index, timesteps["bb_ca"], callback_kwargs)
+                    callback_outputs = callback_on_step_end(self, index, bb_time, callback_kwargs)
                     if callback_outputs is not None:
-                        sample = callback_outputs.pop("sample", sample)
+                        bb_ca = callback_outputs.pop("bb_ca", bb_ca)
+                        local_latents = callback_outputs.pop("local_latents", local_latents)
 
                 progress_bar.update()
                 if XLA_AVAILABLE:
@@ -510,7 +521,6 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
         # Decode the terminal state, keeping CA-only tokens that have no latent.
         decode_conditioning = dict(conditioning)
         key = CONDITION_KEYS["sequence"]
-        latent_mask = emit_masks["local_latents"]
         if token_type is not None:
             # Restrict the residue classes each token type may decode to.
             allowed = self.vae.allowed_residue_types.to(sequence_logits.device)[token_type.long()]
@@ -522,8 +532,8 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
             latent_mask & (decode_conditioning[key] == 0), sequence_logits.argmax(dim=-1), decode_conditioning[key]
         )
         decoded_output = self.vae.decode(
-            z_latent=sample["local_latents"],
-            ca_coors_nm=sample["bb_ca"],
+            z_latent=local_latents,
+            ca_coors_nm=bb_ca,
             padding_mask=padding_mask,
             token_type=token_type,
             atom37_mask=atom37_mask,
@@ -532,7 +542,7 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
         emit_mask = decoded_output.emit_mask
         no_latent = padding_mask & ~emit_mask
         coords_nm = decoded_output.coordinates.clone()
-        coords_nm[..., 1, :] = torch.where(no_latent[..., None], sample["bb_ca"], coords_nm[..., 1, :])
+        coords_nm[..., 1, :] = torch.where(no_latent[..., None], bb_ca, coords_nm[..., 1, :])
         residue_type = decoded_output.residue_type.long().masked_fill(~emit_mask, -1)
         atom_mask = decoded_output.atom_mask.clone()
         atom_mask[..., 1] |= no_latent
@@ -547,8 +557,10 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
             coords_nm, residue_type, emit_mask, atom_mask = (
                 to_numpy(tensor) for tensor in (coords_nm, residue_type, emit_mask, atom_mask)
             )
-            sample = {name: to_numpy(value) for name, value in sample.items()}
-            last_clean = None if last_clean is None else {k: to_numpy(v) for k, v in last_clean.items()}
+            bb_ca, local_latents, last_clean_bb_ca, last_clean_local_latents = (
+                None if tensor is None else to_numpy(tensor)
+                for tensor in (bb_ca, local_latents, last_clean_bb_ca, last_clean_local_latents)
+            )
             sequence_logits = None if sequence_logits is None else to_numpy(sequence_logits)
             insertion_logits = None if insertion_logits is None else to_numpy(insertion_logits)
         output = RFD4ProteinaPipelineOutput(
@@ -556,8 +568,10 @@ class RFD4ProteinaPipeline(DiffusionPipeline, RFD4ProteinaLoraLoaderMixin):
             residue_type=residue_type,
             emit_mask=emit_mask,
             atom_mask=atom_mask,
-            state=sample,
-            clean=last_clean,
+            bb_ca=bb_ca,
+            local_latents=local_latents,
+            clean_bb_ca=last_clean_bb_ca,
+            clean_local_latents=last_clean_local_latents,
             sequence_logits=sequence_logits,
             insertion_logits=insertion_logits,
         )

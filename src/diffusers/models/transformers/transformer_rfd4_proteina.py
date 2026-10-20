@@ -1100,7 +1100,7 @@ class RFD4ProteinaTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attenti
         recycle_depth: int = 0,
         attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> RFD4ProteinaTransformerOutput | tuple:
+    ) -> RFD4ProteinaTransformerOutput | tuple[torch.Tensor]:
         """Predict velocities from prepared molecular tensors without advancing the sampler.
 
         Args:

@@ -21,10 +21,14 @@ class RFD4ProteinaPipelineOutput(BaseOutput):
             Boolean mask `(B, N)` of the tokens that were designed.
         atom_mask (`torch.Tensor`):
             Boolean mask `(B, N, 37)` of the valid atoms.
-        state (`dict[str, torch.Tensor]`):
-            Final product-space state: `bb_ca` coordinates `(B, N, 3)` and `local_latents` `(B, N, D)`.
-        clean (`dict[str, torch.Tensor]`):
-            Predicted clean product-space state from the last denoising step.
+        bb_ca (`torch.Tensor`):
+            Final backbone state `(B, N, 3)` in nanometers.
+        local_latents (`torch.Tensor`):
+            Final local-latent state `(B, N, D)`.
+        clean_bb_ca (`torch.Tensor`):
+            Backbone prediction of the clean state at the last denoising step.
+        clean_local_latents (`torch.Tensor`):
+            Local-latent prediction of the clean state at the last denoising step.
         sequence_logits (`torch.Tensor`):
             Final per-token residue logits `(B, N, 147)`.
         insertion_logits (`torch.Tensor`):
@@ -35,7 +39,9 @@ class RFD4ProteinaPipelineOutput(BaseOutput):
     residue_type: torch.Tensor
     emit_mask: torch.Tensor
     atom_mask: torch.Tensor
-    state: dict[str, torch.Tensor]
-    clean: dict[str, torch.Tensor]
+    bb_ca: torch.Tensor
+    local_latents: torch.Tensor
+    clean_bb_ca: torch.Tensor
+    clean_local_latents: torch.Tensor
     sequence_logits: torch.Tensor
     insertion_logits: torch.Tensor
