@@ -13,8 +13,8 @@
 # limitations under the License.
 
 """
-Images of the text a fibo-2 caption asks for, drawn the way fibo-2's training drew them: each text on its own, in one
-line, black on white. Pillow's built-in font draws the text. A character it lacks is drawn with the first of the
+Images of the text a Fibo 2.0 caption asks for, drawn the way Fibo 2.0's training drew them: each text on its own, in
+one line, black on white. Pillow's built-in font draws the text. A character it lacks is drawn with the first of the
 fallback fonts that has it: training used Aileron, the full version of the built-in font, then DejaVu Sans.
 """
 
@@ -45,7 +45,7 @@ def load_font(path: str) -> ImageFont.FreeTypeFont:
 
 def draw_text_image(text: str, fallback_fonts: Sequence[ImageFont.FreeTypeFont] = ()) -> PIL.Image.Image:
     """
-    Draws a text the way fibo-2's training drew each `text_render` entry's text.
+    Draws a text the way Fibo 2.0's training drew each `text_render` entry's text.
 
     The text is drawn in one line, its whitespace collapsed, black on white with 2 pixels of padding. A text longer
     than 256 characters is split into lines of 256. A character Pillow's built-in font lacks is drawn with the first of
@@ -59,7 +59,7 @@ def draw_text_image(text: str, fallback_fonts: Sequence[ImageFont.FreeTypeFont] 
     if not fallback_fonts:
         logger.warning(
             "A text to draw has characters Pillow's built-in font lacks, which are drawn as it draws them. Pass the"
-            " `fonts` fibo-2 was trained with to draw them as training did."
+            " `fonts` Fibo 2.0 was trained with to draw them as training did."
         )
     return _draw_mixed(lines, [font, *fallback_fonts])
 

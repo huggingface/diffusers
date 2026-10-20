@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # BriaFibo2Transformer2DModel
 
-The single-stream transformer of [Bria](https://huggingface.co/briaai)'s fibo-2, built on the Z-Image block. Its text conditioning comes from Qwen3-VL in two ways: a Perceiver resampler turns the text encoder's hidden states into gist tokens that share the stream with the image tokens, and five blocks add a gated cross-attention to their own bundle of Qwen3-VL layers. To edit, the latents of the images to edit join the stream as clean tokens, each image on its own RoPE plane.
+The single-stream transformer of [Bria](https://huggingface.co/briaai)'s Fibo 2.0, built on the Z-Image block. Its text conditioning comes from Qwen3-VL in two ways: a Perceiver resampler turns the text encoder's hidden states into gist tokens that share the stream with the image tokens, and five blocks add a gated cross-attention to their own bundle of Qwen3-VL layers. To edit, the latents of the images to edit join the stream as clean tokens, each image on its own RoPE plane.
 
 ## BriaFibo2Transformer2DModel
 

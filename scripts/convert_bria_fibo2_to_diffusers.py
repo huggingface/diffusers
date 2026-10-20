@@ -18,7 +18,7 @@ from diffusers.configuration_utils import FrozenDict
 
 
 """
-Converts an original fibo-2 checkpoint, with `transformer/`, `vae/`, `text_encoder/` and `scheduler/` folders, to
+Converts an original Fibo 2.0 checkpoint, with `transformer/`, `vae/`, `text_encoder/` and `scheduler/` folders, to
 diffusers. The converted checkpoints are released as briaai/Fibo-2.0-dev and briaai/Fibo-2.0-edit-turbo.
 
 # Transformer only
@@ -152,7 +152,7 @@ def main(args):
     text_encoder = Qwen3VLForConditionalGeneration.from_pretrained(
         checkpoint_path, subfolder="text_encoder", dtype=torch.bfloat16
     )
-    # fibo-2's limits on an image's size in pixels, not Qwen3-VL's defaults; they decide how many tokens an image to
+    # Fibo 2.0's limits on an image's size in pixels, not Qwen3-VL's defaults; they decide how many tokens an image to
     # edit becomes
     processor = Qwen3VLProcessor.from_pretrained(checkpoint_path, subfolder="text_encoder")
     processor.image_processor = AutoImageProcessor.from_pretrained(

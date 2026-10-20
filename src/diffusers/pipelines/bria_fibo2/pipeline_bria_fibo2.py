@@ -42,7 +42,7 @@ else:
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-# The null caption fibo-2 was trained with for classifier-free guidance: every key of the structured caption, every
+# The null caption Fibo 2.0 was trained with for classifier-free guidance: every key of the structured caption, every
 # value empty
 DEFAULT_NEGATIVE_PROMPT = (
     '{"short_description":"","objects":[],"background_setting":"","lighting":{},'
@@ -68,7 +68,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import BriaFibo2Pipeline
         >>> from diffusers.utils import load_image
 
-        >>> # fibo-2 reads structured JSON captions, serialized compactly the way it was trained
+        >>> # Fibo 2.0 reads structured JSON captions, serialized compactly the way it was trained
         >>> caption = {
         ...     "short_description": "A red bicycle leaning against a white brick wall on a sunny morning.",
         ...     "objects": [{"description": "a red city bicycle with a wicker basket", "location": "center"}],
@@ -169,7 +169,7 @@ def retrieve_timesteps(
 
 class BriaFibo2Pipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation and image editing with fibo-2.
+    Pipeline for text-to-image generation and image editing with Fibo 2.0.
 
     Args:
         transformer ([`BriaFibo2Transformer2DModel`]):
@@ -210,7 +210,7 @@ class BriaFibo2Pipeline(DiffusionPipeline):
         self.tokenizer_max_length = 4096
         self.prompt_template_encode = PROMPT_TEMPLATE
         self.text_encoder_out_layers = TEXT_ENCODER_OUT_LAYERS
-        # Editing: fibo-2 edits up to 5 images at once, and Qwen3-VL sees each one at most 768 pixels a side
+        # Editing: Fibo 2.0 edits up to 5 images at once, and Qwen3-VL sees each one at most 768 pixels a side
         self.max_num_images = 5
         self.text_encoder_image_size = 768
         # Images of the caption's text: a generation shows them to Qwen3-VL only once the noise level is at or below
@@ -219,7 +219,7 @@ class BriaFibo2Pipeline(DiffusionPipeline):
 
     @staticmethod
     def _parse_prompt(prompt: str) -> tuple[dict | str | None, str | None]:
-        # A prompt's caption, in the form fibo-2 was trained with, and its edit instruction. A prompt that isn't a JSON
+        # A prompt's caption, in the form Fibo 2.0 was trained with, and its edit instruction. A prompt that isn't a JSON
         # object comes back as it is, with no instruction: a short description, or an edit's instruction alone. An edit
         # prompt's caption is its other keys or its "structured_caption" key, a JSON caption or a short description
         try:
@@ -363,7 +363,7 @@ class BriaFibo2Pipeline(DiffusionPipeline):
                 The prompt or prompts to encode. With `image`, each prompt is an edit instruction, or a JSON object
                 with an `"edit_instruction"` key and the caption of the result: its other keys, or a
                 `"structured_caption"` key holding the caption or a short description. A generation prompt is encoded
-                as given: `__call__` first puts a JSON caption in the form fibo-2 was trained with.
+                as given: `__call__` first puts a JSON caption in the form Fibo 2.0 was trained with.
             image (`list[PIL.Image.Image]`, *optional*):
                 The images to edit, as Qwen3-VL sees them. Every prompt edits all of them.
             device (`torch.device`, *optional*):
@@ -599,11 +599,11 @@ class BriaFibo2Pipeline(DiffusionPipeline):
 
         Args:
             prompt (`str` or `list[str]`, *optional*):
-                The prompt to guide the image generation, usually a structured JSON prompt, which is cleaned as
-                fibo-2's training cleaned captions: empty values and the `aesthetic_score` and `preference_score`
-                fields are dropped, and it is serialized compactly. With `image`, the edit instruction, or a JSON
-                object with an `"edit_instruction"` key and the caption of the result: its other keys, or a
-                `"structured_caption"` key holding the caption or a short description.
+                The prompt to guide the image generation, usually a structured JSON prompt, which is cleaned as Fibo
+                2.0's training cleaned captions: empty values and the `aesthetic_score` and `preference_score` fields
+                are dropped, and it is serialized compactly. With `image`, the edit instruction, or a JSON object with
+                an `"edit_instruction"` key and the caption of the result: its other keys, or a `"structured_caption"`
+                key holding the caption or a short description.
             image (`PIL.Image.Image` or `list[PIL.Image.Image]`, *optional*):
                 The image to edit, or up to 5 images to edit together, which the instruction can refer to as
                 `<image_1>`, `<image_2>` and so on. Without `image`, the pipeline generates an image from the prompt.
@@ -613,12 +613,12 @@ class BriaFibo2Pipeline(DiffusionPipeline):
             text_images (`list[PIL.Image.Image]`, *optional*):
                 Images of the text the caption asks for, one per `text_render` entry that has `text`, in order: each
                 entry's text drawn on its own, as `render_text_images` draws them. Qwen3-VL sees them with the prompt,
-                each marked in its caption entry, which helps fibo-2 render the text. Needs `prompt` as a single JSON
+                each marked in its caption entry, which helps Fibo 2.0 render the text. Needs `prompt` as a single JSON
                 caption, and takes precedence over `render_text_images`. A generation runs its first steps, while the
                 noise level is above `text_images_max_noise_level` (0.9), without them; an edit uses them at every
                 step.
             render_text_images (`bool`, *optional*, defaults to `True`):
-                Whether to draw the `text_images` of each caption, the way fibo-2's training drew them: each text in
+                Whether to draw the `text_images` of each caption, the way Fibo 2.0's training drew them: each text in
                 one line, black on white, in Pillow's built-in font at size 20, and the characters that font lacks in
                 the first of `fonts` that has them. A caption without text, and a prompt without a JSON caption, such
                 as a short description, get no images, as in training.
@@ -628,7 +628,7 @@ class BriaFibo2Pipeline(DiffusionPipeline):
                 `briaai/Fibo-2.0-dev`. Without them, such characters are drawn as Pillow's built-in font draws them.
             height (`int`, *optional*):
                 The height in pixels of the generated image. Must be divisible by 16. Defaults to 1024, or when
-                editing, to the size fibo-2 was trained at for the aspect ratio of the first image, about one
+                editing, to the size Fibo 2.0 was trained at for the aspect ratio of the first image, about one
                 megapixel.
             width (`int`, *optional*):
                 The width in pixels of the generated image. Must be divisible by 16. Defaults like `height`.
@@ -638,7 +638,7 @@ class BriaFibo2Pipeline(DiffusionPipeline):
                 Classifier-free guidance scale. Values above 1 run the negative prompt as a second pass at every step,
                 and 1.0 turns guidance off.
             negative_prompt (`str` or `list[str]`, *optional*):
-                The prompt to guide away from when guidance is on. Defaults to the null caption fibo-2 was trained
+                The prompt to guide away from when guidance is on. Defaults to the null caption Fibo 2.0 was trained
                 with: the structured caption with every value empty.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
@@ -695,7 +695,7 @@ class BriaFibo2Pipeline(DiffusionPipeline):
             ]
             prompt = prompts[0] if isinstance(prompt, str) else prompts
         # The images of each prompt's text: the caller's, or drawn from its caption's text_render entries that have
-        # text, as fibo-2's training drew them
+        # text, as Fibo 2.0's training drew them
         if text_images is not None:
             text_images = [list(text_images)]
         elif render_text_images and prompt is not None:
@@ -712,7 +712,7 @@ class BriaFibo2Pipeline(DiffusionPipeline):
                 )
         if not any(text_images or []):
             text_images = None
-        # The size fibo-2 was trained at for an aspect ratio, about the default area
+        # The size Fibo 2.0 was trained at for an aspect ratio, about the default area
         default_area = (self.default_sample_size * self.vae_scale_factor) ** 2
         if image is not None and height is None and width is None:
             width, height = self.image_processor.get_image_size(image[0].width / image[0].height, area=default_area)
@@ -722,7 +722,7 @@ class BriaFibo2Pipeline(DiffusionPipeline):
         self._interrupt = False
         device = self._execution_device
 
-        # 2. Prepare the images to edit, as fibo-2 was trained on them: the crops the VAE encodes, and Qwen3-VL's copies
+        # 2. Prepare the images to edit, as Fibo 2.0 was trained on them: the crops the VAE encodes, and Qwen3-VL's copies
         vae_images = text_encoder_images = None
         if image is not None:
             vae_images, text_encoder_images = self.image_processor.preprocess(

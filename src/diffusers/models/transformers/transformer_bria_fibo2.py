@@ -595,7 +595,7 @@ class BriaFibo2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Att
         gist = self.perceiver(encoder_hidden_states[:, 0], num_gist_tokens, encoder_attention_mask, gist_mask)
         gist_ids = self.create_coordinate_grid((num_gist_tokens, 1, 1), (1, 0, 0), device).flatten(0, 2)
 
-        # 5. One stream: gist tokens first, then the image tokens, then the context tokens, the order fibo-2 was trained
+        # 5. One stream: gist tokens first, then the image tokens, then the context tokens, the order Fibo 2.0 was trained
         # with. When the batch pads gist tokens, the gist goes last instead, so the padding ends every row as varlen
         # attention backends expect. Positions come from RoPE, so the order changes nothing but float rounding. The
         # noise mask marks which tokens are noisy

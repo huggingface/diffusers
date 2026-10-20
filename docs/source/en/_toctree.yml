@@ -552,7 +552,7 @@
       - local: api/pipelines/bria_fibo
         title: Bria Fibo
       - local: api/pipelines/bria_fibo2
-        title: Bria Fibo 2
+        title: Bria Fibo 2.0
       - local: api/pipelines/bria_fibo_edit
         title: Bria Fibo Edit
       - local: api/pipelines/chroma

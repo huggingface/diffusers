@@ -22,8 +22,8 @@ from ...image_processor import VaeImageProcessor
 
 class BriaFibo2ImageProcessor(VaeImageProcessor):
     r"""
-    Image processor for fibo-2: preprocesses the images to edit as fibo-2 was trained on them, with the masked region
-    of an image greyed out the way training did, gives the size fibo-2 was trained at for an aspect ratio, and
+    Image processor for Fibo 2.0: preprocesses the images to edit as Fibo 2.0 was trained on them, with the masked
+    region of an image greyed out the way training did, gives the size Fibo 2.0 was trained at for an aspect ratio, and
     postprocesses the generated images.
 
     Args:
@@ -36,9 +36,9 @@ class BriaFibo2ImageProcessor(VaeImageProcessor):
 
     def get_image_size(self, aspect_ratio: float, area: int = 1024 * 1024) -> tuple[int, int]:
         r"""
-        The `(width, height)` fibo-2 was trained at for an aspect ratio: of the sizes divisible by `vae_scale_factor`,
-        at least 4 of it a side and within 10% of `area`, the one that crops the least from a picture with that aspect
-        ratio, then the one closest to `area`.
+        The `(width, height)` Fibo 2.0 was trained at for an aspect ratio: of the sizes divisible by
+        `vae_scale_factor`, at least 4 of it a side and within 10% of `area`, the one that crops the least from a
+        picture with that aspect ratio, then the one closest to `area`.
         """
         multiple = self.config.vae_scale_factor
         min_side = 4 * multiple
@@ -57,7 +57,7 @@ class BriaFibo2ImageProcessor(VaeImageProcessor):
 
     def _resize_and_crop(self, image: PIL.Image.Image, width: int, height: int) -> PIL.Image.Image:
         r"""
-        Scale the image to cover `width` x `height`, keeping its aspect ratio, then crop the center, as fibo-2's
+        Scale the image to cover `width` x `height`, keeping its aspect ratio, then crop the center, as Fibo 2.0's
         training did. `resize` runs it for `resize_mode="crop"`.
         """
         image = image.convert("RGB")
@@ -77,12 +77,12 @@ class BriaFibo2ImageProcessor(VaeImageProcessor):
         text_encoder_image_size: int = 768,
     ) -> tuple[list[torch.Tensor], list[PIL.Image.Image]]:
         r"""
-        Preprocess the images to edit as fibo-2 was trained on them.
+        Preprocess the images to edit as Fibo 2.0 was trained on them.
 
         With `mask`, the region it marks in the single image is greyed out first (`grey_out`). A single image is then
         cropped to `width` x `height`, the size of the result, by default the size for its own aspect ratio; several
-        images each to the size fibo-2 was trained at for their own aspect ratio, about `area` (`get_image_size`). The
-        VAE encodes the crops, and Qwen3-VL sees each one at most `text_encoder_image_size` pixels a side.
+        images each to the size Fibo 2.0 was trained at for their own aspect ratio, about `area` (`get_image_size`).
+        The VAE encodes the crops, and Qwen3-VL sees each one at most `text_encoder_image_size` pixels a side.
 
         Returns:
             `tuple[list[torch.Tensor], list[PIL.Image.Image]]`:
@@ -113,7 +113,7 @@ class BriaFibo2ImageProcessor(VaeImageProcessor):
     @staticmethod
     def grey_out(image: PIL.Image.Image, mask: PIL.Image.Image) -> PIL.Image.Image:
         r"""
-        The image with the region `mask` marks, white on black, greyed out as fibo-2's training greyed it: flat (128,
+        The image with the region `mask` marks, white on black, greyed out as Fibo 2.0's training greyed it: flat (128,
         128, 128) grey through the mask made binary at 128, at the image's own size, before the image is resized.
         """
         grey = PIL.Image.new("RGB", image.size, (128, 128, 128))
