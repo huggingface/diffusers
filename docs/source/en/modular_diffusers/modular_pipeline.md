@@ -220,7 +220,7 @@ from diffusers import ModularPipeline, ComponentsManager
 
 components = ComponentsManager()
 pipeline = ModularPipeline.from_pretrained(
-    "diffusers/flux2-bnb-4bit-modular", components_manager=components
+    "MiniMaxAI/MiniMax-H3", components_manager=components
 )
 ```
 
@@ -495,3 +495,11 @@ The `config.json` file contains an `auto_map` key that tells [`ModularPipeline`]
 ```
 
 Load custom code repositories with `trust_remote_code=True` as shown in [from_pretrained](#frompretrained). See [Custom blocks](./custom_blocks) for how to create and share your own.
+
+### Referencing components in other repositories
+
+A component's loading specification in `modular_model_index.json` can point to a different repository. For example, [diffusers/flux2-bnb-4bit-modular](https://huggingface.co/diffusers/flux2-bnb-4bit-modular) loads its quantized transformer from `diffusers/FLUX.2-dev-bnb-4bit` and the remaining components from `black-forest-labs/FLUX.2-dev`.
+
+We strongly prefer self-contained repositories: keeping all components together makes a pipeline easier to download, share, and use offline without depending on other repositories. Use cross-repository references only when you intentionally want a component hosted elsewhere.
+
+With `huggingface_hub>=1.32.0`, identical Xet-backed files can share one cached payload across repositories through symlinks, avoiding duplicate downloads and disk usage. Cross-repository references aren't needed for this. See [Save a self-contained copy](#save-a-self-contained-copy) for the shared cache requirements and limitations.
