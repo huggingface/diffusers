@@ -29,6 +29,7 @@ from .autoencoder_longcat_audio_dit import LongCatAudioDiTVae
 from .autoencoder_mmaudio import MMAudioVAE
 from .autoencoder_oobleck import AutoencoderOobleck
 from .autoencoder_rae import AutoencoderRAE
+from .autoencoder_rfd4_proteina import RFD4ProteinaAutoencoder
 from .autoencoder_same import AutoencoderSAME
 from .autoencoder_tiny import AutoencoderTiny
 from .autoencoder_vidtok import AutoencoderVidTok
