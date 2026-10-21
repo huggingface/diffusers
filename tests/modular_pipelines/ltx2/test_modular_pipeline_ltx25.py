@@ -124,6 +124,12 @@ class LTX25ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 class LTX25ModularPipelineFastTesterMixin(ModularPipelineTesterMixin):
     """`ModularPipelineTesterMixin` with the two adjustments every LTX-2.5 workflow needs."""
 
+    @pytest.mark.skip(
+        reason="LTX-2.5 still leaves packed `[B, S, C]` latents in the state; #14612 moves it to the VAE form."
+    )
+    def test_latents_output_in_canonical_form(self):
+        pass
+
     @pytest.mark.skip(reason="num_videos_per_prompt")
     def test_num_images_per_prompt(self):
         pass

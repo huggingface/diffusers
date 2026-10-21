@@ -138,6 +138,7 @@ class QwenImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = QwenImageModularPipeline
     pipeline_blocks_class = QwenImageAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-modular"
+    expected_latents_shape = (1, 4, 1, 8, 8)
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image", "mask_image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
     expected_workflow_blocks = QWEN_IMAGE_TEXT2IMAGE_WORKFLOWS
@@ -220,6 +221,7 @@ class QwenImageEditModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = QwenImageEditModularPipeline
     pipeline_blocks_class = QwenImageEditAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-edit-modular"
+    expected_latents_shape = (1, 4, 1, 8, 8)
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image", "mask_image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
     expected_workflow_blocks = QWEN_IMAGE_EDIT_WORKFLOWS
@@ -268,6 +270,7 @@ class QwenImageEditPlusModularPipelineTesterConfig(BaseModularPipelineTesterConf
     pipeline_class = QwenImageEditPlusModularPipeline
     pipeline_blocks_class = QwenImageEditPlusAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-edit-plus-modular"
+    expected_latents_shape = (1, 4, 1, 8, 8)
     # No `mask_image` yet.
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image"])
