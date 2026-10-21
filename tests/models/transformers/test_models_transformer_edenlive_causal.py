@@ -12,23 +12,45 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import socket
-from datetime import timedelta
-
 import pytest
 import torch
-import torch.distributed as dist
-import torch.multiprocessing as mp
 
-from diffusers import ContextParallelConfig, EdenLiveTransformer3DModel
 from diffusers.models.transformers import transformer_edenlive
 
-from ...testing_utils import enable_full_determinism
+from ...testing_utils import require_torch_multi_gpu
 from .test_models_transformer_edenlive import EdenLiveTransformerTesterConfig
 
 
 class TestEdenLiveCausalCacheOrder:
+    @pytest.mark.parametrize("use_rotary_emb", [False, True])
+    @torch.no_grad()
+    def test_without_cache_matches_attention_reference(self, use_rotary_emb):
+        torch.manual_seed(0)
+        attn = transformer_edenlive.EdenLiveAttention(
+            dim=8, heads=2, dim_head=4, processor=transformer_edenlive.EdenLiveCausalAttnProcessor()
+        ).eval()
+        hidden_states = torch.randn(1, 6, 8)
+        query = attn.norm_q(attn.to_q(hidden_states)).unflatten(-1, (2, 4))
+        key = attn.norm_k(attn.to_k(hidden_states)).unflatten(-1, (2, 4))
+        value = attn.to_v(hidden_states).unflatten(-1, (2, 4))
+        rotary_emb = None
+        if use_rotary_emb:
+            angles = torch.randn(1, 6, 1, 2)
+            rotations = torch.polar(torch.ones_like(angles), angles)
+            query = torch.view_as_real(torch.view_as_complex(query.unflatten(-1, (2, 2))) * rotations).flatten(-2)
+            key = torch.view_as_real(torch.view_as_complex(key.unflatten(-1, (2, 2))) * rotations).flatten(-2)
+            rotary_emb = (angles.cos().repeat_interleave(2, dim=-1), angles.sin().repeat_interleave(2, dim=-1))
+        expected = (
+            torch.nn.functional.scaled_dot_product_attention(
+                query.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2)
+            )
+            .transpose(1, 2)
+            .flatten(2)
+        )
+        expected = attn.to_out[1](attn.to_out[0](expected))
+        actual = attn(hidden_states, rotary_emb=rotary_emb)
+        torch.testing.assert_close(actual, expected, atol=1e-6, rtol=1e-5)
+
     @torch.no_grad()
     def test_local_chunk_order_survives_eviction_and_short_tail(self):
         torch.manual_seed(0)
@@ -82,143 +104,64 @@ class TestEdenLiveCausalCacheOrder:
         call([16], [0, 1, 9, 12, 13, 16], True)
 
 
-def _parallel_outputs(model, inputs):
-    with torch.no_grad():
-        output = model(**inputs, return_dict=False)[0]
-        state = model.create_causal_state(
-            batch_size=1,
-            height=8,
-            width=8,
-            chunk_size=3,
-            max_context_frames=18,
-            sink_frames=6,
-            device=inputs["hidden_states"].device,
-            dtype=inputs["hidden_states"].dtype,
-        )
-        clean_inputs = {**inputs, "timestep": torch.zeros_like(inputs["timestep"])}
-        sink_keys = None
-        for index in range(8):
-            model(**clean_inputs, causal_state=state, cache_update=True)
-            assert state.next_frame == 3 * (index + 1)
-            assert all(layer.num_tokens <= 18 * state.tokens_per_frame // state.cp_size for layer in state.layers)
-            sink_tokens = 6 * state.tokens_per_frame // state.cp_size
-            if index == 1:
-                sink_keys = [layer.key[:, :sink_tokens].clone() for layer in state.layers]
-            elif index > 1:
-                for expected, layer in zip(sink_keys, state.layers):
-                    torch.testing.assert_close(layer.key[:, :sink_tokens], expected, rtol=0, atol=0)
-        tail_inputs = {
-            **inputs,
-            "hidden_states": inputs["hidden_states"][:, :, :1],
-            "proxy_features": inputs["proxy_features"][:, :, :1],
-            "timestep": inputs["timestep"][:, :16] if inputs["timestep"].ndim == 2 else inputs["timestep"],
-        }
-        tail = model(**tail_inputs, causal_state=state, return_dict=False)[0]
-        assert state.next_frame == 24
-        tail_clean = {**tail_inputs, "timestep": torch.zeros_like(tail_inputs["timestep"])}
-        model(**tail_clean, causal_state=state, cache_update=True)
-        assert state.next_frame == 25
-        return [output.float().cpu(), tail.float().cpu()]
-
-
-def _context_parallel_worker(rank, world_size, port, init_dict, state_dict, inputs, backend, use_fsdp, output_path):
-    # Spawned workers must establish the same settings as the single-device reference.
-    enable_full_determinism()
-    torch.set_float32_matmul_precision("highest")
-    torch.backends.cuda.matmul.allow_tf32 = False
-    torch.backends.cudnn.allow_tf32 = False
-    os.environ.update(MASTER_ADDR="127.0.0.1", MASTER_PORT=str(port), RANK=str(rank), WORLD_SIZE=str(world_size))
-    torch.cuda.set_device(rank)
-    device = torch.device("cuda", rank)
-    dtype = torch.bfloat16 if backend == "_native_flash" else torch.float32
-    try:
-        dist.init_process_group("nccl", rank=rank, world_size=world_size, timeout=timedelta(seconds=180))
-        model = EdenLiveTransformer3DModel(**init_dict).eval()
-        model.load_state_dict(state_dict)
-        model.to(device=device, dtype=dtype)
-        model.set_attention_backend(backend)
-        inputs = {
-            name: tensor.to(device=device, dtype=torch.float32 if name == "timestep" else dtype)
-            for name, tensor in inputs.items()
-        }
-
-        def check_timestep(_module, _args, kwargs):
-            assert kwargs["timestep"].dtype == torch.float32
-            assert torch.isin(kwargs["timestep"], torch.tensor([0.0, 375.0], device=device)).all()
-
-        model.register_forward_pre_hook(check_timestep, with_kwargs=True)
-        from torch.distributed.device_mesh import init_device_mesh
-
-        mesh = init_device_mesh("cuda", (1, world_size), mesh_dim_names=("ring", "ulysses"))
-        model.enable_parallelism(config=ContextParallelConfig(ring_degree=1, ulysses_degree=world_size, mesh=mesh))
-        if use_fsdp:
-            from torch.distributed.fsdp import MixedPrecisionPolicy, fully_shard
-
-            policy = MixedPrecisionPolicy(
-                param_dtype=dtype, reduce_dtype=torch.float32, output_dtype=dtype, cast_forward_inputs=False
-            )
-            for block in model.blocks:
-                fully_shard(block, mesh=mesh["ulysses"], mp_policy=policy, reshard_after_forward=True)
-            fully_shard(model, mesh=mesh["ulysses"], mp_policy=policy, reshard_after_forward=True)
-        outputs = _parallel_outputs(model, inputs)
-        if rank == 0:
-            torch.save(outputs, output_path)
-    finally:
-        if dist.is_initialized():
-            dist.destroy_process_group()
-
-
-class TestEdenLiveContextParallel(EdenLiveTransformerTesterConfig):
-    @pytest.mark.context_parallel
-    @pytest.mark.attention
-    @pytest.mark.parametrize("world_size", [2, 4])
-    @pytest.mark.parametrize(
-        "backend,use_fsdp", [("native", False), ("_native_flash", False), ("_native_flash", True)]
-    )
-    @pytest.mark.parametrize("num_layers,token_time", [(2, False), (1, True)])
-    def test_context_parallel_inference(self, tmp_path, world_size, backend, use_fsdp, num_layers, token_time):
-        from diffusers.models.attention_dispatch import _AttentionBackendRegistry
-
-        if not dist.is_available() or not dist.is_nccl_available() or torch.cuda.device_count() < world_size:
-            pytest.skip(f"This case requires {world_size} CUDA devices with NCCL.")
-        previous_backend, _ = _AttentionBackendRegistry.get_active_backend()
-        deterministic = torch.are_deterministic_algorithms_enabled()
-        warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
-        try:
-            enable_full_determinism()
-            config = {**self.get_init_dict(), "attention_head_dim": 16, "num_layers": num_layers}
-            model = EdenLiveTransformer3DModel(**config).eval()
-            state = {name: tensor.cpu().clone() for name, tensor in model.state_dict().items()}
-            inputs = {name: tensor.cpu() for name, tensor in self.get_dummy_inputs().items()}
-            # This value would be rounded to 376 by an indiscriminate BF16 input cast.
-            inputs["timestep"] = torch.tensor([375.0], dtype=torch.float32)
-            if token_time:
-                inputs["timestep"] = torch.full((1, 48), 375.0)
-                inputs["timestep"][:, :16] = 0
-            dtype = torch.bfloat16 if backend == "_native_flash" else torch.float32
-            model.to(device="cuda:0", dtype=dtype).set_attention_backend(backend)
-            reference_inputs = {
-                name: tensor.to(device="cuda:0", dtype=torch.float32 if name == "timestep" else dtype)
-                for name, tensor in inputs.items()
+class TestEdenLiveCausalDeviceMap(EdenLiveTransformerTesterConfig):
+    @require_torch_multi_gpu
+    @pytest.mark.parametrize("block_device", ["cuda:1", "cpu"])
+    @pytest.mark.parametrize("head_device", ["cuda:0", "cuda:1"])
+    @torch.no_grad()
+    def test_causal_rollout_matches_single_device(self, tmp_path, block_device, head_device):
+        torch.manual_seed(0)
+        baseline = self.model_class(**self.get_init_dict()).eval()
+        baseline.save_pretrained(tmp_path)
+        device_map = {name: "cuda:0" for name, _ in baseline.named_children() if name != "blocks"}
+        device_map.update(
+            {
+                "scale_shift_table": "cuda:0",
+                "blocks.0": "cuda:0",
+                "blocks.1": block_device,
+                "norm_out": head_device,
+                "proj_out": head_device,
             }
-            expected = _parallel_outputs(model, reference_inputs)
-            del model, reference_inputs
-            torch.cuda.empty_cache()
-            with socket.socket() as sock:
-                sock.bind(("127.0.0.1", 0))
-                port = sock.getsockname()[1]
-            output_path = str(tmp_path / "context_parallel.pt")
-            mp.spawn(
-                _context_parallel_worker,
-                args=(world_size, port, config, state, inputs, backend, use_fsdp, output_path),
-                nprocs=world_size,
-                join=True,
-            )
-            actual = torch.load(output_path, map_location="cpu", weights_only=True)
-            for reference, output in zip(expected, actual):
-                assert torch.isfinite(output).all()
-                # Keep the existing small-model CP backend tolerance.
-                torch.testing.assert_close(output, reference, atol=1e-2, rtol=1e-2)
-        finally:
-            _AttentionBackendRegistry.set_active_backend(previous_backend)
-            torch.use_deterministic_algorithms(deterministic, warn_only=warn_only)
+        )
+        dispatched = self.model_class.from_pretrained(tmp_path, device_map=device_map).eval()
+        baseline.to("cuda:0")
+        inputs = {name: value.to("cuda:0") for name, value in self.get_dummy_inputs(height=4, width=4).items()}
+        torch.testing.assert_close(dispatched(**inputs).sample, baseline(**inputs).sample, atol=1e-5, rtol=1e-5)
+        state_args = {
+            "batch_size": 1,
+            "height": 4,
+            "width": 4,
+            "chunk_size": 3,
+            "max_context_frames": 6,
+            "sink_frames": 3,
+        }
+        reference_state = baseline.create_causal_state(**state_args, device="cuda:0")
+        state = dispatched.create_causal_state(**state_args, device="cuda:0")
+        expected_devices = ["cuda:0", "cuda:0" if block_device == "cpu" else block_device]
+        assert [str(layer.key.device) for layer in state.layers] == expected_devices
+        assert [str(layer.value.device) for layer in state.layers] == expected_devices
+
+        for num_frames in (3, 3, 3, 1):
+            chunk_inputs = dict(inputs)
+            chunk_inputs["hidden_states"] = inputs["hidden_states"][:, :, :num_frames]
+            chunk_inputs["proxy_features"] = inputs["proxy_features"][:, :, :num_frames]
+            for commit in (False, True):
+                chunk_inputs["timestep"] = torch.tensor([0.0 if commit else 500.0], device="cuda:0")
+                expected = baseline(**chunk_inputs, causal_state=reference_state, cache_update=commit).sample
+                actual = dispatched(**chunk_inputs, causal_state=state, cache_update=commit).sample
+                torch.testing.assert_close(actual, expected, atol=1e-5, rtol=1e-5)
+                assert state.next_frame == reference_state.next_frame
+                for layer, reference_layer in zip(state.layers, reference_state.layers):
+                    assert layer.num_tokens == reference_layer.num_tokens
+                    torch.testing.assert_close(layer.key.cpu(), reference_layer.key.cpu(), atol=1e-5, rtol=1e-5)
+                    torch.testing.assert_close(layer.value.cpu(), reference_layer.value.cpu(), atol=1e-5, rtol=1e-5)
+
+        state.reset()
+        reference_state.reset()
+        assert state.next_frame == 0 and all(layer.num_tokens == 0 for layer in state.layers)
+        torch.testing.assert_close(
+            dispatched(**inputs, causal_state=state).sample,
+            baseline(**inputs, causal_state=reference_state).sample,
+            atol=1e-5,
+            rtol=1e-5,
+        )

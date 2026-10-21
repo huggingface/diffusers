@@ -1,6 +1,6 @@
 torch
 torchvision
-transformers
+transformers>=4.56.0
 accelerate
 av
 imageio

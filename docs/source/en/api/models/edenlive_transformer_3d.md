@@ -12,9 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # EdenLiveTransformer3DModel
 
-[EdenLive](https://github.com/VAST-AI-Research/EdenLive-Official) uses a video diffusion transformer conditioned on
-text, a reference image, and projected DINO proxy features. The same model class supports bidirectional and causal
-attention. See the [pipeline guide](../pipelines/edenlive) for video generation.
+[EdenLive](https://github.com/VAST-AI-Research/EdenLive) uses a video diffusion transformer conditioned on
+text, a reference image, and DINO proxy features projected inside each transformer forward pass. The same model
+class supports bidirectional and causal attention. See the [pipeline guide](../pipelines/edenlive) for video generation.
 
 ```python
 import torch
@@ -25,22 +25,17 @@ transformer = EdenLiveTransformer3DModel.from_pretrained(
 )
 ```
 
-Use `subfolder="transformer_causal"` for the causal weights. Keep model timesteps in FP32 when calling the transformer
-directly, including when its weights are BF16.
+For causal weights, load `VAST-AI/EdenLive-5B-Causal-Diffusers` or `VAST-AI/EdenLive-14B-Causal-Diffusers` with the same
+`subfolder="transformer"`. Keep model timesteps in FP32 when calling the transformer directly, including when its
+weights are BF16. Pass raw DINO patch features as `proxy_features` with shape `(batch, proxy_input_channels, frames,
+height, width)`; `proxy_channels` sets the number of projected channels. The internal projection remains in FP32
+when loaded with `from_pretrained`.
 
 ## EdenLiveTransformer3DModel
 
 [[autodoc]] EdenLiveTransformer3DModel
     - forward
     - create_causal_state
-
-## EdenLiveProxyProjection
-
-Projects DINO features into the transformer's conditioning space. Use the trained projection and DINO encoder from
-the same checkpoint; the projection returns FP32 features.
-
-[[autodoc]] EdenLiveProxyProjection
-    - forward
 
 ## EdenLiveCausalState
 

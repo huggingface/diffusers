@@ -14,23 +14,6 @@
 
 import torch
 
-from ...utils.torch_utils import randn_tensor
-
-
-def sample_noise(pipe, shape, generator, device, dtype):
-    parallel_config = getattr(pipe.transformer, "_parallel_config", None)
-    context_parallel_config = getattr(parallel_config, "context_parallel_config", None)
-    if context_parallel_config is None:
-        return randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-    group = context_parallel_config._flattened_mesh.get_group()
-    source_rank = torch.distributed.get_global_rank(group, 0)
-    if torch.distributed.get_rank() == source_rank:
-        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-    else:
-        noise = torch.empty(shape, device=device, dtype=dtype)
-    torch.distributed.broadcast(noise, src=source_rank, group=group)
-    return noise
-
 
 def prepare_model_input(pipe, latents, condition, first_frame, timestep, start=0, causal=False):
     model_input = latents

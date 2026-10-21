@@ -32,7 +32,6 @@ from diffusers import (
     EdenLiveFlowMatchEulerDiscreteScheduler,
     EdenLiveLightTAEDecoder,
     EdenLivePipeline,
-    EdenLiveProxyProjection,
     EdenLiveTransformer3DModel,
     UniPCMultistepScheduler,
 )
@@ -83,14 +82,13 @@ class EdenLivePipelineTesterConfig(BasePipelineTesterConfig):
             )
         ).eval()
         torch.manual_seed(0)
-        proxy_projection = EdenLiveProxyProjection(in_channels=32, out_channels=8)
-        torch.manual_seed(0)
         transformer = EdenLiveTransformer3DModel(
             patch_size=(1, 2, 2),
             num_attention_heads=4,
             attention_head_dim=12,
             in_channels=4 if self.profile == "5b" else 12,
             out_channels=4,
+            proxy_input_channels=32,
             proxy_channels=8,
             condition_rmsnorm=self.profile == "14b",
             text_dim=32,
@@ -129,7 +127,6 @@ class EdenLivePipelineTesterConfig(BasePipelineTesterConfig):
             "transformer": transformer,
             "scheduler": scheduler,
             "proxy_encoder": proxy_encoder,
-            "proxy_projection": proxy_projection,
             "image_encoder": image_encoder,
             "image_processor": image_processor,
         }

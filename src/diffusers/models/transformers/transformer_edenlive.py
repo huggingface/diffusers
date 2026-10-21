@@ -24,8 +24,7 @@ import torch.nn.functional as F
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...utils import apply_lora_scale
-from ...utils.torch_utils import maybe_adjust_dtype_for_device, maybe_allow_in_graph
-from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
+from ...utils.torch_utils import get_module_execution_device, maybe_adjust_dtype_for_device, maybe_allow_in_graph
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..embeddings import PixArtAlphaTextProjection, TimestepEmbedding, Timesteps, get_1d_rotary_pos_embed
@@ -70,18 +69,12 @@ class _EdenLiveLayerCache:
 
 @dataclass
 class EdenLiveCausalState:
-    """Per-rollout, per-guidance-branch KV storage. Positions count latent frames."""
+    """KV storage for one fixed-resolution rollout and guidance branch. Positions count latent frames."""
 
     layers: list[_EdenLiveLayerCache]
-    batch_size: int
-    height: int
-    width: int
     chunk_size: int
     max_context_frames: int
     sink_frames: int
-    tokens_per_frame: int
-    cp_size: int = 1
-    cp_rank: int = 0
     next_frame: int = 0
     valid: bool = True
 
@@ -95,7 +88,6 @@ class EdenLiveCausalState:
 
 class EdenLiveAttnProcessor:
     _attention_backend = None
-    _parallel_config = None
 
     def __call__(
         self,
@@ -103,7 +95,6 @@ class EdenLiveAttnProcessor:
         hidden_states,
         encoder_hidden_states=None,
         attention_mask=None,
-        rotary_emb=None,
         *,
         text_context_length=512,
     ):
@@ -121,10 +112,6 @@ class EdenLiveAttnProcessor:
         query = attn.norm_q(query).unflatten(2, (attn.heads, -1))
         key = attn.norm_k(key).unflatten(2, (attn.heads, -1))
         value = value.unflatten(2, (attn.heads, -1))
-        if rotary_emb is not None:
-            query = _apply_rotary_emb(query, rotary_emb)
-            key = _apply_rotary_emb(key, rotary_emb)
-
         image_output = None
         if image_context is not None:
             image_key, image_value = _get_added_kv_projections(attn, image_context)
@@ -139,7 +126,6 @@ class EdenLiveAttnProcessor:
                     dropout_p=0.0,
                     is_causal=False,
                     backend=self._attention_backend,
-                    parallel_config=None,
                 )
                 .flatten(2, 3)
                 .type_as(query)
@@ -153,7 +139,6 @@ class EdenLiveAttnProcessor:
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
-            parallel_config=self._parallel_config if encoder_hidden_states is None else None,
         )
         output = output.flatten(2, 3).type_as(query)
         if image_output is not None:
@@ -161,7 +146,9 @@ class EdenLiveAttnProcessor:
         return attn.to_out[1](attn.to_out[0](output))
 
 
-class EdenLiveCausalAttnProcessor(EdenLiveAttnProcessor):
+class EdenLiveCausalAttnProcessor:
+    _attention_backend = None
+
     def __call__(
         self,
         attn,
@@ -176,16 +163,29 @@ class EdenLiveCausalAttnProcessor(EdenLiveAttnProcessor):
         cache_window_tokens=None,
         cache_sink_tokens=0,
     ):
-        if layer_cache is None:
-            return super().__call__(attn, hidden_states, encoder_hidden_states, attention_mask, rotary_emb)
         if encoder_hidden_states is not None or attention_mask is not None:
-            raise ValueError("Causal KV storage is only used by unmasked self-attention.")
+            raise ValueError("The causal processor only supports unmasked self-attention.")
 
         query, key, value = _get_qkv_projections(attn, hidden_states)
         query = attn.norm_q(query).unflatten(2, (attn.heads, -1))
         key = attn.norm_k(key).unflatten(2, (attn.heads, -1))
         value = value.unflatten(2, (attn.heads, -1))
-        query = _apply_rotary_emb(query, rotary_emb)
+        if rotary_emb is not None:
+            query = _apply_rotary_emb(query, rotary_emb)
+        if layer_cache is None:
+            if rotary_emb is not None:
+                key = _apply_rotary_emb(key, rotary_emb)
+            output = dispatch_attention_fn(
+                query,
+                key,
+                value,
+                attn_mask=None,
+                dropout_p=0.0,
+                is_causal=False,
+                backend=self._attention_backend,
+            )
+            output = output.flatten(2, 3).type_as(query)
+            return attn.to_out[1](attn.to_out[0](output))
         new_tokens = key.shape[1]
         capacity = layer_cache.key.shape[1]
         stored_end = layer_cache.num_tokens
@@ -225,7 +225,6 @@ class EdenLiveCausalAttnProcessor(EdenLiveAttnProcessor):
             )
 
         key = _apply_rotary_emb(key, key_rotary_emb)
-        # Ulysses retains the native rank-major KV order, including across chunks.
         output = dispatch_attention_fn(
             query,
             key,
@@ -234,49 +233,9 @@ class EdenLiveCausalAttnProcessor(EdenLiveAttnProcessor):
             dropout_p=0.0,
             is_causal=False,
             backend=self._attention_backend,
-            parallel_config=self._parallel_config,
         )
         output = output.flatten(2, 3).type_as(query)
         return attn.to_out[1](attn.to_out[0](output))
-
-
-class EdenLiveProxyProjection(ModelMixin, ConfigMixin):
-    r"""
-    Learned DINO patch projection, separate from the Transformers vision backbone.
-
-    Args:
-        in_channels (`int`, defaults to `1024`):
-            Number of input DINO feature channels.
-        out_channels (`int`, defaults to `1024`):
-            Number of projected proxy feature channels.
-    """
-
-    _no_split_modules = []
-
-    @register_to_config
-    def __init__(self, in_channels: int = 1024, out_channels: int = 1024):
-        super().__init__()
-        self.patch_projection = nn.Linear(in_channels, out_channels)
-
-    def forward(
-        self, hidden_states: torch.Tensor, return_dict: bool = True
-    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
-        r"""
-        Args:
-            hidden_states (`torch.Tensor`):
-                DINO patch features with `in_channels` in the final dimension.
-            return_dict (`bool`, defaults to `True`):
-                Whether to return a structured output instead of a tuple.
-
-        Returns:
-            [`~models.modeling_outputs.Transformer2DModelOutput`] or `tuple`:
-                Unit-normalized projected features in float32, with `out_channels` in the final dimension.
-        """
-        hidden_states = self.patch_projection(hidden_states)
-        hidden_states = F.normalize(hidden_states, p=2, dim=-1).float()
-        if not return_dict:
-            return (hidden_states,)
-        return Transformer2DModelOutput(sample=hidden_states)
 
 
 class EdenLivePatchEmbedding(nn.Conv3d):
@@ -390,16 +349,14 @@ class EdenLiveAttention(torch.nn.Module, AttentionModuleMixin):
 
         self.fused_projections = False
 
-    # Copied from diffusers.models.transformers.transformer_wan.WanAttention.forward
     def forward(
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor | None = None,
         attention_mask: torch.Tensor | None = None,
-        rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         **kwargs,
     ) -> torch.Tensor:
-        return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, rotary_emb, **kwargs)
+        return self.processor(self, hidden_states, encoder_hidden_states, attention_mask, **kwargs)
 
 
 class EdenLiveImageEmbedding(torch.nn.Module):
@@ -639,6 +596,8 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
             Maximum rotary position on each temporal or spatial axis.
         proxy_channels (`int`, defaults to `1024`):
             Projected DINO feature channels appended before patch embedding.
+        proxy_input_channels (`int`, defaults to `1024`):
+            DINO feature channels before the learned proxy projection.
         condition_rmsnorm (`bool`, defaults to `False`):
             Whether to RMS-normalize proxy features before patch embedding, as required by the 14B checkpoint.
     """
@@ -647,18 +606,8 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
     _no_split_modules = ["EdenLiveTransformerBlock", "EdenLiveTimeTextImageEmbedding", "EdenLivePatchEmbedding"]
     _repeated_blocks = ["EdenLiveTransformerBlock"]
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
+    _keep_in_fp32_modules = ["proxy_projection"]
     _skip_keys = ["causal_state"]
-    _cp_plan = {
-        "rope": {
-            0: ContextParallelInput(split_dim=1, expected_dims=4, split_output=True),
-            1: ContextParallelInput(split_dim=1, expected_dims=4, split_output=True),
-        },
-        "condition_embedder": {
-            1: ContextParallelInput(split_dim=1, expected_dims=3, split_output=True),
-        },
-        "blocks.0": {"hidden_states": ContextParallelInput(split_dim=1, expected_dims=3)},
-        "head_input": ContextParallelOutput(gather_dim=1, expected_dims=3),
-    }
 
     @register_to_config
     def __init__(
@@ -678,6 +627,7 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
         added_kv_proj_dim: int | None = None,
         rope_max_seq_len: int = 1024,
         proxy_channels: int = 1024,
+        proxy_input_channels: int = 1024,
         condition_rmsnorm: bool = False,
     ):
         super().__init__()
@@ -685,13 +635,14 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
             raise ValueError("EdenLive requires temporal patch size 1 and positive spatial patch sizes.")
         if qk_norm != "rms_norm_across_heads":
             raise ValueError("EdenLive checkpoints use rms_norm_across_heads.")
-        if proxy_channels < 1 or num_layers < 1:
-            raise ValueError("proxy_channels and num_layers must be positive.")
+        if min(proxy_input_channels, proxy_channels, num_layers) < 1:
+            raise ValueError("proxy_input_channels, proxy_channels and num_layers must be positive.")
         if (image_dim is None) != (added_kv_proj_dim is None):
             raise ValueError("image_dim and added_kv_proj_dim must both be set for the 14B image-conditioned model.")
         inner_dim = num_attention_heads * attention_head_dim
         self.rope = EdenLiveRotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
         self.cache_rope = EdenLiveRotaryPosEmbed(attention_head_dim, patch_size, rope_max_seq_len)
+        self.proxy_projection = nn.Linear(proxy_input_channels, proxy_channels)
         self.patch_embedding = EdenLivePatchEmbedding(
             in_channels, inner_dim, patch_size, proxy_channels, condition_rmsnorm
         )
@@ -704,25 +655,10 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
                 for _ in range(num_layers)
             ]
         )
-        self.head_input = nn.Identity()
         self.norm_out = FP32LayerNorm(inner_dim, eps, elementwise_affine=False)
         self.proj_out = nn.Linear(inner_dim, out_channels * math.prod(patch_size))
         self.scale_shift_table = nn.Parameter(torch.randn(1, 2, inner_dim) / inner_dim**0.5)
         self.gradient_checkpointing = False
-
-    def _context_parallel_info(self):
-        config = self._parallel_config
-        if config is None or config.context_parallel_config is None:
-            return 1, 0
-        config = config.context_parallel_config
-        if config.ring_degree != 1 or config.ulysses_anything or config.ring_anything:
-            raise ValueError(
-                "EdenLive supports equal-sized Ulysses context parallelism without Ring or Anything mode."
-            )
-        size = config.ulysses_degree
-        if self.config.num_attention_heads % size:
-            raise ValueError("num_attention_heads must be divisible by the Ulysses degree.")
-        return size, config._ulysses_local_rank
 
     def create_causal_state(
         self,
@@ -736,7 +672,7 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
         dtype=None,
     ) -> EdenLiveCausalState:
         r"""
-        Allocate independent KV storage for one guidance branch and rollout.
+        Allocate independent KV storage for one guidance branch and rollout with fixed latent spatial dimensions.
 
         Args:
             batch_size (`int`): Batch size of the model inputs.
@@ -745,11 +681,13 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
             chunk_size (`int`, defaults to `3`): Number of latent frames per full chunk.
             max_context_frames (`int`, defaults to `18`): Total context, including sink and current chunk.
             sink_frames (`int`, defaults to `6`): Initial latent frames retained when the context fills.
-            device (`torch.device` or `str`, *optional*): Cache device; defaults to the model device.
+            device (`torch.device` or `str`, *optional*):
+                Cache device for a model without `device_map`; defaults to the model execution device. With
+                `device_map`, each layer's execution device takes precedence.
             dtype (`torch.dtype`, *optional*): Cache dtype; defaults to the model dtype.
 
         Returns:
-            `EdenLiveCausalState`: Empty KV storage for the current context-parallel layout.
+            `EdenLiveCausalState`: Empty KV storage for one rollout and guidance branch.
         """
         _, patch_height, patch_width = self.config.patch_size
         if min(batch_size, height, width, chunk_size, max_context_frames) < 1:
@@ -760,34 +698,31 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
             raise ValueError("The context must contain the current chunk and be larger than its nonnegative sink.")
         if max_context_frames % chunk_size or sink_frames % chunk_size:
             raise ValueError("The fixed context and sink must contain whole chunks.")
-        cp_size, cp_rank = self._context_parallel_info()
         tokens_per_frame = (height // patch_height) * (width // patch_width)
-        if tokens_per_frame % cp_size:
-            raise ValueError("Latent spatial token count must be divisible by the Ulysses degree.")
         shape = (
             batch_size,
-            max_context_frames * tokens_per_frame // cp_size,
+            max_context_frames * tokens_per_frame,
             self.config.num_attention_heads,
             self.config.attention_head_dim,
         )
-        layers = [
-            _EdenLiveLayerCache(
-                torch.zeros(shape, device=device or self.device, dtype=dtype or self.dtype),
-                torch.zeros(shape, device=device or self.device, dtype=dtype or self.dtype),
+        layers = []
+        for block in self.blocks:
+            cache_device = (
+                get_module_execution_device(block)
+                if getattr(self, "hf_device_map", None)
+                else device or get_module_execution_device(self)
             )
-            for _ in self.blocks
-        ]
+            layers.append(
+                _EdenLiveLayerCache(
+                    torch.zeros(shape, device=cache_device, dtype=dtype or self.dtype),
+                    torch.zeros(shape, device=cache_device, dtype=dtype or self.dtype),
+                )
+            )
         return EdenLiveCausalState(
             layers,
-            batch_size,
-            height,
-            width,
             chunk_size,
             max_context_frames,
             sink_frames,
-            tokens_per_frame,
-            cp_size,
-            cp_rank,
         )
 
     @apply_lora_scale("attention_kwargs")
@@ -818,8 +753,9 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
             encoder_hidden_states_image (`torch.Tensor`, *optional*):
                 CLIP image embeddings required by the 14B model.
             proxy_features (`torch.Tensor`, *optional*):
-                Required proxy features of shape `(batch_size, proxy_channels, num_frames, proxy_height, proxy_width)`.
-                Spatial dimensions are interpolated to match the latent input.
+                Required DINO features of shape
+                `(batch_size, proxy_input_channels, num_frames, proxy_height, proxy_width)`. Features are projected and
+                normalized before their spatial dimensions are interpolated to match the latent input.
             causal_state (`EdenLiveCausalState`, *optional*):
                 KV storage created by `create_causal_state`. Use separate states for different guidance branches.
             cache_update (`bool`, defaults to `False`):
@@ -844,7 +780,7 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
             )
         if proxy_features is None or proxy_features.ndim != 5:
             raise ValueError("proxy_features must be supplied as a [B, C, T, H, W] tensor.")
-        if proxy_features.shape[:2] != (batch_size, self.config.proxy_channels):
+        if proxy_features.shape[:2] != (batch_size, self.config.proxy_input_channels):
             raise ValueError("Proxy batch size and channels must match the configured model.")
         if proxy_features.shape[2] != num_frames:
             raise ValueError("Proxy features must have one control frame per latent frame.")
@@ -855,11 +791,8 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
         if self.config.image_dim is None and encoder_hidden_states_image is not None:
             raise ValueError("The 5B model does not use CLIP image embeddings.")
 
-        cp_size, cp_rank = self._context_parallel_info()
         tokens_per_frame = (height // patch_height) * (width // patch_width)
         num_tokens = num_frames * tokens_per_frame
-        if num_tokens % cp_size:
-            raise ValueError("The input token count must be divisible by the Ulysses degree.")
         text_context_length = encoder_hidden_states.shape[1]
         key_rotary_emb = None
         cache_window_tokens = None
@@ -871,39 +804,35 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
             state = causal_state
             if not state.valid:
                 raise ValueError("A previous cache commit failed. Reset or recreate the causal state.")
-            if (batch_size, height, width, cp_size, cp_rank) != (
-                state.batch_size,
-                state.height,
-                state.width,
-                state.cp_size,
-                state.cp_rank,
-            ) or len(state.layers) != len(self.blocks):
-                raise ValueError("The causal state does not match this model's batch, latent dimensions or CP layout.")
+            cache_shape = (
+                batch_size,
+                state.max_context_frames * tokens_per_frame,
+                self.config.num_attention_heads,
+                self.config.attention_head_dim,
+            )
+            if len(state.layers) != len(self.blocks) or any(
+                layer.key.shape != cache_shape or layer.value.shape != cache_shape for layer in state.layers
+            ):
+                raise ValueError("The causal state does not match the model's batch size or token dimensions.")
             if state.next_frame % state.chunk_size or num_frames > state.chunk_size:
                 raise ValueError("Causal calls must follow whole chunks; a shorter chunk can only finish a rollout.")
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 raise ValueError("Mutable causal inference state cannot be used with gradient checkpointing.")
             query_start_frame = min(state.next_frame, state.max_context_frames - state.chunk_size)
             visible_frames = query_start_frame + num_frames
-            cache_window_tokens = visible_frames * tokens_per_frame // cp_size
-            cache_sink_tokens = state.sink_frames * tokens_per_frame // cp_size
+            cache_window_tokens = visible_frames * tokens_per_frame
+            cache_sink_tokens = state.sink_frames * tokens_per_frame
             key_rotary_emb = self.cache_rope(hidden_states, num_frames=visible_frames)
-            if cp_size > 1:
-                # Each rank caches its contiguous slice of every chunk. Keep the same
-                # chunk-local order for RoPE; Ulysses exchanges the sharded KV tensors.
-                chunk_tokens = state.chunk_size * tokens_per_frame
-                key_rotary_emb = tuple(
-                    torch.cat(
-                        [
-                            chunk.narrow(1, cp_rank * (chunk.shape[1] // cp_size), chunk.shape[1] // cp_size)
-                            for chunk in frequency.split(chunk_tokens, dim=1)
-                        ],
-                        dim=1,
-                    )
-                    for frequency in key_rotary_emb
-                )
 
         rotary_emb = self.rope(hidden_states, start_frame=query_start_frame)
+        projected_features = []
+        for frame in proxy_features.unbind(2):
+            frame = frame.permute(0, 2, 3, 1).contiguous().to(device=hidden_states.device, dtype=torch.float32)
+            with torch.autocast(hidden_states.device.type, dtype=torch.bfloat16, enabled=hidden_states.is_cuda):
+                projected = self.proxy_projection(frame)
+                projected = F.normalize(projected, p=2, dim=-1).float()
+            projected_features.append(projected.permute(0, 3, 1, 2))
+        proxy_features = torch.stack(projected_features, dim=2)
         proxy_features = proxy_features.to(device=hidden_states.device, dtype=hidden_states.dtype)
         if proxy_features.shape[2:] != hidden_states.shape[2:]:
             proxy_features = F.interpolate(
@@ -948,16 +877,16 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
             else:
                 hidden_states = block(hidden_states, encoder_hidden_states, timestep_proj, rotary_emb, **kwargs)
 
-        hidden_states = self.head_input(hidden_states)
         if temb.ndim == 3:
             shift, scale = (self.scale_shift_table.unsqueeze(0).to(temb.device) + temb.unsqueeze(2)).chunk(2, dim=2)
             shift, scale = shift.squeeze(2), scale.squeeze(2)
         else:
             shift, scale = (self.scale_shift_table.to(temb.device) + temb.unsqueeze(1)).chunk(2, dim=1)
-        hidden_states = (
-            self.norm_out(hidden_states.float()) * (1 + scale.to(hidden_states.device))
-            + shift.to(hidden_states.device)
-        ).type_as(hidden_states)
+        hidden_states_dtype = hidden_states.dtype
+        hidden_states = self.norm_out(hidden_states.float())
+        hidden_states = (hidden_states * (1 + scale.to(hidden_states.device)) + shift.to(hidden_states.device)).to(
+            hidden_states_dtype
+        )
         hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states.reshape(
             batch_size,

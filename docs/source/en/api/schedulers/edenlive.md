@@ -16,9 +16,9 @@ specific language governing permissions and limitations under the License.
 bidirectional generation and stochastic sampling for the distilled causal checkpoints. The 5B bidirectional model
 uses [`UniPCMultistepScheduler`].
 
-Use the scheduler saved with the checkpoint: `scheduler` for bidirectional generation and `scheduler_causal` for
-causal generation. The released causal schedules have four fixed steps per chunk. See the
-[pipeline guide](../pipelines/edenlive#causal-generation) for loading the causal components.
+Load the `scheduler` subfolder from the matching checkpoint repository. For causal generation, use
+`VAST-AI/EdenLive-5B-Causal-Diffusers` or `VAST-AI/EdenLive-14B-Causal-Diffusers`; the released causal schedules have
+four fixed steps per chunk. See the [pipeline guide](../pipelines/edenlive#causal-generation) for loading the pipeline.
 
 ## EdenLiveFlowMatchEulerDiscreteScheduler
 

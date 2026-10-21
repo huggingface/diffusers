@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import EdenLiveTransformer3DModel
@@ -21,7 +22,6 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
-    ContextParallelTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     TorchCompileTesterMixin,
@@ -54,6 +54,7 @@ class EdenLiveTransformerTesterConfig(BaseModelTesterConfig):
             "ffn_dim": 32,
             "num_layers": 2,
             "proxy_channels": 8,
+            "proxy_input_channels": 16,
             "rope_max_seq_len": 64,
         }
 
@@ -64,7 +65,7 @@ class EdenLiveTransformerTesterConfig(BaseModelTesterConfig):
                 (batch_size, 4, 3, height, width), generator=generator, device=torch_device, dtype=self.torch_dtype
             ),
             "proxy_features": randn_tensor(
-                (batch_size, 8, 3, 4, 4), generator=generator, device=torch_device, dtype=self.torch_dtype
+                (batch_size, 16, 3, 4, 4), generator=generator, device=torch_device, dtype=self.torch_dtype
             ),
             "encoder_hidden_states": randn_tensor(
                 (batch_size, 12, 16), generator=generator, device=torch_device, dtype=self.torch_dtype
@@ -74,10 +75,26 @@ class EdenLiveTransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestEdenLiveTransformerModel(EdenLiveTransformerTesterConfig, ModelTesterMixin):
+    @pytest.mark.parametrize("proxy_dtype", [torch.float32, torch.bfloat16])
+    @torch.no_grad()
+    def test_proxy_projection_changes_conditioning(self, proxy_dtype):
+        model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
+        inputs = self.get_dummy_inputs()
+        inputs["proxy_features"] = inputs["proxy_features"].to(proxy_dtype)
+        expected = model(**inputs).sample
+        model.proxy_projection.weight.zero_()
+        model.proxy_projection.bias.zero_()
+        unconditioned = model(**inputs).sample
+        assert torch.isfinite(expected).all() and torch.isfinite(unconditioned).all()
+        assert (expected - unconditioned).abs().max() > 1e-6
+
     @torch.no_grad()
     def test_causal_state_commits_only_clean_chunks_and_preserves_sink(self):
         model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
         inputs = self.get_dummy_inputs()
+        tokens_per_frame = (inputs["hidden_states"].shape[-2] // model.config.patch_size[1]) * (
+            inputs["hidden_states"].shape[-1] // model.config.patch_size[2]
+        )
         state = model.create_causal_state(
             batch_size=1,
             height=8,
@@ -97,12 +114,12 @@ class TestEdenLiveTransformerModel(EdenLiveTransformerTesterConfig, ModelTesterM
             inputs["timestep"].zero_()
             model(**inputs, causal_state=state, cache_update=True)
             assert state.next_frame == 3 * (index + 1)
-            assert all(layer.num_tokens <= 18 * state.tokens_per_frame for layer in state.layers)
+            assert all(layer.num_tokens <= 18 * tokens_per_frame for layer in state.layers)
             if index == 1:
-                sink_keys = [layer.key[:, : 6 * state.tokens_per_frame].clone() for layer in state.layers]
+                sink_keys = [layer.key[:, : 6 * tokens_per_frame].clone() for layer in state.layers]
             elif index > 1:
                 for expected, layer in zip(sink_keys, state.layers):
-                    torch.testing.assert_close(layer.key[:, : 6 * state.tokens_per_frame], expected, atol=0, rtol=0)
+                    torch.testing.assert_close(layer.key[:, : 6 * tokens_per_frame], expected, atol=0, rtol=0)
         state.reset()
         assert state.next_frame == 0 and all(layer.num_tokens == 0 for layer in state.layers)
         assert not any("cache" in key for key in model.state_dict())
@@ -126,10 +143,6 @@ class TestEdenLiveTransformerTorchCompile(EdenLiveTransformerTesterConfig, Torch
             for _ in range(2):
                 actual = compiled(**inputs).sample
                 torch.testing.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
-
-
-class TestEdenLiveTransformerContextParallel(EdenLiveTransformerTesterConfig, ContextParallelTesterMixin):
-    pass
 
 
 class TestEdenLiveTransformerTraining(EdenLiveTransformerTesterConfig, TrainingTesterMixin):

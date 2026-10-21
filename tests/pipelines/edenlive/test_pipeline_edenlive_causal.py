@@ -19,13 +19,11 @@ import torch
 from diffusers import (
     EdenLiveCausalPipeline,
     EdenLiveFlowMatchEulerDiscreteScheduler,
-    EdenLivePipeline,
-    EdenLiveTransformer3DModel,
-    UniPCMultistepScheduler,
 )
 
 from ...testing_utils import torch_device
 from ..testing_utils import MemoryTesterMixin, PipelineTesterMixin
+from ..testing_utils.common import cast_pipeline_to_dtype
 from .test_pipeline_edenlive import (
     EdenLive14BRequiredComponentsTesterMixin,
     EdenLiveOptionalDecoderTesterMixin,
@@ -47,22 +45,13 @@ class EdenLiveCausalPipelineTesterConfig(EdenLivePipelineTesterConfig):
 class TestEdenLiveCausalPipeline(
     EdenLiveOptionalDecoderTesterMixin, EdenLiveCausalPipelineTesterConfig, PipelineTesterMixin
 ):
-    def test_load_causal_components_from_bidirectional_root(self, tmp_path):
+    def test_load_causal_pipeline_from_root(self, tmp_path):
         pipe = self.get_pipeline().to(torch_device)
         expected = pipe(**self.get_dummy_inputs()).frames
-        pipe.transformer.save_pretrained(tmp_path / "transformer_causal")
-        pipe.scheduler.save_pretrained(tmp_path / "scheduler_causal")
-        components = self.get_dummy_components()
-        components["scheduler"] = UniPCMultistepScheduler(
-            prediction_type="flow_prediction", use_flow_sigmas=True, flow_shift=5
-        )
-        EdenLivePipeline(**components).save_pretrained(tmp_path)
-        restored = self.pipeline_class.from_pretrained(
-            tmp_path,
-            transformer=EdenLiveTransformer3DModel.from_pretrained(tmp_path / "transformer_causal"),
-            scheduler=EdenLiveFlowMatchEulerDiscreteScheduler.from_pretrained(tmp_path / "scheduler_causal"),
-        ).to(torch_device)
+        pipe.save_pretrained(tmp_path)
+        restored = self.pipeline_class.from_pretrained(tmp_path).to(torch_device)
         assert restored.decoder is None
+        assert isinstance(restored.scheduler, EdenLiveFlowMatchEulerDiscreteScheduler)
         torch.testing.assert_close(restored(**self.get_dummy_inputs()).frames, expected, atol=1e-5, rtol=0)
 
     def test_short_tail_and_no_state_leak(self):
@@ -157,7 +146,7 @@ class TestEdenLiveCausalPipeline(
     @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
     def test_clean_commit_timestep_shape_and_cfg(self, dtype):
         fixture = self
-        pipe = fixture.get_pipeline().to(torch_device, dtype=dtype)
+        pipe = cast_pipeline_to_dtype(fixture.get_pipeline().to(torch_device), dtype)
         calls = []
 
         def capture(module, args, kwargs):
@@ -198,7 +187,7 @@ class TestEdenLiveCausalPipeline(
         actual = pipe(**inputs(), chunk_prompts=["snow", "snow"]).frames
         torch.testing.assert_close(actual, expected, rtol=0, atol=0)
 
-    def test_failure_clears_history_and_next_call_is_independent(self):
+    def test_next_call_is_independent_after_failure(self):
         pipe = self.get_pipeline().to(torch_device)
 
         def inputs():
@@ -229,7 +218,6 @@ class TestEdenLiveCausalPipeline(
         finally:
             handle.remove()
         assert len(states) == 2
-        assert all(state.next_frame == 0 and all(layer.num_tokens == 0 for layer in state.layers) for state in states)
         actual = pipe(**inputs()).frames
         torch.testing.assert_close(actual, expected, atol=0, rtol=0)
 

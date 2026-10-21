@@ -35,7 +35,6 @@ from diffusers import (
     AutoencoderKLWan,
     EdenLiveFlowMatchEulerDiscreteScheduler,
     EdenLiveLightTAEDecoder,
-    EdenLiveProxyProjection,
     EdenLiveTransformer3DModel,
     UniPCMultistepScheduler,
 )
@@ -129,23 +128,34 @@ def _remap_wan22_vae_key(key):
     return key
 
 
-def convert(source, output, size):
+def convert(source, output, size, variant):
+    if output.exists() and any(output.iterdir()):
+        raise ValueError("The output directory must be empty.")
     output.mkdir(parents=True, exist_ok=True)
     manifest = {}
-    for folder, destination in ((f"dit-{size}-bidir", "transformer"), (f"dit-{size}", "transformer_causal")):
-        config = read_config(source / folder / "config.json")
-        config.pop("cross_attn_norm", None)
-        state = load_state_dict(str(source / folder / "diffusion_pytorch_model.safetensors"))
-        config["proxy_channels"] = state["patch_embedding.weight"].shape[1] - config["in_channels"]
-        config["condition_rmsnorm"] = "patch_embedding.condition_norm.weight" in state
-        with torch.device("meta"):
-            model = EdenLiveTransformer3DModel.from_config(config)
-        for attribute in ("rope", "cache_rope"):
-            rope = getattr(model, attribute)
-            setattr(model, attribute, type(rope)(rope.attention_head_dim, tuple(rope.patch_size), rope.max_seq_len))
-        save_component(model, state, output / destination, manifest)
-        del model, state
-        gc.collect()
+    proxy_state = _proxy_state(load_state_dict(str(source / "vision-encoder/projection.safetensors")))
+    projection = {
+        key.replace("patch_projection.", "proxy_projection.", 1): value
+        for key, value in proxy_state.items()
+        if key.startswith("patch_projection.")
+    }
+    del proxy_state
+    folder = f"dit-{size}-bidir" if variant == "bidirectional" else f"dit-{size}"
+    config = read_config(source / folder / "config.json")
+    config.pop("cross_attn_norm", None)
+    state = load_state_dict(str(source / folder / "diffusion_pytorch_model.safetensors"))
+    config["proxy_input_channels"] = projection["proxy_projection.weight"].shape[1]
+    config["proxy_channels"] = state["patch_embedding.weight"].shape[1] - config["in_channels"]
+    config["condition_rmsnorm"] = "patch_embedding.condition_norm.weight" in state
+    state.update(projection)
+    with torch.device("meta"):
+        model = EdenLiveTransformer3DModel.from_config(config)
+    for attribute in ("rope", "cache_rope"):
+        rope = getattr(model, attribute)
+        setattr(model, attribute, type(rope)(rope.attention_head_dim, tuple(rope.patch_size), rope.max_seq_len))
+    save_component(model, state, output / "transformer", manifest)
+    del model, state, projection
+    gc.collect()
 
     config = read_config(source / f"vae-{size}" / "config.json")
     version = "2" if size == "5b" else "1"
@@ -182,13 +192,7 @@ def convert(source, output, size):
                 key = f"model.{key}"
             backbone[key] = value
     save_component(model, backbone, output / "proxy_encoder", manifest)
-    del model, backbone
-    projection = {key: value for key, value in state.items() if key.startswith("patch_projection.")}
-    weight = projection["patch_projection.weight"]
-    with torch.device("meta"):
-        model = EdenLiveProxyProjection(in_channels=weight.shape[1], out_channels=weight.shape[0])
-    save_component(model, projection, output / "proxy_projection", manifest)
-    del model, state, projection, weight
+    del model, state, backbone
     gc.collect()
 
     for name in ("text_encoder", "tokenizer"):
@@ -227,31 +231,31 @@ def convert(source, output, size):
     else:
         scheduler = EdenLiveFlowMatchEulerDiscreteScheduler(shift=3.0)
         timesteps = [1000, 900, 750, 500]
+    if variant == "causal":
+        scheduler = EdenLiveFlowMatchEulerDiscreteScheduler(stochastic_sampling=True, default_timesteps=timesteps)
     scheduler.save_pretrained(output / "scheduler")
-    EdenLiveFlowMatchEulerDiscreteScheduler(stochastic_sampling=True, default_timesteps=timesteps).save_pretrained(
-        output / "scheduler_causal"
-    )
     index = {
-        "_class_name": "EdenLivePipeline",
+        "_class_name": "EdenLiveCausalPipeline" if variant == "causal" else "EdenLivePipeline",
         "transformer": ["diffusers", "EdenLiveTransformer3DModel"],
         "vae": ["diffusers", "AutoencoderKLWan"],
         "decoder": [None, None],
         "text_encoder": ["transformers", "UMT5EncoderModel"],
         "tokenizer": ["transformers", type(tokenizer).__name__],
         "proxy_encoder": ["transformers", "DINOv3ViTModel"],
-        "proxy_projection": ["diffusers", "EdenLiveProxyProjection"],
         "image_encoder": ["transformers", "CLIPVisionModel"] if size == "14b" else [None, None],
         "image_processor": ["transformers", "CLIPImageProcessor"] if size == "14b" else [None, None],
         "scheduler": ["diffusers", type(scheduler).__name__],
         "proxy_image_height": 480,
         "proxy_image_width": 832,
     }
+    if variant == "causal":
+        index.update(chunk_size=3, max_context_frames=18, sink_frames=6)
     (output / "model_index.json").write_text(json.dumps(index, indent=2) + "\n")
     for name in ("LICENSE", "NOTICE"):
         if (source / name).is_file():
             shutil.copy2(source / name, output / name)
     for component, destinations in (
-        ("vision-encoder", ("proxy_encoder", "proxy_projection")),
+        ("vision-encoder", ("proxy_encoder", "transformer")),
         ("clip", ("image_encoder", "image_processor") if size == "14b" else ()),
     ):
         for destination in destinations:
@@ -267,5 +271,6 @@ if __name__ == "__main__":
         "--output", type=Path, required=True, help="Destination for one standard Diffusers model root."
     )
     parser.add_argument("--size", choices=("5b", "14b"), required=True)
+    parser.add_argument("--variant", choices=("bidirectional", "causal"), required=True)
     args = parser.parse_args()
-    convert(args.source, args.output, args.size)
+    convert(args.source, args.output, args.size, args.variant)

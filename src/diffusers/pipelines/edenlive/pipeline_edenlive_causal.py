@@ -21,13 +21,14 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, DINOv3ViTModel, UMT5EncoderModel
 
-from ...models import AutoencoderKLWan, EdenLiveLightTAEDecoder, EdenLiveProxyProjection, EdenLiveTransformer3DModel
+from ...models import AutoencoderKLWan, EdenLiveLightTAEDecoder, EdenLiveTransformer3DModel
 from ...schedulers import EdenLiveFlowMatchEulerDiscreteScheduler
 from ...utils import is_ftfy_available, replace_example_docstring
+from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import EdenLivePipelineOutput
-from .pipeline_utils import prepare_model_input, sample_noise
+from .pipeline_utils import prepare_model_input
 from .video_processor import EdenLiveVideoProcessor
 
 
@@ -40,17 +41,11 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> import torch
-        >>> from diffusers import EdenLiveCausalPipeline, EdenLiveTransformer3DModel, EdenLiveFlowMatchEulerDiscreteScheduler
+        >>> from diffusers import EdenLiveCausalPipeline
         >>> from diffusers.utils import export_to_video, load_image, load_video
-        >>> transformer = EdenLiveTransformer3DModel.from_pretrained(
-        ...     "VAST-AI/EdenLive-5B-Diffusers", subfolder="transformer_causal", torch_dtype=torch.bfloat16
-        ... )
-        >>> scheduler = EdenLiveFlowMatchEulerDiscreteScheduler.from_pretrained(
-        ...     "VAST-AI/EdenLive-5B-Diffusers", subfolder="scheduler_causal"
-        ... )
         >>> pipe = EdenLiveCausalPipeline.from_pretrained(
-        ...     "VAST-AI/EdenLive-5B-Diffusers", transformer=transformer, scheduler=scheduler,
-        ...     torch_dtype={"default": torch.bfloat16, "proxy_encoder": torch.float32, "proxy_projection": torch.float32},
+        ...     "VAST-AI/EdenLive-5B-Causal-Diffusers",
+        ...     torch_dtype={"default": torch.bfloat16, "proxy_encoder": torch.float32},
         ... ).to("cuda")
         >>> frames = pipe(
         ...     image=load_image("reference.png"), video=load_video("proxy.mp4"),
@@ -77,8 +72,6 @@ class EdenLiveCausalPipeline(DiffusionPipeline):
             Scheduler corresponding to the transformer checkpoint.
         proxy_encoder (`DINOv3ViTModel`):
             Trained RGB proxy encoder.
-        proxy_projection ([`EdenLiveProxyProjection`]):
-            Learned projection of DINO patch features.
         image_encoder (`CLIPVisionModel`, *optional*):
             Reference image encoder required by the 14B model.
         image_processor (`CLIPImageProcessor`, *optional*):
@@ -97,7 +90,7 @@ class EdenLiveCausalPipeline(DiffusionPipeline):
             Initial latent frames retained when the attention window fills.
     """
 
-    model_cpu_offload_seq = "text_encoder->image_encoder->proxy_encoder->proxy_projection->transformer->vae->decoder"
+    model_cpu_offload_seq = "text_encoder->image_encoder->proxy_encoder->transformer->vae->decoder"
     _optional_components = ["image_encoder", "image_processor", "decoder"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
@@ -109,7 +102,6 @@ class EdenLiveCausalPipeline(DiffusionPipeline):
         transformer: EdenLiveTransformer3DModel,
         scheduler: EdenLiveFlowMatchEulerDiscreteScheduler,
         proxy_encoder: DINOv3ViTModel,
-        proxy_projection: EdenLiveProxyProjection,
         image_encoder: CLIPVisionModel | None = None,
         image_processor: CLIPImageProcessor | None = None,
         decoder: EdenLiveLightTAEDecoder | None = None,
@@ -127,7 +119,6 @@ class EdenLiveCausalPipeline(DiffusionPipeline):
             transformer=transformer,
             scheduler=scheduler,
             proxy_encoder=proxy_encoder,
-            proxy_projection=proxy_projection,
             image_encoder=image_encoder,
             image_processor=image_processor,
             decoder=decoder,
@@ -253,7 +244,7 @@ class EdenLiveCausalPipeline(DiffusionPipeline):
             if tuple(latents.shape) != shape:
                 raise ValueError(f"Expected latents with shape {shape}, got {tuple(latents.shape)}.")
             return latents.to(device=device, dtype=dtype)
-        return sample_noise(self, shape, generator, device, dtype)
+        return randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
     # Copied from diffusers.pipelines.edenlive.pipeline_edenlive.EdenLivePipeline.prepare_conditions
     def prepare_conditions(self, image, proxy_video, height, width, num_frames, batch_size, device, dtype):
@@ -319,9 +310,7 @@ class EdenLiveCausalPipeline(DiffusionPipeline):
             hidden = hidden[:, start : start + grid_height * grid_width].reshape(
                 batch_size, grid_height, grid_width, -1
             )
-            with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
-                projected = self.proxy_projection(hidden, return_dict=False)[0]
-            proxy_features.append(projected.float().permute(0, 3, 1, 2))
+            proxy_features.append(hidden.permute(0, 3, 1, 2))
         proxy_features = torch.stack(proxy_features, dim=2)
         return condition, first_frame, clip_embeds, proxy_features
 
@@ -405,8 +394,7 @@ class EdenLiveCausalPipeline(DiffusionPipeline):
             negative_prompt (`str` or `list[str]`, *optional*):
                 Text describing content to discourage when classifier-free guidance is enabled.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
-                Random generator, or one per batch item. CPU generators are supported. Under context parallelism, the
-                first rank generates and broadcasts each complete noise tensor.
+                Random generator, or one per batch item. CPU generators are supported.
             latents (`torch.Tensor`, *optional*):
                 Initial noise with shape `(B, C, T_latent, H_latent, W_latent)`. When omitted, noise for the whole
                 video is sampled before image conditioning. The fixed first frame still consumes its noise draw.
@@ -490,154 +478,144 @@ class EdenLiveCausalPipeline(DiffusionPipeline):
                 )
         if batch_size < 1:
             raise ValueError("Provide a positive prompt or prompt embeddings or chunk_prompts.")
-        states = []
-        try:
-            latents = self.prepare_latents(batch_size, height, width, num_frames, dtype, device, generator, latents)
-            chunk_embeds = None
-            if chunk_prompts is not None:
-                unique_embeds = {}
-                for text in chunk_prompts:
-                    if text not in unique_embeds:
-                        unique_embeds[text], _ = self.encode_prompt(
-                            text, do_classifier_free_guidance=False, max_sequence_length=max_sequence_length
-                        )
-                chunk_embeds = torch.cat([unique_embeds[text] for text in chunk_prompts])
-                prompt, prompt_embeds = chunk_prompts[0], chunk_embeds[:1]
-            prompt_embeds, negative_prompt_embeds = self.encode_prompt(
-                prompt,
-                negative_prompt,
-                self.do_classifier_free_guidance,
-                prompt_embeds,
-                negative_prompt_embeds,
-                max_sequence_length,
-            )
-            condition, first_frame, image_embeds, proxy_features = self.prepare_conditions(
-                image, proxy_video, height, width, num_frames, batch_size, device, dtype
-            )
-            states = [
-                self.transformer.create_causal_state(
-                    batch_size=batch_size,
-                    height=latents.shape[3],
-                    width=latents.shape[4],
-                    chunk_size=self.config.chunk_size,
-                    max_context_frames=self.config.max_context_frames,
-                    sink_frames=self.config.sink_frames,
-                    device=device,
-                    dtype=dtype,
-                )
-                for _ in range(2 if self.do_classifier_free_guidance else 1)
-            ]
-            self._num_timesteps = num_inference_steps * num_chunks
-            generated = []
-            with self.progress_bar(total=num_chunks) as progress_bar:
-                for chunk_index, start in enumerate(range(0, latents.shape[2], self.config.chunk_size)):
-                    if chunk_embeds is not None:
-                        prompt_embeds = chunk_embeds[chunk_index : chunk_index + 1]
-                    current = latents[:, :, start : start + self.config.chunk_size].clone()
-                    current_proxy = proxy_features[:, :, start : start + self.config.chunk_size]
-                    if start == 0:
-                        current[:, :, :1] = first_frame
-                    self.scheduler.set_timesteps(num_inference_steps, device=current.device)
-                    for step_index, timestep in enumerate(self.scheduler.timesteps):
-                        model_input, model_timestep = prepare_model_input(
-                            self, current, condition, first_frame, timestep, start, causal=True
-                        )
-                        prediction = self.transformer(
-                            model_input,
-                            model_timestep,
-                            prompt_embeds,
-                            encoder_hidden_states_image=image_embeds,
-                            proxy_features=current_proxy,
-                            causal_state=states[0],
-                            cache_update=False,
-                            attention_kwargs=attention_kwargs,
-                            return_dict=False,
-                        )[0]
-                        if self.do_classifier_free_guidance:
-                            negative_prediction = self.transformer(
-                                model_input,
-                                model_timestep,
-                                negative_prompt_embeds,
-                                encoder_hidden_states_image=image_embeds,
-                                proxy_features=current_proxy,
-                                causal_state=states[1],
-                                cache_update=False,
-                                attention_kwargs=attention_kwargs,
-                                return_dict=False,
-                            )[0]
-                            prediction = negative_prediction + self.guidance_scale * (prediction - negative_prediction)
-                        variance_noise = None
-                        if (
-                            self.scheduler.config.stochastic_sampling
-                            and step_index < len(self.scheduler.timesteps) - 1
-                        ):
-                            variance_noise = sample_noise(
-                                self, current.shape, generator, current.device, current.dtype
-                            )
-                        current = self.scheduler.step(
-                            prediction,
-                            timestep,
-                            current,
-                            generator=None if variance_noise is not None else generator,
-                            variance_noise=variance_noise,
-                            return_dict=False,
-                        )[0]
-                        if start == 0:
-                            current[:, :, :1] = first_frame
-                        if callback_on_step_end is not None:
-                            callback_kwargs = {}
-                            for key in callback_on_step_end_tensor_inputs:
-                                callback_kwargs[key] = current if key == "latents" else locals()[key]
-                            callback_outputs = callback_on_step_end(
-                                self, chunk_index * num_inference_steps + step_index, timestep, callback_kwargs
-                            )
-                            current = callback_outputs.pop("latents", current)
-                            prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                            negative_prompt_embeds = callback_outputs.pop(
-                                "negative_prompt_embeds", negative_prompt_embeds
-                            )
-                    model_input, model_timestep = prepare_model_input(
-                        self,
-                        current,
-                        condition,
-                        first_frame,
-                        current.new_zeros(()),
-                        start,
-                        causal=True,
+        latents = self.prepare_latents(batch_size, height, width, num_frames, dtype, device, generator, latents)
+        chunk_embeds = None
+        if chunk_prompts is not None:
+            unique_embeds = {}
+            for text in chunk_prompts:
+                if text not in unique_embeds:
+                    unique_embeds[text], _ = self.encode_prompt(
+                        text, do_classifier_free_guidance=False, max_sequence_length=max_sequence_length
                     )
-                    # A clean cache commit uses one zero timestep per sample, not per token.
-                    model_timestep = torch.zeros(current.shape[0], device=current.device, dtype=torch.float32)
-                    self.transformer(
+            chunk_embeds = torch.cat([unique_embeds[text] for text in chunk_prompts])
+            prompt, prompt_embeds = chunk_prompts[0], chunk_embeds[:1]
+        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+            prompt,
+            negative_prompt,
+            self.do_classifier_free_guidance,
+            prompt_embeds,
+            negative_prompt_embeds,
+            max_sequence_length,
+        )
+        condition, first_frame, image_embeds, proxy_features = self.prepare_conditions(
+            image, proxy_video, height, width, num_frames, batch_size, device, dtype
+        )
+        states = [
+            self.transformer.create_causal_state(
+                batch_size=batch_size,
+                height=latents.shape[3],
+                width=latents.shape[4],
+                chunk_size=self.config.chunk_size,
+                max_context_frames=self.config.max_context_frames,
+                sink_frames=self.config.sink_frames,
+                device=device,
+                dtype=dtype,
+            )
+            for _ in range(2 if self.do_classifier_free_guidance else 1)
+        ]
+        self._num_timesteps = num_inference_steps * num_chunks
+        generated = []
+        with self.progress_bar(total=num_chunks) as progress_bar:
+            for chunk_index, start in enumerate(range(0, latents.shape[2], self.config.chunk_size)):
+                if chunk_embeds is not None:
+                    prompt_embeds = chunk_embeds[chunk_index : chunk_index + 1]
+                current = latents[:, :, start : start + self.config.chunk_size].clone()
+                current_proxy = proxy_features[:, :, start : start + self.config.chunk_size]
+                if start == 0:
+                    current[:, :, :1] = first_frame
+                self.scheduler.set_timesteps(num_inference_steps, device=current.device)
+                for step_index, timestep in enumerate(self.scheduler.timesteps):
+                    model_input, model_timestep = prepare_model_input(
+                        self, current, condition, first_frame, timestep, start, causal=True
+                    )
+                    prediction = self.transformer(
                         model_input,
                         model_timestep,
                         prompt_embeds,
                         encoder_hidden_states_image=image_embeds,
                         proxy_features=current_proxy,
                         causal_state=states[0],
-                        cache_update=True,
+                        cache_update=False,
                         attention_kwargs=attention_kwargs,
                         return_dict=False,
-                    )
+                    )[0]
                     if self.do_classifier_free_guidance:
-                        self.transformer(
+                        negative_prediction = self.transformer(
                             model_input,
                             model_timestep,
                             negative_prompt_embeds,
                             encoder_hidden_states_image=image_embeds,
                             proxy_features=current_proxy,
                             causal_state=states[1],
-                            cache_update=True,
+                            cache_update=False,
                             attention_kwargs=attention_kwargs,
                             return_dict=False,
+                        )[0]
+                        prediction = negative_prediction + self.guidance_scale * (prediction - negative_prediction)
+                    variance_noise = None
+                    if self.scheduler.config.stochastic_sampling and step_index < len(self.scheduler.timesteps) - 1:
+                        variance_noise = randn_tensor(
+                            current.shape, generator=generator, device=current.device, dtype=current.dtype
                         )
-                    generated.append(current)
-                    progress_bar.update()
-            latents = torch.cat(generated, dim=2)
-            frames = self.decode_latents(latents, output_type)
-        finally:
-            for state in states:
-                state.reset()
-            self.maybe_free_model_hooks()
+                    current = self.scheduler.step(
+                        prediction,
+                        timestep,
+                        current,
+                        generator=None if variance_noise is not None else generator,
+                        variance_noise=variance_noise,
+                        return_dict=False,
+                    )[0]
+                    if start == 0:
+                        current[:, :, :1] = first_frame
+                    if callback_on_step_end is not None:
+                        callback_kwargs = {}
+                        for key in callback_on_step_end_tensor_inputs:
+                            callback_kwargs[key] = current if key == "latents" else locals()[key]
+                        callback_outputs = callback_on_step_end(
+                            self, chunk_index * num_inference_steps + step_index, timestep, callback_kwargs
+                        )
+                        current = callback_outputs.pop("latents", current)
+                        prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                        negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                model_input, model_timestep = prepare_model_input(
+                    self,
+                    current,
+                    condition,
+                    first_frame,
+                    current.new_zeros(()),
+                    start,
+                    causal=True,
+                )
+                # A clean cache commit uses one zero timestep per sample, not per token.
+                model_timestep = torch.zeros(current.shape[0], device=current.device, dtype=torch.float32)
+                self.transformer(
+                    model_input,
+                    model_timestep,
+                    prompt_embeds,
+                    encoder_hidden_states_image=image_embeds,
+                    proxy_features=current_proxy,
+                    causal_state=states[0],
+                    cache_update=True,
+                    attention_kwargs=attention_kwargs,
+                    return_dict=False,
+                )
+                if self.do_classifier_free_guidance:
+                    self.transformer(
+                        model_input,
+                        model_timestep,
+                        negative_prompt_embeds,
+                        encoder_hidden_states_image=image_embeds,
+                        proxy_features=current_proxy,
+                        causal_state=states[1],
+                        cache_update=True,
+                        attention_kwargs=attention_kwargs,
+                        return_dict=False,
+                    )
+                generated.append(current)
+                progress_bar.update()
+        latents = torch.cat(generated, dim=2)
+        frames = self.decode_latents(latents, output_type)
+        self.maybe_free_model_hooks()
         if not return_dict:
             return (frames,)
         return EdenLivePipelineOutput(frames=frames)

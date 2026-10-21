@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # EdenLive
 
-[EdenLive](https://github.com/VAST-AI-Research/EdenLive-Official) generates video from a proxy video, a reference
+[EdenLive](https://github.com/VAST-AI-Research/EdenLive) generates video from a proxy video, a reference
 image, and a text prompt. [`EdenLivePipeline`] supports bidirectional generation; [`EdenLiveCausalPipeline`]
 generates a complete video in causal chunks and supports changing prompts between chunks.
 
@@ -28,7 +28,7 @@ from diffusers.utils import export_to_video, load_image, load_video
 
 pipe = EdenLivePipeline.from_pretrained(
     "VAST-AI/EdenLive-5B-Diffusers",
-    torch_dtype={"default": torch.bfloat16, "proxy_encoder": torch.float32, "proxy_projection": torch.float32},
+    torch_dtype={"default": torch.bfloat16, "proxy_encoder": torch.float32},
 ).to("cuda")
 
 image = load_image("reference.png")
@@ -43,25 +43,19 @@ frames = pipe(
 export_to_video(frames, "edenlive.mp4", fps=24)
 ```
 
-Keep the proxy encoder and projection in FP32 when loading the other models in BF16, as shown above.
+Keep the proxy encoder in FP32 when loading the other models in BF16, as shown above. The transformer keeps its
+internal proxy projection in FP32 when loaded with `from_pretrained`.
 
 ## Causal generation
 
-Load the causal transformer and scheduler from the same repository. This works with either model size and uses
-four fixed denoising steps per chunk.
+Load the causal pipeline from its dedicated repository. Both model sizes use four fixed denoising steps per chunk.
 
 ```python
-from diffusers import EdenLiveCausalPipeline, EdenLiveTransformer3DModel, EdenLiveFlowMatchEulerDiscreteScheduler
+from diffusers import EdenLiveCausalPipeline
 
 causal_pipe = EdenLiveCausalPipeline.from_pretrained(
-    "VAST-AI/EdenLive-5B-Diffusers",
-    transformer=EdenLiveTransformer3DModel.from_pretrained(
-        "VAST-AI/EdenLive-5B-Diffusers", subfolder="transformer_causal", torch_dtype=torch.bfloat16
-    ),
-    scheduler=EdenLiveFlowMatchEulerDiscreteScheduler.from_pretrained(
-        "VAST-AI/EdenLive-5B-Diffusers", subfolder="scheduler_causal"
-    ),
-    torch_dtype={"default": torch.bfloat16, "proxy_encoder": torch.float32, "proxy_projection": torch.float32},
+    "VAST-AI/EdenLive-5B-Causal-Diffusers",
+    torch_dtype={"default": torch.bfloat16, "proxy_encoder": torch.float32},
 ).to("cuda")
 ```
 
@@ -99,16 +93,18 @@ pipe = EdenLivePipeline.from_pretrained(
     decoder=EdenLiveLightTAEDecoder.from_pretrained(
         "VAST-AI/EdenLive-5B-Diffusers", subfolder="decoder", torch_dtype=torch.bfloat16
     ),
-    torch_dtype={"default": torch.bfloat16, "proxy_encoder": torch.float32, "proxy_projection": torch.float32},
+    torch_dtype={"default": torch.bfloat16, "proxy_encoder": torch.float32},
 ).to("cuda")
 ```
 
 ## Notes
 
-| Checkpoint | Default height × width | Example fps | Bidirectional steps |
-|---|---|---|---|
-| [5B](https://huggingface.co/VAST-AI/EdenLive-5B-Diffusers) | 704 × 1280 | 24 | 48 |
-| [14B](https://huggingface.co/VAST-AI/EdenLive-14B-Diffusers) | 480 × 832 | 16 | 30 |
+| Checkpoint | Pipeline | Default height × width | Example fps | Steps |
+|---|---|---|---|---|
+| [5B bidirectional](https://huggingface.co/VAST-AI/EdenLive-5B-Diffusers) | `EdenLivePipeline` | 704 × 1280 | 24 | 48 |
+| [14B bidirectional](https://huggingface.co/VAST-AI/EdenLive-14B-Diffusers) | `EdenLivePipeline` | 480 × 832 | 16 | 30 |
+| [5B causal](https://huggingface.co/VAST-AI/EdenLive-5B-Causal-Diffusers) | `EdenLiveCausalPipeline` | 704 × 1280 | 24 | 4 per chunk |
+| [14B causal](https://huggingface.co/VAST-AI/EdenLive-14B-Causal-Diffusers) | `EdenLiveCausalPipeline` | 480 × 832 | 16 | 4 per chunk |
 
 - Sample proxy frames at the desired output frame rate. `num_frames` must be $4k+1$ and fit within the input video;
   omitting it uses the largest valid prefix. Custom dimensions must be multiples of 32 for 5B or 16 for 14B.
@@ -116,7 +112,7 @@ pipe = EdenLivePipeline.from_pretrained(
   to use a `negative_prompt`.
 - For CPU offload, load without `.to("cuda")` and call `enable_model_cpu_offload()`.
 - See the [example README](https://github.com/huggingface/diffusers/tree/main/examples/edenlive) for installation,
-  video resampling, multi-GPU inference, and checkpoint conversion.
+  video resampling, CPU offload, and checkpoint conversion.
 
 ## EdenLivePipeline
 

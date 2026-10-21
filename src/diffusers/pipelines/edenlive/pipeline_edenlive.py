@@ -21,13 +21,14 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, DINOv3ViTModel, UMT5EncoderModel
 
-from ...models import AutoencoderKLWan, EdenLiveLightTAEDecoder, EdenLiveProxyProjection, EdenLiveTransformer3DModel
+from ...models import AutoencoderKLWan, EdenLiveLightTAEDecoder, EdenLiveTransformer3DModel
 from ...schedulers import EdenLiveFlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler
 from ...utils import is_ftfy_available, replace_example_docstring
+from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import EdenLivePipelineOutput
-from .pipeline_utils import prepare_model_input, sample_noise
+from .pipeline_utils import prepare_model_input
 from .video_processor import EdenLiveVideoProcessor
 
 
@@ -44,7 +45,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video, load_image, load_video
         >>> pipe = EdenLivePipeline.from_pretrained(
         ...     "VAST-AI/EdenLive-5B-Diffusers",
-        ...     torch_dtype={"default": torch.bfloat16, "proxy_encoder": torch.float32, "proxy_projection": torch.float32},
+        ...     torch_dtype={"default": torch.bfloat16, "proxy_encoder": torch.float32},
         ... ).to("cuda")
         >>> frames = pipe(
         ...     image=load_image("reference.png"), video=load_video("proxy.mp4"),
@@ -71,8 +72,6 @@ class EdenLivePipeline(DiffusionPipeline):
             Scheduler corresponding to the transformer checkpoint.
         proxy_encoder (`DINOv3ViTModel`):
             Trained RGB proxy encoder.
-        proxy_projection ([`EdenLiveProxyProjection`]):
-            Learned projection of DINO patch features.
         image_encoder (`CLIPVisionModel`, *optional*):
             Reference image encoder required by the 14B model.
         image_processor (`CLIPImageProcessor`, *optional*):
@@ -85,7 +84,7 @@ class EdenLivePipeline(DiffusionPipeline):
             Width of the proxy images passed to DINO.
     """
 
-    model_cpu_offload_seq = "text_encoder->image_encoder->proxy_encoder->proxy_projection->transformer->vae->decoder"
+    model_cpu_offload_seq = "text_encoder->image_encoder->proxy_encoder->transformer->vae->decoder"
     _optional_components = ["image_encoder", "image_processor", "decoder"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
@@ -97,7 +96,6 @@ class EdenLivePipeline(DiffusionPipeline):
         transformer: EdenLiveTransformer3DModel,
         scheduler: EdenLiveFlowMatchEulerDiscreteScheduler | UniPCMultistepScheduler,
         proxy_encoder: DINOv3ViTModel,
-        proxy_projection: EdenLiveProxyProjection,
         image_encoder: CLIPVisionModel | None = None,
         image_processor: CLIPImageProcessor | None = None,
         decoder: EdenLiveLightTAEDecoder | None = None,
@@ -112,7 +110,6 @@ class EdenLivePipeline(DiffusionPipeline):
             transformer=transformer,
             scheduler=scheduler,
             proxy_encoder=proxy_encoder,
-            proxy_projection=proxy_projection,
             image_encoder=image_encoder,
             image_processor=image_processor,
             decoder=decoder,
@@ -231,7 +228,7 @@ class EdenLivePipeline(DiffusionPipeline):
             if tuple(latents.shape) != shape:
                 raise ValueError(f"Expected latents with shape {shape}, got {tuple(latents.shape)}.")
             return latents.to(device=device, dtype=dtype)
-        return sample_noise(self, shape, generator, device, dtype)
+        return randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
     def prepare_conditions(self, image, proxy_video, height, width, num_frames, batch_size, device, dtype):
         """Encode the reference image and sampled RGB proxy frames for the video transformer."""
@@ -296,9 +293,7 @@ class EdenLivePipeline(DiffusionPipeline):
             hidden = hidden[:, start : start + grid_height * grid_width].reshape(
                 batch_size, grid_height, grid_width, -1
             )
-            with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
-                projected = self.proxy_projection(hidden, return_dict=False)[0]
-            proxy_features.append(projected.float().permute(0, 3, 1, 2))
+            proxy_features.append(hidden.permute(0, 3, 1, 2))
         proxy_features = torch.stack(proxy_features, dim=2)
         return condition, first_frame, clip_embeds, proxy_features
 
@@ -380,8 +375,7 @@ class EdenLivePipeline(DiffusionPipeline):
             negative_prompt (`str` or `list[str]`, *optional*):
                 Text describing content to discourage when classifier-free guidance is enabled.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
-                Random generator, or one per batch item. CPU generators are supported. Under context parallelism, the
-                first rank generates and broadcasts each complete noise tensor.
+                Random generator, or one per batch item. CPU generators are supported.
             latents (`torch.Tensor`, *optional*):
                 Initial noise with shape `(B, C, T_latent, H_latent, W_latent)`. When omitted, noise for the whole
                 video is sampled before image conditioning. The fixed first frame still consumes its noise draw.
@@ -445,64 +439,62 @@ class EdenLivePipeline(DiffusionPipeline):
         )
         if batch_size < 1:
             raise ValueError("Provide a positive prompt or prompt embeddings.")
-        try:
-            latents = self.prepare_latents(batch_size, height, width, num_frames, dtype, device, generator, latents)
-            prompt_embeds, negative_prompt_embeds = self.encode_prompt(
-                prompt,
-                negative_prompt,
-                self.do_classifier_free_guidance,
-                prompt_embeds,
-                negative_prompt_embeds,
-                max_sequence_length,
-            )
-            condition, first_frame, image_embeds, proxy_features = self.prepare_conditions(
-                image, proxy_video, height, width, num_frames, batch_size, device, dtype
-            )
-            if not self._image_conditioned:
-                latents[:, :, :1] = first_frame
-            self.scheduler.set_timesteps(num_inference_steps, device=device)
-            if not self._image_conditioned and isinstance(self.scheduler, UniPCMultistepScheduler):
-                # CPU and CUDA scalar sigmas round BF16 model outputs differently.
-                self.scheduler.sigmas = self.scheduler.sigmas.to(device=device)
-            self._num_timesteps = len(self.scheduler.timesteps)
-            with self.progress_bar(total=self._num_timesteps) as progress_bar:
-                for step_index, timestep in enumerate(self.scheduler.timesteps):
-                    model_input, model_timestep = prepare_model_input(self, latents, condition, first_frame, timestep)
-                    prediction = self.transformer(
+        latents = self.prepare_latents(batch_size, height, width, num_frames, dtype, device, generator, latents)
+        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+            prompt,
+            negative_prompt,
+            self.do_classifier_free_guidance,
+            prompt_embeds,
+            negative_prompt_embeds,
+            max_sequence_length,
+        )
+        condition, first_frame, image_embeds, proxy_features = self.prepare_conditions(
+            image, proxy_video, height, width, num_frames, batch_size, device, dtype
+        )
+        if not self._image_conditioned:
+            latents[:, :, :1] = first_frame
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        if not self._image_conditioned and isinstance(self.scheduler, UniPCMultistepScheduler):
+            # CPU and CUDA scalar sigmas round BF16 model outputs differently.
+            self.scheduler.sigmas = self.scheduler.sigmas.to(device=device)
+        self._num_timesteps = len(self.scheduler.timesteps)
+        with self.progress_bar(total=self._num_timesteps) as progress_bar:
+            for step_index, timestep in enumerate(self.scheduler.timesteps):
+                model_input, model_timestep = prepare_model_input(self, latents, condition, first_frame, timestep)
+                prediction = self.transformer(
+                    model_input,
+                    model_timestep,
+                    prompt_embeds,
+                    encoder_hidden_states_image=image_embeds,
+                    proxy_features=proxy_features,
+                    attention_kwargs=attention_kwargs,
+                    return_dict=False,
+                )[0]
+                if self.do_classifier_free_guidance:
+                    negative_prediction = self.transformer(
                         model_input,
                         model_timestep,
-                        prompt_embeds,
+                        negative_prompt_embeds,
                         encoder_hidden_states_image=image_embeds,
                         proxy_features=proxy_features,
                         attention_kwargs=attention_kwargs,
                         return_dict=False,
                     )[0]
-                    if self.do_classifier_free_guidance:
-                        negative_prediction = self.transformer(
-                            model_input,
-                            model_timestep,
-                            negative_prompt_embeds,
-                            encoder_hidden_states_image=image_embeds,
-                            proxy_features=proxy_features,
-                            attention_kwargs=attention_kwargs,
-                            return_dict=False,
-                        )[0]
-                        prediction = negative_prediction + self.guidance_scale * (prediction - negative_prediction)
-                    latents = self.scheduler.step(prediction, timestep, latents, return_dict=False)[0]
-                    if not self._image_conditioned:
-                        latents[:, :, :1] = first_frame
-                    if callback_on_step_end is not None:
-                        callback_kwargs = {}
-                        for key in callback_on_step_end_tensor_inputs:
-                            callback_kwargs[key] = locals()[key]
-                        callback_outputs = callback_on_step_end(self, step_index, timestep, callback_kwargs)
-                        latents = callback_outputs.pop("latents", latents)
-                        prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                        negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
-                    progress_bar.update()
-            frames = self.decode_latents(latents, output_type)
-        finally:
-            self.maybe_free_model_hooks()
+                    prediction = negative_prediction + self.guidance_scale * (prediction - negative_prediction)
+                latents = self.scheduler.step(prediction, timestep, latents, return_dict=False)[0]
+                if not self._image_conditioned:
+                    latents[:, :, :1] = first_frame
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for key in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[key] = locals()[key]
+                    callback_outputs = callback_on_step_end(self, step_index, timestep, callback_kwargs)
+                    latents = callback_outputs.pop("latents", latents)
+                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                progress_bar.update()
+        frames = self.decode_latents(latents, output_type)
+        self.maybe_free_model_hooks()
         if not return_dict:
             return (frames,)
         return EdenLivePipelineOutput(frames=frames)

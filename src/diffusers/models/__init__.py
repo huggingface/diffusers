@@ -123,7 +123,6 @@ if is_torch_available():
     _import_structure["transformers.transformer_easyanimate"] = ["EasyAnimateTransformer3DModel"]
     _import_structure["transformers.transformer_edenlive"] = [
         "EdenLiveCausalState",
-        "EdenLiveProxyProjection",
         "EdenLiveTransformer3DModel",
     ]
     _import_structure["transformers.transformer_ernie_image"] = ["ErnieImageTransformer2DModel"]
@@ -277,7 +276,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             DualTransformer2DModel,
             EasyAnimateTransformer3DModel,
             EdenLiveCausalState,
-            EdenLiveProxyProjection,
             EdenLiveTransformer3DModel,
             ErnieImageTransformer2DModel,
             Flux2Transformer2DModel,
