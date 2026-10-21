@@ -16,8 +16,9 @@ Script to remind PR authors to link an issue, and to escalate unresolved reminde
 
 Behavior:
 - Scans open, non-draft PRs.
-- A PR is considered "linked" if GitHub's GraphQL `closingIssuesReferences` returns > 0
-  (covers both `Fixes #N` keywords in the body and issues linked via the GitHub UI).
+- A PR is considered "linked" if GitHub's GraphQL `closingIssuesReferences` returns an
+  issue (covers both `Fixes #N` keywords in the body and issues linked via the GitHub UI),
+  not counting issues the PR author opened after the PR.
 - If a PR is not linked and has no reminder yet, the script posts a single friendly
   reminder comment warning that the PR may be auto-closed.
 - If a PR only has an old-style reminder (posted before the auto-close notice existed),
@@ -86,8 +87,13 @@ GRAPHQL_QUERY = """
 query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
-      closingIssuesReferences(first: 1) {
-        totalCount
+      createdAt
+      author { login }
+      closingIssuesReferences(first: 50) {
+        nodes {
+          createdAt
+          author { login }
+        }
       }
     }
   }
@@ -107,7 +113,12 @@ def has_linked_issue(token, owner, name, number):
     data = payload.get("data")
     if not data:
         return False
-    return data["repository"]["pullRequest"]["closingIssuesReferences"]["totalCount"] > 0
+    pr = data["repository"]["pullRequest"]
+    pr_author = (pr["author"] or {}).get("login")
+    return any(
+        (issue["author"] or {}).get("login") != pr_author or issue["createdAt"] < pr["createdAt"]
+        for issue in pr["closingIssuesReferences"]["nodes"]
+    )
 
 
 def author_checkbox_checked(pr):
