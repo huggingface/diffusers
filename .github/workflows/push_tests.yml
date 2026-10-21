@@ -203,7 +203,7 @@ jobs:
     - name: Environment
       run: |
         diffusers-cli env
-    - name: Run example tests on GPU
+    - name: Run torch compile tests on GPU
       env:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
       run: |
@@ -247,7 +247,7 @@ jobs:
     - name: Environment
       run: |
         diffusers-cli env
-    - name: Run example tests on GPU
+    - name: Run xformers tests on GPU
       env:
         HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
       run: |
