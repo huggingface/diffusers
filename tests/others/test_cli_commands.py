@@ -33,6 +33,7 @@ from diffusers.commands.custom_blocks import CustomBlocksCommand
 from diffusers.commands.run import (
     RunCommand,
     _build_task_kwargs,
+    _check_tensor_parallel_args,
     _collapse_frame_dirs,
     _download_outputs_from_sandbox,
     _kwargs_to_argv,
@@ -218,6 +219,15 @@ class TestRunCommand:
         pipeline = _load_pipeline(args)
         assert isinstance(pipeline.transformer._hf_hook, accelerate.hooks.CpuOffload)
 
+    def test_indexed_device_map_is_placed_after_load(self):
+        # `DiffusionPipeline.from_pretrained` rejects `cpu:0`; torchrun ranks hit the same with `cuda:<LOCAL_RANK>`.
+        args = self._parse_run_argv(["--device-map", "cpu:0"])
+        pipeline = _load_pipeline(args)
+        devices = {
+            p.device for c in pipeline.components.values() if isinstance(c, torch.nn.Module) for p in c.parameters()
+        }
+        assert devices == {torch.device("cpu")}, f"components not placed on cpu:0, got {devices}"
+
     def test_vae_tiling_arg(self):
         args = self._parse_run_argv(["--vae-tiling"])
         pipeline = _load_pipeline(args)
@@ -227,6 +237,36 @@ class TestRunCommand:
         args = self._parse_run_argv(["--vae-slicing"])
         pipeline = _load_pipeline(args)
         assert pipeline.vae.use_slicing is True
+
+    @pytest.mark.parametrize(
+        "extra_argv",
+        [
+            ["--seed", "0", "--context-parallel"],
+            ["--seed", "0", "--device-map", "cuda"],
+            ["--seed", "0", "--cpu-offload", "model"],
+            ["--seed", "0", "--lora", '{"lora_id": "x"}'],
+            [],
+        ],
+        ids=["context-parallel", "device-map", "cpu-offload", "lora", "no-seed"],
+    )
+    def test_tensor_parallel_arg_rejects_unsupported_combinations(self, extra_argv):
+        args = self._parse_run_argv(["--tensor-parallel", *extra_argv])
+        with pytest.raises(SystemExit, match="--tensor-parallel"):
+            _check_tensor_parallel_args(args)
+
+    def test_tensor_parallel_arg_requires_torchrun(self, monkeypatch):
+        monkeypatch.delenv("LOCAL_RANK", raising=False)
+        args = self._parse_run_argv(["--tensor-parallel", "--seed", "0"])
+        _check_tensor_parallel_args(args)
+        with pytest.raises(SystemExit, match="torchrun"):
+            _load_pipeline(args)
+
+    def test_tensor_parallel_arg_rejects_unsupported_device(self, monkeypatch):
+        monkeypatch.setenv("LOCAL_RANK", "0")
+        monkeypatch.setattr("diffusers.commands.run.torch_device", "cpu")
+        args = self._parse_run_argv(["--tensor-parallel", "--seed", "0"])
+        with pytest.raises(SystemExit, match="'cpu'"):
+            _load_pipeline(args)
 
     @require_torch_gpu
     def test_compile_arg(self):

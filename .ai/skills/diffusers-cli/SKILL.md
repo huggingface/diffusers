@@ -27,7 +27,8 @@ Most agentic work goes through `run`. Read the matching reference file before co
   semantics and the shell-quoting gotcha, LoRA via `--lora`, optimization flags (`--dtype`, `--cpu-offload`,
   `--attention-backend`, `--vae-tiling/slicing`), output handling and `--push-to` bucket uploads, the full
   `--remote` HF Jobs flow (image, container command, log streaming, timing payload, artifact download), and
-  context parallel (`--context-parallel`) for both local-torchrun and `--remote` paths.
+  context parallel (`--context-parallel`) and tensor parallel (`--tensor-parallel`) for both local-torchrun
+  and `--remote` paths.
 
 The other commands are small enough that `diffusers-cli <command> --help` is the canonical reference:
 

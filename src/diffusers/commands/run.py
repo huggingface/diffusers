@@ -41,10 +41,12 @@ from huggingface_hub.utils import httpx, send_telemetry
 from PIL import Image
 
 import diffusers
-from diffusers import ContextParallelConfig
+from diffusers import ContextParallelConfig, TensorParallelConfig
 from diffusers.models.attention_dispatch import _HUB_KERNELS_REGISTRY
+from diffusers.pipelines.pipeline_utils import SUPPORTED_DEVICE_MAP
 from diffusers.utils import export_to_video, load_image, load_video, logging
 from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT
+from diffusers.utils.dynamic_modules_utils import get_class_from_dynamic_module
 from diffusers.utils.torch_utils import torch_device
 
 from . import BaseDiffusersCLICommand
@@ -63,6 +65,9 @@ CPU_OFFLOAD_CHOICES = ("model", "group", "auto")
 
 
 ATTENTION_BACKEND_CHOICES = ("default", *sorted(b.value for b in _HUB_KERNELS_REGISTRY))
+
+# `torch.distributed` backend for each device type `--tensor-parallel` can shard across.
+_TP_PROCESS_GROUP_BACKENDS = {"cuda": "nccl", "tpu": "tpu_dist", "neuron": "neuron"}
 
 # Kwarg keys whose string value gets auto-loaded before being passed to the pipeline call.
 # Images resolve via `diffusers.utils.load_image` → PIL.Image.Image; videos resolve via
@@ -208,6 +213,16 @@ def _add_optimization_arguments(parser: ArgumentParser) -> None:
         help=(
             "Enable Ulysses-style context parallelism (ulysses_anything mode). "
             "Requires a DiT-based pipeline and launching the CLI under torchrun with ≥2 GPUs."
+        ),
+    )
+    parser.add_argument(
+        "--tensor-parallel",
+        action="store_true",
+        help=(
+            "Shard the transformer weights across CUDA, TPU, or Neuron devices with tensor parallelism "
+            "(one shard per rank, tp_degree = number of processes). Requires --seed, a transformer that "
+            "defines a `_tp_plan`, and launching the CLI under torchrun with ≥2 devices. Not supported with "
+            "--device-map, --cpu-offload, --lora, --context-parallel, or modular pipelines."
         ),
     )
     parser.add_argument(
@@ -453,6 +468,100 @@ def _enable_context_parallel(pipeline: Any) -> None:
     )
 
 
+def _check_tensor_parallel_args(args: Namespace) -> None:
+    if not args.tensor_parallel:
+        return
+    if args.context_parallel:
+        raise SystemExit(
+            "--tensor-parallel cannot be combined with --context-parallel: a single `ParallelConfig` does not "
+            "support both yet. Pass only one of them."
+        )
+    if args.device_map is not None:
+        raise SystemExit(
+            f"--tensor-parallel cannot be combined with --device-map {args.device_map!r}: tensor parallelism "
+            "places each rank's shard on that rank's device. Drop --device-map."
+        )
+    if args.cpu_offload:
+        raise SystemExit(
+            f"--tensor-parallel cannot be combined with --cpu-offload {args.cpu_offload!r}: each rank already "
+            "holds only one shard of the transformer weights. Drop --cpu-offload."
+        )
+    if args.lora:
+        raise SystemExit(
+            "--tensor-parallel cannot be combined with --lora: the adapter layers are not covered by the "
+            "transformer's `_tp_plan`. Drop --lora."
+        )
+    if args.seed is None:
+        raise SystemExit(
+            "--tensor-parallel requires --seed so every rank starts from the same latents, e.g. `--seed 0`."
+        )
+
+
+def _load_tensor_parallel_transformer(args: Namespace, config: dict, dtype: Any) -> Any:
+    """Load the pipeline's transformer sharded across the torchrun ranks, one shard per rank.
+
+    `DiffusionPipeline.from_pretrained` does not forward `parallel_config` to its components, so the transformer is
+    loaded on its own and handed to the pipeline as a ready-made component.
+    """
+    if "LOCAL_RANK" not in os.environ:
+        raise SystemExit(
+            "--tensor-parallel requires launching the CLI under torchrun: "
+            "`torchrun --nproc-per-node=<num_devices> -m diffusers.commands.diffusers_cli run ... --tensor-parallel`."
+        )
+
+    backend = _TP_PROCESS_GROUP_BACKENDS.get(torch_device)
+    if backend is None:
+        raise SystemExit(
+            f"--tensor-parallel supports {sorted(_TP_PROCESS_GROUP_BACKENDS)} devices, but the active device is "
+            f"{torch_device!r}."
+        )
+
+    library_name, class_name = config.get("transformer") or (None, None)
+    if library_name is None:
+        raise SystemExit(
+            f"--tensor-parallel requires a DiT-based pipeline. {args.model!r} does not ship a `transformer` component."
+        )
+    if library_name == "diffusers":
+        transformer_cls = getattr(diffusers, class_name)
+    else:
+        # A custom component, resolved the same way `DiffusionPipeline.from_pretrained` does: `<library_name>.py`
+        # inside the component folder.
+        transformer_cls = get_class_from_dynamic_module(
+            args.model,
+            module_file=f"{library_name}.py",
+            subfolder="transformer",
+            class_name=class_name,
+            token=args.token,
+            revision=args.revision,
+            trust_remote_code=args.trust_remote_code,
+        )
+
+    if not torch.distributed.is_initialized():
+        torch.distributed.init_process_group(backend=backend)
+    world_size = torch.distributed.get_world_size()
+    if world_size < 2:
+        raise SystemExit(
+            f"--tensor-parallel needs at least 2 processes to shard across, got {world_size}. "
+            "Launch with `torchrun --nproc-per-node=<num_devices>` on a machine with ≥2 devices."
+        )
+
+    # Neuron never registers as a torch accelerator, so the mesh can't be built from `tp_degree` alone.
+    mesh = None
+    if torch_device == "neuron":
+        mesh = torch.distributed.device_mesh.DeviceMesh("neuron", list(range(world_size)))
+
+    transformer_kwargs: dict[str, Any] = {
+        "subfolder": "transformer",
+        "revision": args.revision,
+        "variant": args.variant,
+        "token": args.token,
+        "parallel_config": TensorParallelConfig(tp_degree=world_size, mesh=mesh),
+    }
+    if dtype != "auto":
+        transformer_kwargs["torch_dtype"] = dtype
+    return transformer_cls.from_pretrained(args.model, **transformer_kwargs)
+
+
 def _apply_optimizations(pipeline: Any, args: Namespace) -> None:
     """Apply VAE tiling/slicing, attention backend, context-parallel, and torch.compile toggles."""
     vae = getattr(pipeline, "vae", None)
@@ -569,6 +678,11 @@ def _load_pipeline(args: Namespace) -> Any:
         common_kwargs["device_map"] = device_map
 
     if modular:
+        if args.tensor_parallel:
+            raise SystemExit(
+                f"--tensor-parallel is not supported for modular pipelines yet — '{args.model}' loads as a "
+                "ModularPipeline. Drop --tensor-parallel."
+            )
         if args.cpu_offload and args.cpu_offload != "auto":
             raise SystemExit(
                 f"--cpu-offload {args.cpu_offload!r} is not supported for modular pipelines — they "
@@ -594,7 +708,22 @@ def _load_pipeline(args: Namespace) -> Any:
                 f"--workflow {args.workflow!r} only applies to modular pipelines; "
                 f"ignoring it — '{args.model}' loads as a standard DiffusionPipeline."
             )
+        # `DiffusionPipeline.from_pretrained` only accepts an unindexed device such as `cuda`, not the
+        # `cuda:<LOCAL_RANK>` each rank gets under torchrun, so an indexed device is applied after loading.
+        # Tensor parallelism always places after loading, around a transformer already sharded onto its devices.
+        place_after_load = "device_map" in common_kwargs and (
+            args.tensor_parallel or (isinstance(device_map, str) and device_map not in SUPPORTED_DEVICE_MAP)
+        )
+        if place_after_load:
+            del common_kwargs["device_map"]
+        if args.tensor_parallel:
+            common_kwargs["transformer"] = _load_tensor_parallel_transformer(args, config, dtype)
         pipeline = diffusers.DiffusionPipeline.from_pretrained(args.model, revision=args.revision, **common_kwargs)
+        if place_after_load:
+            # Not `pipeline.to()`: under tensor parallelism it would also move the transformer's shards.
+            for name, component in pipeline.components.items():
+                if isinstance(component, torch.nn.Module) and not (args.tensor_parallel and name == "transformer"):
+                    component.to(device_map)
 
     _load_lora(pipeline, args)
     if args.cpu_offload:
@@ -1130,9 +1259,9 @@ def _maybe_submit_remote(args: Namespace, task: str) -> bool:
         # Suppress the container CLI's own `out.result(...)` payload — the outer wrapper owns the
         # final structured output for --remote runs.
         format_argv = ["--format", "quiet"]
-        # torchrun wraps the CLI for --context-parallel so torch.distributed initializes across
-        # every visible GPU before the run command starts.
-        if args.context_parallel:
+        # torchrun wraps the CLI for --context-parallel / --tensor-parallel so torch.distributed
+        # initializes across every visible GPU before the run command starts.
+        if args.context_parallel or args.tensor_parallel:
             cli_argv = [
                 "torchrun",
                 "--nproc-per-node=gpu",
@@ -1218,6 +1347,8 @@ class RunCommand(BaseDiffusersCLICommand):
             '      --pipeline-kwargs \'{"prompt": "a cat"}\' --remote --flavor a100-large\n'
             "  $ diffusers-cli run -m black-forest-labs/FLUX.1-dev --dtype bf16 --context-parallel \\\n"
             '      --pipeline-kwargs \'{"prompt": "a cat"}\' --remote --flavor 4xa100-large\n'
+            "  $ diffusers-cli run -m black-forest-labs/FLUX.2-dev --dtype bf16 --tensor-parallel --seed 0 \\\n"
+            '      --pipeline-kwargs \'{"prompt": "a cat"}\' --remote --flavor 4xa100-large\n'
             "\n"
             "Learn more\n"
             "  Use `diffusers-cli <command> --help` for more information about a command.\n"
@@ -1296,6 +1427,7 @@ class RunCommand(BaseDiffusersCLICommand):
         _get_or_create_run_id()  # populate RUN_ID_ENV so local output dir + remote bucket prefix agree
 
         call_kwargs = _parse_pipeline_kwargs(self.args.pipeline_kwargs)
+        _check_tensor_parallel_args(self.args)
 
         if _maybe_submit_remote(self.args, self.task):
             return
@@ -1312,7 +1444,8 @@ class RunCommand(BaseDiffusersCLICommand):
             call_kwargs["output"] = keys[0] if len(keys) == 1 else keys
 
         device = pipeline.device.type if hasattr(pipeline, "device") else "cpu"
-        generator = _get_generator(self.args.seed, device)
+        # A CPU generator gives every tensor-parallel rank the same latents whatever the device type.
+        generator = _get_generator(self.args.seed, "cpu" if self.args.tensor_parallel else device)
         if generator is not None:
             call_kwargs["generator"] = generator
 

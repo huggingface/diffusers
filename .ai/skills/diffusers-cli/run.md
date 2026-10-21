@@ -115,6 +115,7 @@ Each entry calls `pipeline.load_lora_weights(<lora_id>, adapter_name=<name>)`. A
 - `--vae-tiling` / `--vae-slicing` — lower peak VAE decode VRAM.
 - `--compile [JSON]` — `torch.compile` every denoiser submodule. See [Compile](#compile) below.
 - `--context-parallel` — Ulysses-style context parallelism on a DiT. See [Context parallel](#context-parallel) below.
+- `--tensor-parallel` — shard the transformer weights across CUDA, TPU, or Neuron devices. See [Tensor parallel](#tensor-parallel) below.
 
 ## Output handling
 
@@ -286,7 +287,34 @@ attention all-to-all, Gloo for `ulysses_anything`'s per-rank size coordination),
 
 **Memory note**: CP shards the sequence, **not the weights**. Every rank still holds the full transformer. Wins
 are wall-clock attention speedup and headroom for very long sequences, not "fit a model that doesn't fit." For
-weight sharding you'd want TP or FSDP — not exposed in the CLI yet.
+weight sharding use [`--tensor-parallel`](#tensor-parallel).
+
+## Tensor parallel
+
+`--tensor-parallel` shards the transformer **weights** across devices (one shard per rank, `tp_degree` = number of
+processes), so a transformer that doesn't fit on one device can still run. Each rank reads only its own slice of the
+checkpoint. It runs on CUDA (`nccl`), TPU (`tpu_dist`), and Neuron (`neuron`); the process-group backend follows the
+detected device. The launch pattern is the same as CP — torchrun **locally**:
+
+```bash
+torchrun --nproc-per-node=4 -m diffusers.commands.diffusers_cli run \
+    --model black-forest-labs/FLUX.2-dev \
+    --pipeline-kwargs '{"prompt": "a cat holding a sign that says hello"}' \
+    --dtype bf16 --seed 0 \
+    --tensor-parallel
+```
+
+and just the flag under `--remote` on a multi-GPU flavor (the CLI wraps `torchrun --nproc-per-node=gpu`). A custom
+transformer shipped as remote code loads with `--trust-remote-code`, like the rest of the pipeline.
+
+Constraints, each raising a `SystemExit` before any weights load:
+
+- `--seed` is required — every rank must start from the same latents.
+- The transformer class must define a `_tp_plan` (Flux, Flux2, QwenImage), and the number of processes must
+  divide its attention head count.
+- Not combinable with `--device-map`, `--cpu-offload`, `--lora`, `--context-parallel`, or modular pipelines.
+
+Only the transformer is sharded: the text encoder(s) and VAE are still replicated in full on every rank.
 
 CP is DiT-only. UNet pipelines raise a clear error directing you to a DiT pipeline (FLUX, SD3, HunyuanDiT,
 AuraFlow, …).

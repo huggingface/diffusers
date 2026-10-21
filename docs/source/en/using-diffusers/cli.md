@@ -137,6 +137,11 @@ Configure how the CLI loads model weights and custom pipeline code.
 - `--context-parallel` — Ulysses-style context parallelism on a DiT-based pipeline. Locally requires torchrun, but
   under `--remote` the CLI wraps `torchrun --nproc-per-node=gpu` for you. See
   [Context parallelism](../training/distributed_inference#context-parallelism).
+- `--tensor-parallel` — shards the transformer weights across CUDA, TPU, or Neuron devices, one shard per rank,
+  for a transformer that does not fit on a single device. Locally requires torchrun, but under `--remote` the CLI wraps
+  `torchrun --nproc-per-node=gpu` for you. Requires `--seed` and a transformer that defines a `_tp_plan`. Not
+  supported with `--device-map`, `--cpu-offload`, `--lora`, `--context-parallel`, or modular pipelines. See
+  [Tensor parallelism](../training/distributed_inference#tensor-parallelism).
 
 ### Modular pipelines
 
