@@ -13,6 +13,9 @@
 # limitations under the License.
 
 import inspect
+import os
+import subprocess
+import sys
 from importlib import import_module
 
 import pytest
@@ -21,6 +24,25 @@ import pytest
 class TestDependencies:
     def test_diffusers_import(self):
         import diffusers  # noqa: F401
+
+    def test_model_import_with_torchao_older_than_0_15(self, tmp_path):
+        # FqnToConfig only exists from torchao 0.15. An older torchao, such as the one on Google Colab, must not
+        # stop models from importing.
+        (tmp_path / "torchao" / "quantization").mkdir(parents=True)
+        (tmp_path / "torchao" / "__init__.py").write_text("")
+        (tmp_path / "torchao" / "quantization" / "__init__.py").write_text(
+            "def quantize_(*args, **kwargs):\n    pass\n"
+        )
+        (tmp_path / "torchao-0.14.1.dist-info").mkdir()
+        (tmp_path / "torchao-0.14.1.dist-info" / "METADATA").write_text(
+            "Metadata-Version: 2.1\nName: torchao\nVersion: 0.14.1\n"
+        )
+        env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(tmp_path), os.environ.get("PYTHONPATH", "")])}
+
+        result = subprocess.run(
+            [sys.executable, "-c", "from diffusers import UNet2DModel"], env=env, capture_output=True, text=True
+        )
+        assert result.returncode == 0, result.stderr
 
     def test_backend_registration(self):
         import diffusers
