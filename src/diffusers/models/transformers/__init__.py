@@ -65,6 +65,7 @@ if is_torch_available():
     from .transformer_prx import PRXTransformer2DModel
     from .transformer_qwenimage import QwenImageTransformer2DModel
     from .transformer_qwenimage21 import QwenImage21Transformer2DModel
+    from .transformer_rfd4_proteina import RFD4ProteinaTransformer
     from .transformer_sana_video import SanaVideoTransformer3DModel
     from .transformer_sana_wm import SanaWMTransformer3DModel
     from .transformer_sana_wm_refiner import SanaWMLTX2RefinerTransformer3DModel
