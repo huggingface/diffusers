@@ -915,6 +915,73 @@ print(f"predicted {seconds:.2f}s -> {num_frames} frames")
 
 Converting a 2.5 checkpoint picks the head up automatically with `--full_pipeline`, or on its own with `--duration_head`. Checkpoints predating 2.5 have no such weights, and conversion skips the component rather than failing.
 
+### Motion speed for LTX-2.5
+
+LTX-2 places every video token on a time axis in seconds, derived by default from `frame_rate`, the playback rate. `motion_speed` (default `1.0`) separates the two: the time axis is conditioned on `frame_rate / motion_speed`, while the audio length, the [duration head](#automatic-duration-for-ltx-25) and the returned video still follow `frame_rate`. With `frame_rate=24.0` and `motion_speed=0.2`, the model is told the action was captured at 120 fps and the result plays back at 24 fps, which gives 5x slow motion.
+
+The base model is trained around 24/25/30/60 fps, so speeds far from `1.0` only make sense with an adapter trained for them, such as [`Lightricks/LTX-2.5-22b-LoRA-Slow-Motion-Control`](https://huggingface.co/Lightricks/LTX-2.5-22b-LoRA-Slow-Motion-Control) (gated: accept its license on the Hub first). Without `motion_speed`, that LoRA loads as a plain LoRA and gives none of the motion control. The model card suggests speeds of `1.0`, `0.5`, `0.2`, `0.1`, `0.05` and `0.025`, at LoRA strength `1.0`. Leave speed words ("slow motion", "high fps") out of the prompt, and reuse the same caption across speeds, since `motion_speed` alone drives the effect.
+
+```py
+import torch
+from diffusers import LTX2ImageToVideoPipeline
+from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES
+from diffusers.utils import encode_video, load_image
+
+device = "cuda"  # or "mps", "xpu", "cpu"
+width = 1920  # the LoRA's recommended resolution; the effect is much weaker at 768x512
+height = 1088
+frame_rate = 24.0  # playback rate, always 24 for this LoRA
+model_path = "Lightricks/LTX-2.5-Diffusers"
+
+pipe = LTX2ImageToVideoPipeline.from_pretrained(model_path, dtype=torch.bfloat16)
+pipe.load_lora_weights(
+    "Lightricks/LTX-2.5-22b-LoRA-Slow-Motion-Control",
+    weight_name="ltx-2.5-22b-lora-slow-motion-control-1.0.safetensors",
+    adapter_name="slow_motion",
+)
+pipe.set_adapters("slow_motion", 1.0)
+pipe.enable_sequential_cpu_offload(device=device)
+pipe.vae.enable_tiling()
+
+image = load_image(
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
+)
+# No speed wording: the same caption is reused at every speed.
+prompt = (
+    "An astronaut hatches from a fragile egg on the surface of the Moon, the shell cracking apart and lunar dust "
+    "lifting into the air, while the camera pushes in."
+)
+
+for motion_speed in (1.0, 0.2):
+    video, audio = pipe(
+        image=image,
+        prompt=prompt,
+        width=width,
+        height=height,
+        num_frames=121,
+        frame_rate=frame_rate,
+        motion_speed=motion_speed,  # 1.0 = real time, 0.2 = 5x slow motion
+        sigmas=DISTILLED_SIGMA_VALUES,
+        guidance_scale=1.0,
+        audio_guidance_scale=1.0,
+        generator=torch.Generator(device).manual_seed(42),
+        output_type="np",
+        return_dict=False,
+    )
+
+    encode_video(
+        video[0],
+        fps=frame_rate,  # the file plays at the playback rate, not frame_rate / motion_speed
+        audio=audio[0].float().cpu(),
+        audio_sample_rate=pipe.vocoder.config.output_sampling_rate,
+        output_path=f"ltx2_5_i2v_motion_speed_{motion_speed}.mp4",
+    )
+```
+
+Both clips last 121 frames (about 5 seconds at 24 fps) and only the pace of the motion changes. In [two-stage generation](#two-stage-generation-for-ltx-25), pass the same `motion_speed` to **both** stages. Stage 2 re-denoises the video, and it would undo the slow motion if it ran on the real-time axis. The [reference driver](https://huggingface.co/Lightricks/LTX-2.5-22b-LoRA-Slow-Motion-Control/blob/main/distilled_speed_demo.py) does the same by wrapping the stage object both passes share.
+
+`motion_speed` is also an input of the LTX-2 / LTX-2.5 modular blocks, and it is passed to the modular pipeline the same way.
+
 ### LTX-2.5 Modular
 
 LTX-2.5 is also available as a modular pipeline. The default blockset uses the diffusion decoder and predicts the video duration when `num_frames` is omitted. It applies guidance separately to video and audio through the `guider` and `audio_guider` components. See [`LTX2Guidance`] for the available guidance parameters. By default, the modular pipeline will download the prompt enhancer and processor from the [google/gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) repo. Below is a T2V modular example:

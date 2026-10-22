@@ -51,7 +51,8 @@ if is_torch_available():
     import torch
     import torch.nn as nn
 
-if is_torchao_available():
+# `validate_environment` asks for torchao >= 0.15 before quantizing, and older versions have no `FqnToConfig`.
+if is_torchao_available() and is_torchao_version(">=", "0.15.0"):
     from torchao.quantization import FqnToConfig, quantize_
 
     if is_torchao_version(">=", "0.16.0"):

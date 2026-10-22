@@ -21,7 +21,7 @@ from .before_denoise import (
     LTXSetTimestepsStep,
     LTXTextInputStep,
 )
-from .decoders import LTXVaeDecoderStep
+from .decoders import LTXUnpackLatentsStep, LTXVaeDecoderStep
 from .denoise import LTXDenoiseStep, LTXImage2VideoDenoiseStep
 from .encoders import LTXTextEncoderStep, LTXVaeEncoderStep
 
@@ -81,8 +81,9 @@ class LTXCoreDenoiseStep(SequentialPipelineBlocks):
         LTXSetTimestepsStep,
         LTXPrepareLatentsStep,
         LTXDenoiseStep,
+        LTXUnpackLatentsStep,
     ]
-    block_names = ["input", "set_timesteps", "prepare_latents", "denoise"]
+    block_names = ["input", "set_timesteps", "prepare_latents", "denoise", "unpack_latents"]
 
     @property
     def description(self):
@@ -148,8 +149,9 @@ class LTXImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
         LTXPrepareLatentsStep,
         LTXImage2VideoPrepareLatentsStep,
         LTXImage2VideoDenoiseStep,
+        LTXUnpackLatentsStep,
     ]
-    block_names = ["input", "set_timesteps", "prepare_latents", "prepare_i2v_latents", "denoise"]
+    block_names = ["input", "set_timesteps", "prepare_latents", "prepare_i2v_latents", "denoise", "unpack_latents"]
 
     @property
     def description(self):
@@ -297,11 +299,11 @@ class LTXAutoCoreDenoiseStep(AutoPipelineBlocks):
               Timesteps for the denoising process.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          height (`int`, *optional*, defaults to 512):
+          height (`int`):
               The height in pixels of the generated image.
-          width (`int`, *optional*, defaults to 704):
+          width (`int`):
               The width in pixels of the generated image.
-          num_frames (`int`, *optional*, defaults to 161):
+          num_frames (`int`):
               TODO: Add description.
           frame_rate (`int`, *optional*, defaults to 25):
               TODO: Add description.
@@ -370,7 +372,7 @@ class LTXAutoBlocks(SequentialPipelineBlocks):
               Timesteps for the denoising process.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          num_frames (`int`, *optional*, defaults to 161):
+          num_frames (`int`):
               TODO: Add description.
           frame_rate (`int`, *optional*, defaults to 25):
               TODO: Add description.
