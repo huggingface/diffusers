@@ -15,9 +15,9 @@
 
 """Generic torchrun worker: assert a model's Neuron tensor-parallel x context-parallel output matches its reference.
 
-The counterpart of `_neuron_tp_worker.py` for the two parallelisms composed in a single `ParallelConfig`. Same
-contract: the model under test is supplied as a `module:function` spec reference on the command line, and the
-referenced factory returns `(model_class, init_dict, inputs)` with CPU tensors.
+Covers the two parallelisms composed in a single `ParallelConfig`. The model under test is supplied as a
+`module:function` spec reference on the command line, and the referenced factory returns
+`(model_class, init_dict, inputs)` with CPU tensors.
 
     torchrun --nproc_per_node=8 _neuron_hybrid_worker.py \\
         tests.models.transformers.test_models_transformer_flux:make_neuron_hybrid_spec
@@ -106,8 +106,8 @@ def main():
             f"[rank0] tp_degree={tp_degree} ulysses_degree={ulysses_degree} "
             f"output_shape={tuple(output.shape)} max_abs_diff={max_abs:.4e} max_rel_diff={max_abs / denom:.4e}"
         )
-        # Neuron runs matmuls in bf16 internally, so compare with a bf16-level tolerance, as `_neuron_tp_worker`
-        # does. A wrong shard plan or a mis-ordered mesh produces grossly different output and is caught well
+        # Neuron runs matmuls in bf16 internally, so compare with a bf16-level tolerance, as
+        # `TensorParallelNeuronTesterMixin` does. A wrong shard plan or a mis-ordered mesh produces grossly different output and is caught well
         # inside this bound.
         torch.testing.assert_close(output, ref_output, atol=2e-2, rtol=2e-2)
         print("[rank0] PASS: Neuron hybrid-parallel output matches single-device reference.")

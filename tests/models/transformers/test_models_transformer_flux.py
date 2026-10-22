@@ -59,6 +59,7 @@ from ..testing_utils import (
     SDNQTesterMixin,
     SingleFileTesterMixin,
     TaylorSeerCacheTesterMixin,
+    TensorParallelNeuronTesterMixin,
     TensorParallelTesterMixin,
     TensorParallelTPUTesterMixin,
     TorchAoCompileTesterMixin,
@@ -299,7 +300,7 @@ class TestFluxTransformerHybridParallel(FluxTransformerTesterConfig, HybridParal
 def make_neuron_hybrid_spec():
     """Model spec consumed by the generic Neuron hybrid worker (`_neuron_hybrid_worker.py`).
 
-    Same contract as `make_neuron_tp_spec`, but `num_attention_heads` is raised to 8 so the head count survives
+    Returns `(model_class, init_dict, cpu_inputs)`, with `num_attention_heads` is raised to 8 so the head count survives
     being divided twice: `tp_degree=2` leaves 4 heads per rank and `ulysses_degree=4` splits those into 1 each.
     (`ulysses_degree` cannot be 2 on Neuron, whose all-to-all only accepts group sizes of 4, 8, 16 or multiples
     of 32.)
@@ -309,21 +310,10 @@ def make_neuron_hybrid_spec():
     return FluxTransformer2DModel, init_dict, config.get_dummy_inputs(device="cpu")
 
 
-def make_neuron_tp_spec():
-    """Model spec consumed by the generic Neuron TP worker (`_neuron_tp_worker.py`).
-
-    Returns `(model_class, init_dict, cpu_inputs)`. Defined here so all Flux-specific test data lives in this file
-    while the worker stays model-agnostic. Reuses the shared tester config so the spec never drifts from the rest of
-    the Flux tests.
-    """
-    config = FluxTransformerTesterConfig()
-    return FluxTransformer2DModel, config.get_init_dict(), config.get_dummy_inputs(device="cpu")
-
-
 def make_neuron_sharded_load_spec():
     """Model spec consumed by the sharded-load worker (`_neuron_sharded_load_worker.py`).
 
-    Same contract as `make_neuron_tp_spec`, but `num_attention_heads` is raised to 8 so the head count survives
+    Returns `(model_class, init_dict, cpu_inputs)`, with `num_attention_heads` is raised to 8 so the head count survives
     being divided twice: `tp_degree=2` leaves 4 heads per rank and `ulysses_degree=4` splits those into 1 each.
     (`ulysses_degree` cannot be 2 on Neuron, whose all-to-all only accepts group sizes of 4, 8, 16 or multiples
     of 32.)
@@ -338,7 +328,7 @@ def make_neuron_sharded_load_spec():
 class TestFluxTransformerShardedLoadNeuron:
     """`from_pretrained(..., parallel_config=...)` with both parallelisms, on AWS Neuron.
 
-    Launched the same way as `TestFluxTransformerTensorParallelNeuron`, at `tp_degree=2 x ulysses_degree=4`, i.e. 8
+    Launched through `torchrun` like `TestFluxTransformerHybridParallelNeuron`, at `tp_degree=2 x ulysses_degree=4`, i.e. 8
     ranks. The worker asserts that the sharded-load path registered the context-parallel hooks — which numbers alone
     cannot detect, since a model that silently skips them still returns the right answer — and that the output still
     matches a single-device reference read back from the same checkpoint.
@@ -355,26 +345,8 @@ class TestFluxTransformerShardedLoadNeuron:
         )
 
 
-@is_tensor_parallel
-@require_torch_neuron
-class TestFluxTransformerTensorParallelNeuron:
-    """Tensor Parallel inference test for Flux Transformer on AWS Neuron.
-
-    Neuron TP runs through `torchrun` with the `"neuron"` distributed backend, so it cannot use the
-    `torch.multiprocessing`/NCCL spawn path of `TensorParallelTesterMixin`. This launches the generic worker
-    with the Flux model spec (`make_neuron_tp_spec`); the worker asserts the sharded output matches a single-device
-    reference, and the test checks its exit code.
-    """
-
-    def test_tensor_parallel_neuron_inference(self):
-        worker = os.path.join(os.path.dirname(__file__), "_neuron_tp_worker.py")
-        spec = "tests.models.transformers.test_models_transformer_flux:make_neuron_tp_spec"
-        cmd = [sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=2", worker, spec]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        assert result.returncode == 0, (
-            f"Neuron tensor-parallel worker failed (exit {result.returncode}).\n"
-            f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
-        )
+class TestFluxTransformerTensorParallelNeuron(FluxTransformerTesterConfig, TensorParallelNeuronTesterMixin):
+    """Tensor Parallel inference test for Flux Transformer on AWS Neuron."""
 
 
 @is_context_parallel
@@ -383,9 +355,8 @@ class TestFluxTransformerTensorParallelNeuron:
 class TestFluxTransformerHybridParallelNeuron:
     """Tensor Parallel x Context Parallel inference test for Flux Transformer on AWS Neuron.
 
-    Same launching pattern as `TestFluxTransformerTensorParallelNeuron`: Neuron needs `torchrun` with the
-    `"neuron"` distributed backend, so it cannot use the `torch.multiprocessing`/NCCL spawn path of
-    `HybridParallelTesterMixin`. Runs at `tp_degree=2 x ulysses_degree=4`, i.e. 8 ranks.
+    Launches `_neuron_hybrid_worker.py` through `torchrun` with the `"neuron"` distributed backend, at
+    `tp_degree=2 x ulysses_degree=4`, i.e. 8 ranks.
     """
 
     def test_hybrid_parallel_neuron_inference(self):

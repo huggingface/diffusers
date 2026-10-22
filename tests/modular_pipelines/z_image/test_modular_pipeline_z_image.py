@@ -53,6 +53,7 @@ class ZImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = ZImageModularPipeline
     pipeline_blocks_class = ZImageAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-zimage-modular-pipe"
+    expected_latents_shape = (1, 16, 16, 16)
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
     expected_workflow_blocks = ZIMAGE_WORKFLOWS

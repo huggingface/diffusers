@@ -20,7 +20,7 @@ and applies the parallelism itself. Tensor parallelism it did apply; the context
 silent — the model still returns the right numbers, every rank just redundantly computes the whole sequence. So this
 worker checks both halves: the hooks are registered *and* the output still matches a single-device reference.
 
-Same contract as `_neuron_tp_worker.py`: the model under test is supplied as a `module:function` spec reference on
+Same contract as `_neuron_hybrid_worker.py`: the model under test is supplied as a `module:function` spec reference on
 the command line, and the referenced factory returns `(model_class, init_dict, inputs)` with CPU tensors.
 
     torchrun --nproc_per_node=8 _neuron_sharded_load_worker.py \\
@@ -149,8 +149,8 @@ def main():
             f"context_parallel_hooks={len(hook_names)} output_shape={tuple(output.shape)} "
             f"max_abs_diff={max_abs:.4e} max_rel_diff={max_abs / denom:.4e}"
         )
-        # Neuron runs matmuls in bf16 internally, so compare with a bf16-level tolerance, as `_neuron_tp_worker`
-        # does. A wrong shard plan or a mis-ordered mesh produces grossly different output and is caught well
+        # Neuron runs matmuls in bf16 internally, so compare with a bf16-level tolerance, as
+        # `TensorParallelNeuronTesterMixin` does. A wrong shard plan or a mis-ordered mesh produces grossly different output and is caught well
         # inside this bound.
         torch.testing.assert_close(output, ref_output, atol=2e-2, rtol=2e-2)
         print("[rank0] PASS: sharded load applied both parallelisms and matches the single-device reference.")

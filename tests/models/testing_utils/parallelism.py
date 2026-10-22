@@ -31,6 +31,7 @@ from ...testing_utils import (
     is_kernels_available,
     is_tensor_parallel,
     require_torch_multi_accelerator,
+    require_torch_neuron,
     require_torch_tpu,
     torch_device,
 )
@@ -43,6 +44,7 @@ DEVICE_CONFIG = {
     "cuda": {"backend": "nccl", "module": torch.cuda},
     "xpu": {"backend": "xccl", "module": torch.xpu},
     "tpu": {"backend": "tpu_dist", "module": None},
+    "neuron": {"backend": "neuron", "module": getattr(torch, "neuron", None)},
 }
 
 
@@ -829,6 +831,59 @@ class HybridParallelTesterMixin:
         output = torch.tensor(return_dict["output"])
         # Sharded matmuls plus the Ulysses all-to-all reorder the summation, hence the tolerance.
         torch.testing.assert_close(ref_output, output, atol=1e-3, rtol=1e-3)
+
+
+@is_tensor_parallel
+@require_torch_neuron
+class TensorParallelNeuronTesterMixin:
+    """Same check as `TensorParallelTesterMixin`, spawning one process per Neuron core.
+
+    Run these tests in their own pytest process (e.g. `-k TensorParallelNeuron`): an earlier test that allocates a
+    Neuron tensor initializes the Neuron runtime in the pytest process, and the spawned workers then fail to initialize
+    theirs.
+    """
+
+    tp_world_size = 2
+
+    def test_tensor_parallel_neuron_inference(self, atol=2e-2, rtol=2e-2):
+        if getattr(self.model_class, "_tp_plan", None) is None:
+            pytest.skip("Model does not define a `_tp_plan` for tensor parallel inference.")
+
+        world_size = self.tp_world_size
+        init_dict = self.get_init_dict()
+        num_heads = init_dict.get("num_attention_heads")
+        if num_heads is not None and num_heads % world_size != 0:
+            pytest.skip(f"`num_attention_heads` ({num_heads}) is not divisible by tp_degree ({world_size}).")
+
+        # Reference on CPU: touching the Neuron device here would break the spawned workers.
+        inputs_dict = self.get_dummy_inputs(device="cpu")
+        model = self.model_class(**init_dict).eval()
+        with torch.no_grad():
+            ref_output = model(**inputs_dict, return_dict=False)[0].float()
+
+        return_dict = mp.Manager().dict()
+        mp.spawn(
+            _tensor_parallel_worker,
+            args=(
+                world_size,
+                _find_free_port(),
+                self.model_class,
+                init_dict,
+                inputs_dict,
+                return_dict,
+                model.state_dict(),
+                "neuron",
+            ),
+            nprocs=world_size,
+            join=True,
+        )
+
+        assert return_dict.get("status") == "success", (
+            f"Tensor parallel inference failed: {return_dict.get('error', 'Unknown error')}"
+        )
+        tp_output = torch.tensor(return_dict["output"])
+        # Neuron runs matmuls in bf16 internally, so compare with a bf16-level tolerance.
+        torch.testing.assert_close(ref_output, tp_output, atol=atol, rtol=rtol)
 
 
 @is_context_parallel
