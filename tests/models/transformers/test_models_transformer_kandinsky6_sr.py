@@ -17,7 +17,6 @@ import pytest
 import torch
 
 from diffusers import Kandinsky6SRTransformer3DModel
-from diffusers.utils import is_torch_version
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -109,29 +108,11 @@ class TestKandinsky6SRTransformerTorchCompile(Kandinsky6SRTransformerTesterConfi
         return self._build_dummy_inputs(batch_size=1, num_frames=2, height=height, width=width)
 
     @pytest.mark.xfail(
-        condition=is_torch_version("<", "2.12"),
-        reason="torch < 2.12 cannot trace `AttentionBackendName(backend)` in `dispatch_attention_fn` in a full graph.",
-        raises=torch._dynamo.exc.Unsupported,
-        strict=True,
-    )
-    def test_torch_compile_recompilation_and_graph_break(self):
-        super().test_torch_compile_recompilation_and_graph_break()
-
-    @pytest.mark.xfail(
-        condition=is_torch_version("<", "2.12"),
-        reason="torch < 2.12 cannot trace `AttentionBackendName(backend)` in `dispatch_attention_fn` in a full graph.",
-        raises=torch._dynamo.exc.Unsupported,
-        strict=True,
-    )
-    def test_torch_compile_repeated_blocks(self):
-        super().test_torch_compile_repeated_blocks()
-
-    @pytest.mark.xfail(
         reason=(
             "The token grid is split into 8x8 blocks and `sliding_tile_mask` sizes its table by `max(...)` of the block "
             "counts, so the compiled graph specializes on the input shape and recompiles."
         ),
-        raises=(torch._dynamo.exc.Unsupported, torch._dynamo.exc.RecompileError),
+        raises=torch._dynamo.exc.RecompileError,
         strict=True,
     )
     def test_compile_on_different_shapes(self):
