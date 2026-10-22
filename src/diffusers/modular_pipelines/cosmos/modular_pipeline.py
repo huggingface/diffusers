@@ -18,6 +18,14 @@ class Cosmos3OmniModularPipeline(ModularPipeline):
     inverse_image_resolution_template = "This image is not of {height}x{width} resolution."
     inverse_video_resolution_template = "This video is not of {height}x{width} resolution."
 
+    def __call__(self, *args, **kwargs):
+        transformer = getattr(self, "transformer", None)
+        try:
+            return super().__call__(*args, **kwargs)
+        finally:
+            if hasattr(transformer, "_reset_stateful_cache"):
+                transformer._reset_stateful_cache()
+
     @property
     def vae_scale_factor_spatial(self):
         if getattr(self, "vae", None) is not None:
@@ -77,7 +85,7 @@ class Cosmos3OmniModularPipeline(ModularPipeline):
 
     @property
     def requires_safety_checker(self):
-        return getattr(self, "_is_safety_checker_enabled", True)
+        return getattr(self, "_is_safety_checker_enabled", self.config.enable_safety_checker)
 
     def _encode_video(self, x):
         return Cosmos3OmniPipeline._encode_video(self, x)
@@ -116,3 +124,15 @@ class Cosmos3OmniModularPipeline(ModularPipeline):
 
     def _apply_video_safety_check(self, *args, **kwargs):
         return Cosmos3OmniPipeline._apply_video_safety_check(self, *args, **kwargs)
+
+
+class Cosmos3DistilledModularPipeline(Cosmos3OmniModularPipeline):
+    """
+    A ModularPipeline for distilled (few-step) Cosmos 3 omni generation.
+
+    Distilled checkpoints bake classifier-free guidance into the weights and sample on a fixed schedule read from the
+    pipeline's `distilled_sigmas` config (populated from `modular_model_index.json`), so `guidance_scale` and
+    `num_inference_steps` are fixed and `negative_prompt` is not supported.
+    """
+
+    default_blocks_name = "Cosmos3DistilledBlocks"

@@ -20,10 +20,12 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
+    AttentionTesterMixin,
     BaseModelTesterConfig,
     LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -126,6 +128,10 @@ class TestChromaTransformer(ChromaTransformerTesterConfig, ModelTesterMixin):
         )
 
 
+class TestChromaTransformerAttention(ChromaTransformerTesterConfig, AttentionTesterMixin):
+    """Attention processor tests for Chroma Transformer."""
+
+
 class TestChromaTransformerTraining(ChromaTransformerTesterConfig, TrainingTesterMixin):
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"ChromaTransformer2DModel"}
@@ -155,3 +161,17 @@ class TestChromaTransformerLoRAHotSwap(ChromaTransformerTesterConfig, LoraHotSwa
             "txt_ids": randn_tensor((sequence_length, num_image_channels), device=torch_device),
             "timestep": torch.tensor([1.0]).to(torch_device).expand(batch_size),
         }
+
+
+class TestChromaTransformer2DSingleFile(ChromaTransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/lodestones/Chroma1-HD/blob/main/Chroma1-HD.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "lodestones/Chroma1-HD"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}

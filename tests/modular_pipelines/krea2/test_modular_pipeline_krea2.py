@@ -1,0 +1,96 @@
+# coding=utf-8
+# Copyright 2026 HuggingFace Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+import pytest
+import torch
+
+from diffusers.modular_pipelines import Krea2AutoBlocks, Krea2ModularPipeline
+
+from ...testing_utils import torch_device
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
+
+
+KREA2_WORKFLOWS = {
+    "text2image": [
+        ("text_encoder", "Krea2TextEncoderStep"),
+        ("denoise.input", "Krea2TextInputsStep"),
+        ("denoise.prepare_latents", "Krea2PrepareLatentsStep"),
+        ("denoise.set_timesteps", "Krea2SetTimestepsStep"),
+        ("denoise.prepare_position_ids", "Krea2PreparePositionIdsStep"),
+        ("denoise.denoise", "Krea2DenoiseStep"),
+        ("denoise.unpack_latents", "Krea2UnpackLatentsStep"),
+        ("decode", "Krea2DecodeStep"),
+    ],
+}
+
+
+class Krea2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
+    pipeline_class = Krea2ModularPipeline
+    pipeline_blocks_class = Krea2AutoBlocks
+    pretrained_model_name_or_path = "hf-internal-testing/tiny-krea2-modular-pipe"
+    expected_latents_shape = (1, 4, 1, 8, 8)
+    params = frozenset(["prompt", "height", "width"])
+    batch_params = frozenset(["prompt"])
+    expected_workflow_blocks = KREA2_WORKFLOWS
+
+    def get_dummy_inputs(self, seed=0):
+        generator = self.get_generator(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "height": 32,
+            "width": 32,
+            "max_sequence_length": 16,
+            "output_type": "pt",
+        }
+        return inputs
+
+
+class TestKrea2ModularPipelineFast(Krea2ModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    def test_decode_accepts_packed_latents_with_deprecation(self):
+        # The old packed `[B, S, C]` form is still accepted by the decode step for a deprecation window.
+        decoder = self.pipeline_blocks_class().sub_blocks["decode"].init_pipeline(self.pretrained_model_name_or_path)
+        decoder.load_components(dtype=torch.float32)
+        decoder.to(torch_device)
+
+        # The 32x32 dummy canvas is a `[1, 4, 1, 8, 8]` latent, packed in 2x2 patches to 16 tokens of 16 channels.
+        packed_latents = torch.randn(1, 16, 16, generator=self.get_generator()).to(torch_device)
+        with pytest.warns(FutureWarning, match="packed latents"):
+            images = decoder(latents=packed_latents, height=32, width=32, output_type="pt", output="images")
+
+        assert images.shape == (1, 3, 32, 32)
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=5e-3)
+
+
+class TestKrea2ModularPipelineLoading(Krea2ModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestKrea2ModularPipelineWorkflow(Krea2ModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestKrea2ModularPipelineMemory(Krea2ModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass

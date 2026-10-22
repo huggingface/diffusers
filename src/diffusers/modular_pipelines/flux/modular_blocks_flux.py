@@ -22,7 +22,7 @@ from .before_denoise import (
     FluxRoPEInputsStep,
     FluxSetTimestepsStep,
 )
-from .decoders import FluxDecodeStep
+from .decoders import FluxDecodeStep, FluxUnpackLatentsStep
 from .denoise import FluxDenoiseStep
 from .encoders import (
     FluxProcessImagesInputStep,
@@ -480,8 +480,8 @@ class FluxCoreDenoiseStep(SequentialPipelineBlocks):
     """
 
     model_name = "flux"
-    block_classes = [FluxAutoInputStep, FluxAutoBeforeDenoiseStep, FluxDenoiseStep]
-    block_names = ["input", "before_denoise", "denoise"]
+    block_classes = [FluxAutoInputStep, FluxAutoBeforeDenoiseStep, FluxDenoiseStep, FluxUnpackLatentsStep]
+    block_names = ["input", "before_denoise", "denoise", "unpack_latents"]
 
     @property
     def description(self):
@@ -521,7 +521,7 @@ class FluxAutoBlocks(SequentialPipelineBlocks):
 
       Components:
           text_encoder (`CLIPTextModel`) tokenizer (`CLIPTokenizer`) text_encoder_2 (`T5EncoderModel`) tokenizer_2
-          (`T5TokenizerFast`) image_processor (`VaeImageProcessor`) vae (`AutoencoderKL`) scheduler
+          (`T5Tokenizer`) image_processor (`VaeImageProcessor`) vae (`AutoencoderKL`) scheduler
           (`FlowMatchEulerDiscreteScheduler`) transformer (`FluxTransformer2DModel`)
 
       Inputs:

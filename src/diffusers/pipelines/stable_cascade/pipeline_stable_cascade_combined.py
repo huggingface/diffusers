@@ -13,6 +13,7 @@
 # limitations under the License.
 from typing import Callable
 
+import numpy as np
 import PIL
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
@@ -21,7 +22,7 @@ from ...models import StableCascadeUNet
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import is_torch_version, replace_example_docstring
 from ..deprecated.wuerstchen.modeling_paella_vq_model import PaellaVQModel
-from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline
+from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, ImagePipelineOutput
 from .pipeline_stable_cascade import StableCascadeDecoderPipeline
 from .pipeline_stable_cascade_prior import StableCascadePriorPipeline
 
@@ -181,7 +182,7 @@ class StableCascadeCombinedPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         prior_callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-    ):
+    ) -> ImagePipelineOutput | list[PIL.Image.Image] | np.ndarray | torch.Tensor:
         """
         Function invoked when calling the pipeline for generation.
 

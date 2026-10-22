@@ -1,3 +1,9 @@
+"""
+Utilities for exposing modular pipeline blocks as nodes in [Mellon](https://github.com/cubiq/Mellon).
+
+> [!WARNING] > The Mellon integration is still under active development and its API may change.
+"""
+
 import copy
 import json
 import logging
@@ -255,6 +261,8 @@ class MellonParamMeta(type):
 class MellonParam(metaclass=MellonParamMeta):
     """
         Parameter definition for Mellon nodes.
+
+        > [!WARNING] > The Mellon integration is still under active development and its API may change.
 
         Usage:
     ```python
@@ -693,6 +701,8 @@ class MellonPipelineConfig:
     """
     Configuration for an entire Mellon pipeline containing multiple nodes.
 
+    > [!WARNING] > The Mellon integration is still under active development and its API may change.
+
     Accepts node specs as dicts with inputs/model_inputs/outputs lists of MellonParam, converts them to Mellon-ready
     format, and handles save/load to Hub.
 
@@ -1058,6 +1068,7 @@ class MellonPipelineConfig:
         inputs = []
         model_inputs = []
         outputs = []
+        required_inputs = []
 
         # Process block inputs
         for input_param in block.inputs:
@@ -1066,7 +1077,8 @@ class MellonPipelineConfig:
             if input_param.name in input_types:
                 input_param = copy.copy(input_param)
                 input_param.metadata = {"mellon": input_types[input_param.name]}
-            print(f" processing input: {input_param.name}, metadata: {input_param.metadata}")
+            if input_param.required:
+                required_inputs.append(input_param.name)
             inputs.append(input_param_to_mellon_param(input_param))
 
         # Process block outputs
@@ -1090,7 +1102,7 @@ class MellonPipelineConfig:
             "inputs": inputs,
             "model_inputs": model_inputs,
             "outputs": outputs,
-            "required_inputs": [],
+            "required_inputs": required_inputs,
             "required_model_inputs": [],
             "block_name": "custom",
         }

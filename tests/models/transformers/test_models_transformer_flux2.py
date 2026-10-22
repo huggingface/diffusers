@@ -13,9 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import Flux2Transformer2DModel
+from diffusers.loaders.lora_pipeline import Flux2LoraLoaderMixin
 from diffusers.models.transformers.transformer_flux2 import (
     Flux2KVAttnProcessor,
     Flux2KVCache,
@@ -32,15 +34,22 @@ from ..testing_utils import (
     ContextParallelTesterMixin,
     GGUFCompileTesterMixin,
     GGUFTesterMixin,
+    LoKrTesterMixin,
     LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
+    MagCacheTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
+    TensorParallelNeuronTesterMixin,
+    TensorParallelTesterMixin,
+    TensorParallelTPUTesterMixin,
     TorchAoCompileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
+from ..testing_utils.lokr import check_lokr_deltas, make_lokr_factors
 
 
 enable_full_determinism()
@@ -90,16 +99,18 @@ class Flux2TransformerTesterConfig(BaseModelTesterConfig):
             "axes_dims_rope": [4, 4, 4, 4],
         }
 
-    def get_dummy_inputs(self, height: int = 4, width: int = 4, batch_size: int = 1) -> dict[str, torch.Tensor]:
+    def get_dummy_inputs(
+        self, height: int = 4, width: int = 4, batch_size: int = 1, device: str = torch_device
+    ) -> dict[str, torch.Tensor]:
         num_latent_channels = 4
         sequence_length = 48
         embedding_dim = 32
 
         hidden_states = randn_tensor(
-            (batch_size, height * width, num_latent_channels), generator=self.generator, device=torch_device
+            (batch_size, height * width, num_latent_channels), generator=self.generator, device=device
         )
         encoder_hidden_states = randn_tensor(
-            (batch_size, sequence_length, embedding_dim), generator=self.generator, device=torch_device
+            (batch_size, sequence_length, embedding_dim), generator=self.generator, device=device
         )
 
         t_coords = torch.arange(1)
@@ -107,17 +118,17 @@ class Flux2TransformerTesterConfig(BaseModelTesterConfig):
         w_coords = torch.arange(width)
         l_coords = torch.arange(1)
         image_ids = torch.cartesian_prod(t_coords, h_coords, w_coords, l_coords)  # [height * width, 4]
-        image_ids = image_ids.unsqueeze(0).expand(batch_size, -1, -1).to(torch_device)
+        image_ids = image_ids.unsqueeze(0).expand(batch_size, -1, -1).to(device)
 
         text_t_coords = torch.arange(1)
         text_h_coords = torch.arange(1)
         text_w_coords = torch.arange(1)
         text_l_coords = torch.arange(sequence_length)
         text_ids = torch.cartesian_prod(text_t_coords, text_h_coords, text_w_coords, text_l_coords)
-        text_ids = text_ids.unsqueeze(0).expand(batch_size, -1, -1).to(torch_device)
+        text_ids = text_ids.unsqueeze(0).expand(batch_size, -1, -1).to(device)
 
-        timestep = torch.tensor([1.0]).to(torch_device).expand(batch_size)
-        guidance = torch.tensor([1.0]).to(torch_device).expand(batch_size)
+        timestep = torch.tensor([1.0]).to(device).expand(batch_size)
+        guidance = torch.tensor([1.0]).to(device).expand(batch_size)
 
         return {
             "hidden_states": hidden_states,
@@ -153,8 +164,134 @@ class TestFlux2TransformerContextParallel(Flux2TransformerTesterConfig, ContextP
     """Context Parallel inference tests for Flux2 Transformer."""
 
 
+class TestFlux2TransformerTensorParallel(Flux2TransformerTesterConfig, TensorParallelTesterMixin):
+    """Tensor Parallel inference tests for Flux2 Transformer (CUDA/XPU multi-accelerator)."""
+
+
+class TestFlux2TransformerTensorParallelTPU(Flux2TransformerTesterConfig, TensorParallelTPUTesterMixin):
+    """Tensor Parallel inference test for Flux2 Transformer on TPU."""
+
+    def get_init_dict(self):
+        # One head per chip.
+        return {**super().get_init_dict(), "num_attention_heads": self.tp_world_size}
+
+
+class TestFlux2TransformerTensorParallelNeuron(Flux2TransformerTesterConfig, TensorParallelNeuronTesterMixin):
+    """Tensor Parallel inference test for Flux2 Transformer on AWS Neuron."""
+
+
 class TestFlux2TransformerLoRA(Flux2TransformerTesterConfig, LoraTesterMixin):
     """LoRA adapter tests for Flux2 Transformer."""
+
+
+class TestFlux2TransformerLoKr(Flux2TransformerTesterConfig, LoKrTesterMixin):
+    """LoKr adapter tests for Flux2 Transformer, including the Flux2 LoKr checkpoint formats."""
+
+    # ai-toolkit stores a placeholder alpha for full-matrix factors, where LoKr applies no scaling.
+    placeholder_alpha = torch.tensor(9999220736.0)
+
+    def get_bfl_qkv_state_dict(self, model):
+        """A BFL-format LoKr state dict on the fused QKV projections of the first double block."""
+        to_q = model.transformer_blocks[0].attn.to_q
+        state_dict, expected_deltas = {}, {}
+        for bfl_path, diffusers_path in [
+            ("double_blocks.0.img_attn.qkv", "transformer_blocks.0.attn.to_qkv"),
+            ("double_blocks.0.txt_attn.qkv", "transformer_blocks.0.attn.to_added_qkv"),
+        ]:
+            factors, expected_deltas[diffusers_path] = make_lokr_factors(3 * to_q.out_features, to_q.in_features)
+            state_dict.update({f"diffusion_model.{bfl_path}.{k}": v for k, v in factors.items()})
+            state_dict[f"diffusion_model.{bfl_path}.alpha"] = self.placeholder_alpha
+        return state_dict, expected_deltas
+
+    @torch.no_grad()
+    def test_lokr_bfl_checkpoint(self):
+        # BFL checkpoints (e.g. ai-toolkit) apply LoKr to the fused QKV projections. A Kronecker product delta cannot
+        # be split exactly into Q/K/V, so loading fuses the model's projections and maps the adapter 1:1.
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
+        state_dict, expected_deltas = self.get_bfl_qkv_state_dict(model)
+        for bfl_path, diffusers_path in [
+            ("single_blocks.0.linear1", "single_transformer_blocks.0.attn.to_qkv_mlp_proj"),
+            ("double_blocks.0.img_attn.proj", "transformer_blocks.0.attn.to_out.0"),
+            ("double_blocks.0.img_mlp.0", "transformer_blocks.0.ff.linear_in"),
+        ]:
+            linear = model.get_submodule(diffusers_path)
+            factors, expected_deltas[diffusers_path] = make_lokr_factors(linear.out_features, linear.in_features)
+            state_dict.update({f"diffusion_model.{bfl_path}.{k}": v for k, v in factors.items()})
+            state_dict[f"diffusion_model.{bfl_path}.alpha"] = self.placeholder_alpha
+
+        converted = Flux2LoraLoaderMixin.lora_state_dict(state_dict)
+        model.load_lora_adapter(converted, prefix="transformer", adapter_name="default")
+
+        assert model.transformer_blocks[0].attn.fused_projections
+        check_lokr_deltas(model, expected_deltas)
+
+    def test_lokr_fused_qkv_checkpoint_refuses_when_unfused_projections_are_adapted(self):
+        # Fusing would replace to_q and orphan the adapter already injected there.
+        from peft import LoraConfig
+
+        model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
+        model.add_adapter(LoraConfig(r=2, target_modules=["to_q"]), adapter_name="lora")
+        state_dict, _ = self.get_bfl_qkv_state_dict(model)
+        converted = Flux2LoraLoaderMixin.lora_state_dict(state_dict)
+
+        with pytest.raises(ValueError, match="already loaded on the unfused projections"):
+            model.load_lora_adapter(converted, prefix="transformer", adapter_name="lokr")
+        assert not model.transformer_blocks[0].attn.fused_projections
+
+    @torch.no_grad()
+    def test_lokr_lycoris_checkpoint(self):
+        # LyCORIS wraps the diffusers model and encodes module paths with underscores under a `lycoris_` prefix.
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
+        state_dict, expected_deltas = {}, {}
+        for diffusers_path in [
+            "single_transformer_blocks.0.attn.to_qkv_mlp_proj",
+            "transformer_blocks.0.attn.to_q",
+            "transformer_blocks.0.attn.to_out.0",
+            "transformer_blocks.0.ff.linear_in",
+        ]:
+            linear = model.get_submodule(diffusers_path)
+            factors, expected_deltas[diffusers_path] = make_lokr_factors(linear.out_features, linear.in_features)
+            lycoris_path = "lycoris_" + diffusers_path.replace(".", "_")
+            state_dict.update({f"{lycoris_path}.{k}": v for k, v in factors.items()})
+            state_dict[f"{lycoris_path}.alpha"] = torch.tensor(16.0)
+
+        converted = Flux2LoraLoaderMixin.lora_state_dict(state_dict)
+        model.load_lora_adapter(converted, prefix="transformer", adapter_name="default")
+
+        check_lokr_deltas(model, expected_deltas)
+
+    def test_lokr_lycoris_checkpoint_with_unknown_keys_raises(self):
+        state_dict = {
+            "lycoris_transformer_blocks_0_attn_to_q.lokr_w1": torch.randn(4, 4),
+            "lycoris_transformer_blocks_0_attn_norm_q.lokr_w1": torch.randn(4, 4),
+        }
+        with pytest.raises(ValueError, match="lycoris_transformer_blocks_0_attn_norm_q.lokr_w1"):
+            Flux2LoraLoaderMixin.lora_state_dict(state_dict)
+
+    @torch.no_grad()
+    def test_lokr_diffusers_names_checkpoint(self):
+        # Checkpoints that store the diffusers module paths directly, with alpha keys and no prefix (e.g. SimpleTuner,
+        # `bghira/flux2-klein-9b-distillation-lokr`). Alpha scales the rank-decomposed factors only.
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
+        rank, alpha = 2, 1.0
+        state_dict, expected_deltas = {}, {}
+        for diffusers_path, factor_rank in [
+            ("single_transformer_blocks.0.attn.to_out", None),
+            ("transformer_blocks.0.attn.to_k", rank),
+        ]:
+            linear = model.get_submodule(diffusers_path)
+            factors, delta = make_lokr_factors(linear.out_features, linear.in_features, rank=factor_rank)
+            state_dict.update({f"{diffusers_path}.{k}": v for k, v in factors.items()})
+            state_dict[f"{diffusers_path}.alpha"] = torch.tensor(alpha)
+            expected_deltas[diffusers_path] = delta if factor_rank is None else (alpha / rank) * delta
+
+        converted = Flux2LoraLoaderMixin.lora_state_dict(state_dict)
+        model.load_lora_adapter(converted, prefix="transformer", adapter_name="default")
+
+        check_lokr_deltas(model, expected_deltas)
 
 
 class TestFlux2TransformerLoRAHotSwap(Flux2TransformerTesterConfig, LoraHotSwappingForModelTesterMixin):
@@ -251,12 +388,40 @@ class TestFlux2TransformerCompile(Flux2TransformerTesterConfig, TorchCompileTest
         }
 
 
-class TestFlux2TransformerBitsAndBytes(Flux2TransformerTesterConfig, BitsAndBytesTesterMixin):
+class Flux2TransformerQuantTesterConfig(Flux2TransformerTesterConfig):
+    """Shared config for quantized Flux2 Transformer tests (loads the tiny Hub checkpoint)."""
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "hf-internal-testing/tiny-flux2"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
+
+    def get_dummy_inputs(self, height: int = 4, width: int = 4, batch_size: int = 1) -> dict[str, torch.Tensor]:
+        """Override to match the tiny Hub checkpoint (joint_attention_dim=16) and the quantizer compute dtype."""
+        inputs = super().get_dummy_inputs(height=height, width=width, batch_size=batch_size)
+        inputs["encoder_hidden_states"] = randn_tensor(
+            (batch_size, inputs["encoder_hidden_states"].shape[1], 16), generator=self.generator, device=torch_device
+        )
+        return {k: v.to(self.torch_dtype) if torch.is_floating_point(v) else v for k, v in inputs.items()}
+
+
+class TestFlux2TransformerBitsAndBytes(Flux2TransformerQuantTesterConfig, BitsAndBytesTesterMixin):
     """BitsAndBytes quantization tests for Flux2 Transformer."""
 
+    @property
+    def torch_dtype(self):
+        return torch.float16
 
-class TestFlux2TransformerTorchAo(Flux2TransformerTesterConfig, TorchAoTesterMixin):
+
+class TestFlux2TransformerTorchAo(Flux2TransformerQuantTesterConfig, TorchAoTesterMixin):
     """TorchAO quantization tests for Flux2 Transformer."""
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
 
 
 class TestFlux2TransformerGGUF(Flux2TransformerTesterConfig, GGUFTesterMixin):
@@ -315,8 +480,12 @@ class TestFlux2TransformerGGUF(Flux2TransformerTesterConfig, GGUFTesterMixin):
         }
 
 
-class TestFlux2TransformerTorchAoCompile(Flux2TransformerTesterConfig, TorchAoCompileTesterMixin):
+class TestFlux2TransformerTorchAoCompile(Flux2TransformerQuantTesterConfig, TorchAoCompileTesterMixin):
     """TorchAO + compile tests for Flux2 Transformer."""
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
 
 
 class TestFlux2TransformerGGUFCompile(Flux2TransformerTesterConfig, GGUFCompileTesterMixin):
@@ -622,3 +791,21 @@ class TestFlux2TransformerKVCache(Flux2TransformerKVCacheTesterConfig):
         output = model(**base_config.get_dummy_inputs())
 
         assert output.kv_cache is None
+
+
+class TestFlux2Transformer2DSingleFile(Flux2TransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/black-forest-labs/FLUX.2-dev/blob/main/flux2-dev.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "black-forest-labs/FLUX.2-dev"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
+
+
+class TestFlux2TransformerMagCache(Flux2TransformerTesterConfig, MagCacheTesterMixin):
+    """MagCache tests for Flux2 Transformer."""

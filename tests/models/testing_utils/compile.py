@@ -82,7 +82,7 @@ class TorchCompileTesterMixin:
 
     @torch.no_grad()
     def test_torch_compile_repeated_blocks(self, recompile_limit=1):
-        if self.model_class._repeated_blocks is None:
+        if not self.model_class._repeated_blocks:
             pytest.skip("Skipping test as the model class doesn't have `_repeated_blocks` set.")
 
         init_dict = self.get_init_dict()

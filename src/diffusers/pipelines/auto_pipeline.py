@@ -19,7 +19,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 
 from ..configuration_utils import ConfigMixin
 from ..models.controlnets import ControlNetUnionModel
-from ..utils import is_sentencepiece_available
+from ..utils import _resolve_revision, is_sentencepiece_available
 from .anyflow import AnyFlowFARPipeline, AnyFlowPipeline
 from .audioldm2 import AudioLDM2Pipeline
 from .aura_flow import AuraFlowPipeline
@@ -81,6 +81,7 @@ from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .krea2 import Krea2Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .longcat_audio_dit import LongCatAudioDiTPipeline
+from .ltx import LTXImageToVideoPipeline, LTXPipeline
 from .lumina import LuminaPipeline
 from .lumina2 import Lumina2Pipeline
 from .nucleusmoe_image import NucleusMoEImagePipeline
@@ -114,8 +115,10 @@ from .qwenimage import (
     QwenImageLayeredPipeline,
     QwenImagePipeline,
 )
+from .qwenimage21 import QwenImage21Pipeline
 from .sana import SanaPipeline
 from .stable_audio import StableAudioPipeline
+from .stable_audio_3 import StableAudio3Pipeline
 from .stable_cascade import StableCascadeCombinedPipeline, StableCascadeDecoderPipeline
 from .stable_diffusion import (
     StableDiffusionImg2ImgPipeline,
@@ -191,6 +194,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("cogview4-control", CogView4ControlPipeline),
         ("nucleusmoe-image", NucleusMoEImagePipeline),
         ("qwenimage", QwenImagePipeline),
+        ("qwenimage21", QwenImage21Pipeline),
         ("qwenimage-controlnet", QwenImageControlNetPipeline),
         ("z-image", ZImagePipeline),
         ("z-image-controlnet", ZImageControlNetPipeline),
@@ -205,6 +209,7 @@ AUTO_TEXT2AUDIO_PIPELINES_MAPPING = OrderedDict(
     [
         ("audioldm2", AudioLDM2Pipeline),
         ("stable-audio", StableAudioPipeline),
+        ("stable-audio-3", StableAudio3Pipeline),
         ("longcat-audio-dit", LongCatAudioDiTPipeline),
     ]
 )
@@ -267,6 +272,7 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
 AUTO_TEXT2VIDEO_PIPELINES_MAPPING = OrderedDict(
     [
         ("anyflow", AnyFlowPipeline),
+        ("ltx", LTXPipeline),
         ("wan", WanPipeline),
     ]
 )
@@ -280,6 +286,7 @@ AUTO_CONDITION2VIDEO_PIPELINES_MAPPING = OrderedDict(
 AUTO_IMAGE2VIDEO_PIPELINES_MAPPING = OrderedDict(
     [
         ("anyflow-far", AnyFlowFARPipeline),
+        ("ltx", LTXImageToVideoPipeline),
         ("wan-i2v", WanImageToVideoPipeline),
     ]
 )
@@ -488,8 +495,7 @@ class AutoPipelineForText2Image(ConfigMixin):
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
                 below for more information.
             variant (`str`, *optional*):
-                Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
-                loading `from_flax`.
+                Load weights from a specified variant filename such as `"fp16"` or `"ema"`.
 
         > [!TIP] > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in
         with `hf > auth login`.
@@ -509,6 +515,15 @@ class AutoPipelineForText2Image(ConfigMixin):
         token = kwargs.pop("token", None)
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
+
+        # Resolve the revision only once
+        revision = _resolve_revision(
+            pretrained_model_or_path,
+            revision=revision,
+            cache_dir=cache_dir,
+            local_files_only=local_files_only,
+            token=token,
+        )
 
         load_config_kwargs = {
             "cache_dir": cache_dir,
@@ -779,8 +794,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
                 below for more information.
             variant (`str`, *optional*):
-                Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
-                loading `from_flax`.
+                Load weights from a specified variant filename such as `"fp16"` or `"ema"`.
 
         > [!TIP] > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in
         with `hf > auth login`.
@@ -800,6 +814,15 @@ class AutoPipelineForImage2Image(ConfigMixin):
         token = kwargs.pop("token", None)
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
+
+        # Resolve the revision only once
+        revision = _resolve_revision(
+            pretrained_model_or_path,
+            revision=revision,
+            cache_dir=cache_dir,
+            local_files_only=local_files_only,
+            token=token,
+        )
 
         load_config_kwargs = {
             "cache_dir": cache_dir,
@@ -1084,8 +1107,7 @@ class AutoPipelineForInpainting(ConfigMixin):
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
                 below for more information.
             variant (`str`, *optional*):
-                Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
-                loading `from_flax`.
+                Load weights from a specified variant filename such as `"fp16"` or `"ema"`.
 
         > [!TIP] > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in
         with `hf > auth login`.
@@ -1105,6 +1127,15 @@ class AutoPipelineForInpainting(ConfigMixin):
         token = kwargs.pop("token", None)
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
+
+        # Resolve the revision only once
+        revision = _resolve_revision(
+            pretrained_model_or_path,
+            revision=revision,
+            cache_dir=cache_dir,
+            local_files_only=local_files_only,
+            token=token,
+        )
 
         load_config_kwargs = {
             "cache_dir": cache_dir,
@@ -1374,8 +1405,7 @@ class AutoPipelineForText2Audio(ConfigMixin):
                 class). The overwritten components are passed directly to the pipelines `__init__` method. See example
                 below for more information.
             variant (`str`, *optional*):
-                Load weights from a specified variant filename such as `"fp16"` or `"ema"`. This is ignored when
-                loading `from_flax`.
+                Load weights from a specified variant filename such as `"fp16"` or `"ema"`.
 
         > [!TIP] > To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in
         with `hf > auth login`.
@@ -1407,6 +1437,15 @@ class AutoPipelineForText2Audio(ConfigMixin):
         token = kwargs.pop("token", None)
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
+
+        # Resolve the revision only once
+        revision = _resolve_revision(
+            pretrained_model_or_path,
+            revision=revision,
+            cache_dir=cache_dir,
+            local_files_only=local_files_only,
+            token=token,
+        )
 
         load_config_kwargs = {
             "cache_dir": cache_dir,

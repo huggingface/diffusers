@@ -13,16 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 import numpy as np
 import PIL.Image
+import pytest
 import torch
 
-from diffusers.image_processor import VaeImageProcessor
+from diffusers.image_processor import InpaintProcessor, VaeImageProcessor
 
 
-class ImageProcessorTest(unittest.TestCase):
+class TestImageProcessor:
     @property
     def dummy_sample(self):
         batch_size = 1
@@ -308,3 +307,38 @@ class ImageProcessorTest(unittest.TestCase):
         assert out_np.shape == exp_np_shape, (
             f"resized image output shape '{out_np.shape}' didn't match expected shape '{exp_np_shape}'."
         )
+
+    @pytest.mark.parametrize(
+        "has_mask, padding_mask_crop",
+        [
+            (True, None),
+            (False, None),
+            (True, 8),
+        ],
+    )
+    def test_inpaint_processor_preprocess(self, has_mask, padding_mask_crop):
+        processor = InpaintProcessor()
+        image = PIL.Image.fromarray(np.zeros((64, 64, 3), dtype=np.uint8))
+        mask = PIL.Image.fromarray(np.ones((64, 64), dtype=np.uint8) * 255) if has_mask else None
+
+        kwargs = {"height": 64, "width": 64}
+        if padding_mask_crop is not None:
+            kwargs["padding_mask_crop"] = padding_mask_crop
+
+        out_img, out_mask, postprocessing_kwargs = processor.preprocess(image, mask=mask, **kwargs)
+
+        assert isinstance(out_img, torch.Tensor)
+        if has_mask:
+            assert isinstance(out_mask, torch.Tensor)
+        else:
+            assert out_mask is None
+        assert isinstance(postprocessing_kwargs, dict)
+
+        if padding_mask_crop is not None:
+            assert postprocessing_kwargs["crops_coords"] is not None
+            assert postprocessing_kwargs["original_image"] == image
+            assert postprocessing_kwargs["original_mask"] == mask
+        else:
+            assert postprocessing_kwargs["crops_coords"] is None
+            assert postprocessing_kwargs["original_image"] is None
+            assert postprocessing_kwargs["original_mask"] is None

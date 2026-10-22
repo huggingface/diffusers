@@ -15,6 +15,7 @@ import importlib
 import os
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
@@ -31,6 +32,10 @@ SCHEDULER_CONFIG_NAME = "scheduler_config.json"
 # When it's used as a type in pipelines, it really is a Union because the actual
 # scheduler instance is passed in.
 class KarrasDiffusionSchedulers(Enum):
+    """
+    Enumeration of schedulers compatible with Karras diffusion pipelines.
+    """
+
     DDIMScheduler = 1
     DDPMScheduler = 2
     PNDMScheduler = 3
@@ -97,13 +102,13 @@ class SchedulerMixin(PushToHubMixin):
         cls,
         pretrained_model_name_or_path: str | os.PathLike | None = None,
         subfolder: str | None = None,
-        return_unused_kwargs=False,
-        **kwargs,
-    ) -> Self:
+        return_unused_kwargs: bool = False,
+        **kwargs: Any,
+    ) -> Self | tuple[Self, dict[str, Any]]:
         r"""
         Instantiate a scheduler from a pre-defined JSON configuration file in a local directory or Hub repository.
 
-        Parameters:
+        Args:
             pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
                 Can be either:
 
@@ -115,27 +120,31 @@ class SchedulerMixin(PushToHubMixin):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
             return_unused_kwargs (`bool`, *optional*, defaults to `False`):
                 Whether kwargs that are not consumed by the Python class should be returned or not.
-            cache_dir (`str | os.PathLike`, *optional*):
+            cache_dir (`str` or `os.PathLike`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
-
             proxies (`dict[str, str]`, *optional*):
                 A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
-            output_loading_info(`bool`, *optional*, defaults to `False`):
+            output_loading_info (`bool`, *optional*, defaults to `False`):
                 Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
-            local_files_only(`bool`, *optional*, defaults to `False`):
+            local_files_only (`bool`, *optional*, defaults to `False`):
                 Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
-            token (`str` or *bool*, *optional*):
+            token (`str` or `bool`, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
+
+        Returns:
+            [`~schedulers.scheduling_utils.SchedulerMixin`] or `tuple[SchedulerMixin, dict[str, Any]]`:
+                The scheduler instantiated from the configuration. If `return_unused_kwargs` is `True`, a tuple is
+                returned where the second element is a dictionary of unused keyword arguments.
 
         > [!TIP] > To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in
         with `hf > auth login`. You can also activate the special >
@@ -152,7 +161,7 @@ class SchedulerMixin(PushToHubMixin):
         )
         return cls.from_config(config, return_unused_kwargs=return_unused_kwargs, **kwargs)
 
-    def save_pretrained(self, save_directory: str | os.PathLike, push_to_hub: bool = False, **kwargs):
+    def save_pretrained(self, save_directory: str | os.PathLike, push_to_hub: bool = False, **kwargs: Any) -> None:
         """
         Save a scheduler configuration object to a directory so that it can be reloaded using the
         [`~SchedulerMixin.from_pretrained`] class method.
@@ -170,17 +179,18 @@ class SchedulerMixin(PushToHubMixin):
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
 
     @property
-    def compatibles(self):
+    def compatibles(self) -> list[type[Self]]:
         """
-        Returns all schedulers that are compatible with this scheduler
+        Return all scheduler classes that are compatible with this scheduler.
 
         Returns:
-            `list[SchedulerMixin]`: list of compatible schedulers
+            `list[type[SchedulerMixin]]`:
+                A list of compatible scheduler classes.
         """
         return self._get_compatibles()
 
     @classmethod
-    def _get_compatibles(cls):
+    def _get_compatibles(cls) -> list[type[Self]]:
         compatible_classes_str = list(set([cls.__name__] + cls._compatibles))
         diffusers_library = importlib.import_module(__name__.split(".")[0])
         compatible_classes = [

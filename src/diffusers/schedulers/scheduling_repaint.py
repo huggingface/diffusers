@@ -35,8 +35,8 @@ class RePaintSchedulerOutput(BaseOutput):
             Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
         pred_original_sample (`torch.Tensor` of shape `(batch_size, num_channels, height, width)` for images):
-            The predicted denoised sample (x_{0}) based on the model output from
-             the current timestep. `pred_original_sample` can be used to preview progress or for guidance.
+            The predicted denoised sample (x_{0}) based on the model output from the current timestep.
+            `pred_original_sample` can be used to preview progress or for guidance.
     """
 
     prev_sample: torch.Tensor
@@ -104,18 +104,18 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
     methods the library implements for all schedulers such as loading and saving.
 
     Args:
-        num_train_timesteps (`int`, defaults to 1000):
+        num_train_timesteps (`int`, defaults to `1000`):
             The number of diffusion steps to train the model.
-        beta_start (`float`, defaults to 0.0001):
+        beta_start (`float`, defaults to `0.0001`):
             The starting `beta` value of inference.
-        beta_end (`float`, defaults to 0.02):
+        beta_end (`float`, defaults to `0.02`):
             The final `beta` value.
         beta_schedule (`str`, defaults to `"linear"`):
             The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear`, `scaled_linear`, `squaredcos_cap_v2`, or `sigmoid`.
-        eta (`float`):
-            The weight of noise for added noise in diffusion step. If its value is between 0.0 and 1.0 it corresponds
-            to the DDIM scheduler, and if its value is between -0.0 and 1.0 it corresponds to the DDPM scheduler.
+        eta (`float`, defaults to `0.0`):
+            The weight of noise added during a diffusion step. A value of `0.0` corresponds to DDIM and a value of
+            `1.0` corresponds to DDPM.
         trained_betas (`np.ndarray`, *optional*):
             Pass an array of betas directly to the constructor to bypass `beta_start` and `beta_end`.
         clip_sample (`bool`, defaults to `True`):
@@ -135,7 +135,7 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         eta: float = 0.0,
         trained_betas: np.ndarray | None = None,
         clip_sample: bool = True,
-    ):
+    ) -> None:
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
         elif beta_schedule == "linear":
@@ -190,19 +190,18 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         num_inference_steps: int,
         jump_length: int = 10,
         jump_n_sample: int = 10,
-        device: str | torch.device = None,
-    ):
+        device: str | torch.device | None = None,
+    ) -> None:
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
         Args:
             num_inference_steps (`int`):
-                The number of diffusion steps used when generating samples with a pre-trained model. If used,
-                `timesteps` must be `None`.
-            jump_length (`int`, defaults to 10):
+                The number of diffusion steps used when generating samples with a pre-trained model.
+            jump_length (`int`, defaults to `10`):
                 The number of steps taken forward in time before going backward in time for a single jump (“j” in
                 RePaint paper). Take a look at Figure 9 and 10 in the paper.
-            jump_n_sample (`int`, defaults to 10):
+            jump_n_sample (`int`, defaults to `10`):
                 The number of times to make a forward time jump for a given chosen time sample. Take a look at Figure 9
                 and 10 in the paper.
             device (`str` or `torch.device`, *optional*):
@@ -232,7 +231,18 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         timesteps = np.array(timesteps) * (self.config.num_train_timesteps // self.num_inference_steps)
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
-    def _get_variance(self, t):
+    def _get_variance(self, t: int) -> torch.Tensor:
+        """
+        Compute the variance for a given timestep.
+
+        Args:
+            t (`int`):
+                The current timestep.
+
+        Returns:
+            `torch.Tensor`:
+                The computed variance.
+        """
         prev_timestep = t - self.config.num_train_timesteps // self.num_inference_steps
 
         alpha_prod_t = self.alphas_cumprod[t]
@@ -260,7 +270,7 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         mask: torch.Tensor,
         generator: torch.Generator | None = None,
         return_dict: bool = True,
-    ) -> RePaintSchedulerOutput | tuple:
+    ) -> RePaintSchedulerOutput | tuple[torch.Tensor, torch.Tensor]:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -278,14 +288,15 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
                 The mask where a value of 0.0 indicates which part of the original image to inpaint.
             generator (`torch.Generator`, *optional*):
                 A random number generator.
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~schedulers.scheduling_repaint.RePaintSchedulerOutput`] or `tuple`.
+            return_dict (`bool`, defaults to `True`):
+                Whether or not to return a [`~schedulers.scheduling_repaint.RePaintSchedulerOutput`] instead of a
+                tuple.
 
         Returns:
-            [`~schedulers.scheduling_repaint.RePaintSchedulerOutput`] or `tuple`:
+            [`~schedulers.scheduling_repaint.RePaintSchedulerOutput`] or `tuple[torch.Tensor, torch.Tensor]`:
                 If return_dict is `True`, [`~schedulers.scheduling_repaint.RePaintSchedulerOutput`] is returned,
-                otherwise a tuple is returned where the first element is the sample tensor.
-
+                otherwise a tuple is returned where the first element is the previous sample and the second is the
+                predicted original sample.
         """
         t = timestep
         prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
@@ -344,7 +355,27 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
 
         return RePaintSchedulerOutput(prev_sample=pred_prev_sample, pred_original_sample=pred_original_sample)
 
-    def undo_step(self, sample, timestep, generator=None):
+    def undo_step(
+        self,
+        sample: torch.Tensor,
+        timestep: int,
+        generator: torch.Generator | None = None,
+    ) -> torch.Tensor:
+        """
+        Add noise to a sample to move it forward by one diffusion step.
+
+        Args:
+            sample (`torch.Tensor`):
+                The sample to which noise is added.
+            timestep (`int`):
+                The current discrete timestep in the diffusion chain.
+            generator (`torch.Generator`, *optional*):
+                A random number generator.
+
+        Returns:
+            `torch.Tensor`:
+                The sample at the next timestep in the diffusion chain.
+        """
         n = self.config.num_train_timesteps // self.num_inference_steps
 
         for i in range(n):
@@ -367,7 +398,22 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.Tensor,
         timesteps: torch.IntTensor,
     ) -> torch.Tensor:
+        """
+        Indicate that adding noise for RePaint training is not supported by this scheduler.
+
+        Args:
+            original_samples (`torch.Tensor`):
+                The original samples to which noise would be added.
+            noise (`torch.Tensor`):
+                The noise that would be added to the samples.
+            timesteps (`torch.IntTensor`):
+                The timesteps that would determine the noise level for each sample.
+
+        Raises:
+            `NotImplementedError`:
+                RePaint training should use [`DDPMScheduler.add_noise`] instead.
+        """
         raise NotImplementedError("Use `DDPMScheduler.add_noise()` to train for sampling with RePaint.")
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.config.num_train_timesteps

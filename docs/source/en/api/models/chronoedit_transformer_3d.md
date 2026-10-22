@@ -20,7 +20,7 @@ The model can be loaded with the following code snippet.
 ```python
 from diffusers import ChronoEditTransformer3DModel
 
-transformer = ChronoEditTransformer3DModel.from_pretrained("nvidia/ChronoEdit-14B-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer = ChronoEditTransformer3DModel.from_pretrained("nvidia/ChronoEdit-14B-Diffusers", subfolder="transformer", dtype=torch.bfloat16)
 ```
 
 ## ChronoEditTransformer3DModel

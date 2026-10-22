@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 import torch
 
-from .hooks import BaseState, HookRegistry, ModelHook, StateManager
+from .hooks import BaseState, CacheContext, HookRegistry, ModelHook, StateManager
 
 
 _TEXT_KV_CACHE_TRANSFORMER_HOOK = "text_kv_cache_transformer"
@@ -70,8 +70,8 @@ class TextKVCacheTransformerHook(ModelHook):
         self.state_manager = state_manager
 
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
-        if self.state_manager._current_context is None:
-            self.state_manager.set_context("inference")
+        if self.state_manager._context is None:
+            self.state_manager.set_context(CacheContext(name="inference"))
 
         encoder_hidden_states = kwargs.get("encoder_hidden_states")
         if encoder_hidden_states is not None:
@@ -98,11 +98,11 @@ class TextKVCacheBlockHook(ModelHook):
     def new_forward(self, module: torch.nn.Module, *args, **kwargs):
         from ..models.transformers.transformer_nucleusmoe_image import _apply_rotary_emb_nucleus
 
-        if self.state_manager._current_context is None:
-            self.state_manager.set_context("inference")
+        if self.state_manager._context is None:
+            self.state_manager.set_context(CacheContext(name="inference"))
 
-        if self.block_state_manager._current_context is None:
-            self.block_state_manager.set_context("inference")
+        if self.block_state_manager._context is None:
+            self.block_state_manager.set_context(CacheContext(name="inference"))
 
         if "encoder_hidden_states" in kwargs:
             encoder_hidden_states = kwargs["encoder_hidden_states"]

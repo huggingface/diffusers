@@ -59,22 +59,22 @@ from diffusers import AnyFlowPipeline, AnyFlowFARPipeline
 
 # Bidirectional, 轻量
 pipe = AnyFlowPipeline.from_pretrained(
-    "nvidia/AnyFlow-Wan2.1-T2V-1.3B-Diffusers", torch_dtype=torch.bfloat16
+    "nvidia/AnyFlow-Wan2.1-T2V-1.3B-Diffusers", dtype=torch.bfloat16
 ).to("cuda")
 
 # Bidirectional, 满血
 pipe = AnyFlowPipeline.from_pretrained(
-    "nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers", torch_dtype=torch.bfloat16
+    "nvidia/AnyFlow-Wan2.1-T2V-14B-Diffusers", dtype=torch.bfloat16
 ).to("cuda")
 
 # Causal (FAR), 1.3B
 pipe = AnyFlowFARPipeline.from_pretrained(
-    "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
+    "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", dtype=torch.bfloat16
 ).to("cuda")
 
 # Causal (FAR), 14B
 pipe = AnyFlowFARPipeline.from_pretrained(
-    "nvidia/AnyFlow-FAR-Wan2.1-14B-Diffusers", torch_dtype=torch.bfloat16
+    "nvidia/AnyFlow-FAR-Wan2.1-14B-Diffusers", dtype=torch.bfloat16
 ).to("cuda")
 ```
 
@@ -92,7 +92,7 @@ from diffusers import AnyFlowPipeline
 from diffusers.utils import export_to_video
 
 pipe = AnyFlowPipeline.from_pretrained(
-    "nvidia/AnyFlow-Wan2.1-T2V-1.3B-Diffusers", torch_dtype=torch.bfloat16
+    "nvidia/AnyFlow-Wan2.1-T2V-1.3B-Diffusers", dtype=torch.bfloat16
 ).to("cuda")
 
 prompt = "森林里一只小熊猫在啃竹子，电影感光照"
@@ -138,7 +138,7 @@ from diffusers import AnyFlowFARPipeline
 from diffusers.utils import export_to_video, load_image, load_video
 
 pipe = AnyFlowFARPipeline.from_pretrained(
-    "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", torch_dtype=torch.bfloat16
+    "nvidia/AnyFlow-FAR-Wan2.1-1.3B-Diffusers", dtype=torch.bfloat16
 ).to("cuda")
 
 

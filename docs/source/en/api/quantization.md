@@ -22,6 +22,10 @@ Quantization techniques reduce memory and computational costs by representing we
 
 [[autodoc]] quantizers.PipelineQuantizationConfig
 
+## BFLQuantizationConfig
+
+[[autodoc]] quantizers.quantization_config.BFLQuantizationConfig
+
 ## BitsAndBytesConfig
 
 [[autodoc]] quantizers.quantization_config.BitsAndBytesConfig
@@ -37,6 +41,10 @@ Quantization techniques reduce memory and computational costs by representing we
 ## QuantoConfig
 
 [[autodoc]] quantizers.quantization_config.QuantoConfig
+
+## SDNQConfig
+
+[[autodoc]] quantizers.quantization_config.SDNQConfig
 
 ## TorchAoConfig
 

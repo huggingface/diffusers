@@ -17,7 +17,7 @@ specific language governing permissions and limitations under the License.
 
 Kandinsky 2.2 is a multilingual text-to-image model capable of producing more photorealistic images. The model includes an image prior model for creating image embeddings from text prompts, and a decoder model that generates images based on the prior model's embeddings. That's why you'll find two separate scripts in Diffusers for Kandinsky 2.2, one for training the prior model and one for training the decoder model. You can train both models separately, but to get the best results, you should train both the prior and decoder models.
 
-Depending on your GPU, you may need to enable `gradient_checkpointing` (⚠️ not supported for the prior model!), `mixed_precision`, and `gradient_accumulation_steps` to help fit the model into memory and to speedup training. You can reduce your memory-usage even more by enabling memory-efficient attention with [xFormers](../optimization/xformers) (version [v0.0.16](https://github.com/huggingface/diffusers/issues/2234#issuecomment-1416931212) fails for training on some GPUs so you may need to install a development version instead).
+Depending on your GPU, you may need to enable `gradient_checkpointing` (⚠️ not supported for the prior model!), `mixed_precision`, and `gradient_accumulation_steps` to help fit the model into memory and to speedup training. You can reduce your memory-usage even more by enabling memory-efficient attention with [xFormers](../optimization/attention_backends) (version [v0.0.16](https://github.com/huggingface/diffusers/issues/2234#issuecomment-1416931212) fails for training on some GPUs so you may need to install a development version instead).
 
 This guide explores the [train_text_to_image_prior.py](https://github.com/huggingface/diffusers/blob/main/examples/kandinsky2_2/text_to_image/train_text_to_image_prior.py) and the [train_text_to_image_decoder.py](https://github.com/huggingface/diffusers/blob/main/examples/kandinsky2_2/text_to_image/train_text_to_image_decoder.py) scripts to help you become more familiar with it, and how you can adapt it for your own use-case.
 
@@ -108,10 +108,10 @@ tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_prior_model_name_or_pa
 
 with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
     image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-        args.pretrained_prior_model_name_or_path, subfolder="image_encoder", torch_dtype=weight_dtype
+        args.pretrained_prior_model_name_or_path, subfolder="image_encoder", dtype=weight_dtype
     ).eval()
     text_encoder = CLIPTextModelWithProjection.from_pretrained(
-        args.pretrained_prior_model_name_or_path, subfolder="text_encoder", torch_dtype=weight_dtype
+        args.pretrained_prior_model_name_or_path, subfolder="text_encoder", dtype=weight_dtype
     ).eval()
 ```
 
@@ -163,10 +163,10 @@ Unlike the prior model, the decoder initializes a [`VQModel`] to decode the late
 ```py
 with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
     vae = VQModel.from_pretrained(
-        args.pretrained_decoder_model_name_or_path, subfolder="movq", torch_dtype=weight_dtype
+        args.pretrained_decoder_model_name_or_path, subfolder="movq", dtype=weight_dtype
     ).eval()
     image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-        args.pretrained_prior_model_name_or_path, subfolder="image_encoder", torch_dtype=weight_dtype
+        args.pretrained_prior_model_name_or_path, subfolder="image_encoder", dtype=weight_dtype
     ).eval()
 unet = UNet2DConditionModel.from_pretrained(args.pretrained_decoder_model_name_or_path, subfolder="unet")
 ```
@@ -262,9 +262,9 @@ Once training is finished, you can use your newly trained model for inference!
 from diffusers import AutoPipelineForText2Image, DiffusionPipeline
 import torch
 
-prior_pipeline = DiffusionPipeline.from_pretrained(output_dir, torch_dtype=torch.float16)
+prior_pipeline = DiffusionPipeline.from_pretrained(output_dir, dtype=torch.float16)
 prior_components = {"prior_" + k: v for k,v in prior_pipeline.components.items()}
-pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", **prior_components, torch_dtype=torch.float16)
+pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", **prior_components, dtype=torch.float16)
 
 pipe.enable_model_cpu_offload()
 prompt="A robot naruto, 4k photo"
@@ -281,7 +281,7 @@ image = pipeline(prompt=prompt, negative_prompt=negative_prompt).images[0]
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("path/to/saved/model", torch_dtype=torch.float16)
+pipeline = AutoPipelineForText2Image.from_pretrained("path/to/saved/model", dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 prompt="A robot naruto, 4k photo"
@@ -295,7 +295,7 @@ from diffusers import AutoPipelineForText2Image, UNet2DConditionModel
 
 unet = UNet2DConditionModel.from_pretrained("path/to/saved/model" + "/checkpoint-<N>/unet")
 
-pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", unet=unet, torch_dtype=torch.float16)
+pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", unet=unet, dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 image = pipeline(prompt="A robot naruto, 4k photo").images[0]

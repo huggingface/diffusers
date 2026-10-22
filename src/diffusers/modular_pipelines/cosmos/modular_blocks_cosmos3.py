@@ -123,6 +123,9 @@ class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
       Components:
           video_processor (`VideoProcessor`) text_tokenizer (`AutoTokenizer`)
 
+      Configs:
+          default_use_system_prompt (default: True) enable_safety_checker (default: True)
+
       Inputs:
           control_videos (`dict`, *optional*):
               Mapping of hint name (edge/blur/depth/seg/wsm) to the control video for that modality.
@@ -140,7 +143,7 @@ class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
               The text prompt that guides Cosmos3 generation.
           negative_prompt (`str`, *optional*):
               The negative text prompt used for classifier-free guidance.
-          use_system_prompt (`bool`, *optional*, defaults to True):
+          use_system_prompt (`bool`, *optional*, defaults to True or None, depending on the workflow):
               Whether to prepend the Cosmos3 transfer system prompt.
           action (`CosmosActionCondition`, *optional*):
               Action-conditioning metadata and its reference visual input.
@@ -367,6 +370,9 @@ class Cosmos3VisionCoreDenoiseStep(SequentialPipelineBlocks):
       Components:
           transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
 
+      Configs:
+          use_native_flow_schedule (default: False)
+
       Inputs:
           cond_input_ids (`None`):
               Token IDs for the conditional prompt.
@@ -390,6 +396,15 @@ class Cosmos3VisionCoreDenoiseStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           num_inference_steps (`int`):
               The number of denoising steps.
+          mixed_precision_format (`str`, *optional*):
+              None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
+              ModelOpt FP8 only.
+          mixed_precision_first_steps (`int`, *optional*):
+              Optional leading W8A16 step count.
+          mixed_precision_last_steps (`int`, *optional*):
+              Optional trailing W8A16 step count.
+          mixed_precision_reasoner_policy (`str`, *optional*):
+              Optional reasoner path: 'high_precision' (W8A16) or 'base_precision' (native W8A8).
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           guidance_scale (`float`, *optional*, defaults to 6.0):
@@ -435,6 +450,9 @@ class Cosmos3VisionSoundCoreDenoiseStep(SequentialPipelineBlocks):
       Components:
           transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
 
+      Configs:
+          use_native_flow_schedule (default: False)
+
       Inputs:
           cond_input_ids (`None`):
               Token IDs for the conditional prompt.
@@ -460,6 +478,15 @@ class Cosmos3VisionSoundCoreDenoiseStep(SequentialPipelineBlocks):
               The number of denoising steps.
           sound_latents (`Tensor`, *optional*):
               Pre-generated noisy sound latents.
+          mixed_precision_format (`str`, *optional*):
+              None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
+              ModelOpt FP8 only.
+          mixed_precision_first_steps (`int`, *optional*):
+              Optional leading W8A16 step count.
+          mixed_precision_last_steps (`int`, *optional*):
+              Optional trailing W8A16 step count.
+          mixed_precision_reasoner_policy (`str`, *optional*):
+              Optional reasoner path: 'high_precision' (W8A16) or 'base_precision' (native W8A8).
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           guidance_scale (`float`, *optional*, defaults to 6.0):
@@ -516,6 +543,9 @@ class Cosmos3VisionActionCoreDenoiseStep(SequentialPipelineBlocks):
       Components:
           transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
 
+      Configs:
+          use_native_flow_schedule (default: False)
+
       Inputs:
           cond_input_ids (`None`):
               Token IDs for the conditional prompt.
@@ -545,6 +575,15 @@ class Cosmos3VisionActionCoreDenoiseStep(SequentialPipelineBlocks):
               Action-frame indexes fixed by action conditioning.
           action_latents (`Tensor`, *optional*):
               Pre-generated noisy action latents.
+          mixed_precision_format (`str`, *optional*):
+              None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
+              ModelOpt FP8 only.
+          mixed_precision_first_steps (`int`, *optional*):
+              Optional leading W8A16 step count.
+          mixed_precision_last_steps (`int`, *optional*):
+              Optional trailing W8A16 step count.
+          mixed_precision_reasoner_policy (`str`, *optional*):
+              Optional reasoner path: 'high_precision' (W8A16) or 'base_precision' (native W8A8).
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           guidance_scale (`float`, *optional*, defaults to 6.0):
@@ -601,6 +640,9 @@ class Cosmos3VisionSoundActionCoreDenoiseStep(SequentialPipelineBlocks):
       Components:
           transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
 
+      Configs:
+          use_native_flow_schedule (default: False)
+
       Inputs:
           cond_input_ids (`None`):
               Token IDs for the conditional prompt.
@@ -632,6 +674,15 @@ class Cosmos3VisionSoundActionCoreDenoiseStep(SequentialPipelineBlocks):
               Action-frame indexes fixed by action conditioning.
           action_latents (`Tensor`, *optional*):
               Pre-generated noisy action latents.
+          mixed_precision_format (`str`, *optional*):
+              None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
+              ModelOpt FP8 only.
+          mixed_precision_first_steps (`int`, *optional*):
+              Optional leading W8A16 step count.
+          mixed_precision_last_steps (`int`, *optional*):
+              Optional trailing W8A16 step count.
+          mixed_precision_reasoner_policy (`str`, *optional*):
+              Optional reasoner path: 'high_precision' (W8A16) or 'base_precision' (native W8A8).
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           guidance_scale (`float`, *optional*, defaults to 6.0):
@@ -733,6 +784,15 @@ class Cosmos3TransferChunkDenoiseStep(SequentialPipelineBlocks):
               Frame rate of the generated video.
           num_inference_steps (`int`):
               The number of denoising steps.
+          mixed_precision_format (`str`, *optional*):
+              None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
+              ModelOpt FP8 only.
+          mixed_precision_first_steps (`int`, *optional*):
+              Optional leading W8A16 step count.
+          mixed_precision_last_steps (`int`, *optional*):
+              Optional trailing W8A16 step count.
+          mixed_precision_reasoner_policy (`str`, *optional*):
+              Optional reasoner path: 'high_precision' (W8A16) or 'base_precision' (native W8A8).
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           guidance_scale (`float`, *optional*, defaults to 6.0):
@@ -822,11 +882,15 @@ class Cosmos3TransferChunkDenoiseStep(SequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         num_chunks = state.get("num_chunks")
         state.set("output_chunks", [])
         state.set("previous_output", None)
         for chunk_id in range(num_chunks):
+            if chunk_id > 0:
+                components.transformer._reset_stateful_cache()
             state.set("chunk_id", chunk_id)
             for _, block in self.sub_blocks.items():
                 components, state = block(components, state)
@@ -875,6 +939,15 @@ class Cosmos3TransferCoreDenoiseStep(SequentialPipelineBlocks):
               Frame rate of the generated video.
           num_inference_steps (`int`):
               The number of denoising steps.
+          mixed_precision_format (`str`, *optional*):
+              None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
+              ModelOpt FP8 only.
+          mixed_precision_first_steps (`int`, *optional*):
+              Optional leading W8A16 step count.
+          mixed_precision_last_steps (`int`, *optional*):
+              Optional trailing W8A16 step count.
+          mixed_precision_reasoner_policy (`str`, *optional*):
+              Optional reasoner path: 'high_precision' (W8A16) or 'base_precision' (native W8A8).
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           guidance_scale (`float`, *optional*, defaults to 6.0):
@@ -961,6 +1034,9 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
           transformer (`Cosmos3OmniTransformer`) vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`) scheduler
           (`UniPCMultistepScheduler`)
 
+      Configs:
+          use_native_flow_schedule (default: False)
+
       Inputs:
           cond_input_ids (`None`):
               Token IDs for the conditional prompt.
@@ -994,6 +1070,15 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Frame rate of the generated video.
           num_inference_steps (`int`):
               The number of denoising steps.
+          mixed_precision_format (`str`, *optional*):
+              None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
+              ModelOpt FP8 only.
+          mixed_precision_first_steps (`int`, *optional*):
+              Optional leading W8A16 step count.
+          mixed_precision_last_steps (`int`, *optional*):
+              Optional trailing W8A16 step count.
+          mixed_precision_reasoner_policy (`str`, *optional*):
+              Optional reasoner path: 'high_precision' (W8A16) or 'base_precision' (native W8A8).
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           guidance_scale (`float`, *optional*, defaults to 6.0):
@@ -1148,6 +1233,10 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
           (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`) sound_tokenizer
           (`Cosmos3AVAEAudioTokenizer`)
 
+      Configs:
+          default_use_system_prompt (default: True) enable_safety_checker (default: True) use_native_flow_schedule
+          (default: False)
+
       Inputs:
           control_videos (`dict`, *optional*):
               Mapping of hint name (edge/blur/depth/seg/wsm) to the control video for that modality.
@@ -1165,7 +1254,7 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
               The text prompt that guides Cosmos3 generation.
           negative_prompt (`str`, *optional*):
               The negative text prompt used for classifier-free guidance.
-          use_system_prompt (`bool`, *optional*, defaults to True):
+          use_system_prompt (`bool`, *optional*, defaults to True or None, depending on the workflow):
               Whether to prepend the Cosmos3 transfer system prompt.
           action (`CosmosActionCondition`, *optional*):
               Action-conditioning metadata and its reference visual input.
@@ -1193,6 +1282,15 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           num_inference_steps (`int`):
               The number of denoising steps.
+          mixed_precision_format (`str`, *optional*):
+              None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
+              ModelOpt FP8 only.
+          mixed_precision_first_steps (`int`, *optional*):
+              Optional leading W8A16 step count.
+          mixed_precision_last_steps (`int`, *optional*):
+              Optional trailing W8A16 step count.
+          mixed_precision_reasoner_policy (`str`, *optional*):
+              Optional reasoner path: 'high_precision' (W8A16) or 'base_precision' (native W8A8).
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           guidance_scale (`float`, *optional*, defaults to 6.0):

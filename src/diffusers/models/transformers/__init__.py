@@ -11,6 +11,7 @@ if is_torch_available():
     from .hunyuan_transformer_2d import HunyuanDiT2DModel
     from .latte_transformer_3d import LatteTransformer3DModel
     from .lumina_nextdit2d import LuminaNextDiT2DModel
+    from .minimax_music3_rvq_depth_decoder import MiniMaxMusic3RVQDepthDecoder
     from .pixart_transformer_2d import PixArtTransformer2DModel
     from .prior_transformer import PriorTransformer
     from .sana_transformer import SanaTransformer2DModel
@@ -23,6 +24,7 @@ if is_torch_available():
     from .transformer_anyflow_far import AnyFlowFARTransformer3DModel
     from .transformer_bria import BriaTransformer2DModel
     from .transformer_bria_fibo import BriaFiboTransformer2DModel
+    from .transformer_bria_fibo2 import BriaFibo2Transformer2DModel
     from .transformer_chroma import ChromaTransformer2DModel
     from .transformer_chronoedit import ChronoEditTransformer3DModel
     from .transformer_cogview3plus import CogView3PlusTransformer2DModel
@@ -33,6 +35,7 @@ if is_torch_available():
     from .transformer_ernie_image import ErnieImageTransformer2DModel
     from .transformer_flux import FluxTransformer2DModel
     from .transformer_flux2 import Flux2Transformer2DModel
+    from .transformer_flux3 import Flux3Transformer2DModel
     from .transformer_glm_image import GlmImageTransformer2DModel
     from .transformer_helios import HeliosTransformer3DModel
     from .transformer_hidream_image import HiDreamImageTransformer2DModel
@@ -44,12 +47,16 @@ if is_torch_available():
     from .transformer_joyimage import JoyImageEditTransformer3DModel
     from .transformer_joyimage_edit_plus import JoyImageEditPlusTransformer3DModel
     from .transformer_kandinsky import Kandinsky5Transformer3DModel
+    from .transformer_kandinsky6 import Kandinsky6Transformer3DModel
+    from .transformer_kandinsky6_sr import Kandinsky6SRTransformer3DModel
     from .transformer_krea2 import Krea2Transformer2DModel
     from .transformer_longcat_audio_dit import LongCatAudioDiTTransformer
     from .transformer_longcat_image import LongCatImageTransformer2DModel
     from .transformer_ltx import LTXVideoTransformer3DModel
     from .transformer_ltx2 import LTX2VideoTransformer3DModel
     from .transformer_lumina2 import Lumina2Transformer2DModel
+    from .transformer_minimax_h3 import MiniMaxH3Transformer3DModel
+    from .transformer_minimax_music3 import MiniMaxMusic3Transformer1DModel
     from .transformer_mochi import MochiTransformer3DModel
     from .transformer_motif_video import MotifVideoTransformer3DModel
     from .transformer_nucleusmoe_image import NucleusMoEImageTransformer2DModel
@@ -57,11 +64,17 @@ if is_torch_available():
     from .transformer_ovis_image import OvisImageTransformer2DModel
     from .transformer_prx import PRXTransformer2DModel
     from .transformer_qwenimage import QwenImageTransformer2DModel
+    from .transformer_qwenimage21 import QwenImage21Transformer2DModel
+    from .transformer_rfd4_proteina import RFD4ProteinaTransformer
     from .transformer_sana_video import SanaVideoTransformer3DModel
+    from .transformer_sana_wm import SanaWMTransformer3DModel
+    from .transformer_sana_wm_refiner import SanaWMLTX2RefinerTransformer3DModel
     from .transformer_sd3 import SD3Transformer2DModel
     from .transformer_skyreels_v2 import SkyReelsV2Transformer3DModel
+    from .transformer_stable_audio3 import StableAudio3DiTModel
     from .transformer_temporal import TransformerTemporalModel
     from .transformer_wan import WanTransformer3DModel
     from .transformer_wan_animate import WanAnimateTransformer3DModel
+    from .transformer_wan_animate_2 import WanAnimate2Transformer3DModel
     from .transformer_wan_vace import WanVACETransformer3DModel
     from .transformer_z_image import ZImageTransformer2DModel

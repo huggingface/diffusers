@@ -294,7 +294,7 @@ from safetensors.torch import load_file
 username = "linoyts"
 repo_id = f"{username}/3d-icon-Flux-LoRA"
 
-pipe = AutoPipelineForText2Image.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16).to('cuda')
+pipe = AutoPipelineForText2Image.from_pretrained("black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16).to('cuda')
 
 
 pipe.load_lora_weights(repo_id, weight_name="pytorch_lora_weights.safetensors")
@@ -342,7 +342,7 @@ from safetensors.torch import load_file
 username = "linoyts"
 repo_id = f"{username}/3d-icon-Flux-LoRA"
 
-pipe = AutoPipelineForText2Image.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.bfloat16).to('cuda')
+pipe = AutoPipelineForText2Image.from_pretrained("black-forest-labs/FLUX.1-dev", dtype=torch.bfloat16).to('cuda')
 
 text_encoders = [pipe.text_encoder, pipe.text_encoder_2]
 tokenizers = [pipe.tokenizer, pipe.tokenizer_2]

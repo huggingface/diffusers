@@ -22,7 +22,8 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["modular_blocks_cosmos3"] = ["Cosmos3OmniBlocks"]
-    _import_structure["modular_pipeline"] = ["Cosmos3OmniModularPipeline"]
+    _import_structure["modular_blocks_cosmos3_distilled"] = ["Cosmos3DistilledBlocks"]
+    _import_structure["modular_pipeline"] = ["Cosmos3DistilledModularPipeline", "Cosmos3OmniModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -32,7 +33,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_blocks_cosmos3 import Cosmos3OmniBlocks
-        from .modular_pipeline import Cosmos3OmniModularPipeline
+        from .modular_blocks_cosmos3_distilled import Cosmos3DistilledBlocks
+        from .modular_pipeline import Cosmos3DistilledModularPipeline, Cosmos3OmniModularPipeline
 else:
     import sys
 

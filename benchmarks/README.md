@@ -55,7 +55,7 @@ BenchmarkScenario(
     model_cls=FluxTransformer2DModel,
     model_init_kwargs={
         "pretrained_model_name_or_path": CKPT_ID,
-        "torch_dtype": torch.bfloat16,
+        "dtype": torch.bfloat16,
         "subfolder": "transformer",
         "quantization_config": BitsAndBytesConfig(load_in_8bit=True),
     },

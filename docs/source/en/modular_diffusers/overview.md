@@ -12,9 +12,6 @@ specific language governing permissions and limitations under the License.
 
 # Overview
 
-> [!WARNING]
-> Modular Diffusers is under active development and it's API may change.
-
 Modular Diffusers is a unified pipeline system that simplifies your workflow with *pipeline blocks*.
 
 - Blocks are reusable and you only need to create new blocks that are unique to your pipeline.
@@ -25,6 +22,7 @@ The Modular Diffusers docs are organized as shown below.
 ## Quickstart
 
 - The [quickstart](./quickstart) shows you how to run a modular pipeline, understand its structure, and customize it by modifying the blocks that compose it.
+- [Coming from DiffusionPipeline](./coming_from_diffusion_pipeline) lists what works differently from a [`DiffusionPipeline`], for readers who know the standard pipelines.
 
 ## ModularPipelineBlocks
 

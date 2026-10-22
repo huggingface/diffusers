@@ -44,12 +44,14 @@ logger = logging.get_logger(__name__)
 
 class QuantizationMethod(str, Enum):
     BITS_AND_BYTES = "bitsandbytes"
+    BFL = "bfl"
     GGUF = "gguf"
     NUNCHAKU_LITE = "nunchaku_lite"
     TORCHAO = "torchao"
     QUANTO = "quanto"
     MODELOPT = "modelopt"
     AUTOROUND = "auto-round"
+    SDNQ = "sdnq"
 
 
 @dataclass
@@ -431,6 +433,30 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
 
 
 @dataclass
+class BFLQuantizationConfig(QuantizationConfigMixin):
+    """Config for loading checkpoints quantized with the Black Forest Labs `fp8r` and `nvfp4` schemes.
+
+    Both schemes are read from the checkpoint through [`~FromSingleFileMixin.from_single_file`]; quantizing a model on
+    the fly is not supported. A linear layer is quantized when its weight comes with scale tensors:
+
+    - `fp8r`: `weight` is `float8_e4m3fn` with shape `[N, K]` and `weight_scale` is an fp32 per-row scale `[N]`.
+    - `nvfp4`: `weight` is `uint8` with shape `[N, K/2]` (two E2M1 values per byte), `weight_scale` is a
+      `float8_e4m3fn` block scale `[N, K/16]`, and `weight_scale_2` and `input_scale` are fp32 scalars holding the
+      global weight scale and the calibrated activation scale (the ModelOpt NVFP4 layout).
+
+    Args:
+        compute_dtype (`torch.dtype`, defaults to `torch.bfloat16`):
+            The dtype of the activations and of the unquantized layers. Devices without fused FP8 or NVFP4 kernels
+            dequantize the weights to this dtype in every forward pass.
+    """
+
+    def __init__(self, compute_dtype: "torch.dtype" | None = None):
+        self.quant_method = QuantizationMethod.BFL
+        self.compute_dtype = compute_dtype if compute_dtype is not None else torch.bfloat16
+        self.pre_quantized = True
+
+
+@dataclass
 class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
     """Configuration for loading Nunchaku Lite checkpoints.
 
@@ -651,6 +677,13 @@ class QuantoConfig(QuantizationConfigMixin):
     """
     This is a wrapper class about all possible attributes and features that you can play with a model that has been
     loaded using `quanto`.
+
+    <Tip warning={true}>
+
+    `QuantoConfig` is deprecated and will be removed in version 1.0.0. Consider switching to one of the other supported
+    quantization backends, such as [`BitsAndBytesConfig`] or [`TorchAoConfig`].
+
+    </Tip>
 
     Args:
         weights_dtype (`str`, *optional*, defaults to `"int8"`):
@@ -950,3 +983,39 @@ class AutoRoundConfig(QuantizationConfigMixin):
         # (e.g. quant_method is set automatically)
         config_dict = {k: v for k, v in config_dict.items() if k != "quant_method"}
         return super().from_dict(config_dict, return_unused_kwargs=return_unused_kwargs, **kwargs)
+
+
+class SDNQConfig(QuantizationConfigMixin):
+    """Configuration class for SDNQ (SD.Next Quantization).
+
+    The `sdnq` library ships its own diffusers-compatible config and quantizer; this class is a thin factory that
+    defers to them so that `quant_method="sdnq"` checkpoints load natively with diffusers. All arguments are forwarded
+    to `sdnq.SDNQConfig`. Requires the `sdnq` library: `pip install sdnq`.
+
+    Reference: https://github.com/Disty0/sdnq
+
+    Args:
+        weights_dtype (`str`, *optional*, defaults to `"int8"`):
+            The target dtype for the weights after quantization, e.g. `"int8"`, `"uint4"`, `"float8_e4m3fn"`. See
+            `sdnq.common.accepted_weight_dtypes` for all supported values.
+        group_size (`int`, *optional*, defaults to `0`):
+            How many elements of a tensor share the same quantization group. `0` auto-selects based on `weights_dtype`,
+            `-1` disables grouping and uses row-wise quantization.
+        use_svd (`bool`, *optional*, defaults to `False`):
+            Whether to apply the SVDQuant algorithm on top of SDNQ quantization.
+        use_quantized_matmul (`bool`, *optional*, defaults to `False`):
+            Whether to use quantized INT8 / FP8 / FP16 matmul on the forward pass instead of BF16 / FP16.
+        modules_to_not_convert (`list`, *optional*, defaults to `None`):
+            The list of modules to skip during quantization.
+        kwargs (`dict[str, Any]`, *optional*):
+            Additional keyword arguments forwarded to `sdnq.SDNQConfig` (e.g. `quantized_matmul_dtype`, `svd_rank`,
+            `use_hadamard`, `quant_conv`, `quant_embedding`, `modules_dtype_dict`).
+    """
+
+    def __new__(cls, *args, **kwargs):
+        from .sdnq.sdnq_quantizer import _check_sdnq_requirement
+
+        _check_sdnq_requirement()
+        from sdnq import SDNQConfig as SDNQLibConfig
+
+        return SDNQLibConfig(*args, **kwargs)

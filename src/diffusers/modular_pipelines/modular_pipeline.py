@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import gc
 import importlib
 import inspect
 import os
@@ -29,16 +30,26 @@ from tqdm.auto import tqdm
 from typing_extensions import Self
 
 from ..configuration_utils import ConfigMixin, FrozenDict
+from ..models.auto_model import AutoModel
+from ..models.modeling_utils import ModelMixin
 from ..pipelines.pipeline_loading_utils import (
     LOADABLE_CLASSES,
     _fetch_class_library_tuple,
     _unwrap_model,
+    filter_model_files,
     simple_get_class_obj,
 )
-from ..utils import PushToHubMixin, is_accelerate_available, logging
+from ..utils import (
+    TRANSFORMERS_COMPONENT_AUX_FILES,
+    PushToHubMixin,
+    deprecate,
+    is_accelerate_available,
+    is_transformers_available,
+    logging,
+)
 from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
-from ..utils.hub_utils import load_or_create_model_card, populate_model_card
-from ..utils.torch_utils import is_compiled_module
+from ..utils.hub_utils import _resolve_revision, load_or_create_model_card, populate_model_card
+from ..utils.torch_utils import empty_device_cache, is_compiled_module
 from .components_manager import ComponentsManager
 from .modular_pipeline_utils import (
     MODULAR_MODEL_CARD_TEMPLATE,
@@ -58,10 +69,44 @@ from .modular_pipeline_utils import (
 )
 
 
+# classes whose components are loaded from weight files; a component without a type hint is loaded with `AutoModel`
+_MODEL_CLASSES = (ModelMixin, AutoModel)
+if is_transformers_available():
+    from transformers import PreTrainedModel
+
+    _MODEL_CLASSES = (*_MODEL_CLASSES, PreTrainedModel)
+
 if is_accelerate_available():
     import accelerate
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def _is_local_component(
+    pretrained_model_name_or_path: str | os.PathLike | None, component_spec: ComponentSpec
+) -> bool:
+    """
+    Whether the component's files are in `pretrained_model_name_or_path`, a local pipeline directory: weight files for
+    a model, the config file its class saves for a diffusers component without weights (schedulers, guiders, ...), one
+    of `TRANSFORMERS_COMPONENT_AUX_FILES` for a transformers one (tokenizers, processors, ...).
+    """
+    if pretrained_model_name_or_path is None:
+        return False
+    component_dir = os.path.join(pretrained_model_name_or_path, component_spec.subfolder or "")
+    if not os.path.isdir(component_dir):
+        return False
+    filenames = os.listdir(component_dir)
+
+    class_obj = component_spec.type_hint
+    is_model = class_obj is None or issubclass(class_obj, _MODEL_CLASSES)
+
+    if is_model:
+        return len(filter_model_files(filenames)) > 0
+
+    if issubclass(class_obj, ConfigMixin):
+        return class_obj.config_name in filenames
+
+    return any(filename in filenames for filename in TRANSFORMERS_COMPONENT_AUX_FILES)
 
 
 # map regular pipeline to modular pipeline class name
@@ -86,6 +131,17 @@ def _flux2_klein_map_fn(config_dict=None):
         return "Flux2KleinBaseModularPipeline"
 
 
+def _qwenimage21_map_fn(config_dict=None):
+    if config_dict is None:
+        return "QwenImage21ModularPipeline"
+
+    # The Turbo checkpoint ships its sampling grid as pipeline config; the base checkpoint has none.
+    if config_dict.get("sample_sigmas"):
+        return "QwenImage21TurboModularPipeline"
+    else:
+        return "QwenImage21ModularPipeline"
+
+
 def _wan_map_fn(config_dict=None):
     if config_dict is None:
         return "WanModularPipeline"
@@ -106,6 +162,16 @@ def _wan_i2v_map_fn(config_dict=None):
         return "WanImage2VideoModularPipeline"
 
 
+def _krea2_map_fn(config_dict=None):
+    if config_dict is None:
+        return "Krea2ModularPipeline"
+
+    if config_dict.get("is_distilled", False):
+        return "Krea2TurboModularPipeline"
+    else:
+        return "Krea2ModularPipeline"
+
+
 def _helios_pyramid_map_fn(config_dict=None):
     if config_dict is None:
         return "HeliosPyramidModularPipeline"
@@ -121,23 +187,36 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("stable-diffusion-xl", _create_default_map_fn("StableDiffusionXLModularPipeline")),
         ("stable-diffusion-3", _create_default_map_fn("StableDiffusion3ModularPipeline")),
         ("wan", _wan_map_fn),
+        ("wan-animate-2", _create_default_map_fn("WanAnimate2ModularPipeline")),
+        ("wan-animate-2-distilled", _create_default_map_fn("WanAnimate2DistilledModularPipeline")),
         ("wan-i2v", _wan_i2v_map_fn),
+        ("wan-vace", _create_default_map_fn("Wan22VaceModularPipeline")),
         ("flux", _create_default_map_fn("FluxModularPipeline")),
         ("flux-kontext", _create_default_map_fn("FluxKontextModularPipeline")),
         ("flux2", _create_default_map_fn("Flux2ModularPipeline")),
         ("flux2-klein", _flux2_klein_map_fn),
+        ("flux3", _create_default_map_fn("Flux3ModularPipeline")),
+        ("flux3-distilled", _create_default_map_fn("Flux3DistilledModularPipeline")),
         ("ideogram4", _create_default_map_fn("Ideogram4ModularPipeline")),
+        ("krea2", _krea2_map_fn),
         ("qwenimage", _create_default_map_fn("QwenImageModularPipeline")),
         ("qwenimage-edit", _create_default_map_fn("QwenImageEditModularPipeline")),
         ("qwenimage-edit-plus", _create_default_map_fn("QwenImageEditPlusModularPipeline")),
         ("qwenimage-layered", _create_default_map_fn("QwenImageLayeredModularPipeline")),
+        ("qwenimage21", _qwenimage21_map_fn),
+        ("qwenimage21-turbo", _create_default_map_fn("QwenImage21TurboModularPipeline")),
         ("anima", _create_default_map_fn("AnimaModularPipeline")),
         ("z-image", _create_default_map_fn("ZImageModularPipeline")),
         ("cosmos3-omni", _create_default_map_fn("Cosmos3OmniModularPipeline")),
         ("helios", _create_default_map_fn("HeliosModularPipeline")),
         ("helios-pyramid", _helios_pyramid_map_fn),
         ("hunyuan-video-1.5", _create_default_map_fn("HunyuanVideo15ModularPipeline")),
+        ("echo", _create_default_map_fn("EchoModularPipeline")),
         ("ltx", _create_default_map_fn("LTXModularPipeline")),
+        ("ltx2", _create_default_map_fn("LTX2ModularPipeline")),
+        ("ltx2.5", _create_default_map_fn("LTX25ModularPipeline")),
+        ("minimax-h3", _create_default_map_fn("MiniMaxH3ModularPipeline")),
+        ("minimax-music3", _create_default_map_fn("MiniMaxMusic3ModularPipeline")),
         ("ernie-image", _create_default_map_fn("ErnieImageModularPipeline")),
     ]
 )
@@ -312,7 +391,6 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
 
     [`ModularPipelineBlocks`] provides method to load and save the definition of pipeline blocks.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
     """
 
     config_name = "modular_config.json"
@@ -422,6 +500,15 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         ]
         hub_kwargs = {name: kwargs.pop(name) for name in hub_kwargs_names if name in kwargs}
 
+        # Resolve the revision only once
+        hub_kwargs["revision"] = _resolve_revision(
+            pretrained_model_name_or_path,
+            revision=hub_kwargs.get("revision"),
+            cache_dir=hub_kwargs.get("cache_dir"),
+            local_files_only=hub_kwargs.get("local_files_only"),
+            token=hub_kwargs.get("token"),
+        )
+
         config = cls.load_config(pretrained_model_name_or_path, **hub_kwargs)
         has_remote_code = "auto_map" in config and cls.__name__ in config["auto_map"]
         trust_remote_code = resolve_trust_remote_code(
@@ -502,6 +589,13 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         for input_param in state_inputs:
             if input_param.name:
                 value = state.get(input_param.name)
+                if value is None:
+                    # if the value is None (not passed, or passed as None), the first block that reads it sets the
+                    # default at call time. For sequential blocks the default is already resolved at compile time
+                    # (first declaring block wins, see _get_inputs), but for conditional blocks the selected branch
+                    # is only known at runtime: disagreeing branch defaults merge to None (see combine_inputs) and
+                    # the block that actually runs applies its own declared default here
+                    value = input_param.default
                 if input_param.required and value is None:
                     raise ValueError(f"Required input '{input_param.name}' is missing")
                 elif value is not None or (value is None and input_param.name not in data):
@@ -586,8 +680,6 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
 
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
-
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
 
     Attributes:
         block_classes: List of block classes to be used. Must have the same length as `block_names`.
@@ -745,7 +837,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         raise NotImplementedError(f"Subclass {self.__class__.__name__} must implement the `select_block` method.")
 
     @torch.no_grad()
-    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, pipeline, state: PipelineState) -> tuple["ModularPipeline", PipelineState]:
         trigger_kwargs = {name: state.get(name) for name in self.block_trigger_inputs if name is not None}
         block_name = self.select_block(**trigger_kwargs)
 
@@ -948,8 +1040,6 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
-
     Attributes:
         block_classes: list of block classes to be used
         block_names: list of prefixes for each block
@@ -1000,9 +1090,16 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             )
 
         if workflow_name not in self._workflow_map:
-            raise ValueError(f"Workflow {workflow_name} not found in {self.__class__.__name__}")
+            raise ValueError(
+                f"Workflow {workflow_name!r} not found in {self.__class__.__name__}. "
+                f"Available workflows: {list(self._workflow_map)}"
+            )
 
         trigger_inputs = self._workflow_map[workflow_name]
+        if isinstance(trigger_inputs, tuple):
+            # a tuple of trigger dicts lists alternative spellings of the same workflow (e.g. `image` or
+            # `last_image`); every spelling resolves the same blocks, so pruning uses the first
+            trigger_inputs = trigger_inputs[0]
         workflow_blocks = self.get_execution_blocks(**trigger_inputs)
 
         return workflow_blocks
@@ -1112,7 +1209,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         return self.intermediate_outputs
 
     @torch.no_grad()
-    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, pipeline, state: PipelineState) -> tuple["ModularPipeline", PipelineState]:
         for block_name, block in self.sub_blocks.items():
             try:
                 pipeline, state = block(pipeline, state)
@@ -1302,8 +1399,6 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
 
     This class inherits from [`ModularPipelineBlocks`]. Check the superclass documentation for the generic methods the
     library implements for all the pipeline blocks (such as loading or saving etc.)
-
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
 
     Attributes:
         block_classes: list of block classes to be used
@@ -1498,7 +1593,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
                 raise
         return components, state
 
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple["ModularPipeline", PipelineState]:
         raise NotImplementedError("`__call__` method needs to be implemented by the subclass")
 
     @property
@@ -1597,8 +1692,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
     """
     Base class for all Modular pipelines.
 
-    > [!WARNING] > This is an experimental feature and is likely to change in the future.
-
     Args:
         blocks: ModularPipelineBlocks, the blocks to be used in the pipeline
     """
@@ -1614,6 +1707,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         pretrained_model_name_or_path: str | os.PathLike | None = None,
         components_manager: ComponentsManager | None = None,
         collection: str | None = None,
+        workflow: str | None = None,
         modular_config_dict: dict[str, Any] | None = None,
         config_dict: dict[str, Any] | None = None,
         **kwargs,
@@ -1640,6 +1734,9 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 Optional ComponentsManager for managing multiple component cross different pipelines and apply
                 offloading strategies.
             collection: Optional collection name for organizing components in the ComponentsManager.
+            workflow: Optional workflow name. If provided, the blocks are pruned to that workflow's execution
+                    blocks (see `ModularPipelineBlocks.get_workflow`), so the pipeline only expects — and
+                    `load_components()` only loads — the components that workflow uses.
             **kwargs: Additional arguments passed to `load_config()` when loading pretrained configuration.
 
         Examples:
@@ -1690,6 +1787,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             )
 
         if blocks is None:
+            blocks_class = None
             if modular_config_dict is not None:
                 blocks_class_name = modular_config_dict.get("_blocks_class_name")
             else:
@@ -1703,10 +1801,15 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     blocks_class_name = self.default_blocks_name
                     blocks_class = getattr(diffusers_module, blocks_class_name)
 
-            if blocks_class is not None:
-                blocks = blocks_class()
-            else:
-                logger.warning(f"`blocks` is `None`, no default blocks class found for {self.__class__.__name__}")
+            if blocks_class is None:
+                raise ValueError(
+                    f"No pipeline blocks could be resolved for {self.__class__.__name__}: pass `blocks`, or use a "
+                    "pipeline class with a `default_blocks_name`."
+                )
+            blocks = blocks_class()
+
+        if workflow is not None:
+            blocks = blocks.get_workflow(workflow)
 
         self._blocks = blocks
         self._components_manager = components_manager
@@ -1722,6 +1825,11 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     library, class_name, component_spec_dict = value
                     component_spec = self._dict_to_component_spec(name, component_spec_dict)
                     component_spec.default_creation_method = "from_pretrained"
+                    # a local copy of the repo (e.g. `hf download --local-dir`) keeps the original index, which
+                    # points at the Hub; load the components whose files are present locally from the copy
+                    if _is_local_component(pretrained_model_name_or_path, component_spec):
+                        component_spec.pretrained_model_name_or_path = str(pretrained_model_name_or_path)
+                        component_spec.revision = None
                     self._component_specs[name] = component_spec
 
                 elif name in self._config_specs:
@@ -1813,6 +1921,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         trust_remote_code: bool | None = None,
         components_manager: ComponentsManager | None = None,
         collection: str | None = None,
+        workflow: str | None = None,
         **kwargs,
     ):
         """
@@ -1832,8 +1941,21 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 offloading strategies.
             collection (`str`, optional):`
                 Collection name for organizing components in the ComponentsManager.
+            workflow (`str`, optional):
+                Name of a workflow declared by the pipeline blocks. If provided, the blocks are pruned to that
+                workflow's execution blocks, so the pipeline only expects — and `load_components()` only loads — the
+                components that workflow uses.
         """
         from ..pipelines.pipeline_loading_utils import _get_pipeline_class
+
+        # Resolve the revision only once
+        kwargs["revision"] = _resolve_revision(
+            pretrained_model_name_or_path,
+            revision=kwargs.get("revision"),
+            cache_dir=kwargs.get("cache_dir"),
+            local_files_only=kwargs.get("local_files_only"),
+            token=kwargs.get("token"),
+        )
 
         try:
             blocks = ModularPipelineBlocks.from_pretrained(
@@ -1885,6 +2007,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             pretrained_model_name_or_path=pretrained_model_name_or_path,
             components_manager=components_manager,
             collection=collection,
+            workflow=workflow,
             modular_config_dict=modular_config_dict,
             config_dict=config_dict,
             **kwargs,
@@ -1918,10 +2041,13 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             push_to_hub (`bool`, *optional*, defaults to `False`):
                 Whether to push the pipeline to the Hugging Face model hub after saving it.
             **kwargs: Additional keyword arguments:
-                - `overwrite_modular_index` (`bool`, *optional*, defaults to `False`):
-                    When saving a Modular Pipeline, its components in `modular_model_index.json` may reference repos
-                    different from the destination repo. Setting this to `True` updates all component references in
-                    `modular_model_index.json` so they point to the repo specified by `repo_id`.
+                - `overwrite_modular_index` (`bool`, *optional*, defaults to `True`):
+                    Whether to update `modular_model_index.json` so each saved component's loading spec points to the
+                    destination: `repo_id` when pushing to the Hub, otherwise `save_directory`. Components that are not
+                    loaded are not saved and always keep their recorded loading specs. Pass `False` to also preserve
+                    the recorded specs of the components being saved (e.g. for an index that deliberately references
+                    other repositories); components without a load id (such as custom models added with
+                    `update_components`) are still rewritten since they have no recorded source.
                 - `repo_id` (`str`, *optional*):
                     The repository ID to push the pipeline to. Defaults to the last component of `save_directory`.
                 - `commit_message` (`str`, *optional*):
@@ -1933,7 +2059,17 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 - `token` (`str`, *optional*):
                     The Hugging Face token to use for authentication.
         """
-        overwrite_modular_index = kwargs.pop("overwrite_modular_index", False)
+        if "overwrite_modular_index" not in kwargs:
+            deprecate(
+                "overwrite_modular_index",
+                "0.43.0",
+                "The default of `overwrite_modular_index` in `ModularPipeline.save_pretrained` changed from `False`"
+                " to `True`: the saved `modular_model_index.json` now points each saved component at the destination"
+                " (the save directory, or `repo_id` when pushing to the Hub). Pass `overwrite_modular_index=False`"
+                " to keep the previously recorded loading specs, or pass `True` explicitly to silence this warning.",
+                standard_warn=False,
+            )
+        overwrite_modular_index = kwargs.pop("overwrite_modular_index", True)
         repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
 
         if push_to_hub:
@@ -2004,6 +2140,9 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 library, class_name, component_spec_dict = self.config[component_name]
                 component_spec_dict["pretrained_model_name_or_path"] = repo_id if push_to_hub else save_directory
                 component_spec_dict["subfolder"] = component_name
+                component_spec_dict["variant"] = variant if save_method_accept_variant else None
+                # a revision pinned for the original source doesn't exist at the destination
+                component_spec_dict["revision"] = None
                 self.register_to_config(**{component_name: (library, class_name, component_spec_dict)})
 
         self.save_config(save_directory=save_directory)
@@ -2171,6 +2310,16 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         [`~DiffusionPipeline.enable_sequential_cpu_offload`] the execution device can only be inferred from
         Accelerate's module hooks.
         """
+        from ..hooks.group_offloading import _get_group_onload_device
+
+        for name, model in self.components.items():
+            if not isinstance(model, torch.nn.Module):
+                continue
+            try:
+                return _get_group_onload_device(model)
+            except ValueError:
+                pass
+
         for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module):
                 continue
@@ -2338,7 +2487,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             config_to_register[name] = new_value
         self.register_to_config(**config_to_register)
 
-    def load_components(self, names: list[str] | str | None = None, **kwargs):
+    def load_components(self, names: list[str] | str | None = None, workflow: str | None = None, **kwargs):
         """
         Load selected components from specs.
 
@@ -2346,14 +2495,19 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             names: list of component names to load. If None, will load all components with
                    default_creation_method == "from_pretrained". If provided as a list or string, will load only the
                    specified components.
+            workflow: name of a workflow declared by the pipeline blocks. If provided, only the components that
+                   workflow's execution blocks use are loaded. Cannot be combined with `names`.
             **kwargs: additional kwargs to be passed to `from_pretrained()`.Can be:
-             - a single value to be applied to all components to be loaded, e.g. torch_dtype=torch.bfloat16
-             - a dict, e.g. torch_dtype={"unet": torch.bfloat16, "default": torch.float32}
+             - a single value to be applied to all components to be loaded, e.g. dtype=torch.bfloat16
+             - a dict, e.g. dtype={"unet": torch.bfloat16, "default": torch.float32}
              - if potentially override ComponentSpec if passed a different loading field in kwargs, e.g.
                `pretrained_model_name_or_path`, `variant`, `revision`, etc.
              - if potentially override ComponentSpec if passed a different loading field in kwargs, e.g.
                `pretrained_model_name_or_path`, `variant`, `revision`, etc.
         """
+
+        if workflow is not None and names is not None:
+            raise ValueError("Pass either `names` or `workflow`, not both.")
 
         if names is None:
             names = [
@@ -2367,6 +2521,10 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             names = [names]
         elif not isinstance(names, list):
             raise ValueError(f"Invalid type for names: {type(names)}")
+
+        if workflow is not None:
+            workflow_component_names = {spec.name for spec in self.blocks.get_workflow(workflow).expected_components}
+            names = [name for name in names if name in workflow_component_names]
 
         components_to_load = {name for name in names if name in self._component_specs}
         unknown_names = {name for name in names if name not in self._component_specs}
@@ -2434,6 +2592,42 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
         # Register all components at once
         self.register_components(**components_to_register)
+
+    def unload_components(self, names: list[str] | str):
+        """
+        Unload selected components, freeing their memory.
+
+        The component attribute is set back to `None` and, if a ComponentsManager is attached, the component is removed
+        from it. The component spec is untouched, so the component can be loaded again later with `load_components()`.
+
+        Args:
+            names: component name or list of component names to unload.
+        """
+        if isinstance(names, str):
+            names = [names]
+        elif not isinstance(names, list):
+            raise ValueError(f"Invalid type for names: {type(names)}")
+
+        unknown_names = {name for name in names if name not in self._component_specs}
+        if len(unknown_names) > 0:
+            logger.warning(f"Unknown components will be ignored: {unknown_names}")
+
+        for name in names:
+            if name in unknown_names:
+                continue
+            # not holding the full `components` dict across iterations: a lingering reference would keep the
+            # unloaded component alive through the gc pass below
+            component = self.components.get(name)
+            if component is None:
+                continue
+            component_id = f"{name}_{id(component)}"
+            self.register_components(**{name: None})
+            del component
+            if self._components_manager is not None and component_id in self._components_manager.components:
+                self._components_manager.remove(component_id)
+
+        gc.collect()
+        empty_device_cache()
 
     # Copied from diffusers.pipelines.pipeline_utils.DiffusionPipeline._maybe_raise_error_if_group_offload_active
     def _maybe_raise_error_if_group_offload_active(
@@ -2638,7 +2832,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     " is not recommended to move them to `cpu` as running them will fail. Please make"
                     " sure to use an accelerator to run the pipeline in inference, due to the lack of"
                     " support for`float16` operations on this device in PyTorch. Please, remove the"
-                    " `torch_dtype=torch.float16` argument, or use another device for inference."
+                    " `dtype=torch.float16` argument, or use another device for inference."
                 )
         return self
 

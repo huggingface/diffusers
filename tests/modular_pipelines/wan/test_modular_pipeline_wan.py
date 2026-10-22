@@ -17,14 +17,20 @@ import pytest
 
 from diffusers.modular_pipelines import WanBlocks, WanModularPipeline
 
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
-class TestWanModularPipelineFast(ModularPipelineTesterMixin):
+class WanModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = WanModularPipeline
     pipeline_blocks_class = WanBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-wan-modular-pipe"
-
+    expected_latents_shape = (1, 16, 3, 2, 2)
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
@@ -44,6 +50,20 @@ class TestWanModularPipelineFast(ModularPipelineTesterMixin):
         }
         return inputs
 
+
+class TestWanModularPipelineFast(WanModularPipelineTesterConfig, ModularPipelineTesterMixin):
     @pytest.mark.skip(reason="num_videos_per_prompt")
     def test_num_images_per_prompt(self):
         pass
+
+
+class TestWanModularPipelineLoading(WanModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestWanModularPipelineWorkflow(WanModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestWanModularPipelineMemory(WanModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass

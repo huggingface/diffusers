@@ -712,7 +712,7 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline, StableDiffusionMixin, Fr
         cross_attention_kwargs: dict[str, Any] | None = None,
         adapter_conditioning_scale: float | list[float] = 1.0,
         clip_skip: int | None = None,
-    ):
+    ) -> StableDiffusionAdapterPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

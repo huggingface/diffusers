@@ -29,10 +29,10 @@ You can find additional smaller Stable Diffusion XL (SDXL) ControlNet checkpoint
 > [!WARNING]
 > 🧪 Many of the SDXL ControlNet checkpoints are experimental, and there is a lot of room for improvement. Feel free to open an [Issue](https://github.com/huggingface/diffusers/issues/new/choose) and leave us feedback on how we can improve!
 
-If you don't see a checkpoint you're interested in, you can train your own SDXL ControlNet with our [training script](../../../../../examples/controlnet/README_sdxl).
+If you don't see a checkpoint you're interested in, you can train your own SDXL ControlNet with our [training script](https://github.com/huggingface/diffusers/blob/main/examples/controlnet/README_sdxl.md).
 
 > [!TIP]
-> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
+> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reusing-models-in-multiple-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
 ## StableDiffusionXLControlNetPipeline
 [[autodoc]] StableDiffusionXLControlNetPipeline

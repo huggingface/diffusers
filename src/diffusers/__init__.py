@@ -1,4 +1,4 @@
-__version__ = "0.40.0.dev0"
+__version__ = "0.42.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -9,7 +9,6 @@ from .utils import (
     is_accelerate_available,
     is_auto_round_available,
     is_bitsandbytes_available,
-    is_flax_available,
     is_gguf_available,
     is_librosa_available,
     is_note_seq_available,
@@ -18,12 +17,12 @@ from .utils import (
     is_opencv_available,
     is_optimum_quanto_available,
     is_scipy_available,
+    is_sdnq_available,
     is_sentencepiece_available,
     is_torch_available,
     is_torchao_available,
     is_torchsde_available,
     is_transformers_available,
-    is_transformers_flax_compatible,
     is_transformers_version,
 )
 
@@ -48,7 +47,6 @@ _import_structure = {
     "schedulers": [],
     "utils": [
         "OptionalDependencyNotAvailable",
-        "is_flax_available",
         "is_inflect_available",
         "is_invisible_watermark_available",
         "is_librosa_available",
@@ -137,6 +135,18 @@ else:
     _import_structure["quantizers.quantization_config"].append("NunchakuLiteQuantizationConfig")
 
 try:
+    if not is_torch_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_bfl_objects
+
+    _import_structure["utils.dummy_bfl_objects"] = [
+        name for name in dir(dummy_bfl_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("BFLQuantizationConfig")
+
+try:
     if not is_auto_round_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -147,6 +157,18 @@ except OptionalDependencyNotAvailable:
     ]
 else:
     _import_structure["quantizers.quantization_config"].append("AutoRoundConfig")
+
+try:
+    if not is_torch_available() and not is_accelerate_available() and not is_sdnq_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_sdnq_objects
+
+    _import_structure["utils.dummy_sdnq_objects"] = [
+        name for name in dir(dummy_sdnq_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("SDNQConfig")
 
 try:
     if not is_onnx_available():
@@ -179,6 +201,7 @@ else:
             "ClassifierFreeGuidance",
             "ClassifierFreeZeroStarGuidance",
             "FrequencyDecoupledGuidance",
+            "LTX2Guidance",
             "PerturbedAttentionGuidance",
             "SkipLayerGuidance",
             "SmoothedEnergyGuidance",
@@ -193,6 +216,7 @@ else:
             "LayerSkipConfig",
             "MagCacheConfig",
             "PyramidAttentionBroadcastConfig",
+            "SeaCacheConfig",
             "SmoothedEnergyGuidanceConfig",
             "TaylorSeerCacheConfig",
             "TextKVCacheConfig",
@@ -201,6 +225,7 @@ else:
             "apply_layer_skip",
             "apply_mag_cache",
             "apply_pyramid_attention_broadcast",
+            "apply_sea_cache",
             "apply_taylorseer_cache",
             "apply_text_kv_cache",
         ]
@@ -233,20 +258,26 @@ else:
             "AutoencoderKLHunyuanVideo",
             "AutoencoderKLHunyuanVideo15",
             "AutoencoderKLKVAE",
+            "AutoencoderKLKVAEAudio",
             "AutoencoderKLKVAEVideo",
             "AutoencoderKLLTX2Audio",
             "AutoencoderKLLTX2Video",
             "AutoencoderKLLTXVideo",
             "AutoencoderKLMagvit",
+            "AutoencoderKLMiniMaxH3",
+            "AutoencoderKLMiniMaxH3Audio",
             "AutoencoderKLMochi",
             "AutoencoderKLQwenImage",
+            "AutoencoderKLQwenImage21",
             "AutoencoderKLTemporalDecoder",
             "AutoencoderKLWan",
             "AutoencoderOobleck",
             "AutoencoderRAE",
+            "AutoencoderSAME",
             "AutoencoderTiny",
             "AutoencoderVidTok",
             "AutoModel",
+            "BriaFibo2Transformer2DModel",
             "BriaFiboTransformer2DModel",
             "BriaTransformer2DModel",
             "CacheMixin",
@@ -271,6 +302,7 @@ else:
             "EasyAnimateTransformer3DModel",
             "ErnieImageTransformer2DModel",
             "Flux2Transformer2DModel",
+            "Flux3Transformer2DModel",
             "FluxControlNetModel",
             "FluxMultiControlNetModel",
             "FluxTransformer2DModel",
@@ -290,15 +322,27 @@ else:
             "JoyImageEditTransformer3DModel",
             "Kandinsky3UNet",
             "Kandinsky5Transformer3DModel",
+            "Kandinsky6SRLatentUpscalerBank",
+            "Kandinsky6SRTransformer3DModel",
+            "Kandinsky6SRVAE",
+            "Kandinsky6Transformer3DModel",
             "Krea2Transformer2DModel",
             "LatteTransformer3DModel",
             "LongCatAudioDiTTransformer",
             "LongCatAudioDiTVae",
             "LongCatImageTransformer2DModel",
+            "LTX2VideoDiffusionDecoderModel",
             "LTX2VideoTransformer3DModel",
             "LTXVideoTransformer3DModel",
             "Lumina2Transformer2DModel",
             "LuminaNextDiT2DModel",
+            "MiniMaxH3Transformer3DModel",
+            "MiniMaxMusic3ConditionEncoder",
+            "MiniMaxMusic3RVQDepthDecoder",
+            "MiniMaxMusic3Transformer1DModel",
+            "MiniMaxMusic3Vocoder",
+            "MMAudioVAE",
+            "MMAudioVocoder",
             "MochiTransformer3DModel",
             "ModelMixin",
             "MotifVideoTransformer3DModel",
@@ -312,21 +356,28 @@ else:
             "PixArtTransformer2DModel",
             "PriorTransformer",
             "PRXTransformer2DModel",
+            "QwenImage21Transformer2DModel",
             "QwenImageControlNetModel",
             "QwenImageMultiControlNetModel",
             "QwenImageTransformer2DModel",
+            "RFD4ProteinaAutoencoder",
+            "RFD4ProteinaTransformer",
             "SanaControlNetModel",
             "SanaTransformer2DModel",
             "SanaVideoTransformer3DModel",
+            "SanaWMLTX2RefinerTransformer3DModel",
+            "SanaWMTransformer3DModel",
             "SD3ControlNetModel",
             "SD3MultiControlNetModel",
             "SD3Transformer2DModel",
             "SkyReelsV2Transformer3DModel",
             "SparseControlNetModel",
+            "StableAudio3DiTModel",
             "StableAudioDiTModel",
             "StableCascadeUNet",
             "T2IAdapter",
             "T5FilmDecoder",
+            "TensorParallelConfig",
             "Transformer2DModel",
             "TransformerTemporalModel",
             "UNet1DModel",
@@ -338,6 +389,7 @@ else:
             "UNetSpatioTemporalConditionModel",
             "UVit2DModel",
             "VQModel",
+            "WanAnimate2Transformer3DModel",
             "WanAnimateTransformer3DModel",
             "WanTransformer3DModel",
             "WanVACETransformer3DModel",
@@ -389,6 +441,7 @@ else:
             "LDMSuperResolutionPipeline",
             "PNDMPipeline",
             "RePaintPipeline",
+            "RFD4ProteinaPipeline",
             "ScoreSdeVePipeline",
             "StableDiffusionMixin",
         ]
@@ -433,8 +486,11 @@ else:
             "KDPM2DiscreteScheduler",
             "LCMScheduler",
             "LTXEulerAncestralRFScheduler",
+            "MiniMaxH3Scheduler",
+            "PiflowScheduler",
             "PNDMScheduler",
             "RePaintScheduler",
+            "RFD4ProteinaScheduler",
             "SASolverScheduler",
             "SchedulerMixin",
             "SCMScheduler",
@@ -489,8 +545,12 @@ else:
         [
             "AnimaAutoBlocks",
             "AnimaModularPipeline",
+            "Cosmos3DistilledBlocks",
+            "Cosmos3DistilledModularPipeline",
             "Cosmos3OmniBlocks",
             "Cosmos3OmniModularPipeline",
+            "EchoBlocks",
+            "EchoModularPipeline",
             "ErnieImageAutoBlocks",
             "ErnieImageModularPipeline",
             "Flux2AutoBlocks",
@@ -499,6 +559,10 @@ else:
             "Flux2KleinBaseModularPipeline",
             "Flux2KleinModularPipeline",
             "Flux2ModularPipeline",
+            "Flux3AutoBlocks",
+            "Flux3DistilledAutoBlocks",
+            "Flux3DistilledModularPipeline",
+            "Flux3ModularPipeline",
             "FluxAutoBlocks",
             "FluxKontextAutoBlocks",
             "FluxKontextModularPipeline",
@@ -513,8 +577,24 @@ else:
             "HunyuanVideo15ModularPipeline",
             "Ideogram4AutoBlocks",
             "Ideogram4ModularPipeline",
+            "Krea2AutoBlocks",
+            "Krea2ModularPipeline",
+            "Krea2TurboAutoBlocks",
+            "Krea2TurboModularPipeline",
+            "LTX25AutoBlocks",
+            "LTX25ModularPipeline",
+            "LTX2AutoBlocks",
+            "LTX2ModularPipeline",
             "LTXAutoBlocks",
             "LTXModularPipeline",
+            "MiniMaxH3Blocks",
+            "MiniMaxH3ModularPipeline",
+            "MiniMaxMusic3Blocks",
+            "MiniMaxMusic3ModularPipeline",
+            "QwenImage21AutoBlocks",
+            "QwenImage21ModularPipeline",
+            "QwenImage21TurboAutoBlocks",
+            "QwenImage21TurboModularPipeline",
             "QwenImageAutoBlocks",
             "QwenImageEditAutoBlocks",
             "QwenImageEditModularPipeline",
@@ -531,6 +611,12 @@ else:
             "Wan22Image2VideoBlocks",
             "Wan22Image2VideoModularPipeline",
             "Wan22ModularPipeline",
+            "Wan22VaceBlocks",
+            "Wan22VaceModularPipeline",
+            "WanAnimate2Blocks",
+            "WanAnimate2DistilledBlocks",
+            "WanAnimate2DistilledModularPipeline",
+            "WanAnimate2ModularPipeline",
             "WanBlocks",
             "WanImage2VideoAutoBlocks",
             "WanImage2VideoModularPipeline",
@@ -567,6 +653,7 @@ else:
             "AuraFlowPipeline",
             "BlipDiffusionControlNetPipeline",
             "BlipDiffusionPipeline",
+            "BriaFibo2Pipeline",
             "BriaFiboEditPipeline",
             "BriaFiboPipeline",
             "BriaPipeline",
@@ -653,6 +740,10 @@ else:
             "Kandinsky5I2VPipeline",
             "Kandinsky5T2IPipeline",
             "Kandinsky5T2VPipeline",
+            "Kandinsky6SRPipeline",
+            "Kandinsky6SRPipelineOutput",
+            "Kandinsky6TI2VAPipeline",
+            "Kandinsky6TI2VAPipelineOutput",
             "KandinskyCombinedPipeline",
             "KandinskyImg2ImgCombinedPipeline",
             "KandinskyImg2ImgPipeline",
@@ -683,11 +774,15 @@ else:
             "LongCatImageEditPipeline",
             "LongCatImagePipeline",
             "LTX2ConditionPipeline",
+            "LTX2DFRPipeline",
+            "LTX2DFRPipelineOutput",
+            "LTX2DFRTemporalRefinePipeline",
             "LTX2HDRPipeline",
             "LTX2ImageToVideoPipeline",
             "LTX2InContextPipeline",
             "LTX2LatentUpsamplePipeline",
             "LTX2Pipeline",
+            "LTX2VideoDiffusionDecodePipeline",
             "LTXConditionPipeline",
             "LTXI2VLongMultiPromptPipeline",
             "LTXImageToVideoPipeline",
@@ -695,9 +790,7 @@ else:
             "LTXPipeline",
             "LucyEditPipeline",
             "Lumina2Pipeline",
-            "Lumina2Text2ImgPipeline",
             "LuminaPipeline",
-            "LuminaText2ImgPipeline",
             "MarigoldDepthPipeline",
             "MarigoldIntrinsicsPipeline",
             "MarigoldNormalsPipeline",
@@ -716,6 +809,7 @@ else:
             "PixArtSigmaPipeline",
             "PRXPipeline",
             "PRXPixelPipeline",
+            "QwenImage21Pipeline",
             "QwenImageControlNetInpaintPipeline",
             "QwenImageControlNetPipeline",
             "QwenImageEditInpaintPipeline",
@@ -734,6 +828,9 @@ else:
             "SanaSprintPipeline",
             "SanaVideoPipeline",
             "SanaVideoPipeline",
+            "SanaWMLTX2Refiner",
+            "SanaWMPipeline",
+            "SanaWMPipelineOutput",
             "SemanticStableDiffusionPipeline",
             "ShapEImg2ImgPipeline",
             "ShapEPipeline",
@@ -742,6 +839,10 @@ else:
             "SkyReelsV2DiffusionForcingVideoToVideoPipeline",
             "SkyReelsV2ImageToVideoPipeline",
             "SkyReelsV2Pipeline",
+            "StableAudio3AudioToAudioPipeline",
+            "StableAudio3DurationEmbedder",
+            "StableAudio3InpaintPipeline",
+            "StableAudio3Pipeline",
             "StableAudioPipeline",
             "StableAudioProjectionModel",
             "StableCascadeCombinedPipeline",
@@ -915,60 +1016,6 @@ else:
     _import_structure["pipelines"].extend(["SpectrogramDiffusionPipeline"])
 
 try:
-    if not is_flax_available():
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_flax_objects  # noqa F403
-
-    _import_structure["utils.dummy_flax_objects"] = [
-        name for name in dir(dummy_flax_objects) if not name.startswith("_")
-    ]
-
-
-else:
-    _import_structure["models.controlnets.controlnet_flax"] = ["FlaxControlNetModel"]
-    _import_structure["models.modeling_flax_utils"] = ["FlaxModelMixin"]
-    _import_structure["models.unets.unet_2d_condition_flax"] = ["FlaxUNet2DConditionModel"]
-    _import_structure["models.vae_flax"] = ["FlaxAutoencoderKL"]
-    _import_structure["schedulers"].extend(
-        [
-            "FlaxDDIMScheduler",
-            "FlaxDDPMScheduler",
-            "FlaxDPMSolverMultistepScheduler",
-            "FlaxEulerDiscreteScheduler",
-            "FlaxKarrasVeScheduler",
-            "FlaxLMSDiscreteScheduler",
-            "FlaxPNDMScheduler",
-            "FlaxSchedulerMixin",
-            "FlaxScoreSdeVeScheduler",
-        ]
-    )
-
-
-try:
-    if not (is_flax_available() and is_transformers_available() and is_transformers_flax_compatible()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_flax_and_transformers_objects  # noqa F403
-
-    _import_structure["utils.dummy_flax_and_transformers_objects"] = [
-        name for name in dir(dummy_flax_and_transformers_objects) if not name.startswith("_")
-    ]
-
-
-else:
-    _import_structure["pipelines"].extend(
-        [
-            "FlaxDiffusionPipeline",
-            "FlaxStableDiffusionControlNetPipeline",
-            "FlaxStableDiffusionImg2ImgPipeline",
-            "FlaxStableDiffusionInpaintPipeline",
-            "FlaxStableDiffusionPipeline",
-            "FlaxStableDiffusionXLPipeline",
-        ]
-    )
-
-try:
     if not (is_note_seq_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -1035,12 +1082,28 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers.quantization_config import NunchakuLiteQuantizationConfig
 
     try:
+        if not is_torch_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_bfl_objects import *
+    else:
+        from .quantizers.quantization_config import BFLQuantizationConfig
+
+    try:
         if not is_auto_round_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
         from .utils.dummy_auto_round_objects import *
     else:
         from .quantizers.quantization_config import AutoRoundConfig
+
+    try:
+        if not is_sdnq_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_sdnq_objects import *
+    else:
+        from .quantizers.quantization_config import SDNQConfig
 
     try:
         if not is_onnx_available():
@@ -1064,6 +1127,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ClassifierFreeGuidance,
             ClassifierFreeZeroStarGuidance,
             FrequencyDecoupledGuidance,
+            LTX2Guidance,
             PerturbedAttentionGuidance,
             SkipLayerGuidance,
             SmoothedEnergyGuidance,
@@ -1076,6 +1140,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LayerSkipConfig,
             MagCacheConfig,
             PyramidAttentionBroadcastConfig,
+            SeaCacheConfig,
             SmoothedEnergyGuidanceConfig,
             TaylorSeerCacheConfig,
             TextKVCacheConfig,
@@ -1084,6 +1149,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             apply_layer_skip,
             apply_mag_cache,
             apply_pyramid_attention_broadcast,
+            apply_sea_cache,
             apply_taylorseer_cache,
             apply_text_kv_cache,
         )
@@ -1114,20 +1180,26 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLHunyuanVideo,
             AutoencoderKLHunyuanVideo15,
             AutoencoderKLKVAE,
+            AutoencoderKLKVAEAudio,
             AutoencoderKLKVAEVideo,
             AutoencoderKLLTX2Audio,
             AutoencoderKLLTX2Video,
             AutoencoderKLLTXVideo,
             AutoencoderKLMagvit,
+            AutoencoderKLMiniMaxH3,
+            AutoencoderKLMiniMaxH3Audio,
             AutoencoderKLMochi,
             AutoencoderKLQwenImage,
+            AutoencoderKLQwenImage21,
             AutoencoderKLTemporalDecoder,
             AutoencoderKLWan,
             AutoencoderOobleck,
             AutoencoderRAE,
+            AutoencoderSAME,
             AutoencoderTiny,
             AutoencoderVidTok,
             AutoModel,
+            BriaFibo2Transformer2DModel,
             BriaFiboTransformer2DModel,
             BriaTransformer2DModel,
             CacheMixin,
@@ -1152,6 +1224,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EasyAnimateTransformer3DModel,
             ErnieImageTransformer2DModel,
             Flux2Transformer2DModel,
+            Flux3Transformer2DModel,
             FluxControlNetModel,
             FluxMultiControlNetModel,
             FluxTransformer2DModel,
@@ -1171,15 +1244,27 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             JoyImageEditTransformer3DModel,
             Kandinsky3UNet,
             Kandinsky5Transformer3DModel,
+            Kandinsky6SRLatentUpscalerBank,
+            Kandinsky6SRTransformer3DModel,
+            Kandinsky6SRVAE,
+            Kandinsky6Transformer3DModel,
             Krea2Transformer2DModel,
             LatteTransformer3DModel,
             LongCatAudioDiTTransformer,
             LongCatAudioDiTVae,
             LongCatImageTransformer2DModel,
+            LTX2VideoDiffusionDecoderModel,
             LTX2VideoTransformer3DModel,
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
+            MiniMaxH3Transformer3DModel,
+            MiniMaxMusic3ConditionEncoder,
+            MiniMaxMusic3RVQDepthDecoder,
+            MiniMaxMusic3Transformer1DModel,
+            MiniMaxMusic3Vocoder,
+            MMAudioVAE,
+            MMAudioVocoder,
             MochiTransformer3DModel,
             ModelMixin,
             MotifVideoTransformer3DModel,
@@ -1193,20 +1278,27 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtTransformer2DModel,
             PriorTransformer,
             PRXTransformer2DModel,
+            QwenImage21Transformer2DModel,
             QwenImageControlNetModel,
             QwenImageMultiControlNetModel,
             QwenImageTransformer2DModel,
+            RFD4ProteinaAutoencoder,
+            RFD4ProteinaTransformer,
             SanaControlNetModel,
             SanaTransformer2DModel,
             SanaVideoTransformer3DModel,
+            SanaWMLTX2RefinerTransformer3DModel,
+            SanaWMTransformer3DModel,
             SD3ControlNetModel,
             SD3MultiControlNetModel,
             SD3Transformer2DModel,
             SkyReelsV2Transformer3DModel,
             SparseControlNetModel,
+            StableAudio3DiTModel,
             StableAudioDiTModel,
             T2IAdapter,
             T5FilmDecoder,
+            TensorParallelConfig,
             Transformer2DModel,
             TransformerTemporalModel,
             UNet1DModel,
@@ -1218,6 +1310,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNetSpatioTemporalConditionModel,
             UVit2DModel,
             VQModel,
+            WanAnimate2Transformer3DModel,
             WanAnimateTransformer3DModel,
             WanTransformer3DModel,
             WanVACETransformer3DModel,
@@ -1268,6 +1361,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LDMSuperResolutionPipeline,
             PNDMPipeline,
             RePaintPipeline,
+            RFD4ProteinaPipeline,
             ScoreSdeVePipeline,
             StableDiffusionMixin,
         )
@@ -1310,8 +1404,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KDPM2DiscreteScheduler,
             LCMScheduler,
             LTXEulerAncestralRFScheduler,
+            MiniMaxH3Scheduler,
+            PiflowScheduler,
             PNDMScheduler,
             RePaintScheduler,
+            RFD4ProteinaScheduler,
             SASolverScheduler,
             SchedulerMixin,
             SCMScheduler,
@@ -1349,8 +1446,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .modular_pipelines import (
             AnimaAutoBlocks,
             AnimaModularPipeline,
+            Cosmos3DistilledBlocks,
+            Cosmos3DistilledModularPipeline,
             Cosmos3OmniBlocks,
             Cosmos3OmniModularPipeline,
+            EchoBlocks,
+            EchoModularPipeline,
             ErnieImageAutoBlocks,
             ErnieImageModularPipeline,
             Flux2AutoBlocks,
@@ -1359,6 +1460,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Flux2KleinBaseModularPipeline,
             Flux2KleinModularPipeline,
             Flux2ModularPipeline,
+            Flux3AutoBlocks,
+            Flux3DistilledAutoBlocks,
+            Flux3DistilledModularPipeline,
+            Flux3ModularPipeline,
             FluxAutoBlocks,
             FluxKontextAutoBlocks,
             FluxKontextModularPipeline,
@@ -1373,8 +1478,24 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideo15ModularPipeline,
             Ideogram4AutoBlocks,
             Ideogram4ModularPipeline,
+            Krea2AutoBlocks,
+            Krea2ModularPipeline,
+            Krea2TurboAutoBlocks,
+            Krea2TurboModularPipeline,
+            LTX2AutoBlocks,
+            LTX2ModularPipeline,
+            LTX25AutoBlocks,
+            LTX25ModularPipeline,
             LTXAutoBlocks,
             LTXModularPipeline,
+            MiniMaxH3Blocks,
+            MiniMaxH3ModularPipeline,
+            MiniMaxMusic3Blocks,
+            MiniMaxMusic3ModularPipeline,
+            QwenImage21AutoBlocks,
+            QwenImage21ModularPipeline,
+            QwenImage21TurboAutoBlocks,
+            QwenImage21TurboModularPipeline,
             QwenImageAutoBlocks,
             QwenImageEditAutoBlocks,
             QwenImageEditModularPipeline,
@@ -1391,6 +1512,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Wan22Image2VideoBlocks,
             Wan22Image2VideoModularPipeline,
             Wan22ModularPipeline,
+            Wan22VaceBlocks,
+            Wan22VaceModularPipeline,
+            WanAnimate2Blocks,
+            WanAnimate2DistilledBlocks,
+            WanAnimate2DistilledModularPipeline,
+            WanAnimate2ModularPipeline,
             WanBlocks,
             WanImage2VideoAutoBlocks,
             WanImage2VideoModularPipeline,
@@ -1423,6 +1550,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDM2UNet2DConditionModel,
             AudioLDMPipeline,
             AuraFlowPipeline,
+            BriaFibo2Pipeline,
             BriaFiboEditPipeline,
             BriaFiboPipeline,
             BriaPipeline,
@@ -1509,6 +1637,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky5I2VPipeline,
             Kandinsky5T2IPipeline,
             Kandinsky5T2VPipeline,
+            Kandinsky6SRPipeline,
+            Kandinsky6SRPipelineOutput,
+            Kandinsky6TI2VAPipeline,
+            Kandinsky6TI2VAPipelineOutput,
             KandinskyCombinedPipeline,
             KandinskyImg2ImgCombinedPipeline,
             KandinskyImg2ImgPipeline,
@@ -1539,11 +1671,15 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LongCatImageEditPipeline,
             LongCatImagePipeline,
             LTX2ConditionPipeline,
+            LTX2DFRPipeline,
+            LTX2DFRPipelineOutput,
+            LTX2DFRTemporalRefinePipeline,
             LTX2HDRPipeline,
             LTX2ImageToVideoPipeline,
             LTX2InContextPipeline,
             LTX2LatentUpsamplePipeline,
             LTX2Pipeline,
+            LTX2VideoDiffusionDecodePipeline,
             LTXConditionPipeline,
             LTXI2VLongMultiPromptPipeline,
             LTXImageToVideoPipeline,
@@ -1551,9 +1687,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTXPipeline,
             LucyEditPipeline,
             Lumina2Pipeline,
-            Lumina2Text2ImgPipeline,
             LuminaPipeline,
-            LuminaText2ImgPipeline,
             MarigoldDepthPipeline,
             MarigoldIntrinsicsPipeline,
             MarigoldNormalsPipeline,
@@ -1572,6 +1706,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PixArtSigmaPipeline,
             PRXPipeline,
             PRXPixelPipeline,
+            QwenImage21Pipeline,
             QwenImageControlNetInpaintPipeline,
             QwenImageControlNetPipeline,
             QwenImageEditInpaintPipeline,
@@ -1589,6 +1724,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaSprintImg2ImgPipeline,
             SanaSprintPipeline,
             SanaVideoPipeline,
+            SanaWMLTX2Refiner,
+            SanaWMPipeline,
+            SanaWMPipelineOutput,
             SemanticStableDiffusionPipeline,
             ShapEImg2ImgPipeline,
             ShapEPipeline,
@@ -1597,6 +1735,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SkyReelsV2DiffusionForcingVideoToVideoPipeline,
             SkyReelsV2ImageToVideoPipeline,
             SkyReelsV2Pipeline,
+            StableAudio3AudioToAudioPipeline,
+            StableAudio3DurationEmbedder,
+            StableAudio3InpaintPipeline,
+            StableAudio3Pipeline,
             StableAudioPipeline,
             StableAudioProjectionModel,
             StableCascadeCombinedPipeline,
@@ -1737,43 +1879,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_transformers_and_torch_and_note_seq_objects import *  # noqa F403
     else:
         from .pipelines import SpectrogramDiffusionPipeline
-
-    try:
-        if not is_flax_available():
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from .utils.dummy_flax_objects import *  # noqa F403
-    else:
-        from .models.controlnets.controlnet_flax import FlaxControlNetModel
-        from .models.modeling_flax_utils import FlaxModelMixin
-        from .models.unets.unet_2d_condition_flax import FlaxUNet2DConditionModel
-        from .models.vae_flax import FlaxAutoencoderKL
-        from .schedulers import (
-            FlaxDDIMScheduler,
-            FlaxDDPMScheduler,
-            FlaxDPMSolverMultistepScheduler,
-            FlaxEulerDiscreteScheduler,
-            FlaxKarrasVeScheduler,
-            FlaxLMSDiscreteScheduler,
-            FlaxPNDMScheduler,
-            FlaxSchedulerMixin,
-            FlaxScoreSdeVeScheduler,
-        )
-
-    try:
-        if not (is_flax_available() and is_transformers_available() and is_transformers_flax_compatible()):
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
-    else:
-        from .pipelines import (
-            FlaxDiffusionPipeline,
-            FlaxStableDiffusionControlNetPipeline,
-            FlaxStableDiffusionImg2ImgPipeline,
-            FlaxStableDiffusionInpaintPipeline,
-            FlaxStableDiffusionPipeline,
-            FlaxStableDiffusionXLPipeline,
-        )
 
     try:
         if not (is_note_seq_available()):

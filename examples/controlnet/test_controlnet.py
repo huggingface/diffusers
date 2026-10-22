@@ -30,12 +30,12 @@ stream_handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(stream_handler)
 
 
-class ControlNet(ExamplesTestsAccelerate):
+class TestControlNet(ExamplesTestsAccelerate):
     def test_controlnet_checkpointing_checkpoints_total_limit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
             examples/controlnet/train_controlnet.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
+            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-torch
             --dataset_name=hf-internal-testing/fill10
             --output_dir={tmpdir}
             --resolution=64
@@ -49,16 +49,13 @@ class ControlNet(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
 
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-4", "checkpoint-6"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-4", "checkpoint-6"}
 
     def test_controlnet_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
             examples/controlnet/train_controlnet.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
+            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-torch
             --dataset_name=hf-internal-testing/fill10
             --output_dir={tmpdir}
             --resolution=64
@@ -71,14 +68,15 @@ class ControlNet(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
 
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-4", "checkpoint-6"},
-            )
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {
+                "checkpoint-2",
+                "checkpoint-4",
+                "checkpoint-6",
+            }
 
             resume_run_args = f"""
             examples/controlnet/train_controlnet.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
+            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-torch
             --dataset_name=hf-internal-testing/fill10
             --output_dir={tmpdir}
             --resolution=64
@@ -93,10 +91,10 @@ class ControlNet(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + resume_run_args)
 
-            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-6", "checkpoint-8"})
+            assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-6", "checkpoint-8"}
 
 
-class ControlNetSDXL(ExamplesTestsAccelerate):
+class TestControlNetSDXL(ExamplesTestsAccelerate):
     def test_controlnet_sdxl(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -114,10 +112,10 @@ class ControlNetSDXL(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
 
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "diffusion_pytorch_model.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "diffusion_pytorch_model.safetensors"))
 
 
-class ControlNetSD3(ExamplesTestsAccelerate):
+class TestControlNetSD3(ExamplesTestsAccelerate):
     def test_controlnet_sd3(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -135,10 +133,10 @@ class ControlNetSD3(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
 
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "diffusion_pytorch_model.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "diffusion_pytorch_model.safetensors"))
 
 
-class ControlNetSD35(ExamplesTestsAccelerate):
+class TestControlNetSD35(ExamplesTestsAccelerate):
     def test_controlnet_sd3(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -156,10 +154,10 @@ class ControlNetSD35(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
 
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "diffusion_pytorch_model.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "diffusion_pytorch_model.safetensors"))
 
 
-class ControlNetflux(ExamplesTestsAccelerate):
+class TestControlNetflux(ExamplesTestsAccelerate):
     def test_controlnet_flux(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -181,4 +179,4 @@ class ControlNetflux(ExamplesTestsAccelerate):
 
             run_command(self._launch_args + test_args)
 
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "diffusion_pytorch_model.safetensors")))
+            assert os.path.isfile(os.path.join(tmpdir, "diffusion_pytorch_model.safetensors"))

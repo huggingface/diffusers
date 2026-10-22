@@ -483,7 +483,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         num_latent_frames_per_chunk: int = 9,
         keep_first_frame: bool = True,
         is_skip_first_chunk: bool = False,
-    ):
+    ) -> HeliosPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 
