@@ -175,7 +175,10 @@ def convert_transformer(checkpoint_path: str, dtype: torch.dtype) -> PAN2Transfo
     del original_state_dict
 
     transformer.load_state_dict(state_dict, strict=True, assign=True)
-    return transformer.to(dtype)
+    for name, param in transformer.named_parameters():
+        keep_in_fp32 = any(module in name.split(".") for module in transformer._keep_in_fp32_modules)
+        param.data = param.data.to(torch.float32 if keep_in_fp32 else dtype)
+    return transformer
 
 
 def write_modular_model_index(output_path: str, repo_id: str) -> None:

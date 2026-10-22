@@ -279,7 +279,9 @@ class PAN2TransformerBlock(nn.Module):
         temb: torch.Tensor,
         rotary_emb: tuple[torch.Tensor, torch.Tensor],
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
+        # The norms, their shift/scale and the gated residuals run in float32, like the modulation.
+        norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states.float(), emb=temb)
+        norm_hidden_states = norm_hidden_states.type_as(hidden_states)
         (
             context_shift_msa,
             context_scale_msa,
@@ -287,10 +289,10 @@ class PAN2TransformerBlock(nn.Module):
             context_shift_mlp,
             context_scale_mlp,
             context_gate_mlp,
-        ) = self.scale_shift_table_context.to(temb.dtype).chunk(6, dim=-1)
+        ) = self.scale_shift_table_context.chunk(6, dim=-1)
         norm_encoder_hidden_states = (
-            self.norm1_context(encoder_hidden_states) * (1 + context_scale_msa) + context_shift_msa
-        )
+            self.norm1_context(encoder_hidden_states.float()) * (1 + context_scale_msa) + context_shift_msa
+        ).type_as(encoder_hidden_states)
 
         attn_output, context_attn_output = self.attn(
             hidden_states=norm_hidden_states,
@@ -298,16 +300,24 @@ class PAN2TransformerBlock(nn.Module):
             rotary_emb=rotary_emb,
         )
 
-        hidden_states = hidden_states + attn_output * gate_msa.unsqueeze(1)
-        encoder_hidden_states = encoder_hidden_states + context_attn_output * context_gate_msa
-
-        norm_hidden_states = self.norm2(hidden_states) * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
-        norm_encoder_hidden_states = (
-            self.norm2_context(encoder_hidden_states) * (1 + context_scale_mlp) + context_shift_mlp
+        hidden_states = (hidden_states.float() + attn_output * gate_msa.unsqueeze(1)).type_as(hidden_states)
+        encoder_hidden_states = (encoder_hidden_states.float() + context_attn_output * context_gate_msa).type_as(
+            encoder_hidden_states
         )
 
-        hidden_states = hidden_states + self.ff(norm_hidden_states) * gate_mlp.unsqueeze(1)
-        encoder_hidden_states = encoder_hidden_states + self.ff_context(norm_encoder_hidden_states) * context_gate_mlp
+        norm_hidden_states = (
+            self.norm2(hidden_states.float()) * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+        ).type_as(hidden_states)
+        norm_encoder_hidden_states = (
+            self.norm2_context(encoder_hidden_states.float()) * (1 + context_scale_mlp) + context_shift_mlp
+        ).type_as(encoder_hidden_states)
+
+        ff_output = self.ff(norm_hidden_states)
+        context_ff_output = self.ff_context(norm_encoder_hidden_states)
+        hidden_states = (hidden_states.float() + ff_output * gate_mlp.unsqueeze(1)).type_as(hidden_states)
+        encoder_hidden_states = (encoder_hidden_states.float() + context_ff_output * context_gate_mlp).type_as(
+            encoder_hidden_states
+        )
 
         return hidden_states, encoder_hidden_states
 
@@ -353,6 +363,9 @@ class PAN2Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapte
     """
 
     _supports_gradient_checkpointing = True
+    # The timestep embedder and the modulation run in float32. `linear` is the modulation of every block
+    # (`norm1.linear`) and of the output norm (`norm_out.linear`).
+    _keep_in_fp32_modules = ["time_embedder", "scale_shift_table_context", "linear"]
     _skip_layerwise_casting_patterns = ["x_embedder", "context_embedder", "norm"]
     _no_split_modules = ["PAN2TransformerBlock", "PAN2TokenRefinerBlock"]
     _repeated_blocks = ["PAN2TransformerBlock", "PAN2TokenRefinerBlock"]
@@ -463,7 +476,7 @@ class PAN2Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapte
         hidden_states = self.x_embedder(hidden_states)
         hidden_states = hidden_states.flatten(2).transpose(1, 2).contiguous()
 
-        timesteps_proj = self.time_proj(timestep).to(hidden_states.dtype)
+        timesteps_proj = self.time_proj(timestep).to(self.time_embedder.linear_1.weight.dtype)
         temb = self.time_embedder(timesteps_proj)
 
         # 2. Text embedding and refinement
@@ -485,7 +498,7 @@ class PAN2Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapte
                 hidden_states, encoder_hidden_states = block(hidden_states, encoder_hidden_states, temb, rotary_emb)
 
         # 4. Output norm, projection and unpatchify
-        hidden_states = self.norm_out(hidden_states, temb)
+        hidden_states = self.norm_out(hidden_states.type_as(temb), temb).type_as(hidden_states)
         hidden_states = self.proj_out(hidden_states)
 
         hidden_states = hidden_states.reshape(
