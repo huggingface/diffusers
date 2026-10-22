@@ -3,7 +3,7 @@ import torch
 from ...configuration_utils import FrozenDict
 from ...models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer
 from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
-from ...utils import logging
+from ...utils import deprecate, logging
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
@@ -48,6 +48,16 @@ class Cosmos3VideoDecodeStep(ModularPipelineBlocks):
         self, components: Cosmos3OmniModularPipeline, state: PipelineState
     ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
+        if block_state.output_type == "latent":
+            deprecate(
+                "output_type='latent'",
+                "0.47.0",
+                "Passing `output_type='latent'` to the decode step is deprecated. To get the latents, use "
+                "`output='latents'` or run the pipeline without the decode step.",
+            )
+            block_state.videos = block_state.latents
+            self.set_block_state(state, block_state)
+            return components, state
         if block_state.output_type not in ("pil", "np", "pt"):
             raise ValueError(
                 f"`output_type` must be one of 'pil', 'np' or 'pt', got {block_state.output_type!r}. To get the "
@@ -246,8 +256,19 @@ class Cosmos3TransferStitchStep(ModularPipelineBlocks):
         self, components: Cosmos3OmniModularPipeline, state: PipelineState
     ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
-
         device = components._execution_device
+        if block_state.output_type == "latent":
+            deprecate(
+                "output_type='latent'",
+                "0.47.0",
+                "Passing `output_type='latent'` to the decode step is deprecated. To get the latents, use "
+                "`output='latents'` or run the pipeline without the decode step.",
+            )
+            block_state.videos = torch.cat(block_state.output_chunks, dim=2)[:, :, : block_state.total_frames]
+            block_state.sound = None
+            block_state.sampling_rate = None
+            self.set_block_state(state, block_state)
+            return components, state
         if block_state.output_type not in ("pil", "np", "pt"):
             raise ValueError(
                 f"`output_type` must be one of 'pil', 'np' or 'pt', got {block_state.output_type!r}. To get the "
