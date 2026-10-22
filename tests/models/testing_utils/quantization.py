@@ -2074,6 +2074,12 @@ class BFLTesterMixin(BFLConfigMixin, QuantizationTesterMixin):
 @is_torch_compile
 @require_accelerator
 @require_accelerate
+# Both schemes store E4M3 tensors (fp8r weights, nvfp4 block scales) and compute in bf16; Triton cannot compile either
+# below compute capability 8.9 (e.g. T4).
+@pytest.mark.skipif(
+    torch_device == "cuda" and torch.cuda.get_device_capability() < (8, 9),
+    reason="torch.compile of BFL models needs FP8 support in Triton (compute capability 8.9+)",
+)
 class BFLCompileTesterMixin(BFLConfigMixin, QuantizationCompileTesterMixin):
     """
     Mixin class for testing torch.compile with BFL (`fp8r` / `nvfp4`) quantized models.
@@ -2093,16 +2099,8 @@ class BFLCompileTesterMixin(BFLConfigMixin, QuantizationCompileTesterMixin):
         Use `pytest -m "not bfl"` to skip these tests
     """
 
-    @staticmethod
-    def _xfail_if_no_fp8_compile():
-        # Both schemes store E4M3 tensors (fp8r weights, nvfp4 block scales) and compute in bf16; Triton cannot
-        # compile either below compute capability 8.9 (e.g. T4).
-        if torch_device == "cuda" and torch.cuda.get_device_capability() < (8, 9):
-            pytest.xfail("torch.compile of BFL models needs FP8 support in Triton (compute capability 8.9+)")
-
     @pytest.mark.parametrize("config_name", list(BFLConfigMixin.BFL_CONFIGS), ids=list(BFLConfigMixin.BFL_CONFIGS))
     def test_bfl_torch_compile(self, config_name):
-        self._xfail_if_no_fp8_compile()
         if (
             config_name == "nvfp4"
             and torch_device == "cuda"
@@ -2117,5 +2115,4 @@ class BFLCompileTesterMixin(BFLConfigMixin, QuantizationCompileTesterMixin):
 
     @pytest.mark.parametrize("config_name", ["fp8r"], ids=["fp8r"])
     def test_bfl_torch_compile_with_group_offload(self, config_name):
-        self._xfail_if_no_fp8_compile()
         self._test_torch_compile_with_group_offload(BFLConfigMixin.BFL_CONFIGS[config_name])
