@@ -680,7 +680,10 @@ def _assign_components_to_devices(
 
         # If the GPU doesn't fit the current component offload to the CPU.
         if component_memory > curr_device_memory:
-            device_id_component_mapping["cpu"] = [component]
+            if "cpu" not in device_id_component_mapping:
+                device_id_component_mapping["cpu"] = [component]
+            else:
+                device_id_component_mapping["cpu"].append(component)
         else:
             if device_id not in device_id_component_mapping:
                 device_id_component_mapping[device_id] = [component]
