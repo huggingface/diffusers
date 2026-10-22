@@ -17,7 +17,7 @@ import PIL.Image
 import pytest
 import torch
 
-from diffusers.modular_pipelines import ModularPipeline, PAN2Blocks, PAN2ModularPipeline
+from diffusers.modular_pipelines import PAN2Blocks, PAN2ModularPipeline
 
 from ...testing_utils import torch_device
 from ..testing_utils import (
@@ -66,7 +66,8 @@ class PAN2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
     def get_pipeline(self, components_manager=None, dtype=torch.float32):
         pipe = super().get_pipeline(components_manager, dtype)
-        pipe.disable_safety_checker()
+        # Disable the checks in the config, so that a pipeline saved and reloaded by the tests keeps them off.
+        pipe.register_to_config(enable_safety_checker=False)
         return pipe
 
     def get_dummy_inputs(self, seed=0):
@@ -137,17 +138,7 @@ class TestPAN2ModularPipelineFast(PAN2ModularPipelineTesterConfig, ModularPipeli
 
 
 class TestPAN2ModularPipelineLoading(PAN2ModularPipelineTesterConfig, ModularLoadingTesterMixin):
-    def test_save_from_pretrained(self, tmp_path, base_pipe_output):
-        base_pipe = self.get_pipeline().to(torch_device)
-        base_pipe.save_pretrained(str(tmp_path))
-
-        pipe = ModularPipeline.from_pretrained(tmp_path)
-        pipe.load_components(dtype=torch.float32)
-        pipe.disable_safety_checker()
-        pipe.to(torch_device)
-
-        videos = pipe(**self.get_dummy_inputs(), output=self.output_name)
-        assert torch.abs(base_pipe_output - videos).max() < 1e-3
+    pass
 
 
 class TestPAN2ModularPipelineWorkflow(PAN2ModularPipelineTesterConfig, ModularWorkflowTesterMixin):
