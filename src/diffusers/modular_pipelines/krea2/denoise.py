@@ -91,7 +91,7 @@ class Krea2LoopDenoiser(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="latents", required=True, type_hint=torch.Tensor, description="Packed image latents."),
-            InputParam.template("num_inference_steps"),
+            InputParam.template("num_inference_steps", required=True, default=None),
             InputParam(
                 name="prompt_embeds",
                 required=True,
@@ -264,7 +264,7 @@ class Krea2DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="Denoising timesteps from set_timesteps.",
             ),
-            InputParam.template("num_inference_steps"),
+            InputParam.template("num_inference_steps", required=True, default=None),
             InputParam.template("attention_kwargs"),
         ]
 
@@ -296,7 +296,7 @@ class Krea2DenoiseStep(Krea2DenoiseLoopWrapper):
       Inputs:
           timesteps (`Tensor`):
               Denoising timesteps from set_timesteps.
-          num_inference_steps (`int`, *optional*, defaults to 50):
+          num_inference_steps (`int`):
               The number of denoising steps.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
@@ -346,7 +346,7 @@ class Krea2TurboDenoiseStep(Krea2DenoiseLoopWrapper):
       Inputs:
           timesteps (`Tensor`):
               Denoising timesteps from set_timesteps.
-          num_inference_steps (`int`, *optional*, defaults to 50):
+          num_inference_steps (`int`):
               The number of denoising steps.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.

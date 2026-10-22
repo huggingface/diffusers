@@ -1162,7 +1162,7 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
               mask for the negative text embeddings. Can be generated from text_encoder step.
           latents (`Tensor`):
               Pre-generated noisy latents for image generation.
-          num_inference_steps (`int`, *optional*, defaults to 50):
+          num_inference_steps (`int`):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.

@@ -500,7 +500,7 @@ class Cosmos3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     def loop_inputs(self) -> list[InputParam]:
         return [
             InputParam.template("timesteps", required=True),
-            InputParam.template("num_inference_steps"),
+            InputParam.template("num_inference_steps", required=True, default=None),
             InputParam(
                 name="num_warmup_steps", type_hint=int, required=True, description="Number of scheduler warmup steps."
             ),
@@ -962,7 +962,7 @@ class Cosmos3TransferDenoiseStep(Cosmos3DenoiseLoopWrapper):
       Inputs:
           timesteps (`Tensor`):
               Timesteps for the denoising process.
-          num_inference_steps (`int`, *optional*, defaults to 50):
+          num_inference_steps (`int`):
               The number of denoising steps.
           num_warmup_steps (`int`):
               Number of scheduler warmup steps.

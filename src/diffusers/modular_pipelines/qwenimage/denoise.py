@@ -476,7 +476,7 @@ class QwenImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The timesteps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
-            InputParam.template("num_inference_steps"),
+            InputParam.template("num_inference_steps", required=True, default=None),
         ]
 
     @torch.no_grad()
@@ -530,7 +530,7 @@ class QwenImageDenoiseStep(QwenImageDenoiseLoopWrapper):
       Inputs:
           timesteps (`Tensor`):
               The timesteps to use for the denoising process. Can be generated in set_timesteps step.
-          num_inference_steps (`int`, *optional*, defaults to 50):
+          num_inference_steps (`int`):
               The number of denoising steps.
           latents (`Tensor`):
               The initial latents to use for the denoising process. Can be generated in prepare_latent step.
@@ -588,7 +588,7 @@ class QwenImageInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
       Inputs:
           timesteps (`Tensor`):
               The timesteps to use for the denoising process. Can be generated in set_timesteps step.
-          num_inference_steps (`int`, *optional*, defaults to 50):
+          num_inference_steps (`int`):
               The number of denoising steps.
           latents (`Tensor`):
               The initial latents to use for the denoising process. Can be generated in prepare_latent step.
@@ -653,7 +653,7 @@ class QwenImageControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
       Inputs:
           timesteps (`Tensor`):
               The timesteps to use for the denoising process. Can be generated in set_timesteps step.
-          num_inference_steps (`int`, *optional*, defaults to 50):
+          num_inference_steps (`int`):
               The number of denoising steps.
           latents (`Tensor`):
               The initial latents to use for the denoising process. Can be generated in prepare_latent step.
@@ -719,7 +719,7 @@ class QwenImageInpaintControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
       Inputs:
           timesteps (`Tensor`):
               The timesteps to use for the denoising process. Can be generated in set_timesteps step.
-          num_inference_steps (`int`, *optional*, defaults to 50):
+          num_inference_steps (`int`):
               The number of denoising steps.
           latents (`Tensor`):
               The initial latents to use for the denoising process. Can be generated in prepare_latent step.
@@ -797,7 +797,7 @@ class QwenImageEditDenoiseStep(QwenImageDenoiseLoopWrapper):
       Inputs:
           timesteps (`Tensor`):
               The timesteps to use for the denoising process. Can be generated in set_timesteps step.
-          num_inference_steps (`int`, *optional*, defaults to 50):
+          num_inference_steps (`int`):
               The number of denoising steps.
           latents (`Tensor`):
               The initial latents to use for the denoising process. Can be generated in prepare_latent step.
@@ -856,7 +856,7 @@ class QwenImageEditInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
       Inputs:
           timesteps (`Tensor`):
               The timesteps to use for the denoising process. Can be generated in set_timesteps step.
-          num_inference_steps (`int`, *optional*, defaults to 50):
+          num_inference_steps (`int`):
               The number of denoising steps.
           latents (`Tensor`):
               The initial latents to use for the denoising process. Can be generated in prepare_latent step.
@@ -920,7 +920,7 @@ class QwenImageLayeredDenoiseStep(QwenImageDenoiseLoopWrapper):
       Inputs:
           timesteps (`Tensor`):
               The timesteps to use for the denoising process. Can be generated in set_timesteps step.
-          num_inference_steps (`int`, *optional*, defaults to 50):
+          num_inference_steps (`int`):
               The number of denoising steps.
           latents (`Tensor`):
               The initial latents to use for the denoising process. Can be generated in prepare_latent step.

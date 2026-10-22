@@ -1068,7 +1068,7 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Torch generator for deterministic generation.
           fps (`float`, *optional*, defaults to 24.0):
               Frame rate of the generated video.
-          num_inference_steps (`int`, *optional*, defaults to 50):
+          num_inference_steps (`int`):
               The number of denoising steps.
           mixed_precision_format (`str`, *optional*):
               None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
@@ -1280,7 +1280,7 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
               Number of frames the first chunk reuses from the input video.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          num_inference_steps (`int`, *optional*, defaults to 50):
+          num_inference_steps (`int`):
               The number of denoising steps.
           mixed_precision_format (`str`, *optional*):
               None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is

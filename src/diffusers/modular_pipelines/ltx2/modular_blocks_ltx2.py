@@ -997,7 +997,7 @@ class LTX2AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Torch generator for deterministic generation.
           reference_cross_mask (`Tensor`, *optional*):
               Per-reference-token noisy<->reference attention strengths of shape [1, num_ref_tokens].
-          num_inference_steps (`int`, *optional*, defaults to 30):
+          num_inference_steps (`int`):
               The number of denoising steps.
           timesteps (`Tensor`):
               Timesteps for the denoising process.
@@ -1864,7 +1864,7 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
               Custom sigmas for the denoising process.
           reference_cross_mask (`Tensor`, *optional*):
               Per-reference-token noisy<->reference attention strengths of shape [1, num_ref_tokens].
-          num_inference_steps (`int`, *optional*, defaults to 30):
+          num_inference_steps (`int`):
               The number of denoising steps.
           timesteps (`Tensor`):
               Timesteps for the denoising process.

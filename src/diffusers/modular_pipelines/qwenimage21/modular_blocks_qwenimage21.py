@@ -446,7 +446,7 @@ class QwenImage21AutoCoreDenoiseStep(AutoPipelineBlocks):
               Target side length used to derive the output size and to resize condition images.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          num_inference_steps (`int`, *optional*, defaults to 40):
+          num_inference_steps (`int`):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
@@ -530,7 +530,7 @@ class QwenImage21AutoBlocks(SequentialPipelineBlocks):
               Normalized latents of each condition image. Can be generated from vae_encoder step.
           latents (`Tensor`):
               Pre-generated noisy latents for image generation.
-          num_inference_steps (`int`, *optional*, defaults to 40):
+          num_inference_steps (`int`):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
