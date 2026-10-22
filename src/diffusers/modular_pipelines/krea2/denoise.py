@@ -296,7 +296,7 @@ class Krea2DenoiseStep(Krea2DenoiseLoopWrapper):
       Inputs:
           timesteps (`Tensor`):
               Denoising timesteps from set_timesteps.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
@@ -346,7 +346,7 @@ class Krea2TurboDenoiseStep(Krea2DenoiseLoopWrapper):
       Inputs:
           timesteps (`Tensor`):
               Denoising timesteps from set_timesteps.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.

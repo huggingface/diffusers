@@ -754,7 +754,7 @@ class QwenImageEditAutoBlocks(SequentialPipelineBlocks):
               The processed mask image
           latents (`Tensor`):
               Pre-generated noisy latents for image generation.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.

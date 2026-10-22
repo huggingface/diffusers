@@ -962,7 +962,7 @@ class Cosmos3TransferDenoiseStep(Cosmos3DenoiseLoopWrapper):
       Inputs:
           timesteps (`Tensor`):
               Timesteps for the denoising process.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           num_warmup_steps (`int`):
               Number of scheduler warmup steps.

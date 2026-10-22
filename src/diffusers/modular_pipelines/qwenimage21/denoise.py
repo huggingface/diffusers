@@ -450,7 +450,7 @@ class QwenImage21DenoiseStep(QwenImage21DenoiseLoopWrapper):
       Inputs:
           timesteps (`Tensor`):
               The timesteps to use for the denoising process. Can be generated in set_timesteps step.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           use_kv_cache (`bool`, *optional*, defaults to True):
               Cache the text and condition-image keys and values after the first step. Valid because `causal_condition`
@@ -515,7 +515,7 @@ class QwenImage21ImageConditionedDenoiseStep(QwenImage21DenoiseLoopWrapper):
       Inputs:
           timesteps (`Tensor`):
               The timesteps to use for the denoising process. Can be generated in set_timesteps step.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           use_kv_cache (`bool`, *optional*, defaults to True):
               Cache the text and condition-image keys and values after the first step. Valid because `causal_condition`
@@ -581,7 +581,7 @@ class QwenImage21TurboDenoiseStep(QwenImage21DenoiseLoopWrapper):
       Inputs:
           timesteps (`Tensor`):
               The timesteps to use for the denoising process. Can be generated in set_timesteps step.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           use_kv_cache (`bool`, *optional*, defaults to True):
               Cache the text and condition-image keys and values after the first step. Valid because `causal_condition`
@@ -642,7 +642,7 @@ class QwenImage21TurboImageConditionedDenoiseStep(QwenImage21DenoiseLoopWrapper)
       Inputs:
           timesteps (`Tensor`):
               The timesteps to use for the denoising process. Can be generated in set_timesteps step.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           use_kv_cache (`bool`, *optional*, defaults to True):
               Cache the text and condition-image keys and values after the first step. Valid because `causal_condition`

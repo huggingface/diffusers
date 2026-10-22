@@ -293,7 +293,7 @@ class LTXAutoCoreDenoiseStep(AutoPipelineBlocks):
               negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
           negative_prompt_attention_mask (`Tensor`):
               mask for the negative text embeddings. Can be generated from text_encoder step.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           timesteps (`Tensor`):
               Timesteps for the denoising process.
@@ -366,7 +366,7 @@ class LTXAutoBlocks(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           timesteps (`Tensor`):
               Timesteps for the denoising process.
