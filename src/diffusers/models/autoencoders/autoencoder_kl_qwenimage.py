@@ -1028,6 +1028,7 @@ class AutoencoderKLQwenImage(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
             result_rows.append(torch.cat(result_row, dim=-1))
 
         dec = torch.cat(result_rows, dim=3)[:, :, :, :sample_height, :sample_width]
+        dec = torch.clamp(dec, min=-1.0, max=1.0)
 
         if not return_dict:
             return (dec,)
