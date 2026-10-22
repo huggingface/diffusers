@@ -325,6 +325,8 @@
         title: AnyFlowTransformer3DModel
       - local: api/models/aura_flow_transformer2d
         title: AuraFlowTransformer2DModel
+      - local: api/models/transformer_bria_fibo2
+        title: BriaFibo2Transformer2DModel
       - local: api/models/transformer_bria_fibo
         title: BriaFiboTransformer2DModel
       - local: api/models/bria_transformer
@@ -413,6 +415,10 @@
         title: QwenImage21Transformer2DModel
       - local: api/models/qwenimage_transformer2d
         title: QwenImageTransformer2DModel
+      - local: api/models/rfd4_proteina_autoencoder
+        title: RFD4ProteinaAutoencoder
+      - local: api/models/rfd4_proteina_transformer
+        title: RFD4ProteinaTransformer
       - local: api/models/sana_transformer2d
         title: SanaTransformer2DModel
       - local: api/models/sana_video_transformer3d
@@ -551,6 +557,8 @@
         title: Bria 3.2
       - local: api/pipelines/bria_fibo
         title: Bria Fibo
+      - local: api/pipelines/bria_fibo2
+        title: Bria Fibo 2.0
       - local: api/pipelines/bria_fibo_edit
         title: Bria Fibo Edit
       - local: api/pipelines/chroma
@@ -711,6 +719,10 @@
         title: Z-Image
       title: Image
     - sections:
+      - local: api/pipelines/rfd4_proteina
+        title: RFD4-Proteína
+      title: Protein
+    - sections:
       - local: api/pipelines/diffusion_gemma
         title: DiffusionGemma
       - local: api/pipelines/llada2
@@ -840,6 +852,8 @@
       title: PNDMScheduler
     - local: api/schedulers/repaint
       title: RePaintScheduler
+    - local: api/schedulers/rfd4_proteina
+      title: RFD4ProteinaScheduler
     - local: api/schedulers/score_sde_ve
       title: ScoreSdeVeScheduler
     - local: api/schedulers/tcd

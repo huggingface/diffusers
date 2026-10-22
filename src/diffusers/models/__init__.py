@@ -59,6 +59,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_mmaudio"] = ["MMAudioVAE"]
     _import_structure["autoencoders.autoencoder_oobleck"] = ["AutoencoderOobleck"]
     _import_structure["autoencoders.autoencoder_rae"] = ["AutoencoderRAE"]
+    _import_structure["autoencoders.autoencoder_rfd4_proteina"] = ["RFD4ProteinaAutoencoder"]
     _import_structure["autoencoders.autoencoder_same"] = ["AutoencoderSAME"]
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
     _import_structure["autoencoders.autoencoder_vidtok"] = ["AutoencoderVidTok"]
@@ -114,6 +115,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_anyflow_far"] = ["AnyFlowFARTransformer3DModel"]
     _import_structure["transformers.transformer_bria"] = ["BriaTransformer2DModel"]
     _import_structure["transformers.transformer_bria_fibo"] = ["BriaFiboTransformer2DModel"]
+    _import_structure["transformers.transformer_bria_fibo2"] = ["BriaFibo2Transformer2DModel"]
     _import_structure["transformers.transformer_chroma"] = ["ChromaTransformer2DModel"]
     _import_structure["transformers.transformer_chronoedit"] = ["ChronoEditTransformer3DModel"]
     _import_structure["transformers.transformer_cogview3plus"] = ["CogView3PlusTransformer2DModel"]
@@ -154,6 +156,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_prx"] = ["PRXTransformer2DModel"]
     _import_structure["transformers.transformer_qwenimage"] = ["QwenImageTransformer2DModel"]
     _import_structure["transformers.transformer_qwenimage21"] = ["QwenImage21Transformer2DModel"]
+    _import_structure["transformers.transformer_rfd4_proteina"] = ["RFD4ProteinaTransformer"]
     _import_structure["transformers.transformer_sana_video"] = ["SanaVideoTransformer3DModel"]
     _import_structure["transformers.transformer_sana_wm"] = ["SanaWMTransformer3DModel"]
     _import_structure["transformers.transformer_sana_wm_refiner"] = ["SanaWMLTX2RefinerTransformer3DModel"]
@@ -224,6 +227,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MiniMaxMusic3Vocoder,
             MMAudioVAE,
             MMAudioVocoder,
+            RFD4ProteinaAutoencoder,
             VQModel,
         )
         from .cache_utils import CacheMixin
@@ -257,6 +261,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AnyFlowFARTransformer3DModel,
             AnyFlowTransformer3DModel,
             AuraFlowTransformer2DModel,
+            BriaFibo2Transformer2DModel,
             BriaFiboTransformer2DModel,
             BriaTransformer2DModel,
             ChromaTransformer2DModel,
@@ -310,6 +315,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PRXTransformer2DModel,
             QwenImage21Transformer2DModel,
             QwenImageTransformer2DModel,
+            RFD4ProteinaTransformer,
             SanaTransformer2DModel,
             SanaVideoTransformer3DModel,
             SanaWMLTX2RefinerTransformer3DModel,
