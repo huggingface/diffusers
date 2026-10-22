@@ -29,6 +29,7 @@ jobs:
   run_fast_tests:
     permissions:
       contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -58,7 +59,7 @@ jobs:
         shell: bash
 
     env:
-      HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+      HF_OIDC_RESOURCE: Diffusers-CI-Bot
 
     steps:
     - name: Checkout diffusers
