@@ -166,8 +166,34 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 27663.6895) < 1e-2
-        assert abs(result_mean.item() - 36.0204) < 1e-3
+        assert abs(result_sum.item() - 57074.7617) < 1e-2
+        assert abs(result_mean.item() - 74.3161) < 1e-3
+
+    def test_step_order_with_begin_index(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        scheduler.set_timesteps(self.num_inference_steps)
+        scheduler.set_begin_index(5)
+
+        sample = self.dummy_sample_deter
+        model_output = self.dummy_noise_deter
+
+        # On the first step starting at begin_index, only 1 derivative is available
+        # so the update must match first-order Euler step (order=1)
+        sigma_curr = scheduler.sigmas[5]
+        sigma_next = scheduler.sigmas[6]
+        derivative = (sample - (sample - sigma_curr * model_output)) / sigma_curr
+        expected_prev = sample + (sigma_next - sigma_curr) * derivative
+
+        output = scheduler.step(model_output, scheduler.timesteps[5], sample)
+        assert torch.allclose(output.prev_sample, expected_prev, atol=1e-5)
+        assert len(scheduler.derivatives) == 1
+
+        # Second step accumulates a second derivative
+        scheduler.step(model_output, scheduler.timesteps[6], output.prev_sample)
+        assert len(scheduler.derivatives) == 2
 
     def test_beta_sigmas(self):
         self.check_over_configs(use_beta_sigmas=True)
