@@ -43,6 +43,7 @@ if is_torch_available():
     from .transformer_hunyuan_video15 import HunyuanVideo15Transformer3DModel
     from .transformer_hunyuan_video_framepack import HunyuanVideoFramepackTransformer3DModel
     from .transformer_hunyuanimage import HunyuanImageTransformer2DModel
+    from .transformer_hy_nomas import HyNomasTransformer3DModel
     from .transformer_ideogram4 import Ideogram4Transformer2DModel
     from .transformer_joyimage import JoyImageEditTransformer3DModel
     from .transformer_joyimage_edit_plus import JoyImageEditPlusTransformer3DModel

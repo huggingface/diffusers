@@ -41,6 +41,7 @@ from ..utils import (
     is_flash_attn_version,
     is_kernels_available,
     is_kernels_version,
+    is_magi_attention_available,
     is_sageattention_available,
     is_sageattention_version,
     is_torch_npu_available,
@@ -69,6 +70,7 @@ logger = get_logger(__name__)  # pylint: disable=invalid-name
 _CAN_USE_FLASH_ATTN = is_flash_attn_available() and is_flash_attn_version(">=", _REQUIRED_FLASH_VERSION)
 _CAN_USE_FLASH_ATTN_3 = is_flash_attn_3_available()
 _CAN_USE_SAGE_ATTN = is_sageattention_available() and is_sageattention_version(">=", _REQUIRED_SAGE_VERSION)
+_CAN_USE_MAGI_ATTN = is_magi_attention_available()
 _CAN_USE_FLEX_ATTN = is_torch_version(">=", _REQUIRED_FLEX_VERSION)
 _CAN_USE_NPU_ATTN = is_torch_npu_available()
 _CAN_USE_XLA_ATTN = is_torch_xla_available() and is_torch_xla_version(">=", _REQUIRED_XLA_VERSION)
@@ -231,6 +233,9 @@ class AttentionBackendName(str, Enum):
 
     # `aiter` (via the `kernels-community/aiter-flash-attn-ck` Hub kernel)
     AITER_FA2_HUB = "aiter_fa2_hub"
+
+    # `magi_attention` rectangle-range attention
+    MAGI = "magi"
 
     # PyTorch native
     FLEX = "flex"
@@ -581,6 +586,12 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
         if not _CAN_USE_SAGE_ATTN:
             raise RuntimeError(
                 f"Sage Attention backend '{backend.value}' is not usable because of missing package or the version is too old. Please install `sageattention>={_REQUIRED_SAGE_VERSION}`."
+            )
+
+    elif backend == AttentionBackendName.MAGI:
+        if not _CAN_USE_MAGI_ATTN:
+            raise RuntimeError(
+                "Magi Attention backend requires the optional `magi_attention` package. Please install it with `pip install magi_attention`."
             )
 
     elif backend == AttentionBackendName.FLEX:
@@ -3220,6 +3231,45 @@ def _flash_varlen_attention_hub(
 
 
 @_AttentionBackendRegistry.register(
+    AttentionBackendName.MAGI,
+    constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
+)
+def _magi_attention(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    query_ranges: torch.Tensor,
+    key_ranges: torch.Tensor,
+    attn_type_map: torch.Tensor | None = None,
+    attn_mask: torch.Tensor | None = None,
+    scale: float | None = None,
+    is_causal: bool = False,
+    deterministic: bool = False,
+) -> torch.Tensor:
+    if attn_mask is not None or is_causal:
+        raise ValueError("Magi attention uses explicit query/key ranges and attention types.")
+    _check_attention_backend_requirements(AttentionBackendName.MAGI)
+    try:
+        from magi_attention.functional import flex_flash_attn_func
+    except ImportError as error:
+        raise ImportError("The magi attention backend requires the optional magi_attention package.") from error
+    outputs = []
+    for sample_query, sample_key, sample_value in zip(query, key, value):
+        output, _ = flex_flash_attn_func(
+            q=sample_query,
+            k=sample_key,
+            v=sample_value,
+            q_ranges=query_ranges,
+            k_ranges=key_ranges,
+            attn_type_map=attn_type_map,
+            softmax_scale=scale,
+            deterministic=deterministic,
+        )
+        outputs.append(output)
+    return torch.stack(outputs)
+
+
+@_AttentionBackendRegistry.register(
     AttentionBackendName.FLASH_VARLEN,
     constraints=[_check_device, _check_qkv_dtype_bf16_or_fp16, _check_shape],
 )
@@ -3233,6 +3283,7 @@ def _flash_varlen_attention(
     is_causal: bool = False,
     window_size: tuple[int, int] = (-1, -1),
     return_lse: bool = False,
+    deterministic: bool = False,
     _parallel_config: "ParallelConfig" | None = None,
 ) -> torch.Tensor:
     batch_size, seq_len_q, _, _ = query.shape
@@ -3270,6 +3321,7 @@ def _flash_varlen_attention(
         causal=is_causal,
         window_size=window_size,
         return_attn_probs=return_lse,
+        deterministic=deterministic,
     )
     out = out.unflatten(0, (batch_size, -1))
 
@@ -3523,6 +3575,7 @@ def _flash_varlen_attention_3(
     scale: float | None = None,
     is_causal: bool = False,
     return_lse: bool = False,
+    deterministic: bool = False,
     _parallel_config: "ParallelConfig" | None = None,
 ) -> torch.Tensor:
     batch_size, seq_len_q, _, _ = query.shape
@@ -3558,6 +3611,7 @@ def _flash_varlen_attention_3(
         softmax_scale=scale,
         causal=is_causal,
         return_attn_probs=return_lse,
+        deterministic=deterministic,
     )
     if isinstance(result, tuple):
         out, lse, *_ = result
