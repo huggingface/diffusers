@@ -96,7 +96,7 @@ class StableAudioNumberConditioner(nn.Module):
     def forward(
         self,
         floats: torch.Tensor,
-    ):
+    ) -> torch.Tensor:
         floats = floats.clamp(self.min_value, self.max_value)
 
         normalized_floats = (floats - self.min_value) / (self.max_value - self.min_value)
@@ -140,7 +140,20 @@ class StableAudioProjectionModel(ModelMixin, ConfigMixin):
         text_hidden_states: torch.Tensor | None = None,
         start_seconds: torch.Tensor | None = None,
         end_seconds: torch.Tensor | None = None,
-    ):
+    ) -> StableAudioProjectionModelOutput:
+        r"""
+        Args:
+            text_hidden_states (`torch.Tensor` of shape `(batch_size, sequence_length, text_encoder_dim)`, *optional*):
+                Text embeddings from the text encoder.
+            start_seconds (`torch.Tensor` of shape `(batch_size,)`, *optional*):
+                Audio start times in seconds.
+            end_seconds (`torch.Tensor` of shape `(batch_size,)`, *optional*):
+                Audio end times in seconds.
+
+        Returns:
+            [`StableAudioProjectionModelOutput`]: The projected text, start-time, and end-time hidden states. Inputs
+            passed as `None` are returned as `None`.
+        """
         text_hidden_states = (
             text_hidden_states if text_hidden_states is None else self.text_projection(text_hidden_states)
         )

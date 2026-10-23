@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import torch
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
@@ -25,5 +26,13 @@ class CLIPImageProjection(ModelMixin, ConfigMixin):
         self.hidden_size = hidden_size
         self.project = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        r"""
+        Args:
+            x (`torch.Tensor` of shape `(..., hidden_size)`):
+                CLIP image embeddings to project.
+
+        Returns:
+            `torch.Tensor` of shape `(..., hidden_size)`: The projected embeddings.
+        """
         return self.project(x)

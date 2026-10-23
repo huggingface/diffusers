@@ -183,6 +183,16 @@ class AceStepLyricEncoder(ModelMixin, ConfigMixin):
         inputs_embeds: torch.FloatTensor,
         attention_mask: torch.Tensor,
     ) -> torch.Tensor:
+        r"""
+        Args:
+            inputs_embeds (`torch.FloatTensor` of shape `(batch_size, sequence_length, text_hidden_dim)`):
+                Lyric embeddings from the text encoder.
+            attention_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`):
+                Mask with 1 for valid tokens and 0 for padding.
+
+        Returns:
+            `torch.Tensor` of shape `(batch_size, sequence_length, hidden_size)`: The encoded lyric hidden states.
+        """
         inputs_embeds = self.embed_tokens(inputs_embeds)
 
         seq_len = inputs_embeds.shape[1]
@@ -322,6 +332,18 @@ class AceStepTimbreEncoder(ModelMixin, ConfigMixin):
         refer_audio_acoustic_hidden_states_packed: torch.FloatTensor,
         refer_audio_order_mask: torch.LongTensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        r"""
+        Args:
+            refer_audio_acoustic_hidden_states_packed (`torch.FloatTensor` of shape `(num_references, sequence_length, timbre_hidden_dim)`):
+                VAE latents of the reference audio clips, packed across the batch.
+            refer_audio_order_mask (`torch.LongTensor` of shape `(num_references,)`):
+                Index of the batch item each reference clip belongs to.
+
+        Returns:
+            `Tuple[torch.Tensor, torch.Tensor]`: The timbre embeddings of shape `(batch_size, max_references,
+            hidden_size)` and a mask of shape `(batch_size, max_references)` with 1 for valid embeddings and 0 for
+            padding.
+        """
         inputs_embeds = self.embed_tokens(refer_audio_acoustic_hidden_states_packed)
 
         seq_len = inputs_embeds.shape[1]
@@ -457,6 +479,26 @@ class AceStepConditionEncoder(ModelMixin, ConfigMixin):
         refer_audio_acoustic_hidden_states_packed: torch.FloatTensor,
         refer_audio_order_mask: torch.LongTensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        r"""
+        Args:
+            text_hidden_states (`torch.FloatTensor` of shape `(batch_size, text_length, text_hidden_dim)`):
+                Prompt embeddings from the text encoder.
+            text_attention_mask (`torch.Tensor` of shape `(batch_size, text_length)`):
+                Mask with 1 for valid prompt tokens and 0 for padding.
+            lyric_hidden_states (`torch.FloatTensor` of shape `(batch_size, lyric_length, text_hidden_dim)`):
+                Lyric embeddings from the text encoder.
+            lyric_attention_mask (`torch.Tensor` of shape `(batch_size, lyric_length)`):
+                Mask with 1 for valid lyric tokens and 0 for padding.
+            refer_audio_acoustic_hidden_states_packed (`torch.FloatTensor` of shape `(num_references, sequence_length, timbre_hidden_dim)`):
+                VAE latents of the reference audio clips, packed across the batch.
+            refer_audio_order_mask (`torch.LongTensor` of shape `(num_references,)`):
+                Index of the batch item each reference clip belongs to.
+
+        Returns:
+            `Tuple[torch.Tensor, torch.Tensor]`: The packed lyric, timbre, and prompt hidden states of shape
+            `(batch_size, sequence_length, hidden_size)`, with valid tokens first, and their attention mask of shape
+            `(batch_size, sequence_length)`.
+        """
         text_hidden_states = self.text_projector(text_hidden_states)
 
         lyric_hidden_states = self.lyric_encoder(

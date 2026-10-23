@@ -41,6 +41,15 @@ class ReduxImageEncoder(ModelMixin, ConfigMixin):
         self.redux_down = nn.Linear(txt_in_features * 3, txt_in_features)
 
     def forward(self, x: torch.Tensor) -> ReduxImageEncoderOutput:
+        r"""
+        Args:
+            x (`torch.Tensor` of shape `(batch_size, sequence_length, redux_dim)`):
+                Image features from the image encoder.
+
+        Returns:
+            [`ReduxImageEncoderOutput`]: The image embeddings of shape `(batch_size, sequence_length,
+            txt_in_features)`.
+        """
         projected_x = self.redux_down(nn.functional.silu(self.redux_up(x)))
 
         return ReduxImageEncoderOutput(image_embeds=projected_x)

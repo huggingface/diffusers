@@ -53,7 +53,7 @@ class PixelShuffleND(torch.nn.Module):
         if dims not in [1, 2, 3]:
             raise ValueError("dims must be 1, 2, or 3")
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.dims == 3:
             # spatiotemporal: b (c p1 p2 p3) d h w -> b c (d p1) (h p2) (w p3)
             return (
@@ -144,6 +144,14 @@ class LTXLatentUpsamplerModel(ModelMixin, ConfigMixin):
         self.final_conv = ConvNd(mid_channels, in_channels, kernel_size=3, padding=1)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        r"""
+        Args:
+            hidden_states (`torch.Tensor` of shape `(batch_size, in_channels, num_frames, height, width)`):
+                VAE latents to upsample.
+
+        Returns:
+            `torch.Tensor`: The upsampled latents with `in_channels` channels.
+        """
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
 
         if self.dims == 2:

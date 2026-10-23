@@ -421,6 +421,10 @@ class LTX2TextConnectors(ModelMixin, PeftAdapterMixin, ConfigMixin):
             scale_factor (`int`, *optional*, defaults to `8`):
                 Scale factor for masked mean/range normalization. Only used if `per_modality_projections` is `False`
                 (LTX-2.0 models).
+
+        Returns:
+            `tuple[torch.Tensor, torch.Tensor, torch.Tensor]`: The video text embeddings, the audio text embeddings,
+            and a binary attention mask of shape `(batch_size, seq_len)` for the video text embeddings.
         """
         if text_encoder_hidden_states.ndim == 3:
             # Ensure shape is [batch_size, seq_len, caption_channels, text_proj_in_factor]
