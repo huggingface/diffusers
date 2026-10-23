@@ -337,9 +337,9 @@ ComponentSpec(
 
 10. **Serving a checkpoint variant through a config flag in a shared block.** `ConfigSpec(name="is_distilled")` plus `if components.config.is_distilled:` bundles two checkpoints' behavior into one blockset — and it can't change the input surface at all (the distilled variant would still accept `negative_prompt`). Suggest a separate blockset for the variant instead (see Key pattern: Checkpoint variants).
 
-10. **Raw `torch.randn(device=...)` for noise.** Use `randn_tensor(...)` from `utils/torch_utils`: it draws on the generator's device and moves the result, so CPU generators (what the test mixins pass) work, and the CUDA-generator path is bit-identical to `torch.randn`.
+11. **Raw `torch.randn(device=...)` for noise.** Use `randn_tensor(...)` from `utils/torch_utils`: it draws on the generator's device and moves the result, so CPU generators (what the test mixins pass) work, and the CUDA-generator path is bit-identical to `torch.randn`.
 
-11. **Helpers taking `components`.** Prefer explicit args, for example, `get_xx_prompt_embeds(text_encoder, tokenizer, prompt)` instead of `get_xx_prompt_embeds(components, prompt)`. Helpers and block methods should take only what they use so dependencies are visible and they can run without an assembled pipeline. Leave the full `components` object to `__call__`, which unpacks what its helpers need. See `get_qwen_prompt_embeds` in `qwenimage/encoders.py`.
+12. **Helpers taking `components`.** Prefer explicit args, for example, `get_xx_prompt_embeds(text_encoder, tokenizer, prompt)` instead of `get_xx_prompt_embeds(components, prompt)`. Helpers and block methods should take only what they use so dependencies are visible and they can run without an assembled pipeline. Leave the full `components` object to `__call__`, which unpacks what its helpers need. See `get_qwen_prompt_embeds` in `qwenimage/encoders.py`.
 
 ## Conversion checklist
 
