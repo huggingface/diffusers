@@ -31,6 +31,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
     _import_structure["autoencoders.autoencoder_cosmos3_audio"] = ["Cosmos3AVAEAudioTokenizer"]
     _import_structure["autoencoders.autoencoder_dc"] = ["AutoencoderDC"]
+    _import_structure["autoencoders.autoencoder_edenlive"] = ["EdenLiveLightTAEDecoder"]
     _import_structure["autoencoders.autoencoder_kandinsky6_sr"] = ["Kandinsky6SRVAE"]
     _import_structure["autoencoders.autoencoder_kl"] = ["AutoencoderKL"]
     _import_structure["autoencoders.autoencoder_kl_allegro"] = ["AutoencoderKLAllegro"]
@@ -123,6 +124,10 @@ if is_torch_available():
     _import_structure["transformers.transformer_cosmos"] = ["CosmosTransformer3DModel"]
     _import_structure["transformers.transformer_cosmos3"] = ["Cosmos3OmniTransformer"]
     _import_structure["transformers.transformer_easyanimate"] = ["EasyAnimateTransformer3DModel"]
+    _import_structure["transformers.transformer_edenlive"] = [
+        "EdenLiveCausalState",
+        "EdenLiveTransformer3DModel",
+    ]
     _import_structure["transformers.transformer_ernie_image"] = ["ErnieImageTransformer2DModel"]
     _import_structure["transformers.transformer_flux"] = ["FluxTransformer2DModel"]
     _import_structure["transformers.transformer_flux2"] = ["Flux2Transformer2DModel"]
@@ -221,6 +226,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderVidTok,
             ConsistencyDecoderVAE,
             Cosmos3AVAEAudioTokenizer,
+            EdenLiveLightTAEDecoder,
             Kandinsky6SRVAE,
             LongCatAudioDiTVae,
             LTX2VideoDiffusionDecoderModel,
@@ -276,6 +282,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             DreamLiteTransformer2DModel,
             DualTransformer2DModel,
             EasyAnimateTransformer3DModel,
+            EdenLiveCausalState,
+            EdenLiveTransformer3DModel,
             ErnieImageTransformer2DModel,
             Flux2Transformer2DModel,
             Flux3Transformer2DModel,

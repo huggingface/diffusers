@@ -55,6 +55,7 @@ else:
     _import_structure["scheduling_dpmsolver_multistep"] = ["DPMSolverMultistepScheduler"]
     _import_structure["scheduling_dpmsolver_multistep_inverse"] = ["DPMSolverMultistepInverseScheduler"]
     _import_structure["scheduling_dpmsolver_singlestep"] = ["DPMSolverSinglestepScheduler"]
+    _import_structure["scheduling_edenlive"] = ["EdenLiveFlowMatchEulerDiscreteScheduler"]
     _import_structure["scheduling_edm_dpmsolver_multistep"] = ["EDMDPMSolverMultistepScheduler"]
     _import_structure["scheduling_edm_euler"] = ["EDMEulerScheduler"]
     _import_structure["scheduling_entropy_bound"] = ["EntropyBoundScheduler", "EntropyBoundSchedulerOutput"]
@@ -141,6 +142,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler
         from .scheduling_dpmsolver_multistep_inverse import DPMSolverMultistepInverseScheduler
         from .scheduling_dpmsolver_singlestep import DPMSolverSinglestepScheduler
+        from .scheduling_edenlive import EdenLiveFlowMatchEulerDiscreteScheduler
         from .scheduling_edm_dpmsolver_multistep import EDMDPMSolverMultistepScheduler
         from .scheduling_edm_euler import EDMEulerScheduler
         from .scheduling_entropy_bound import EntropyBoundScheduler, EntropyBoundSchedulerOutput

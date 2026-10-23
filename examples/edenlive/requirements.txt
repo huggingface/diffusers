@@ -1,0 +1,9 @@
+torch
+torchvision
+transformers>=4.56.0
+accelerate
+av
+imageio
+imageio-ffmpeg
+sentencepiece
+ftfy
