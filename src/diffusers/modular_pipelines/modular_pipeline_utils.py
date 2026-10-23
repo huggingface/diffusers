@@ -575,10 +575,10 @@ class InputParam:
         if self.required and self.default is not None:
             logger.warning(
                 f"InputParam '{self.name}' is required and declares a default ({self.default!r}), which cannot both "
-                f"hold: a required input is never missing, so its default is unreachable. Dropping the default. Drop "
-                f"`required=True` instead if {self.default!r} is meant to be the real fallback."
+                f"hold: a required input is never missing, so its default is unreachable. Keeping the default and "
+                f"treating the input as optional. Pass `default=None` explicitly if '{self.name}' is meant to be required."
             )
-            self.default = None
+            self.required = False
 
     def __repr__(self):
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
