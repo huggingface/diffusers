@@ -102,6 +102,8 @@ _deps = [
     "hf-doc-builder>=0.3.0",
     "huggingface-hub>=1.32.0,<3.0",
     "requests-mock==1.10.0",
+    "imageio",
+    "imageio-ffmpeg",
     "importlib_metadata",
     "invisible-watermark>=0.2.0",
     "isort>=5.5.4",
@@ -245,6 +247,11 @@ extras["test"] = deps_list(
     "phonemizer",
 )
 extras["torch"] = deps_list("torch", "accelerate")
+extras["hy-nomas"] = [
+    "torch>=2.10.0",
+    "transformers>=5.20.2",
+    "accelerate>=1.13.0",
+] + deps_list("imageio", "imageio-ffmpeg")
 
 extras["bitsandbytes"] = deps_list("bitsandbytes", "accelerate")
 extras["gguf"] = deps_list("gguf", "accelerate")

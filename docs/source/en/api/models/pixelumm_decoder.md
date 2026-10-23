@@ -19,9 +19,7 @@ It does not encode videos into latents.
 import torch
 from diffusers import PixelUMMDecoder
 
-decoder = PixelUMMDecoder.from_pretrained(
-    "/path/to/hy-nomas-diffusers", subfolder="decoder", torch_dtype=torch.bfloat16
-)
+decoder = PixelUMMDecoder.from_pretrained("tencent/Hy-Nomas", subfolder="decoder", torch_dtype=torch.bfloat16)
 ```
 
 The decoder supports local spatial attention, overlapping temporal windows, optional spatial tiling, and explicit

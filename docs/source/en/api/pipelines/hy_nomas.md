@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License. -->
 # Hy-Nomas
 
 Hy-Nomas generates a world one video segment at a time, conditioned on text and optional camera extrinsics. Its
-distilled checkpoint uses eight flow-matching Euler steps, a Qwen2.5-VL text encoder, and a PixelUMM diffusion decoder.
+distilled checkpoint uses flow-matching Euler sampling, a Qwen2.5-VL text encoder, and a PixelUMM diffusion decoder.
 
 This implementation supports the released double-stream transformer, action-aware text visibility, camera attention,
 and continuation through an explicit generation state. Text prompts can be plain strings or the segment JSON produced
@@ -23,12 +23,11 @@ by the model's prompt preprocessing. Action timestamps in JSON must already be r
 Install PyTorch 2.10.0 with CUDA support for your system, then run the following command from the Diffusers checkout:
 
 ```bash
-python -m pip install -e . "transformers==5.20.2" "accelerate==1.13.0" imageio imageio-ffmpeg
+pip install -e ".[hy-nomas]"
 ```
 
-The text encoder requires `Qwen2_5_VLTextModel`, provided by the Transformers version above. The video export example
-also requires `imageio` and `imageio-ffmpeg`. The base `pip install -e .` command does not install these model-specific
-dependencies. Use a converted model directory as described below; the original Hy-Nomas code checkout is not required.
+The `hy-nomas` extra installs the Transformers text encoder, Accelerate loading support, and the `imageio` and
+`imageio-ffmpeg` video export dependencies. The original Hy-Nomas code checkout is not required.
 
 ## Convert the checkpoints
 
@@ -40,40 +39,146 @@ python scripts/convert_hy_nomas_to_diffusers.py \
   --transformer_checkpoint /path/to/dit.safetensors \
   --decoder_checkpoint /path/to/pixelumm.safetensors \
   --text_encoder_path /path/to/Qwen2.5-VL-7B-Instruct \
-  --output_path /path/to/hy-nomas-diffusers \
+  --output_path /path/to/Hy-Nomas \
   --dtype bfloat16
 ```
 
 The output contains `modular_model_index.json` and standard component subdirectories. The converted pipeline loads
-without importing the original repository or executing remote code.
+without importing the original repository or executing remote code. The examples below use `tencent/Hy-Nomas` as the
+model ID; to use a local conversion, replace it with `/path/to/Hy-Nomas`.
 
-## Generate video
+## Generate video from a prompt
+
+Use a plain string to describe one segment. This example generates 120 frames at 24 FPS with four denoising steps and
+returns a session for subsequent interaction.
 
 ```python
 import torch
 
-from diffusers import ModularPipeline
+from diffusers import HyNomasModularPipeline
 from diffusers.utils import export_to_video
 
-pipe = ModularPipeline.from_pretrained("/path/to/hy-nomas-diffusers")
+pipe = HyNomasModularPipeline.from_pretrained("tencent/Hy-Nomas")
 pipe.load_components(dtype=torch.bfloat16)
 pipe.to(device="cuda", dtype=torch.bfloat16)
 
-result = pipe(
-    prompt=["A forest beside a river.", "The view moves along the river toward a waterfall."],
+first = pipe(
+    prompt=(
+        "A small orange fox stands on a stone path in a luminous forest. "
+        "Blue fireflies drift between the trees. The fox walks slowly along the path."
+    ),
     height=704,
     width=1280,
-    num_frames=97,
-    segment_latent_lengths=[12, 13],
-    num_inference_steps=8,
+    num_frames=120,
+    fps=24,
+    num_inference_steps=4,
     generator=torch.Generator("cpu").manual_seed(42),
     output=["videos", "session"],
 )
-export_to_video(result["videos"][0], "world.mp4", fps=24)
+export_to_video(first["videos"][0], "hy_nomas_video.mp4", fps=24, quality=None)
 ```
 
 Pass the dtype to both loading and `to` to reproduce the original BF16 inference. The latter also casts the text
 encoder's nonpersistent rotary-position buffers, which are recreated in FP32 when loading its weights.
+
+### Structured prompts and multiple segments
+
+Structured prompts preserve scene descriptions and action timing. Serialize each segment with `json.dumps`; `prompt`
+accepts a string or a list of strings, not a Python dictionary. Each serialized object must contain exactly one entry
+in `segments`. A list describes successive segments of one video, with batch size one.
+
+The following two prompts use the `forest_world` scene and action descriptions from the model assets'
+`examples/prompts.json`, with each segment extended to five seconds. Keep action timestamps relative to each segment:
+the second segment's 5–10 second interval becomes 0–5 seconds. Prompt enhancement and splitting a complete prompt file
+into segments happen before the pipeline call.
+
+```python
+import json
+
+prompts = [
+    {
+        "Style": "Cinematic fantasy",
+        "perspective_view": "Third-person view",
+        "subject_list": [
+            {
+                "subject_id": "fox",
+                "display_name": "a small orange fox",
+                "subject_attribute": "Orange fur, white chest, and a fluffy tail.",
+            }
+        ],
+        "segments": [
+            {
+                "visual_description_long": (
+                    "A small orange fox stands on a stone path in a luminous forest. "
+                    "Blue fireflies drift between the trees."
+                ),
+                "contained_actions": [
+                    {
+                        "start_time": "00:00.000",
+                        "end_time": "00:05.000",
+                        "action_description": "The fox walks slowly along the path.",
+                    }
+                ],
+            }
+        ],
+    },
+    {
+        "segments": [
+            {
+                "description_change": "Glowing blue flowers open beside the path as the fox continues forward.",
+                "contained_actions": [
+                    {
+                        "start_time": "00:00.000",
+                        "end_time": "00:05.000",
+                        "action_description": "The fox passes the flowers and looks around.",
+                    }
+                ],
+            }
+        ]
+    },
+]
+
+videos = pipe(
+    prompt=[json.dumps(prompt) for prompt in prompts],
+    height=704,
+    width=1280,
+    num_frames=240,
+    segment_latent_lengths=[30, 30],
+    fps=24,
+    num_inference_steps=4,
+    generator=torch.Generator("cpu").manual_seed(42),
+    output="videos",
+)
+export_to_video(videos[0], "hy_nomas_video.mp4", fps=24, quality=None)
+```
+
+Each segment contains 30 latent frames, corresponding to 120 pixel frames or five seconds at 24 FPS. To generate only
+the first segment, pass `prompt=json.dumps(prompts[0])`, `num_frames=120`, and `segment_latent_lengths=[30]`.
+
+This adapted `forest_world` case covers ten seconds. Given absolute segment boundaries of 0, 5, and 10 seconds,
+the original Hy-Nomas event-based inference derives 240 frames and pixel boundaries `[0, 120, 240]`. Use
+`num_frames=240` and `segment_latent_lengths=[30, 30]` to generate the same duration in one pipeline call.
+
+| Timestamp location | First segment | Second segment |
+|---|---|---|
+| Source JSON for this adapted example, relative to the full video | 0–5 seconds | 5–10 seconds |
+| Actions in each model-ready prompt, relative to its segment | 0–5 seconds | 0–5 seconds |
+
+The original preprocessor subtracts the segment start time from its action timestamps. The pipeline expects these
+segment-relative action times; absolute segment boundaries are supplied separately through frame counts.
+
+`num_frames` is the number of new pixel frames; the latent frame count is `(num_frames - 1) // 4 + 1`.
+`segment_latent_lengths` must sum to this count. If omitted, all segments receive equal lengths, and the latent count
+must be divisible by the number of prompts. The pipeline uses `fps` to map action timestamps to latent frames; keep
+it equal to the FPS passed to `export_to_video`. It does not infer the rollout length from JSON timestamps.
+Height and width must be multiples of 32. For the original nominal 720p preset, the decoded height is 704 pixels.
+
+The default PixelUMM decoding window contains 10 latent frames. These examples use five-second segments; output
+quality also depends on the prompt, seed, and decoding context.
+
+Use `output_type="latent"` to skip decoding. The `latents` output has shape `(1, 32, T, H/32, W/32)`.
+Video output types are `np` (batch, frames, height, width, channels), `pt` (batch, frames, channels, height, width),
+and `pil`.
 
 ### Match reference attention
 
@@ -95,42 +200,62 @@ processors do not require these optional dependencies. Use `disable_reference_at
 checkpoint precision, noise timeline capacity, CPU generator seed, prompts, normalized camera inputs, and full history
 on both sides. A matching seed alone does not establish numerical equivalence across different attention kernels.
 
-A list of prompts represents **successive segments of one video**, with batch size one. It is not a batch of independent
-videos. `num_frames` is the number of new pixel frames; the latent frame count is `(num_frames - 1) // 4 + 1`.
-`segment_latent_lengths` must sum to this count. If omitted, all segments receive equal lengths.
-Height and width must be multiples of 32. For the original nominal 720p preset, the decoded height is 704 pixels.
+Enable these processors before running the adapted `forest_world` example: use the two structured prompts above in
+one 240-frame call with `segment_latent_lengths=[30, 30]`, 24 FPS, four denoising steps, and CPU seed 42.
+Two separate 120-frame calls sample differently shaped noise tensors; matching their
+seed and combined duration does not reproduce the single-call noise. For interactive equivalence, reserve the full
+60-latent timeline with `noise_capacity=60` on the first call, then continue its session without a new generator.
 
-For visual quality checks, use segment lengths similar to the example. Very short segments and decoding windows can
-produce oversharpened or oversaturated clips. The default PixelUMM decoding window contains 10 latent frames.
-
-Use `output_type="latent"` to skip decoding. The `latents` output has shape `(1, 32, T, H/32, W/32)`.
-Video output types are `np` (batch, frames, height, width, channels), `pt` (batch, frames, channels, height, width),
-and `pil`.
-
-## Camera control
-
-Pass `camera_extrinsics` with shape `(1, num_frames, 4, 4)`. These are **normalized camera-to-world matrices in the
-model's training coordinate system**. Camera calibration, trajectory generation, and normalization must be performed
-before calling the pipeline. Omitting the argument disables camera conditioning.
+To match the original MP4 encoding quality as well, export with:
 
 ```python
-camera = torch.eye(4).repeat(1, 97, 1, 1)
-camera[:, :, 0, 3] = torch.linspace(0, 0.2, 97)
+export_to_video(videos[0], "hy_nomas_video.mp4", fps=24, quality=None)
+```
+
+The original exporter leaves x264 at its default CRF 23, while `export_to_video` normally passes `quality=5`, which
+maps to CRF 25. This encoding setting is separate from model inference. Pixel matching requires the reference
+attention kernels; the default PyTorch attention path can produce different floating-point results.
+
+## Generate video from a prompt and camera
+
+Use the same `prompt` input and add `camera_extrinsics`, shaped `(1, num_frames, 4, 4)`. Omitting it disables camera
+conditioning; no additional switch is needed. Reuse the loaded `pipe` and the structured `prompts` above:
+
+```python
+# Normalized relative poses for forward motion, including first-pose padding.
+camera = torch.eye(4).repeat(1, 120, 1, 1)
+camera[:, 4:, 2, 3] = 1.0
+
 videos = pipe(
-    prompt="A forest path.",
+    prompt=json.dumps(prompts[0]),
+    camera_extrinsics=camera,
     height=704,
     width=1280,
-    num_frames=97,
-    camera_extrinsics=camera,
+    num_frames=120,
+    fps=24,
+    num_inference_steps=4,
+    generator=torch.Generator("cpu").manual_seed(42),
     output="videos",
 )
+export_to_video(videos[0], "hy_nomas_camera.mp4", fps=24, quality=None)
 ```
+
+These inputs follow the model's training normalization. With framewise normalization enabled in the reference
+preprocessing, matrices represent relative motion between neighboring camera poses, rather than absolute world
+positions. In this example, positive Z translation specifies normalized forward motion. The first four identity
+matrices include the repeated initial pose required by this 120-frame layout; they do not describe four independently
+recorded stationary frames.
+
+The pipeline encodes the supplied matrices without estimating camera motion or normalizing an absolute trajectory.
+For custom motion, prepare camera-to-world poses in the training coordinate system and apply the reference
+normalization, including segment boundaries and initial-pose padding, before calling the pipeline. Supply camera
+matrices only for the new frames when continuing a session. The same camera input works with a plain text prompt.
 
 ### Display recorded keyboard controls
 
-The `examples/community/hy_nomas_keyboard_overlay.py` example in the Diffusers checkout displays WASD and all four arrow
-keys on an existing silent video. It runs on CPU without model weights or a Hy-Nomas checkout. The original video is
-preserved and the example refuses to overwrite an existing output.
+The `examples/community/hy_nomas_keyboard_overlay.py` example in the Diffusers checkout displays WASD and all four
+arrow keys on an existing silent video. It runs on CPU without model weights or a Hy-Nomas checkout. The original video
+is preserved and the example refuses to overwrite an existing output.
 
 ```bash
 pip install numpy pillow imageio imageio-ffmpeg
@@ -178,23 +303,35 @@ preview = draw_keyboard_overlay(rgb_uint8_frame, pressed_keys, label)
 
 The returned preview is a copy. Apply overlays after generation, and use the original frames for numerical comparisons.
 
-## Continue or branch a world
+## Multi-turn interaction
 
-Pass the returned `session` to another call. The pipeline forks the cache before adding new segments, so the same
-state can be reused for alternative continuations. Keep the pipeline components, precision, device, and resolution
-unchanged when reusing a state.
+Pass the returned `session` to the next call to continue the same world with a new prompt. For example, continue the
+five-second `first` result from the plain text example with the next scene:
 
 ```python
 continued = pipe(
-    prompt="The river opens into a lake.",
+    prompt=(
+        "Glowing blue flowers open beside the path as the fox continues forward. "
+        "The fox passes the flowers and looks around."
+    ),
     height=704,
     width=1280,
-    num_frames=49,
-    session=result["session"],
+    num_frames=120,
+    fps=24,
+    num_inference_steps=4,
+    session=first["session"],
     output=["videos", "session"],
 )
-export_to_video(continued["videos"][0], "continued-world.mp4", fps=24)
+export_to_video(continued["videos"][0], "hy_nomas_continued.mp4", fps=24, quality=None)
 ```
+
+The result contains both turns, totaling ten seconds. A structured continuation can instead use
+`prompt=json.dumps(prompts[1])`. Its action timestamps remain relative to the new segment. Pass
+`session=continued["session"]` for the next turn; a continuation restores the session's generator state when no new
+generator is supplied.
+
+The pipeline forks the cache before adding new segments, so an earlier state can be reused for alternative
+continuations. Keep the pipeline components, precision, device, and resolution unchanged when reusing a state.
 
 Both `videos` and `latents` include the accumulated history. Each call contributes exactly `num_frames` pixel frames;
 padding at the end of a call's last segment is removed. Decoding runs over that history, which allows the temporal
@@ -213,7 +350,7 @@ For applications that need incremental pixel updates, `pipe.decoder.create_strea
 ```python
 from diffusers.modular_pipelines.hy_nomas.encoders import HyNomasTextEncoderStep
 
-encoder = HyNomasTextEncoderStep().init_pipeline("/path/to/hy-nomas-diffusers")
+encoder = HyNomasTextEncoderStep().init_pipeline("tencent/Hy-Nomas")
 encoder.load_components(dtype=torch.bfloat16)
 encoder.to(device="cuda", dtype=torch.bfloat16)
 encoded = encoder(prompt="A forest path.", output="prompt_embeds")
