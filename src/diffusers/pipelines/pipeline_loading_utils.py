@@ -343,10 +343,30 @@ def _unwrap_model(model):
     return model
 
 
+# Model classes that moved from a pipeline folder to `diffusers.models`. Existing `model_index.json` files still
+# reference them as `[<pipeline folder>, <class name>]`, so they are resolved to the top-level `diffusers` export
+# instead of the deprecated alias left in the pipeline folder.
+_RELOCATED_PIPELINE_CLASSES = {
+    ("ace_step", "AceStepConditionEncoder"),
+    ("audioldm2", "AudioLDM2ProjectionModel"),
+    ("flux", "ReduxImageEncoder"),
+    ("ltx", "LTXLatentUpsamplerModel"),
+    ("ltx2", "LTX2LatentUpsamplerModel"),
+    ("ltx2", "LTX2TextConnectors"),
+    ("stable_audio", "StableAudioProjectionModel"),
+    ("stable_audio_3", "StableAudio3DurationEmbedder"),
+    ("stable_diffusion", "CLIPImageProjection"),
+}
+
+
 def maybe_raise_or_warn(
     library_name, library, class_name, importable_classes, passed_class_obj, name, is_pipeline_module
 ):
     """Simple helper method to raise or warn in case incorrect module has been passed"""
+    if (library_name, class_name) in _RELOCATED_PIPELINE_CLASSES:
+        library_name = "diffusers"
+        is_pipeline_module = False
+
     if not is_pipeline_module:
         library = importlib.import_module(library_name)
 
@@ -381,6 +401,9 @@ def maybe_raise_or_warn(
 def simple_get_class_obj(library_name, class_name):
     from diffusers import pipelines
 
+    if (library_name, class_name) in _RELOCATED_PIPELINE_CLASSES:
+        library_name = "diffusers"
+
     is_pipeline_module = hasattr(pipelines, library_name)
 
     if is_pipeline_module:
@@ -413,6 +436,10 @@ def get_class_obj_and_candidates(
 
     if class_name.startswith("FlashPack"):
         class_name = class_name.removeprefix("FlashPack")
+
+    if (library_name, class_name) in _RELOCATED_PIPELINE_CLASSES:
+        library_name = "diffusers"
+        is_pipeline_module = False
 
     if is_pipeline_module:
         pipeline_module = getattr(pipelines, library_name)

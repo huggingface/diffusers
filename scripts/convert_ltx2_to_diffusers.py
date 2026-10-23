@@ -14,14 +14,14 @@ from diffusers import (
     AutoencoderKLLTX2Video,
     FlowMatchEulerDiscreteScheduler,
     LTX2LatentUpsamplePipeline,
+    LTX2LatentUpsamplerModel,
     LTX2Pipeline,
+    LTX2TextConnectors,
     LTX2VideoDiffusionDecoderModel,
     LTX2VideoTransformer3DModel,
 )
 from diffusers.pipelines.ltx2 import (
     LTX2DurationHead,
-    LTX2LatentUpsamplerModel,
-    LTX2TextConnectors,
     LTX2Vocoder,
     LTX2VocoderWithBWE,
 )

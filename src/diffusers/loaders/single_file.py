@@ -64,6 +64,12 @@ def load_single_file_sub_model(
     disable_mmap=False,
     **kwargs,
 ):
+    from ..pipelines.pipeline_loading_utils import _RELOCATED_PIPELINE_CLASSES
+
+    if (library_name, class_name) in _RELOCATED_PIPELINE_CLASSES:
+        library_name = "diffusers"
+        is_pipeline_module = False
+
     if is_pipeline_module:
         pipeline_module = getattr(pipelines, library_name)
         class_obj = getattr(pipeline_module, class_name)
