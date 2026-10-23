@@ -753,9 +753,9 @@ class EdenLiveTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atte
             encoder_hidden_states_image (`torch.Tensor`, *optional*):
                 CLIP image embeddings required by the 14B model.
             proxy_features (`torch.Tensor`, *optional*):
-                Required DINO features of shape
-                `(batch_size, proxy_input_channels, num_frames, proxy_height, proxy_width)`. Features are projected and
-                normalized before their spatial dimensions are interpolated to match the latent input.
+                Required DINO features of shape `(batch_size, proxy_input_channels, num_frames, proxy_height,
+                proxy_width)`. Features are projected and normalized before their spatial dimensions are interpolated
+                to match the latent input.
             causal_state (`EdenLiveCausalState`, *optional*):
                 KV storage created by `create_causal_state`. Use separate states for different guidance branches.
             cache_update (`bool`, defaults to `False`):
