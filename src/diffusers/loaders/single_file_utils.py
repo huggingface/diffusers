@@ -3728,6 +3728,13 @@ def convert_anima_text_conditioner_to_diffusers(checkpoint, **kwargs):
             converted_state_dict[k.removeprefix("net.").removeprefix("model.diffusion_model.").removeprefix("llm_adapter.")] = checkpoint.pop(k)
         else:
             _ = checkpoint.pop(k)
+def convert_anima_text_conditioner_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {}
+    for k in list(checkpoint.keys()):
+        if "llm_adapter." in k:
+            converted_state_dict[k.split("llm_adapter.", 1)[1]] = checkpoint.pop(k)
+        elif not k.startswith(("net.", "model.diffusion_model.")):
+            converted_state_dict[k] = checkpoint.pop(k)
     return converted_state_dict
 
 def convert_cosmos_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
