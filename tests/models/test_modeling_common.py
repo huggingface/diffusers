@@ -301,9 +301,7 @@ class TestModelUtils:
             # A subsequent default (unsharded) save must leave the first checkpoint reloadable.
             model.save_pretrained(path, max_shard_size="100MB")
             reloaded = UNet2DModel.from_pretrained(path, variant=variant)
-            assert all(
-                torch.equal(p1, p2) for p1, p2 in zip(model.parameters(), reloaded.parameters())
-            )
+            assert all(torch.equal(p1, p2) for p1, p2 in zip(model.parameters(), reloaded.parameters()))
 
 
 class UNetTesterMixin:
