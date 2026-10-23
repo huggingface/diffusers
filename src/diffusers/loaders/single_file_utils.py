@@ -3737,7 +3737,6 @@ def convert_chroma_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
 
 
 def convert_cosmos_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
-    
     for k in list(checkpoint.keys()):
         if "llm_adapter" in k:
             _ = checkpoint.pop(k)
