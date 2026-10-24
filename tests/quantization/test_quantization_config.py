@@ -14,8 +14,10 @@
 # limitations under the License.
 """CPU-only tests for quantization config logic that doesn't need a backend installed."""
 
+import json
+
 from diffusers.quantizers.auto import DiffusersAutoQuantizer
-from diffusers.quantizers.quantization_config import AutoRoundConfig
+from diffusers.quantizers.quantization_config import AutoRoundConfig, NVIDIAModelOptConfig
 
 
 class TestAutoRoundConfigMerge:
@@ -29,3 +31,15 @@ class TestAutoRoundConfigMerge:
         assert merged.bits == 4
         assert merged.group_size == 32
         assert merged.sym is False
+
+
+class TestNVIDIAModelOptConfigToDict:
+    def test_to_dict_drops_forward_loop_callable(self):
+        config = NVIDIAModelOptConfig(
+            quant_type="FP8", forward_loop=lambda model: model, modelopt_config={"quant_cfg": {}}
+        )
+
+        output = config.to_dict()
+
+        assert "forward_loop" not in output
+        json.dumps(output)

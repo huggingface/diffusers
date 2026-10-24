@@ -797,6 +797,11 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
         self.modelopt_config = self.get_config_from_quant_type() if not modelopt_config else modelopt_config
         self.disable_conv_quantization = disable_conv_quantization
 
+    def to_dict(self) -> dict[str, Any]:
+        output = super().to_dict()
+        output.pop("forward_loop", None)
+        return output
+
     def check_model_patching(self, operation: str = "loading"):
         # ModelOpt imports diffusers internally. This is here to prevent circular imports
         from modelopt.torch.opt.plugins.huggingface import _PATCHED_CLASSES
