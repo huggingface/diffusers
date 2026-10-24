@@ -31,6 +31,7 @@ from ..utils import (
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
+    _maybe_remap_relocated_pipeline_class,
     _maybe_remap_transformers_class,
     deprecate,
     get_class_from_dynamic_module,
@@ -347,6 +348,11 @@ def maybe_raise_or_warn(
     library_name, library, class_name, importable_classes, passed_class_obj, name, is_pipeline_module
 ):
     """Simple helper method to raise or warn in case incorrect module has been passed"""
+    relocated_library_name = _maybe_remap_relocated_pipeline_class(library_name, class_name)
+    if relocated_library_name is not None:
+        library_name = relocated_library_name
+        is_pipeline_module = False
+
     if not is_pipeline_module:
         library = importlib.import_module(library_name)
 
@@ -381,6 +387,8 @@ def maybe_raise_or_warn(
 def simple_get_class_obj(library_name, class_name):
     from diffusers import pipelines
 
+    library_name = _maybe_remap_relocated_pipeline_class(library_name, class_name) or library_name
+
     is_pipeline_module = hasattr(pipelines, library_name)
 
     if is_pipeline_module:
@@ -413,6 +421,11 @@ def get_class_obj_and_candidates(
 
     if class_name.startswith("FlashPack"):
         class_name = class_name.removeprefix("FlashPack")
+
+    relocated_library_name = _maybe_remap_relocated_pipeline_class(library_name, class_name)
+    if relocated_library_name is not None:
+        library_name = relocated_library_name
+        is_pipeline_module = False
 
     if is_pipeline_module:
         pipeline_module = getattr(pipelines, library_name)
