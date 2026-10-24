@@ -33,7 +33,6 @@ pipeline.to("cuda")
 config = PyramidAttentionBroadcastConfig(
     spatial_attention_block_skip_range=2,
     spatial_attention_timestep_skip_range=(100, 800),
-    current_timestep_callback=lambda: pipe.current_timestep,
 )
 pipeline.transformer.enable_cache(config)
 ```
@@ -57,7 +56,6 @@ pipeline.to("cuda")
 config = FasterCacheConfig(
     spatial_attention_block_skip_range=2,
     spatial_attention_timestep_skip_range=(-1, 681),
-    current_timestep_callback=lambda: pipe.current_timestep,
     attention_weight_callback=lambda _: 0.3,
     unconditional_batch_skip_range=5,
     unconditional_batch_timestep_skip_range=(-1, 781),

@@ -233,34 +233,37 @@ class EchoLoopDenoiser(ModularPipelineBlocks):
         audio_context = block_state.connector_audio_prompt_embeds.to(transformer_dtype)
         context_mask = block_state.connector_attention_mask
 
-        velocity_video, velocity_audio = components.transformer(
-            hidden_states=block_state.latent_model_input.to(transformer_dtype),
-            audio_hidden_states=block_state.audio_latent_model_input.to(transformer_dtype),
-            encoder_hidden_states=video_context,
-            audio_encoder_hidden_states=audio_context,
-            timestep=block_state.model_video_timestep,
-            audio_timestep=block_state.model_audio_timestep,
-            # Echo deliberately uses the first target token as its global video sigma. When a clean first frame is
-            # present this is zero, while the audio branch keeps the current DMD sigma. `use_cross_timestep=True`
-            # exchanges these values in the cross-modal modulation blocks, matching the released wrapper.
-            sigma=block_state.video_timestep[:, 0],
-            audio_sigma=block_state.audio_timestep[:, 0],
-            encoder_attention_mask=context_mask,
-            audio_encoder_attention_mask=context_mask,
-            num_frames=block_state.latent_num_frames,
-            height=block_state.latent_height,
-            width=block_state.latent_width,
-            fps=block_state.frame_rate,
-            audio_num_frames=block_state.audio_num_frames,
-            video_coords=block_state.model_video_coords,
-            audio_coords=block_state.model_audio_coords,
-            isolate_modalities=False,
-            spatio_temporal_guidance_blocks=None,
-            perturbation_mask=None,
-            use_cross_timestep=True,
-            attention_kwargs=block_state.attention_kwargs,
-            return_dict=False,
-        )
+        with components.transformer.cache_context(
+            "inference", timestep=sigma * components.transformer.config.timestep_scale_multiplier
+        ):
+            velocity_video, velocity_audio = components.transformer(
+                hidden_states=block_state.latent_model_input.to(transformer_dtype),
+                audio_hidden_states=block_state.audio_latent_model_input.to(transformer_dtype),
+                encoder_hidden_states=video_context,
+                audio_encoder_hidden_states=audio_context,
+                timestep=block_state.model_video_timestep,
+                audio_timestep=block_state.model_audio_timestep,
+                # Echo deliberately uses the first target token as its global video sigma. When a clean first frame is
+                # present this is zero, while the audio branch keeps the current DMD sigma. `use_cross_timestep=True`
+                # exchanges these values in the cross-modal modulation blocks, matching the released wrapper.
+                sigma=block_state.video_timestep[:, 0],
+                audio_sigma=block_state.audio_timestep[:, 0],
+                encoder_attention_mask=context_mask,
+                audio_encoder_attention_mask=context_mask,
+                num_frames=block_state.latent_num_frames,
+                height=block_state.latent_height,
+                width=block_state.latent_width,
+                fps=block_state.frame_rate,
+                audio_num_frames=block_state.audio_num_frames,
+                video_coords=block_state.model_video_coords,
+                audio_coords=block_state.model_audio_coords,
+                isolate_modalities=False,
+                spatio_temporal_guidance_blocks=None,
+                perturbation_mask=None,
+                use_cross_timestep=True,
+                attention_kwargs=block_state.attention_kwargs,
+                return_dict=False,
+            )
         velocity_video = velocity_video[:, block_state.memory_video_token_count :]
         velocity_audio = velocity_audio[:, block_state.memory_audio_token_count :]
         timestep_scale = float(components.transformer.config.timestep_scale_multiplier)

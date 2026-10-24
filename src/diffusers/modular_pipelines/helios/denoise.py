@@ -443,7 +443,7 @@ class HeliosChunkDenoiseInner(ModularPipelineBlocks):
                     cond_kwargs = {k: getattr(guider_state_batch, k) for k in guider_inputs.keys()}
 
                     context_name = getattr(guider_state_batch, components.guider._identifier_key)
-                    with components.transformer.cache_context(context_name):
+                    with components.transformer.cache_context(context_name, timestep=t):
                         guider_state_batch.noise_pred = components.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
@@ -635,7 +635,7 @@ class HeliosPyramidChunkDenoiseInner(ModularPipelineBlocks):
                         cond_kwargs = {kk: getattr(guider_state_batch, kk) for kk in guider_inputs.keys()}
 
                         context_name = getattr(guider_state_batch, components.guider._identifier_key)
-                        with components.transformer.cache_context(context_name):
+                        with components.transformer.cache_context(context_name, timestep=t):
                             guider_state_batch.noise_pred = components.transformer(
                                 hidden_states=latent_model_input,
                                 timestep=timestep,
@@ -976,7 +976,7 @@ class HeliosPyramidDistilledChunkDenoiseInner(ModularPipelineBlocks):
                         cond_kwargs = {k: getattr(guider_state_batch, k) for k in guider_inputs.keys()}
 
                         context_name = getattr(guider_state_batch, components.guider._identifier_key)
-                        with components.transformer.cache_context(context_name):
+                        with components.transformer.cache_context(context_name, timestep=t):
                             guider_state_batch.noise_pred = components.transformer(
                                 hidden_states=latent_model_input,
                                 timestep=timestep,

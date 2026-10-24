@@ -157,16 +157,17 @@ class QwenImageLoopBeforeDenoiserControlNet(ModularPipelineBlocks):
             block_state.cond_scale = controlnet_cond_scale * block_state.controlnet_keep[i]
 
         # run controlnet for the guidance batch
-        controlnet_block_samples = components.controlnet(
-            hidden_states=block_state.latent_model_input,
-            controlnet_cond=block_state.control_image_latents,
-            conditioning_scale=block_state.cond_scale,
-            timestep=block_state.timestep / 1000,
-            img_shapes=block_state.img_shapes,
-            encoder_hidden_states=block_state.prompt_embeds,
-            encoder_hidden_states_mask=block_state.prompt_embeds_mask,
-            return_dict=False,
-        )
+        with components.controlnet.cache_context("inference", timestep=t):
+            controlnet_block_samples = components.controlnet(
+                hidden_states=block_state.latent_model_input,
+                controlnet_cond=block_state.control_image_latents,
+                conditioning_scale=block_state.cond_scale,
+                timestep=block_state.timestep / 1000,
+                img_shapes=block_state.img_shapes,
+                encoder_hidden_states=block_state.prompt_embeds,
+                encoder_hidden_states_mask=block_state.prompt_embeds_mask,
+                return_dict=False,
+            )
 
         block_state.additional_cond_kwargs["controlnet_block_samples"] = controlnet_block_samples
 
@@ -239,15 +240,16 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
             components.guider.prepare_models(components.transformer)
             cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
 
-            # YiYi TODO: add cache context
-            guider_state_batch.noise_pred = components.transformer(
-                hidden_states=block_state.latent_model_input,
-                timestep=block_state.timestep / 1000,
-                attention_kwargs=block_state.attention_kwargs,
-                return_dict=False,
-                **cond_kwargs,
-                **block_state.additional_cond_kwargs,
-            )[0]
+            context_name = getattr(guider_state_batch, components.guider._identifier_key)
+            with components.transformer.cache_context(context_name, timestep=t):
+                guider_state_batch.noise_pred = components.transformer(
+                    hidden_states=block_state.latent_model_input,
+                    timestep=block_state.timestep / 1000,
+                    attention_kwargs=block_state.attention_kwargs,
+                    return_dict=False,
+                    **cond_kwargs,
+                    **block_state.additional_cond_kwargs,
+                )[0]
 
             components.guider.cleanup_models(components.transformer)
 
@@ -326,15 +328,16 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
             components.guider.prepare_models(components.transformer)
             cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
 
-            # YiYi TODO: add cache context
-            guider_state_batch.noise_pred = components.transformer(
-                hidden_states=block_state.latent_model_input,
-                timestep=block_state.timestep / 1000,
-                attention_kwargs=block_state.attention_kwargs,
-                return_dict=False,
-                **cond_kwargs,
-                **block_state.additional_cond_kwargs,
-            )[0]
+            context_name = getattr(guider_state_batch, components.guider._identifier_key)
+            with components.transformer.cache_context(context_name, timestep=t):
+                guider_state_batch.noise_pred = components.transformer(
+                    hidden_states=block_state.latent_model_input,
+                    timestep=block_state.timestep / 1000,
+                    attention_kwargs=block_state.attention_kwargs,
+                    return_dict=False,
+                    **cond_kwargs,
+                    **block_state.additional_cond_kwargs,
+                )[0]
 
             components.guider.cleanup_models(components.transformer)
 
