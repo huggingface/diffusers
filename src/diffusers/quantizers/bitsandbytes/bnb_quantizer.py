@@ -95,7 +95,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
         if target_dtype != torch.int8:
             from accelerate.utils import CustomDtype
 
-            logger.info("target_dtype {target_dtype} is replaced by `CustomDtype.INT4` for 4-bit BnB quantization")
+            logger.info(f"target_dtype {target_dtype} is replaced by `CustomDtype.INT4` for 4-bit BnB quantization")
             return CustomDtype.INT4
         else:
             raise ValueError(f"Wrong `target_dtype` ({target_dtype}) provided.")
@@ -207,7 +207,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
         inferred_shape = (n,) if "bias" in param_name else ((n + 1) // 2, 1)
         if loaded_param_shape != inferred_shape:
             raise ValueError(
-                f"Expected the flattened shape of the current param ({param_name}) to be {loaded_param_shape} but is {inferred_shape}."
+                f"Expected the flattened shape of the current param ({param_name}) to be {inferred_shape} but is {loaded_param_shape}."
             )
         else:
             return True
@@ -241,8 +241,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             device_map = {"": current_device}
             logger.info(
                 "The device_map was not initialized. "
-                "Setting device_map to {"
-                ": {current_device}}. "
+                f"Setting device_map to {{'': {current_device}}}. "
                 "If you want to use the model for inference, please set device_map ='auto' "
             )
         return device_map
@@ -443,8 +442,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
             device_map = {"": current_device}
             logger.info(
                 "The device_map was not initialized. "
-                "Setting device_map to {"
-                ": {current_device}}. "
+                f"Setting device_map to {{'': {current_device}}}. "
                 "If you want to use the model for inference, please set device_map ='auto' "
             )
         return device_map
@@ -467,7 +465,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
         module, tensor_name = get_module_from_name(model, param_name)
         if isinstance(module._parameters.get(tensor_name, None), bnb.nn.Int8Params):
             if self.pre_quantized:
-                if param_name.replace("weight", "SCB") not in state_dict.keys():
+                if param_name[: -len("weight")] + "SCB" not in state_dict.keys():
                     raise ValueError("Missing quantization component `SCB`")
                 if param_value.dtype != torch.int8:
                     raise ValueError(
@@ -488,8 +486,8 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
     ):
         import bitsandbytes as bnb
 
-        fp16_statistics_key = param_name.replace("weight", "SCB")
-        fp16_weights_format_key = param_name.replace("weight", "weight_format")
+        fp16_statistics_key = param_name[: -len("weight")] + "SCB"
+        fp16_weights_format_key = param_name[: -len("weight")] + "weight_format"
 
         fp16_statistics = state_dict.get(fp16_statistics_key, None)
         fp16_weights_format = state_dict.get(fp16_weights_format_key, None)
