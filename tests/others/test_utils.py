@@ -16,12 +16,16 @@
 import importlib
 import os
 import warnings
+from fractions import Fraction
 
+import numpy as np
 import pytest
 import torch
 
 from diffusers import __version__
 from diffusers.utils import deprecate, torch_utils
+from diffusers.utils.export_utils import encode_video
+from diffusers.utils.import_utils import is_av_available
 from diffusers.utils.torch_utils import TorchDeviceBackend, empty_device_cache, get_device
 
 from ..testing_utils import CaptureLogger, Expectations, str_to_bool
@@ -338,6 +342,19 @@ class TestTorchDeviceBackend:
         backend = TorchDeviceBackend()
         backend.reset_peak_memory_stats()
         assert backend.max_memory_allocated() >= 0
+
+
+class TestEncodeVideo:
+    @pytest.mark.skipif(not is_av_available(), reason="PyAV is not installed")
+    def test_fractional_fps_is_preserved(self, tmp_path):
+        import av
+
+        video = np.random.rand(30, 64, 64, 3).astype(np.float32)
+        output_path = str(tmp_path / "out.mp4")
+        encode_video(video, fps=29.97, output_path=output_path)
+
+        with av.open(output_path) as container:
+            assert container.streams.video[0].average_rate == Fraction(2997, 100)
 
 
 # Copied from https://github.com/huggingface/transformers/blob/main/tests/utils/test_expectations.py
