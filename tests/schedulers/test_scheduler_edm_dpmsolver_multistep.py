@@ -165,8 +165,6 @@ class EDMDPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         for prediction_type in ["epsilon", "v_prediction"]:
             self.check_over_configs(prediction_type=prediction_type)
 
-    # TODO (patil-suraj): Fix this test
-    @unittest.skip("Skip for now, as it failing currently but works with the actual model")
     def test_solver_order_and_type(self):
         for algorithm_type in ["dpmsolver++", "sde-dpmsolver++"]:
             for solver_type in ["midpoint", "heun"]:
@@ -260,3 +258,54 @@ class EDMDPMSolverMultistepSchedulerTest(SchedulerCommonTest):
     @unittest.skip("Test not supported.")
     def test_trained_betas(self):
         pass
+
+    def test_zero_width_final_step(self):
+        scheduler_class = self.scheduler_classes[0]
+        model = self.dummy_model()
+        for kwargs in [
+            {"solver_order": 3, "sigma_schedule": "karras", "final_sigmas_type": "sigma_min"},
+            {"solver_order": 3, "sigma_schedule": "exponential", "final_sigmas_type": "sigma_min"},
+            {"solver_order": 2, "solver_type": "heun", "sigma_schedule": "karras", "final_sigmas_type": "sigma_min"},
+            {
+                "solver_order": 2,
+                "solver_type": "heun",
+                "algorithm_type": "sde-dpmsolver++",
+                "sigma_min": 0.01,
+                "final_sigmas_type": "sigma_min",
+            },
+            {
+                "solver_order": 1,
+                "algorithm_type": "sde-dpmsolver++",
+                "sigma_min": 0.01,
+                "final_sigmas_type": "sigma_min",
+            },
+        ]:
+            scheduler_config = self.get_scheduler_config(**kwargs)
+            scheduler = scheduler_class(**scheduler_config)
+            scheduler.set_timesteps(20)
+            sample = self.dummy_sample_deter
+            generator = torch.manual_seed(0)
+            for t in scheduler.timesteps:
+                residual = model(sample, t)
+                sample = scheduler.step(residual, t, sample, generator=generator).prev_sample
+            assert not torch.isnan(sample).any()
+
+        from diffusers import CosineDPMSolverMultistepScheduler
+
+        for solver_order in [1, 2]:
+            for solver_type in ["midpoint", "heun"]:
+                cosine_scheduler = CosineDPMSolverMultistepScheduler(
+                    solver_order=solver_order,
+                    solver_type=solver_type,
+                    final_sigmas_type="sigma_min",
+                )
+                cosine_scheduler.set_timesteps(10)
+                sample = self.dummy_sample_deter
+                # BrownianTreeNoiseSampler divides by sqrt(|t1 - t0|) and yields NaN when sigma == sigma_next
+                cosine_scheduler.noise_sampler = lambda s, s_next: (
+                    torch.full_like(sample, float("nan")) if s == s_next else torch.zeros_like(sample)
+                )
+                for t in cosine_scheduler.timesteps:
+                    residual = model(sample, t)
+                    sample = cosine_scheduler.step(residual, t, sample).prev_sample
+                assert not torch.isnan(sample).any()

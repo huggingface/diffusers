@@ -271,3 +271,23 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
     def test_exponential_sigmas(self):
         self.check_over_configs(use_exponential_sigmas=True)
+
+    def test_zero_width_final_step(self):
+        scheduler_class = self.scheduler_classes[0]
+        model = self.dummy_model()
+        for kwargs in [
+            {"solver_order": 3, "use_karras_sigmas": True},
+            {"solver_order": 3, "use_exponential_sigmas": True},
+            {"solver_order": 3, "use_beta_sigmas": True},
+            {"solver_order": 3, "timestep_spacing": "trailing"},
+            {"solver_order": 2, "solver_type": "heun", "use_karras_sigmas": True},
+        ]:
+            scheduler_config = self.get_scheduler_config(**kwargs)
+            scheduler = scheduler_class(**scheduler_config)
+            scheduler.set_timesteps(20)
+            sample = self.dummy_sample_deter
+            generator = torch.manual_seed(0)
+            for t in scheduler.timesteps:
+                residual = model(sample, t)
+                sample = scheduler.step(residual, t, sample, generator=generator).prev_sample
+            assert not torch.isnan(sample).any()
