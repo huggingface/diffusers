@@ -1,4 +1,4 @@
-__version__ = "0.41.0.dev0"
+__version__ = "0.42.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -135,6 +135,18 @@ else:
     _import_structure["quantizers.quantization_config"].append("NunchakuLiteQuantizationConfig")
 
 try:
+    if not is_torch_available():
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from .utils import dummy_bfl_objects
+
+    _import_structure["utils.dummy_bfl_objects"] = [
+        name for name in dir(dummy_bfl_objects) if not name.startswith("_")
+    ]
+else:
+    _import_structure["quantizers.quantization_config"].append("BFLQuantizationConfig")
+
+try:
     if not is_auto_round_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
@@ -246,6 +258,7 @@ else:
             "AutoencoderKLHunyuanVideo",
             "AutoencoderKLHunyuanVideo15",
             "AutoencoderKLKVAE",
+            "AutoencoderKLKVAEAudio",
             "AutoencoderKLKVAEVideo",
             "AutoencoderKLLTX2Audio",
             "AutoencoderKLLTX2Video",
@@ -264,6 +277,7 @@ else:
             "AutoencoderTiny",
             "AutoencoderVidTok",
             "AutoModel",
+            "BriaFibo2Transformer2DModel",
             "BriaFiboTransformer2DModel",
             "BriaTransformer2DModel",
             "CacheMixin",
@@ -288,6 +302,7 @@ else:
             "EasyAnimateTransformer3DModel",
             "ErnieImageTransformer2DModel",
             "Flux2Transformer2DModel",
+            "Flux3Transformer2DModel",
             "FluxControlNetModel",
             "FluxMultiControlNetModel",
             "FluxTransformer2DModel",
@@ -345,6 +360,8 @@ else:
             "QwenImageControlNetModel",
             "QwenImageMultiControlNetModel",
             "QwenImageTransformer2DModel",
+            "RFD4ProteinaAutoencoder",
+            "RFD4ProteinaTransformer",
             "SanaControlNetModel",
             "SanaTransformer2DModel",
             "SanaVideoTransformer3DModel",
@@ -424,6 +441,7 @@ else:
             "LDMSuperResolutionPipeline",
             "PNDMPipeline",
             "RePaintPipeline",
+            "RFD4ProteinaPipeline",
             "ScoreSdeVePipeline",
             "StableDiffusionMixin",
         ]
@@ -472,6 +490,7 @@ else:
             "PiflowScheduler",
             "PNDMScheduler",
             "RePaintScheduler",
+            "RFD4ProteinaScheduler",
             "SASolverScheduler",
             "SchedulerMixin",
             "SCMScheduler",
@@ -540,6 +559,10 @@ else:
             "Flux2KleinBaseModularPipeline",
             "Flux2KleinModularPipeline",
             "Flux2ModularPipeline",
+            "Flux3AutoBlocks",
+            "Flux3DistilledAutoBlocks",
+            "Flux3DistilledModularPipeline",
+            "Flux3ModularPipeline",
             "FluxAutoBlocks",
             "FluxKontextAutoBlocks",
             "FluxKontextModularPipeline",
@@ -568,6 +591,10 @@ else:
             "MiniMaxH3ModularPipeline",
             "MiniMaxMusic3Blocks",
             "MiniMaxMusic3ModularPipeline",
+            "QwenImage21AutoBlocks",
+            "QwenImage21ModularPipeline",
+            "QwenImage21TurboAutoBlocks",
+            "QwenImage21TurboModularPipeline",
             "QwenImageAutoBlocks",
             "QwenImageEditAutoBlocks",
             "QwenImageEditModularPipeline",
@@ -626,6 +653,7 @@ else:
             "AuraFlowPipeline",
             "BlipDiffusionControlNetPipeline",
             "BlipDiffusionPipeline",
+            "BriaFibo2Pipeline",
             "BriaFiboEditPipeline",
             "BriaFiboPipeline",
             "BriaPipeline",
@@ -1054,6 +1082,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers.quantization_config import NunchakuLiteQuantizationConfig
 
     try:
+        if not is_torch_available():
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from .utils.dummy_bfl_objects import *
+    else:
+        from .quantizers.quantization_config import BFLQuantizationConfig
+
+    try:
         if not is_auto_round_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
@@ -1144,6 +1180,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLHunyuanVideo,
             AutoencoderKLHunyuanVideo15,
             AutoencoderKLKVAE,
+            AutoencoderKLKVAEAudio,
             AutoencoderKLKVAEVideo,
             AutoencoderKLLTX2Audio,
             AutoencoderKLLTX2Video,
@@ -1162,6 +1199,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderTiny,
             AutoencoderVidTok,
             AutoModel,
+            BriaFibo2Transformer2DModel,
             BriaFiboTransformer2DModel,
             BriaTransformer2DModel,
             CacheMixin,
@@ -1186,6 +1224,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EasyAnimateTransformer3DModel,
             ErnieImageTransformer2DModel,
             Flux2Transformer2DModel,
+            Flux3Transformer2DModel,
             FluxControlNetModel,
             FluxMultiControlNetModel,
             FluxTransformer2DModel,
@@ -1243,6 +1282,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageControlNetModel,
             QwenImageMultiControlNetModel,
             QwenImageTransformer2DModel,
+            RFD4ProteinaAutoencoder,
+            RFD4ProteinaTransformer,
             SanaControlNetModel,
             SanaTransformer2DModel,
             SanaVideoTransformer3DModel,
@@ -1320,6 +1361,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LDMSuperResolutionPipeline,
             PNDMPipeline,
             RePaintPipeline,
+            RFD4ProteinaPipeline,
             ScoreSdeVePipeline,
             StableDiffusionMixin,
         )
@@ -1366,6 +1408,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PiflowScheduler,
             PNDMScheduler,
             RePaintScheduler,
+            RFD4ProteinaScheduler,
             SASolverScheduler,
             SchedulerMixin,
             SCMScheduler,
@@ -1417,6 +1460,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Flux2KleinBaseModularPipeline,
             Flux2KleinModularPipeline,
             Flux2ModularPipeline,
+            Flux3AutoBlocks,
+            Flux3DistilledAutoBlocks,
+            Flux3DistilledModularPipeline,
+            Flux3ModularPipeline,
             FluxAutoBlocks,
             FluxKontextAutoBlocks,
             FluxKontextModularPipeline,
@@ -1445,6 +1492,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MiniMaxH3ModularPipeline,
             MiniMaxMusic3Blocks,
             MiniMaxMusic3ModularPipeline,
+            QwenImage21AutoBlocks,
+            QwenImage21ModularPipeline,
+            QwenImage21TurboAutoBlocks,
+            QwenImage21TurboModularPipeline,
             QwenImageAutoBlocks,
             QwenImageEditAutoBlocks,
             QwenImageEditModularPipeline,
@@ -1499,6 +1550,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDM2UNet2DConditionModel,
             AudioLDMPipeline,
             AuraFlowPipeline,
+            BriaFibo2Pipeline,
             BriaFiboEditPipeline,
             BriaFiboPipeline,
             BriaPipeline,

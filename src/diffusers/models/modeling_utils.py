@@ -1716,8 +1716,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         rank = torch.distributed.get_rank()
         world_size = torch.distributed.get_world_size()
         device_type = torch._C._get_accelerator().type
-        device_module = torch.get_device_module(device_type)
-        device = torch.device(device_type, rank % device_module.device_count())
+        device = torch.device(device_type, rank % torch.accelerator.device_count())
 
         mesh = None
         if config.context_parallel_config is not None:
