@@ -20,7 +20,7 @@ import torch
 from diffusers import HyNomasTransformer3DModel
 
 model = HyNomasTransformer3DModel.from_pretrained(
-    "tencent/Hy-Nomas", subfolder="transformer", torch_dtype=torch.bfloat16
+    "tencent/Hy-Nomas-Diffusers", subfolder="transformer", torch_dtype=torch.bfloat16
 )
 ```
 

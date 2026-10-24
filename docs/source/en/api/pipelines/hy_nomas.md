@@ -39,13 +39,13 @@ python scripts/convert_hy_nomas_to_diffusers.py \
   --transformer_checkpoint /path/to/dit.safetensors \
   --decoder_checkpoint /path/to/pixelumm.safetensors \
   --text_encoder_path /path/to/Qwen2.5-VL-7B-Instruct \
-  --output_path /path/to/Hy-Nomas \
+  --output_path /path/to/Hy-Nomas-Diffusers \
   --dtype bfloat16
 ```
 
 The output contains `modular_model_index.json` and standard component subdirectories. The converted pipeline loads
-without importing the original repository or executing remote code. The examples below use `tencent/Hy-Nomas` as the
-model ID; to use a local conversion, replace it with `/path/to/Hy-Nomas`.
+without importing the original repository or executing remote code. The examples below use `tencent/Hy-Nomas-Diffusers`
+as the model ID; to use a local conversion, replace it with `/path/to/Hy-Nomas-Diffusers`.
 
 ## Generate video from a prompt
 
@@ -58,7 +58,7 @@ import torch
 from diffusers import HyNomasModularPipeline
 from diffusers.utils import export_to_video
 
-pipe = HyNomasModularPipeline.from_pretrained("tencent/Hy-Nomas")
+pipe = HyNomasModularPipeline.from_pretrained("tencent/Hy-Nomas-Diffusers")
 pipe.load_components(dtype=torch.bfloat16)
 pipe.to(device="cuda", dtype=torch.bfloat16)
 
@@ -350,7 +350,7 @@ For applications that need incremental pixel updates, `pipe.decoder.create_strea
 ```python
 from diffusers.modular_pipelines.hy_nomas.encoders import HyNomasTextEncoderStep
 
-encoder = HyNomasTextEncoderStep().init_pipeline("tencent/Hy-Nomas")
+encoder = HyNomasTextEncoderStep().init_pipeline("tencent/Hy-Nomas-Diffusers")
 encoder.load_components(dtype=torch.bfloat16)
 encoder.to(device="cuda", dtype=torch.bfloat16)
 encoded = encoder(prompt="A forest path.", output="prompt_embeds")
