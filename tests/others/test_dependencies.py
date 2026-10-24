@@ -13,14 +13,48 @@
 # limitations under the License.
 
 import inspect
+import os
+import subprocess
+import sys
 from importlib import import_module
+from pathlib import Path
 
 import pytest
+
+from diffusers.utils import is_torch_available
 
 
 class TestDependencies:
     def test_diffusers_import(self):
         import diffusers  # noqa: F401
+
+    @pytest.mark.skipif(not is_torch_available(), reason="PyTorch is required")
+    def test_model_import_with_old_torchao(self, tmp_path):
+        torchao = tmp_path / "torchao"
+        torchao.mkdir()
+        (torchao / "__init__.py").write_text('__version__ = "0.14.1"\n', encoding="utf-8")
+        (torchao / "quantization").mkdir()
+        (torchao / "quantization" / "__init__.py").write_text("", encoding="utf-8")
+        metadata = tmp_path / "torchao-0.14.1.dist-info"
+        metadata.mkdir()
+        (metadata / "METADATA").write_text("Name: torchao\nVersion: 0.14.1\n", encoding="utf-8")
+        script = """
+import torch
+from diffusers.utils import is_torchao_available, is_torchao_version
+
+assert is_torchao_available()
+assert is_torchao_version("<", "0.15.0")
+
+from diffusers import DDPMPipeline, UNet2DModel
+
+assert issubclass(UNet2DModel, torch.nn.Module)
+assert DDPMPipeline.__name__ == "DDPMPipeline"
+"""
+        source = Path(__file__).resolve().parents[2] / "src"
+        env = os.environ.copy()
+        env["PYTHONPATH"] = os.pathsep.join([str(tmp_path), str(source), env.get("PYTHONPATH", "")])
+        result = subprocess.run([sys.executable, "-c", script], env=env, capture_output=True, text=True, timeout=60)
+        assert result.returncode == 0, result.stdout + result.stderr
 
     def test_backend_registration(self):
         import diffusers
