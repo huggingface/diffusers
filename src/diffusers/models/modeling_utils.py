@@ -1515,6 +1515,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 "device_map": device_map,
                 "offload_dir": offload_folder,
                 "offload_index": offload_index,
+                "skip_keys": model._skip_keys,
             }
             dispatch_model(model, **device_map_kwargs)
 

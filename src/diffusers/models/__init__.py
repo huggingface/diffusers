@@ -58,6 +58,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_longcat_audio_dit"] = ["LongCatAudioDiTVae"]
     _import_structure["autoencoders.autoencoder_mmaudio"] = ["MMAudioVAE"]
     _import_structure["autoencoders.autoencoder_oobleck"] = ["AutoencoderOobleck"]
+    _import_structure["autoencoders.autoencoder_pixelumm"] = ["PixelUMMDecoder"]
     _import_structure["autoencoders.autoencoder_rae"] = ["AutoencoderRAE"]
     _import_structure["autoencoders.autoencoder_rfd4_proteina"] = ["RFD4ProteinaAutoencoder"]
     _import_structure["autoencoders.autoencoder_same"] = ["AutoencoderSAME"]
@@ -134,6 +135,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_hunyuan_video15"] = ["HunyuanVideo15Transformer3DModel"]
     _import_structure["transformers.transformer_hunyuan_video_framepack"] = ["HunyuanVideoFramepackTransformer3DModel"]
     _import_structure["transformers.transformer_hunyuanimage"] = ["HunyuanImageTransformer2DModel"]
+    _import_structure["transformers.transformer_hy_nomas"] = ["HyNomasTransformer3DModel"]
     _import_structure["transformers.transformer_ideogram4"] = ["Ideogram4Transformer2DModel"]
     _import_structure["transformers.transformer_joyimage"] = ["JoyImageEditTransformer3DModel"]
     _import_structure["transformers.transformer_joyimage_edit_plus"] = ["JoyImageEditPlusTransformer3DModel"]
@@ -227,6 +229,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MiniMaxMusic3Vocoder,
             MMAudioVAE,
             MMAudioVocoder,
+            PixelUMMDecoder,
             RFD4ProteinaAutoencoder,
             VQModel,
         )
@@ -288,6 +291,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideo15Transformer3DModel,
             HunyuanVideoFramepackTransformer3DModel,
             HunyuanVideoTransformer3DModel,
+            HyNomasTransformer3DModel,
             Ideogram4Transformer2DModel,
             JoyImageEditPlusTransformer3DModel,
             JoyImageEditTransformer3DModel,

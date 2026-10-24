@@ -22,9 +22,11 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 import torch.nn.functional as F
 
+from diffusers.models import attention_dispatch
 from diffusers.models._modeling_parallel import ContextParallelConfig, ParallelConfig
 from diffusers.models.attention_dispatch import attention_backend as attention_backend_ctx
 from diffusers.models.attention_dispatch import dispatch_attention_fn
+from diffusers.utils import is_magi_attention_available
 
 from ..testing_utils import (
     is_attention,
@@ -40,6 +42,60 @@ from .testing_utils.parallelism import DEVICE_CONFIG, _find_free_port
 
 # Max allowed relative error between the context parallel gradients and the single-process reference.
 GRAD_RTOL = 2e-2
+
+
+@is_attention
+class TestMagiAttentionBackend:
+    def test_missing_dependency(self, monkeypatch):
+        monkeypatch.setattr(attention_dispatch, "_CAN_USE_MAGI_ATTN", False)
+        with pytest.raises(RuntimeError, match="optional `magi_attention`"):
+            with attention_backend_ctx("magi"):
+                pass
+        query = torch.zeros(1, 2, 1, 64, dtype=torch.bfloat16)
+        ranges = torch.tensor([[0, 2]], dtype=torch.int32)
+        with pytest.raises(RuntimeError, match="optional `magi_attention`"):
+            dispatch_attention_fn(
+                query,
+                query,
+                query,
+                backend="magi",
+                attention_kwargs={"query_ranges": ranges, "key_ranges": ranges},
+            )
+
+    @require_torch_accelerator
+    @pytest.mark.skipif(
+        not is_magi_attention_available() or torch_device != "cuda", reason="MagiAttention requires CUDA."
+    )
+    @torch.no_grad()
+    def test_batched_rectangle_visibility(self):
+        torch.manual_seed(0)
+        query = torch.randn(2, 4, 2, 64, device=torch_device, dtype=torch.bfloat16)
+        key = torch.randn(2, 5, 2, 64, device=torch_device, dtype=torch.bfloat16)
+        value = torch.randn_like(key)
+        actual = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            backend="magi",
+            attention_kwargs={
+                "query_ranges": torch.tensor([[0, 2], [2, 4]], device=torch_device, dtype=torch.int32),
+                "key_ranges": torch.tensor([[0, 3], [1, 5]], device=torch_device, dtype=torch.int32),
+                "attn_type_map": torch.zeros(2, device=torch_device, dtype=torch.int32),
+                "deterministic": True,
+            },
+        )
+        expected = torch.cat(
+            [
+                F.scaled_dot_product_attention(
+                    query[:, start:end].float().transpose(1, 2),
+                    key[:, first:last].float().transpose(1, 2),
+                    value[:, first:last].float().transpose(1, 2),
+                ).transpose(1, 2)
+                for start, end, first, last in [(0, 2, 0, 3), (2, 4, 1, 5)]
+            ],
+            dim=1,
+        ).to(query.dtype)
+        torch.testing.assert_close(actual, expected, atol=1e-2, rtol=1e-2)
 
 
 def _attention_backward_parity_worker(rank, world_size, master_port, cp_dict, attention_backend, return_dict):

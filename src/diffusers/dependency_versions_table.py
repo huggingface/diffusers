@@ -10,6 +10,8 @@ deps = {
     "hf-doc-builder": "hf-doc-builder>=0.3.0",
     "huggingface-hub": "huggingface-hub>=1.32.0,<3.0",
     "requests-mock": "requests-mock==1.10.0",
+    "imageio": "imageio",
+    "imageio-ffmpeg": "imageio-ffmpeg",
     "importlib_metadata": "importlib_metadata",
     "invisible-watermark": "invisible-watermark>=0.2.0",
     "isort": "isort>=5.5.4",

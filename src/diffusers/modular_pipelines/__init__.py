@@ -67,6 +67,7 @@ else:
         "HeliosPyramidDistilledModularPipeline",
         "HeliosPyramidModularPipeline",
     ]
+    _import_structure["hy_nomas"] = ["HyNomasAutoBlocks", "HyNomasGenerationState", "HyNomasModularPipeline"]
     _import_structure["flux"] = [
         "FluxAutoBlocks",
         "FluxModularPipeline",
@@ -203,6 +204,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             HunyuanVideo15AutoBlocks,
             HunyuanVideo15ModularPipeline,
         )
+        from .hy_nomas import HyNomasAutoBlocks, HyNomasGenerationState, HyNomasModularPipeline
         from .ideogram4 import (
             Ideogram4AutoBlocks,
             Ideogram4ModularPipeline,

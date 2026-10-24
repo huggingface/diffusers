@@ -373,6 +373,8 @@
         title: HunyuanVideo15Transformer3DModel
       - local: api/models/hunyuan_video_transformer_3d
         title: HunyuanVideoTransformer3DModel
+      - local: api/models/hy_nomas_transformer3d
+        title: HyNomasTransformer3DModel
       - local: api/models/ideogram4_transformer2d
         title: Ideogram4Transformer2DModel
       - local: api/models/transformer_joyimage_edit_plus
@@ -523,6 +525,8 @@
         title: LTX2VideoDiffusionDecoderModel
       - local: api/models/autoencoder_oobleck
         title: Oobleck AutoEncoder
+      - local: api/models/pixelumm_decoder
+        title: PixelUMMDecoder
       - local: api/models/autoencoder_tiny
         title: Tiny AutoEncoder
       - local: api/models/vq
@@ -751,6 +755,8 @@
         title: HunyuanVideo
       - local: api/pipelines/hunyuan_video15
         title: HunyuanVideo1.5
+      - local: api/pipelines/hy_nomas
+        title: Hy-Nomas
       - local: api/pipelines/kandinsky5_video
         title: Kandinsky 5.0 Video
       - local: api/pipelines/kandinsky6
