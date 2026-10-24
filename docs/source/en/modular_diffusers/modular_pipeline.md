@@ -212,14 +212,15 @@ pipeline = ModularPipeline.from_pretrained(
 )
 ```
 
-**A modular repository.** These repositories contain a `modular_model_index.json` that specifies where to load each component from — the components can come from different repositories and the modular repository itself may not contain any model weights. For example, [diffusers/flux2-bnb-4bit-modular](https://huggingface.co/diffusers/flux2-bnb-4bit-modular) loads a quantized transformer from one repository and the remaining components from another. See [Modular repository](#modular-repository) for more details on the format.
+**A modular repository.** These repositories contain a `modular_model_index.json` that specifies the class of each component and where to load it from, with the components stored alongside it. See [Modular repository](#modular-repository) for how to create one.
+
 
 ```py
 from diffusers import ModularPipeline, ComponentsManager
 
 components = ComponentsManager()
 pipeline = ModularPipeline.from_pretrained(
-    "diffusers/flux2-bnb-4bit-modular", components_manager=components
+    "MiniMaxAI/MiniMax-H3", components_manager=components
 )
 ```
 
@@ -401,15 +402,14 @@ A repository is required if the pipeline blocks use *pretrained components*. The
 - `library` and `class` shows which library the component was loaded from and its class. If `null`, the component hasn't been loaded yet.
 - `loading_specs_dict` contains the information required to load the component such as the repository and subfolder it is loaded from.
 
-The key advantage of a modular repository is that components can be loaded from different repositories. For example, [diffusers/flux2-bnb-4bit-modular](https://huggingface.co/diffusers/flux2-bnb-4bit-modular) loads a quantized transformer from `diffusers/FLUX.2-dev-bnb-4bit` while loading the remaining components from `black-forest-labs/FLUX.2-dev`.
 
-To convert a regular diffusers repository into a modular one, create the pipeline using the regular repository, and then push to the Hub. The saved repository will contain a `modular_model_index.json` with all the loading specifications.
 
 ```py
 from diffusers import ModularPipeline
 
 # load from a regular repo
 pipeline = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
+pipeline.load_components()
 
 # push as a modular repository
 pipeline.save_pretrained("local/path", repo_id="my-username/sdxl-modular", push_to_hub=True)
@@ -435,7 +435,7 @@ Shared caching is best-effort. Setting `HF_HUB_DISABLE_SHARED_BLOBS=1` still sup
 
 #### Update an existing modular index
 
-Migration is optional: references to the original repository already reuse its cached files. Update a reference if it was only used to avoid duplicate downloads and you want that component to load from the modular repository instead.
+Existing references to the original repository continue to work. If a reference was only used to avoid duplicate downloads, prefer updating it to load from the modular repository once the component files are available there.
 
 First, check that the modular repository contains the same component configuration and all required weight files, including the weight index and every shard for a sharded checkpoint. Matching Xet hashes determine which weight files can reuse the shared cache. Keep references to components that are absent or intentionally loaded from another checkpoint.
 
@@ -461,7 +461,7 @@ Before publishing the updated index, load it with `ModularPipeline.from_pretrain
 
 ### Keep references to existing components
 
-Load only what's new (or nothing at all). Only loaded components are saved; everything else stays a pointer to its original repository. Use this mode when you want to replace one component while continuing to load the others from their original repository. For example, save a custom transformer while the remaining components continue to load from the base repository.
+Use this mode only when you intentionally want components to remain hosted in other repositories. Only loaded components are saved; everything else keeps a reference to its original repository. For example, save a custom transformer while the remaining components continue to load from the base repository. For new repositories, prefer [saving all components together](#save-a-self-contained-copy) and relying on shared caching for identical files.
 
 ```py
 pipe = ModularPipeline.from_pretrained("black-forest-labs/FLUX.2-dev")
@@ -495,3 +495,11 @@ The `config.json` file contains an `auto_map` key that tells [`ModularPipeline`]
 ```
 
 Load custom code repositories with `trust_remote_code=True` as shown in [from_pretrained](#frompretrained). See [Custom blocks](./custom_blocks) for how to create and share your own.
+
+### Referencing components in other repositories
+
+A component's loading specification in `modular_model_index.json` can point to a different repository. For example, [diffusers/flux2-bnb-4bit-modular](https://huggingface.co/diffusers/flux2-bnb-4bit-modular) loads its quantized transformer from `diffusers/FLUX.2-dev-bnb-4bit` and the remaining components from `black-forest-labs/FLUX.2-dev`.
+
+We strongly prefer self-contained repositories: keeping all components together makes a pipeline easier to download, share, and use offline without depending on other repositories. Use cross-repository references only when you intentionally want a component hosted elsewhere.
+
+With `huggingface_hub>=1.32.0`, identical Xet-backed files can share one cached payload across repositories through symlinks, avoiding duplicate downloads and disk usage. Cross-repository references aren't needed for this. See [Save a self-contained copy](#save-a-self-contained-copy) for the shared cache requirements and limitations.
