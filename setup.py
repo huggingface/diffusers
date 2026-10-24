@@ -146,6 +146,8 @@ _deps = [
     "opencv-python",
     "timm",
     "flashpack",
+    "fastapi",
+    "uvicorn",
 ]
 
 # this is a lookup table with items like:
@@ -253,6 +255,7 @@ extras["torchao"] = deps_list("torchao", "accelerate")
 extras["nvidia_modelopt"] = deps_list("nvidia_modelopt[hf]")
 extras["sdnq"] = deps_list("sdnq")
 extras["flashpack"] = deps_list("flashpack")
+extras["serve"] = deps_list("fastapi", "uvicorn")
 
 extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"]
 
