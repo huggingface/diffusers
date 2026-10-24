@@ -87,8 +87,7 @@ The core `denoise` block packs those tensors, expands conditioning for `num_vide
 denoised outputs back to the same VAE form. Pass initial `latents` and `audio_latents` in that unpacked form too.
 Decoders take normalized VAE tensors and denormalize immediately before
 decoding. `output=["latents", "audio_latents"]` returns normalized VAE tensors. To get the denormalized VAE tensors
-without decoding, run the pipeline without the decode step and denormalize these with `latents_mean`, `latents_std`
-and `vae_scaling_factor` for video, or `audio_latents_mean` and `audio_latents_std` for audio.
+without decoding, run the pipeline without the decode step.
 
 ## EchoModularPipeline
 
