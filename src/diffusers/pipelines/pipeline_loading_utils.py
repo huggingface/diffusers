@@ -31,6 +31,7 @@ from ..utils import (
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
+    _maybe_remap_relocated_pipeline_class,
     _maybe_remap_transformers_class,
     deprecate,
     get_class_from_dynamic_module,
@@ -343,28 +344,13 @@ def _unwrap_model(model):
     return model
 
 
-# Model classes that moved from a pipeline folder to `diffusers.models`. Existing `model_index.json` files still
-# reference them as `[<pipeline folder>, <class name>]`, so they are resolved to the top-level `diffusers` export
-# instead of the deprecated alias left in the pipeline folder.
-_RELOCATED_PIPELINE_CLASSES = {
-    ("ace_step", "AceStepConditionEncoder"),
-    ("audioldm2", "AudioLDM2ProjectionModel"),
-    ("flux", "ReduxImageEncoder"),
-    ("ltx", "LTXLatentUpsamplerModel"),
-    ("ltx2", "LTX2LatentUpsamplerModel"),
-    ("ltx2", "LTX2TextConnectors"),
-    ("stable_audio", "StableAudioProjectionModel"),
-    ("stable_audio_3", "StableAudio3DurationEmbedder"),
-    ("stable_diffusion", "CLIPImageProjection"),
-}
-
-
 def maybe_raise_or_warn(
     library_name, library, class_name, importable_classes, passed_class_obj, name, is_pipeline_module
 ):
     """Simple helper method to raise or warn in case incorrect module has been passed"""
-    if (library_name, class_name) in _RELOCATED_PIPELINE_CLASSES:
-        library_name = "diffusers"
+    relocated_library_name = _maybe_remap_relocated_pipeline_class(library_name, class_name)
+    if relocated_library_name is not None:
+        library_name = relocated_library_name
         is_pipeline_module = False
 
     if not is_pipeline_module:
@@ -401,8 +387,7 @@ def maybe_raise_or_warn(
 def simple_get_class_obj(library_name, class_name):
     from diffusers import pipelines
 
-    if (library_name, class_name) in _RELOCATED_PIPELINE_CLASSES:
-        library_name = "diffusers"
+    library_name = _maybe_remap_relocated_pipeline_class(library_name, class_name) or library_name
 
     is_pipeline_module = hasattr(pipelines, library_name)
 
@@ -437,8 +422,9 @@ def get_class_obj_and_candidates(
     if class_name.startswith("FlashPack"):
         class_name = class_name.removeprefix("FlashPack")
 
-    if (library_name, class_name) in _RELOCATED_PIPELINE_CLASSES:
-        library_name = "diffusers"
+    relocated_library_name = _maybe_remap_relocated_pipeline_class(library_name, class_name)
+    if relocated_library_name is not None:
+        library_name = relocated_library_name
         is_pipeline_module = False
 
     if is_pipeline_module:
