@@ -1278,6 +1278,21 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
 
+        # Before `set_timesteps()` the schedule is the full descending timestep array
+        # while `self.sigmas` is indexed by timestep value, so `index_for_timestep`
+        # would resolve the wrong sigma. Look the sigma up by timestep value directly
+        # for this call order (fine-tune / probe scripts, and #5981 / #6006).
+        if self.num_inference_steps is None:
+            if self.config.use_flow_sigmas:
+                sigma = timesteps.to(dtype=sigmas.dtype) / self.config.num_train_timesteps
+            else:
+                sigma = sigmas[timesteps]
+            sigma = sigma.flatten()
+            while len(sigma.shape) < len(original_samples.shape):
+                sigma = sigma.unsqueeze(-1)
+            alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma)
+            return alpha_t * original_samples + sigma_t * noise
+
         # begin_index is None when the scheduler is used for training or pipeline does not implement set_begin_index
         if self.begin_index is None:
             step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
