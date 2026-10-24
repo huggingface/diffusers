@@ -21,8 +21,10 @@ import pytest
 from diffusers.quantizers.auto import DiffusersAutoQuantizer
 from diffusers.quantizers.quantization_config import (
     AutoRoundConfig,
+    GGUFQuantizationConfig,
     NunchakuLiteQuantizationConfig,
     NVIDIAModelOptConfig,
+    QuantoConfig,
 )
 
 
@@ -49,6 +51,27 @@ class TestNVIDIAModelOptConfigToDict:
 
         assert "forward_loop" not in output
         json.dumps(output)
+
+
+class TestQuantizationConfigEqAndRepr:
+    def test_gguf_config_eq_does_not_ignore_fields(self):
+        import torch
+
+        a = GGUFQuantizationConfig(compute_dtype=torch.float16)
+        b = GGUFQuantizationConfig(compute_dtype=torch.bfloat16)
+
+        assert a != b
+
+    def test_gguf_config_repr_shows_fields(self):
+        import torch
+
+        config = GGUFQuantizationConfig(compute_dtype=torch.float16)
+        assert "float16" in repr(config)
+
+    def test_quanto_config_to_json_string_does_not_raise(self):
+        config = QuantoConfig(weights_dtype="int8")
+        json_string = config.to_json_string()
+        assert "int8" in json_string
 
 
 class TestNunchakuAwqGroupSize:

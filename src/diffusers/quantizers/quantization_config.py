@@ -27,7 +27,6 @@ import importlib.metadata
 import json
 import os
 import warnings
-from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable
 
@@ -54,7 +53,6 @@ class QuantizationMethod(str, Enum):
     SDNQ = "sdnq"
 
 
-@dataclass
 class QuantizationConfigMixin:
     """
     Mixin class for quantization config
@@ -120,6 +118,13 @@ class QuantizationConfigMixin:
         """
         return copy.deepcopy(self.__dict__)
 
+    def to_diff_dict(self) -> dict[str, Any]:
+        """
+        Serializes this instance to a Python dictionary. Returns:
+            `dict[str, Any]`: Dictionary of all the attributes that make up this configuration instance.
+        """
+        return self.to_dict()
+
     def __iter__(self):
         """allows `dict(obj)` for situations where obj may be a dict or QuantizationConfigMixin"""
         for attr, value in copy.deepcopy(self.__dict__).items():
@@ -169,7 +174,6 @@ class QuantizationConfigMixin:
         return unused_kwargs
 
 
-@dataclass
 class BitsAndBytesConfig(QuantizationConfigMixin):
     """
     This is a wrapper class about all possible attributes and features that you can play with a model that has been
@@ -409,7 +413,6 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
         return serializable_config_dict
 
 
-@dataclass
 class GGUFQuantizationConfig(QuantizationConfigMixin):
     """This is a config class for GGUF Quantization techniques.
 
@@ -431,8 +434,12 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
         if self.compute_dtype is None:
             self.compute_dtype = torch.float32
 
+    def to_dict(self) -> dict[str, Any]:
+        output = super().to_dict()
+        output["compute_dtype"] = str(output["compute_dtype"]).split(".")[1]
+        return output
 
-@dataclass
+
 class BFLQuantizationConfig(QuantizationConfigMixin):
     """Config for loading checkpoints quantized with the Black Forest Labs `fp8r` and `nvfp4` schemes.
 
@@ -455,8 +462,12 @@ class BFLQuantizationConfig(QuantizationConfigMixin):
         self.compute_dtype = compute_dtype if compute_dtype is not None else torch.bfloat16
         self.pre_quantized = True
 
+    def to_dict(self) -> dict[str, Any]:
+        output = super().to_dict()
+        output["compute_dtype"] = str(output["compute_dtype"]).split(".")[1]
+        return output
 
-@dataclass
+
 class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
     """Configuration for loading Nunchaku Lite checkpoints.
 
@@ -579,7 +590,6 @@ class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
         return output
 
 
-@dataclass
 class TorchAoConfig(QuantizationConfigMixin):
     """This is a config class for torchao quantization/sparsity techniques.
 
@@ -674,7 +684,6 @@ class TorchAoConfig(QuantizationConfigMixin):
         return f"{self.__class__.__name__} {json.dumps(config_dict, indent=2, sort_keys=True)}\n"
 
 
-@dataclass
 class QuantoConfig(QuantizationConfigMixin):
     """
     This is a wrapper class about all possible attributes and features that you can play with a model that has been
@@ -718,7 +727,6 @@ class QuantoConfig(QuantizationConfigMixin):
             raise ValueError(f"Only support weights in {accepted_weights} but found {self.weights_dtype}")
 
 
-@dataclass
 class NVIDIAModelOptConfig(QuantizationConfigMixin):
     """This is a config class to use nvidia modelopt for quantization.
 
@@ -914,7 +922,6 @@ class NVIDIAModelOptConfig(QuantizationConfigMixin):
         return BASE_CONFIG
 
 
-@dataclass
 class AutoRoundConfig(QuantizationConfigMixin):
     """Configuration class for AutoRound quantization.
 
