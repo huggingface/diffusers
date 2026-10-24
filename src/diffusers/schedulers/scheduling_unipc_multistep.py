@@ -16,6 +16,7 @@
 # The codebase is modified based on https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_dpmsolver_multistep.py
 
 import math
+import warnings
 from typing import Literal
 
 import numpy as np
@@ -1268,6 +1269,12 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             `torch.Tensor`:
                 The noisy samples.
         """
+        if self.num_inference_steps is None:
+            warnings.warn(
+                "`add_noise` was called before `set_timesteps`, so the noise level may be incorrect. "
+                "Call `set_timesteps` before `add_noise`."
+            )
+
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
         if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
