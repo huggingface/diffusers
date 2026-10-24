@@ -50,7 +50,7 @@ from diffusers.utils.testing_utils import (
     require_accelerator,
     require_kernels_version_greater_or_equal,
     require_torch_accelerator,
-    require_torch_gpu,
+    require_torch,
 )
 
 
@@ -228,7 +228,7 @@ class TestRunCommand:
         pipeline = _load_pipeline(args)
         assert pipeline.vae.use_slicing is True
 
-    @require_torch_gpu
+    @require_torch
     def test_compile_arg(self):
         args = self._parse_run_argv(["--compile"])
         pipeline = _load_pipeline(args)
@@ -242,7 +242,7 @@ class TestRunCommand:
         assert compiled_blocks
         assert all(m._compiled_call_impl is not None for m in compiled_blocks)
 
-    @require_torch_gpu
+    @require_torch
     # `--attention-backend` only exposes Hub-hosted kernels, all of which need `kernels>=0.12`.
     @require_kernels_version_greater_or_equal("0.12")
     def test_attention_backend_arg(self):
