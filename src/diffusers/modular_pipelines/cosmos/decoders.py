@@ -52,17 +52,12 @@ class Cosmos3VideoDecodeStep(ModularPipelineBlocks):
             deprecate(
                 "output_type='latent'",
                 "0.47.0",
-                "Passing `output_type='latent'` to the decode step is deprecated. To get the latents, use "
-                "`output='latents'` or run the pipeline without the decode step.",
+                "Passing `output_type='latent'` to the decode step is deprecated. To get the latents, run "
+                "the pipeline without the decode step and use `output='latent'`.",
             )
             block_state.videos = block_state.latents
             self.set_block_state(state, block_state)
             return components, state
-        if block_state.output_type not in ("pil", "np", "pt"):
-            raise ValueError(
-                f"`output_type` must be one of 'pil', 'np' or 'pt', got {block_state.output_type!r}. To get the "
-                "latents, use `output='latents'` or run the pipeline without the decode step."
-            )
 
         device = components._execution_device
 
@@ -269,11 +264,6 @@ class Cosmos3TransferStitchStep(ModularPipelineBlocks):
             block_state.sampling_rate = None
             self.set_block_state(state, block_state)
             return components, state
-        if block_state.output_type not in ("pil", "np", "pt"):
-            raise ValueError(
-                f"`output_type` must be one of 'pil', 'np' or 'pt', got {block_state.output_type!r}. To get the "
-                "latents, use `output='latents'` or run the pipeline without the decode step."
-            )
         decoded = torch.cat(block_state.output_chunks, dim=2)[:, :, : block_state.total_frames]
         block_state.videos = components.video_processor.postprocess_video(
             decoded, output_type=block_state.output_type

@@ -97,11 +97,6 @@ class StableDiffusionXLDecodeStep(ModularPipelineBlocks):
             block_state.images = block_state.latents
             self.set_block_state(state, block_state)
             return components, state
-        if block_state.output_type not in ("pil", "np", "pt"):
-            raise ValueError(
-                f"`output_type` must be one of 'pil', 'np' or 'pt', got {block_state.output_type!r}. To get the "
-                "latents, use `output='latents'` or run the pipeline without the decode step."
-            )
 
         latents = block_state.latents
         # make sure the VAE is in float32 mode, as it overflows in float16
