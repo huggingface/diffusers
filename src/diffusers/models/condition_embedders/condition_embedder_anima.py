@@ -17,7 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin, FromOriginalModelMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ..attention import AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..modeling_utils import ModelMixin

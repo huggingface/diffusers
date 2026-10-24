@@ -342,16 +342,16 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
     AttentionBackendName.FLASH_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_func",
-        wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_forward",
-        wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_backward",
-        version=1,
+        wrapped_forward_attr="flash_attn_interface._flash_attn_forward",
+        wrapped_backward_attr="flash_attn_interface._flash_attn_backward",
+        version=3,
     ),
     AttentionBackendName.FLASH_VARLEN_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_varlen_func",
-        wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_varlen_forward",
-        wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_varlen_backward",
-        version=1,
+        wrapped_forward_attr="flash_attn_interface._flash_attn_varlen_forward",
+        wrapped_backward_attr="flash_attn_interface._flash_attn_varlen_backward",
+        version=3,
     ),
     AttentionBackendName.SAGE_HUB: _HubKernelConfig(
         repo_id="SageAttention/sage-attention",
@@ -418,7 +418,8 @@ def dispatch_attention_fn(
         # variable), or we use a custom backend based on whether user is using the `attention_backend` context manager
         backend_name, backend_fn = _AttentionBackendRegistry.get_active_backend()
     else:
-        backend_name = AttentionBackendName(backend)
+        # Skip the `Enum` call for members: older torch versions cannot always trace it in a full graph.
+        backend_name = backend if isinstance(backend, AttentionBackendName) else AttentionBackendName(backend)
         backend_fn = _AttentionBackendRegistry._backends.get(backend_name)
 
     kwargs = {
@@ -1203,10 +1204,6 @@ def _flash_attention_forward_op(
     if scale is None:
         scale = query.shape[-1] ** (-0.5)
 
-    # flash-attn only returns LSE if dropout_p > 0. So, we need to workaround.
-    if grad_enabled or (_parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1):
-        dropout_p = dropout_p if dropout_p > 0 else 1e-30
-
     with torch.set_grad_enabled(grad_enabled):
         out, lse, S_dmask, rng_state = _wrapped_flash_attn_forward(
             query,
@@ -1219,7 +1216,7 @@ def _flash_attention_forward_op(
             window_size[1],
             softcap,
             alibi_slopes,
-            return_lse,
+            False,
         )
         lse = lse.permute(0, 2, 1)
 
@@ -1327,9 +1324,6 @@ def _flash_attention_hub_forward_op(
     deterministic = False
     grad_enabled = any(x.requires_grad for x in (query, key, value))
 
-    if grad_enabled or (_parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1):
-        dropout_p = dropout_p if dropout_p > 0 else 1e-30
-
     with torch.set_grad_enabled(grad_enabled):
         out, lse, S_dmask, rng_state = wrapped_forward_fn(
             query,
@@ -1342,7 +1336,7 @@ def _flash_attention_hub_forward_op(
             window_size[1],
             softcap,
             alibi_slopes,
-            return_lse,
+            False,
         )
         lse = lse.permute(0, 2, 1).contiguous()
 
@@ -1452,9 +1446,6 @@ def _flash_varlen_attention_hub_forward_op(
     deterministic = False
     grad_enabled = any(x.requires_grad for x in (query, key, value))
 
-    if grad_enabled or (_parallel_config is not None and _parallel_config.context_parallel_config._world_size > 1):
-        dropout_p = dropout_p if dropout_p > 0 else 1e-30
-
     batch_size, seq_len_q, num_heads, _ = query.shape
     _, seq_len_kv, _, _ = key.shape
 
@@ -1493,7 +1484,7 @@ def _flash_varlen_attention_hub_forward_op(
             window_size[1],
             softcap,
             alibi_slopes,
-            return_lse,
+            False,
         )
 
     out = out_packed.view(batch_size, seq_len_q, *out_packed.shape[1:])
@@ -3662,6 +3653,23 @@ def _native_flex_attention(
     else:
         raise ValueError("Attention mask must be either None, a BlockMask, or a 2D/4D tensor.")
 
+    # A `BlockMask`'s own block size is the sparsity granularity the caller built it around (e.g. NABLA's 64-token
+    # fractal blocks). The forward kernel's tile sizes must divide that granularity evenly; torch's autotuned
+    # defaults are only overridden when they don't already divide the mask's block size, to avoid unintended side
+    # effects from pinning tile sizes that otherwise would have been fine (e.g. the default 128x128 mask size would
+    # otherwise always force `BLOCK_N` to 128, even though 64 is a valid size).
+    kernel_options = None
+    if block_mask is not None:
+        q_block_size, kv_block_size = block_mask.BLOCK_SIZE
+        default_block_m = 64 if query.dtype == torch.float32 else 128
+        default_block_n = 64
+        kernel_options = {}
+        if q_block_size % default_block_m != 0:
+            kernel_options["BLOCK_M"] = q_block_size
+        if kv_block_size % default_block_n != 0:
+            kernel_options["BLOCK_N"] = kv_block_size
+        kernel_options = kernel_options or None
+
     query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
     out = flex_attention.flex_attention(
         query=query,
@@ -3672,6 +3680,7 @@ def _native_flex_attention(
         scale=scale,
         enable_gqa=enable_gqa,
         return_lse=return_lse,
+        kernel_options=kernel_options,
     )
     out = out.permute(0, 2, 1, 3)
     return out

@@ -40,7 +40,7 @@ jobs:
 
     steps:
       - name: Checkout diffusers
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2
 
@@ -49,7 +49,7 @@ jobs:
           nvidia-smi
 
       - name: Tailscale # In order to be able to SSH when a test fails
-        uses: huggingface/tailscale-action@main
+        uses: huggingface/tailscale-action@9d1a67c46875a956cf2d1975473da978a970a2a9  # main
         with:
           authkey: ${{ secrets.TAILSCALE_SSH_AUTHKEY }}
           slackChannel: ${{ secrets.SLACK_CIFEEDBACK_CHANNEL }}

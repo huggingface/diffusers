@@ -90,3 +90,5 @@ Add more loop blocks to run within each iteration with [`~modular_pipelines.Loop
 ```py
 loop = LoopWrapper.from_blocks_dict({"block1": LoopBlock(), "block2": LoopBlock})
 ```
+
+To add a loop block to an existing pipeline's denoising loop, for example one that runs a `callback_on_step_end` function at every step, see [Modular pipelines](../using-diffusers/callback#modular-pipelines) in the callbacks guide.

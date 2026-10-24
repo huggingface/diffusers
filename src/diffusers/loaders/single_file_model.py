@@ -31,15 +31,16 @@ from ..utils import deprecate, is_accelerate_available, is_torch_version, loggin
 from ..utils.torch_utils import empty_device_cache
 from .single_file_utils import (
     SingleFileComponentError,
+    convert_anima_text_conditioner_to_diffusers,
     convert_animatediff_checkpoint_to_diffusers,
     convert_auraflow_transformer_checkpoint_to_diffusers,
     convert_autoencoder_dc_checkpoint_to_diffusers,
     convert_chroma_transformer_checkpoint_to_diffusers,
     convert_controlnet_checkpoint,
-    convert_anima_text_conditioner_to_diffusers,
     convert_cosmos_transformer_checkpoint_to_diffusers,
     convert_ernie_image_transformer_checkpoint_to_diffusers,
     convert_flux2_transformer_checkpoint_to_diffusers,
+    convert_flux3_transformer_checkpoint_to_diffusers,
     convert_flux_transformer_checkpoint_to_diffusers,
     convert_hidream_transformer_to_diffusers,
     convert_hunyuan_video_transformer_to_diffusers,
@@ -211,6 +212,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "Flux2Transformer2DModel": {
         "checkpoint_mapping_fn": convert_flux2_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "Flux3Transformer2DModel": {
+        "checkpoint_mapping_fn": convert_flux3_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
     "ZImageTransformer2DModel": {
@@ -414,9 +419,12 @@ class FromOriginalModelMixin:
                 user_agent=user_agent,
             )
         if quantization_config is not None:
+            if not low_cpu_mem_usage:
+                raise ValueError("`low_cpu_mem_usage` cannot be False when using quantization.")
             hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config)
             hf_quantizer.validate_environment()
             torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
+            checkpoint = hf_quantizer.maybe_update_state_dict(checkpoint)
 
         else:
             hf_quantizer = None
