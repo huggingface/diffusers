@@ -324,7 +324,7 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas = torch.from_numpy(sigmas).to(device=device)
 
         # interpolate sigmas
-        sigmas_interpol = sigmas.log().lerp(sigmas.roll(1).log(), 0.5).exp()
+        sigmas_interpol = torch.sqrt(sigmas * sigmas.roll(1))
 
         self.sigmas = torch.cat([sigmas[:1], sigmas[1:].repeat_interleave(2), sigmas[-1:]])
         self.sigmas_interpol = torch.cat(
