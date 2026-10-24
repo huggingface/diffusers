@@ -330,7 +330,7 @@ def _qwenimage21_prepare_qkv(
     rotary_emb: torch.Tensor | None,
     layer_cache: QwenImage21KVLayerCache | None,
     kv_cache_mode: str | None,
-    cache_write_slice: slice | None,
+    cache_write_len: int | None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int]:
     """Shared QKV projection, norm, RoPE and KV-cache bookkeeping for both processors."""
     query = attn.to_q(hidden_states)
@@ -352,13 +352,13 @@ def _qwenimage21_prepare_qkv(
         key = apply_rotary_emb_qwen(key, rotary_emb, use_real=False)
 
     if layer_cache is not None:
-        if kv_cache_mode == "extract" and cache_write_slice is not None:
+        if kv_cache_mode == "extract" and cache_write_len is not None:
             # `clone()`, not `contiguous()`: at batch size 1 the prefix slice already counts as contiguous
             # (size-1 dims are ignored), so `contiguous()` returns the same view and the cache would pin the
             # whole prefill K/V for every step of the denoising loop.
             layer_cache.store(
-                key[:, cache_write_slice].clone(),
-                value[:, cache_write_slice].clone(),
+                key[:, :cache_write_len].clone(),
+                value[:, :cache_write_len].clone(),
             )
         elif kv_cache_mode == "cached":
             cached_k, cached_v = layer_cache.get()
@@ -400,12 +400,12 @@ class QwenImage21FlexAttnProcessor:
         rotary_emb: torch.Tensor | None = None,
         layer_cache: QwenImage21KVLayerCache | None = None,
         kv_cache_mode: str | None = None,
-        cache_write_slice: slice | None = None,
+        cache_write_len: int | None = None,
         segments: list[tuple[int, int, bool]] | None = None,
         key_valid: torch.Tensor | None = None,
     ) -> torch.Tensor:
         query, key, value, seq_len_q = _qwenimage21_prepare_qkv(
-            attn, hidden_states, rotary_emb, layer_cache, kv_cache_mode, cache_write_slice
+            attn, hidden_states, rotary_emb, layer_cache, kv_cache_mode, cache_write_len
         )
 
         seq_len_kv = key.shape[1]
@@ -482,12 +482,12 @@ class QwenImage21AttnProcessor:
         rotary_emb: torch.Tensor | None = None,
         layer_cache: QwenImage21KVLayerCache | None = None,
         kv_cache_mode: str | None = None,
-        cache_write_slice: slice | None = None,
+        cache_write_len: int | None = None,
         segments: list[tuple[int, int, bool]] | None = None,
         key_valid: torch.Tensor | None = None,
     ) -> torch.Tensor:
         query, key, value, seq_len_q = _qwenimage21_prepare_qkv(
-            attn, hidden_states, rotary_emb, layer_cache, kv_cache_mode, cache_write_slice
+            attn, hidden_states, rotary_emb, layer_cache, kv_cache_mode, cache_write_len
         )
 
         if segments is None:
@@ -624,7 +624,7 @@ class QwenImage21TransformerBlock(nn.Module):
         target_token_mask: torch.Tensor | None = None,
         layer_cache: QwenImage21KVLayerCache | None = None,
         kv_cache_mode: str | None = None,
-        cache_write_slice: slice | None = None,
+        cache_write_len: int | None = None,
         segments: list[tuple[int, int, bool]] | None = None,
         key_valid: torch.Tensor | None = None,
     ) -> torch.Tensor:
@@ -637,7 +637,7 @@ class QwenImage21TransformerBlock(nn.Module):
             rotary_emb=rotary_emb,
             layer_cache=layer_cache,
             kv_cache_mode=kv_cache_mode,
-            cache_write_slice=cache_write_slice,
+            cache_write_len=cache_write_len,
             segments=segments,
             key_valid=key_valid,
         )
@@ -974,7 +974,7 @@ class QwenImage21Transformer2DModel(
             rotary_emb = rotary_emb[prefix_len:]
             modulation_mask = modulation_mask[prefix_len:]
             attention_mask = None if joint_key_valid is None else joint_key_valid[:, None, None, :]
-            cache_write_slice = None
+            cache_write_len = None
             block_segments, block_key_valid = None, None
         else:
             # prefill: the whole joint sequence. The block-causal structure goes down in whichever form the
@@ -992,7 +992,7 @@ class QwenImage21Transformer2DModel(
                 if all(isinstance(processor, QwenImage21FlexAttnProcessor) for processor in processors)
                 else _qwenimage21_prefix_segments(image_ids, prefix_len)
             )
-            cache_write_slice = slice(0, prefix_len) if kv_cache_mode == "extract" else None
+            cache_write_len = prefix_len if kv_cache_mode == "extract" else None
             block_key_valid = joint_key_valid
 
         for index_block, block in enumerate(self.transformer_blocks):
@@ -1007,7 +1007,7 @@ class QwenImage21Transformer2DModel(
                     modulation_mask,
                     layer_cache,
                     kv_cache_mode,
-                    cache_write_slice,
+                    cache_write_len,
                     block_segments,
                     block_key_valid,
                 )
@@ -1020,7 +1020,7 @@ class QwenImage21Transformer2DModel(
                     target_token_mask=modulation_mask,
                     layer_cache=layer_cache,
                     kv_cache_mode=kv_cache_mode,
-                    cache_write_slice=cache_write_slice,
+                    cache_write_len=cache_write_len,
                     segments=block_segments,
                     key_valid=block_key_valid,
                 )
