@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ...models.condition_embedders.condition_embedder_clip_image import CLIPImageProjection as _CLIPImageProjection
+from ...models.condition_embedders.condition_embedder_gligen import CLIPImageProjection as _CLIPImageProjection
 from ...utils import deprecate
 
 
