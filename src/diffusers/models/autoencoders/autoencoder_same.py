@@ -735,7 +735,7 @@ class AutoencoderSAME(ModelMixin, ConfigMixin, AttentionMixin):
         self,
         sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[AutoencoderSAMEOutput, torch.Tensor]:
+    ) -> Union[AutoencoderSAMEOutput, tuple[torch.Tensor]]:
         """
         Encode stereo audio to latents.
 
@@ -760,7 +760,7 @@ class AutoencoderSAME(ModelMixin, ConfigMixin, AttentionMixin):
         self,
         latents: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[AutoencoderSAMEDecoderOutput, torch.Tensor]:
+    ) -> Union[AutoencoderSAMEDecoderOutput, tuple[torch.Tensor]]:
         """
         Decode latents back to stereo audio.
 
@@ -784,7 +784,7 @@ class AutoencoderSAME(ModelMixin, ConfigMixin, AttentionMixin):
         self,
         sample: torch.Tensor,
         return_dict: bool = True,
-    ) -> Union[AutoencoderSAMEDecoderOutput, torch.Tensor]:
+    ) -> Union[AutoencoderSAMEDecoderOutput, tuple[torch.Tensor]]:
         """
         Encode and immediately decode *sample* (reconstruction).
 
