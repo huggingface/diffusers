@@ -354,6 +354,20 @@ The default Ulysses Attention mechanism requires that the sequence length of hid
 pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2, ulysses_anything=True))
 ```
 
+MiniMax-H3 can reuse its packed-sequence shard lengths across its transformer blocks in one inference forward:
+
+```python
+transformer = pipeline.transformer
+with torch.no_grad():
+    output = transformer(**model_inputs, attention_kwargs={"reuse_ulysses_metadata": True})
+```
+
+Enable Ulysses Anything on the transformer first. Every rank must use the same opt-in setting for a forward and receive
+the same complete packed layout. The token refiner retains the default length collection. The model
+checks the global sequence length once on every forward, then passes an immutable per-call plan to its self-attention
+blocks. It does not cache plans between requests or infer a global layout from a rank-local length. Calls with gradients
+enabled are rejected for this option. Other models, normal Ulysses, Ring Attention, and the default H3 path are unchanged.
+
 > [!TIP] To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **gloo** backend in `init_process_group`. This will significantly reduce communication latency.
 
 We ran a benchmark for FLUX.1-dev with Ulysses, Ring, Unified Attention and Ulysses Anything Attention with [this script](https://github.com/huggingface/diffusers/pull/12996#issuecomment-3797695999) on a node of 4 L20 GPUs. The results are summarized as follows:
