@@ -25,6 +25,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    MagCacheTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     SingleFileTesterMixin,
@@ -364,6 +365,10 @@ class TestQwenImage21TransformerTaylorSeerCache(QwenImage21TransformerTesterConf
 
         # The prediction steps must actually be approximated, otherwise the comparison above proves nothing.
         assert not torch.allclose(with_kv_cache[3], uncached[3], atol=1e-5)
+
+
+class TestQwenImage21TransformerMagCache(QwenImage21TransformerTesterConfig, MagCacheTesterMixin):
+    """MagCache tests for QwenImage 2.1 Transformer."""
 
 
 class TestQwenImage21TransformerSingleFile(QwenImage21TransformerTesterConfig, SingleFileTesterMixin):
