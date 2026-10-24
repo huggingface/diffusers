@@ -13,8 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from datetime import timedelta
+
 import pytest
 import torch
+import torch.distributed as dist
+import torch.multiprocessing as mp
 
 from diffusers import AutoencoderKLMiniMaxH3
 from diffusers.utils.torch_utils import randn_tensor
@@ -38,6 +42,52 @@ enable_full_determinism()
 # `5 * n + 2` latent frames, so 22 frames is the shortest video this autoencoder can round-trip.
 NUM_FRAMES = 22
 HEIGHT = WIDTH = 8
+
+
+def _parallel_tiled_decode_worker(rank, world_size, init_file, model_config):
+    torch.set_num_threads(1)
+    dist.init_process_group(
+        "gloo", init_method=f"file://{init_file}", rank=rank, world_size=world_size, timeout=timedelta(seconds=60)
+    )
+    try:
+        torch.manual_seed(0)
+        model = AutoencoderKLMiniMaxH3(**model_config).eval()
+        subgroup = dist.new_group([1, 2])
+        tile_settings = {
+            "tile_sample_min_height": 8,
+            "tile_sample_min_width": 8,
+            "tile_sample_min_overlap_height": 4,
+            "tile_sample_min_overlap_width": 4,
+        }
+        calls = []
+        handle = model.decoder.register_forward_hook(lambda *_: calls.append(1))
+        for group in (dist.group.WORLD, subgroup):
+            if dist.get_rank(group) < 0:
+                with pytest.raises(ValueError, match="must belong"):
+                    model.enable_tiling(**tile_settings, process_group=group)
+            else:
+                # Multiple tiles, then more ranks than tiles with the released temporal overlap and autocast.
+                for latent_shape, autocast in (((2, 4, 7, 3, 4), False), ((1, 4, 12, 1, 2), True)):
+                    z = torch.randn(latent_shape, generator=torch.Generator().manual_seed(1))
+                    model.enable_tiling(**tile_settings)
+                    calls.clear()
+                    with torch.inference_mode(), torch.autocast("cpu", dtype=torch.bfloat16, enabled=autocast):
+                        expected = model.decode(z).sample
+                        serial_calls = len(calls)
+                        calls.clear()
+                        model.enable_tiling(**tile_settings, process_group=group)
+                        actual = model.decode(z).sample
+                    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+                    assert actual.dtype == (torch.bfloat16 if autocast else torch.float32)
+                    local_calls = torch.tensor(len(calls))
+                    dist.all_reduce(local_calls, group=group)
+                    assert local_calls.item() == serial_calls
+                with pytest.raises(RuntimeError, match="requires torch.no_grad"):
+                    model.decode(z)
+            dist.barrier()
+        handle.remove()
+    finally:
+        dist.destroy_process_group()
 
 
 class AutoencoderKLMiniMaxH3TesterConfig(BaseModelTesterConfig):
@@ -192,3 +242,14 @@ class TestAutoencoderKLMiniMaxH3Attention(AutoencoderKLMiniMaxH3TesterConfig, At
 
 class TestAutoencoderKLMiniMaxH3SlicingTiling(AutoencoderKLMiniMaxH3TesterConfig, AutoencoderTesterMixin):
     """Slicing and tiling tests for the MiniMax-H3 video autoencoder."""
+
+    def test_parallel_tiled_decoding(self, tmp_path):
+        """Original tiles and temporal blending match across WORLD and a subgroup without global rank zero."""
+        if not dist.is_available() or not dist.is_gloo_available():
+            pytest.skip("Parallel tiled decoding requires torch.distributed with Gloo.")
+        mp.spawn(
+            _parallel_tiled_decode_worker,
+            args=(3, str(tmp_path / "gloo_init"), self.get_init_dict()),
+            nprocs=3,
+            join=True,
+        )
