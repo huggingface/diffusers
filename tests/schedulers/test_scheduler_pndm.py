@@ -234,6 +234,13 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         assert abs(result_sum.item() - 230.0399) < 1e-2
         assert abs(result_mean.item() - 0.2995) < 1e-3
 
+    def test_set_timesteps_fewer_than_prk_order(self):
+        # pndm_order is 4. 1, 2, or 3 steps used to crash in the PRK tile.
+        scheduler = self.scheduler_classes[0](**self.get_scheduler_config())
+        for steps in (1, 2, 3, 4):
+            scheduler.set_timesteps(steps)
+            self.assertGreater(len(scheduler.timesteps), 0)
+
     def test_full_loop_with_no_set_alpha_to_one(self):
         # We specify different beta, so that the first alpha is 0.99
         sample = self.full_loop(set_alpha_to_one=False, beta_start=0.01)
