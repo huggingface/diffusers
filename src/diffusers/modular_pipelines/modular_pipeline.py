@@ -2182,6 +2182,14 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         Returns:
             - A copy of the pipeline blocks
         """
+        # In-place edits of this copy (for example `pipe.blocks.sub_blocks.insert(...)`) do not
+        # change the pipeline. Say so once, and point at the supported path.
+        if not getattr(ModularPipeline.blocks.fget, "_warned_about_copy", False):
+            logger.warning(
+                "`pipeline.blocks` is a copy, so in-place edits do not change this pipeline. "
+                "Edit the blocks, then create a new pipeline with `blocks.init_pipeline()`."
+            )
+            ModularPipeline.blocks.fget._warned_about_copy = True
         return deepcopy(self._blocks)
 
     def register_components(self, **kwargs):
