@@ -123,6 +123,10 @@ else:
         "Cosmos3OmniBlocks",
         "Cosmos3OmniModularPipeline",
     ]
+    _import_structure["diffusion_gemma"] = [
+        "DiffusionGemmaBlocks",
+        "DiffusionGemmaModularPipeline",
+    ]
     _import_structure["ernie_image"] = [
         "ErnieImageAutoBlocks",
         "ErnieImageModularPipeline",
@@ -174,6 +178,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Cosmos3OmniBlocks,
             Cosmos3OmniModularPipeline,
         )
+        from .diffusion_gemma import DiffusionGemmaBlocks, DiffusionGemmaModularPipeline
         from .echo import EchoBlocks, EchoModularPipeline
         from .ernie_image import ErnieImageAutoBlocks, ErnieImageModularPipeline
         from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline

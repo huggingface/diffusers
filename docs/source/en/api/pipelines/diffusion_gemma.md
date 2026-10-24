@@ -175,6 +175,31 @@ out = pipe(
 )
 ```
 
+## Modular
+
+DiffusionGemma is also available as a [modular pipeline](../../modular_diffusers/overview): `DiffusionGemmaBlocks`
+splits the run into a text encoder, generation setup, scheduler setup, the canvas loop and a decode step. The
+checkpoint keeps its weights at the repository root, so build the components as for the standard pipeline and hand
+them to the blocks:
+
+```py
+import torch
+from transformers import AutoProcessor, DiffusionGemmaForBlockDiffusion
+from diffusers import BlockRefinementScheduler
+from diffusers.modular_pipelines import DiffusionGemmaBlocks
+
+model_id = "google/diffusiongemma-26B-A4B-it"
+pipe = DiffusionGemmaBlocks().init_pipeline()
+pipe.update_components(
+    model=DiffusionGemmaForBlockDiffusion.from_pretrained(model_id, dtype=torch.bfloat16, device_map="auto"),
+    processor=AutoProcessor.from_pretrained(model_id),
+    scheduler=BlockRefinementScheduler.from_pretrained(model_id, subfolder="scheduler"),
+)
+
+texts = pipe(prompt="Why is the sky blue?", gen_length=256, num_inference_steps=48, output="texts")
+print(texts[0])
+```
+
 ## DiffusionGemmaPipeline
 [[autodoc]] DiffusionGemmaPipeline
     - all
@@ -182,3 +207,11 @@ out = pipe(
 
 ## DiffusionGemmaPipelineOutput
 [[autodoc]] pipelines.DiffusionGemmaPipelineOutput
+
+## DiffusionGemmaModularPipeline
+
+[[autodoc]] DiffusionGemmaModularPipeline
+
+## DiffusionGemmaBlocks
+
+[[autodoc]] DiffusionGemmaBlocks
