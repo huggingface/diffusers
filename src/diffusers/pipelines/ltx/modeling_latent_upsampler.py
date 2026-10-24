@@ -13,10 +13,6 @@
 # limitations under the License.
 
 from ...models.latent_upscaler.latent_upscaler_ltx import LTXLatentUpsamplerModel as _LTXLatentUpsamplerModel
-from ...models.latent_upscaler.latent_upscaler_ltx import (
-    PixelShuffleND,  # noqa: F401
-    ResBlock,  # noqa: F401
-)
 from ...utils import deprecate
 
 

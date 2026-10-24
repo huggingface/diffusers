@@ -12,13 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ...models.latent_upscaler.latent_upscaler_ltx2 import (
-    RATIONAL_RESAMPLER_SCALE_MAPPING,  # noqa: F401
-    BlurDownsample,  # noqa: F401
-    PixelShuffleND,  # noqa: F401
-    ResBlock,  # noqa: F401
-    SpatialRationalResampler,  # noqa: F401
-)
 from ...models.latent_upscaler.latent_upscaler_ltx2 import LTX2LatentUpsamplerModel as _LTX2LatentUpsamplerModel
 from ...utils import deprecate
 

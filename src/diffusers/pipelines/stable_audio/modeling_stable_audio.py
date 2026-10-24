@@ -13,11 +13,6 @@
 # limitations under the License.
 
 from ...models.condition_embedders.condition_embedder_stable_audio import (
-    StableAudioNumberConditioner,  # noqa: F401
-    StableAudioPositionalEmbedding,  # noqa: F401
-    StableAudioProjectionModelOutput,  # noqa: F401
-)
-from ...models.condition_embedders.condition_embedder_stable_audio import (
     StableAudioProjectionModel as _StableAudioProjectionModel,
 )
 from ...utils import deprecate

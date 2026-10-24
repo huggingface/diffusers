@@ -30,10 +30,6 @@ from ...models.attention_processor import (
 from ...models.condition_embedders.condition_embedder_audioldm2 import (
     AudioLDM2ProjectionModel as _AudioLDM2ProjectionModel,
 )
-from ...models.condition_embedders.condition_embedder_audioldm2 import (
-    AudioLDM2ProjectionModelOutput,  # noqa: F401
-    add_special_tokens,  # noqa: F401
-)
 from ...models.embeddings import TimestepEmbedding, Timesteps
 from ...models.modeling_utils import ModelMixin
 from ...models.resnet import Downsample2D, ResnetBlock2D, Upsample2D

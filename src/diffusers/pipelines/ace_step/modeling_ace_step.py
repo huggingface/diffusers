@@ -29,10 +29,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.condition_embedders.condition_embedder_ace_step import (
     AceStepConditionEncoder as _AceStepConditionEncoder,
 )
-from ...models.condition_embedders.condition_embedder_ace_step import (
-    AceStepEncoderLayer,
-    _pack_sequences,  # noqa: F401
-)
+from ...models.condition_embedders.condition_embedder_ace_step import AceStepEncoderLayer
 from ...models.condition_embedders.condition_embedder_ace_step import AceStepLyricEncoder as _AceStepLyricEncoder
 from ...models.condition_embedders.condition_embedder_ace_step import AceStepTimbreEncoder as _AceStepTimbreEncoder
 from ...models.modeling_utils import ModelMixin

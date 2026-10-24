@@ -13,9 +13,6 @@
 # limitations under the License.
 
 from ...models.condition_embedders.condition_embedder_flux_redux import ReduxImageEncoder as _ReduxImageEncoder
-from ...models.condition_embedders.condition_embedder_flux_redux import (
-    ReduxImageEncoderOutput,  # noqa: F401
-)
 from ...utils import deprecate
 
 
