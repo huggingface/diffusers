@@ -13,11 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
+
 import PIL.Image
 import pytest
 import torch
 
 from diffusers.modular_pipelines import PAN2Blocks, PAN2ModularPipeline
+from diffusers.modular_pipelines.pan2.encoders import (
+    PAN2_DEFAULT_NEGATIVE_PROMPT,
+    get_pan2_default_negative_prompt,
+)
 
 from ...testing_utils import torch_device
 from ..testing_utils import (
@@ -130,6 +136,29 @@ class TestPAN2ModularPipelineFast(PAN2ModularPipelineTesterConfig, ModularPipeli
         inputs["image"] = [PIL.Image.new("RGB", (40, 48))] * 2
         with pytest.raises(ValueError, match="single PIL image"):
             pipe(**inputs, output=self.output_name)
+
+    def test_default_negative_prompt_spans_the_clip(self):
+        for num_frames, fps, span in [(241, 24, "0 to 10"), (313, 24, "0 to 13"), (85, 24, "0 to 3.5")]:
+            negative = json.loads(get_pan2_default_negative_prompt(num_frames, fps))
+            event = negative["events"][0]
+            ranges = [event["time_range_sec"], event["camera_motion"][0]["time_range_sec"]]
+            ranges.append(event["contained_actions"][0]["time_range_sec"])
+            assert ranges == [span] * 3
+        assert json.loads(get_pan2_default_negative_prompt(241, 24)) == PAN2_DEFAULT_NEGATIVE_PROMPT
+
+    def test_missing_negative_prompt_uses_the_default(self):
+        pipe = self.get_pipeline().to(torch_device)
+        default = pipe(**self.get_dummy_inputs(), output=self.output_name)
+        empty = pipe(**self.get_dummy_inputs(), negative_prompt="", output=self.output_name)
+        rendered = pipe(
+            **self.get_dummy_inputs(),
+            negative_prompt=get_pan2_default_negative_prompt(5, 24),
+            output=self.output_name,
+        )
+        other = pipe(**self.get_dummy_inputs(), negative_prompt="blurry", output=self.output_name)
+        assert torch.equal(default, empty)
+        assert torch.equal(default, rendered)
+        assert not torch.equal(default, other)
 
     def test_safety_checker_required_by_default(self):
         pipe = super(PAN2ModularPipelineTesterConfig, self).get_pipeline()

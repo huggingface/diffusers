@@ -271,10 +271,15 @@ class PAN2Blocks(SequentialPipelineBlocks):
       Inputs:
           prompt (`str`):
               The prompt to guide generation, a single string.
-          negative_prompt (`str`, *optional*, defaults to ):
-              The prompt not to guide generation, a single string.
+          negative_prompt (`str`, *optional*):
+              The prompt not to guide generation, a single string. Without one, or with an empty one, PAN 2's default
+              negative prompt is used, its time ranges set to the clip's duration.
           max_sequence_length (`int`, *optional*, defaults to 1536):
               Maximum sequence length for prompt encoding.
+          num_frames (`int`, *optional*, defaults to 313):
+              Number of video frames to generate, of the form `4 * n + 1`.
+          fps (`float`, *optional*, defaults to 24.0):
+              The frame rate of the video, which sets its duration in the default negative prompt.
           image (`Image`, *optional*):
               The first frame, a single image.
           height (`int`, *optional*):
@@ -289,8 +294,6 @@ class PAN2Blocks(SequentialPipelineBlocks):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          num_frames (`int`, *optional*, defaults to 313):
-              Number of video frames to generate, of the form `4 * n + 1`.
           latents (`Tensor`):
               Pre-generated noisy latents to use as inputs for video generation.
           generator (`Generator`, *optional*):
