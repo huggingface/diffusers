@@ -570,6 +570,8 @@ class NunchakuLiteQuantizationConfig(QuantizationConfigMixin):
                     )
             elif precision != "int4":
                 raise ValueError("Nunchaku AWQ target requires precision='int4'.")
+            elif group_size != 64:
+                raise ValueError(f"Nunchaku AWQ config requires group_size=64, got {group_size}.")
 
     def to_dict(self) -> dict[str, Any]:
         output = super().to_dict()

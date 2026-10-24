@@ -16,8 +16,14 @@
 
 import json
 
+import pytest
+
 from diffusers.quantizers.auto import DiffusersAutoQuantizer
-from diffusers.quantizers.quantization_config import AutoRoundConfig, NVIDIAModelOptConfig
+from diffusers.quantizers.quantization_config import (
+    AutoRoundConfig,
+    NunchakuLiteQuantizationConfig,
+    NVIDIAModelOptConfig,
+)
 
 
 class TestAutoRoundConfigMerge:
@@ -43,3 +49,17 @@ class TestNVIDIAModelOptConfigToDict:
 
         assert "forward_loop" not in output
         json.dumps(output)
+
+
+class TestNunchakuAwqGroupSize:
+    def test_awq_rejects_group_size_other_than_64(self):
+        with pytest.raises(ValueError, match="group_size=64"):
+            NunchakuLiteQuantizationConfig(
+                awq_w4a16={"precision": "int4", "group_size": 128, "targets": ["final_linear"]}
+            )
+
+    def test_awq_accepts_group_size_64(self):
+        config = NunchakuLiteQuantizationConfig(
+            awq_w4a16={"precision": "int4", "group_size": 64, "targets": ["final_linear"]}
+        )
+        assert config.awq_w4a16["group_size"] == 64
