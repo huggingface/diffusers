@@ -20,16 +20,65 @@ by the model's prompt preprocessing. Action timestamps in JSON must already be r
 
 ## Installation
 
-Install PyTorch 2.10.0 with CUDA support for your system, then run the following command from the Diffusers checkout:
+The examples below enable reference attention to reproduce the original Hy-Nomas computation. This mode requires
+FlashAttention 2, FlashAttention 3, and MagiAttention. The `hy-nomas` extra installs PyTorch, Transformers, Accelerate,
+and the video export dependencies, but does not install these three CUDA attention libraries.
+
+### Reuse the Hy-Nomas environment
+
+If you have already prepared the [Hy-Nomas environment](https://github.com/Tencent-Hunyuan/Hy-Nomas#environment-setup),
+reuse the Python environment containing its attention kernels, including the preinstalled environment inside the
+Hy-Nomas Docker image. Run the following command from the Diffusers checkout; no separate attention installation is
+needed when all three libraries are already available:
 
 ```bash
 pip install -e ".[hy-nomas]"
 ```
 
-The `hy-nomas` extra installs the Transformers text encoder, Accelerate loading support, and the `imageio` and
-`imageio-ffmpeg` video export dependencies. The original Hy-Nomas code checkout is not required.
+Run both implementations with the same PyTorch/CUDA and attention library builds when comparing pixels. Installing
+Diffusers in a separate environment does not automatically make the original environment's CUDA kernels available.
 
-## Convert the checkpoints
+### Install the attention libraries with pip
+
+For a new environment, prepare Linux, Python 3.12+, the CUDA 13 Toolkit with `nvcc`, a C++ compiler, and an NVIDIA GPU
+supported by the reference kernels. The following public source versions follow the
+[Hy-Nomas Dockerfile](https://github.com/Tencent-Hunyuan/Hy-Nomas/blob/main/docker/Dockerfile):
+
+| Library | Source version |
+|---|---|
+| FlashAttention 2 | `v2.8.3.post2` |
+| FlashAttention 3 | `v2.8.3.post2`, `hopper/` subdirectory (`3.0.0b1`) |
+| MagiAttention | `v1.1.1` |
+
+Install PyTorch and the build/runtime dependencies before compiling the attention libraries:
+
+```bash
+pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu130
+pip install "setuptools>=78.1.1" wheel "packaging>=24.2" ninja psutil einops \
+  versioningit==3.3.0 \
+  "nvidia-cutlass-dsl[cu13]==4.8.0" nvidia-nvshmem-cu13==3.8.0
+```
+
+Then install all three attention libraries and Diffusers from the Diffusers checkout:
+
+```bash
+FLASH_ATTENTION_FORCE_BUILD=TRUE MAGI_ATTENTION_PREBUILD_FFA=0 MAX_JOBS=8 NVCC_THREADS=4 \
+pip install --no-build-isolation \
+  "flash-attn @ git+https://github.com/Dao-AILab/flash-attention.git@v2.8.3.post2" \
+  "flash-attn-3 @ git+https://github.com/Dao-AILab/flash-attention.git@v2.8.3.post2#subdirectory=hopper" \
+  "magi-attention @ git+https://github.com/SandAI-org/MagiAttention.git@v1.1.1" \
+  -e ".[hy-nomas]"
+```
+
+These are source-build instructions, not the recorded versions of every published Docker image or the earlier parity
+test environment. Use the resulting environment for both implementations; installing the libraries alone does not
+establish pixel equivalence. The converted weights do not require importing the original Hy-Nomas code.
+
+## Optional: convert original checkpoints
+
+Skip this section when using `tencent/Hy-Nomas-Diffusers`. The repository includes all required model components,
+including the text encoder and tokenizer. No separate Qwen checkpoint download is required. The bundled text encoder
+is distinct from the optional Nomas-PE prompt enhancement model.
 
 Run the conversion script from a Diffusers checkout. The decoder input must be the original floating-point checkpoint.
 The script checks parameter mappings and verifies the saved components by loading them again.
@@ -49,6 +98,10 @@ as the model ID; to use a local conversion, replace it with `/path/to/Hy-Nomas-D
 
 ## Generate video from a prompt
 
+The examples below place all pipeline components on a single CUDA device in BF16, without CPU offloading or
+quantization. Peak GPU memory usage depends on the resolution, segment length, accumulated history, and attention
+backend.
+
 Use a plain string to describe one segment. This example generates 120 frames at 24 FPS with four denoising steps and
 returns a session for subsequent interaction.
 
@@ -61,6 +114,7 @@ from diffusers.utils import export_to_video
 pipe = HyNomasModularPipeline.from_pretrained("tencent/Hy-Nomas-Diffusers")
 pipe.load_components(dtype=torch.bfloat16)
 pipe.to(device="cuda", dtype=torch.bfloat16)
+pipe.transformer.enable_reference_attention(text_backend="flash_varlen", deterministic=True)
 
 first = pipe(
     prompt=(
@@ -182,20 +236,19 @@ and `pil`.
 
 ### Match reference attention
 
-The transformer defaults to PyTorch scaled dot product attention. On CUDA, the PixelUMM decoder uses compiled
-FlexAttention for local attention, so its first call includes compilation. This default inference path does not require
-MagiAttention or FlashAttention. To compare against the original BF16 implementation, install its compatible
-MagiAttention, FlashAttention 2, and FlashAttention 3 dependencies and select the reference processors after loading
-the transformer:
+The examples above already enable reference attention after loading the transformer. Complete the
+[installation steps](#installation) before running them. The current `enable_reference_attention()` API checks for all
+three attention packages, even when a particular prompt does not execute every backend:
 
 ```python
 pipe.transformer.enable_reference_attention(text_backend="flash_varlen", deterministic=True)
 ```
 
 This uses FlashAttention 2 for the unpadded text refiner, MagiAttention for action and camera visibility ranges, and
-FlashAttention 3 for unrestricted history attention. MagiAttention is imported only when its backend runs; the default
-processors do not require these optional dependencies. Use `disable_reference_attention()` or
-`set_attention_backend("native")` to return to the standard processors. Set
+FlashAttention 3 for unrestricted history attention. MagiAttention is imported only when its backend runs. Calling
+`disable_reference_attention()` or `set_attention_backend("native")` restores the default PyTorch attention processors;
+that path does not preserve pixel equivalence with the original implementation. On CUDA, the PixelUMM decoder uses
+compiled FlexAttention for local attention, so its first call includes compilation. Set
 `MAGI_ATTENTION_DETERMINISTIC_MODE=1` in the original implementation as well when comparing outputs. Use the same
 checkpoint precision, noise timeline capacity, CPU generator seed, prompts, normalized camera inputs, and full history
 on both sides. A matching seed alone does not establish numerical equivalence across different attention kernels.
