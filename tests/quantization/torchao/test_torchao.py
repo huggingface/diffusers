@@ -14,9 +14,12 @@
 # limitations under the License.
 
 
+from types import SimpleNamespace
+
 import pytest
 
 from diffusers import TorchAoConfig
+from diffusers.quantizers.torchao.torchao_quantizer import TorchAoHfQuantizer
 
 from ...testing_utils import (
     enable_full_determinism,
@@ -73,3 +76,13 @@ class TestTorchAoConfig:
         quantization_repr = repr(quantization_config)
         assert "TorchAoConfig" in quantization_repr
         assert "torchao" in quantization_repr
+
+    def test_process_model_before_weight_loading_does_not_mutate_config_list(self):
+        # The same config can be reused across multiple loads.
+        quantization_config = TorchAoConfig(Int4WeightOnlyConfig(), modules_to_not_convert=["a"])
+        quantizer = TorchAoHfQuantizer(quantization_config)
+        model = SimpleNamespace(config=SimpleNamespace())
+
+        quantizer._process_model_before_weight_loading(model, device_map=None, keep_in_fp32_modules=["b"])
+
+        assert quantization_config.modules_to_not_convert == ["a"]

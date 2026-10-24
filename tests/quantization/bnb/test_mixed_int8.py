@@ -69,3 +69,16 @@ class TestBnB8bitBasic:
             "You are loading your model in 8bit or 4bit but no linear modules were found in your model."
             in cap_logger.out
         )
+
+    def test_bnb_8bit_modules_to_not_convert_does_not_mutate_config(self):
+        from diffusers.quantizers.bitsandbytes.bnb_quantizer import BnB8BitDiffusersQuantizer
+
+        skip_modules = ["proj_out"]
+        quantization_config = BitsAndBytesConfig(load_in_8bit=True, llm_int8_skip_modules=skip_modules)
+        model = torch.nn.Sequential(torch.nn.Linear(4, 4), torch.nn.Linear(4, 4))
+
+        for _ in range(2):
+            quantizer = BnB8BitDiffusersQuantizer(quantization_config)
+            quantizer._process_model_before_weight_loading(model, device_map=None, keep_in_fp32_modules=["norm_out"])
+
+        assert quantization_config.llm_int8_skip_modules == skip_modules
