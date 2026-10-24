@@ -101,7 +101,7 @@ class PipelineQuantizationConfig:
         init_kwargs_diffusers = inspect.signature(quant_config_mapping_diffusers[quant_backend].__init__)
         init_kwargs_diffusers = {name for name in init_kwargs_diffusers.parameters if name != "self"}
 
-        if init_kwargs_transformers != init_kwargs_diffusers:
+        if init_kwargs_transformers is not None and init_kwargs_transformers != init_kwargs_diffusers:
             raise ValueError(
                 "The signatures of the __init__ methods of the quantization config classes in `diffusers` and `transformers` don't match. "
                 f"Please provide a `quant_mapping` instead, in the {self.__class__.__name__} class. Refer to [the docs](https://huggingface.co/docs/diffusers/main/en/quantization/overview#pipeline-level-quantization) to learn more about how "
