@@ -1,7 +1,6 @@
 name: "Bot: Pytest"
 
 # Reusable workflow called by diffusers_bot.yml for `/diffusers-bot pytest <args>`.
-# Runs pytest on a GPU runner and reports the result back on the PR.
 
 on:
   workflow_call:
@@ -9,6 +8,13 @@ on:
       pytest_args:
         required: true
         type: string
+      pytest_flavor:
+        required: false
+        type: string
+        default: ''
+    secrets:
+      HF_JOBS_TOKEN:
+        required: false
 
 jobs:
   gate:
@@ -35,9 +41,15 @@ jobs:
           PR: ${{ github.event.issue.number }}
           COMMENTER: ${{ github.event.comment.user.login }}
           PYTEST_ARGS: ${{ inputs.pytest_args }}
+          PYTEST_FLAVOR: ${{ inputs.pytest_flavor }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          BODY="⏳ Running \`pytest ${PYTEST_ARGS}\` on a GPU runner — [view logs](${RUN_URL}).
+          if [[ -n "$PYTEST_FLAVOR" ]]; then
+            LOCATION="HF Jobs (${PYTEST_FLAVOR})"
+          else
+            LOCATION="a GPU runner"
+          fi
+          BODY="⏳ Running \`pytest ${PYTEST_ARGS}\` on ${LOCATION} — [view logs](${RUN_URL}).
 
           Triggered by @${COMMENTER}."
           CID=$(gh api -X POST "repos/${REPO}/issues/${PR}/comments" -f body="$BODY" --jq '.id')
@@ -46,6 +58,7 @@ jobs:
   gpu:
     name: Run pytest on GPU
     needs: gate
+    if: ${{ inputs.pytest_flavor == '' }}
     # A newer command on the same PR supersedes an in-flight one. Scoped to this job
     # only so the superseded run's `report` still updates its comment.
     concurrency:
@@ -121,9 +134,53 @@ jobs:
           name: bot_gpu_test_reports
           path: reports
 
+  hf_job:
+    name: Run pytest on HF Jobs
+    needs: gate
+    if: ${{ inputs.pytest_flavor != '' }}
+    concurrency:
+      group: diffusers-bot-pytest-${{ github.event.issue.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-22.04
+    timeout-minutes: 150
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      job_url: ${{ steps.run.outputs.job_url }}
+    steps:
+      - name: Resolve PR head
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+        run: |
+          echo "sha=$(gh api "repos/${REPO}/pulls/${PR}" --jq '.head.sha')" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout workflow code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Install Hub client
+        run: python -m pip install 'huggingface_hub>=1.32,<2'
+
+      - name: Run HF Job
+        id: run
+        env:
+          HF_TOKEN: ${{ secrets.HF_JOBS_TOKEN }}
+          HF_JOBS_NAMESPACE: ${{ vars.DIFFUSERS_HF_JOBS_NAMESPACE || 'diffusers-internal-dev' }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          PR_SHA: ${{ steps.pr.outputs.sha }}
+          PYTEST_ARGS: ${{ inputs.pytest_args }}
+          PYTEST_FLAVOR: ${{ inputs.pytest_flavor }}
+        run: python utils/bot_pytest_hf_job.py
+
   report:
     name: Report status
-    needs: [gate, gpu]
+    needs: [gate, gpu, hf_job]
     # Always run so the comment is updated on success, failure, or cancellation —
     # but only if `gate` actually posted a comment to update.
     if: ${{ always() && needs.gate.outputs.comment_id != '' }}
@@ -136,8 +193,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           CID: ${{ needs.gate.outputs.comment_id }}
-          RESULT: ${{ needs.gpu.result }}
+          RESULT: ${{ inputs.pytest_flavor == '' && needs.gpu.result || needs.hf_job.result }}
           PYTEST_ARGS: ${{ inputs.pytest_args }}
+          PYTEST_FLAVOR: ${{ inputs.pytest_flavor }}
+          JOB_URL: ${{ needs.hf_job.outputs.job_url }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           case "$RESULT" in
@@ -146,5 +205,13 @@ jobs:
             cancelled) EMOJI="⚠️"; MSG="was cancelled";;
             *)         EMOJI="⚠️"; MSG="did not run (${RESULT})";;
           esac
-          BODY="${EMOJI} \`pytest ${PYTEST_ARGS}\` ${MSG} on GPU — [view logs](${RUN_URL})."
+          if [[ -n "$PYTEST_FLAVOR" ]]; then
+            LOCATION="HF Jobs (${PYTEST_FLAVOR})"
+            if [[ -n "$JOB_URL" ]]; then
+              RUN_URL="$JOB_URL"
+            fi
+          else
+            LOCATION="GPU"
+          fi
+          BODY="${EMOJI} \`pytest ${PYTEST_ARGS}\` ${MSG} on ${LOCATION} — [view logs](${RUN_URL})."
           gh api -X PATCH "repos/${REPO}/issues/comments/${CID}" -f body="$BODY"
