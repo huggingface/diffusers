@@ -8,6 +8,7 @@ Shared reference for model-related conventions, patterns, and gotchas.
 - Prefer descriptive variable names over short ones. For example, prefer spelling out `query` over `q`.
 - Avoid graph breaks for `torch.compile` compatibility — do not insert NumPy operations in forward implementations and any other patterns that can break `torch.compile` compatibility with `fullgraph=True`.
 - No new mandatory dependency without discussion (e.g. `einops`). Optional deps guarded with `is_X_available()` and a dummy in `utils/dummy_*.py`.
+- Pass `forward` inputs by name and return a dataclass with named fields rather than a dict of tensors, and keep `__init__` arguments flat (plain values, not nested dicts) — a dict hides what a signature takes and makes you validate the keys by hand. There are a few standard exceptions, such as `attention_kwargs` and `RFD4ProteinaPipeline`'s `conditioning_features`; use your judgment and bring it up in review if your case needs one.
 
 ## Common model conventions
 
@@ -228,7 +229,3 @@ Boolean gate. If `False` (default), calling that method raises `ValueError`. All
 7. **Tensor contiguity.** - Non-contiguous tensors can degrade performance. Therefore, try to maintain contiguity
 of the tensors whenever possible. A non-contiguous tensor is usually produced because of the operations. A common
 example is a `flatten()` followed by a `transpose()`. This sequence is known to produce non-contiguous layouts. So, prefer calling `contiguous()` on the output tensor to maintain performance.
-
-8. **Nested dicts for inputs and config.** We strongly prefer explicitly named arguments: a dict hides what a signature takes and makes you validate the keys by hand. Keep `__init__` arguments flat (plain values, not nested dicts), pass `forward` inputs by name, and return a dataclass with named fields rather than a dict of tensors.
-
-    There are a few exceptions in the codebase. `attention_kwargs` is a standard dict input across our models and pipelines: an escape hatch for the swappable attention processor, and the channel for the LoRA scale. `RFD4ProteinaPipeline` takes its ~30 optional annotation tensors as one `conditioning_features` mapping. Naming them all is impractical, the checkpoint's config decides which are read, and they go straight into a lookup that embeds and concatenates them into a single tensor — the mapping never spreads through the model. Use your judgment — if your case genuinely needs a dict, bring it up in review.
