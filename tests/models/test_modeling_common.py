@@ -13,9 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import logging
 import os
 import tempfile
+import unittest
 import unittest.mock as mock
 import uuid
 
@@ -371,3 +373,49 @@ class TestModelPushToHub:
 
         # Reset repo
         delete_repo(repo_id, token=TOKEN)
+
+
+class FromPretrainedOfflineShardTester(unittest.TestCase):
+    """HF_HUB_OFFLINE=1 must behave like local_files_only=True in
+    _get_checkpoint_shard_files: the model_info pre-check is skipped and
+    snapshot_download is told to stay local (#14952)."""
+
+    def _make_index(self, tmpdir):
+        index_path = os.path.join(tmpdir, "diffusion_pytorch_model.safetensors.index.json")
+        with open(index_path, "w") as f:
+            json.dump({"metadata": {}, "weight_map": {"linear.weight": "shard-00001-of-00002.safetensors"}}, f)
+        shard_path = os.path.join(tmpdir, "shard-00001-of-00002.safetensors")
+        with open(shard_path, "wb") as f:
+            f.write(b"0" * 8)
+        return index_path
+
+    def test_offline_mode_skips_hub_precheck_and_stays_local(self):
+        from diffusers.utils import hub_utils
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            index_path = self._make_index(tmpdir)
+            with mock.patch.object(hub_utils, "HF_HUB_OFFLINE", True), mock.patch.object(
+                hub_utils, "model_info", side_effect=AssertionError("model_info must not run in offline mode")
+            ) as model_info_mock, mock.patch.object(
+                hub_utils, "snapshot_download", return_value=tmpdir
+            ) as snapshot_mock:
+                shard_filenames, _ = hub_utils._get_checkpoint_shard_files(
+                    "hf-internal-testing/tiny-flux-sharded", index_path
+                )
+
+            model_info_mock.assert_not_called()
+            self.assertEqual(snapshot_mock.call_args.kwargs["local_files_only"], True)
+            self.assertEqual(len(shard_filenames), 1)
+
+    def test_online_mode_keeps_the_hub_precheck(self):
+        from diffusers.utils import hub_utils
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            index_path = self._make_index(tmpdir)
+            sibling = mock.Mock(rfilename="transformer/shard-00001-of-00002.safetensors")
+            with mock.patch.object(hub_utils, "HF_HUB_OFFLINE", False), mock.patch.object(
+                hub_utils, "model_info", return_value=mock.Mock(siblings=[sibling])
+            ) as model_info_mock, mock.patch.object(hub_utils, "snapshot_download", return_value=tmpdir):
+                hub_utils._get_checkpoint_shard_files("hf-internal-testing/tiny-flux-sharded", index_path)
+
+            model_info_mock.assert_called_once()
