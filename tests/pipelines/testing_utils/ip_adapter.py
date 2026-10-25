@@ -29,8 +29,7 @@ class IPAdapterTesterMixin(BasePipelineOutputMixin):
     """IP-Adapter tests for UNet pipelines that load adapters through the standard `IPAdapterMixin` API.
 
     Compose it with a `BasePipelineTesterConfig` subclass in its own test class, separate from the
-    `PipelineTesterMixin` one. Pipelines whose IP-Adapter API differs (Flux, for example) keep their tests in
-    their own test module instead.
+    `PipelineTesterMixin` one. Pipelines whose IP-Adapter API differs use a mixin of their own.
     """
 
     def _get_dummy_image_embeds(self, cross_attention_dim: int = 32):

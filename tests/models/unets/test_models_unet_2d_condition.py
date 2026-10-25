@@ -51,7 +51,6 @@ from ...testing_utils import (
     torch_all_close,
     torch_device,
 )
-from ..test_modeling_common import UNetTesterMixin
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
@@ -382,7 +381,28 @@ class UNet2DConditionTesterConfig(BaseModelTesterConfig):
         }
 
 
-class TestUNet2DCondition(UNet2DConditionTesterConfig, ModelTesterMixin, UNetTesterMixin):
+class TestUNet2DCondition(UNet2DConditionTesterConfig, ModelTesterMixin):
+    def test_forward_with_norm_groups(self):
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
+
+        init_dict["norm_num_groups"] = 16
+        init_dict["block_out_channels"] = (16, 32)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.to_tuple()[0]
+
+        assert output is not None
+        expected_shape = inputs_dict["sample"].shape
+        assert output.shape == expected_shape, "Input and output shapes do not match"
+
     def test_model_with_attention_head_dim_tuple(self):
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()

@@ -17,7 +17,7 @@ import torch
 
 from ...schedulers import MiniMaxH3Scheduler
 from ...utils import logging
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import maybe_adjust_dtype_for_device, randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import (
@@ -155,7 +155,9 @@ class MiniMaxH3NoKeyframeAnchorsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.keyframe_anchors = ()
@@ -371,7 +373,9 @@ class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
         return position_ids, token_tags, video_indices, audio_indices, text_indices, num_condition_rows, 0
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -441,7 +445,10 @@ class MiniMaxH3PrepareLayoutStep(ModularPipelineBlocks):
             components.video_tag,
             block_state.keyframe_anchors,
         )
-        block_state.position_ids = position_ids.to(device)
+        # The grid is built in fp64 to reproduce the released coordinates exactly, but MPS, NPU and Neuron have no
+        # fp64; the transformer's rope casts to fp32 anyway, so downcasting here is all the transfer needs.
+        position_ids_dtype = maybe_adjust_dtype_for_device(position_ids.dtype, device)
+        block_state.position_ids = position_ids.to(device, position_ids_dtype)
         block_state.token_tags = token_tags.to(device)
         block_state.video_indices = video_indices.to(device)
         block_state.audio_indices = audio_indices.to(device)
@@ -722,7 +729,9 @@ class MiniMaxH3Ref2VAPrepareLayoutStep(ModularPipelineBlocks):
         )
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -765,7 +774,10 @@ class MiniMaxH3Ref2VAPrepareLayoutStep(ModularPipelineBlocks):
             components.audio_tag,
             components.video_tag,
         )
-        block_state.position_ids = position_ids.to(device)
+        # The grid is built in fp64 to reproduce the released coordinates exactly, but MPS, NPU and Neuron have no
+        # fp64; the transformer's rope casts to fp32 anyway, so downcasting here is all the transfer needs.
+        position_ids_dtype = maybe_adjust_dtype_for_device(position_ids.dtype, device)
+        block_state.position_ids = position_ids.to(device, position_ids_dtype)
         block_state.token_tags = token_tags.to(device)
         block_state.video_indices = video_indices.to(device)
         block_state.audio_indices = audio_indices.to(device)
@@ -839,7 +851,9 @@ class MiniMaxH3PrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         patch_size = components.patch_size
@@ -938,7 +952,9 @@ class MiniMaxH3PrepareConditionLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         patch_size = components.patch_size
@@ -1006,7 +1022,9 @@ class MiniMaxH3FL2VAPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.latents = torch.cat([block_state.condition_rows, block_state.latents])
@@ -1082,7 +1100,9 @@ class MiniMaxH3Ref2VAPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -1216,7 +1236,9 @@ class MiniMaxH3SetTimestepsStep(ModularPipelineBlocks):
         return torch.unique(row_timesteps, sorted=True, return_inverse=True)
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 

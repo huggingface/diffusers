@@ -44,12 +44,14 @@ from ...pipelines.ltx2.utils import (
     LTX2_5_I2V_DEFAULT_SYSTEM_PROMPT,
     LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT,
     apply_image_conditioning_crf,
+    conditioning_frame_rate,
     resolve_default_image_crf,
 )
 from ...utils import logging
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .modular_pipeline import LTX2ModularPipeline
 
 
 logger = logging.get_logger(__name__)
@@ -221,7 +223,7 @@ class LTX2PromptEnhancerStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         if not block_state.enable_prompt_enhancement:
@@ -318,7 +320,7 @@ class LTX2ImageToVideoPromptEnhancerStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         if not block_state.enable_prompt_enhancement:
@@ -427,7 +429,7 @@ class LTX2ConditionPromptEnhancerStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         if not block_state.enable_prompt_enhancement:
@@ -543,7 +545,7 @@ class LTX2TextEncoderStep(ModularPipelineBlocks):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(block_state.prompt)}")
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
 
@@ -631,7 +633,7 @@ class LTX2TextConnectorStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         padding_side = components.tokenizer.padding_side
 
@@ -721,7 +723,7 @@ class LTX2DurationStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         if getattr(components, "duration_head", None) is None:
@@ -887,7 +889,7 @@ class LTX2VaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -1006,7 +1008,7 @@ class LTX2ConditionEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -1196,6 +1198,16 @@ class LTX2ReferenceEncoderStep(ModularPipelineBlocks):
             InputParam(
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
             ),
+            InputParam(
+                "motion_speed",
+                type_hint=float,
+                default=1.0,
+                description=(
+                    "Speed of the motion relative to real time. The positional embeddings are conditioned on "
+                    "`frame_rate / motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the "
+                    "Slow-Motion-Control LoRA's 5x slow motion. `frame_rate` stays the playback rate."
+                ),
+            ),
             InputParam.template("generator"),
         ]
 
@@ -1228,7 +1240,7 @@ class LTX2ReferenceEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[LTX2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -1284,7 +1296,7 @@ class LTX2ReferenceEncoderStep(ModularPipelineBlocks):
                 height=ref_latent_height,
                 width=ref_latent_width,
                 device=device,
-                fps=block_state.frame_rate,
+                fps=conditioning_frame_rate(block_state.frame_rate, block_state.motion_speed),
             )
             if downscale_factor != 1:
                 ref_coords[:, 1, :, :] = ref_coords[:, 1, :, :] * downscale_factor

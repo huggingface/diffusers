@@ -72,8 +72,14 @@ pipeline.transformer.enable_cache(config)
 
 [SeaCache](https://huggingface.co/papers/2602.18993) compares Spectral-Evolution-Aware (SEA) indicators between
 successive denoising steps. When the accumulated indicator change remains below a threshold, it skips the expensive
-transformer block stack and predicts its output from cached residuals. The indicator is computed from the raw vision
-latents, including clean conditioning frames for image-to-video generation.
+transformer block stack and predicts its output from cached residuals. Build the indicator from the visual latents that
+form the generated output. Include clean conditioning frames when they are part of that output trajectory, as in
+image-to-video and video-to-video generation. Exclude separate visual hints that condition the generation but are not
+part of the output. Text conditioning is excluded because it is not a visual latent.
+
+Cosmos 3 Transfer packs control hints as separate visual sequences, so its adapter excludes them from the indicator.
+Control-CFG branches compare the same output trajectory while retaining their own cached residuals. Control hints still
+condition the transformer.
 
 The implementation provides built-in adapters for the following models:
 
@@ -87,8 +93,9 @@ Other video transformers can integrate with the generic path when they use `Cach
 block list, and register the block input/output layout in `TransformerBlockRegistry`. The pipeline must enter a
 `cache_context` for every transformer call, attach `step_index`, `sigma`, and `num_inference_steps`, and use separate
 context names for independent trajectories such as conditional and unconditional guidance. Pass a `raw_vision_callback`
-that returns the noisy vision latents when no built-in adapter is available. Validate output quality and tune the cache
-parameters for each model and scheduler; support and benchmark results do not transfer automatically from Cosmos 3.
+that returns the visual latents forming the generated output when no built-in adapter is available. Validate output
+quality and tune the cache parameters for each model and scheduler; support and benchmark results do not transfer
+automatically from Cosmos 3.
 
 ### Cosmos 3
 
@@ -154,7 +161,7 @@ pipe.transformer.enable_cache(config)
 
 [MagCache](https://github.com/Zehong-Ma/MagCache) accelerates inference by skipping transformer blocks based on the magnitude of the residual update. It observes that the magnitude of updates (Output - Input) decays predictably over the diffusion process. By accumulating an "error budget" based on pre-computed magnitude ratios, it dynamically decides when to skip computation and reuse the previous residual.
 
-MagCache relies on **Magnitude Ratios** (`mag_ratios`), which describe this decay curve. These ratios are specific to the model checkpoint and scheduler.
+MagCache relies on **Magnitude Ratios** (`mag_ratios`), which describe this decay curve. These ratios are specific to the model checkpoint and scheduler. The bundled `FLUX_MAG_RATIOS` were measured on FLUX.1; other models, including Flux2 and Flux2 Klein, need their own calibration run.
 
 To use MagCache, you typically follow a two-step process: **Calibration** and **Inference**.
 

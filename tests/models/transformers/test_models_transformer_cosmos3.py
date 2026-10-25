@@ -108,7 +108,106 @@ class Cosmos3OmniTransformerTesterConfig(BaseModelTesterConfig):
         return (1, 2, 1, 1, 1)
 
 
-class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelTesterMixin):
+class TestCosmos3OmniTransformerSeaCache(Cosmos3OmniTransformerTesterConfig, SeaCacheTesterMixin):
+    cache_input_key = "vision_tokens"
+
+    def test_sea_cache_tracks_output_visual_trajectory(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        model.enable_cache(SeaCacheConfig(threshold=2.0, cache_end_steps=0))
+        target = torch.randn(1, 2, 2, 1, 1, device=torch_device)
+        control = torch.randn_like(target)
+        target_with_changed_clean_frame = target.clone()
+        target_with_changed_clean_frame[:, :, 0] += 10
+        inputs = self.get_dummy_inputs()
+        inputs.update(
+            sequence_length=6,
+            position_ids=torch.zeros(3, 6, dtype=torch.long, device=torch_device),
+            vision_tokens=[control, target],
+            vision_token_shapes=[(2, 1, 1)] * 2,
+            vision_sequence_indexes=torch.arange(2, 6, device=torch_device),
+            vision_mse_loss_indexes=torch.tensor([5], device=torch_device),
+            vision_noisy_frame_indexes=[
+                torch.tensor([], dtype=torch.long, device=torch_device),
+                torch.tensor([1], device=torch_device),
+            ],
+        )
+        layer_calls = 0
+
+        def count_layer_calls(_module, _args, _output):
+            nonlocal layer_calls
+            layer_calls += 1
+
+        model.layers[0].register_forward_hook(count_layer_calls)
+        decisions = []
+        for step, (current_control, current_target) in enumerate(
+            (
+                (control, target),
+                (control + 100, target),
+                (control + 100, target_with_changed_clean_frame),
+            )
+        ):
+            inputs["vision_tokens"] = [current_control, current_target]
+            with (
+                torch.no_grad(),
+                model.cache_context("cond", step_index=step, sigma=0.9 - step * 0.3, num_inference_steps=3),
+            ):
+                model(**inputs)
+            state = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK).state_manager._state_cache["cond"]
+            decisions.append(state.gate_should_compute)
+
+        assert decisions == [True, False, True]
+        assert layer_calls == 2
+
+    @pytest.mark.parametrize("residual_order", [0, 1])
+    def test_sea_cache_transfer_branches_share_indicator_with_separate_histories(self, residual_order):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        model.enable_cache(SeaCacheConfig(threshold=100.0, residual_order=residual_order, cache_end_steps=0))
+        root_hook = model._diffusers_hook.get_hook(_SEA_CACHE_ROOT_HOOK)
+        target = torch.randn(1, 2, 2, 1, 1, device=torch_device)
+        control = torch.randn_like(target)
+        decisions = []
+
+        for step in range(6):
+            states = []
+            for context, with_control in (("cond", True), ("cond_no_control", False), ("uncond", True)):
+                inputs = self.get_dummy_inputs()
+                sequence_length = 6 if with_control else 4
+                inputs.update(
+                    sequence_length=sequence_length,
+                    position_ids=torch.zeros(3, sequence_length, dtype=torch.long, device=torch_device),
+                    vision_tokens=[control, target] if with_control else [target],
+                    vision_token_shapes=[(2, 1, 1)] * (2 if with_control else 1),
+                    vision_sequence_indexes=torch.arange(2, sequence_length, device=torch_device),
+                    vision_mse_loss_indexes=torch.tensor([sequence_length - 1], device=torch_device),
+                    vision_noisy_frame_indexes=(
+                        [
+                            torch.tensor([], dtype=torch.long, device=torch_device),
+                            torch.tensor([1], device=torch_device),
+                        ]
+                        if with_control
+                        else [torch.tensor([1], device=torch_device)]
+                    ),
+                )
+                with (
+                    torch.no_grad(),
+                    model.cache_context(context, step_index=step, sigma=0.9 - step * 0.1, num_inference_steps=6),
+                ):
+                    output = model(**inputs)
+                assert torch.isfinite(output.sample[-1]).all()
+                states.append(root_hook.state_manager._state_cache[context])
+
+            assert all(len(state.previous_indicator) == 1 for state in states)
+            for state in states[1:]:
+                torch.testing.assert_close(state.previous_indicator[0], states[0].previous_indicator[0])
+                assert state.gate_should_compute == states[0].gate_should_compute
+                assert state.history is not states[0].history
+            assert states[0].history[-1][2].shape != states[1].history[-1][2].shape
+            decisions.append(states[0].gate_should_compute)
+
+        assert any(decisions) and not all(decisions)
+        model._reset_stateful_cache()
+        assert all(not state.history and state.previous_indicator is None for state in states)
+
     def test_cosmos3_supports_sea_cache_without_changing_state_dict_keys(self):
         model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
         state_dict_keys = set(model.state_dict())
@@ -423,6 +522,8 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
         assert refreshed.sample[0].shape == self.output_shape
         assert root_hook.state_manager._state_cache["cond"].history[-1][0] == 2
 
+
+class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelTesterMixin):
     def test_cosmos3_decoder_layer_cache_metadata_tracks_generation_stream(self):
         metadata = TransformerBlockRegistry.get(Cosmos3VLTextMoTDecoderLayer)
 
@@ -569,10 +670,6 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
         expected = (norm.weight.float() * expected).to(hidden_states.dtype)
 
         torch.testing.assert_close(norm(hidden_states), expected, rtol=0, atol=0)
-
-
-class TestCosmos3OmniTransformerSeaCache(Cosmos3OmniTransformerTesterConfig, SeaCacheTesterMixin):
-    cache_input_key = "vision_tokens"
 
 
 class TestCosmos3OmniTransformerMemory(Cosmos3OmniTransformerTesterConfig, MemoryTesterMixin):
