@@ -766,7 +766,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         max_sequence_length: int = 512,
         text_encoder_out_layers: tuple[int] = (10, 20, 30),
         caption_upsample_temperature: float = None,
-    ):
+    ) -> Flux2PipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

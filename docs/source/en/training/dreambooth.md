@@ -14,9 +14,9 @@ specific language governing permissions and limitations under the License.
 
 [DreamBooth](https://huggingface.co/papers/2208.12242) is a training technique that updates the entire diffusion model by training on just a few images of a subject or style. It works by associating a special word in the prompt with the example images.
 
-To load a trained checkpoint for inference, see [Load a DreamBooth adapter for inference](../using-diffusers/dreambooth).
+To load a trained checkpoint for inference, see [Load a DreamBooth model for inference](../using-diffusers/dreambooth).
 
-If you're training on a GPU with limited vRAM, you should try enabling the `gradient_checkpointing` and `mixed_precision` parameters in the training command. You can also reduce your memory footprint by using memory-efficient attention with [xFormers](../optimization/xformers).
+If you're training on a GPU with limited vRAM, you should try enabling the `gradient_checkpointing` and `mixed_precision` parameters in the training command. You can also reduce your memory footprint by using memory-efficient attention with [xFormers](../optimization/attention_backends).
 
 This guide will explore the [train_dreambooth.py](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth.py) script to help you become more familiar with it, and how you can adapt it for your own use-case.
 
@@ -550,4 +550,5 @@ Training the DeepFloyd IF model can be challenging, but here are some tips that 
 
 Congratulations on training your DreamBooth model! To learn more about how to use your new model, the following guide may be helpful:
 
-- Learn how to [load a DreamBooth](../using-diffusers/dreambooth) model for inference if you trained your model with LoRA.
+- Learn how to [load a DreamBooth checkpoint](../using-diffusers/dreambooth) for inference.
+- If you trained with LoRA, see [LoRA for inference](../tutorials/using_peft_for_inference).

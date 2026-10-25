@@ -406,7 +406,7 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
         use_mean_velocity: bool = True,
-    ):
+    ) -> AnyFlowPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

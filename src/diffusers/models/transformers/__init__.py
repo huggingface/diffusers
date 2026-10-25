@@ -24,6 +24,7 @@ if is_torch_available():
     from .transformer_anyflow_far import AnyFlowFARTransformer3DModel
     from .transformer_bria import BriaTransformer2DModel
     from .transformer_bria_fibo import BriaFiboTransformer2DModel
+    from .transformer_bria_fibo2 import BriaFibo2Transformer2DModel
     from .transformer_chroma import ChromaTransformer2DModel
     from .transformer_chronoedit import ChronoEditTransformer3DModel
     from .transformer_cogview3plus import CogView3PlusTransformer2DModel
@@ -34,6 +35,7 @@ if is_torch_available():
     from .transformer_ernie_image import ErnieImageTransformer2DModel
     from .transformer_flux import FluxTransformer2DModel
     from .transformer_flux2 import Flux2Transformer2DModel
+    from .transformer_flux3 import Flux3Transformer2DModel
     from .transformer_glm_image import GlmImageTransformer2DModel
     from .transformer_helios import HeliosTransformer3DModel
     from .transformer_hidream_image import HiDreamImageTransformer2DModel
@@ -45,6 +47,8 @@ if is_torch_available():
     from .transformer_joyimage import JoyImageEditTransformer3DModel
     from .transformer_joyimage_edit_plus import JoyImageEditPlusTransformer3DModel
     from .transformer_kandinsky import Kandinsky5Transformer3DModel
+    from .transformer_kandinsky6 import Kandinsky6Transformer3DModel
+    from .transformer_kandinsky6_sr import Kandinsky6SRTransformer3DModel
     from .transformer_krea2 import Krea2Transformer2DModel
     from .transformer_longcat_audio_dit import LongCatAudioDiTTransformer
     from .transformer_longcat_image import LongCatImageTransformer2DModel
@@ -61,7 +65,10 @@ if is_torch_available():
     from .transformer_prx import PRXTransformer2DModel
     from .transformer_qwenimage import QwenImageTransformer2DModel
     from .transformer_qwenimage21 import QwenImage21Transformer2DModel
+    from .transformer_rfd4_proteina import RFD4ProteinaTransformer
     from .transformer_sana_video import SanaVideoTransformer3DModel
+    from .transformer_sana_wm import SanaWMTransformer3DModel
+    from .transformer_sana_wm_refiner import SanaWMLTX2RefinerTransformer3DModel
     from .transformer_sd3 import SD3Transformer2DModel
     from .transformer_skyreels_v2 import SkyReelsV2Transformer3DModel
     from .transformer_stable_audio3 import StableAudio3DiTModel

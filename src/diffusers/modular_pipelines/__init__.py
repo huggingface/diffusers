@@ -81,6 +81,12 @@ else:
         "Flux2KleinModularPipeline",
         "Flux2KleinBaseModularPipeline",
     ]
+    _import_structure["flux3"] = [
+        "Flux3AutoBlocks",
+        "Flux3DistilledAutoBlocks",
+        "Flux3DistilledModularPipeline",
+        "Flux3ModularPipeline",
+    ]
     _import_structure["ideogram4"] = [
         "Ideogram4AutoBlocks",
         "Ideogram4ModularPipeline",
@@ -101,6 +107,12 @@ else:
         "QwenImageLayeredModularPipeline",
         "QwenImageLayeredAutoBlocks",
     ]
+    _import_structure["qwenimage21"] = [
+        "QwenImage21AutoBlocks",
+        "QwenImage21ModularPipeline",
+        "QwenImage21TurboAutoBlocks",
+        "QwenImage21TurboModularPipeline",
+    ]
     _import_structure["anima"] = [
         "AnimaAutoBlocks",
         "AnimaModularPipeline",
@@ -114,6 +126,10 @@ else:
     _import_structure["ernie_image"] = [
         "ErnieImageAutoBlocks",
         "ErnieImageModularPipeline",
+    ]
+    _import_structure["echo"] = [
+        "EchoBlocks",
+        "EchoModularPipeline",
     ]
     _import_structure["hunyuan_video1_5"] = [
         "HunyuanVideo15AutoBlocks",
@@ -158,6 +174,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Cosmos3OmniBlocks,
             Cosmos3OmniModularPipeline,
         )
+        from .echo import EchoBlocks, EchoModularPipeline
         from .ernie_image import ErnieImageAutoBlocks, ErnieImageModularPipeline
         from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline
         from .flux2 import (
@@ -167,6 +184,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Flux2KleinBaseModularPipeline,
             Flux2KleinModularPipeline,
             Flux2ModularPipeline,
+        )
+        from .flux3 import (
+            Flux3AutoBlocks,
+            Flux3DistilledAutoBlocks,
+            Flux3DistilledModularPipeline,
+            Flux3ModularPipeline,
         )
         from .helios import (
             HeliosAutoBlocks,
@@ -220,6 +243,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageLayeredAutoBlocks,
             QwenImageLayeredModularPipeline,
             QwenImageModularPipeline,
+        )
+        from .qwenimage21 import (
+            QwenImage21AutoBlocks,
+            QwenImage21ModularPipeline,
+            QwenImage21TurboAutoBlocks,
+            QwenImage21TurboModularPipeline,
         )
         from .stable_diffusion_3 import StableDiffusion3AutoBlocks, StableDiffusion3ModularPipeline
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline

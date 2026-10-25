@@ -124,5 +124,3 @@ image = pipeline(prompt_embeds=prompt_embeds, pooled_prompt_embeds=pooled_prompt
 <div class="flex justify-center">
   <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/prompt-embed-sdxl.png"/>
 </div>
-
-Prompt weighting works with [Textual inversion](./textual_inversion_inference) and [DreamBooth](./dreambooth) adapters too.

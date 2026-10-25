@@ -1110,7 +1110,7 @@ class StableDiffusionXLControlNetUnionImg2ImgPipeline(
         callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         **kwargs,
-    ):
+    ) -> StableDiffusionXLPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

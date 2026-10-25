@@ -12,11 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-import os
-import subprocess
-import sys
-
 import pytest
 import torch
 
@@ -24,7 +19,7 @@ from diffusers import QwenImageTransformer2DModel
 from diffusers.models.transformers.transformer_qwenimage import compute_text_seq_len_from_mask
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, is_tensor_parallel, require_torch_neuron, torch_device
+from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionBackendTesterMixin,
     AttentionTesterMixin,
@@ -36,7 +31,9 @@ from ..testing_utils import (
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    TensorParallelNeuronTesterMixin,
     TensorParallelTesterMixin,
+    TensorParallelTPUTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
@@ -260,7 +257,7 @@ class TestQwenImageTransformerAttention(QwenImageTransformerTesterConfig, Attent
 class TestQwenImageTransformerAttentionBackend(QwenImageTransformerTesterConfig, AttentionBackendTesterMixin):
     """Attention backend tests for QwenImage Transformer."""
 
-    unsupported_attn_backends = ["flash_hub", "_flash_3_hub"]
+    unsupported_attn_backends = ["flash_hub", "_flash_3_hub", "sage_hub", "sage_blackwell_hub"]
 
     def get_dummy_inputs(self, batch_size: int = 2):
         inputs = super().get_dummy_inputs(batch_size=batch_size)
@@ -303,9 +300,9 @@ class TestQwenImageTransformerContextParallelAttnBackends(
 ):
     """Context Parallel inference x attention backends tests for QwenImage Transformer"""
 
-    # QwenImage always passes a joint attention mask (text + image), which flash_hub and
-    # _flash_3_hub do not support.
-    unsupported_attn_backends = ["flash_hub", "_flash_3_hub"]
+    # QwenImage always passes a joint attention mask (text + image), which flash_hub,
+    # _flash_3_hub and the sage hub backends do not support.
+    unsupported_attn_backends = ["flash_hub", "_flash_3_hub", "sage_hub", "sage_blackwell_hub"]
 
     def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
         inputs = super().get_dummy_inputs(batch_size=batch_size)
@@ -321,37 +318,20 @@ class TestQwenImageTransformerTensorParallel(QwenImageTransformerTesterConfig, T
     """Tensor Parallel inference tests for QwenImage Transformer (CUDA/XPU multi-accelerator)."""
 
 
-def make_neuron_tp_spec():
-    """Model spec consumed by the generic Neuron TP worker (``_neuron_tp_worker.py``).
+class TestQwenImageTransformerTensorParallelTPU(QwenImageTransformerTesterConfig, TensorParallelTPUTesterMixin):
+    """Tensor Parallel inference test for QwenImage Transformer on TPU."""
 
-    Returns ``(model_class, init_dict, cpu_inputs)``. Defined here so all QwenImage-specific test data lives in this
-    file while the worker stays model-agnostic. Reuses the shared tester config so the spec never drifts from the rest
-    of the QwenImage tests.
-    """
-    config = QwenImageTransformerTesterConfig()
-    return QwenImageTransformer2DModel, config.get_init_dict(), config.get_dummy_inputs(device="cpu")
+    def get_init_dict(self):
+        # One head per chip.
+        return {**super().get_init_dict(), "num_attention_heads": self.tp_world_size}
+
+    def test_tensor_parallel_tpu_inference(self):
+        # TPU numerics differ by ~1e-2 between sharded and unsharded QwenImage (~1e-7 on CPU).
+        super().test_tensor_parallel_tpu_inference(atol=2e-2, rtol=2e-2)
 
 
-@is_tensor_parallel
-@require_torch_neuron
-class TestQwenImageTransformerTensorParallelNeuron:
-    """Tensor Parallel inference test for QwenImage Transformer on AWS Neuron.
-
-    Neuron TP runs through ``torchrun`` with the ``"neuron"`` distributed backend, so it cannot use the
-    ``torch.multiprocessing``/NCCL spawn path of ``TensorParallelTesterMixin``. This launches the generic worker
-    with the QwenImage model spec (``make_neuron_tp_spec``); the worker asserts the sharded output matches a
-    single-device reference, and the test checks its exit code.
-    """
-
-    def test_tensor_parallel_neuron_inference(self):
-        worker = os.path.join(os.path.dirname(__file__), "_neuron_tp_worker.py")
-        spec = "tests.models.transformers.test_models_transformer_qwenimage:make_neuron_tp_spec"
-        cmd = [sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=2", worker, spec]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        assert result.returncode == 0, (
-            f"Neuron tensor-parallel worker failed (exit {result.returncode}).\n"
-            f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
-        )
+class TestQwenImageTransformerTensorParallelNeuron(QwenImageTransformerTesterConfig, TensorParallelNeuronTesterMixin):
+    """Tensor Parallel inference test for QwenImage Transformer on AWS Neuron."""
 
 
 class TestQwenImageTransformerLoRA(QwenImageTransformerTesterConfig, LoraTesterMixin):

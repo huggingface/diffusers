@@ -644,7 +644,7 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
-    ):
+    ) -> MotifVideoPipelineOutput | tuple:
         r"""
         The call function to the pipeline for image-to-video generation.
 

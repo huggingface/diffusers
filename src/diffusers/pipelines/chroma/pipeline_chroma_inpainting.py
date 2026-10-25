@@ -795,7 +795,7 @@ class ChromaInpaintPipeline(
         max_sequence_length: int = 256,
         prompt_attention_mask: torch.Tensor | None = None,
         negative_prompt_attention_mask: torch.Tensor | None = None,
-    ):
+    ) -> ChromaPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

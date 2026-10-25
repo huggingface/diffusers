@@ -273,7 +273,10 @@ class TestContextParallelAttentionBackward:
         "attention_backend",
         [
             "_native_flash",
-            "_native_cudnn",
+            pytest.param(
+                "_native_cudnn",
+                marks=pytest.mark.skipif(torch_device != "cuda", reason="CUDA is required for _native_cudnn backend."),
+            ),
             pytest.param(
                 "flash_hub",
                 marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
@@ -284,11 +287,19 @@ class TestContextParallelAttentionBackward:
             ),
             pytest.param(
                 "_flash_3_hub",
-                marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+                marks=[
+                    pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+                    pytest.mark.skipif(torch_device != "cuda", reason="CUDA is required for _flash_3_hub backend."),
+                ],
             ),
             pytest.param(
                 "_flash_3_varlen_hub",
-                marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+                marks=[
+                    pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+                    pytest.mark.skipif(
+                        torch_device != "cuda", reason="CUDA is required for _flash_3_varlen_hub backend."
+                    ),
+                ],
             ),
         ],
     )
