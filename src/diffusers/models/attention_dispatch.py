@@ -425,7 +425,8 @@ def dispatch_attention_fn(
         # variable), or we use a custom backend based on whether user is using the `attention_backend` context manager
         backend_name, backend_fn = _AttentionBackendRegistry.get_active_backend()
     else:
-        backend_name = AttentionBackendName(backend)
+        # Skip the `Enum` call for members: older torch versions cannot always trace it in a full graph.
+        backend_name = backend if isinstance(backend, AttentionBackendName) else AttentionBackendName(backend)
         backend_fn = _AttentionBackendRegistry._backends.get(backend_name)
 
     kwargs = {
