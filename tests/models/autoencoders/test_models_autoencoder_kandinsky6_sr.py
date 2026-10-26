@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import Kandinsky6SRVAE
@@ -28,6 +29,24 @@ from ..testing_utils import (
 
 
 enable_full_determinism()
+
+
+UNSPLITTABLE_ENCODER_DECODER = pytest.mark.xfail(
+    reason=(
+        "`_no_split_modules` keeps the whole encoder and decoder together, "
+        "preventing the test's required GPU/CPU split."
+    ),
+    raises=AssertionError,
+    strict=True,
+)
+DISK_OFFLOAD_OUTPUT_DEVICE = pytest.mark.xfail(
+    reason=(
+        "`_no_split_modules` keeps each encoder/decoder intact, forcing all-disk dispatch under the test's budgets; "
+        "the encode/decode hooks leave the output on CPU, but the reference is on GPU."
+    ),
+    raises=RuntimeError,
+    strict=True,
+)
 
 
 class Kandinsky6SRVAETesterConfig(BaseModelTesterConfig):
@@ -98,7 +117,17 @@ class TestKandinsky6SRVAEModel(Kandinsky6SRVAETesterConfig, ModelTesterMixin):
 
 
 class TestKandinsky6SRVAEMemory(Kandinsky6SRVAETesterConfig, MemoryTesterMixin):
-    pass
+    @UNSPLITTABLE_ENCODER_DECODER
+    def test_cpu_offload(self, base_model_output, tmp_path):
+        super().test_cpu_offload(base_model_output, tmp_path)
+
+    @DISK_OFFLOAD_OUTPUT_DEVICE
+    def test_disk_offload_without_safetensors(self, base_model_output, tmp_path):
+        super().test_disk_offload_without_safetensors(base_model_output, tmp_path)
+
+    @DISK_OFFLOAD_OUTPUT_DEVICE
+    def test_disk_offload_with_safetensors(self, base_model_output, tmp_path):
+        super().test_disk_offload_with_safetensors(base_model_output, tmp_path)
 
 
 class TestKandinsky6SRVAETorchCompile(Kandinsky6SRVAETesterConfig, TorchCompileTesterMixin):

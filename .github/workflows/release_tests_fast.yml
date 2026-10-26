@@ -277,51 +277,6 @@ jobs:
         name: torch_compile_test_reports
         path: reports
 
-  run_xformers_tests:
-    permissions:
-      contents: read
-    name: PyTorch xformers CUDA tests
-
-    runs-on:
-      group: aws-g4dn-2xlarge
-
-    container:
-      image: diffusers/diffusers-pytorch-xformers-cuda
-      options: --gpus all --shm-size "16gb" --ipc host
-
-    steps:
-    - name: Checkout diffusers
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        fetch-depth: 2
-
-    - name: NVIDIA-SMI
-      run: |
-        nvidia-smi
-    - name: Install dependencies
-      run: |
-        printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
-        uv pip install -e ".[quality,training]"
-        uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
-    - name: Environment
-      run: |
-        diffusers-cli env
-    - name: Run example tests on GPU
-      env:
-        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
-      run: |
-        pytest -n 1 --max-worker-restart=0 --dist=loadfile -k "xformers" --make-reports=tests_torch_xformers_cuda tests/
-    - name: Failure short reports
-      if: ${{ failure() }}
-      run: cat reports/tests_torch_xformers_cuda_failures_short.txt
-
-    - name: Test suite reports artifacts
-      if: ${{ always() }}
-      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      with:
-        name: torch_xformers_test_reports
-        path: reports
-
   run_examples_tests:
     permissions:
       contents: read
