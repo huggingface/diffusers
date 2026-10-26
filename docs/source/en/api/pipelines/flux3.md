@@ -16,7 +16,7 @@
 
 FLUX 3 Image Klein is a 5.6B image generation model from Black Forest Labs: a single transformer ([`Flux3Transformer2DModel`]) generates images from a text prompt, alone or together with one or more reference images. Text conditioning comes from Qwen3-VL, and images use the FLUX.2 packed autoencoder ([`AutoencoderKLFlux2`]).
 
-FLUX 3 Image Klein ships as a modular pipeline. Prompting matters: the model responds best to full scene captions that describe the subject, composition, lighting, and atmosphere, so the pipeline runs the [prompt upsampler](#prompt-upsampling) first on every request, text-to-image and editing alike. It is a separate 9B model from Black Forest Labs ([black-forest-labs/flux-3-image-klein-pup](https://huggingface.co/black-forest-labs/flux-3-image-klein-pup)) that expands `prompt` into such a caption before the text encoder, and a short prompt is all it takes. Get started with a text-to-image generation:
+FLUX 3 Image Klein ships as a [modular pipeline](../../modular_diffusers/overview). Get started with a text-to-image generation:
 
 ```python
 import torch
@@ -26,48 +26,87 @@ pipe = ModularPipeline.from_pretrained("black-forest-labs/flux-3-image-klein-bas
 pipe.load_components(dtype={"vae": torch.float32, "default": torch.bfloat16})
 pipe.to("cuda")
 
+image = pipe(
+    prompt="A red fox in a snow-covered forest clearing at golden hour",
+    generator=torch.Generator().manual_seed(0),
+    output="images",
+)[0]
+image.save("fox.png")
+```
+
+`prompt` is the only required input: the pipeline carries the recommended sampling settings (50 steps, guidance scale 3.5, scheduler shift 6.93) and generates 1024 x 1024 images by default. It takes one prompt per call; use `num_images_per_prompt` for several images of the same prompt.
+
+As you can see in the example above, loading and running differ a little from a `DiffusionPipeline`. Loading is lazy: [`~ModularPipeline.from_pretrained`] only builds the pipeline, and you call [`~ModularPipeline.load_components`] to load the weights. A call returns the pipeline state, and you ask for what you need with `output`: `output="images"` here, or `output=["images", "prompt"]` to also get the caption the prompt upsampler wrote.
+
+> [!TIP]
+> If you're working with `ModularPipeline` for the first time, read the [quickstart](../../modular_diffusers/quickstart), and [Coming from DiffusionPipeline](../../modular_diffusers/coming_from_diffusion_pipeline) if you know the standard pipelines. Besides loading and outputs, a few other things differ: [guidance](#guidance-scale), [callbacks](#per-step-callbacks) and [offloading](#memory).
+
+## Prompt upsampling
+
+Prompting matters: FLUX 3 Image Klein takes full scene captions that describe the subject, composition, lighting, and atmosphere, not short prompts; a request sent as typed gives generic output. That is why the pipeline runs the prompt upsampler first on every request, text-to-image and editing alike. It is a separate 9B model from Black Forest Labs ([black-forest-labs/flux-3-image-klein-pup](https://huggingface.co/black-forest-labs/flux-3-image-klein-pup)) that expands `prompt` into such a caption before the text encoder, and a short prompt is all it takes.
+
+The prompt upsampler turns a short request, together with the reference images when editing, into the full scene caption the model takes: medium and style, scene, lighting and camera, each subject with its colors, materials and position in the frame. One model covers text-to-image, editing with reference images and layout with boxes. The caption it wrote comes back as the `prompt` output. In the example above, ask for it alongside the images to see what the image model received:
+
+```python
 out = pipe(
     prompt="A red fox in a snow-covered forest clearing at golden hour",
     generator=torch.Generator().manual_seed(0),
     output=["images", "prompt"],
 )
-out["images"][0].save("fox.png")
-print(out["prompt"])  # the caption the image model received
+print(out["prompt"])
 ```
 
-`prompt` is the only required input: the pipeline carries the recommended sampling settings (50 steps, guidance scale 3.5, scheduler shift 6.93) and generates 1024 x 1024 images by default. It takes one prompt per call; use `num_images_per_prompt` for several images of the same prompt.
+```
+Full-color outdoor wildlife photograph taken from a low eye-level perspective in a snow-covered forest clearing at golden hour. In the center foreground, a red fox stands in profile facing left, its body turned toward the viewer and its head raised as it looks across the clearing. The fox has dense rust-red winter fur, a white throat and chest, black lower legs, pointed ears with dark tips, and a long bushy tail ending in white. ...
+```
 
-## Prompt upsampling
+The full caption runs to about 240 words; `max_new_tokens` caps its length (3584 by default).
 
-The prompt upsampler turns a short request, together with the reference images when editing, into the full scene caption the model takes: medium and style, scene, lighting and camera, each subject with its colors, materials and position in the frame. One model covers text-to-image, editing with reference images and layout with boxes; the step picks the task from the inputs, like the rest of the pipeline. Its two components, `prompt_upsampler` and `prompt_upsampler_processor`, load from the upsampler repository with the others. The caption it wrote comes back as the `prompt` output, as above; `max_new_tokens` caps its length (3584 by default).
+You can print the step's `doc` to see what it takes and what it writes:
 
-To send a caption as given, one you wrote in full or got from another LLM, build the pipeline without the step:
+```python
+print(pipe.blocks.sub_blocks["prompt_upsampler"].doc)
+```
+
+```
+  Inputs:
+      prompt (`str`):
+          The edit instruction to expand into the full caption (one per call).
+      image (`Image | list`, *optional*):
+          The reference image(s) of the edit, at most 10; the same ones the pipeline receives.
+      boxes (`list`, *optional*):
+          Layout boxes, each {'id', 'desc', 'from', 'src_bbox', 'tgt_bbox'} with the boxes as [y_min, x_min, y_max, x_max] in
+          0-1: ...
+      max_new_tokens (`int`, *optional*, defaults to 3584):
+          The most tokens the upsampler may generate for the caption.
+
+  Outputs:
+      prompt (`str`):
+          The full caption, replacing the request.
+```
+
+Like other blocks in the pipeline, the `prompt_upsampler` block also runs on its own. The recommended way is to pop it out of the blocks: the popped block becomes a standalone upsampler, and the remaining blocks become a pipeline that takes the expanded caption as `prompt`:
 
 ```python
 blocks = ModularPipeline.from_pretrained("black-forest-labs/flux-3-image-klein-base").blocks
-blocks.sub_blocks.pop("prompt_upsampler")
-plain = blocks.init_pipeline("black-forest-labs/flux-3-image-klein-base")
-plain.load_components(dtype={"vae": torch.float32, "default": torch.bfloat16})
-plain.to("cuda")
+pup_block = blocks.sub_blocks.pop("prompt_upsampler")
 
-image = plain(prompt=caption, generator=torch.Generator().manual_seed(0), output="images")[0]
-```
-
-Any other LLM can write the caption: give it the system prompt for the task from the upsampler repository's `system_prompts.json` (`t2i`, or `i2i` with the references first in the user message) and the request as the user message, and pass what it returns as `prompt` to the pipeline without the step.
-
-The step also runs on its own, to write captions without generating:
-
-```python
-pup = pipe.blocks.sub_blocks["prompt_upsampler"].init_pipeline("black-forest-labs/flux-3-image-klein-base")
+pup = pup_block.init_pipeline("black-forest-labs/flux-3-image-klein-base")
 pup.load_components(dtype=torch.bfloat16)
 pup.to("cuda")
-
 caption = pup(prompt="A red fox in a snow-covered forest clearing at golden hour", output="prompt")
+
+pipe = blocks.init_pipeline("black-forest-labs/flux-3-image-klein-base")
+pipe.load_components(dtype={"vae": torch.float32, "default": torch.bfloat16})
+pipe.to("cuda")
+image = pipe(prompt=caption, generator=torch.Generator().manual_seed(0), output="images")[0]
 ```
+
+This way it can be served as a separate stage, on its own GPU or behind its own endpoint, and a UI can show the caption it wrote and let the user edit it before generating. Any other LLM can take the upsampler's place, with the same system prompts: give it `system_prompts["t2i"]` from the upsampler repository (or `"i2i"`, with the references first in the user message) as the system prompt and the request as the user message, and pass the caption it returns as `prompt` to `pipe`.
 
 ## Image-to-image
 
-Pass one or more reference images with `image`. Every reference keeps its own resolution (center-cropped to the 16-pixel grid; references above 16 megapixels are downscaled first), and the generation size defaults to one megapixel at the first reference's aspect ratio. The prompt the image model takes is the *target* image as a complete caption of the reference with the edit folded in, not a one-line instruction; the upsampler sees the references too and writes it from your instruction: what to keep, what to change.
+Pass one or more reference images with `image`. A single reference is kept whole: it is downscaled only above 4 megapixels, padded to the 16-pixel grid, and the generation defaults to its size, so the edit comes back at the size of the input. Several references are each fitted under 1 megapixel and cropped to the grid, and the generation defaults to the first one's size. A given `height`/`width` overrides the default. Describe the *target* image as a complete caption of the reference with your edit folded in, rather than a one-line instruction, or let the [prompt upsampler](#prompt-upsampling) write it from the instruction and the references:
 
 ```python
 night = pipe(
@@ -167,6 +206,21 @@ print(Flux3AutoBlocks().available_workflows)
 t2i = ModularPipeline.from_pretrained("black-forest-labs/flux-3-image-klein-base", workflow="text2image")
 print(t2i.blocks.doc)
 ```
+
+## Per-step callbacks
+
+To use an existing callback function, insert a block into the denoising loop. The [callbacks guide](../../using-diffusers/callback#modular-pipelines) has a simple example with the `CallbackOnStepEnd` block and the `walk_denoise_loops` helper:
+
+```python
+blocks = Flux3AutoBlocks()  # or Flux3DistilledAutoBlocks
+for loop in walk_denoise_loops(blocks):
+    loop.sub_blocks["callback"] = CallbackOnStepEnd()
+pipe = blocks.init_pipeline("black-forest-labs/flux-3-image-klein-base")
+
+image = pipe(prompt=caption, callback_on_step_end=my_callback, output="images")[0]
+```
+
+To stop early, raise from the callback; there is no `interrupt` flag.
 
 ## Memory
 
