@@ -372,3 +372,29 @@ class TestConditionalBlocksBranchDefaults:
         # the docstring renders distinct values only: refine and image.inpaint both use 0.9999, shown once
         doc = " ".join(NestedImageBlocks().doc.split())
         assert "strength (`float`, *optional*, defaults to 0.9999 or 0.3, depending on the workflow):" in doc
+
+    def test_explicit_none_reaches_every_branch(self):
+        # a passed None is a value, not "use the default": the block keeps it instead of filling in its default
+        pipe = ImageToImageBlock().init_pipeline()
+        state = pipe(prompt="p", image="i", strength=None)
+        assert state.get("strength") is None
+
+        # and no branch of a conditional block swaps in its own default either
+        pipe = AutoImageBlocks().init_pipeline()
+        state = pipe(prompt="p", image="i", strength=None)
+        assert state.get("workflow") == "img2img"
+        assert state.get("strength") is None
+
+        state = pipe(prompt="p", image="i", mask="m", strength=None)
+        assert state.get("workflow") == "inpaint"
+        assert state.get("strength") is None
+
+    def test_nested_branch_resolves_own_default(self):
+        pipe = NestedImageBlocks().init_pipeline()
+        state = pipe(prompt="p", image="i")
+        assert state.get("workflow") == "img2img"
+        assert state.get("strength") == 0.3
+
+        state = pipe(prompt="p", image="i", mask="m")
+        assert state.get("workflow") == "inpaint"
+        assert state.get("strength") == 0.9999
