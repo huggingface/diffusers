@@ -205,23 +205,31 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
     """
 
     def test_pipeline_call_signature(self):
-        pipe = self.get_pipeline()
-        input_parameters = pipe.blocks.input_names
-        optional_parameters = pipe.default_call_parameters
-
-        def _check_for_parameters(parameters, expected_parameters, param_type):
-            remaining_parameters = {param for param in parameters if param not in expected_parameters}
-            assert len(remaining_parameters) == 0, (
-                f"Required {param_type} parameters not present: {remaining_parameters}"
-            )
-
-        _check_for_parameters(self.params, input_parameters, "input")
-        _check_for_parameters(self.optional_params, optional_parameters, "optional")
+        blocks = self.pipeline_blocks_class()
+        input_parameters = set(blocks.input_names)
+        assert self.params <= input_parameters, self.params - input_parameters
 
         unsupported_parameters = {param for param in self.not_params if param in input_parameters}
         assert len(unsupported_parameters) == 0, (
             f"Parameters declared in `not_params` unexpectedly present in the pipeline inputs: {unsupported_parameters}"
         )
+
+    def test_pipeline_optional_parameters(self):
+        blocks = self.pipeline_blocks_class()
+        optional_parameters = {param.name for param in blocks.inputs if param.name is not None and not param.required}
+        assert self.optional_params <= optional_parameters, self.optional_params - optional_parameters
+
+    def test_pipeline_required_inputs(self):
+        blocks_to_check = [self.pipeline_blocks_class()]
+        for blocks in blocks_to_check:
+            required_inputs = set(blocks.required_inputs)
+            for param in blocks.inputs:
+                if param.name is None:
+                    continue
+                assert param.required == (param.name in required_inputs), (type(blocks).__name__, param)
+                if param.required:
+                    assert param.default is None, (type(blocks).__name__, param)
+            blocks_to_check.extend(blocks.sub_blocks.values())
 
     def test_inference_batch_consistent(self, batch_sizes=[2], batch_generator=True):
         pipe = self.get_pipeline().to(torch_device)
