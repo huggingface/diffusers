@@ -49,6 +49,7 @@ else:
     _import_structure["consistency_models"] = ["ConsistencyModelPipeline"]
     _import_structure["ddim"] = ["DDIMPipeline"]
     _import_structure["ddpm"] = ["DDPMPipeline"]
+    _import_structure["rfd4_proteina"] = ["RFD4ProteinaPipeline"]
     _import_structure["dit"] = ["DiTPipeline"]
     _import_structure["latent_diffusion"].extend(["LDMSuperResolutionPipeline"])
     _import_structure["pipeline_utils"] = [
@@ -170,6 +171,7 @@ else:
     ]
     _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["bria_fibo"] = ["BriaFiboPipeline", "BriaFiboEditPipeline"]
+    _import_structure["bria_fibo2"] = ["BriaFibo2Pipeline"]
     _import_structure["flux2"] = [
         "Flux2Pipeline",
         "Flux2KleinPipeline",
@@ -580,6 +582,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ImagePipelineOutput,
             StableDiffusionMixin,
         )
+        from .rfd4_proteina import RFD4ProteinaPipeline
 
     try:
         if not (is_torch_available() and is_librosa_available()):
@@ -622,6 +625,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .aura_flow import AuraFlowPipeline
         from .bria import BriaPipeline
         from .bria_fibo import BriaFiboEditPipeline, BriaFiboPipeline
+        from .bria_fibo2 import BriaFibo2Pipeline
         from .chroma import ChromaImg2ImgPipeline, ChromaInpaintPipeline, ChromaPipeline
         from .chronoedit import ChronoEditPipeline
         from .cogvideo import (
