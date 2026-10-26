@@ -225,87 +225,6 @@ def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict) -> list:
     return [grouped[key] for key in order]
 
 
-def _shard_packed_param(param, dim: int, blocks: "list[int]", device_mesh, src_data_rank) -> torch.nn.Parameter:
-    """Shard a packed `param` along `dim`, splitting each fused block across the ranks separately.
-
-    The parameter is replicated before slicing: the broadcast from `src_data_rank` is what makes one rank's weights
-    authoritative when the model was randomly initialized rather than loaded from a checkpoint, in which case every
-    rank starts with different values.
-    """
-    from torch.distributed.tensor import DTensor, Replicate, Shard, distribute_tensor
-
-    full = distribute_tensor(param, device_mesh, [Replicate()], src_data_rank=src_data_rank).to_local()
-    local = _local_shard(full, dim, _blocks_to_block_sizes(full.shape[dim], blocks), device_mesh)
-    return torch.nn.Parameter(
-        DTensor.from_local(local, device_mesh, [Shard(dim)], run_check=False), requires_grad=param.requires_grad
-    )
-
-
-def _styles(relative_plan: dict) -> dict:
-    """Map a `{relative_path: style}` plan to `parallelize_module` style instances.
-
-    Values may be plain strings (`"colwise"` / `"rowwise"` / `"rowwise_split_input"`) or `PackedColwiseParallel` /
-    `PackedRowwiseParallel` marker instances. Returns `{relative_path: ColwiseParallel() | RowwiseParallel() | <packed
-    impl>}`. Divisibility by the TP degree is checked earlier, by `resolve_tp_shard_specs`.
-    """
-    from torch.distributed.tensor import Replicate, distribute_tensor
-    from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
-
-    def _make_packed_col(marker: PackedColwiseParallel) -> ColwiseParallel:
-        class _PackedColwiseImpl(ColwiseParallel):
-            def _partition_linear_fn(self, name, module, device_mesh):
-                blocks = _packed_blocks(marker, module, name)
-                # Both weight (`[out, in]`) and bias (`[out]`) are sharded row-wise (dim 0) with the same per-block
-                # slicing so each rank's bias rows line up with its weight rows for the packed layout.
-                for param_name, param in module.named_parameters():
-                    sharded = _shard_packed_param(param, 0, blocks, device_mesh, self.src_data_rank)
-                    module.register_parameter(param_name, sharded)
-
-        return _PackedColwiseImpl()
-
-    def _make_packed_row(marker: PackedRowwiseParallel) -> RowwiseParallel:
-        class _PackedRowwiseImpl(RowwiseParallel):
-            def _partition_linear_fn(self, name, module, device_mesh):
-                blocks = _packed_blocks(marker, module, name)
-                # Only the weight (`[out, in]`) is sharded, column-wise (dim 1); the bias is added after the
-                # all-reduce, so every rank keeps it whole.
-                for param_name, param in module.named_parameters():
-                    if param_name == "weight":
-                        sharded = _shard_packed_param(param, 1, blocks, device_mesh, self.src_data_rank)
-                    else:
-                        sharded = torch.nn.Parameter(
-                            distribute_tensor(param, device_mesh, [Replicate()], src_data_rank=self.src_data_rank),
-                            requires_grad=param.requires_grad,
-                        )
-                    module.register_parameter(param_name, sharded)
-
-        return _PackedRowwiseImpl()
-
-    resolved = {}
-    for path, style in relative_plan.items():
-        if style == "colwise":
-            resolved[path] = ColwiseParallel()
-        elif style == "rowwise":
-            resolved[path] = RowwiseParallel()
-        elif style == "rowwise_split_input":
-            # Same weight split as "rowwise", for a Linear whose input arrives whole instead of split by a "colwise"
-            # layer before it; each rank slices its own columns locally. E.g. an AdaLN modulation projection reading
-            # the timestep embedding (MiniMax-H3's `adaln_proj.linear`), or an output projection after a gathered
-            # QK-norm. Same as the transformers style of the same name.
-            resolved[path] = RowwiseParallel(input_layouts=Replicate())
-        elif isinstance(style, PackedColwiseParallel):
-            resolved[path] = _make_packed_col(style)
-        elif isinstance(style, PackedRowwiseParallel):
-            resolved[path] = _make_packed_row(style)
-        else:
-            raise ValueError(
-                f"Unsupported tensor-parallel style '{style}' for '{path}'. "
-                f"Expected 'colwise', 'rowwise', 'rowwise_split_input', PackedColwiseParallel, or "
-                f"PackedRowwiseParallel."
-            )
-    return resolved
-
-
 def _hooks_only_styles(relative_plan: dict) -> dict:
     """Map a `{relative_path: style}` plan to styles that partition nothing.
 
@@ -335,6 +254,10 @@ def _hooks_only_styles(relative_plan: dict) -> dict:
         elif style == "rowwise" or isinstance(style, PackedRowwiseParallel):
             resolved[path] = _NoPartitionRowwise()
         elif style == "rowwise_split_input":
+            # Same weight split as "rowwise", for a Linear whose input arrives whole instead of split by a "colwise"
+            # layer before it; each rank slices its own columns locally. E.g. an AdaLN modulation projection reading
+            # the timestep embedding (MiniMax-H3's `adaln_proj.linear`), or an output projection after a gathered
+            # QK-norm. Same as the transformers style of the same name.
             resolved[path] = _NoPartitionRowwise(input_layouts=Replicate())
         else:
             raise ValueError(
@@ -352,10 +275,11 @@ def _pre_shard_and_parallelize(
     specs: "dict[str, TPShardSpec]",
     device: torch.device,
 ) -> None:
-    """Slice every planned parameter on CPU, place only this rank's shard on `device`, then register the hooks.
+    """Slice out this rank's shard of every planned parameter, place it on `device`, then register the hooks.
 
-    Unlike the default path this does not broadcast from a single rank, so every rank must already hold the same
-    weights. Model weights must be on CPU when this is called.
+    Each rank keeps its own slice and only that slice is copied to the device, so no weight collective is issued and no
+    full-size weight is moved to the device. Nothing is broadcast either, so every rank must already hold the same
+    weights, as it does after loading a checkpoint or seeding before a random initialization.
     """
     import torch.nn as nn
     from torch.distributed.tensor import DTensor, Replicate, Shard
@@ -565,12 +489,4 @@ def apply_tensor_parallel(
     # Also validates every planned shard, so an uneven split raises before any module is sharded.
     specs = resolve_tp_shard_specs(model, tp_plan, tp_mesh.size())
 
-    if tp_mesh.device_type in ("neuron", "tpu"):
-        # Pre-shard on CPU instead of letting `parallelize_module` distribute the weights. On Neuron, consecutive
-        # `reduce_scatter`s of large weights (>= 5120x5120) in one `parallelize_module` call can fail in the runtime. On
-        # TPU, it would materialize every full weight on each chip first, which runs out of HBM on large models.
-        _pre_shard_and_parallelize(model, tp_mesh, groups, specs, config._device)
-        return
-
-    for submodule, relative_plan in groups:
-        parallelize_module(submodule, tp_mesh, _styles(relative_plan))
+    _pre_shard_and_parallelize(model, tp_mesh, groups, specs, config._device)
