@@ -19,6 +19,7 @@ from diffusers.modular_pipelines import (
     InputParam,
     ModularPipelineBlocks,
     OutputParam,
+    SequentialPipelineBlocks,
 )
 from diffusers.modular_pipelines.modular_pipeline_utils import combine_inputs
 
@@ -320,6 +321,27 @@ class NestedImageBlocks(ConditionalPipelineBlocks):
         return None
 
 
+class NoDefaultStrengthBlock(ModularPipelineBlocks):
+    @property
+    def inputs(self):
+        return [InputParam(name="strength", type_hint=float)]
+
+    @property
+    def intermediate_outputs(self):
+        return [OutputParam(name="strength_seen_first")]
+
+    def __call__(self, components, state):
+        block_state = self.get_block_state(state)
+        block_state.strength_seen_first = block_state.strength
+        self.set_block_state(state, block_state)
+        return components, state
+
+
+class NoDefaultThenImg2Img(SequentialPipelineBlocks):
+    block_classes = [NoDefaultStrengthBlock, ImageToImageBlock]
+    block_names = ["no_default", "img2img"]
+
+
 class TestConditionalBlocksBranchDefaults:
     def test_conflicting_defaults_merge_to_none(self):
         # inpaint (0.9999) and img2img (0.3) disagree on strength: the merged input's default becomes None
@@ -398,3 +420,18 @@ class TestConditionalBlocksBranchDefaults:
         state = pipe(prompt="p", image="i", mask="m")
         assert state.get("workflow") == "inpaint"
         assert state.get("strength") == 0.9999
+
+    def test_branch_defaults_do_not_affect_sequential_blocks(self):
+        # in a sequence an input is one value for every block. The first block that reads `strength` fills in its
+        # default (None) and records it; the img2img block then reads that None instead of its own 0.3, so the value
+        # the first block saw and the value left in the state are the same
+        pipe = NoDefaultThenImg2Img().init_pipeline()
+        state = pipe(prompt="p", image="i")
+        assert state.get("workflow") == "img2img"
+        assert state.get("strength_seen_first") is None
+        assert state.get("strength") is None
+
+        # a passed value reaches every block
+        state = pipe(prompt="p", image="i", strength=0.7)
+        assert state.get("strength_seen_first") == 0.7
+        assert state.get("strength") == 0.7
