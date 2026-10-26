@@ -49,8 +49,8 @@ from diffusers.commands.schema import SchemaCommand, _parse_docstring_args
 from diffusers.utils.testing_utils import (
     require_accelerator,
     require_kernels_version_greater_or_equal,
-    require_torch_accelerator,
     require_torch,
+    require_torch_accelerator,
 )
 
 
