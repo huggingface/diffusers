@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import (
@@ -20,8 +21,10 @@ from diffusers import (
     LTX2VideoDiffusionDecodePipeline,
     LTX2VideoDiffusionDecoderModel,
 )
+from diffusers.pipelines.ltx2 import pipeline_ltx2_diffusion_decode as decode_module
+from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, torch_device
+from ...testing_utils import enable_full_determinism, require_accelerator, torch_device
 from .testing_utils import get_dummy_vae
 
 
@@ -45,9 +48,9 @@ DECODER_CONFIG = {
 }
 
 
-def _build(with_vae: bool = False):
+def _build(with_vae: bool = False, **config_overrides):
     torch.manual_seed(0)
-    decoder = LTX2VideoDiffusionDecoderModel(**DECODER_CONFIG).to(torch_device).eval()
+    decoder = LTX2VideoDiffusionDecoderModel(**{**DECODER_CONFIG, **config_overrides}).to(torch_device).eval()
     # Non-trivial statistics, so a run that skipped denormalization would not accidentally match.
     with torch.no_grad():
         decoder.latents_mean.copy_(torch.linspace(-0.1, 0.1, DECODER_CONFIG["latent_channels"]))
@@ -64,13 +67,42 @@ def _build(with_vae: bool = False):
             .eval()
         )
 
-    return LTX2VideoDiffusionDecodePipeline(
-        diffusion_decoder=decoder, scheduler=FlowMatchEulerDiscreteScheduler(), vae=vae
+    return LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=_scheduler(), vae=vae)
+
+
+def _scheduler():
+    """The decoder's scheduler, as `convert_ltx2_to_diffusers.py` saves it: a plain uniform sigma walk."""
+    return FlowMatchEulerDiscreteScheduler(
+        num_train_timesteps=1000,
+        shift=1.0,
+        use_dynamic_shifting=False,
+        shift_terminal=None,
+        stochastic_sampling=False,
     )
 
 
 def _latents():
     return torch.randn(1, 8, 2, 3, 3, generator=torch.Generator().manual_seed(1)).to(torch_device)
+
+
+def _sigmas(pipe, num_inference_steps=None):
+    return decode_module._decoder_sigmas(pipe.diffusion_decoder, num_inference_steps)
+
+
+def _decode(pipe, latents, num_inference_steps=None, tiled=False, generator=None):
+    """Decode denormalized latents down one path, without the pre/post-processing `__call__` puts around it.
+
+    The path is named rather than routed: which one `__call__` picks is what
+    `test_decode_skips_tiling_for_a_video_that_fits_in_one_tile` is for, and reproducing the gate here would make
+    that test circular.
+    """
+    decoder, sigmas = pipe.diffusion_decoder, _sigmas(pipe, num_inference_steps)
+    decode = decode_module._tiled_decode if tiled else decode_module._untiled_decode
+    # Re-seed per call: the decoder samples the noise it denoises, so outputs are only comparable across calls
+    # that drew from the same generator state.
+    generator = generator if generator is not None else torch.Generator("cpu").manual_seed(0)
+    with torch.no_grad():
+        return decode(decoder, pipe.scheduler, latents, generator, sigmas, pipe.progress_bar)
 
 
 def test_decode_without_vae():
@@ -112,3 +144,297 @@ def test_denormalize_can_be_skipped():
         latents, generator=torch.Generator(torch_device).manual_seed(0), output_type="pt", denormalize=False
     ).frames
     assert not torch.equal(normalized, raw)
+
+
+def test_sigma_schedule_is_uniform():
+    """The decoder walks `linspace(1, 1/n, n)`, not the scheduler's default `linspace(sigma_max, sigma_min, n)`.
+
+    Nothing downstream would raise if the scheduler's default schedule were used instead -- it is the same length
+    and the same shape -- so the schedule itself is what has to be pinned.
+    """
+    pipe = _build()
+    assert _sigmas(pipe, 1) == [1.0]
+    assert _sigmas(pipe, 4) == [1.0, 0.75, 0.5, 0.25]
+    # The default comes from the checkpoint, i.e. what the decoder was distilled for.
+    assert len(_sigmas(pipe)) == pipe.diffusion_decoder.config.decoder_num_inference_steps
+
+
+def test_num_inference_steps_and_sigmas_are_exclusive():
+    pipe = _build()
+    with pytest.raises(ValueError, match="Only one of"):
+        pipe(_latents(), num_inference_steps=2, sigmas=[1.0, 0.5])
+
+
+def test_multi_step_decode_runs_the_scheduler_loop():
+    """More than one step must actually integrate: the extra steps have to change the result."""
+    pipe, latents = _build(), _latents()
+    one = pipe(
+        latents, num_inference_steps=1, generator=torch.Generator(torch_device).manual_seed(0), output_type="pt"
+    ).frames
+    three = pipe(
+        latents, num_inference_steps=3, generator=torch.Generator(torch_device).manual_seed(0), output_type="pt"
+    ).frames
+    assert one.shape == three.shape
+    assert not torch.equal(one, three)
+    assert torch.isfinite(three).all()
+
+
+class TestTiling:
+    """Tiled decoding: the early stages run on the full latent, the last stage and the diffusion loop run per tile.
+
+    `latent` is 3x4x5 (17x64x80 pixels) so every axis is large enough to split: the tiling grid -- the grid
+    entering the last deterministic stage -- is 9x16x20, and the tile sizes below cut it into three temporal and
+    two/three spatial tiles. Tests that never want a split use `small_latent` instead.
+    """
+
+    SPLIT_TILES = {
+        # Tiling-grid cells are 2 frames x 4 px x 4 px here (last upsample stride (2, 2, 2), patch 2), so this is
+        # a 4-cell tile with a 3-cell stride temporally and 8x8-cell tiles with 6-cell strides spatially: tiles
+        # (0, 4), (3, 7), (6, 9) over T and (0, 8), (6, 16|20) over H/W.
+        "tile_sample_min_num_frames": 8,
+        "tile_sample_stride_num_frames": 6,
+        "tile_sample_min_height": 32,
+        "tile_sample_stride_height": 24,
+        "tile_sample_min_width": 32,
+        "tile_sample_stride_width": 24,
+    }
+
+    def latent(self):
+        return torch.randn(1, 8, 3, 4, 5, generator=torch.Generator().manual_seed(2)).to(torch_device)
+
+    def small_latent(self):
+        """2x3x3 (9x48x48 pixels): under the default tile sizes, over `SPLIT_TILES`.
+
+        Stage 5 attends over the whole grid, so decode cost grows with the square of the video. A test that only
+        exercises the single-tile path has no use for a splittable video and should not pay for one.
+        """
+        return torch.randn(1, 8, 2, 3, 3, generator=torch.Generator().manual_seed(2)).to(torch_device)
+
+    def test_tiles_covering_the_video_match_untiled_exactly(self):
+        """A tile schedule with a single covering tile must reproduce the untiled decode bit for bit.
+
+        This pins the per-tile plumbing -- the ghost-frame carry/crop, the leading-frame drop, and the stitching --
+        because any offset in them shifts the single tile's output relative to the untiled path. The default tile
+        sizes are larger than the test video, so `tiled_decode` builds exactly one tile.
+        """
+        pipe, latent = _build(), self.small_latent()
+
+        for num_inference_steps in (None, 3):  # None: the single-step x0 shortcut; 3: the Euler loop
+            untiled = _decode(pipe, latent, num_inference_steps)
+            tiled = _decode(pipe, latent, num_inference_steps, tiled=True)
+            assert torch.equal(tiled, untiled), (
+                f"single-tile tiled decode diverged from untiled by {(tiled - untiled).abs().max().item():.3e} "
+                f"with num_inference_steps={num_inference_steps}"
+            )
+
+    def test_tiled_decode_with_splits(self):
+        """Actually-split tiles must reassemble to the untiled output shape, on both noise paths.
+
+        Values legitimately differ from the untiled decode (each tile sees a truncated attention context at its
+        borders), so this asserts geometry, not closeness. The multi-step run additionally covers the shared noise
+        canvas that overlapping tiles slice from.
+        """
+        pipe, latent = _build(), self.latent()
+        untiled = _decode(pipe, latent)
+
+        pipe.diffusion_decoder.enable_tiling(**self.SPLIT_TILES)
+        for num_inference_steps in (None, 3):
+            tiled = _decode(pipe, latent, num_inference_steps, tiled=True)
+            assert tiled.shape == untiled.shape
+            assert torch.isfinite(tiled).all()
+
+    def test_tiled_decode_tiles_even_when_tiling_is_disabled(self):
+        """`tiled_decode` tiles on its own terms; `use_tiling` only gates whether `decode` routes to it.
+
+        `disable_tiling` flips the routing flag and leaves the configured tile sizes alone, so a direct
+        `tiled_decode` call still has a split schedule to honor. This counts last-stage invocations rather than
+        comparing outputs because output comparison cannot see the failure: a `tiled_decode` that quietly fell back
+        to one full-grid tile would reproduce the untiled decode exactly and pass every other test in this class.
+        """
+        pipe, latent = _build(), self.latent()
+        decoder = pipe.diffusion_decoder
+        decoder.enable_tiling(**self.SPLIT_TILES)
+        decoder.disable_tiling()
+        assert not decoder.use_tiling
+
+        # The last deterministic stage runs once per tile, so its call count is the tile count.
+        stage_4_calls = []
+        original_stage_4 = decoder.encode_context_stage_4
+
+        def counting_stage_4(hidden_states, *args, **kwargs):
+            stage_4_calls.append(tuple(hidden_states.shape[1:4]))
+            return original_stage_4(hidden_states, *args, **kwargs)
+
+        decoder.encode_context_stage_4 = counting_stage_4
+        try:
+            _decode(pipe, latent, tiled=True)
+            tiled_call_count = len(stage_4_calls)
+
+            stage_4_calls.clear()
+            _decode(pipe, latent)
+            untiled_call_count = len(stage_4_calls)
+        finally:
+            del decoder.encode_context_stage_4
+
+        assert tiled_call_count > 1, (
+            f"tiled_decode ran the last stage {tiled_call_count} time(s) with use_tiling=False; it must tile "
+            "regardless of the flag"
+        )
+        assert untiled_call_count == 1, (
+            f"decode ran the last stage {untiled_call_count} times with use_tiling=False; it must not tile"
+        )
+
+    def test_call_skips_tiling_for_a_video_that_fits_in_one_tile(self, monkeypatch):
+        """`__call__` sizes the latent up before routing, so tiling only engages when it would split.
+
+        The two outcomes are indistinguishable from the output alone: a video below the tile size that reaches the
+        tiled path anyway gets a single-tile schedule, which decodes to the same pixels. So this asserts the routing
+        directly -- the tiled path is never entered -- and separately pins the contract that matters to callers,
+        that turning tiling on cannot change a small video's output.
+        """
+        pipe, latent = _build(), self.small_latent()
+        decoder = pipe.diffusion_decoder
+
+        def run():
+            return pipe(
+                latent, generator=torch.Generator(torch_device).manual_seed(0), output_type="pt", denormalize=False
+            ).frames
+
+        decoder.disable_tiling()
+        untiled = run()
+
+        calls = []
+        original = decode_module._tiled_decode
+
+        def counting_tiled_decode(*args, **kwargs):
+            calls.append(1)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(decode_module, "_tiled_decode", counting_tiled_decode)
+
+        # Default tile sizes are far larger than this 9x48x48 video, so the gate declines to tile.
+        decoder.enable_tiling()
+        fits_in_one_tile = run()
+        assert not calls, "__call__ routed to the tiled path for a video that fits in a single tile"
+        assert torch.equal(fits_in_one_tile, untiled), (
+            "enabling tiling changed the output of a video below the tile size by "
+            f"{(fits_in_one_tile - untiled).abs().max().item():.3e}"
+        )
+
+        # Shrink the tiles below the video and the same latent must now route.
+        decoder.enable_tiling(**self.SPLIT_TILES)
+        run()
+        assert calls, "__call__ did not route to the tiled path for a video larger than the tile size"
+
+
+@require_accelerator
+def test_model_cpu_offload_decodes():
+    """Offloading must survive the pipeline reaching into the decoder for its context stages.
+
+    Accelerate's offload hook fires on `forward`, and this pipeline calls `encode_context_stages_1_to_3` and
+    `encode_context_stage_4` before it ever calls one -- so those carry `@apply_forward_hook`. Without it the
+    weights stay on the CPU and the first matmul raises a device mismatch, on both the tiled and untiled paths.
+    """
+    for tiled in (False, True):
+        pipe = _build()
+        if tiled:
+            pipe.diffusion_decoder.enable_tiling(**TestTiling.SPLIT_TILES)
+        pipe.enable_model_cpu_offload(device=torch_device)
+        latents = torch.randn(1, 8, 3, 4, 5, generator=torch.Generator().manual_seed(2))
+        frames = pipe(latents, generator=torch.Generator(torch_device).manual_seed(0), output_type="pt").frames
+        assert frames.shape == (1, 17, 3, 64, 80)
+        assert torch.isfinite(frames).all()
+
+
+@pytest.mark.parametrize("model_output_type", ["v", "x0"])
+def test_scheduler_step_matches_the_closed_form_euler_update(model_output_type):
+    """The scheduler must integrate exactly what the decoder's own solver did, on both prediction types.
+
+    This is the regression the move to a scheduler is most exposed to: `step` would still return a plausible
+    tensor if the sign of `dt` flipped, if the x0-to-velocity conversion used the wrong sigma, or if the sigma
+    handed to the model were the scheduler's `sigma * num_train_timesteps` timestep instead. So the loop is
+    recomputed here in closed form -- `x - (sigma - sigma_next) * v` -- and compared bit for bit.
+    """
+    steps = 3
+    pipe = _build(decoder_model_output_type=model_output_type, decoder_num_inference_steps=steps)
+    decoder, latents = pipe.diffusion_decoder, _latents()
+    sigmas = _sigmas(pipe)
+    assert len(sigmas) == steps
+
+    with torch.no_grad():
+        context = decoder.encode_context_stage_4(decoder.encode_context_stages_1_to_3(latents))
+        pixel_shape = (
+            latents.shape[0],
+            DECODER_CONFIG["out_channels"],
+            context.shape[1],
+            context.shape[2] * DECODER_CONFIG["patch_size"],
+            context.shape[3] * DECODER_CONFIG["patch_size"],
+        )
+        # Same draw the pipeline makes, so both loops start from the same canvas.
+        x_t = randn_tensor(
+            pixel_shape,
+            generator=torch.Generator(torch_device).manual_seed(0),
+            device=latents.device,
+            dtype=latents.dtype,
+        )
+
+        # float32 scalars, matching the dtype the scheduler holds its sigmas in: a Python float would divide
+        # and subtract in double and leave a few ulps of difference that say nothing about the update rule.
+        sigma_values = torch.tensor(sigmas + [0.0], dtype=torch.float32, device=torch_device)
+        for i in range(steps):
+            sigma, sigma_next = sigma_values[i], sigma_values[i + 1]
+            prediction = decoder(x_t, context, sigma.expand(latents.shape[0]), return_dict=False)[0]
+            if model_output_type == "x0":
+                if i == steps - 1:
+                    # The x0 shortcut: `x - sigma * (x - x0) / sigma` is the prediction itself, and taking it
+                    # directly is what keeps the common one-step decode off a full-canvas float32 round trip.
+                    expected = prediction
+                    break
+                velocity = (x_t.float() - prediction.float()) / sigma
+            else:
+                velocity = prediction.float()
+            x_t = (x_t.float() - (sigma - sigma_next) * velocity).to(x_t.dtype)
+        else:
+            expected = x_t
+
+        actual = _decode(pipe, latents, steps, generator=torch.Generator(torch_device).manual_seed(0))
+
+    assert torch.equal(actual, expected), (
+        f"scheduler-driven decode diverged from the closed-form Euler update by "
+        f"{(actual - expected).abs().max().item():.3e} for model_output_type={model_output_type!r}"
+    )
+
+
+def test_a_reshaped_sigma_schedule_is_honoured():
+    """A scheduler configured away from the shipped defaults must take effect, not be second-guessed.
+
+    The uniform schedule is what the LTX-2.5 checkpoint was distilled on, but it is a default, not a law: a
+    finetune may prefer a shift, and driving the loop from a scheduler is what makes that expressible. So `shift`
+    has to reach the sigmas and change the decode, with no warning and no correction.
+    """
+    pipe, latents = _build(), _latents()
+    shipped = pipe(latents, generator=torch.Generator(torch_device).manual_seed(0), output_type="pt").frames
+
+    pipe.scheduler = FlowMatchEulerDiscreteScheduler(**{**_scheduler().config, "shift": 5.0})
+    sigmas = _sigmas(pipe, 3)
+    shifted = pipe(
+        latents, sigmas=sigmas, generator=torch.Generator(torch_device).manual_seed(0), output_type="pt"
+    ).frames
+
+    # `shift` bends the schedule the pipeline handed in, rather than being ignored or overridden.
+    assert pipe.scheduler.sigmas[:-1].tolist() != sigmas
+    assert not torch.equal(shipped, shifted)
+    assert torch.isfinite(shifted).all()
+
+
+def test_dynamic_shifting_is_rejected_with_an_actionable_error():
+    """The one scheduler setting this pipeline cannot drive: it never computes `mu`, so the decode cannot run.
+
+    Worth its own error because it is what `scheduler=pipe.scheduler` gives you — a transformer's scheduler
+    normally has dynamic shifting on — and the scheduler's own complaint (`mu` must be passed) does not say where
+    to get a working one.
+    """
+    pipe = _build()
+    pipe.scheduler = FlowMatchEulerDiscreteScheduler(**{**_scheduler().config, "use_dynamic_shifting": True})
+    with pytest.raises(ValueError, match="diffusion_decoder_scheduler"):
+        pipe(_latents(), generator=torch.Generator(torch_device).manual_seed(0), output_type="pt")
