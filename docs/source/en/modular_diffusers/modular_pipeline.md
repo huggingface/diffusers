@@ -415,7 +415,7 @@ pipeline.load_components()
 pipeline.save_pretrained("local/path", repo_id="my-username/sdxl-modular", push_to_hub=True)
 ```
 
-By default, [`~ModularPipeline.save_pretrained`] writes each currently loaded component that Diffusers can serialize. Components that are not loaded, or cannot be serialized, are not written and keep their existing loading specifications. This gives you two ways to save, depending on what you want.
+By default, [`~ModularPipeline.save_pretrained`] writes each currently loaded component that Diffusers can serialize. Components that are not loaded, or cannot be serialized, are not written and keep their existing loading specifications.
 
 ### Save a self-contained copy
 
@@ -429,9 +429,21 @@ pipe.save_pretrained("path/to/local-copy")
 
 The destination recorded in `modular_model_index.json` is wherever [`~ModularPipeline.save_pretrained`] writes: the `save_directory` for a local save, or the `repo_id` when you pass `push_to_hub=True`.
 
+Moving the files any other way doesn't rewrite the index. A copy downloaded with `hf download --local-dir` still works: when a pipeline is loaded from a local directory, every component whose files are present in that directory is loaded from it instead of the recorded repository. A copy uploaded with `hf upload` keeps pointing at the old location, so update the index manually in that case.
+
 With `huggingface_hub>=1.32.0`, identical Xet-backed files can share one cached payload across any Hub repositories. This includes individual files in a sharded checkpoint: a shard with the same Xet hash can be reused even when other shards differ. Both downloads must use the same Hub cache directory with symlink support. Changing the dtype, serialization, or shard boundaries can change file hashes and prevent reuse. This saves download traffic and disk space, not the memory used by loaded components.
 
 Shared caching is best-effort. Setting `HF_HUB_DISABLE_SHARED_BLOBS=1` still supports loading, but caches separate copies. Existing component references in `modular_model_index.json` remain unchanged; keep external references for components that are not stored in the modular repository.
+
+### Referencing components in other repositories
+
+A component's loading specification in `modular_model_index.json` can point to a different repository. For example, [diffusers/flux2-bnb-4bit-modular](https://huggingface.co/diffusers/flux2-bnb-4bit-modular) loads its quantized transformer from `diffusers/FLUX.2-dev-bnb-4bit` and the remaining components from `black-forest-labs/FLUX.2-dev`.
+
+We strongly prefer self-contained repositories: keeping all components together makes a pipeline easier to download, share, and use offline without depending on other repositories. Use cross-repository references only when you intentionally want a component hosted elsewhere.
+
+Pass `overwrite_modular_index=False` to keep the loading specs in `modular_model_index.json` as they are. A saved component whose loading spec is empty is still filled in with the destination, since there is nothing to preserve.
+
+With `huggingface_hub>=1.32.0`, identical Xet-backed files can share one cached payload across repositories through symlinks, avoiding duplicate downloads and disk usage. Cross-repository references aren't needed for this. See [Save a self-contained copy](#save-a-self-contained-copy) for the shared cache requirements and limitations.
 
 #### Update an existing modular index
 
@@ -459,19 +471,7 @@ This also removes the legacy `repo` field. A revision from the original reposito
 
 Before publishing the updated index, load it with `ModularPipeline.from_pretrained("path/to/local-copy")`, call `load_components(names="vae")`, and verify that the component loads with the expected parameters. Upload only the edited index; re-saving the weights can change their hashes and prevent cache reuse.
 
-### Keep references to existing components
-
-Use this mode only when you intentionally want components to remain hosted in other repositories. Only loaded components are saved; everything else keeps a reference to its original repository. For example, save a custom transformer while the remaining components continue to load from the base repository. For new repositories, prefer [saving all components together](#save-a-self-contained-copy) and relying on shared caching for identical files.
-
-```py
-pipe = ModularPipeline.from_pretrained("black-forest-labs/FLUX.2-dev")
-pipe.update_components(transformer=my_custom_transformer)  # the only component in memory
-pipe.save_pretrained("local/path", repo_id="my-username/flux2-custom-transformer", push_to_hub=True)
-```
-
-Pass `overwrite_modular_index=False` to keep the loading specs in `modular_model_index.json` as they are. A saved component whose loading spec is empty is still filled in with the destination, since there is nothing to preserve.
-
-Moving the files any other way doesn't rewrite the index. A copy downloaded with `hf download --local-dir` still works: when a pipeline is loaded from a local directory, every component whose files are present in that directory is loaded from it instead of the recorded repository. A copy uploaded with `hf upload` keeps pointing at the old location, so update the index manually in that case.
+### Custom code
 
 A modular repository can also include custom pipeline blocks as Python code. This allows you to share specialized blocks that aren't native to Diffusers. For example, [diffusers/Florence2-image-Annotator](https://huggingface.co/diffusers/Florence2-image-Annotator) contains custom blocks alongside the loading configuration:
 
@@ -495,11 +495,3 @@ The `config.json` file contains an `auto_map` key that tells [`ModularPipeline`]
 ```
 
 Load custom code repositories with `trust_remote_code=True` as shown in [from_pretrained](#frompretrained). See [Custom blocks](./custom_blocks) for how to create and share your own.
-
-### Referencing components in other repositories
-
-A component's loading specification in `modular_model_index.json` can point to a different repository. For example, [diffusers/flux2-bnb-4bit-modular](https://huggingface.co/diffusers/flux2-bnb-4bit-modular) loads its quantized transformer from `diffusers/FLUX.2-dev-bnb-4bit` and the remaining components from `black-forest-labs/FLUX.2-dev`.
-
-We strongly prefer self-contained repositories: keeping all components together makes a pipeline easier to download, share, and use offline without depending on other repositories. Use cross-repository references only when you intentionally want a component hosted elsewhere.
-
-With `huggingface_hub>=1.32.0`, identical Xet-backed files can share one cached payload across repositories through symlinks, avoiding duplicate downloads and disk usage. Cross-repository references aren't needed for this. See [Save a self-contained copy](#save-a-self-contained-copy) for the shared cache requirements and limitations.
