@@ -48,7 +48,7 @@ internal proxy projection in FP32 when loaded with `from_pretrained`.
 
 ## Causal generation
 
-Load the causal pipeline from its dedicated repository. Both model sizes use four fixed denoising steps per chunk.
+Load the causal pipeline from its dedicated repository. Both model sizes default to four denoising steps per chunk.
 
 ```python
 from diffusers import EdenLiveCausalPipeline

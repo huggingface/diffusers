@@ -18,7 +18,7 @@ import torch
 
 from diffusers import (
     EdenLiveCausalPipeline,
-    EdenLiveFlowMatchEulerDiscreteScheduler,
+    FlowMatchEulerDiscreteScheduler,
 )
 
 from ...testing_utils import torch_device
@@ -36,8 +36,8 @@ class EdenLiveCausalPipelineTesterConfig(EdenLivePipelineTesterConfig):
 
     def get_dummy_components(self):
         components = super().get_dummy_components()
-        components["scheduler"] = EdenLiveFlowMatchEulerDiscreteScheduler(
-            stochastic_sampling=True, default_timesteps=[1000, 500]
+        components["scheduler"] = FlowMatchEulerDiscreteScheduler(
+            shift=3.0 if self.profile == "14b" else 5.0, stochastic_sampling=True
         )
         return components
 
@@ -45,14 +45,57 @@ class EdenLiveCausalPipelineTesterConfig(EdenLivePipelineTesterConfig):
 class TestEdenLiveCausalPipeline(
     EdenLiveOptionalDecoderTesterMixin, EdenLiveCausalPipelineTesterConfig, PipelineTesterMixin
 ):
+    def test_inference_batch_single_identical(self, monkeypatch):
+        monkeypatch.setattr(torch.backends.cudnn, "allow_tf32", False)
+        super().test_inference_batch_single_identical()
+
     def test_load_causal_pipeline_from_root(self, tmp_path):
         pipe = self.get_pipeline().to(torch_device)
         expected = pipe(**self.get_dummy_inputs()).frames
         pipe.save_pretrained(tmp_path)
         restored = self.pipeline_class.from_pretrained(tmp_path).to(torch_device)
         assert restored.decoder is None
-        assert isinstance(restored.scheduler, EdenLiveFlowMatchEulerDiscreteScheduler)
+        assert isinstance(restored.scheduler, FlowMatchEulerDiscreteScheduler)
         torch.testing.assert_close(restored(**self.get_dummy_inputs()).frames, expected, atol=1e-5, rtol=0)
+
+    @pytest.mark.parametrize("num_steps", [None, 3])
+    def test_scheduler_timesteps_reset_per_chunk(self, num_steps):
+        pipe = self.get_pipeline().to(torch_device)
+        timesteps = []
+        step_indices = []
+
+        def callback(pipe, step, timestep, callback_kwargs):
+            timesteps.append(timestep.cpu())
+            step_indices.append(pipe.scheduler.step_index)
+            return callback_kwargs
+
+        inputs = self.get_dummy_inputs()
+        inputs.update(
+            video=np.concatenate([inputs["video"], inputs["video"][:4]]),
+            num_frames=13,
+            num_inference_steps=num_steps,
+            output_type="latent",
+            callback_on_step_end=callback,
+        )
+        output = pipe(**inputs).frames
+        steps = 4 if num_steps is None else num_steps
+        actual = torch.stack(timesteps).reshape(2, steps)
+        torch.testing.assert_close(actual[0], actual[1], atol=0, rtol=0)
+        if num_steps is None:
+            expected = [1000, 900, 750, 500] if self.profile == "14b" else [1000, 937.5, 833.333333, 625]
+            torch.testing.assert_close(actual[0], actual.new_tensor(expected), atol=1e-4, rtol=0)
+        assert step_indices == list(range(1, steps + 1)) * 2
+        assert pipe.scheduler.sigmas[-1] == 0
+        assert pipe.num_timesteps == steps * 2
+        assert output.shape[2] == 4 and torch.isfinite(output).all()
+
+    @pytest.mark.parametrize("num_steps", [0, -1, 1.5])
+    def test_invalid_num_inference_steps(self, num_steps):
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
+        inputs["num_inference_steps"] = num_steps
+        with pytest.raises(ValueError, match="positive integer"):
+            pipe(**inputs)
 
     def test_short_tail_and_no_state_leak(self):
         pipe = self.get_pipeline().to(torch_device)

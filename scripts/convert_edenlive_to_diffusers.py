@@ -33,9 +33,9 @@ from transformers import (
 
 from diffusers import (
     AutoencoderKLWan,
-    EdenLiveFlowMatchEulerDiscreteScheduler,
     EdenLiveLightTAEDecoder,
     EdenLiveTransformer3DModel,
+    FlowMatchEulerDiscreteScheduler,
     UniPCMultistepScheduler,
 )
 from diffusers.loaders.single_file_utils import convert_wan_vae_to_diffusers
@@ -73,11 +73,19 @@ def save_component(model, state, destination, manifest):
 
 
 def convert_lighttae(state, model):
-    converted = {
-        key.replace("decoder.blocks.", "decoder.", 1): value
-        for key, value in state.items()
-        if not key.startswith("encoder.")
-    }
+    layer_map = {1: "conv_in", 22: "conv_out"}
+    for stage in range(3):
+        for block in range(3):
+            layer_map[3 + 6 * stage + block] = f"stages.{stage}.memory_blocks.{block}"
+        layer_map[7 + 6 * stage] = f"stages.{stage}.temporal_upsample"
+        layer_map[8 + 6 * stage] = f"stages.{stage}.conv_out"
+    converted = {}
+    for key, value in state.items():
+        if key.startswith("encoder."):
+            continue
+        key = key.replace("decoder.blocks.", "decoder.", 1)
+        _, layer, suffix = key.split(".", 2)
+        converted[f"{layer_map[int(layer)]}.{suffix}"] = value
     for key, expected in model.state_dict().items():
         if key.endswith(".conv.weight") and key in converted and converted[key].shape[0] > expected.shape[0]:
             converted[key] = converted[key][-expected.shape[0] :]
@@ -227,12 +235,10 @@ def convert(source, output, size, variant):
 
     if size == "5b":
         scheduler = UniPCMultistepScheduler(prediction_type="flow_prediction", use_flow_sigmas=True, flow_shift=5.0)
-        timesteps = [1000, 937.5, 833.3333333333, 625]
     else:
-        scheduler = EdenLiveFlowMatchEulerDiscreteScheduler(shift=3.0)
-        timesteps = [1000, 900, 750, 500]
+        scheduler = FlowMatchEulerDiscreteScheduler(shift=3.0)
     if variant == "causal":
-        scheduler = EdenLiveFlowMatchEulerDiscreteScheduler(stochastic_sampling=True, default_timesteps=timesteps)
+        scheduler = FlowMatchEulerDiscreteScheduler(shift=5.0 if size == "5b" else 3.0, stochastic_sampling=True)
     scheduler.save_pretrained(output / "scheduler")
     index = {
         "_class_name": "EdenLiveCausalPipeline" if variant == "causal" else "EdenLivePipeline",

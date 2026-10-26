@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, DINOv3ViTModel, UMT5EncoderModel
 
 from ...models import AutoencoderKLWan, EdenLiveLightTAEDecoder, EdenLiveTransformer3DModel
-from ...schedulers import EdenLiveFlowMatchEulerDiscreteScheduler
+from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_ftfy_available, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -68,7 +68,7 @@ class EdenLiveCausalPipeline(DiffusionPipeline):
             Tokenizer corresponding to the text encoder.
         transformer ([`EdenLiveTransformer3DModel`]):
             EdenLive causal video denoiser.
-        scheduler ([`EdenLiveFlowMatchEulerDiscreteScheduler`]):
+        scheduler ([`FlowMatchEulerDiscreteScheduler`]):
             Scheduler corresponding to the transformer checkpoint.
         proxy_encoder (`DINOv3ViTModel`):
             Trained RGB proxy encoder.
@@ -100,7 +100,7 @@ class EdenLiveCausalPipeline(DiffusionPipeline):
         text_encoder: UMT5EncoderModel,
         tokenizer: AutoTokenizer,
         transformer: EdenLiveTransformer3DModel,
-        scheduler: EdenLiveFlowMatchEulerDiscreteScheduler,
+        scheduler: FlowMatchEulerDiscreteScheduler,
         proxy_encoder: DINOv3ViTModel,
         image_encoder: CLIPVisionModel | None = None,
         image_processor: CLIPImageProcessor | None = None,
@@ -387,7 +387,7 @@ class EdenLiveCausalPipeline(DiffusionPipeline):
                 Number of decoded output frames, of the form `4k + 1`. When omitted, use the largest valid input
                 prefix. The requested length cannot exceed the input video; missing frames are never repeated.
             num_inference_steps (`int`, *optional*):
-                Denoising steps per chunk; released causal schedules use four fixed evaluation points.
+                Denoising steps per chunk. Defaults to four for the released causal checkpoints.
             guidance_scale (`float`, *optional*):
                 Classifier-free guidance strength; defaults to 1. Values greater than one enable the negative prompt
                 branch.
@@ -437,6 +437,8 @@ class EdenLiveCausalPipeline(DiffusionPipeline):
             guidance_scale = 1.0
         if num_inference_steps is None:
             num_inference_steps = 4
+        if not isinstance(num_inference_steps, int) or num_inference_steps < 1:
+            raise ValueError("`num_inference_steps` must be a positive integer.")
         height = (480 if self._image_conditioned else 704) if height is None else height
         width = (832 if self._image_conditioned else 1280) if width is None else width
         self.check_inputs(
@@ -514,6 +516,7 @@ class EdenLiveCausalPipeline(DiffusionPipeline):
             for _ in range(2 if self.do_classifier_free_guidance else 1)
         ]
         self._num_timesteps = num_inference_steps * num_chunks
+        sigmas = torch.linspace(1.0, 1.0 / num_inference_steps, num_inference_steps, dtype=torch.float32).tolist()
         generated = []
         with self.progress_bar(total=num_chunks) as progress_bar:
             for chunk_index, start in enumerate(range(0, latents.shape[2], self.config.chunk_size)):
@@ -523,7 +526,7 @@ class EdenLiveCausalPipeline(DiffusionPipeline):
                 current_proxy = proxy_features[:, :, start : start + self.config.chunk_size]
                 if start == 0:
                     current[:, :, :1] = first_frame
-                self.scheduler.set_timesteps(num_inference_steps, device=current.device)
+                self.scheduler.set_timesteps(sigmas=sigmas, device=current.device)
                 for step_index, timestep in enumerate(self.scheduler.timesteps):
                     model_input, model_timestep = prepare_model_input(
                         self, current, condition, first_frame, timestep, start, causal=True
@@ -552,17 +555,11 @@ class EdenLiveCausalPipeline(DiffusionPipeline):
                             return_dict=False,
                         )[0]
                         prediction = negative_prediction + self.guidance_scale * (prediction - negative_prediction)
-                    variance_noise = None
-                    if self.scheduler.config.stochastic_sampling and step_index < len(self.scheduler.timesteps) - 1:
-                        variance_noise = randn_tensor(
-                            current.shape, generator=generator, device=current.device, dtype=current.dtype
-                        )
                     current = self.scheduler.step(
                         prediction,
                         timestep,
                         current,
-                        generator=None if variance_noise is not None else generator,
-                        variance_noise=variance_noise,
+                        generator=generator,
                         return_dict=False,
                     )[0]
                     if start == 0:

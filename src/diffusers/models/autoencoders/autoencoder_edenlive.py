@@ -29,11 +29,6 @@ class _EdenLiveTAEDecodeState:
     memory: dict[int, torch.Tensor] = field(default_factory=dict)
 
 
-class EdenLiveTAEClamp(nn.Module):
-    def forward(self, hidden_states) -> torch.Tensor:
-        return torch.tanh(hidden_states / 3) * 3
-
-
 class EdenLiveTAEMemoryBlock(nn.Module):
     def __init__(self, channels):
         super().__init__()
@@ -69,6 +64,22 @@ class EdenLiveTAETemporalUpsample(nn.Module):
         return self.conv(hidden_states).reshape(-1, channels, height, width)
 
 
+class EdenLiveTAEDecoderStage(nn.Module):
+    def __init__(self, in_channels, out_channels, temporal_stride):
+        super().__init__()
+        self.memory_blocks = nn.ModuleList([EdenLiveTAEMemoryBlock(in_channels) for _ in range(3)])
+        self.upsample = nn.Upsample(scale_factor=2)
+        self.temporal_upsample = EdenLiveTAETemporalUpsample(in_channels, temporal_stride)
+        self.conv_out = nn.Conv2d(in_channels, out_channels, 3, padding=1, bias=False)
+
+    def forward(self, hidden_states, state, batch_size) -> torch.Tensor:
+        for block in self.memory_blocks:
+            hidden_states = block(hidden_states, state, batch_size)
+        hidden_states = self.upsample(hidden_states)
+        hidden_states = self.temporal_upsample(hidden_states)
+        return self.conv_out(hidden_states)
+
+
 class EdenLiveLightTAEDecoder(ModelMixin, ConfigMixin):
     """Decoder-only LightTAE for EdenLive's Wan latents.
 
@@ -95,18 +106,12 @@ class EdenLiveLightTAEDecoder(ModelMixin, ConfigMixin):
         if len(block_out_channels) != 4 or any(channels < 1 for channels in block_out_channels):
             raise ValueError("`block_out_channels` must contain four positive widths.")
         widths = block_out_channels
-        layers = [EdenLiveTAEClamp(), nn.Conv2d(latent_channels, widths[0], 3, padding=1), nn.ReLU(inplace=True)]
-        for stage in range(3):
-            layers.extend(EdenLiveTAEMemoryBlock(widths[stage]) for _ in range(3))
-            layers.extend(
-                [
-                    nn.Upsample(scale_factor=2),
-                    EdenLiveTAETemporalUpsample(widths[stage], 1 if stage == 0 else 2),
-                    nn.Conv2d(widths[stage], widths[stage + 1], 3, padding=1, bias=False),
-                ]
-            )
-        layers.extend([nn.ReLU(inplace=True), nn.Conv2d(widths[3], 3 * patch_size**2, 3, padding=1)])
-        self.decoder = nn.Sequential(*layers)
+        self.conv_in = nn.Conv2d(latent_channels, widths[0], 3, padding=1)
+        self.act = nn.ReLU(inplace=True)
+        self.stages = nn.ModuleList(
+            [EdenLiveTAEDecoderStage(widths[i], widths[i + 1], 1 if i == 0 else 2) for i in range(3)]
+        )
+        self.conv_out = nn.Conv2d(widths[3], 3 * patch_size**2, 3, padding=1)
 
     @property
     def scale_factor_temporal(self):
@@ -120,11 +125,11 @@ class EdenLiveLightTAEDecoder(ModelMixin, ConfigMixin):
         first_chunk = not state.memory
         batch_size, _, num_frames, height, width = latents.shape
         hidden_states = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, -1, height, width)
-        for layer in self.decoder:
-            if isinstance(layer, EdenLiveTAEMemoryBlock):
-                hidden_states = layer(hidden_states, state, batch_size)
-            else:
-                hidden_states = layer(hidden_states)
+        hidden_states = torch.tanh(hidden_states / 3) * 3
+        hidden_states = self.act(self.conv_in(hidden_states))
+        for stage in self.stages:
+            hidden_states = stage(hidden_states, state, batch_size)
+        hidden_states = self.conv_out(self.act(hidden_states))
         hidden_states = hidden_states.clamp(0, 1)
         if self.config.patch_size > 1:
             hidden_states = F.pixel_shuffle(hidden_states, self.config.patch_size)

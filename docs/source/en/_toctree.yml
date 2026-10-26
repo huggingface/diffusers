@@ -802,8 +802,6 @@
       title: DPMSolverSDEScheduler
     - local: api/schedulers/singlestep_dpm_solver
       title: DPMSolverSinglestepScheduler
-    - local: api/schedulers/edenlive
-      title: EdenLiveFlowMatchEulerDiscreteScheduler
     - local: api/schedulers/edm_multistep_dpm_solver
       title: EDMDPMSolverMultistepScheduler
     - local: api/schedulers/edm_euler

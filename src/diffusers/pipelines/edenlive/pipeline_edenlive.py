@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from transformers import AutoTokenizer, CLIPImageProcessor, CLIPVisionModel, DINOv3ViTModel, UMT5EncoderModel
 
 from ...models import AutoencoderKLWan, EdenLiveLightTAEDecoder, EdenLiveTransformer3DModel
-from ...schedulers import EdenLiveFlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler
+from ...schedulers import FlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler
 from ...utils import is_ftfy_available, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
@@ -68,7 +68,7 @@ class EdenLivePipeline(DiffusionPipeline):
             Tokenizer corresponding to the text encoder.
         transformer ([`EdenLiveTransformer3DModel`]):
             EdenLive bidirectional video denoiser.
-        scheduler ([`EdenLiveFlowMatchEulerDiscreteScheduler`] or [`UniPCMultistepScheduler`]):
+        scheduler ([`FlowMatchEulerDiscreteScheduler`] or [`UniPCMultistepScheduler`]):
             Scheduler corresponding to the transformer checkpoint.
         proxy_encoder (`DINOv3ViTModel`):
             Trained RGB proxy encoder.
@@ -94,7 +94,7 @@ class EdenLivePipeline(DiffusionPipeline):
         text_encoder: UMT5EncoderModel,
         tokenizer: AutoTokenizer,
         transformer: EdenLiveTransformer3DModel,
-        scheduler: EdenLiveFlowMatchEulerDiscreteScheduler | UniPCMultistepScheduler,
+        scheduler: FlowMatchEulerDiscreteScheduler | UniPCMultistepScheduler,
         proxy_encoder: DINOv3ViTModel,
         image_encoder: CLIPVisionModel | None = None,
         image_processor: CLIPImageProcessor | None = None,

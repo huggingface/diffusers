@@ -29,10 +29,10 @@ from transformers import (
 
 from diffusers import (
     AutoencoderKLWan,
-    EdenLiveFlowMatchEulerDiscreteScheduler,
     EdenLiveLightTAEDecoder,
     EdenLivePipeline,
     EdenLiveTransformer3DModel,
+    FlowMatchEulerDiscreteScheduler,
     UniPCMultistepScheduler,
 )
 
@@ -113,7 +113,7 @@ class EdenLivePipelineTesterConfig(BasePipelineTesterConfig):
                 )
             ).eval()
             image_processor = CLIPImageProcessor(size={"shortest_edge": 16}, crop_size={"height": 16, "width": 16})
-            scheduler = EdenLiveFlowMatchEulerDiscreteScheduler(shift=3)
+            scheduler = FlowMatchEulerDiscreteScheduler(shift=3)
         else:
             image_encoder, image_processor = None, None
             scheduler = UniPCMultistepScheduler(prediction_type="flow_prediction", use_flow_sigmas=True, flow_shift=5)
@@ -180,6 +180,10 @@ class EdenLiveOptionalDecoderTesterMixin:
 
 
 class TestEdenLivePipeline(EdenLiveOptionalDecoderTesterMixin, EdenLivePipelineTesterConfig, PipelineTesterMixin):
+    def test_inference_batch_single_identical(self, monkeypatch):
+        monkeypatch.setattr(torch.backends.cudnn, "allow_tf32", False)
+        super().test_inference_batch_single_identical()
+
     @pytest.mark.parametrize("num_frames", [0, 4, 8, 13])
     def test_invalid_frame_count(self, num_frames):
         pipe = self.get_pipeline().to(torch_device)
