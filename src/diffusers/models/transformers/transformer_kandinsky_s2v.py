@@ -356,9 +356,8 @@ class KandinskyS2VOutLayer(nn.Module):
         )
 
 
-# Not copied from transformer_kandinsky6: its Kandinsky6RoPE1D subclasses a base
-# RoPE1D defined in that module, so adopting it would mean copying 45 lines to
-# replace these 12.
+# Not copied from transformer_kandinsky6: its tables are buffers, which
+# `.to(torch.bfloat16)` casts down.
 class KandinskyS2VRoPE1D(nn.Module):
     def __init__(self, dim: int, max_pos: int = 1024, max_period: float = 10000.0):
         super().__init__()
@@ -367,15 +366,16 @@ class KandinskyS2VRoPE1D(nn.Module):
         self.max_period = max_period
         freq = get_freqs(dim // 2, max_period)
         pos = torch.arange(max_pos, dtype=freq.dtype)
-        self.register_buffer("args", torch.outer(pos, freq), persistent=False)
+        # A plain attribute rather than a buffer, so `.to(torch.bfloat16)` leaves the table in fp32.
+        self.args = torch.outer(pos, freq)
 
     def forward(self, pos: Tensor) -> Tensor:
-        return to_rope(self.args[pos])
+        return to_rope(self.args.to(device=pos.device)[pos])
 
 
-# Not copied from transformer_kandinsky6: its temporal table is built over
-# arange(max_pos), which would silently wrap a negative index around the end of
-# the tensor. FramePack memory sits at negative temporal positions.
+# Not copied from transformer_kandinsky6: its tables are buffers, and its temporal
+# table is built over arange(max_pos), which would silently wrap a negative index
+# around the end of the tensor. FramePack memory sits at negative temporal positions.
 class KandinskyS2VRoPE3D(nn.Module):
     """3-D RoPE; the temporal axis spans negative positions for memory frames."""
 
@@ -391,6 +391,8 @@ class KandinskyS2VRoPE3D(nn.Module):
         self.max_period = max_period
         self.offsets_t = max_pos[0]
 
+        # Plain attributes rather than buffers, so `.to(torch.bfloat16)` leaves the tables in fp32.
+        self.args = []
         for i, (axes_dim, ax_max_pos) in enumerate(zip(axes_dims, max_pos, strict=True)):
             freq = get_freqs(axes_dim // 2, max_period)
             pos = (
@@ -398,7 +400,7 @@ class KandinskyS2VRoPE3D(nn.Module):
                 if i == 0
                 else torch.arange(ax_max_pos, dtype=freq.dtype)
             )
-            self.register_buffer(f"args_{i}", torch.outer(pos, freq), persistent=False)
+            self.args.append(torch.outer(pos, freq))
 
     def forward(
         self,
@@ -407,9 +409,10 @@ class KandinskyS2VRoPE3D(nn.Module):
         scale_factor: tuple[float, float, float] = (1.0, 1.0, 1.0),
     ) -> Tensor:
         duration, height, width = shape
-        args_t = self.args_0[pos[0] + self.offsets_t] / scale_factor[0]
-        args_h = self.args_1[pos[1]] / scale_factor[1]
-        args_w = self.args_2[pos[2]] / scale_factor[2]
+        args_0, args_1, args_2 = (args.to(device=axis_pos.device) for args, axis_pos in zip(self.args, pos))
+        args_t = args_0[pos[0] + self.offsets_t] / scale_factor[0]
+        args_h = args_1[pos[1]] / scale_factor[1]
+        args_w = args_2[pos[2]] / scale_factor[2]
 
         args = torch.cat(
             [
@@ -570,10 +573,9 @@ class KandinskyS2VTransformer3DModel(
         "KandinskyS2VTransformerDecoderBlock",
     ]
     _no_split_modules = _repeated_blocks
-    # The checkpoint keeps the time embedding and every normalisation in fp32, and
-    # the position tables are built in fp32; this stops `torch_dtype=` from
-    # flattening that. Matched both as substrings and as exact path components,
-    # hence the compound names beside the bare ones.
+    # The checkpoint keeps the time embedding and every normalisation in fp32;
+    # this stops `torch_dtype=` from flattening that. Matched both as substrings
+    # and as exact path components, hence the compound names beside the bare ones.
     _keep_in_fp32_modules = [
         "time_embeddings",
         "norm",
@@ -583,9 +585,6 @@ class KandinskyS2VTransformer3DModel(
         "feed_forward_norm",
         "query_norm",
         "key_norm",
-        "visual_rope_embeddings",
-        "text_rope_embeddings",
-        "audio_rope_embeddings",
     ]
     _supports_gradient_checkpointing = True
 

@@ -33,8 +33,10 @@ only; there is no standard `DiffusionPipeline` class for it.
 |---|---|---|---|---|---|
 | [Lite][lite] | 2B | [`KandinskyS2VAutoBlocks`] | [`FlowMatchEulerDiscreteScheduler`] | 50 | 3.0 |
 | [Pro][pro] | 21B | [`KandinskyS2VAutoBlocks`] | [`FlowMatchEulerDiscreteScheduler`] | 50 | 3.0 |
-| [Lite distilled][lite-distill] | 2B | [`KandinskyS2VDistilledAutoBlocks`] | [`KandinskyS2VPiflowScheduler`] | 16 | off |
-| [Pro distilled][pro-distill] | 21B | [`KandinskyS2VDistilledAutoBlocks`] | [`KandinskyS2VPiflowScheduler`] | 16 | off |
+| [Lite distilled][lite-distill] | 2B | [`KandinskyS2VDistilledAutoBlocks`] | [`PiflowScheduler`] | 16 | off |
+| [Pro distilled][pro-distill] | 21B | [`KandinskyS2VDistilledAutoBlocks`] | [`PiflowScheduler`] | 16 | off |
+
+The distilled checkpoints configure `PiflowScheduler` with `shift=10.0` and `n_grid=5`, not its defaults.
 
 [lite]: https://huggingface.co/kandinskylab/Kandinsky-S2V-1.0-Lite-Diffusers
 [pro]: https://huggingface.co/kandinskylab/Kandinsky-S2V-1.0-Pro-Diffusers

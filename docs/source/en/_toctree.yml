@@ -842,8 +842,6 @@
       title: HeunDiscreteScheduler
     - local: api/schedulers/ipndm
       title: IPNDMScheduler
-    - local: api/schedulers/kandinsky_s2v_piflow
-      title: KandinskyS2VPiflowScheduler
     - local: api/schedulers/dpm_discrete_ancestral
       title: KDPM2AncestralDiscreteScheduler
     - local: api/schedulers/dpm_discrete

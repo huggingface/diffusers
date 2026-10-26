@@ -18,8 +18,7 @@ from tqdm.auto import tqdm
 from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
 from ...models.transformers.transformer_kandinsky_s2v import KandinskyS2VTransformer3DModel
-from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...schedulers.scheduling_kandinsky_s2v_piflow import KandinskyS2VPiflowScheduler
+from ...schedulers import FlowMatchEulerDiscreteScheduler, PiflowScheduler
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
 from ..modular_pipeline import (
@@ -97,14 +96,15 @@ class KandinskyS2VChunkSchedulerResetStep(ModularPipelineBlocks):
     def __call__(
         self, components: KandinskyS2VModularPipeline, block_state: BlockState, k: int
     ) -> tuple[KandinskyS2VModularPipeline, BlockState]:
-        device = components._execution_device
-        if getattr(components.scheduler, "is_piflow", False):
-            components.scheduler.set_timesteps(block_state.num_inference_steps, device=device)
-        else:
-            # torch.linspace in float32, not numpy in float64: a one-ULP difference in the step size moves the
-            # trajectory, which then diverges on its own.
-            grid = torch.linspace(1.0, 0.0, block_state.num_inference_steps, dtype=torch.float32)[:-1]
-            components.scheduler.set_timesteps(sigmas=grid.numpy(), device=device)
+        if block_state.num_inference_steps < 2:
+            raise ValueError(
+                f"`num_inference_steps` must be at least 2, got {block_state.num_inference_steps}: "
+                "the schedule runs `num_inference_steps - 1` Euler updates."
+            )
+        # torch.linspace in float32, not numpy in float64: a one-ULP difference in the step size moves the
+        # trajectory, which then diverges on its own.
+        grid = torch.linspace(1.0, 0.0, block_state.num_inference_steps, dtype=torch.float32)[:-1]
+        components.scheduler.set_timesteps(sigmas=grid.numpy(), device=components._execution_device)
         block_state.timesteps = components.scheduler.timesteps
         return components, block_state
 
@@ -118,11 +118,19 @@ class KandinskyS2VDistilledChunkSchedulerResetStep(KandinskyS2VChunkSchedulerRes
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("scheduler", KandinskyS2VPiflowScheduler)]
+        return [ComponentSpec("scheduler", PiflowScheduler)]
 
     @property
     def inputs(self) -> list[InputParam]:
         return [InputParam.template("num_inference_steps", default=16)]
+
+    @torch.no_grad()
+    def __call__(
+        self, components: KandinskyS2VModularPipeline, block_state: BlockState, k: int
+    ) -> tuple[KandinskyS2VModularPipeline, BlockState]:
+        components.scheduler.set_timesteps(block_state.num_inference_steps, device=components._execution_device)
+        block_state.timesteps = components.scheduler.timesteps
+        return components, block_state
 
 
 class KandinskyS2VChunkDenoiseInner(ModularPipelineBlocks):
@@ -176,12 +184,6 @@ class KandinskyS2VChunkDenoiseInner(ModularPipelineBlocks):
     def __call__(
         self, components: KandinskyS2VModularPipeline, block_state: BlockState, k: int
     ) -> tuple[KandinskyS2VModularPipeline, BlockState]:
-        if getattr(components.scheduler, "is_piflow", False) and components.requires_unconditional_embeds:
-            # Guidance on top of a distilled student over-guides it and doubles the cost.
-            raise ValueError(
-                f"guidance must be off with {type(components.scheduler).__name__}: CFG is distilled into the student"
-            )
-
         config = components.transformer.config
         transformer_dtype = components.transformer.dtype
         device = components._execution_device
@@ -249,7 +251,7 @@ class KandinskyS2VDistilledChunkDenoiseInner(KandinskyS2VChunkDenoiseInner):
     def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("transformer", KandinskyS2VTransformer3DModel),
-            ComponentSpec("scheduler", KandinskyS2VPiflowScheduler),
+            ComponentSpec("scheduler", PiflowScheduler),
             ComponentSpec(
                 "guider",
                 ClassifierFreeGuidance,
@@ -264,6 +266,15 @@ class KandinskyS2VDistilledChunkDenoiseInner(KandinskyS2VChunkDenoiseInner):
             param if param.name != "num_inference_steps" else InputParam.template("num_inference_steps", default=16)
             for param in super().inputs
         ]
+
+    @torch.no_grad()
+    def __call__(
+        self, components: KandinskyS2VModularPipeline, block_state: BlockState, k: int
+    ) -> tuple[KandinskyS2VModularPipeline, BlockState]:
+        if components.requires_unconditional_embeds:
+            # Guidance on top of a distilled student over-guides it and doubles the cost.
+            raise ValueError("guidance must be off with the distilled checkpoints: CFG is distilled into the student")
+        return super().__call__(components, block_state, k)
 
 
 class KandinskyS2VChunkUpdateStep(ModularPipelineBlocks):

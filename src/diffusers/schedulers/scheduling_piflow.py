@@ -195,6 +195,7 @@ class PiflowScheduler(SchedulerMixin, ConfigMixin):
         self.final_step_size_scale = float(final_step_size_scale)
         self.num_policy_substeps = int(num_policy_substeps)
         self._piflow_raw_timesteps = torch.empty(0)
+        self._piflow_final_segment = None
 
     @property
     def step_index(self):
@@ -247,6 +248,7 @@ class PiflowScheduler(SchedulerMixin, ConfigMixin):
         sigmas = shift_timesteps(raw, float(self.config.shift))
         self.num_inference_steps = int(num_inference_steps)
         self._piflow_raw_timesteps = raw
+        self._piflow_final_segment = segment * self.final_step_size_scale
         self.timesteps = sigmas * self.config.num_train_timesteps
         self.sigmas = torch.cat([sigmas, sigmas.new_zeros(1)])
         self._step_index = None
@@ -273,15 +275,17 @@ class PiflowScheduler(SchedulerMixin, ConfigMixin):
     def _policy_step(self, model_output: torch.Tensor, sample: torch.Tensor, step_index: int) -> torch.Tensor:
         model_output = self._to_grid(model_output, sample)
         raw_src = self._piflow_raw_timesteps[step_index].to(device=sample.device)
-        raw_dst = (
-            self._piflow_raw_timesteps[step_index + 1]
-            if step_index + 1 < self._piflow_raw_timesteps.numel()
-            else self._piflow_raw_timesteps.new_full((), self.eps)
-        ).to(device=sample.device)
+        if step_index + 1 < self._piflow_raw_timesteps.numel():
+            raw_dst = self._piflow_raw_timesteps[step_index + 1].to(device=sample.device)
+            segment = raw_src - raw_dst
+        else:
+            # The policy sees the nominal final segment, which ends at 0; only the rollout stops at eps.
+            segment = raw_src.new_full((), self._piflow_final_segment)
+            raw_dst = (raw_src - segment).clamp(min=self.eps)
         sigma_src = self.sigmas[step_index].to(device=sample.device)
         token_shape = (sample.shape[0], *((sample.ndim - 1) * [1]))
         sigma = sigma_src.expand(sample.shape[0]).reshape(token_shape)
-        segment = (raw_src - raw_dst).expand(sample.shape[0])
+        segment = segment.expand(sample.shape[0])
         policy = DXPolicy(
             model_output,
             sample,

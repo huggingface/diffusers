@@ -45,7 +45,7 @@ class KandinskyS2VDistilledAutoBlocks(SequentialPipelineBlocks):
       Components:
           tokenizer (`Qwen2_5OmniProcessor`) transformer (`KandinskyS2VTransformer3DModel`) text_encoder
           (`Qwen2_5OmniThinkerForConditionalGeneration`) text_encoder_2 (`CLIPTextModel`) tokenizer_2 (`CLIPTokenizer`)
-          guider (`ClassifierFreeGuidance`) vae (`AutoencoderKLHunyuanVideo`) scheduler (`KandinskyS2VPiflowScheduler`)
+          guider (`ClassifierFreeGuidance`) vae (`AutoencoderKLHunyuanVideo`) scheduler (`PiflowScheduler`)
           video_processor (`VideoProcessor`)
 
       Inputs:

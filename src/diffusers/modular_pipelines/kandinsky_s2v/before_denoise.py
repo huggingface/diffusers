@@ -156,6 +156,8 @@ class KandinskyS2VPrepareStep(ModularPipelineBlocks):
         block_state.pooled_prompt_embeds = block_state.pooled_prompt_embeds.to(dtype)
         block_state.text_rope_pos = torch.arange(block_state.prompt_embeds.shape[0], device=device)
         block_state.negative_text_rope_pos = None
+        if (block_state.negative_prompt_embeds is None) != (block_state.negative_pooled_prompt_embeds is None):
+            raise ValueError("`negative_prompt_embeds` and `negative_pooled_prompt_embeds` must be passed together.")
         if block_state.negative_prompt_embeds is not None:
             block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.to(dtype)
             block_state.negative_pooled_prompt_embeds = block_state.negative_pooled_prompt_embeds.to(dtype)

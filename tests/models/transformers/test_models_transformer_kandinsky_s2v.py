@@ -140,4 +140,11 @@ class KandinskyS2VTransformerTesterConfig(BaseModelTesterConfig):
 
 
 class TestKandinskyS2VTransformer(KandinskyS2VTransformerTesterConfig, ModelTesterMixin):
-    pass
+    def test_rope_tables_stay_fp32_after_cast(self):
+        model = self.model_class(**self.get_init_dict()).to(torch.bfloat16)
+        tables = [
+            model.text_rope_embeddings.args,
+            model.audio_rope_embeddings.args,
+            *model.visual_rope_embeddings.args,
+        ]
+        assert all(table.dtype == torch.float32 for table in tables)

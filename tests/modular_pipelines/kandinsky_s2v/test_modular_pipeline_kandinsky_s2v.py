@@ -31,6 +31,7 @@ from diffusers.modular_pipelines import (
     KandinskyS2VDistilledModularPipeline,
     KandinskyS2VModularPipeline,
 )
+from diffusers.modular_pipelines.kandinsky_s2v.before_denoise import KandinskyS2VPrepareStep
 
 from ..testing_utils import (
     BaseModularPipelineTesterConfig,
@@ -122,6 +123,25 @@ class TestKandinskyS2VModularPipelineFast(KandinskyS2VModularPipelineTesterConfi
         with pytest.raises(ValueError, match="truncates"):
             pipe(**inputs, output="videos")
 
+    def test_rejects_a_single_step(self):
+        """One step leaves an empty Euler schedule, which would decode the initial noise."""
+        pipe = self.get_pipeline()
+        with pytest.raises(ValueError, match="at least 2"):
+            pipe(**{**self.get_dummy_inputs(), "num_inference_steps": 1}, output="videos")
+
+    def test_rejects_negative_embeds_without_pooled(self):
+        prepare_pipe = KandinskyS2VPrepareStep().init_pipeline(self.pretrained_model_name_or_path)
+        prepare_pipe.load_components()
+        with pytest.raises(ValueError, match="must be passed together"):
+            prepare_pipe(
+                reference_latents=torch.randn(1, 8, 8, 4),
+                audio_embeds=torch.randn(16, 16),
+                num_chunks=1,
+                prompt_embeds=torch.randn(3, 16),
+                pooled_prompt_embeds=torch.randn(16),
+                negative_prompt_embeds=torch.randn(3, 16),
+            )
+
 
 class TestKandinskyS2VModularPipelineLoading(KandinskyS2VModularPipelineTesterConfig, ModularLoadingTesterMixin):
     pass
@@ -140,7 +160,7 @@ FAST_SKIPS = {
 
 
 class KandinskyS2VDistilledModularPipelineTesterConfig(KandinskyS2VModularPipelineTesterConfig):
-    """The pi-Flow checkpoints: a head widened to its grid, `KandinskyS2VPiflowScheduler`, guidance off."""
+    """The pi-Flow checkpoints: a head widened to its grid, `PiflowScheduler`, guidance off."""
 
     pipeline_class = KandinskyS2VDistilledModularPipeline
     pipeline_blocks_class = KandinskyS2VDistilledAutoBlocks
