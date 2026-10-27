@@ -14,8 +14,9 @@ specific language governing permissions and limitations under the License.
 
 [Trainium](https://aws.amazon.com/machine-learning/trainium/) and
 [Inferentia](https://aws.amazon.com/machine-learning/inferentia/) are AWS's machine learning accelerators, both built
-on NeuronCores. Diffusers runs on them through TorchNeuron (the `torch_neuronx` package), the PyTorch backend from the
-AWS Neuron SDK. It registers a `"neuron"` device, so pipelines run with the same code as on any other device.
+on NeuronCores. Diffusers runs on them through [TorchNeuron](https://github.com/aws-neuron/torch-neuronx) (the
+`torch_neuronx` package), the PyTorch backend from the AWS Neuron SDK. It registers a `"neuron"` device, so pipelines
+run with the same code as on any other device.
 
 Two execution modes are available:
 
@@ -138,19 +139,8 @@ if dist.get_rank() == 0:
     image.save("output.png")
 ```
 
-> [!IMPORTANT]
-> Pass a fixed-seed CPU `generator`. Without it, every rank draws its own random initial latents and the output is
-> noise.
-
 Launch one process per NeuronCore. Set `--nproc_per_node` to the number of NeuronCores you want to shard across.
 
 ```bash
 torchrun --nproc_per_node=8 qwenimage21_tp.py
 ```
-
-To compile the sharded transformer, call
-`pipe.transformer.compile_repeated_blocks(backend="neuron", fullgraph=True, dynamic=False)` after loading it.
-
-> [!TIP]
-> [Optimum Neuron](https://huggingface.co/docs/optimum-neuron/en/index) offers ahead-of-time exported Neuron pipelines,
-> such as [`~optimum.neuron.NeuronStableDiffusionXLPipeline`], for deployment on Inferentia and Trainium.
