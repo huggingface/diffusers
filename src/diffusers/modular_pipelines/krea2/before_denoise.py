@@ -386,6 +386,8 @@ class Krea2SetTimestepsStep(ModularPipelineBlocks):
       Outputs:
           timesteps (`Tensor`):
               The denoising timesteps.
+          num_inference_steps (`int`):
+              The number of denoising steps.
     """
 
     model_name = "krea2"
@@ -418,7 +420,10 @@ class Krea2SetTimestepsStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam(name="timesteps", type_hint=torch.Tensor, description="The denoising timesteps.")]
+        return [
+            OutputParam(name="timesteps", type_hint=torch.Tensor, description="The denoising timesteps."),
+            OutputParam(name="num_inference_steps", type_hint=int, description="The number of denoising steps."),
+        ]
 
     @torch.no_grad()
     def __call__(
@@ -470,6 +475,8 @@ class Krea2TurboSetTimestepsStep(ModularPipelineBlocks):
       Outputs:
           timesteps (`Tensor`):
               The denoising timesteps.
+          num_inference_steps (`int`):
+              The number of denoising steps.
     """
 
     model_name = "krea2"
@@ -496,7 +503,10 @@ class Krea2TurboSetTimestepsStep(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam(name="timesteps", type_hint=torch.Tensor, description="The denoising timesteps.")]
+        return [
+            OutputParam(name="timesteps", type_hint=torch.Tensor, description="The denoising timesteps."),
+            OutputParam(name="num_inference_steps", type_hint=int, description="The number of denoising steps."),
+        ]
 
     @torch.no_grad()
     def __call__(

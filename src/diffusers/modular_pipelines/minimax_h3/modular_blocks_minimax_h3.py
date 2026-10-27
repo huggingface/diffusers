@@ -559,10 +559,10 @@ class MiniMaxH3AutoDenoiseStep(ConditionalPipelineBlocks):
           generator (`Generator`, *optional*):
               The generator of the request. The conditioning noise is drawn from it first, one draw per condition,
               before the noise of the generated rows.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated video noise of shape `(1, 24, num_latent_frames, latent_height, latent_width)`, used
               instead of the draw.
-          audio_latents (`Tensor`):
+          audio_latents (`Tensor`, *optional*):
               Pre-generated audio noise of shape `(2, 32, num_audio_latents)`.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
@@ -692,7 +692,7 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
               Height of the generated video in pixels, a multiple of 32.
           width (`int`, *optional*):
               Width of the generated video in pixels, a multiple of 32.
-          num_frames (`int`, *optional*):
+          num_frames (`int`, *optional*, defaults to None or 124, depending on the workflow):
               Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video VAE can
               decode; the resulting duration must stay between 5 and 15 seconds. To generate a video as long as a
               reference soundtrack, pass `round(samples / sample_rate * 24)`.
@@ -716,10 +716,10 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
           generator (`Generator`, *optional*):
               The generator of the request. The conditioning noise is drawn from it first, one draw per condition,
               before the noise of the generated rows.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated video noise of shape `(1, 24, num_latent_frames, latent_height, latent_width)`, used
               instead of the draw.
-          audio_latents (`Tensor`):
+          audio_latents (`Tensor`, *optional*):
               Pre-generated audio noise of shape `(2, 32, num_audio_latents)`.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.

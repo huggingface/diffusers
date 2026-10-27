@@ -340,7 +340,7 @@ class WanImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               TODO: Add description.
           num_frames (`None`, *optional*):
               TODO: Add description.
-          image_condition_latents (`None`, *optional*):
+          image_condition_latents (`None`):
               TODO: Add description.
           num_inference_steps (`None`, *optional*, defaults to 50):
               TODO: Add description.
@@ -362,6 +362,14 @@ class WanImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               Number of prompts, the final batch size of model inputs should be batch_size * num_videos_per_prompt
           dtype (`dtype`):
               Data type of model tensor inputs (determined by `transformer.dtype`)
+          prompt_embeds (`Tensor`):
+              Text embeddings expanded to batch_size * num_videos_per_prompt
+          negative_prompt_embeds (`Tensor`):
+              Negative text embeddings expanded to batch_size * num_videos_per_prompt
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process
+          num_inference_steps (`int`):
+              The number of denoising steps
           latents (`Tensor`):
               The initial latents to use for the denoising process
     """
@@ -441,7 +449,7 @@ class WanImage2VideoAutoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           attention_kwargs (`None`, *optional*):
               TODO: Add description.
-          image_embeds (`Tensor`):
+          image_embeds (`Tensor`, *optional*):
               TODO: Add description.
           output_type (`str`, *optional*, defaults to np):
               The output type of the decoded videos

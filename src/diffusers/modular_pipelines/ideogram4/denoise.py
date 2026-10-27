@@ -236,8 +236,6 @@ class Ideogram4DenoiseStep(LoopSequentialPipelineBlocks):
               Effective batch size.
           prompt_embeds (`Tensor`):
               Packed conditional encoder_hidden_states.
-          position_ids (`Tensor`):
-              Conditional 3-axis MRoPE position ids.
           segment_ids (`Tensor`):
               Conditional block-diagonal segment ids.
           indicator (`Tensor`):

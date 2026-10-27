@@ -527,6 +527,7 @@ class ZImageSetTimestepsStep(ModularPipelineBlocks):
             OutputParam(
                 "timesteps", type_hint=torch.Tensor, description="The timesteps to use for the denoising process"
             ),
+            OutputParam("num_inference_steps", type_hint=int, description="The number of denoising steps"),
         ]
 
     @torch.no_grad()
@@ -581,6 +582,19 @@ class ZImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
             InputParam("timesteps", required=True),
             InputParam("num_inference_steps", required=True),
             InputParam("strength", default=0.6),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "timesteps", type_hint=torch.Tensor, description="The timesteps to use, trimmed by `strength`"
+            ),
+            OutputParam(
+                "num_inference_steps",
+                type_hint=int,
+                description="The number of denoising steps, trimmed by `strength`",
+            ),
         ]
 
     def check_inputs(self, components, block_state):

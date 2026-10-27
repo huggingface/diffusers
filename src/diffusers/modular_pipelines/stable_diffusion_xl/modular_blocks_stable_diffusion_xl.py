@@ -14,7 +14,7 @@
 
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import OutputParam
+from ..modular_pipeline_utils import InputParam, OutputParam
 from .before_denoise import (
     StableDiffusionXLControlNetInputStep,
     StableDiffusionXLControlNetUnionInputStep,
@@ -127,6 +127,8 @@ class StableDiffusionXLInpaintBeforeDenoiseStep(SequentialPipelineBlocks):
         StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep,
     ]
     block_names = ["set_timesteps", "prepare_latents", "prepare_add_cond"]
+    # set_timesteps is shared with img2img and declares 0.3; inpainting starts from (almost) pure noise
+    input_overrides = {"strength": InputParam.template("strength", default=0.9999)}
 
     @property
     def description(self):
@@ -363,11 +365,11 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           denoising_end (`None`, *optional*):
               TODO: Add description.
-          strength (`None`, *optional*, defaults to 0.3):
-              TODO: Add description.
+          strength (`float`, *optional*, defaults to 0.9999 or 0.3, depending on the workflow):
+              Strength for img2img/inpainting.
           denoising_start (`None`, *optional*):
               TODO: Add description.
-          latents (`None`):
+          latents (`None`, *optional*):
               TODO: Add description.
           image_latents (`Tensor`, *optional*):
               The latents representing the reference image for image-to-image/inpainting generation. Can be generated
@@ -422,6 +424,10 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
               pooled_prompt_embeds/negative_pooled_prompt_embeds, and ip_adapter_embeds/negative_ip_adapter_embeds
               (optional).please add `kwargs_type=denoiser_input_fields` to their parameter spec (`OutputParam`) when
               they are created and added to the pipeline state
+          **controlnet_kwargs (`None`, *optional*):
+              additional kwargs for controlnet (e.g. control_type_idx and control_type from the controlnet union input
+              step )please add `kwargs_type=controlnet_kwargs` to their parameter spec (`OutputParam`) when they are
+              created and added to the pipeline state
           eta (`None`, *optional*, defaults to 0.0):
               TODO: Add description.
           output_type (`None`, *optional*, defaults to pil):

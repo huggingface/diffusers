@@ -153,6 +153,10 @@ class FluxKontextBeforeDenoiseStep(SequentialPipelineBlocks):
       Outputs:
           latents (`Tensor`):
               The initial latents to use for the denoising process
+          height (`int`):
+              The height of the generated image, resolved to the default when not passed
+          width (`int`):
+              The width of the generated image, resolved to the default when not passed
           timesteps (`Tensor`):
               The timesteps to use for inference
           num_inference_steps (`int`):
@@ -220,6 +224,10 @@ class FluxKontextImageConditionedBeforeDenoiseStep(SequentialPipelineBlocks):
       Outputs:
           latents (`Tensor`):
               The initial latents to use for the denoising process
+          height (`int`):
+              The height of the generated image, resolved to the default when not passed
+          width (`int`):
+              The width of the generated image, resolved to the default when not passed
           timesteps (`Tensor`):
               The timesteps to use for inference
           num_inference_steps (`int`):
@@ -291,6 +299,10 @@ class FluxKontextAutoBeforeDenoiseStep(AutoPipelineBlocks):
       Outputs:
           latents (`Tensor`):
               The initial latents to use for the denoising process
+          height (`int`):
+              The height of the generated image, resolved to the default when not passed
+          width (`int`):
+              The width of the generated image, resolved to the default when not passed
           timesteps (`Tensor`):
               The timesteps to use for inference
           num_inference_steps (`int`):

@@ -128,9 +128,9 @@ class Ideogram4AutoBlocks(SequentialPipelineBlocks):
               If True, rewrite the prompt into Ideogram4's native JSON caption before encoding.
           prompt_upsampling_temperature (`float`, *optional*, defaults to 1.0):
               Sampling temperature for prompt upsampling.
-          height (`int`, *optional*):
+          height (`int`):
               The height in pixels of the generated image.
-          width (`int`, *optional*):
+          width (`int`):
               The width in pixels of the generated image.
           max_sequence_length (`int`, *optional*, defaults to 2048):
               Maximum sequence length for prompt encoding.

@@ -20,7 +20,7 @@ import traceback
 import warnings
 from collections import OrderedDict
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import torch
@@ -66,6 +66,7 @@ from .modular_pipeline_utils import (
     format_workflow,
     generate_modular_model_card_content,
     make_doc_string,
+    override_attribute,
 )
 
 
@@ -690,12 +691,31 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
             element specifies the trigger input for the corresponding block.
         default_block_name: Name of the default block to run when no trigger inputs match.
             If None, this block can be skipped entirely when no trigger inputs are provided.
+        input_overrides: the composite block's own declarations for inputs it derives from its sub-blocks, as
+            `{name: InputParam}`, e.g. `{"strength": InputParam.template("strength", default=0.9999)}`. The name must
+            be a derived input, and the declaration replaces the derived one whole, so it states everything: default,
+            `required`, description. When the sub-blocks declare different defaults for the same input, each one
+            keeps its own at runtime (`defaults_by_block`); a declaration here with a default replaces them all with
+            one value.
+        intermediate_output_overrides: the composite block's own declarations for intermediate outputs it derives
+            from its sub-blocks, as `{name: OutputParam}`, e.g.
+            `{"latents": OutputParam("latents", description="Denoised latents.")}`. The name must be a derived output.
+        component_overrides: the composite block's own specs for components it derives from its sub-blocks, as
+            `{name: ComponentSpec}`, e.g. `{"text_encoder": ComponentSpec("text_encoder", T5EncoderModel)}`. The name
+            must be a derived component.
+        config_overrides: the composite block's own specs for configs it derives from its sub-blocks, as
+            `{name: ConfigSpec}`, e.g. `{"vae_scale_factor": ConfigSpec("vae_scale_factor", default=16)}`. The name
+            must be a derived config.
     """
 
     block_classes = []
     block_names = []
     block_trigger_inputs = []
     default_block_name = None
+    input_overrides: dict[str, InputParam] = {}
+    intermediate_output_overrides: dict[str, OutputParam] = {}
+    component_overrides: dict[str, ComponentSpec] = {}
+    config_overrides: dict[str, ConfigSpec] = {}
 
     def __init__(self):
         sub_blocks = InsertableDict()
@@ -729,7 +749,9 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
             for component in block.expected_components:
                 if component not in expected_components:
                     expected_components.append(component)
-        return expected_components
+        return override_attribute(
+            expected_components, self.component_overrides, "component_overrides", self.__class__.__name__
+        )
 
     @property
     def expected_configs(self):
@@ -738,7 +760,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
             for config in block.expected_configs:
                 if config not in expected_configs:
                     expected_configs.append(config)
-        return expected_configs
+        return override_attribute(expected_configs, self.config_overrides, "config_overrides", self.__class__.__name__)
 
     @property
     def required_inputs(self) -> list[str]:
@@ -760,19 +782,25 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
     def inputs(self) -> list[tuple[str, Any]]:
         named_inputs = [(name, block.inputs) for name, block in self.sub_blocks.items()]
         combined_inputs = combine_inputs(*named_inputs)
-        # mark Required inputs only if that input is required by all the blocks
-        for input_param in combined_inputs:
+        # required only if every sub-block requires it;
+        for position, input_param in enumerate(combined_inputs):
             if input_param.name in self.required_inputs:
-                input_param.required = True
+                # `replace` copies so the sub-blocks' declarations stay untouched
+                combined_inputs[position] = replace(input_param, required=True)
             else:
-                input_param.required = False
-        return combined_inputs
+                combined_inputs[position] = replace(input_param, required=False)
+        return override_attribute(combined_inputs, self.input_overrides, "input_overrides", self.__class__.__name__)
 
     @property
     def intermediate_outputs(self) -> list[str]:
         named_outputs = [(name, block.intermediate_outputs) for name, block in self.sub_blocks.items()]
         combined_outputs = combine_outputs(*named_outputs)
-        return combined_outputs
+        return override_attribute(
+            combined_outputs,
+            self.intermediate_output_overrides,
+            "intermediate_output_overrides",
+            self.__class__.__name__,
+        )
 
     @property
     def outputs(self) -> list[str]:
@@ -1043,10 +1071,30 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
     Attributes:
         block_classes: list of block classes to be used
         block_names: list of prefixes for each block
+        input_overrides: the composite block's own declarations for inputs it derives from its sub-blocks, as
+            `{name: InputParam}`, e.g. `{"strength": InputParam.template("strength", default=0.9999)}`. The name must
+            be a derived input, and the declaration replaces the derived one whole, so it states everything: default,
+            `required`, description. When the sub-blocks declare different defaults for the same input, each one
+            keeps its own at runtime (`defaults_by_block`); a declaration here with a default replaces them all with
+            one value. Can also be passed to `from_blocks_dict`.
+        intermediate_output_overrides: the composite block's own declarations for intermediate outputs it derives
+            from its sub-blocks, as `{name: OutputParam}`, e.g.
+            `{"latents": OutputParam("latents", description="Denoised latents.")}`. The name must be a derived output.
+            Can also be passed to `from_blocks_dict`.
+        component_overrides: the composite block's own specs for components it derives from its sub-blocks, as
+            `{name: ComponentSpec}`, e.g. `{"text_encoder": ComponentSpec("text_encoder", T5EncoderModel)}`. The name
+            must be a derived component. Can also be passed to `from_blocks_dict`.
+        config_overrides: the composite block's own specs for configs it derives from its sub-blocks, as
+            `{name: ConfigSpec}`, e.g. `{"vae_scale_factor": ConfigSpec("vae_scale_factor", default=16)}`. The name
+            must be a derived config. Can also be passed to `from_blocks_dict`.
     """
 
     block_classes = []
     block_names = []
+    input_overrides: dict[str, InputParam] = {}
+    intermediate_output_overrides: dict[str, OutputParam] = {}
+    component_overrides: dict[str, ComponentSpec] = {}
+    config_overrides: dict[str, ConfigSpec] = {}
 
     @property
     def description(self):
@@ -1063,7 +1111,9 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             for component in block.expected_components:
                 if component not in expected_components:
                     expected_components.append(component)
-        return expected_components
+        return override_attribute(
+            expected_components, self.component_overrides, "component_overrides", self.__class__.__name__
+        )
 
     @property
     def expected_configs(self):
@@ -1072,7 +1122,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             for config in block.expected_configs:
                 if config not in expected_configs:
                     expected_configs.append(config)
-        return expected_configs
+        return override_attribute(expected_configs, self.config_overrides, "config_overrides", self.__class__.__name__)
 
     @property
     def available_workflows(self):
@@ -1106,12 +1156,25 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
     @classmethod
     def from_blocks_dict(
-        cls, blocks_dict: dict[str, Any], description: str | None = None
+        cls,
+        blocks_dict: dict[str, Any],
+        description: str | None = None,
+        input_overrides: dict[str, InputParam] | None = None,
+        intermediate_output_overrides: dict[str, OutputParam] | None = None,
+        component_overrides: dict[str, ComponentSpec] | None = None,
+        config_overrides: dict[str, ConfigSpec] | None = None,
     ) -> "SequentialPipelineBlocks":
         """Creates a SequentialPipelineBlocks instance from a dictionary of blocks.
 
         Args:
             blocks_dict: Dictionary mapping block names to block classes or instances
+            description: Description of the new block
+            input_overrides: the composite's own declarations replacing derived `inputs`, as `{name: InputParam}`
+            intermediate_output_overrides: the composite's own declarations replacing derived
+                `intermediate_outputs`, as `{name: OutputParam}`
+            component_overrides: the composite's own specs replacing derived `expected_components`, as
+                `{name: ComponentSpec}`
+            config_overrides: the composite's own specs replacing derived `expected_configs`, as `{name: ConfigSpec}`
 
         Returns:
             A new SequentialPipelineBlocks instance
@@ -1132,6 +1195,14 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
         if description is not None:
             instance.description = description
+        for name, value in (
+            ("input_overrides", input_overrides),
+            ("intermediate_output_overrides", intermediate_output_overrides),
+            ("component_overrides", component_overrides),
+            ("config_overrides", config_overrides),
+        ):
+            if value is not None:
+                setattr(instance, name, value)
 
         return instance
 
@@ -1149,63 +1220,124 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             )
 
     def _get_inputs(self):
-        inputs = []
-        outputs = set()
-
-        # Go through all blocks in order
-        for block in self.sub_blocks.values():
-            # Add inputs that aren't in outputs yet
+        # Walk the sub-blocks in order to derive the pipeline inputs. An input is listed unless an earlier block
+        # produces it. The first declaration is kept; a later declaration of the same input can only make it required
+        # or disagree on its default.
+        #
+        # The comments below follow one img2img pipeline:
+        # `text_encoder -> image_encoder -> set_timesteps -> prepare_latents -> denoise`, where `image_encoder` is a
+        # ConditionalPipelineBlocks without a default block: it runs when `image` is passed and produces
+        # `image_latents`.
+        inputs = {}  # pipeline inputs
+        outputs = set()  # produced by an earlier block
+        maybe_outputs = set()  # produced by an earlier ConditionalPipelineBlocks, if it runs
+        for block_name, block in self.sub_blocks.items():
             for inp in block.inputs:
-                if inp.name not in outputs and inp.name not in {input.name for input in inputs}:
-                    inputs.append(inp)
-
-            # Only add outputs if the block cannot be skipped
-            should_add_outputs = True
+                # kwargs inputs have no name, key them by "*_<kwargs_type>" like `combine_inputs` does
+                key = inp.name if inp.name is not None else f"*_{inp.kwargs_type}"
+                if key in outputs:
+                    # produced by an earlier block, so not a pipeline input:
+                    # e.g. `denoise` needs `prompt_embeds`, but `text_encoder` produces it
+                    continue
+                # first declaration, listed as declared:
+                # e.g. `set_timesteps` declares `num_inference_steps` and no earlier block declared or produced it, so
+                # it becomes a pipeline input with the default `set_timesteps` gave it
+                if key not in inputs:
+                    # `replace` copies: the flags below are the composite's view and must not reach the sub-block
+                    inputs[key] = replace(inp)
+                    if inp.required and key in maybe_outputs:
+                        # the block requires it, but an earlier conditional block can produce it, so the pipeline lists
+                        # it optional:
+                        # e.g. `prepare_latents` requires `image_latents`, but `image_encoder` produces it when `image`
+                        # is passed, so `image_latents` is optional for the pipeline: the user can pass `image` instead
+                        inputs[key].required = False
+                    continue
+                if inp.required:
+                    if inputs[key].default is None and not inputs[key].defaults_by_block and key not in maybe_outputs:
+                        # already listed as optional with no default, nothing earlier can produce it, and now a block
+                        # requires it, so the user has to pass it:
+                        # e.g. `prepare_latents` declares `height` optional, `denoise` requires it, so `height` is a
+                        # required pipeline input. Had `prepare_latents` given `height` a default, or had the branches
+                        # of an earlier conditional block each given it theirs, it would stay optional
+                        inputs[key].required = True
+                elif not inputs[key].required:
+                    if inputs[key].default is None and not inputs[key].defaults_by_block and inp.defaults_by_block:
+                        # the entry has no default and this conditional block's branches each have their own: carry
+                        # them up, prefixed like `combine_inputs` does, so the pipeline docstring shows them. Not a
+                        # conflict: the branch that runs fills in its own default when it reads the state
+                        # (`get_block_state`):
+                        # e.g. `before_encode` lists `num_frames` with no default and the `denoise` branches default
+                        # it to 124 or require it, so the pipeline says "None or 124, depending on the workflow"
+                        inputs[key].defaults_by_block = {
+                            f"{block_name}.{k}": v for k, v in inp.defaults_by_block.items()
+                        }
+                    elif key not in self.input_overrides:
+                        # the defaults each side has an opinion on: its own, or the per-branch ones a conditional block
+                        # recorded. `None` means no default, not an opinion, so it is left out on both sides
+                        existing, declared = inputs[key], inp
+                        existing_defaults = (
+                            [existing.default]
+                            if existing.default is not None
+                            else [d for d in (existing.defaults_by_block or {}).values() if d is not None]
+                        )
+                        declared_defaults = (
+                            [declared.default]
+                            if declared.default is not None
+                            else [d for d in (declared.defaults_by_block or {}).values() if d is not None]
+                        )
+                        # (`in` compares with `==`, so list defaults such as `[2, 2, 2]` work too)
+                        if (existing_defaults and any(d not in existing_defaults for d in declared_defaults)) or (
+                            declared_defaults and any(d not in declared_defaults for d in existing_defaults)
+                        ):
+                            # two optional declarations disagree on the default. In a sequence the input is one shared
+                            # value, so the composite has to pick it with `input_overrides`; until 1.0.0 the first
+                            # declaration wins:
+                            # e.g. `strength` is 0.3 on `set_timesteps` and 0.9999 on `prepare_latents`, so the
+                            # pipeline uses 0.3 and warns until it declares `strength` in `input_overrides`
+                            existing_text = f"default {existing.default!r}"
+                            if existing.defaults_by_block:
+                                existing_text = f"per-branch defaults {existing.defaults_by_block!r}"
+                            declared_text = f"default {declared.default!r}"
+                            if declared.defaults_by_block:
+                                declared_text = f"per-branch defaults {declared.defaults_by_block!r}"
+                            deprecate(
+                                "sub-block default conflict",
+                                "1.0.0",
+                                f"{self.__class__.__name__}: sub-block '{block_name}' declares {declared_text} for "
+                                f"input '{key}' but an earlier sub-block declares {existing_text}. The first "
+                                f"declaration currently wins; this will become an error. Declare the input in "
+                                f"`input_overrides` on {self.__class__.__name__} to pick the default explicitly.",
+                                standard_warn=False,
+                            )
             if isinstance(block, ConditionalPipelineBlocks) and block.default_block_name is None:
-                # ConditionalPipelineBlocks without default can be skipped
-                should_add_outputs = False
+                # e.g. `image_encoder` may be skipped, so `image_latents` is only produced if it runs: a "maybe" output
+                maybe_outputs.update(out.name for out in block.intermediate_outputs)
+            else:
+                outputs.update(out.name for out in block.intermediate_outputs)
 
-            if should_add_outputs:
-                # Add this block's outputs
-                block_intermediate_outputs = [out.name for out in block.intermediate_outputs]
-                outputs.update(block_intermediate_outputs)
+        return override_attribute(
+            list(inputs.values()), self.input_overrides, "input_overrides", self.__class__.__name__
+        )
 
-        return inputs
-
-    # YiYi TODO: add test for this
     @property
     def inputs(self) -> list[tuple[str, Any]]:
         return self._get_inputs()
 
     @property
-    def required_inputs(self) -> list[str]:
-        # Get the first block from the dictionary
-        first_block = next(iter(self.sub_blocks.values()))
-        required_by_any = set(getattr(first_block, "required_inputs", set()))
-
-        # Union with required inputs from all other blocks
-        for block in list(self.sub_blocks.values())[1:]:
-            block_required = set(getattr(block, "required_inputs", set()))
-            required_by_any.update(block_required)
-
-        return list(required_by_any)
-
-    @property
     def intermediate_outputs(self) -> list[str]:
-        named_outputs = []
-        for name, block in self.sub_blocks.items():
-            inp_names = {inp.name for inp in block.inputs}
-            # so we only need to list new variables as intermediate_outputs, but if user wants to list these they modified it's still fine (a.k.a we don't enforce)
-            # filter out them here so they do not end up as intermediate_outputs
-            if name not in inp_names:
-                named_outputs.append((name, block.intermediate_outputs))
+        named_outputs = [(name, block.intermediate_outputs) for name, block in self.sub_blocks.items()]
         combined_outputs = combine_outputs(*named_outputs)
-        return combined_outputs
+        return override_attribute(
+            combined_outputs,
+            self.intermediate_output_overrides,
+            "intermediate_output_overrides",
+            self.__class__.__name__,
+        )
 
-    # YiYi TODO: I think we can remove the outputs property
+    # `outputs` is what `doc` and the model card list as the block's outputs. By default that is every intermediate
+    # output; a composite overrides it to show only what the step is for, e.g. just `latents` for the `denoise` block.
     @property
     def outputs(self) -> list[str]:
-        # return next(reversed(self.sub_blocks.values())).intermediate_outputs
         return self.intermediate_outputs
 
     @torch.no_grad()
@@ -1403,11 +1535,31 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     Attributes:
         block_classes: list of block classes to be used
         block_names: list of prefixes for each block
+        input_overrides: the composite block's own declarations for inputs it derives from its sub-blocks, as
+            `{name: InputParam}`, e.g. `{"strength": InputParam.template("strength", default=0.9999)}`. The name must
+            be a derived input, and the declaration replaces the derived one whole, so it states everything: default,
+            `required`, description. When the sub-blocks declare different defaults for the same input, each one
+            keeps its own at runtime (`defaults_by_block`); a declaration here with a default replaces them all with
+            one value. Can also be passed to `from_blocks_dict`.
+        intermediate_output_overrides: the composite block's own declarations for intermediate outputs it derives
+            from its sub-blocks, as `{name: OutputParam}`, e.g.
+            `{"latents": OutputParam("latents", description="Denoised latents.")}`. The name must be a derived output.
+            Can also be passed to `from_blocks_dict`.
+        component_overrides: the composite block's own specs for components it derives from its sub-blocks, as
+            `{name: ComponentSpec}`, e.g. `{"text_encoder": ComponentSpec("text_encoder", T5EncoderModel)}`. The name
+            must be a derived component. Can also be passed to `from_blocks_dict`.
+        config_overrides: the composite block's own specs for configs it derives from its sub-blocks, as
+            `{name: ConfigSpec}`, e.g. `{"vae_scale_factor": ConfigSpec("vae_scale_factor", default=16)}`. The name
+            must be a derived config. Can also be passed to `from_blocks_dict`.
     """
 
     model_name = None
     block_classes = []
     block_names = []
+    input_overrides: dict[str, InputParam] = {}
+    intermediate_output_overrides: dict[str, OutputParam] = {}
+    component_overrides: dict[str, ComponentSpec] = {}
+    config_overrides: dict[str, ConfigSpec] = {}
 
     @property
     def description(self) -> str:
@@ -1428,14 +1580,6 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         return []
 
     @property
-    def loop_required_inputs(self) -> list[str]:
-        input_names = []
-        for input_param in self.loop_inputs:
-            if input_param.required:
-                input_names.append(input_param.name)
-        return input_names
-
-    @property
     def loop_intermediate_outputs(self) -> list[OutputParam]:
         """list of intermediate output parameters. Must be implemented by subclasses."""
         return []
@@ -1451,7 +1595,9 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         for component in self.loop_expected_components:
             if component not in expected_components:
                 expected_components.append(component)
-        return expected_components
+        return override_attribute(
+            expected_components, self.component_overrides, "component_overrides", self.__class__.__name__
+        )
 
     # modified from SequentialPipelineBlocks to include loop_expected_configs
     @property
@@ -1464,52 +1610,61 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         for config in self.loop_expected_configs:
             if config not in expected_configs:
                 expected_configs.append(config)
-        return expected_configs
+        return override_attribute(expected_configs, self.config_overrides, "config_overrides", self.__class__.__name__)
 
     def _get_inputs(self):
-        inputs = []
-        inputs.extend(self.loop_inputs)
-        outputs = set()
-
-        for name, block in self.sub_blocks.items():
-            # Add inputs that aren't in outputs yet
+        # Same walk as `SequentialPipelineBlocks._get_inputs`, starting from `loop_inputs`. Loop sub-blocks are leaf
+        # blocks, so there is no skippable ConditionalPipelineBlocks whose outputs may or may not exist.
+        inputs = {}
+        outputs = set()  # produced by an earlier block
+        for inp in self.loop_inputs:
+            # kwargs inputs have no name, key them by "*_<kwargs_type>" like `combine_inputs` does
+            key = inp.name if inp.name is not None else f"*_{inp.kwargs_type}"
+            inputs[key] = replace(inp)
+        for block_name, block in self.sub_blocks.items():
             for inp in block.inputs:
-                if inp.name not in outputs and inp not in inputs:
-                    inputs.append(inp)
+                key = inp.name if inp.name is not None else f"*_{inp.kwargs_type}"
+                if key in outputs:
+                    continue
+                if key not in inputs:
+                    # `replace` copies: the flags below are the composite's view and must not reach the sub-block
+                    inputs[key] = replace(inp)
+                    continue
+                if inp.required:
+                    if inputs[key].default is None:
+                        # nothing earlier defaults or produces it: the caller has to pass it
+                        inputs[key].required = True
+                elif (
+                    inp.default is not None
+                    and inputs[key].default is not None
+                    and not inputs[key].required
+                    and inp.default != inputs[key].default
+                    and key not in self.input_overrides
+                ):
+                    # two optional declarations disagree on the default. In a sequence the input is one shared value,
+                    # so the composite has to pick it with `input_overrides`; until 1.0.0 the first declaration wins.
+                    # `None` means no default, not an opinion. Loop sub-blocks are leaves, so there are no per-branch
+                    # defaults to consider here
+                    deprecate(
+                        "sub-block default conflict",
+                        "1.0.0",
+                        f"{self.__class__.__name__}: sub-block '{block_name}' declares default {inp.default!r} for "
+                        f"input '{key}' but an earlier declaration (a loop input or an earlier sub-block) has "
+                        f"{inputs[key].default!r}. The first declaration currently wins; this will become an error. "
+                        f"Declare the input in `input_overrides` on {self.__class__.__name__} to pick the default "
+                        f"explicitly.",
+                        standard_warn=False,
+                    )
+            outputs.update(out.name for out in block.intermediate_outputs)
 
-            # Add this block's outputs
-            block_intermediate_outputs = [out.name for out in block.intermediate_outputs]
-            outputs.update(block_intermediate_outputs)
-
-        for input_param in inputs:
-            if input_param.name in self.required_inputs:
-                input_param.required = True
-            else:
-                input_param.required = False
-
-        return inputs
+        return override_attribute(
+            list(inputs.values()), self.input_overrides, "input_overrides", self.__class__.__name__
+        )
 
     @property
     # Copied from diffusers.modular_pipelines.modular_pipeline.SequentialPipelineBlocks.inputs
     def inputs(self):
         return self._get_inputs()
-
-    # modified from SequentialPipelineBlocks, if any additionan input required by the loop is required by the block
-    @property
-    def required_inputs(self) -> list[str]:
-        # Get the first block from the dictionary
-        first_block = next(iter(self.sub_blocks.values()))
-        required_by_any = set(getattr(first_block, "required_inputs", set()))
-
-        required_by_loop = set(getattr(self, "loop_required_inputs", set()))
-        required_by_any.update(required_by_loop)
-
-        # Union with required inputs from all other blocks
-        for block in list(self.sub_blocks.values())[1:]:
-            block_required = set(getattr(block, "required_inputs", set()))
-            required_by_any.update(block_required)
-
-        return list(required_by_any)
 
     # YiYi TODO: this need to be thought about more
     # modified from SequentialPipelineBlocks to include loop_intermediate_outputs
@@ -1520,7 +1675,12 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         for output in self.loop_intermediate_outputs:
             if output.name not in {output.name for output in combined_outputs}:
                 combined_outputs.append(output)
-        return combined_outputs
+        return override_attribute(
+            combined_outputs,
+            self.intermediate_output_overrides,
+            "intermediate_output_overrides",
+            self.__class__.__name__,
+        )
 
     # YiYi TODO: this need to be thought about more
     @property
@@ -1554,12 +1714,25 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
                 )
 
     @classmethod
-    def from_blocks_dict(cls, blocks_dict: dict[str, Any]) -> "LoopSequentialPipelineBlocks":
+    def from_blocks_dict(
+        cls,
+        blocks_dict: dict[str, Any],
+        input_overrides: dict[str, InputParam] | None = None,
+        intermediate_output_overrides: dict[str, OutputParam] | None = None,
+        component_overrides: dict[str, ComponentSpec] | None = None,
+        config_overrides: dict[str, ConfigSpec] | None = None,
+    ) -> "LoopSequentialPipelineBlocks":
         """
         Creates a LoopSequentialPipelineBlocks instance from a dictionary of blocks.
 
         Args:
             blocks_dict: Dictionary mapping block names to block instances
+            input_overrides: the composite's own declarations replacing derived `inputs`, as `{name: InputParam}`
+            intermediate_output_overrides: the composite's own declarations replacing derived
+                `intermediate_outputs`, as `{name: OutputParam}`
+            component_overrides: the composite's own specs replacing derived `expected_components`, as
+                `{name: ComponentSpec}`
+            config_overrides: the composite's own specs replacing derived `expected_configs`, as `{name: ConfigSpec}`
 
         Returns:
             A new LoopSequentialPipelineBlocks instance
@@ -1577,6 +1750,14 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         instance.block_classes = [block.__class__ for block in blocks_dict.values()]
         instance.block_names = list(blocks_dict.keys())
         instance.sub_blocks = blocks_dict
+        for name, value in (
+            ("input_overrides", input_overrides),
+            ("intermediate_output_overrides", intermediate_output_overrides),
+            ("component_overrides", component_overrides),
+            ("config_overrides", config_overrides),
+        ):
+            if value is not None:
+                setattr(instance, name, value)
         return instance
 
     def loop_step(self, components, state: PipelineState, **kwargs):
