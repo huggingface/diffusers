@@ -311,7 +311,7 @@ class LTX25AutoBlocks(SequentialPipelineBlocks):
               RoPE coordinates for the reference tokens.
           reference_token_counts (`list`, *optional*):
               Per-reference token counts, in `reference_conditions` order.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           noise_scale (`float`, *optional*):
               Initial noise level for the un-conditioned tokens. `None` (default) resolves to `sigmas[0]` when custom
@@ -320,11 +320,11 @@ class LTX25AutoBlocks(SequentialPipelineBlocks):
               Custom sigmas for the denoising process.
           reference_cross_mask (`Tensor`, *optional*):
               Per-reference-token noisy<->reference attention strengths of shape [1, num_ref_tokens].
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 30):
               The number of denoising steps.
-          timesteps (`Tensor`):
+          timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process.
-          audio_latents (`Tensor`):
+          audio_latents (`Tensor`, *optional*):
               Optional pre-encoded audio latents; random noise is used when not provided.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.

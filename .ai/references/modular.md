@@ -282,19 +282,21 @@ if block_state.num_frames is None:
     block_state.num_frames = 189
 ```
 
-A declared default is part of the block's contract, so the assembled pipeline is aware of it: the generated docstring shows it and `default_call_parameters` reports it. Resolved inside the body instead, the input renders as `*optional*` with no default, and nothing at the pipeline level can report what the block will actually do. Don't worry about branches of a conditional blockset declaring different defaults for the same input — each branch resolves its own at runtime. Resolve inside `__call__` only when the default is *computed* — derived from other inputs or component config (`height = components.default_sample_size * components.vae_scale_factor`). And when several blocks in a sequence share an input, declare the same default on each (or only on the first block that reads it): in a sequence the input is one shared value, so disagreeing declarations are silently resolved first-block-wins.
+A declared default is part of the block's contract, so the assembled pipeline is aware of it: the generated docstring shows it and `default_call_parameters` reports it. Resolved inside the body instead, the input renders as `*optional*` with no default, and nothing at the pipeline level can report what the block will actually do. Don't worry about branches of a conditional blockset declaring different defaults for the same input — each branch resolves its own at runtime. Resolve inside `__call__` only when the default is *computed* — derived from other inputs or component config (`height = components.default_sample_size * components.vae_scale_factor`). And when several blocks in a sequence share an input, declare the same default on each (or only on the first block that reads it): in a sequence the input is one shared value, so the composite warns about disagreeing declarations until it declares the input itself in `input_overrides` (the first declaration wins meanwhile). A conditional block's per-branch defaults count as its opinion in that comparison; a declaration without a default has none.
 
-**A composed `SequentialPipelineBlocks` can override `inputs` / `outputs`.** Two uses: narrow `outputs` to what downstream actually consumes, so the docstring shows the step's product instead of every internal intermediate (Wan-Animate-2's core denoise exposes only `segment_frames`); and change one input default per preset by mapping over `super().inputs` (the distilled core denoise turns `num_inference_steps` into `default=10`):
+**A composite replaces what it derives from its sub-blocks with `*_overrides`.** `input_overrides`, `intermediate_output_overrides`, `component_overrides` and `config_overrides` are `{name: declaration}` class attributes on `ConditionalPipelineBlocks`, `SequentialPipelineBlocks` and `LoopSequentialPipelineBlocks` (also `from_blocks_dict` arguments). The name must already be in the derived list, and the declaration, an `InputParam` / `OutputParam` / `ComponentSpec` / `ConfigSpec`, takes the derived entry's place whole, so it states everything: default, `required`, description. Use it to settle a default two sub-blocks disagree on (the composite gets a warning until it does), to set a preset's default, or to reword a description from the composite's point of view. `InputParam.template(...)` keeps a common input to one line.
 
 ```python
-@property
-def inputs(self):
+class DistilledCoreDenoiseStep(SequentialPipelineBlocks):
+    block_classes = [...]
+    block_names = [...]
     # The distilled checkpoint samples in few steps.
-    return [
-        InputParam.template("num_inference_steps", default=10) if param.name == "num_inference_steps" else param
-        for param in super().inputs
-    ]
+    input_overrides = {"num_inference_steps": InputParam.template("num_inference_steps", default=10)}
 ```
+
+A composite reads its sub-blocks' declarations and never writes to them: the `required` flag it reports is its own view ("the caller has to pass this"), the leaf's flag is the runtime check in `get_block_state`, and the two legitimately differ. Copy an `InputParam` before changing it.
+
+Overriding the `outputs` property by hand is still the way to narrow `outputs` to what downstream actually consumes, so the docstring shows the step's product instead of every internal intermediate (Wan-Animate-2's core denoise exposes only `segment_frames`).
 
 ## ComponentSpec patterns
 

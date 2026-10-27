@@ -1068,7 +1068,7 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Torch generator for deterministic generation.
           fps (`float`, *optional*, defaults to 24.0):
               Frame rate of the generated video.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           mixed_precision_format (`str`, *optional*):
               None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
@@ -1099,7 +1099,7 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Latent-frame indexes fixed by visual conditioning.
           num_frames (`int`, *optional*):
               Number of frames to generate.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy vision latents.
           sound_latents (`Tensor`, *optional*):
               Pre-generated noisy sound latents.
@@ -1280,7 +1280,7 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
               Number of frames the first chunk reuses from the input video.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           mixed_precision_format (`str`, *optional*):
               None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
@@ -1307,7 +1307,7 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
               Vision latents encoded from the conditioning image or video.
           vision_condition_frames (`list`, *optional*):
               Latent-frame indexes fixed by visual conditioning.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy vision latents.
           sound_latents (`Tensor`, *optional*):
               Pre-generated noisy sound latents.

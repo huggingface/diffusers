@@ -233,6 +233,16 @@ class WanTextInputStep(ModularPipelineBlocks):
                 type_hint=torch.dtype,
                 description="Data type of model tensor inputs (determined by `transformer.dtype`)",
             ),
+            OutputParam(
+                "prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Text embeddings expanded to batch_size * num_videos_per_prompt",
+            ),
+            OutputParam(
+                "negative_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="Negative text embeddings expanded to batch_size * num_videos_per_prompt",
+            ),
         ]
 
     def check_inputs(self, components, block_state):
@@ -472,6 +482,15 @@ class WanSetTimestepsStep(ModularPipelineBlocks):
             InputParam("num_inference_steps", default=50),
             InputParam("timesteps"),
             InputParam("sigmas"),
+        ]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [
+            OutputParam(
+                "timesteps", type_hint=torch.Tensor, description="The timesteps to use for the denoising process"
+            ),
+            OutputParam("num_inference_steps", type_hint=int, description="The number of denoising steps"),
         ]
 
     @torch.no_grad()

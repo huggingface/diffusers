@@ -269,7 +269,7 @@ class HeliosV2VCoreDenoiseStep(SequentialPipelineBlocks):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
           negative_prompt_embeds (`Tensor`, *optional*):
               negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
           video_latents (`Tensor`, *optional*):
               Encoded video latents for V2V generation.
@@ -382,13 +382,13 @@ class HeliosAutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Torch generator for deterministic generation.
           num_frames (`int`, *optional*, defaults to 132):
               Total number of video frames to generate.
-          history_sizes (`list`):
+          history_sizes (`list`, *optional*, defaults to [16, 2, 1]):
               Sizes of long/mid/short history buffers for temporal context.
           keep_first_frame (`bool`, *optional*, defaults to True):
               Whether to keep the first frame as a prefix in history.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          sigmas (`list`):
+          sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
@@ -496,13 +496,13 @@ class HeliosAutoBlocks(SequentialPipelineBlocks):
               Maximum sigma for video latent noise.
           num_frames (`int`, *optional*, defaults to 132):
               Total number of video frames to generate.
-          history_sizes (`list`):
+          history_sizes (`list`, *optional*, defaults to [16, 2, 1]):
               Sizes of long/mid/short history buffers for temporal context.
           keep_first_frame (`bool`, *optional*, defaults to True):
               Whether to keep the first frame as a prefix in history.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          sigmas (`list`):
+          sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.

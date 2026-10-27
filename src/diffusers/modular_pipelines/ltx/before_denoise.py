@@ -128,6 +128,10 @@ class LTXTextInputStep(ModularPipelineBlocks):
         return [
             OutputParam("batch_size", type_hint=int),
             OutputParam("dtype", type_hint=torch.dtype),
+            OutputParam.template("prompt_embeds"),
+            OutputParam.template("prompt_embeds_mask", name="prompt_attention_mask"),
+            OutputParam.template("negative_prompt_embeds"),
+            OutputParam.template("negative_prompt_embeds_mask", name="negative_prompt_attention_mask"),
         ]
 
     @torch.no_grad()

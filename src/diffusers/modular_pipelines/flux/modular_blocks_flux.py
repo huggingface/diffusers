@@ -162,6 +162,10 @@ class FluxBeforeDenoiseStep(SequentialPipelineBlocks):
       Outputs:
           latents (`Tensor`):
               The initial latents to use for the denoising process
+          height (`int`):
+              The height of the generated image, resolved to the default when not passed
+          width (`int`):
+              The width of the generated image, resolved to the default when not passed
           timesteps (`Tensor`):
               The timesteps to use for inference
           num_inference_steps (`int`):
@@ -227,6 +231,10 @@ class FluxImg2ImgBeforeDenoiseStep(SequentialPipelineBlocks):
       Outputs:
           latents (`Tensor`):
               The initial latents to use for the denoising process
+          height (`int`):
+              The height of the generated image, resolved to the default when not passed
+          width (`int`):
+              The width of the generated image, resolved to the default when not passed
           timesteps (`Tensor`):
               The timesteps to use for inference
           num_inference_steps (`int`):
@@ -268,9 +276,9 @@ class FluxAutoBeforeDenoiseStep(AutoPipelineBlocks):
           scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
-          height (`int`):
+          height (`int`, *optional*):
               TODO: Add description.
-          width (`int`):
+          width (`int`, *optional*):
               TODO: Add description.
           latents (`Tensor | NoneType`, *optional*):
               TODO: Add description.
@@ -302,6 +310,10 @@ class FluxAutoBeforeDenoiseStep(AutoPipelineBlocks):
       Outputs:
           latents (`Tensor`):
               The initial latents to use for the denoising process
+          height (`int`):
+              The height of the generated image, resolved to the default when not passed
+          width (`int`):
+              The width of the generated image, resolved to the default when not passed
           timesteps (`Tensor`):
               The timesteps to use for inference
           num_inference_steps (`int`):

@@ -120,7 +120,7 @@ class HeliosPyramidDistilledCoreDenoiseStep(SequentialPipelineBlocks):
               Sizes of long/mid/short history buffers for temporal context.
           keep_first_frame (`bool`, *optional*, defaults to True):
               Whether to keep the first frame as a prefix in history.
-          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [10, 10, 10]):
+          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [2, 2, 2]):
               Number of denoising steps per pyramid stage.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
@@ -193,7 +193,7 @@ class HeliosPyramidDistilledI2VCoreDenoiseStep(SequentialPipelineBlocks):
               Sizes of long/mid/short history buffers for temporal context.
           keep_first_frame (`bool`, *optional*, defaults to True):
               Whether to keep the first frame as a prefix in history.
-          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [10, 10, 10]):
+          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [2, 2, 2]):
               Number of denoising steps per pyramid stage.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
@@ -261,7 +261,7 @@ class HeliosPyramidDistilledV2VCoreDenoiseStep(SequentialPipelineBlocks):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
           negative_prompt_embeds (`Tensor`, *optional*):
               negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
           video_latents (`Tensor`, *optional*):
               Encoded video latents for V2V generation.
@@ -283,7 +283,7 @@ class HeliosPyramidDistilledV2VCoreDenoiseStep(SequentialPipelineBlocks):
               Sizes of long/mid/short history buffers for temporal context.
           keep_first_frame (`bool`, *optional*, defaults to True):
               Whether to keep the first frame as a prefix in history.
-          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [10, 10, 10]):
+          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [2, 2, 2]):
               Number of denoising steps per pyramid stage.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
@@ -370,11 +370,11 @@ class HeliosPyramidDistilledAutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Torch generator for deterministic generation.
           num_frames (`int`, *optional*, defaults to 132):
               Total number of video frames to generate.
-          history_sizes (`list`):
+          history_sizes (`list`, *optional*, defaults to [16, 2, 1]):
               Sizes of long/mid/short history buffers for temporal context.
           keep_first_frame (`bool`, *optional*, defaults to True):
               Whether to keep the first frame as a prefix in history.
-          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [10, 10, 10]):
+          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [2, 2, 2]):
               Number of denoising steps per pyramid stage.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
@@ -486,11 +486,11 @@ class HeliosPyramidDistilledAutoBlocks(SequentialPipelineBlocks):
               Maximum sigma for video latent noise.
           num_frames (`int`, *optional*, defaults to 132):
               Total number of video frames to generate.
-          history_sizes (`list`):
+          history_sizes (`list`, *optional*, defaults to [16, 2, 1]):
               Sizes of long/mid/short history buffers for temporal context.
           keep_first_frame (`bool`, *optional*, defaults to True):
               Whether to keep the first frame as a prefix in history.
-          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [10, 10, 10]):
+          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [2, 2, 2]):
               Number of denoising steps per pyramid stage.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.

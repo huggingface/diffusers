@@ -236,7 +236,7 @@ class AnimaAutoCoreDenoiseStep(AutoPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
@@ -244,7 +244,7 @@ class AnimaAutoCoreDenoiseStep(AutoPipelineBlocks):
               Strength for img2img/inpainting.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           **denoiser_input_fields (`None`, *optional*):
               The conditional model inputs for the Anima denoiser.
@@ -342,13 +342,13 @@ class AnimaAutoBlocks(SequentialPipelineBlocks):
               The number of images to generate per prompt.
           image_latents (`Tensor`, *optional*):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           strength (`float`, *optional*, defaults to 0.9):
               Strength for img2img/inpainting.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           **denoiser_input_fields (`None`, *optional*):
               The conditional model inputs for the Anima denoiser.

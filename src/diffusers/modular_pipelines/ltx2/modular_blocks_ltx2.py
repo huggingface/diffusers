@@ -971,7 +971,7 @@ class LTX2AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               RoPE coordinates for the reference tokens.
           reference_token_counts (`list`, *optional*):
               Per-reference token counts, in `reference_conditions` order.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           height (`int`, *optional*, defaults to 512):
               The height in pixels of the generated image.
@@ -997,11 +997,11 @@ class LTX2AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Torch generator for deterministic generation.
           reference_cross_mask (`Tensor`, *optional*):
               Per-reference-token noisy<->reference attention strengths of shape [1, num_ref_tokens].
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 30):
               The number of denoising steps.
-          timesteps (`Tensor`):
+          timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process.
-          audio_latents (`Tensor`):
+          audio_latents (`Tensor`, *optional*):
               Optional pre-encoded audio latents; random noise is used when not provided.
           dtype (`dtype`):
               The dtype the model inputs are cast to.
@@ -1436,7 +1436,7 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
           noise_scale (`float`, *optional*):
               Interpolation factor between random noise and any provided latents. `None` (default) resolves to 0.0,
               which keeps the provided latents.
-          image_latents (`Tensor`):
+          image_latents (`Tensor`, *optional*):
               VAE-encoded reference-image latents used for image-to-video conditioning.
           audio_latents (`Tensor`, *optional*):
               Optional pre-encoded audio latents; random noise is used when not provided.
@@ -1855,7 +1855,7 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
               RoPE coordinates for the reference tokens.
           reference_token_counts (`list`, *optional*):
               Per-reference token counts, in `reference_conditions` order.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           noise_scale (`float`, *optional*):
               Initial noise level for the un-conditioned tokens. `None` (default) resolves to `sigmas[0]` when custom
@@ -1864,11 +1864,11 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
               Custom sigmas for the denoising process.
           reference_cross_mask (`Tensor`, *optional*):
               Per-reference-token noisy<->reference attention strengths of shape [1, num_ref_tokens].
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 30):
               The number of denoising steps.
-          timesteps (`Tensor`):
+          timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process.
-          audio_latents (`Tensor`):
+          audio_latents (`Tensor`, *optional*):
               Optional pre-encoded audio latents; random noise is used when not provided.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.

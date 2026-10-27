@@ -118,6 +118,7 @@ There are a few properties you should set:
 - `description`: We recommend adding a description for the assembled block to explain what the combined step does.
 - `model_name`: This is automatically derived from the sub-blocks but isn't always correct, so you may need to override it.
 - `outputs`: By default this is the same as `intermediate_outputs`, but you can manually set it to control which values appear in the doc. This is useful for showing only the final outputs instead of all intermediate values.
+- `input_overrides`, `intermediate_output_overrides`, `component_overrides`, `config_overrides`: The composite's own declarations replacing entries of the aggregated lists, as `{name: declaration}`. For example `input_overrides = {"strength": InputParam.template("strength", default=0.9999)}` sets the default the whole sequence uses when two sub-blocks declare different ones. The declaration replaces the aggregated entry whole, and the name must already be in the aggregated list.
 
 These properties, together with the aggregated `inputs`, `intermediate_outputs`, and `expected_components`, are used to automatically generate the `doc` property.
 

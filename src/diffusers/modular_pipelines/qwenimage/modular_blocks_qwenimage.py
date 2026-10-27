@@ -340,7 +340,7 @@ class QwenImageInpaintInputStep(SequentialPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
           processed_mask_image (`Tensor`, *optional*):
               The processed mask image
@@ -543,7 +543,7 @@ class QwenImageInpaintCoreDenoiseStep(SequentialPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
           processed_mask_image (`Tensor`, *optional*):
               The processed mask image
@@ -789,7 +789,7 @@ class QwenImageControlNetInpaintCoreDenoiseStep(SequentialPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
           processed_mask_image (`Tensor`, *optional*):
               The processed mask image
@@ -1152,17 +1152,17 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
               Control image for ControlNet conditioning.
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          prompt_embeds (`Tensor`):
+          prompt_embeds (`Tensor`, *optional*):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          prompt_embeds_mask (`Tensor`):
+          prompt_embeds_mask (`Tensor`, *optional*):
               mask for the text embeddings. Can be generated from text_encoder step.
           negative_prompt_embeds (`Tensor`, *optional*):
               negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
           negative_prompt_embeds_mask (`Tensor`, *optional*):
               mask for the negative text embeddings. Can be generated from text_encoder step.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
