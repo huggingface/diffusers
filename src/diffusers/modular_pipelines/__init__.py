@@ -81,6 +81,12 @@ else:
         "Flux2KleinModularPipeline",
         "Flux2KleinBaseModularPipeline",
     ]
+    _import_structure["flux3"] = [
+        "Flux3AutoBlocks",
+        "Flux3DistilledAutoBlocks",
+        "Flux3DistilledModularPipeline",
+        "Flux3ModularPipeline",
+    ]
     _import_structure["ideogram4"] = [
         "Ideogram4AutoBlocks",
         "Ideogram4ModularPipeline",
@@ -178,6 +184,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Flux2KleinBaseModularPipeline,
             Flux2KleinModularPipeline,
             Flux2ModularPipeline,
+        )
+        from .flux3 import (
+            Flux3AutoBlocks,
+            Flux3DistilledAutoBlocks,
+            Flux3DistilledModularPipeline,
+            Flux3ModularPipeline,
         )
         from .helios import (
             HeliosAutoBlocks,
