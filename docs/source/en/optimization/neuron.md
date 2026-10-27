@@ -1,4 +1,4 @@
-<!--Copyright 2025 The HuggingFace Team. All rights reserved.
+<!--Copyright 2026 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -10,49 +10,147 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# AWS Neuron
+# AWS Trainium
 
-Diffusers functionalities are available on [AWS Inf2 instances](https://aws.amazon.com/ec2/instance-types/inf2/), which are EC2 instances powered by [Neuron machine learning accelerators](https://aws.amazon.com/machine-learning/inferentia/). These instances aim to provide better compute performance (higher throughput, lower latency) with good cost-efficiency, making them good candidates for AWS users to deploy diffusion models to production.
+[Trainium](https://aws.amazon.com/machine-learning/trainium/) and
+[Inferentia](https://aws.amazon.com/machine-learning/inferentia/) are AWS's machine learning accelerators, both built
+on NeuronCores. Diffusers runs on them through TorchNeuron (the `torch_neuronx` package), the PyTorch backend from the
+AWS Neuron SDK. It registers a `"neuron"` device, so pipelines run with the same code as on any other device.
 
-[Optimum Neuron](https://huggingface.co/docs/optimum-neuron/en/index) is the interface between Hugging Face libraries and AWS Accelerators, including AWS [Trainium](https://aws.amazon.com/machine-learning/trainium/) and AWS [Inferentia](https://aws.amazon.com/machine-learning/inferentia/). It supports many of the features in Diffusers with similar APIs, so it is easier to learn if you're already familiar with Diffusers. Once you have created an AWS Inf2 instance, install Optimum Neuron.
+Two execution modes are available:
 
-```bash
-python -m pip install --upgrade-strategy eager optimum[neuronx]
-```
+| Mode | How to activate | Notes |
+|---|---|---|
+| Eager | `pipe.to("neuron")` | Operations dispatched one at a time, asynchronous |
+| Compile | `torch.compile(module, backend="neuron")` | Whole-graph compilation, static shapes |
 
-> [!TIP]
-> We provide pre-built [Hugging Face Neuron Deep Learning AMI](https://aws.amazon.com/marketplace/pp/prodview-gr3e6yiscria2) (DLAMI) and Optimum Neuron containers for Amazon SageMaker. It's recommended to correctly set up your environment.
+Follow the [AWS Neuron documentation](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/) to set up the Neuron
+SDK and install `torch_neuronx`. Once installed, `import torch` loads it automatically and registers the `"neuron"`
+device, so `pipe.to("neuron")` is the only change needed. Add `import torch_neuronx` only if you disabled backend
+autoloading with `TORCH_DEVICE_BACKEND_AUTOLOAD=0`.
 
-The example below demonstrates how to generate images with the Stable Diffusion XL model on an inf2.8xlarge instance (you can switch to cheaper inf2.xlarge instances once the model is compiled). To generate some images, use the [`~optimum.neuron.NeuronStableDiffusionXLPipeline`] class, which is similar to the [`StableDiffusionXLPipeline`] class in Diffusers.
+Both modes compile kernels to the Neuron executable format (NEFF) the first time they see a new graph, so the first
+call is slow and later calls are fast. Compiled NEFFs are cached on disk, by default under `/tmp`, which is cleared on
+reboot. Set `TORCH_NEURONX_NEFF_CACHE_DIR` to a persistent directory to keep them.
 
-Unlike Diffusers, you need to compile models in the pipeline to the Neuron format, `.neuron`. Launch the following command to export the model to the `.neuron` format.
+## Eager mode
 
-```bash
-optimum-cli export neuron --model stabilityai/stable-diffusion-xl-base-1.0 \
-  --batch_size 1 \
-  --height 1024 `# height in pixels of generated image, eg. 768, 1024` \
-  --width 1024 `# width in pixels of generated image, eg. 768, 1024` \
-  --num_images_per_prompt 1 `# number of images to generate per prompt, defaults to 1` \
-  --auto_cast matmul `# cast only matrix multiplication operations` \
-  --auto_cast_type bf16 `# cast operations from FP32 to BF16` \
-  sd_neuron_xl/
-```
-
-Now generate some images with the pre-compiled SDXL model.
+FLUX.2-klein-4B fits on a single NeuronCore, so move the whole pipeline to the `"neuron"` device.
 
 ```python
->>> from optimum.neuron import NeuronStableDiffusionXLPipeline
+import torch
 
->>> stable_diffusion_xl = NeuronStableDiffusionXLPipeline.from_pretrained("sd_neuron_xl/")
->>> prompt = "a pig with wings flying in floating US dollar banknotes in the air, skyscrapers behind, warm color palette, muted colors, detailed, 8k"
->>> image = stable_diffusion_xl(prompt).images[0]
+from diffusers import Flux2KleinPipeline
+
+pipe = Flux2KleinPipeline.from_pretrained("black-forest-labs/FLUX.2-klein-4B", dtype=torch.bfloat16)
+pipe.to("neuron")
+
+image = pipe(
+    prompt="a golden retriever surfing a wave, photorealistic",
+    height=1024,
+    width=1024,
+    num_inference_steps=4,
+).images[0]
+
+image.save("output.png")
 ```
 
-<img
-  src="https://huggingface.co/datasets/Jingya/document_images/resolve/main/optimum/neuron/sdxl_pig.png"
-  width="256"
-  height="256"
-  alt="peggy generated by sdxl on inf2"
-/>
+If a model is too large for a single NeuronCore, or you have several cores and want lower latency, shard the models
+across cores instead. See the [Tensor parallelism](#tensor-parallelism) section.
 
-Feel free to check out more guides and examples on different use cases from the Optimum Neuron [documentation](https://huggingface.co/docs/optimum-neuron/en/inference_tutorials/stable_diffusion#generate-images-with-stable-diffusion-models-on-aws-inferentia)!
+## Compiled mode
+
+TorchNeuron registers `"neuron"` as a `torch.compile` backend name, so components compile like any other
+`torch.compile` target. The first call (warmup) is slow because it compiles; later calls with the same shapes reuse the
+compiled graph.
+
+> [!IMPORTANT]
+> TorchNeuron requires **static shapes**, so pass `dynamic=False`. A new `height` or `width` compiles again for that
+> shape, once; shapes already seen are reused. Changing `num_inference_steps` doesn't recompile.
+
+```python
+import torch
+
+from diffusers import Flux2KleinPipeline
+
+pipe = Flux2KleinPipeline.from_pretrained("black-forest-labs/FLUX.2-klein-4B", dtype=torch.bfloat16)
+pipe.to("neuron")
+pipe.transformer.compile(backend="neuron", fullgraph=True, dynamic=False)
+
+# Warmup — triggers static graph compilation.
+pipe(prompt="warmup", height=1024, width=1024, num_inference_steps=4)
+
+# Later calls with the same shapes reuse the compiled graph.
+image = pipe(
+    prompt="a golden retriever surfing a wave, photorealistic",
+    height=1024,
+    width=1024,
+    num_inference_steps=4,
+).images[0]
+
+image.save("output.png")
+```
+
+For transformers with many identical blocks, compiling only the repeated blocks with
+`pipe.transformer.compile_repeated_blocks(backend="neuron", fullgraph=True, dynamic=False)` compiles one block and
+reuses it for the others, which cuts the warmup time considerably.
+
+## Tensor parallelism
+
+Shard models too large for one NeuronCore across several. The example below shards the Qwen-Image-2.1 transformer with
+[`TensorParallelConfig`], passed to the `parallel_config` argument of [`~ModelMixin.from_pretrained`]. Each rank reads
+only its own slice of every sharded weight, so the full model is never materialized. For general TP details
+(`_tp_plan`, colwise/rowwise), see the [Tensor parallelism](../training/distributed_inference#tensor-parallelism) guide.
+
+On Neuron, initialize the process group with `backend="neuron"` and build the mesh with `DeviceMesh("neuron", ...)`.
+The text encoder runs once per prompt, so it stays on the CPU and only the prompt embeddings are moved to the device.
+
+```python
+import torch
+import torch.distributed as dist
+from torch.distributed.device_mesh import DeviceMesh
+
+from diffusers import QwenImage21Pipeline, QwenImage21Transformer2DModel, TensorParallelConfig
+
+dist.init_process_group(backend="neuron")
+mesh = DeviceMesh("neuron", list(range(dist.get_world_size())))
+device = torch.neuron.current_device()
+
+repo_id = "Qwen/Qwen-Image-2.1"
+transformer = QwenImage21Transformer2DModel.from_pretrained(
+    repo_id, subfolder="transformer", dtype=torch.bfloat16, parallel_config=TensorParallelConfig(mesh=mesh)
+)
+pipe = QwenImage21Pipeline.from_pretrained(repo_id, transformer=transformer, dtype=torch.bfloat16)
+pipe.vae.to(device)
+
+prompt_embeds, _, _ = pipe.encode_prompt(
+    prompt="a golden retriever surfing a wave, photorealistic", device=torch.device("cpu")
+)
+
+image = pipe(
+    prompt_embeds=prompt_embeds.to(device),
+    height=1024,
+    width=1024,
+    num_inference_steps=40,
+    generator=torch.Generator("cpu").manual_seed(0),
+).images[0]
+if dist.get_rank() == 0:
+    image.save("output.png")
+```
+
+> [!IMPORTANT]
+> Pass a fixed-seed CPU `generator`. Without it, every rank draws its own random initial latents and the output is
+> noise.
+
+Launch one process per NeuronCore. Set `--nproc_per_node` to the number of NeuronCores you want to shard across.
+
+```bash
+torchrun --nproc_per_node=8 qwenimage21_tp.py
+```
+
+To compile the sharded transformer, call
+`pipe.transformer.compile_repeated_blocks(backend="neuron", fullgraph=True, dynamic=False)` after loading it.
+
+> [!TIP]
+> [Optimum Neuron](https://huggingface.co/docs/optimum-neuron/en/index) offers ahead-of-time exported Neuron pipelines,
+> such as [`~optimum.neuron.NeuronStableDiffusionXLPipeline`], for deployment on Inferentia and Trainium.
