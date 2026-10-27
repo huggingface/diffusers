@@ -94,6 +94,25 @@ def _is_package_available(pkg_name: str, get_dist_name: bool = False) -> tuple[b
     return pkg_exists, pkg_version
 
 
+def _is_distribution_installed(name: str) -> tuple[bool, str]:
+    """
+    Looks `name` up in the installed distribution metadata, resolving import names such as `cv2` to the distribution
+    that provides them (`opencv-python`).
+
+    Unlike `_is_package_available`, nothing here reaches the import machinery, so this is the one to use for a name
+    that comes from a downloaded repository: `importlib.util.find_spec("a.b.c")` imports `a` and `a.b` to find `c`,
+    which executes whatever code those packages contain.
+    """
+    for candidate in (_package_map or {}).get(name) or [name]:
+        try:
+            return True, importlib_metadata.version(candidate)
+        except (importlib_metadata.PackageNotFoundError, ValueError):
+            # `ValueError` is what an empty name raises; neither is something the caller can act on.
+            continue
+
+    return False, "N/A"
+
+
 if USE_TORCH in ENV_VARS_TRUE_AND_AUTO_VALUES and USE_TF not in ENV_VARS_TRUE_VALUES:
     _torch_available, _torch_version = _is_package_available("torch")
 
