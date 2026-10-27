@@ -725,6 +725,94 @@ pipe.transformer.compile_repeated_blocks(fullgraph=True)
 SeaCache also supports the Cosmos 3 Ulysses context-parallel and DTensor-based tensor-parallel helpers documented
 below. Cache decisions are synchronized across ranks. Full-model compilation and other model-sharding strategies are not claimed.
 
+## Native tensor parallelism
+
+`Cosmos3OmniTransformer` supports native Diffusers tensor parallelism (TP). Passing a
+[`TensorParallelConfig`] to `from_pretrained` reads each rank's weight slices directly from the
+checkpoint. This reduces loading memory compared with loading the full transformer on each GPU
+before calling `enable_parallelism`.
+
+The TP degree must divide both the query and KV head counts and the MLP intermediate size.
+The released Nano and Super checkpoints support degrees 1, 2, 4, and 8. Both attention streams
+and their MLP projections are sharded; embeddings, normalization, timestep embeddings, and
+modality input/output projections remain replicated.
+
+The following example adds native TP to the Super [text-to-video](#text-to-video) workflow
+with [`Cosmos3OmniModularPipeline`], using the same prompt files, scheduler, and generation settings.
+Save it as `cosmos3_native_tp.py` and launch it with
+`torchrun --standalone --nproc-per-node=4 cosmos3_native_tp.py`:
+
+```python
+import json
+import os
+
+import torch
+import torch.distributed as dist
+
+from diffusers import Cosmos3OmniModularPipeline, Cosmos3OmniTransformer
+from diffusers.models._modeling_parallel import TensorParallelConfig
+from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+from diffusers.utils import export_to_video
+
+local_rank = int(os.environ["LOCAL_RANK"])
+torch.cuda.set_device(local_rank)
+dist.init_process_group("nccl")
+
+json_prompt = json.load(open("assets/example_t2v_prompt.json"))
+negative_prompt = json.load(open("assets/negative_prompt.json"))
+
+tp_degree = 4
+model_id = "nvidia/Cosmos3-Super"
+transformer = Cosmos3OmniTransformer.from_pretrained(
+    model_id,
+    subfolder="transformer",
+    dtype=torch.bfloat16,
+    parallel_config=TensorParallelConfig(tp_degree=tp_degree),
+)
+pipe = Cosmos3OmniModularPipeline.from_pretrained(model_id)
+pipe.update_components(transformer=transformer)
+pipe.load_components(dtype=torch.bfloat16)
+pipe.enable_safety_checker()
+pipe.to(torch.device("cuda", local_rank))
+pipe.update_components(
+    scheduler=UniPCMultistepScheduler.from_config(
+        pipe.scheduler.config, flow_shift=10.0, use_karras_sigmas=False
+    )
+)
+
+videos = pipe(
+    prompt=json.dumps(json_prompt),
+    negative_prompt=json.dumps(negative_prompt),
+    num_frames=189,
+    height=720,
+    width=1280,
+    num_inference_steps=35,
+    guidance_scale=6.0,
+    fps=24.0,
+    generator=torch.Generator().manual_seed(42),
+    output="videos",
+)
+if dist.get_rank() == 0:
+    export_to_video(videos, "cosmos3_modular_t2v.mp4", fps=24, macro_block_size=1)
+dist.destroy_process_group()
+```
+
+Set `model_id="nvidia/Cosmos3-Nano"` to use Nano with the same code. The transformer is loaded
+separately from its `transformer` subfolder so its weights can be sharded during loading.
+`update_components` installs it in the modular pipeline; `load_components` resolves and loads
+the remaining components without replacing that transformer.
+
+This example uses a TP degree of 4. The TP degree is the size of the TP group, which need not
+span the entire distributed world. For a TP group within a larger job, pass its one-dimensional
+`DeviceMesh` to `TensorParallelConfig(mesh=tp_mesh)`.
+
+Use the same prompt and seed on every rank in the TP group. Native TP uses the standard Cosmos attention
+processor with local head counts inferred from projection widths. The existing example TP/CP
+helpers and their CLI commands remain available; do not apply the example TP helper to a
+transformer that is already sharded with native TP. Native TP+CP composition is not supported
+here. The generic [TP restrictions](../../training/distributed_inference#tensor-parallelism),
+including quantization, offloading, LoRA, and saving a sharded model, also apply.
+
 ## Context parallelism
 
 For long videos or high resolutions, a single forward pass can exceed the memory and latency budget of one GPU. Cosmos 3 supports **context parallelism (CP)** to shard the sequence dimension across multiple GPUs, splitting the attention computation so each device holds only a slice of the tokens.
