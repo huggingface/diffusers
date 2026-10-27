@@ -14,7 +14,7 @@
 
 import torch
 
-from diffusers.pipelines.ltx2.connectors import LTX2ConnectorTransformer1d
+from diffusers.models.condition_embedders.condition_embedder_ltx2 import LTX2ConnectorTransformer1d
 
 from ...testing_utils import assert_tensors_close, enable_full_determinism
 
