@@ -286,13 +286,13 @@ class Flux3AutoCoreDenoiseStep(AutoPipelineBlocks):
               The width in pixels of the generated image; defaults to the first reference image's own width
           reference_crop (`list | NoneType`, *optional*):
               Per reference, the box of the reference inside its padded canvas or None, from the preprocess step
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          timesteps (`Tensor`):
+          timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process. (overrides `num_inference_steps` when provided)
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process. (overrides `num_inference_steps` when provided)
@@ -379,13 +379,13 @@ class Flux3AutoBlocks(SequentialPipelineBlocks):
               The width in pixels of the generated image; defaults to the first reference image's own width
           reference_crop (`list | NoneType`, *optional*):
               Per reference, the box of the reference inside its padded canvas or None, from the preprocess step
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          timesteps (`Tensor`):
+          timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process. (overrides `num_inference_steps` when provided)
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process. (overrides `num_inference_steps` when provided)

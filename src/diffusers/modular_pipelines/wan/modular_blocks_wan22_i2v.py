@@ -112,7 +112,7 @@ class Wan22Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               TODO: Add description.
           num_frames (`None`, *optional*):
               TODO: Add description.
-          image_condition_latents (`None`, *optional*):
+          image_condition_latents (`None`):
               TODO: Add description.
           num_inference_steps (`None`, *optional*, defaults to 50):
               TODO: Add description.

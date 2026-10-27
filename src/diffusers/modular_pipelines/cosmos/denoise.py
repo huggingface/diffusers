@@ -993,8 +993,6 @@ class Cosmos3TransferDenoiseStep(Cosmos3DenoiseLoopWrapper):
               Timestep interval [lo, hi] over which text guidance is active (None = always).
           control_guidance_interval (`tuple`, *optional*):
               Timestep interval [lo, hi] over which control guidance is active (None = always).
-          latents (`Tensor`):
-              Noisy target latents to update.
           condition_latents (`Tensor`):
               Clean target latents on the conditioned frames (the autoregressive seed).
 

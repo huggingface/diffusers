@@ -289,25 +289,25 @@ class LTXAutoCoreDenoiseStep(AutoPipelineBlocks):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
           prompt_attention_mask (`Tensor`):
               mask for the text embeddings. Can be generated from text_encoder step.
-          negative_prompt_embeds (`Tensor`):
+          negative_prompt_embeds (`Tensor`, *optional*):
               negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          negative_prompt_attention_mask (`Tensor`):
+          negative_prompt_attention_mask (`Tensor`, *optional*):
               mask for the negative text embeddings. Can be generated from text_encoder step.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          timesteps (`Tensor`):
+          timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          height (`int`):
+          height (`int`, *optional*, defaults to 512):
               The height in pixels of the generated image.
-          width (`int`):
+          width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
-          num_frames (`int`):
+          num_frames (`int`, *optional*, defaults to 161):
               TODO: Add description.
           frame_rate (`int`, *optional*, defaults to 25):
               TODO: Add description.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
@@ -366,17 +366,17 @@ class LTXAutoBlocks(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          timesteps (`Tensor`):
+          timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          num_frames (`int`):
+          num_frames (`int`, *optional*, defaults to 161):
               TODO: Add description.
           frame_rate (`int`, *optional*, defaults to 25):
               TODO: Add description.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           image_latents (`Tensor`, *optional*):
               TODO: Add description.
@@ -455,7 +455,7 @@ class LTXImage2VideoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
-          image_latents (`Tensor`):
+          image_latents (`Tensor`, *optional*):
               TODO: Add description.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
