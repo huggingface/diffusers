@@ -84,6 +84,7 @@ class WanAnimate2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = WanAnimate2ModularPipeline
     pipeline_blocks_class = WanAnimate2Blocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-wan-animate-2-modular"
+    # Each segment is decoded inside the denoise loop, so no latents are left in the state.
 
     params = frozenset(["prompt", "image", "driving_video"])
     batch_params = frozenset()
@@ -113,6 +114,10 @@ class WanAnimate2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 class WanAnimate2ModularPipelineFastTesterMixin(ModularPipelineTesterMixin):
     """`ModularPipelineTesterMixin` minus the tests that assume a batchable pipeline; shared by both presets."""
+
+    @pytest.mark.skip(reason="Wan-Animate-2 decodes inside its segment loop and leaves no latents in the state.")
+    def test_latents_output_in_canonical_form(self):
+        pass
 
     @pytest.mark.skip(reason="Wan-Animate-2 is unbatched: one character image and driving video per call")
     def test_inference_batch_consistent(self):
@@ -157,6 +162,7 @@ class WanAnimate2DistilledModularPipelineTesterConfig(WanAnimate2ModularPipeline
     pipeline_class = WanAnimate2DistilledModularPipeline
     pipeline_blocks_class = WanAnimate2DistilledBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-wan-animate-2-distilled-modular"
+    # Each segment is decoded inside the denoise loop, so no latents are left in the state.
     expected_workflow_defaults = WAN_ANIMATE_2_DISTILLED_DEFAULTS
 
 

@@ -571,6 +571,15 @@ class InputParam:
     # resolves its own default at runtime in `get_block_state`
     defaults_by_block: dict[str, Any] = None
 
+    def __post_init__(self):
+        if self.required and self.default is not None:
+            logger.warning(
+                f"InputParam '{self.name}' is required and declares a default ({self.default!r}), which cannot both "
+                f"hold: a required input is never missing, so its default is unreachable. Keeping the default and "
+                f"treating the input as optional. Pass `default=None` explicitly if '{self.name}' is meant to be required."
+            )
+            self.required = False
+
     def __repr__(self):
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
 

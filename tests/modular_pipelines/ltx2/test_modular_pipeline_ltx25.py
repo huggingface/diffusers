@@ -22,6 +22,7 @@ from diffusers.modular_pipelines import LTX2AutoBlocks, LTX25AutoBlocks, LTX25Mo
 from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
 from diffusers.pipelines.ltx2.pipeline_ltx2_ic_lora import LTX2ReferenceCondition
 
+from ...testing_utils import assert_tensors_close
 from ..testing_utils import (
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
@@ -124,6 +125,12 @@ class LTX25ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 class LTX25ModularPipelineFastTesterMixin(ModularPipelineTesterMixin):
     """`ModularPipelineTesterMixin` with the two adjustments every LTX-2.5 workflow needs."""
 
+    @pytest.mark.skip(
+        reason="LTX-2.5 still leaves packed `[B, S, C]` latents in the state; #14612 moves it to the VAE form."
+    )
+    def test_latents_output_in_canonical_form(self):
+        pass
+
     @pytest.mark.skip(reason="num_videos_per_prompt")
     def test_num_images_per_prompt(self):
         pass
@@ -181,6 +188,28 @@ class TestLTX25Text2VideoModularPipelineFast(
         num_frames = videos.shape[1]
         assert (num_frames - 1) % pipe.vae_temporal_compression_ratio == 0
         assert 0 < num_frames <= round(2.0 * inputs["frame_rate"])
+
+    def test_motion_speed_rescales_only_the_video_time_axis(self):
+        pipe = self.get_pipeline().to("cpu")
+        outputs = ["videos", "audio", "video_coords", "audio_coords"]
+
+        default = pipe(**self.get_dummy_inputs(), output=outputs)
+        same = pipe(**self.get_dummy_inputs(), motion_speed=1.0, output=outputs)
+        slow = pipe(**self.get_dummy_inputs(), motion_speed=0.5, output=outputs)
+
+        assert_tensors_close(same["videos"], default["videos"], atol=1e-6, rtol=0)
+        # Half speed doubles the conditioning rate: the time axis of the video positions halves, nothing else moves.
+        assert_tensors_close(slow["video_coords"][:, 0], default["video_coords"][:, 0] / 2, atol=1e-6, rtol=1e-6)
+        assert torch.equal(slow["video_coords"][:, 1:], default["video_coords"][:, 1:])
+        assert torch.equal(slow["audio_coords"], default["audio_coords"])
+        assert slow["videos"].shape == default["videos"].shape
+        assert slow["audio"].shape == default["audio"].shape
+        assert not torch.allclose(slow["videos"], default["videos"])
+
+    def test_motion_speed_must_be_positive(self):
+        pipe = self.get_pipeline().to("cpu")
+        with pytest.raises(ValueError, match="motion_speed"):
+            pipe(**self.get_dummy_inputs(), motion_speed=0.0, output="videos")
 
 
 class TestLTX25Text2VideoModularPipelineLoading(LTX25Text2VideoModularPipelineTesterConfig, ModularLoadingTesterMixin):

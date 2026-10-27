@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import inspect
 import os
 from itertools import product
@@ -700,6 +701,31 @@ class LoraTesterMixin(BaseLoraTesterMixin, BasePipelineOutputMixin):
             msg="output with no lora and output with lora disabled should give same results",
         )
 
+    @pytest.mark.parametrize("weight_format, weight", [("broadcast", 0.5), ("broadcast", 0.0), ("shared_list", 0.5)])
+    def test_set_adapters_shared_component_weights(self, weight_format, weight):
+        pipe = self.get_pipeline().to(torch_device)
+        adapter_names = ["adapter-1", "adapter-2"]
+        adapted = self.add_adapters_to_pipeline(pipe, adapter_name=adapter_names[0])
+        self.add_adapters_to_pipeline(pipe, adapter_name=adapter_names[1])
+        component_weights = {name: weight for name in adapted}
+
+        pipe.set_adapters(adapter_names, [component_weights.copy() for _ in adapter_names])
+        expected_output = self.run_pipe(pipe)
+
+        # Shared component dictionaries must apply to every adapter, independent of adapter order.
+        weights = component_weights if weight_format == "broadcast" else [component_weights] * len(adapter_names)
+        original_weights = copy.deepcopy(weights)
+        for names in [adapter_names, adapter_names[::-1]]:
+            pipe.set_adapters(names, weights)
+            assert weights == original_weights, "set_adapters must preserve the caller's weights"
+            assert_tensors_close(
+                self.run_pipe(pipe),
+                expected_output,
+                atol=1e-3,
+                rtol=1e-3,
+                msg="Shared component weights should match independent per-adapter dictionaries",
+            )
+
     def test_get_active_adapters_text_encoder_only(self):
         """
         Tests that get_active_adapters correctly reports active adapters when only the text encoder has a LoRA attached.
@@ -1197,6 +1223,26 @@ class UNetLoraTesterMixin(BaseLoraTesterMixin, BasePipelineOutputMixin):
         # a mismatching number of adapter_names and adapter_weights should raise an error
         with pytest.raises(ValueError):
             pipe.set_adapters(["adapter-1", "adapter-2"], [scales_1])
+
+    def test_set_adapters_shared_block_weights(self):
+        pipe = self.get_pipeline().to(torch_device)
+        adapter_names = ["adapter-1", "adapter-2"]
+        self.add_adapters_to_pipeline(pipe, adapter_name=adapter_names[0])
+        self.add_adapters_to_pipeline(pipe, adapter_name=adapter_names[1])
+        component_weights = {"unet": {"down": 0.0, "mid": 0.5, "up": 1.0}}
+
+        pipe.set_adapters(adapter_names, [copy.deepcopy(component_weights) for _ in adapter_names])
+        expected_output = self.run_pipe(pipe)
+        original_weights = copy.deepcopy(component_weights)
+        pipe.set_adapters(adapter_names, component_weights)
+        assert component_weights == original_weights, "set_adapters must preserve nested weights"
+        assert_tensors_close(
+            self.run_pipe(pipe),
+            expected_output,
+            atol=1e-3,
+            rtol=1e-3,
+            msg="Shared block weights and default text encoder weights should match independent dictionaries",
+        )
 
     def test_simple_inference_with_text_denoiser_block_scale_for_all_dict_options(self):
         """Tests that any valid combination of lora block scales can be used in pipe.set_adapter"""

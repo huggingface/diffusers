@@ -85,6 +85,8 @@
       title: Getting started
     - local: quantization/bitsandbytes
       title: bitsandbytes
+    - local: quantization/bfl
+      title: BFL (fp8r / nvfp4)
     - local: quantization/gguf
       title: gguf
     - local: quantization/nunchaku
@@ -135,6 +137,8 @@
     title: Overview
   - local: modular_diffusers/quickstart
     title: Quickstart
+  - local: modular_diffusers/coming_from_diffusion_pipeline
+    title: Coming from DiffusionPipeline
   - local: modular_diffusers/modular_diffusers_states
     title: States
   - local: modular_diffusers/pipeline_block
@@ -321,6 +325,8 @@
         title: AnyFlowTransformer3DModel
       - local: api/models/aura_flow_transformer2d
         title: AuraFlowTransformer2DModel
+      - local: api/models/transformer_bria_fibo2
+        title: BriaFibo2Transformer2DModel
       - local: api/models/transformer_bria_fibo
         title: BriaFiboTransformer2DModel
       - local: api/models/bria_transformer
@@ -349,6 +355,8 @@
         title: ErnieImageTransformer2DModel
       - local: api/models/flux2_transformer
         title: Flux2Transformer2DModel
+      - local: api/models/flux3_transformer
+        title: Flux3Transformer2DModel
       - local: api/models/flux_transformer
         title: FluxTransformer2DModel
       - local: api/models/glm_image_transformer2d
@@ -407,10 +415,18 @@
         title: QwenImage21Transformer2DModel
       - local: api/models/qwenimage_transformer2d
         title: QwenImageTransformer2DModel
+      - local: api/models/rfd4_proteina_autoencoder
+        title: RFD4ProteinaAutoencoder
+      - local: api/models/rfd4_proteina_transformer
+        title: RFD4ProteinaTransformer
       - local: api/models/sana_transformer2d
         title: SanaTransformer2DModel
       - local: api/models/sana_video_transformer3d
         title: SanaVideoTransformer3DModel
+      - local: api/models/sana_wm_refiner_transformer3d
+        title: SanaWMLTX2RefinerTransformer3DModel
+      - local: api/models/sana_wm_transformer3d
+        title: SanaWMTransformer3DModel
       - local: api/models/sd3_transformer2d
         title: SD3Transformer2DModel
       - local: api/models/skyreels_v2_transformer_3d
@@ -471,6 +487,8 @@
         title: AutoencoderKLHunyuanVideo15
       - local: api/models/autoencoder_kl_kvae
         title: AutoencoderKLKVAE
+      - local: api/models/autoencoder_kl_kvae_audio
+        title: AutoencoderKLKVAEAudio
       - local: api/models/autoencoder_kl_kvae_video
         title: AutoencoderKLKVAEVideo
       - local: api/models/autoencoderkl_audio_ltx_2
@@ -539,6 +557,8 @@
         title: Bria 3.2
       - local: api/pipelines/bria_fibo
         title: Bria Fibo
+      - local: api/pipelines/bria_fibo2
+        title: Bria Fibo 2.0
       - local: api/pipelines/bria_fibo_edit
         title: Bria Fibo Edit
       - local: api/pipelines/chroma
@@ -583,6 +603,8 @@
         title: Flux
       - local: api/pipelines/flux2
         title: Flux2
+      - local: api/pipelines/flux3
+        title: Flux3
       - local: api/pipelines/control_flux_inpaint
         title: FluxControlInpaint
       - local: api/pipelines/glm_image
@@ -653,6 +675,8 @@
         title: Sana Sprint
       - local: api/pipelines/sana_video
         title: Sana Video
+      - local: api/pipelines/sana_wm
+        title: SANA-WM
       - local: api/pipelines/shap_e
         title: Shap-E
       - local: api/pipelines/stable_cascade
@@ -694,6 +718,10 @@
       - local: api/pipelines/z_image
         title: Z-Image
       title: Image
+    - sections:
+      - local: api/pipelines/rfd4_proteina
+        title: RFD4-Proteína
+      title: Protein
     - sections:
       - local: api/pipelines/diffusion_gemma
         title: DiffusionGemma
@@ -824,6 +852,8 @@
       title: PNDMScheduler
     - local: api/schedulers/repaint
       title: RePaintScheduler
+    - local: api/schedulers/rfd4_proteina
+      title: RFD4ProteinaScheduler
     - local: api/schedulers/score_sde_ve
       title: ScoreSdeVeScheduler
     - local: api/schedulers/tcd
