@@ -7,6 +7,7 @@ from ..utils.import_utils import is_peft_available, is_torch_available, is_trans
 _import_structure = {}
 
 if is_torch_available():
+    _import_structure["lora_pipeline"] = ["RFD4ProteinaLoraLoaderMixin"]
     _import_structure["single_file_model"] = ["FromOriginalModelMixin"]
     _import_structure["transformer_flux"] = ["FluxTransformer2DLoadersMixin"]
     _import_structure["transformer_sd3"] = ["SD3Transformer2DLoadersMixin"]
@@ -14,7 +15,7 @@ if is_torch_available():
     _import_structure["utils"] = ["AttnProcsLayers"]
     if is_transformers_available():
         _import_structure["single_file"] = ["FromSingleFileMixin"]
-        _import_structure["lora_pipeline"] = [
+        _import_structure["lora_pipeline"] += [
             "AceStepLoraLoaderMixin",
             "AmusedLoraLoaderMixin",
             "AnimaLoraLoaderMixin",
@@ -42,6 +43,7 @@ if is_torch_available():
             "ZImageLoraLoaderMixin",
             "Flux2LoraLoaderMixin",
             "Flux3LoraLoaderMixin",
+            "BriaFibo2LoraLoaderMixin",
             "Ideogram4LoraLoaderMixin",
             "ErnieImageLoraLoaderMixin",
             "CosmosLoraLoaderMixin",
@@ -60,6 +62,7 @@ _import_structure["peft"] = ["PeftAdapterMixin"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     if is_torch_available():
+        from .lora_pipeline import RFD4ProteinaLoraLoaderMixin
         from .single_file_model import FromOriginalModelMixin
         from .transformer_flux import FluxTransformer2DLoadersMixin
         from .transformer_sd3 import SD3Transformer2DLoadersMixin
@@ -78,6 +81,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 AmusedLoraLoaderMixin,
                 AnimaLoraLoaderMixin,
                 AuraFlowLoraLoaderMixin,
+                BriaFibo2LoraLoaderMixin,
                 CogVideoXLoraLoaderMixin,
                 CogView4LoraLoaderMixin,
                 CosmosLoraLoaderMixin,

@@ -15,6 +15,7 @@
 import importlib
 import os
 import re
+import sys
 import warnings
 from pathlib import Path
 from typing import Any
@@ -343,12 +344,43 @@ def _unwrap_model(model):
     return model
 
 
+def _get_library_or_raise(library_name):
+    """
+    Resolves the library a component is declared to come from.
+
+    `library_name` is read from `model_index.json`/`modular_model_index.json`, which ships with the repository being
+    loaded, and importing a module runs it. So only the libraries Diffusers loads components from are imported here;
+    any other name is resolved from `sys.modules`, which means the calling process has already imported it itself.
+    `save_pretrained` records a component defined outside those libraries under its full module path, and that is the
+    case this covers: the module is importable because the caller imported it, not because the repository named it.
+    """
+    from diffusers import pipelines
+
+    if library_name in LOADABLE_CLASSES:
+        return importlib.import_module(library_name)
+
+    if hasattr(pipelines, library_name):
+        return getattr(pipelines, library_name)
+
+    library = sys.modules.get(library_name)
+    if library is None:
+        raise ValueError(
+            f"{library_name} is not one of the libraries Diffusers can load components from"
+            f" ({', '.join(LOADABLE_CLASSES)}) and has not been imported. Diffusers does not import a module just"
+            " because the repository names one, because importing it would run its code. If it is custom code that"
+            " ships with the repository, put it in the component's own folder and load with `trust_remote_code=True`."
+            f" If it is your own module, import {library_name} before calling `from_pretrained`."
+        )
+
+    return library
+
+
 def maybe_raise_or_warn(
     library_name, library, class_name, importable_classes, passed_class_obj, name, is_pipeline_module
 ):
     """Simple helper method to raise or warn in case incorrect module has been passed"""
     if not is_pipeline_module:
-        library = importlib.import_module(library_name)
+        library = _get_library_or_raise(library_name)
 
         # Handle deprecated Transformers classes
         if library_name == "transformers":
@@ -387,7 +419,7 @@ def simple_get_class_obj(library_name, class_name):
         pipeline_module = getattr(pipelines, library_name)
         class_obj = getattr(pipeline_module, class_name)
     else:
-        library = importlib.import_module(library_name)
+        library = _get_library_or_raise(library_name)
 
         # Handle deprecated Transformers classes
         if library_name == "transformers":
@@ -430,13 +462,20 @@ def get_class_obj_and_candidates(
         class_candidates = dict.fromkeys(importable_classes.keys(), class_obj)
     else:
         # else we just import it from the library.
-        library = importlib.import_module(library_name)
+        library = _get_library_or_raise(library_name)
 
         # Handle deprecated Transformers classes
         if library_name == "transformers":
             class_name = _maybe_remap_transformers_class(class_name) or class_name
 
-        class_obj = getattr(library, class_name)
+        class_obj = getattr(library, class_name, None)
+        if class_obj is None:
+            raise ValueError(
+                f"`{library.__name__}` has no class `{class_name}`. The component was declared as"
+                f' ["{library_name}", "{class_name}"] in `model_index.json`, which resolves to `{library.__name__}`.'
+                f" Check that the library name in the repository is correct, or pass the component to"
+                " `from_pretrained` directly."
+            )
         class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
 
     return class_obj, class_candidates

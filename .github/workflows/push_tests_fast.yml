@@ -68,7 +68,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv pip install -e ".[quality]"
+        uv pip install -e ".[quality]" "pyarrow<26"
 
     - name: Environment
       run: |

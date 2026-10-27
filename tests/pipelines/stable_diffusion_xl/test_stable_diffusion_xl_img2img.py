@@ -44,6 +44,7 @@ from ...testing_utils import (
     backend_empty_cache,
     floats_tensor,
     load_image,
+    require_accelerator,
     slow,
     torch_device,
 )
@@ -184,6 +185,15 @@ class StableDiffusionXLImg2ImgPipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestStableDiffusionXLImg2ImgPipeline(StableDiffusionXLImg2ImgPipelineTesterConfig, PipelineTesterMixin):
+    # Re-declares the base method's decorators, which overriding would otherwise drop.
+    @pytest.mark.skipif(torch_device not in ["cuda", "xpu"], reason="half-precision inference requires CUDA or XPU")
+    @require_accelerator
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=str)
+    def test_half_precision_inference_no_nan(self, dtype):
+        if dtype == torch.bfloat16 and torch_device == "cuda" and torch.cuda.get_device_capability() < (8, 0):
+            pytest.xfail("produces NaNs in bfloat16 on GPUs without native bfloat16 support (e.g. T4)")
+        super().test_half_precision_inference_no_nan(dtype)
+
     def test_components_function(self):
         # `requires_aesthetics_score` is a config value, not a component, so it is not part of `pipe.components`.
         init_components = self.get_dummy_components()
