@@ -386,7 +386,7 @@ class QwenImage21DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The timesteps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
-            InputParam.template("num_inference_steps", required=True),
+            InputParam.template("num_inference_steps", required=True, default=None),
             InputParam(
                 name="use_kv_cache",
                 type_hint=bool,

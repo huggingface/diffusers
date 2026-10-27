@@ -8,6 +8,7 @@ Shared reference for model-related conventions, patterns, and gotchas.
 - Prefer descriptive variable names over short ones. For example, prefer spelling out `query` over `q`.
 - Avoid graph breaks for `torch.compile` compatibility — do not insert NumPy operations in forward implementations and any other patterns that can break `torch.compile` compatibility with `fullgraph=True`.
 - No new mandatory dependency without discussion (e.g. `einops`). Optional deps guarded with `is_X_available()` and a dummy in `utils/dummy_*.py`.
+- Pass `forward` inputs by name and return a dataclass with named fields rather than a dict of tensors, and keep `__init__` arguments flat (plain values, not nested dicts) — a dict hides what a signature takes and makes you validate the keys by hand. There are a few standard exceptions, such as `attention_kwargs` and `RFD4ProteinaPipeline`'s `conditioning_features`; use your judgment and bring it up in review if your case needs one.
 
 ## Common model conventions
 
