@@ -29,7 +29,7 @@ from ...configuration_utils import FrozenDict
 from ...guiders import ClassifierFreeGuidance
 from ...models import AutoencoderKLHunyuanVideo
 from ...models.transformers.transformer_kandinsky_s2v import KandinskyS2VTransformer3DModel
-from ...utils import logging
+from ...utils import is_librosa_available, is_torchvision_available, logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import (
@@ -46,6 +46,12 @@ from .modular_pipeline import (
     select_resolution,
 )
 
+
+if is_librosa_available():
+    import librosa
+
+if is_torchvision_available():
+    from torchvision import transforms
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -72,8 +78,6 @@ def encode_qwen_omni(
     chat_text = components.tokenizer.apply_chat_template([conversation], add_generation_prompt=False, tokenize=False)
     audios = None
     if audio_path is not None:
-        import librosa  # noqa: PLC0415
-
         audios = [librosa.load(str(audio_path), sr=AUDIO_SAMPLE_RATE, offset=0.0, duration=audio_end)[0]]
 
     inputs = components.tokenizer(
@@ -425,8 +429,6 @@ class KandinskyS2VVaeEncoderStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, components: KandinskyS2VModularPipeline, state: PipelineState) -> PipelineState:
-        from torchvision import transforms  # noqa: PLC0415
-
         block_state = self.get_block_state(state)
         device = components._execution_device
         image, height, width = block_state.reference_image, block_state.height, block_state.width

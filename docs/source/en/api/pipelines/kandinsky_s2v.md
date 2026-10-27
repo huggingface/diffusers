@@ -68,7 +68,7 @@ example `ffmpeg -i avatar.mp4 -i speech.wav -c:v copy -c:a aac -shortest out.mp4
 
 The Pro checkpoints do not fit an 80 GB GPU next to the 7B speech and text encoder
 when every component is on the device. Keep one model on the GPU at a time, which
-brings the peak to about 46 GiB:
+brings the peak to about 50 GiB:
 
 ```py
 from diffusers import ComponentsManager

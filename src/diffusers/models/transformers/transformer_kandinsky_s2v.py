@@ -30,7 +30,7 @@ from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
 from ..modeling_outputs import Transformer2DModelOutput
-from ..modeling_utils import ModelMixin
+from ..modeling_utils import ModelMixin, get_parameter_dtype
 
 
 logger = logging.get_logger(__name__)
@@ -204,25 +204,17 @@ class KandinskyS2VVisualEmbeddings(nn.Module):
         return self.in_layer(x)
 
 
-# Not copied from transformer_kandinsky6: its Modulation casts the result back to
-# the input dtype, while the AdaLN parameters here stay fp32 all the way through
-# the per-token selection, as native S2V does.
+# Copied from diffusers.models.transformers.transformer_kandinsky6.Kandinsky6Modulation with Kandinsky6->KandinskyS2V
 class KandinskyS2VModulation(nn.Module):
+    """AdaLN modulation projection."""
+
     def __init__(self, time_dim: int, model_dim: int, num_params: int):
         super().__init__()
         self.activation = nn.SiLU()
         self.out_layer = nn.Linear(time_dim, num_params * model_dim)
-        self.out_layer.weight.data.zero_()
-        self.out_layer.bias.data.zero_()
 
     def forward(self, x: Tensor) -> Tensor:
-        # AdaLN runs in fp32 whatever the weights are stored as, matching native
-        # generation. Upcasting a bf16 weight is exact, so the result is identical.
-        return F.linear(
-            self.activation(x.float()),
-            self.out_layer.weight.float(),
-            self.out_layer.bias.float(),
-        )
+        return self.out_layer(self.activation(x.to(get_parameter_dtype(self.out_layer))))
 
 
 # Copied from diffusers.models.transformers.transformer_kandinsky.Kandinsky5FeedForward with Kandinsky5->KandinskyS2V
@@ -409,7 +401,9 @@ class KandinskyS2VRoPE3D(nn.Module):
         scale_factor: tuple[float, float, float] = (1.0, 1.0, 1.0),
     ) -> Tensor:
         duration, height, width = shape
-        args_0, args_1, args_2 = (args.to(device=axis_pos.device) for args, axis_pos in zip(self.args, pos))
+        args_0, args_1, args_2 = (
+            args.to(device=axis_pos.device) for args, axis_pos in zip(self.args, pos, strict=True)
+        )
         args_t = args_0[pos[0] + self.offsets_t] / scale_factor[0]
         args_h = args_1[pos[1]] / scale_factor[1]
         args_w = args_2[pos[2]] / scale_factor[2]
@@ -573,11 +567,15 @@ class KandinskyS2VTransformer3DModel(
         "KandinskyS2VTransformerDecoderBlock",
     ]
     _no_split_modules = _repeated_blocks
-    # The checkpoint keeps the time embedding and every normalisation in fp32;
-    # this stops `torch_dtype=` from flattening that. Matched both as substrings
-    # and as exact path components, hence the compound names beside the bare ones.
+    # The checkpoint keeps the time embedding and every normalisation in fp32, and
+    # AdaLN modulation runs in fp32; this stops `torch_dtype=` from flattening that.
+    # Matched both as substrings and as exact path components, hence the compound
+    # names beside the bare ones.
     _keep_in_fp32_modules = [
         "time_embeddings",
+        "modulation",
+        "text_modulation",
+        "visual_modulation",
         "norm",
         "self_attention_norm",
         "cross_attention_norm",
@@ -713,7 +711,6 @@ class KandinskyS2VTransformer3DModel(
         text_rope_pos: Tensor,
         audio_rope_pos: Tensor,
         scale_factor: tuple[float, float, float] = (1.0, 1.0, 1.0),
-        duration: int | None = None,
         return_dict: bool = True,
     ) -> Transformer2DModelOutput | Tensor:
         """Denoise one chunk.
@@ -732,8 +729,6 @@ class KandinskyS2VTransformer3DModel(
             text_rope_pos: 1-D RoPE positions of the text tokens.
             audio_rope_pos: latent frame each speech token belongs to.
             scale_factor: RoPE scale per axis, set by the resolution bucket.
-            duration: number of latent frames used to align speech to frames;
-                defaults to the temporal size of ``hidden_states``.
             return_dict: return a ``Transformer2DModelOutput`` instead of a tuple.
 
         Batch size must be 1: the sequence is packed and the speech cross-attention is frame-aligned.
@@ -752,7 +747,7 @@ class KandinskyS2VTransformer3DModel(
         audio_embed = audio_hidden_states.squeeze(0)
 
         device = x.device
-        duration = x.shape[0] if duration is None else duration
+        duration = x.shape[0]
 
         text_embed = self.text_embeddings(text_embed)
         audio_embed = self.audio_embeddings(audio_embed)

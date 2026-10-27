@@ -135,7 +135,6 @@ class KandinskyS2VTransformerTesterConfig(BaseModelTesterConfig):
             "audio_rope_pos": torch.arange(DURATION, device=torch_device).repeat_interleave(
                 torch.tensor([1] + [4] * (DURATION - 1), device=torch_device)
             ),
-            "duration": DURATION,
         }
 
 

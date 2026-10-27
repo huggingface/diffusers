@@ -21,9 +21,13 @@ import PIL.Image
 import torch
 
 from ...models.transformers.transformer_kandinsky_s2v import audio_group_lengths
-from ...utils import logging
+from ...utils import is_librosa_available, logging
 from ..modular_pipeline import ModularPipeline
 
+
+# soundfile is a dependency of librosa.
+if is_librosa_available():
+    import soundfile as sf
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -73,16 +77,12 @@ def select_resolution(
 
 
 def audio_duration(path: str | Path) -> float:
-    import soundfile as sf  # noqa: PLC0415
-
     info = sf.info(str(path))
     return info.frames / info.samplerate
 
 
 def pad_with_silence(path: str | Path, target_duration: float) -> Path | None:
     """Append silence so the track covers ``target_duration``; ``None`` if it already does."""
-    import soundfile as sf  # noqa: PLC0415
-
     original = audio_duration(path)
     if target_duration <= original + 0.01:
         return None

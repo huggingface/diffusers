@@ -212,7 +212,6 @@ class KandinskyS2VChunkDenoiseInner(ModularPipelineBlocks):
             "memory_rope_pos": tuple(reversed(memory_rope_pos(config, memory, device))),
             "audio_rope_pos": audio_rope_pos(chunk_audio.shape[0], num_latent_frames, device),
             "scale_factor": block_state.scale_factor,
-            "duration": num_latent_frames,
             "return_dict": False,
         }
 
