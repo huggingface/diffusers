@@ -259,6 +259,19 @@ class TestHooks:
         output = self.model(input).mean().detach().cpu().item()
         assert output != 0.0
 
+    def test_remove_hook_keeps_next_hook_new_forward(self):
+        registry = HookRegistry.check_if_exists_or_initialize(self.model)
+        registry.register_hook(AddHook(1), "add_hook")
+        registry.register_hook(SkipLayerHook(skip_layer=True), "skip_layer_hook")
+
+        input = torch.zeros(1, 4, device=torch_device)
+        assert self.model(input).mean().detach().cpu().item() == 0.0
+
+        # Removing the inner hook must not bypass the outer hook's `new_forward`.
+        registry.remove_hook("add_hook")
+        assert registry._hook_order == ["skip_layer_hook"]
+        assert self.model(input).mean().detach().cpu().item() == 0.0
+
     def test_skip_layer_internal_block(self):
         registry = HookRegistry.check_if_exists_or_initialize(self.model.linear_1)
         input = torch.zeros(1, 4, device=torch_device)
