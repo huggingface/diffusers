@@ -88,49 +88,30 @@ For transformers with repeated blocks, use `compile_repeated_blocks(...)` to com
 
 ## Tensor parallelism
 
-Shard models too large for one NeuronCore across several. The example below shards the Qwen-Image-2.1 transformer with
-[`TensorParallelConfig`], passed to the `parallel_config` argument of [`~ModelMixin.from_pretrained`]. Each rank reads
-only its own slice of every sharded weight, so the full model is never materialized. For general TP details
-(`_tp_plan`, colwise/rowwise), see the [Tensor parallelism](../training/distributed_inference#tensor-parallelism) guide.
+Follow the [Tensor parallelism](../training/distributed_inference#tensor-parallelism) guide for model loading,
+sharding plans, and limitations. To adapt its example for Neuron, replace the CUDA process-group and device setup
+with the following.
 
 On Neuron, initialize the process group with `backend="neuron"` and build the mesh with `DeviceMesh("neuron", ...)`.
-The text encoder runs once per prompt, so it stays on the CPU and only the prompt embeddings are moved to the device.
 
 ```python
 import torch
 import torch.distributed as dist
 from torch.distributed.device_mesh import DeviceMesh
 
-from diffusers import QwenImage21Pipeline, QwenImage21Transformer2DModel, TensorParallelConfig
+from diffusers import TensorParallelConfig
 
 dist.init_process_group(backend="neuron")
 mesh = DeviceMesh("neuron", list(range(dist.get_world_size())))
 device = torch.neuron.current_device()
-
-repo_id = "Qwen/Qwen-Image-2.1"
-transformer = QwenImage21Transformer2DModel.from_pretrained(
-    repo_id, subfolder="transformer", dtype=torch.bfloat16, parallel_config=TensorParallelConfig(mesh=mesh)
-)
-pipe = QwenImage21Pipeline.from_pretrained(repo_id, transformer=transformer, dtype=torch.bfloat16)
-pipe.vae.to(device)
-
-prompt_embeds, _, _ = pipe.encode_prompt(
-    prompt="a golden retriever surfing a wave, photorealistic", device=torch.device("cpu")
-)
-
-image = pipe(
-    prompt_embeds=prompt_embeds.to(device),
-    height=1024,
-    width=1024,
-    num_inference_steps=40,
-    generator=torch.Generator("cpu").manual_seed(0),
-).images[0]
-if dist.get_rank() == 0:
-    image.save("output.png")
+parallel_config = TensorParallelConfig(mesh=mesh)
 ```
+
+Pass this `parallel_config` to the transformer's [`~ModelMixin.from_pretrained`] and use `device` for the remaining
+pipeline components.
 
 Launch one process per NeuronCore. Set `--nproc_per_node` to the number of NeuronCores you want to shard across.
 
 ```bash
-torchrun --nproc_per_node=8 qwenimage21_tp.py
+torchrun --nproc_per_node=8 tensor_parallel_neuron.py
 ```
