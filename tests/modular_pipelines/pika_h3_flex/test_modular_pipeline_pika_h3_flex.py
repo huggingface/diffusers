@@ -34,6 +34,7 @@ from diffusers.modular_pipelines.pika_h3_flex.modular_pipeline import PIKA_H3_FL
 from ..testing_utils import (
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
+    ModularLoraTesterMixin,
     ModularMemoryTesterMixin,
     ModularPipelineTesterMixin,
     ModularWorkflowTesterMixin,
@@ -373,6 +374,15 @@ class TestPikaH3FlexModularPipelineWorkflow(PikaH3FlexModularPipelineTesterConfi
 
 class TestPikaH3FlexModularPipelineMemory(PikaH3FlexModularPipelineTesterConfig, ModularMemoryTesterMixin):
     pass
+
+
+class TestPikaH3FlexModularPipelineLoRA(PikaH3FlexModularPipelineTesterConfig, ModularLoraTesterMixin):
+    """The generic LoRA behavior over both MiniMax-H3 transformer partitions, which are identically named inside."""
+
+    denoiser_target_modules = {
+        "transformer": ["to_q", "to_k", "to_v", "to_out.0"],
+        "transformer_ref": ["to_q", "to_k", "to_v", "to_out.0"],
+    }
 
 
 class PikaH3FlexRef2VAModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
