@@ -12,11 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # AWS Trainium
 
-[Trainium](https://aws.amazon.com/machine-learning/trainium/) and
-[Inferentia](https://aws.amazon.com/machine-learning/inferentia/) are AWS's machine learning accelerators, both built
-on NeuronCores. Diffusers runs on them through [TorchNeuron](https://github.com/aws-neuron/torch-neuronx) (the
-`torch_neuronx` package), the PyTorch backend from the AWS Neuron SDK. It registers a `"neuron"` device, so pipelines
-run with the same code as on any other device.
+[TorchNeuron](https://github.com/aws-neuron/torch-neuronx) is the native PyTorch backend for Trainium2 and Trainium3. Diffusers runs on these instances through the `torch_neuronx` package, which registers a `"neuron"` device, so pipelines run with the same code as on any other device.
 
 Two execution modes are available:
 
