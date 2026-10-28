@@ -490,6 +490,9 @@ torchrun --nproc-per-node 4 tensor_parallel_flux.py
 
 `tp_degree` is taken from `world_size` above, so `--nproc-per-node 4` shards the transformer across 4 devices.
 
+For a TP group within a larger distributed job, pass its one-dimensional `DeviceMesh` to
+`TensorParallelConfig(mesh=tp_mesh)` instead.
+
 > [!CAUTION]
 > Loading with a tensor-parallel `parallel_config` isn't supported yet with `device_map`, `quantization_config`, `low_cpu_mem_usage=False`, `use_flashpack=True`, or non-safetensors weights; each raises rather than quietly falling back to loading the full checkpoint.
 >
