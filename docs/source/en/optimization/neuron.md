@@ -59,8 +59,7 @@ TorchNeuron registers `"neuron"` as a `torch.compile` backend name, so component
 `torch.compile` target. The first call (warmup) is slow because it compiles; later calls with the same shapes reuse the compiled graph.
 
 > [!IMPORTANT]
-> TorchNeuron requires **static shapes**, so pass `dynamic=False`. A new `height` or `width` compiles again for that
-> shape, once; shapes already seen are reused. Changing `num_inference_steps` doesn't recompile.
+> TorchNeuron requires *static shapes*, so pass `dynamic=False`. A new `height` or `width` compiles again for that shape. Shapes already seen are reused. Changing `num_inference_steps` doesn't recompile.
 
 ```python
 import torch
