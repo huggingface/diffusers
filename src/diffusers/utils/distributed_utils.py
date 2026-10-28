@@ -34,3 +34,16 @@ def is_torch_dist_rank_zero() -> bool:
         return dist_module.get_rank() == 0
     except (RuntimeError, ValueError):
         return True
+
+
+def sync_default_rng_seed(group=None) -> None:
+    """Reset the default RNGs of every rank in `group` to the seed of the group's first rank.
+
+    Under tensor or context parallelism, every rank must draw the same random numbers (initial latents, scheduler
+    noise), or the sharded activations stop matching and the output is noise. Fresh processes start from different
+    seeds, so without this, a pipeline call without a `generator` breaks. Ranks are reset even when their seeds already
+    match, because the same seed does not mean the same position in the stream.
+    """
+    seeds = [None] * torch.distributed.get_world_size(group)
+    torch.distributed.all_gather_object(seeds, torch.initial_seed(), group=group)
+    torch.manual_seed(seeds[0])
