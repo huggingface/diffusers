@@ -320,7 +320,6 @@ class PikaH3FlexFL2VATextEncoderStep(ModularPipelineBlocks):
         return components, state
 
 
-# Copied from diffusers.modular_pipelines.minimax_h3.encoders.MiniMaxH3KeyframeVaeEncoderStep with \bMiniMaxH3->PikaH3Flex, minimax-h3->pika-h3-flex
 class PikaH3FlexKeyframeVaeEncoderStep(ModularPipelineBlocks):
     model_name = "pika-h3-flex"
 
@@ -370,7 +369,8 @@ class PikaH3FlexKeyframeVaeEncoderStep(ModularPipelineBlocks):
         device = components._execution_device
 
         # A keyframe is a single frame, so the VAE runs its spatial encoder alone with none of the 17-frame
-        # temporal chunking.
+        # temporal chunking. The latents are then rounded to bfloat16 precision: the fl2va adapter's
+        # `bf16_conditioning_v1` policy, which the released package enforces, so a seed yields the same sample here.
         block_state.condition_latents = [
             encode_vae_condition(
                 components.vae,
@@ -379,6 +379,8 @@ class PikaH3FlexKeyframeVaeEncoderStep(ModularPipelineBlocks):
                 components.pixel_std,
                 components.keyframe_encode_seed,
             )
+            .to(torch.bfloat16)
+            .to(torch.float32)
             for image in block_state.keyframes
         ]
 
