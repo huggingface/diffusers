@@ -128,6 +128,7 @@ class PikaH3FlexAutoBeforeEncodeStep(ConditionalPipelineBlocks):
 
 
 # auto_docstring
+# Copied from diffusers.modular_pipelines.minimax_h3.modular_blocks_minimax_h3.MiniMaxH3AutoTextEncoderStep with \bMiniMaxH3->PikaH3Flex, minimax-h3->pika-h3-flex
 class PikaH3FlexAutoTextEncoderStep(ConditionalPipelineBlocks):
     """
     Text encoder block. Every branch encodes MiniMax-H3's presentation of the request with the Qwen3-VL conditioner.
@@ -183,6 +184,7 @@ class PikaH3FlexAutoTextEncoderStep(ConditionalPipelineBlocks):
 
 
 # auto_docstring
+# Copied from diffusers.modular_pipelines.minimax_h3.modular_blocks_minimax_h3.MiniMaxH3AutoVaeEncoderStep with \bMiniMaxH3->PikaH3Flex, minimax-h3->pika-h3-flex
 class PikaH3FlexAutoVaeEncoderStep(ConditionalPipelineBlocks):
     """
     VAE encoder block.
@@ -612,6 +614,7 @@ class PikaH3FlexAutoDenoiseStep(ConditionalPipelineBlocks):
 
 
 # auto_docstring
+# Copied from diffusers.modular_pipelines.minimax_h3.modular_blocks_minimax_h3.MiniMaxH3DecodeStep with \bMiniMaxH3->PikaH3Flex, minimax-h3->pika-h3-flex
 class PikaH3FlexDecodeStep(SequentialPipelineBlocks):
     """
     Decodes the denoised rows of the packed sequence into the generated video and its soundtrack.

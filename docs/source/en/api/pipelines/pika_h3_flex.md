@@ -124,7 +124,7 @@ encode_video(
 )
 ```
 
-The `ref2va` workflow takes an ordered list of references — up to 9 images, 3 videos and 3 audio clips, 12 in total — the way MiniMax-H3 does, with one reference class per modality:
+The `ref2va` workflow takes an ordered list of references — up to 9 images, 3 videos and 3 audio clips, 12 in total — the way MiniMax-H3 does, with one reference class per modality. It is also the request that needs the most memory: the references add their own rows to the sequence, and at 768p the transformer alone fills an 80 GB card. The example below therefore streams the transformer's blocks from CPU memory one at a time, while the manager moves the other components on and off the device as before. It runs a 768p reference request on one 80 GB card; without the streaming, keep to 480p.
 
 ```py
 import torch
@@ -144,6 +144,15 @@ pipe = ModularPipeline.from_pretrained(
 pipe.load_components(dtype=torch.bfloat16)
 pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex-Early-Access", weight_name="ref2va/adapter.safetensors")
 
+# Keep the transformer in CPU memory and bring in one block at a time while it runs.
+pipe.transformer_ref.enable_group_offload(
+    onload_device=torch.device("cuda"),
+    offload_device=torch.device("cpu"),
+    offload_type="block_level",
+    num_blocks_per_group=1,
+    use_stream=True,
+)
+
 results = pipe(
     prompt="subject_definitions: <Subject 1> is the woman in <Picture 1>. summary: [reference generation] <Subject 1> waves at the camera.",
     references=[
@@ -151,8 +160,8 @@ results = pipe(
         PikaH3FlexVideoReference.from_file("motion_ref.mp4"),  # frames, their `fps` and the soundtrack
         PikaH3FlexAudioReference.from_file("voice.wav"),  # waveform and its `sample_rate`
     ],
-    height=480,
-    width=832,
+    height=768,
+    width=1344,
     num_frames=124,
     generator=torch.Generator("cuda").manual_seed(42),
     output=["videos", "audio", "sampling_rate"],
