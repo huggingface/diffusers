@@ -40,9 +40,8 @@ def sync_default_rng_seed(group=None, device=None) -> None:
     """Reset the default RNGs of every rank in `group` to the seed of the group's first rank.
 
     Under tensor or context parallelism, every rank must draw the same random numbers (initial latents, scheduler
-    noise), or the sharded activations stop matching and the output is noise. Fresh processes start from different
-    seeds, so without this, a pipeline call without a `generator` breaks. Ranks are reset even when their seeds already
-    match, because the same seed does not mean the same position in the stream.
+    noise), or the sharded activations stop matching and the output is noise. Ranks are reset even when their seeds
+    already match, because the same seed does not mean the same position in the stream.
     """
     seeds = [torch.initial_seed()]
     src = torch.distributed.get_global_rank(group, 0) if group is not None else 0
