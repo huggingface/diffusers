@@ -238,15 +238,16 @@ class PikaH3FlexAutoVaeEncoderStep(ConditionalPipelineBlocks):
 class PikaH3FlexCoreDenoiseStep(SequentialPipelineBlocks):
     """
     Core denoising workflow for `t2va`: builds the packed layout, draws and packs the noise, plans the per-row
-    timesteps of the six evaluations, runs the re-noising loop against the `transformer` partition with the `fl2va`
-    adapter and unpacks the denoised rows back into latents.
+    timesteps of the six steps, runs the re-noising loop against the `transformer` partition with the `fl2va` adapter
+    and unpacks the denoised rows back into latents.
 
       Components:
-          scheduler (`PikaH3FlexScheduler`) audio_scheduler (`PikaH3FlexScheduler`) transformer
+          scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`) transformer
           (`MiniMaxH3Transformer3DModel`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
+          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192) denoising_step_list (default: [1000,
+          750, 500, 250, 100, 40, 0])
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -303,7 +304,7 @@ class PikaH3FlexCoreDenoiseStep(SequentialPipelineBlocks):
     def description(self):
         return (
             "Core denoising workflow for `t2va`: builds the packed layout, draws and packs the noise, plans the "
-            "per-row timesteps of the six evaluations, runs the re-noising loop against the `transformer` partition "
+            "per-row timesteps of the six steps, runs the re-noising loop against the `transformer` partition "
             "with the `fl2va` adapter and unpacks the denoised rows back into latents."
         )
 
@@ -329,15 +330,16 @@ class PikaH3FlexCoreDenoiseStep(SequentialPipelineBlocks):
 class PikaH3FlexFL2VACoreDenoiseStep(SequentialPipelineBlocks):
     """
     Core denoising workflow for `fl2va`: builds the packed layout with the keyframes anchored, draws and packs the
-    noise around the keyframe conditioning, plans the per-row timesteps of the six evaluations, runs the re-noising
-    loop against the `transformer` partition with the `fl2va` adapter and unpacks the denoised rows back into latents.
+    noise around the keyframe conditioning, plans the per-row timesteps of the six steps, runs the re-noising loop
+    against the `transformer` partition with the `fl2va` adapter and unpacks the denoised rows back into latents.
 
       Components:
-          scheduler (`PikaH3FlexScheduler`) audio_scheduler (`PikaH3FlexScheduler`) transformer
+          scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`) transformer
           (`MiniMaxH3Transformer3DModel`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
+          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192) denoising_step_list (default: [1000,
+          750, 500, 250, 100, 40, 0])
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -402,7 +404,7 @@ class PikaH3FlexFL2VACoreDenoiseStep(SequentialPipelineBlocks):
     def description(self):
         return (
             "Core denoising workflow for `fl2va`: builds the packed layout with the keyframes anchored, draws and "
-            "packs the noise around the keyframe conditioning, plans the per-row timesteps of the six evaluations, "
+            "packs the noise around the keyframe conditioning, plans the per-row timesteps of the six steps, "
             "runs the re-noising loop against the `transformer` partition with the `fl2va` adapter and unpacks the "
             "denoised rows back into latents."
         )
@@ -429,12 +431,15 @@ class PikaH3FlexFL2VACoreDenoiseStep(SequentialPipelineBlocks):
 class PikaH3FlexRef2VACoreDenoiseStep(SequentialPipelineBlocks):
     """
     Core denoising workflow for `ref2va`: builds the packed layout with one block per reference, draws and packs the
-    noise, plans the per-row timesteps of the six evaluations, runs the re-noising loop against the `transformer_ref`
+    noise, plans the per-row timesteps of the six steps, runs the re-noising loop against the `transformer_ref`
     partition with the `ref2va` adapter and unpacks the denoised rows back into latents.
 
       Components:
-          scheduler (`PikaH3FlexScheduler`) audio_scheduler (`PikaH3FlexScheduler`) transformer_ref
+          scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`) transformer_ref
           (`MiniMaxH3Transformer3DModel`)
+
+      Configs:
+          denoising_step_list (default: [1000, 750, 500, 250, 100, 40, 0])
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -500,7 +505,7 @@ class PikaH3FlexRef2VACoreDenoiseStep(SequentialPipelineBlocks):
     def description(self):
         return (
             "Core denoising workflow for `ref2va`: builds the packed layout with one block per reference, draws and "
-            "packs the noise, plans the per-row timesteps of the six evaluations, runs the re-noising loop against "
+            "packs the noise, plans the per-row timesteps of the six steps, runs the re-noising loop against "
             "the `transformer_ref` partition with the `ref2va` adapter and unpacks the denoised rows back into "
             "latents."
         )
@@ -535,11 +540,12 @@ class PikaH3FlexAutoDenoiseStep(ConditionalPipelineBlocks):
          adapter.
 
       Components:
-          scheduler (`PikaH3FlexScheduler`) audio_scheduler (`PikaH3FlexScheduler`) transformer_ref
+          scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`) transformer_ref
           (`MiniMaxH3Transformer3DModel`) transformer (`MiniMaxH3Transformer3DModel`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
+          denoising_step_list (default: [1000, 750, 500, 250, 100, 40, 0]) canvas_short_edge (default: 768)
+          canvas_max_pixels (default: 1032192)
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -674,12 +680,13 @@ class PikaH3FlexBlocks(SequentialPipelineBlocks):
       Components:
           image_processor (`VaeImageProcessor`) text_encoder (`Qwen3VLForConditionalGeneration`) tokenizer
           (`Qwen2Tokenizer`) processor (`Qwen3VLProcessor`) vae (`AutoencoderKLMiniMaxH3`) audio_vae
-          (`AutoencoderKLMiniMaxH3Audio`) scheduler (`PikaH3FlexScheduler`) audio_scheduler (`PikaH3FlexScheduler`)
+          (`AutoencoderKLMiniMaxH3Audio`) scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`)
           transformer_ref (`MiniMaxH3Transformer3DModel`) transformer (`MiniMaxH3Transformer3DModel`) video_processor
           (`VideoProcessor`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
+          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192) denoising_step_list (default: [1000,
+          750, 500, 250, 100, 40, 0])
 
       Inputs:
           references (`list`, *optional*):

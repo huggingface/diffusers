@@ -850,8 +850,6 @@
       title: MiniMaxH3Scheduler
     - local: api/schedulers/piflow
       title: PiflowScheduler
-    - local: api/schedulers/pika_h3_flex
-      title: PikaH3FlexScheduler
     - local: api/schedulers/pndm
       title: PNDMScheduler
     - local: api/schedulers/repaint

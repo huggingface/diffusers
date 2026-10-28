@@ -15,7 +15,7 @@
 import numpy as np
 import torch
 
-from ...schedulers import PikaH3FlexScheduler
+from ...schedulers import MiniMaxH3Scheduler
 from ...utils import logging
 from ...utils.torch_utils import maybe_adjust_dtype_for_device, randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
@@ -907,7 +907,7 @@ class PikaH3FlexPrepareLatentsStep(ModularPipelineBlocks):
         return components, state
 
 
-# Copied from diffusers.modular_pipelines.minimax_h3.before_denoise.MiniMaxH3PrepareConditionLatentsStep with \bMiniMaxH3->PikaH3Flex, minimax-h3->pika-h3-flex
+# Copied from diffusers.modular_pipelines.minimax_h3.before_denoise.MiniMaxH3PrepareConditionLatentsStep with \bMiniMaxH3->PikaH3Flex, minimax-h3->pika-h3-flex, PikaH3FlexScheduler->MiniMaxH3Scheduler
 class PikaH3FlexPrepareConditionLatentsStep(ModularPipelineBlocks):
     model_name = "pika-h3-flex"
 
@@ -922,7 +922,7 @@ class PikaH3FlexPrepareConditionLatentsStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("scheduler", PikaH3FlexScheduler)]
+        return [ComponentSpec("scheduler", MiniMaxH3Scheduler)]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -1142,20 +1142,25 @@ class PikaH3FlexSetTimestepsStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Initializes the two re-noising ladders — `shift = 12.0` for video, `shift = 3.0` for audio, over the "
-            "six knots the released adapters were trained for — and stages the row-to-timestep plan of every "
-            "evaluation. One forward serves every modality and every noise level at once: the generated rows walk "
-            "down their own ladder while the conditioning rows stay pinned at their noise-augmentation level, and "
-            "that assignment is static per evaluation. There is no `num_inference_steps`: the evaluation count is "
-            "the adapter's, fixed by the knots of each scheduler."
+            "Initializes the two six-step schedules from the pipeline's `denoising_step_list` config — the sigmas the "
+            "released adapters were trained for, which each scheduler pushes through its shift (`12.0` for video, "
+            "`3.0` for audio) — and stages the row-to-timestep plan of every step. One forward serves every modality "
+            "and every noise level at once: the generated rows step down their own schedule while the conditioning "
+            "rows stay pinned at their noise-augmentation level, and that assignment is static per step. There is no "
+            "`num_inference_steps`: the step count is the adapter's, fixed by the schedule."
         )
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
         return [
-            ComponentSpec("scheduler", PikaH3FlexScheduler),
-            ComponentSpec("audio_scheduler", PikaH3FlexScheduler),
+            ComponentSpec("scheduler", MiniMaxH3Scheduler),
+            ComponentSpec("audio_scheduler", MiniMaxH3Scheduler),
         ]
+
+    @property
+    def expected_configs(self) -> list[ConfigSpec]:
+        # The released adapters' schedule on the 1000 scale: six steps plus the terminal 0, which is never evaluated.
+        return [ConfigSpec("denoising_step_list", [1000, 750, 500, 250, 100, 40, 0])]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -1195,14 +1200,14 @@ class PikaH3FlexSetTimestepsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("timesteps", type_hint=torch.Tensor, description="Timesteps of the video ladder."),
-            OutputParam("audio_timesteps", type_hint=torch.Tensor, description="Timesteps of the audio ladder."),
+            OutputParam("timesteps", type_hint=torch.Tensor, description="Timesteps of the video schedule."),
+            OutputParam("audio_timesteps", type_hint=torch.Tensor, description="Timesteps of the audio schedule."),
             OutputParam(
                 "row_timestep_plan",
                 type_hint=list,
                 description=(
-                    "One `(timestep, timestep_indices)` pair per evaluation: the distinct timesteps of the sequence "
-                    "and the index of every row into them."
+                    "One `(timestep, timestep_indices)` pair per step: the distinct timesteps of the sequence and "
+                    "the index of every row into them."
                 ),
             ),
         ]
@@ -1256,8 +1261,10 @@ class PikaH3FlexSetTimestepsStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         device = components._execution_device
 
-        components.scheduler.set_timesteps(device=device)
-        components.audio_scheduler.set_timesteps(device=device)
+        # Each scheduler pushes the schedule through its own shift (12.0 for video, 3.0 for audio).
+        sigmas = [step / 1000.0 for step in components.config.denoising_step_list]
+        components.scheduler.set_timesteps(sigmas=sigmas, device=device)
+        components.audio_scheduler.set_timesteps(sigmas=sigmas, device=device)
         block_state.timesteps = components.scheduler.timesteps
         block_state.audio_timesteps = components.audio_scheduler.timesteps
 

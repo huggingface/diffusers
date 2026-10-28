@@ -74,7 +74,6 @@ else:
     _import_structure["scheduling_ltx_euler_ancestral_rf"] = ["LTXEulerAncestralRFScheduler"]
     _import_structure["scheduling_minimax_h3"] = ["MiniMaxH3Scheduler"]
     _import_structure["scheduling_piflow"] = ["PiflowScheduler"]
-    _import_structure["scheduling_pika_h3_flex"] = ["PikaH3FlexScheduler"]
     _import_structure["scheduling_pndm"] = ["PNDMScheduler"]
     _import_structure["scheduling_repaint"] = ["RePaintScheduler"]
     _import_structure["scheduling_rfd4_proteina"] = ["RFD4ProteinaScheduler"]
@@ -161,7 +160,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_ltx_euler_ancestral_rf import LTXEulerAncestralRFScheduler
         from .scheduling_minimax_h3 import MiniMaxH3Scheduler
         from .scheduling_piflow import PiflowScheduler
-        from .scheduling_pika_h3_flex import PikaH3FlexScheduler
         from .scheduling_pndm import PNDMScheduler
         from .scheduling_repaint import RePaintScheduler
         from .scheduling_rfd4_proteina import RFD4ProteinaScheduler

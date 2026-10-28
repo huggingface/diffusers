@@ -29,7 +29,14 @@ class:
 
 Everything else is ordinary rectified flow: the exponential shift `sigma' = s*sigma / (1 + (s-1)*sigma)`, and an Euler
 update written as the `x_t` / `x0` blend `x_next = r*x_t + (1 - r)*x0` with `r = sigma_next / sigma`, evaluated in
-float32. Despite the reference class being named "euler ancestral", `eta` is 0 — no noise is ever re-injected.
+float32. Despite the reference class being named "euler ancestral", `eta` is 0.
+
+With `stochastic_sampling=True` the Euler blend is replaced by a re-noising update: each step predicts the clean sample
+`x0`, then re-noises it to the next sigma with fresh noise, so the last step (`sigma_next = 0`) returns `x0`. The
+few-step Pika H3 Flex adapters post-trained on MiniMax-H3 were trained for this update. They run a fixed schedule of
+six steps, which their pipeline passes to `set_timesteps` as explicit `sigmas`; with `shift_provided_sigmas=True` the
+scheduler shifts that grid like its own `linspace` grid. Explicit sigmas used to be taken verbatim; that default is
+deprecated and flips in 0.44.0.
 
 MiniMax-H3 runs **two schedules per request**, one per modality (`shift=12.0` for video, `shift=3.0` for audio). The
 modality is not a property of the scheduler: a pipeline holds two instances, e.g. `scheduler` and `audio_scheduler`.
@@ -40,7 +47,8 @@ from dataclasses import dataclass
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..utils import BaseOutput, deprecate
+from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import SchedulerMixin
 
 
@@ -65,13 +73,23 @@ class MiniMaxH3Scheduler(SchedulerMixin, ConfigMixin):
         shift (`float`, defaults to `12.0`):
             Exponential shift applied to the sigma grid, `sigma' = s*sigma / (1 + (s-1)*sigma)`. The released
             checkpoints use `12.0` for video latents and `3.0` for audio latents.
+        stochastic_sampling (`bool`, defaults to `False`):
+            Replace the Euler blend with a re-noising update: predict the clean sample, then re-noise it to the next
+            sigma with fresh noise. The few-step Pika H3 Flex adapters were trained for this update; the base
+            checkpoints were not.
+        shift_provided_sigmas (`bool`, *optional*):
+            Whether explicit `sigmas` passed to [`~MiniMaxH3Scheduler.set_timesteps`] are a base grid the scheduler
+            shifts, like its `linspace` grid, or a finished schedule taken verbatim. Unset means verbatim with a
+            deprecation warning; the default becomes `True` in 0.44.0.
     """
 
     _compatibles = []
     order = 1
 
     @register_to_config
-    def __init__(self, shift: float = 12.0):
+    def __init__(
+        self, shift: float = 12.0, stochastic_sampling: bool = False, shift_provided_sigmas: bool | None = None
+    ):
         if shift <= 0:
             raise ValueError(f"`shift` must be positive, got {shift}.")
 
@@ -131,9 +149,10 @@ class MiniMaxH3Scheduler(SchedulerMixin, ConfigMixin):
         Build the sigma / timestep schedule.
 
         The grid is `linspace(1, 0, num_inference_steps)` pushed through the exponential shift, with consecutive
-        duplicates collapsed. The terminal `0` is already part of that grid — the shift maps `0` to exactly `0` — so
-        the schedule holds `num_inference_steps` sigmas and drives `num_inference_steps - 1` model evaluations, exposed
-        as `self.timesteps = 1 - sigmas[:-1]`.
+        duplicates collapsed, or the explicit `sigmas`, shifted as well when `shift_provided_sigmas` is set. The
+        terminal `0` is already part of the grid — the shift maps `0` to exactly `0` — so the schedule holds
+        `num_inference_steps` sigmas and drives `num_inference_steps - 1` model evaluations, exposed as
+        `self.timesteps = 1 - sigmas[:-1]`.
 
         Args:
             num_inference_steps (`int`, *optional*):
@@ -142,8 +161,9 @@ class MiniMaxH3Scheduler(SchedulerMixin, ConfigMixin):
                 Device the schedule tensors are moved to. The grid itself is always built on CPU in float32 so the
                 schedule does not depend on the accelerator.
             sigmas (`list[float]` or `torch.Tensor`, *optional*):
-                A fully-formed sigma schedule, used verbatim (no shifting, no deduplication). It must be strictly
-                decreasing and terminate at `0.0`.
+                An explicit grid, strictly decreasing and terminating at `0.0`. With `shift_provided_sigmas=True` it
+                is a base grid in `[0, 1]` that goes through the shift like the `linspace` grid; otherwise it is used
+                verbatim (deprecated default).
         """
         if sigmas is None:
             if num_inference_steps is None or num_inference_steps < 2:
@@ -158,7 +178,20 @@ class MiniMaxH3Scheduler(SchedulerMixin, ConfigMixin):
             # The shift compresses the grid near sigma = 1; collapse any float32 collisions it creates.
             sigmas = torch.unique_consecutive(sigmas)
         else:
-            sigmas = torch.as_tensor(sigmas, dtype=torch.float32).flatten().cpu()
+            sigmas = torch.as_tensor(sigmas, dtype=torch.float64).flatten().cpu()
+            if self.config.shift_provided_sigmas is None:
+                deprecate(
+                    "sigmas",
+                    "0.44.0",
+                    "`MiniMaxH3Scheduler.set_timesteps` takes explicit `sigmas` verbatim, but from 0.44.0 it will "
+                    "push them through the scheduler's shift. Set `shift_provided_sigmas=True` in the scheduler "
+                    "config to opt in now, or `shift_provided_sigmas=False` to keep passing a finished schedule.",
+                    standard_warn=False,
+                )
+            if self.config.shift_provided_sigmas:
+                # Shifted in float64 before the float32 cast, which is how the few-step reference builds its schedule.
+                sigmas = self._shift * sigmas / (1 + (self._shift - 1) * sigmas)
+            sigmas = sigmas.to(torch.float32)
             if sigmas.numel() < 2 or not bool((sigmas[1:] < sigmas[:-1]).all()) or sigmas[-1].item() != 0.0:
                 raise ValueError("`sigmas` must hold at least two strictly decreasing values ending at 0.0.")
 
@@ -225,14 +258,17 @@ class MiniMaxH3Scheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: float | torch.FloatTensor,
         sample: torch.FloatTensor,
+        generator: torch.Generator | None = None,
         return_dict: bool = True,
     ) -> MiniMaxH3SchedulerOutput | tuple:
         r"""
-        Take one Euler (`eta = 0`) step.
+        Take one Euler (`eta = 0`) step, or one re-noising step with `stochastic_sampling`.
 
         The model output is a data-ward velocity, so the denoised estimate is `x0 = x_t + (1 - t) * v` — note the `+`,
         the opposite of the usual flow-match convention. The update is then the blend `x_next = r*x_t + (1 - r)*x0`
-        with `r = sigma_next / sigma`, evaluated in float32 for half-precision samples.
+        with `r = sigma_next / sigma`, evaluated in float32 for half-precision samples. With `stochastic_sampling` the
+        update is `x_next = (1 - sigma_next) * x0 + sigma_next * noise` with fresh noise from `generator`, everything
+        in float32, so the last step (`sigma_next = 0`) returns `x0`.
 
         Args:
             model_output (`torch.FloatTensor`):
@@ -241,6 +277,8 @@ class MiniMaxH3Scheduler(SchedulerMixin, ConfigMixin):
                 The current timestep, one of `self.timesteps` (so `timestep == 1 - sigma`).
             sample (`torch.FloatTensor`):
                 The current sample `x_t`.
+            generator (`torch.Generator`, *optional*):
+                The generator the fresh noise is drawn from with `stochastic_sampling`; unused otherwise.
             return_dict (`bool`, defaults to `True`):
                 Whether to return a [`MiniMaxH3SchedulerOutput`] instead of a plain tuple.
 
@@ -256,6 +294,19 @@ class MiniMaxH3Scheduler(SchedulerMixin, ConfigMixin):
 
         if self._step_index is None:
             self._step_index = self.index_for_timestep(timestep) if self._begin_index is None else self._begin_index
+
+        if self.config.stochastic_sampling:
+            # Few-step re-noising: x0 from the grid sigma, then re-noised to the next sigma with fresh noise. The
+            # released few-step sampler works in float32 off the grid sigma, so this branch does too.
+            sigma = self.sigmas[self._step_index].to(device=sample.device, dtype=torch.float32)
+            sigma_next = self.sigmas[self._step_index + 1].to(device=sample.device, dtype=torch.float32)
+            denoised = sample.to(torch.float32) + sigma * model_output.to(torch.float32)
+            noise = randn_tensor(sample.shape, generator=generator, device=sample.device, dtype=torch.float32)
+            prev_sample = ((1.0 - sigma_next) * denoised + sigma_next * noise).to(dtype=sample.dtype)
+            self._step_index += 1
+            if not return_dict:
+                return (prev_sample,)
+            return MiniMaxH3SchedulerOutput(prev_sample=prev_sample)
 
         # x0 from the data-ward velocity. The sigma used here is recovered from the *timestep* the
         # transformer was conditioned on, whereas the Euler ratio below uses the sigma grid: for
