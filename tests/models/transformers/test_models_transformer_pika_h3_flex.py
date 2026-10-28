@@ -15,10 +15,9 @@
 
 import torch
 
-from diffusers import MiniMaxH3Transformer3DModel, PikaH3FlexTransformer3DModel
+from diffusers import PikaH3FlexTransformer3DModel
 from diffusers.models.transformers.transformer_pika_h3_flex import (
-    PikaH3FlexAdaLayerNormModulation,
-    PikaH3FlexTransformerOutput,
+    PikaH3FlexAdaLayerNormModulation, PikaH3FlexTransformerOutput,
 )
 from diffusers.utils.torch_utils import randn_tensor
 
