@@ -23,7 +23,7 @@ import torch.nn.functional as F
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 from ...models import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
-from ...pipelines.ltx2.connectors import LTX2TextConnectors
+from ...models.condition_embedders import LTX2TextConnectors
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam

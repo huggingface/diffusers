@@ -25,7 +25,7 @@ from diffusers import (
     StableAudio3DiTModel,
     StableAudio3Pipeline,
 )
-from diffusers.pipelines.stable_audio_3.modeling_stable_audio_3 import StableAudio3DurationEmbedder
+from diffusers.models.condition_embedders import StableAudio3DurationEmbedder
 
 from ...testing_utils import (
     enable_full_determinism,

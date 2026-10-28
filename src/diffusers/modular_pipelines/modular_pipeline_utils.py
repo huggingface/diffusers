@@ -27,7 +27,7 @@ from ..configuration_utils import ConfigMixin, FrozenDict
 from ..loaders.single_file_utils import _is_single_file_path_or_url
 from ..utils import DIFFUSERS_LOAD_ID_FIELDS, _resolve_dtype, is_sdnq_available, is_torch_available, logging
 from ..utils.constants import DIFFUSERS_SDNQ_TRANSFORMERS
-from ..utils.import_utils import _is_package_available
+from ..utils.import_utils import _is_distribution_installed
 
 
 if is_torch_available():
@@ -571,6 +571,15 @@ class InputParam:
     # resolves its own default at runtime in `get_block_state`
     defaults_by_block: dict[str, Any] = None
 
+    def __post_init__(self):
+        if self.required and self.default is not None:
+            logger.warning(
+                f"InputParam '{self.name}' is required and declares a default ({self.default!r}), which cannot both "
+                f"hold: a required input is never missing, so its default is unreachable. Keeping the default and "
+                f"treating the input as optional. Pass `default=None` explicitly if '{self.name}' is meant to be required."
+            )
+            self.required = False
+
     def __repr__(self):
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
 
@@ -1010,7 +1019,9 @@ def _validate_requirements(reqs):
 
     final: dict[str, str] = {}
     for req, specified_ver in normalized_reqs.items():
-        req_available, req_actual_ver = _is_package_available(req)
+        # Requirement names can come straight out of a downloaded `modular_config.json`, so they are resolved against
+        # the installed distributions instead of being handed to the import machinery.
+        req_available, req_actual_ver = _is_distribution_installed(req)
         if not req_available:
             logger.warning(f"{req} was specified in the requirements but wasn't found in the current environment.")
 
