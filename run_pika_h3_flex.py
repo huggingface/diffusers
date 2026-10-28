@@ -5,8 +5,9 @@ Defaults follow the reference package's CLI: 768p, 16:9, 5 seconds, seed 0, the 
 The components live in a `ComponentsManager` with auto CPU offload: every model stays in host memory and is moved onto
 the device as the blocks reach it. On an 80 GB card the transformer alone peaks near 78 GB on a 768p keyframe
 request, so by default its blocks are additionally group-offloaded and streamed from host memory — the reference
-package's `--cpu-offload` mode — which keeps the sampling peak around 30 GB. Pass `--resident_transformer` to keep the
-whole transformer on the device instead, which is faster and fits 480p requests and 768p text-only ones.
+package's `--cpu-offload` mode — which fits a 768p reference request on one 80 GB card (about 77 GB peak, with the
+conditioner and the VAEs still resident). Pass `--resident_transformer` to keep the whole transformer on the device
+instead, which is faster and fits 480p requests and 768p text-only ones.
 
 Examples:
 

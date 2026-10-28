@@ -113,8 +113,8 @@ class PikaH3FlexAdaLayerNormModulation(nn.Module):
     layout of the returned tensors is `[t0_mod0, t0_mod1, t0_mod2, t1_mod0, ...]`, which is what `timestep_indices *
     PIKA_H3_FLEX_MODALITY_NUM + token_tags` addresses.
 
-    Same module layout and checkpoint keys as `MiniMaxH3AdaLayerNormModulation`. `temb` is always casted to
-    float32 unlike `MiniMaxH3AdaLayerNormModulation`.
+    Same module layout and checkpoint keys as `MiniMaxH3AdaLayerNormModulation`. `temb` is always casted to float32
+    unlike `MiniMaxH3AdaLayerNormModulation`.
     """
 
     def __init__(self, time_embed_dim: int, hidden_size: int):
@@ -138,8 +138,8 @@ class PikaH3FlexAdaLayerNormOut(nn.Module):
     Same module layout and checkpoint keys as [`~models.normalization.AdaLayerNormContinuous`] (`norm` plus a `linear`
     projecting the conditioning embedding to `2 * hidden_size`), with two MiniMax-H3 specifics: the modulation table
     holds one row per *timestep* and is addressed per row of the packed sequence rather than per batch item, and the
-    two halves of the projection are `shift` then `scale`. As in [`PikaH3FlexAdaLayerNormModulation`], `temb` is
-    always casted to float32.
+    two halves of the projection are `shift` then `scale`. As in [`PikaH3FlexAdaLayerNormModulation`], `temb` is always
+    casted to float32.
     """
 
     def __init__(self, hidden_size: int, time_embed_dim: int, eps: float):
