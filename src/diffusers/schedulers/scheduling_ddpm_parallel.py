@@ -555,7 +555,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
 
         # 6. Add noise
         variance = 0
-        if t > 0:
+        if prev_t >= 0:
             device = model_output.device
             variance_noise = randn_tensor(
                 model_output.shape,
