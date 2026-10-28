@@ -384,7 +384,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             for name in ("to_q", "to_k", "to_v", "add_q_proj", "add_k_proj", "add_v_proj")
         },
         **{f"layers.*.self_attn.{name}": "rowwise" for name in ("to_out", "to_add_out")},
-        **{f"layers.*.{mlp}.{name}": "colwise" for mlp in ("mlp", "mlp_moe_gen") for name in ("gate_proj", "up_proj")},
+        **{f"layers.*.{mlp}.up_proj": "colwise" for mlp in ("mlp", "mlp_moe_gen")},
         **{f"layers.*.{mlp}.down_proj": "rowwise" for mlp in ("mlp", "mlp_moe_gen")},
     }
     # Optional context-parallelism seams. They default to ``None`` (no-op) so the
@@ -401,6 +401,17 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
     # so __init__ must accept it. Excluding it here keeps save_pretrained from writing it into
     # config.json — the value is a load-time runtime hint, not part of the model architecture.
     ignore_for_config = ["dtype"]
+
+    def _get_tp_plan(self):
+        tp_plan = super()._get_tp_plan().copy()
+        if self.config.hidden_act == "silu":
+            tp_plan.update(
+                {
+                    "layers.*.mlp.gate_proj": "colwise",
+                    "layers.*.mlp_moe_gen.gate_proj": "colwise",
+                }
+            )
+        return tp_plan
 
     def _resolve_parallel_config(self, config):
         tp = config if isinstance(config, TensorParallelConfig) else getattr(config, "tensor_parallel_config", None)
@@ -456,8 +467,6 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         # Text-model layers live directly on the transformer (flat layout). The published
         # checkpoint must be re-keyed with the leading `model.` prefix stripped — see
         # scripts/build_flat_layout_repo.py for the rewrite.
-        if hidden_act == "relu2":
-            self._tp_plan = {name: style for name, style in self._tp_plan.items() if not name.endswith("gate_proj")}
         self.embed_tokens = nn.Embedding(vocab_size, hidden_size)
         self.layers = nn.ModuleList(
             [
