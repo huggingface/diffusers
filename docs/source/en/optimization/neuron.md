@@ -26,9 +26,7 @@ SDK and install `torch_neuronx`. Once installed, `import torch` loads it automat
 device, so `pipe.to("neuron")` is the only change needed. Add `import torch_neuronx` only if you disabled backend
 autoloading with `TORCH_DEVICE_BACKEND_AUTOLOAD=0`.
 
-Both modes compile kernels to the Neuron executable format (NEFF) the first time they see a new graph, so the first
-call is slow and later calls are fast. Compiled NEFFs are cached on disk, by default under `/tmp`, which is cleared on
-reboot. Set `TORCH_NEURONX_NEFF_CACHE_DIR` to a persistent directory to keep them.
+In eager mode, each operation compiles the first time it runs. In compiled mode, the first call compiles the graph. Both modes cache the compiled Neuron executable format (NEFF) under `tmp/neff_cache` by default, and that directory is cleared on reboot. Set `TORCH_NEURONX_NEFF_CACHE_DIR` to a persistent directory to keep the cache.
 
 ## Eager mode
 
