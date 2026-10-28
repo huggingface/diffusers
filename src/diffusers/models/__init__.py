@@ -162,7 +162,6 @@ if is_torch_available():
     _import_structure["transformers.transformer_nucleusmoe_image"] = ["NucleusMoEImageTransformer2DModel"]
     _import_structure["transformers.transformer_omnigen"] = ["OmniGenTransformer2DModel"]
     _import_structure["transformers.transformer_ovis_image"] = ["OvisImageTransformer2DModel"]
-    _import_structure["transformers.transformer_pika_h3_flex"] = ["PikaH3FlexTransformer3DModel"]
     _import_structure["transformers.transformer_prx"] = ["PRXTransformer2DModel"]
     _import_structure["transformers.transformer_qwenimage"] = ["QwenImageTransformer2DModel"]
     _import_structure["transformers.transformer_qwenimage21"] = ["QwenImage21Transformer2DModel"]
@@ -330,7 +329,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             NucleusMoEImageTransformer2DModel,
             OmniGenTransformer2DModel,
             OvisImageTransformer2DModel,
-            PikaH3FlexTransformer3DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
             PRXTransformer2DModel,

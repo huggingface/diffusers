@@ -244,7 +244,7 @@ class PikaH3FlexCoreDenoiseStep(SequentialPipelineBlocks):
 
       Components:
           scheduler (`PikaH3FlexScheduler`) audio_scheduler (`PikaH3FlexScheduler`) transformer
-          (`PikaH3FlexTransformer3DModel`)
+          (`MiniMaxH3Transformer3DModel`)
 
       Configs:
           canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
@@ -336,7 +336,7 @@ class PikaH3FlexFL2VACoreDenoiseStep(SequentialPipelineBlocks):
 
       Components:
           scheduler (`PikaH3FlexScheduler`) audio_scheduler (`PikaH3FlexScheduler`) transformer
-          (`PikaH3FlexTransformer3DModel`)
+          (`MiniMaxH3Transformer3DModel`)
 
       Configs:
           canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
@@ -438,7 +438,7 @@ class PikaH3FlexRef2VACoreDenoiseStep(SequentialPipelineBlocks):
 
       Components:
           scheduler (`PikaH3FlexScheduler`) audio_scheduler (`PikaH3FlexScheduler`) transformer_ref
-          (`PikaH3FlexTransformer3DModel`)
+          (`MiniMaxH3Transformer3DModel`)
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -540,7 +540,7 @@ class PikaH3FlexAutoDenoiseStep(ConditionalPipelineBlocks):
 
       Components:
           scheduler (`PikaH3FlexScheduler`) audio_scheduler (`PikaH3FlexScheduler`) transformer_ref
-          (`PikaH3FlexTransformer3DModel`) transformer (`PikaH3FlexTransformer3DModel`)
+          (`MiniMaxH3Transformer3DModel`) transformer (`MiniMaxH3Transformer3DModel`)
 
       Configs:
           canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
@@ -679,7 +679,7 @@ class PikaH3FlexBlocks(SequentialPipelineBlocks):
           image_processor (`VaeImageProcessor`) text_encoder (`Qwen3VLForConditionalGeneration`) tokenizer
           (`Qwen2Tokenizer`) processor (`Qwen3VLProcessor`) vae (`AutoencoderKLMiniMaxH3`) audio_vae
           (`AutoencoderKLMiniMaxH3Audio`) scheduler (`PikaH3FlexScheduler`) audio_scheduler (`PikaH3FlexScheduler`)
-          transformer_ref (`PikaH3FlexTransformer3DModel`) transformer (`PikaH3FlexTransformer3DModel`) video_processor
+          transformer_ref (`MiniMaxH3Transformer3DModel`) transformer (`MiniMaxH3Transformer3DModel`) video_processor
           (`VideoProcessor`)
 
       Configs:

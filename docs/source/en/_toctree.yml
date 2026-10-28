@@ -407,8 +407,6 @@
         title: OmniGenTransformer2DModel
       - local: api/models/ovisimage_transformer2d
         title: OvisImageTransformer2DModel
-      - local: api/models/pika_h3_flex_transformer3d
-        title: PikaH3FlexTransformer3DModel
       - local: api/models/pixart_transformer2d
         title: PixArtTransformer2DModel
       - local: api/models/prior_transformer

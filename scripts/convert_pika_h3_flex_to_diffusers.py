@@ -40,8 +40,8 @@ import diffusers
 from diffusers import (
     AutoencoderKLMiniMaxH3,
     AutoencoderKLMiniMaxH3Audio,
+    MiniMaxH3Transformer3DModel,
     PikaH3FlexScheduler,
-    PikaH3FlexTransformer3DModel,
 )
 
 
@@ -91,7 +91,7 @@ def main():
     # 62 GB). The transformer partitions are saved under the Pika class; their weights are MiniMax-H3's, mixed
     # precision as shipped, which `dtype=torch.bfloat16` with the class's `_keep_in_fp32_modules` reproduces.
     for subfolder in ("transformer", "transformer_ref"):
-        model = PikaH3FlexTransformer3DModel.from_pretrained(**base, subfolder=subfolder, dtype=torch.bfloat16)
+        model = MiniMaxH3Transformer3DModel.from_pretrained(**base, subfolder=subfolder, dtype=torch.bfloat16)
         model.save_pretrained(os.path.join(args.output_path, subfolder))
         del model
         print(f"Saved {subfolder}")
@@ -134,8 +134,8 @@ def main():
         "processor": component("transformers", "Qwen3VLProcessor", args.repo_id, "processor"),
         "vae": component("diffusers", "AutoencoderKLMiniMaxH3", args.repo_id, "vae"),
         "audio_vae": component("diffusers", "AutoencoderKLMiniMaxH3Audio", args.repo_id, "audio_vae"),
-        "transformer": component("diffusers", "PikaH3FlexTransformer3DModel", args.repo_id, "transformer"),
-        "transformer_ref": component("diffusers", "PikaH3FlexTransformer3DModel", args.repo_id, "transformer_ref"),
+        "transformer": component("diffusers", "MiniMaxH3Transformer3DModel", args.repo_id, "transformer"),
+        "transformer_ref": component("diffusers", "MiniMaxH3Transformer3DModel", args.repo_id, "transformer_ref"),
         "scheduler": component("diffusers", "PikaH3FlexScheduler", args.repo_id, "scheduler"),
         "audio_scheduler": component("diffusers", "PikaH3FlexScheduler", args.repo_id, "audio_scheduler"),
     }

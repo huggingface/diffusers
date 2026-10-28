@@ -161,11 +161,13 @@ def load_reference(spec: str):
     raise ValueError(f"A reference is `image:<path>`, `video:<path>` or `audio:<path>`, got {spec!r}.")
 
 
-def build_pipeline(partition: str, device: str, memory_reserve_margin: str, resident_transformer: bool):
+def build_pipeline(
+    index_repo: str, partition: str, device: str, memory_reserve_margin: str, resident_transformer: bool
+):
     manager = ComponentsManager()
     manager.enable_auto_cpu_offload(device=device, memory_reserve_margin=memory_reserve_margin)
     # The full blocks pick the workflow per call from the inputs; only the partition's own components are loaded.
-    pipe = ModularPipeline.from_pretrained(INDEX_REPO, components_manager=manager)
+    pipe = ModularPipeline.from_pretrained(index_repo, components_manager=manager)
     # The released VAEs are float32 and the reference decodes them that way; everything else runs in bfloat16.
     pipe.load_components(names=["vae", "audio_vae"], dtype=torch.float32)
     pipe.load_components(workflow=partition, dtype=torch.bfloat16)
@@ -210,6 +212,12 @@ def main():
         help="Keep the whole transformer on the device instead of streaming its blocks from host memory. Faster, "
         "but a 768p keyframe or reference request then needs more than an 80 GB card.",
     )
+    parser.add_argument(
+        "--index_repo",
+        default=INDEX_REPO,
+        help="Repository or local directory holding the `modular_model_index.json` and the two scheduler configs; its "
+        "model components may point at MiniMaxAI/MiniMax-H3 directly.",
+    )
     parser.add_argument("--output_dir", type=Path, default=Path("outputs"))
     args = parser.parse_args()
 
@@ -230,7 +238,9 @@ def main():
             gc.collect()
             torch.cuda.empty_cache()
             partition = PARTITION[task]
-            pipe = build_pipeline(partition, args.device, args.memory_reserve_margin, args.resident_transformer)
+            pipe = build_pipeline(
+                args.index_repo, partition, args.device, args.memory_reserve_margin, args.resident_transformer
+            )
 
         prompt = args.prompt if args.prompt is not None else DEFAULT_PROMPTS[task]
         inputs = {
@@ -272,7 +282,7 @@ def main():
             "num_frames": num_frames,
             "sampling_rate": results["sampling_rate"],
             "seconds": round(elapsed, 1),
-            "index_repo": INDEX_REPO,
+            "index_repo": args.index_repo,
             "adapter_repo": ADAPTER_REPO,
             "adapter_revision": ADAPTER_REVISION,
         }

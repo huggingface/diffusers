@@ -119,13 +119,13 @@ _SHARED_INPUTS = {
 }
 PIKA_H3_FLEX_WORKFLOW_DEFAULTS = {
     "t2va": {
-        "components": {**_SHARED_COMPONENTS, "transformer": "PikaH3FlexTransformer3DModel"},
+        "components": {**_SHARED_COMPONENTS, "transformer": "MiniMaxH3Transformer3DModel"},
         "configs": _SHARED_CONFIGS,
         "required_inputs": ["prompt"],
         "inputs": {**_SHARED_INPUTS, "num_frames": 124},
     },
     "fl2va": {
-        "components": {**_SHARED_COMPONENTS, "transformer": "PikaH3FlexTransformer3DModel"},
+        "components": {**_SHARED_COMPONENTS, "transformer": "MiniMaxH3Transformer3DModel"},
         "configs": _SHARED_CONFIGS,
         "required_inputs": ["prompt"],
         "inputs": {**_SHARED_INPUTS, "num_frames": 124, "image": None, "last_image": None},
@@ -135,7 +135,7 @@ PIKA_H3_FLEX_REF2VA_WORKFLOW_DEFAULTS = {
     "ref2va": {
         "components": {
             **_SHARED_COMPONENTS,
-            "transformer_ref": "PikaH3FlexTransformer3DModel",
+            "transformer_ref": "MiniMaxH3Transformer3DModel",
             "image_processor": "VaeImageProcessor",
         },
         "configs": _SHARED_CONFIGS,
