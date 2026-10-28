@@ -514,11 +514,13 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         trust_remote_code = resolve_trust_remote_code(
             trust_remote_code, pretrained_model_name_or_path, has_remote_code
         )
-        if not has_remote_code and trust_remote_code:
+        if not has_remote_code:
             raise ValueError(
-                "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
+                f"Selected model repository does not appear to have any custom code for {cls.__name__} or does not"
+                " have a valid `modular_config.json` file."
             )
 
+        # Only once the repository is trusted do we act on anything else it declares.
         if "requirements" in config and config["requirements"] is not None:
             _ = _validate_requirements(config["requirements"])
 
