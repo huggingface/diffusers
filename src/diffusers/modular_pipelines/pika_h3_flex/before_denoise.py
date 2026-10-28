@@ -1136,58 +1136,6 @@ class PikaH3FlexRef2VAPrepareLatentsStep(ModularPipelineBlocks):
         return components, state
 
 
-class PikaH3FlexRoundConditionLatentsStep(ModularPipelineBlocks):
-    model_name = "pika-h3-flex"
-
-    @property
-    def description(self) -> str:
-        return (
-            "Rounds the keyframe conditioning latents of a `fl2va` request to bfloat16 before they are noised and "
-            "packed: the `bf16_conditioning_v1` numerics policy of the released `fl2va` adapter, which conditions "
-            "on anchors carried at the transformer's bfloat16 rather than the float32 the VAE encoder emits. The "
-            "`ref2va` adapter conditions in float32 (`fp32_conditioning_v1`) and does not run this block."
-        )
-
-    @property
-    def inputs(self) -> list[InputParam]:
-        return [
-            InputParam(
-                name="condition_latents",
-                type_hint=list[torch.Tensor],
-                required=True,
-                description=(
-                    "The encoded video conditioning latents, one `(1, latent_channels, 1, latent_height, "
-                    "latent_width)` float32 tensor per keyframe in packed order."
-                ),
-            ),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        return [
-            OutputParam(
-                "condition_latents",
-                type_hint=list[torch.Tensor],
-                description="The same latents, rounded to bfloat16 and carried on in float32.",
-            ),
-        ]
-
-    @torch.no_grad()
-    def __call__(
-        self, components: PikaH3FlexModularPipeline, state: PipelineState
-    ) -> tuple[PikaH3FlexModularPipeline, PipelineState]:
-        block_state = self.get_block_state(state)
-
-        # The released package casts the keyframe latents to the prompt embedding's bfloat16 and reads them back as
-        # float32 when it noises them; a bfloat16 round trip is that same rounding.
-        block_state.condition_latents = [
-            latents.to(torch.bfloat16).to(torch.float32) for latents in block_state.condition_latents
-        ]
-
-        self.set_block_state(state, block_state)
-        return components, state
-
-
 class PikaH3FlexSetTimestepsStep(ModularPipelineBlocks):
     model_name = "pika-h3-flex"
 

@@ -27,7 +27,6 @@ from diffusers.modular_pipelines.pika_h3_flex import (
     PikaH3FlexImageReference,
     PikaH3FlexVideoReference,
 )
-from diffusers.modular_pipelines.pika_h3_flex.before_denoise import PikaH3FlexRoundConditionLatentsStep
 from diffusers.modular_pipelines.pika_h3_flex.before_encoder import PikaH3FlexRef2VASetupStep, PikaH3FlexResizeStep
 from diffusers.modular_pipelines.pika_h3_flex.modular_pipeline import PIKA_H3_FLEX_FPS, resolve_tier_rule
 
@@ -41,10 +40,9 @@ from ..testing_utils import (
 )
 
 
-# The blocks every workflow of [`PikaH3FlexBlocks`] runs, in order. A keyframe adds the canvas block, the one block
-# that encodes it and the one that rounds its latents to the `fl2va` adapter's bfloat16 conditioning policy; whether
-# it anchors the first or the last frame is a matter of the packed layout, not of which blocks run, so `fl2va`
-# covers both.
+# The blocks every workflow of [`PikaH3FlexBlocks`] runs, in order. A keyframe adds the canvas block and the one
+# block that encodes it; whether it anchors the first or the last frame is a matter of the packed layout, not of
+# which blocks run, so `fl2va` covers both.
 PIKA_H3_FLEX_WORKFLOWS = {
     "t2va": [
         ("text_encoder", "PikaH3FlexTextEncoderStep"),
@@ -62,7 +60,6 @@ PIKA_H3_FLEX_WORKFLOWS = {
         ("text_encoder", "PikaH3FlexFL2VATextEncoderStep"),
         ("vae_encoder", "PikaH3FlexKeyframeVaeEncoderStep"),
         ("denoise.prepare_layout", "PikaH3FlexPrepareLayoutStep"),
-        ("denoise.round_condition_latents", "PikaH3FlexRoundConditionLatentsStep"),
         ("denoise.prepare_condition_latents", "PikaH3FlexPrepareConditionLatentsStep"),
         ("denoise.prepare_latents", "PikaH3FlexPrepareLatentsStep"),
         ("denoise.prepare_latents_fl2va", "PikaH3FlexFL2VAPrepareLatentsStep"),
@@ -647,25 +644,6 @@ class TestPikaH3FlexModularBlocks:
         assert [keyframe.size for keyframe in state.get("keyframes")] == [(1344, 768), (1344, 768)]
         assert state.get("keyframe_anchors") == ("first", "last")
 
-    def test_fl2va_condition_latents_are_rounded_to_bf16(self):
-        r"""
-        The `fl2va` adapter's `bf16_conditioning_v1` policy: the keyframe anchors are rounded to bfloat16 before they
-        are noised, which the dedicated block does on the float32 latents the VAE encoder emits.
-        """
-        latents = torch.randn(1, 4, 1, 2, 2, generator=torch.Generator("cpu").manual_seed(0))
-        pipe = PikaH3FlexRoundConditionLatentsStep().init_pipeline()
-
-        rounded = pipe(condition_latents=[latents], output="condition_latents")
-
-        assert rounded[0].dtype == torch.float32
-        assert torch.equal(rounded[0], latents.to(torch.bfloat16).float())
-        assert not torch.equal(rounded[0], latents)
-
-    @pytest.mark.parametrize(
-        "canvas,expected_size",
-        [((480, 832), (1696, 1024)), ((768, 1344), (3424, 2048))],
-        ids=["p480", "p768"],
-    )
     def test_reference_image_resolution_follows_the_canvas_tier(self, canvas, expected_size):
         r"""
         An image reference is encoded at the reference short edge of the tier the *generated* canvas falls in — 1024

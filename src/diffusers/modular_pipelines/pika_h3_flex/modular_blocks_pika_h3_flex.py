@@ -24,7 +24,6 @@ from .before_denoise import (
     PikaH3FlexPrepareLayoutStep,
     PikaH3FlexRef2VAPrepareLatentsStep,
     PikaH3FlexRef2VAPrepareLayoutStep,
-    PikaH3FlexRoundConditionLatentsStep,
     PikaH3FlexSetTimestepsStep,
 )
 from .before_encoder import PikaH3FlexRef2VASetupStep, PikaH3FlexResizeStep
@@ -329,10 +328,9 @@ class PikaH3FlexCoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class PikaH3FlexFL2VACoreDenoiseStep(SequentialPipelineBlocks):
     """
-    Core denoising workflow for `fl2va`: builds the packed layout with the keyframes anchored, rounds the keyframe
-    conditioning to the adapter's bfloat16 policy, draws and packs the noise around it, plans the per-row timesteps of
-    the six evaluations, runs the re-noising loop against the `transformer` partition with the `fl2va` adapter and
-    unpacks the denoised rows back into latents.
+    Core denoising workflow for `fl2va`: builds the packed layout with the keyframes anchored, draws and packs the
+    noise around the keyframe conditioning, plans the per-row timesteps of the six evaluations, runs the re-noising
+    loop against the `transformer` partition with the `fl2va` adapter and unpacks the denoised rows back into latents.
 
       Components:
           scheduler (`PikaH3FlexScheduler`) audio_scheduler (`PikaH3FlexScheduler`) transformer
@@ -353,12 +351,12 @@ class PikaH3FlexFL2VACoreDenoiseStep(SequentialPipelineBlocks):
               decode; the resulting duration must stay between 5 and 15 seconds.
           keyframe_anchors (`tuple`, *optional*, defaults to ()):
               Which end of the video every keyframe is anchored to, in packed order.
-          condition_latents (`list`):
-              The encoded video conditioning latents, one `(1, latent_channels, 1, latent_height, latent_width)`
-              float32 tensor per keyframe in packed order.
           generator (`Generator`, *optional*):
               The generator of the request. The conditioning noise is drawn from it first, one draw per condition,
               before the noise of the generated rows.
+          condition_latents (`list`):
+              The encoded video conditioning latents, one `(1, latent_channels, num_latent_frames, latent_height,
+              latent_width)` tensor per condition in packed order.
           latents (`Tensor`, *optional*):
               Pre-generated video noise of shape `(1, 24, num_latent_frames, latent_height, latent_width)`, used
               instead of the draw.
@@ -383,7 +381,6 @@ class PikaH3FlexFL2VACoreDenoiseStep(SequentialPipelineBlocks):
     model_name = "pika-h3-flex"
     block_classes = [
         PikaH3FlexPrepareLayoutStep,
-        PikaH3FlexRoundConditionLatentsStep,
         PikaH3FlexPrepareConditionLatentsStep,
         PikaH3FlexPrepareLatentsStep,
         PikaH3FlexFL2VAPrepareLatentsStep,
@@ -393,7 +390,6 @@ class PikaH3FlexFL2VACoreDenoiseStep(SequentialPipelineBlocks):
     ]
     block_names = [
         "prepare_layout",
-        "round_condition_latents",
         "prepare_condition_latents",
         "prepare_latents",
         "prepare_latents_fl2va",
@@ -405,10 +401,10 @@ class PikaH3FlexFL2VACoreDenoiseStep(SequentialPipelineBlocks):
     @property
     def description(self):
         return (
-            "Core denoising workflow for `fl2va`: builds the packed layout with the keyframes anchored, rounds the "
-            "keyframe conditioning to the adapter's bfloat16 policy, draws and packs the noise around it, plans the "
-            "per-row timesteps of the six evaluations, runs the re-noising loop against the `transformer` partition "
-            "with the `fl2va` adapter and unpacks the denoised rows back into latents."
+            "Core denoising workflow for `fl2va`: builds the packed layout with the keyframes anchored, draws and "
+            "packs the noise around the keyframe conditioning, plans the per-row timesteps of the six evaluations, "
+            "runs the re-noising loop against the `transformer` partition with the `fl2va` adapter and unpacks the "
+            "denoised rows back into latents."
         )
 
     @property
