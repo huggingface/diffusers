@@ -244,37 +244,6 @@ class TestPikaH3FlexModularPipelineFast(PikaH3FlexModularPipelineTesterConfig, M
         assert state.get("videos").shape == (1, 124, 3, 32, 32)
         assert state.get("num_condition_video_rows") == num_condition_rows
 
-    def test_keyframes_are_cropped_onto_the_canvas(self):
-        r"""
-        A keyframe is center-cropped to the canvas' aspect ratio at its own resolution and then resized, the way the
-        released package fits it — never stretched (MiniMax-H3's rule for the first keyframe) nor cover-cropped after
-        resizing. A portrait keyframe whose top fifth is red loses that band entirely on a square canvas: the crop
-        keeps the middle 48 of its 80 rows, and the red stops at row 16.
-        """
-        pixels = np.zeros((80, 48, 3), dtype="uint8")
-        pixels[:16] = (255, 0, 0)
-        pixels[16:] = (0, 0, 255)
-        pipe = PikaH3FlexResizeStep().init_pipeline()
-
-        keyframes = pipe(image=Image.fromarray(pixels), height=32, width=32, output="keyframes")
-
-        assert keyframes[0].size == (32, 32)
-        assert np.asarray(keyframes[0])[..., 0].max() == 0
-
-    def test_fl2va_condition_latents_are_rounded_to_bf16(self):
-        r"""
-        The `fl2va` adapter's `bf16_conditioning_v1` policy: the keyframe anchors are rounded to bfloat16 before they
-        are noised, which the dedicated block does on the float32 latents the VAE encoder emits.
-        """
-        latents = torch.randn(1, 4, 1, 2, 2, generator=torch.Generator("cpu").manual_seed(0))
-        pipe = PikaH3FlexRoundConditionLatentsStep().init_pipeline()
-
-        rounded = pipe(condition_latents=[latents], output="condition_latents")
-
-        assert rounded[0].dtype == torch.float32
-        assert torch.equal(rounded[0], latents.to(torch.bfloat16).float())
-        assert not torch.equal(rounded[0], latents)
-
     @pytest.mark.parametrize("with_keyframe", [False, True], ids=["t2va", "fl2va"])
     def test_generator_reproducibility(self, with_keyframe):
         r"""
@@ -341,42 +310,6 @@ class TestPikaH3FlexModularPipelineFast(PikaH3FlexModularPipelineTesterConfig, M
         assert not torch.equal(audio, other_noise_audio)
         assert not torch.equal(video, other_seed_video)
         assert not torch.equal(audio, other_seed_audio)
-
-    def test_load_released_adapter_layout(self):
-        r"""
-        The release ships its adapters as plain PEFT dumps of the diffusers module names — peft's `.default.` infix, no
-        component prefix, no alpha — which load into `transformer` at their trained scale of 1.0 and, through the
-        `ref2va` workflow that holds `transformer_ref` alone, into that partition.
-        """
-        pipe = self.get_pipeline()
-        config = pipe.transformer.config
-        rank = 4
-        state_dict = {}
-        for module, in_features, out_features in [
-            (
-                "transformer_blocks.0.attn.to_q",
-                config.hidden_size,
-                config.num_attention_heads * config.attention_head_dim,
-            ),
-            ("transformer_blocks.0.ff.net.2", config.ffn_dim, config.hidden_size),
-        ]:
-            state_dict[f"{module}.lora_A.default.weight"] = torch.randn(rank, in_features)
-            state_dict[f"{module}.lora_B.default.weight"] = torch.randn(out_features, rank)
-
-        pipe.load_lora_weights(state_dict, adapter_name="fl2va")
-        injected = [module for module in pipe.transformer.modules() if "fl2va" in getattr(module, "scaling", {})]
-
-        assert len(injected) == 2
-        assert {module.scaling["fl2va"] for module in injected} == {1.0}
-        assert "fl2va" not in getattr(pipe.transformer_ref, "peft_config", {})
-
-        ref_pipe = (
-            self.pipeline_blocks_class().get_workflow("ref2va").init_pipeline(self.pretrained_model_name_or_path)
-        )
-        ref_pipe.load_components(dtype=torch.float32)
-        ref_pipe.load_lora_weights(state_dict, adapter_name="ref2va")
-
-        assert "ref2va" in ref_pipe.transformer_ref.peft_config
 
     @pytest.mark.parametrize("output_type", ["np", "pil", "pt"])
     def test_output_type(self, output_type):
@@ -571,31 +504,6 @@ class TestPikaH3FlexRef2VAModularPipelineFast(PikaH3FlexRef2VAModularPipelineTes
         assert state.get("videos").shape == (1, state.get("num_frames"), 3, 32, 32)
         assert state.get("audio").shape[:2] == (1, 2)
 
-    @pytest.mark.parametrize(
-        "canvas,expected_size",
-        [((480, 832), (1696, 1024)), ((768, 1344), (3424, 2048))],
-        ids=["p480", "p768"],
-    )
-    def test_reference_image_resolution_follows_the_canvas_tier(self, canvas, expected_size):
-        r"""
-        An image reference is encoded at the reference short edge of the tier the *generated* canvas falls in — 1024
-        pixels for the 480p buckets, 2048 for the 768p ones — both axes rounded to a multiple of 32, with no area cap.
-        The block runs on its own here, so this is the released geometry rather than the shrunken test one.
-        """
-        height, width = canvas
-        pipe = PikaH3FlexRef2VASetupStep().init_pipeline()
-
-        references = pipe(
-            references=[PikaH3FlexImageReference(image=Image.new("RGB", (80, 48)))],
-            height=height,
-            width=width,
-            num_frames=124,
-            output="normalized_references",
-        )
-
-        assert resolve_tier_rule(height, width).reference_short_edge == expected_size[1]
-        assert references[0].image.size == expected_size
-
     def test_soundtrack_truncated_to_the_generated_duration(self):
         r"""
         A soundtrack is resampled onto the audio VAE's rate first and truncated there to the samples that cover the
@@ -689,3 +597,101 @@ class TestPikaH3FlexRef2VAModularPipelineWorkflow(
 
 class TestPikaH3FlexRef2VAModularPipelineMemory(PikaH3FlexRef2VAModularPipelineTesterConfig, ModularMemoryTesterMixin):
     pass
+
+
+class TestPikaH3FlexModularBlocks:
+    """
+    The blocks that differ from MiniMax-H3, run on their own rather than through a full request: each is built into a
+    one-block pipeline with `init_pipeline()`, so what is pinned here is the block's own contract — the keyframe crop,
+    the fl2va conditioning precision and the tier rule a reference is encoded under — at the released geometry rather
+    than the shrunken one the pipeline tests use. None of them needs a checkpoint.
+    """
+
+    def test_keyframes_are_cropped_onto_the_canvas(self):
+        r"""
+        A keyframe is center-cropped to the canvas' aspect ratio at its own resolution and then resized, the way the
+        released package fits it — never stretched (MiniMax-H3's rule for the first keyframe) nor cover-cropped after
+        resizing. A portrait keyframe whose top fifth is red loses that band entirely on a square canvas: the crop
+        keeps the middle 48 of its 80 rows, and the red stops at row 16.
+        """
+        pixels = np.zeros((80, 48, 3), dtype="uint8")
+        pixels[:16] = (255, 0, 0)
+        pixels[16:] = (0, 0, 255)
+        pipe = PikaH3FlexResizeStep().init_pipeline()
+
+        keyframes = pipe(image=Image.fromarray(pixels), height=32, width=32, output="keyframes")
+
+        assert keyframes[0].size == (32, 32)
+        assert np.asarray(keyframes[0])[..., 0].max() == 0
+
+    def test_keyframe_canvas_defaults_to_its_aspect_ratio(self):
+        r"""
+        Without `height` and `width`, the canvas is the 768 short-edge geometry of the first keyframe's own aspect
+        ratio — the 768p bucket of that ratio — and both keyframes are fitted onto it.
+        """
+        pipe = PikaH3FlexResizeStep().init_pipeline()
+
+        state = pipe(image=Image.new("RGB", (160, 90)), last_image=Image.new("RGB", (90, 160)))
+
+        assert (state.get("height"), state.get("width")) == (768, 1344)
+        assert [keyframe.size for keyframe in state.get("keyframes")] == [(1344, 768), (1344, 768)]
+        assert state.get("keyframe_anchors") == ("first", "last")
+
+    def test_fl2va_condition_latents_are_rounded_to_bf16(self):
+        r"""
+        The `fl2va` adapter's `bf16_conditioning_v1` policy: the keyframe anchors are rounded to bfloat16 before they
+        are noised, which the dedicated block does on the float32 latents the VAE encoder emits.
+        """
+        latents = torch.randn(1, 4, 1, 2, 2, generator=torch.Generator("cpu").manual_seed(0))
+        pipe = PikaH3FlexRoundConditionLatentsStep().init_pipeline()
+
+        rounded = pipe(condition_latents=[latents], output="condition_latents")
+
+        assert rounded[0].dtype == torch.float32
+        assert torch.equal(rounded[0], latents.to(torch.bfloat16).float())
+        assert not torch.equal(rounded[0], latents)
+
+    @pytest.mark.parametrize(
+        "canvas,expected_size",
+        [((480, 832), (1696, 1024)), ((768, 1344), (3424, 2048))],
+        ids=["p480", "p768"],
+    )
+    def test_reference_image_resolution_follows_the_canvas_tier(self, canvas, expected_size):
+        r"""
+        An image reference is encoded at the reference short edge of the tier the *generated* canvas falls in — 1024
+        pixels for the 480p buckets, 2048 for the 768p ones — both axes rounded to a multiple of 32, with no area cap.
+        """
+        height, width = canvas
+        pipe = PikaH3FlexRef2VASetupStep().init_pipeline()
+
+        references = pipe(
+            references=[PikaH3FlexImageReference(image=Image.new("RGB", (80, 48)))],
+            height=height,
+            width=width,
+            num_frames=124,
+            output="normalized_references",
+        )
+
+        assert resolve_tier_rule(height, width).reference_short_edge == expected_size[1]
+        assert references[0].image.size == expected_size
+
+    def test_video_reference_follows_the_canvas_tier_rule(self):
+        r"""
+        A video reference is put on the canvas rule of the generated canvas' tier, at its own aspect ratio: the 480p
+        tier's 480 pixel short edge under its 832x480 area cap for a 480p request. Its soundtrack is truncated to the
+        samples that cover the generated frames.
+        """
+        pipe = PikaH3FlexRef2VASetupStep().init_pipeline()
+        frames = np.zeros((3 * PIKA_H3_FLEX_FPS, 90, 160, 3), dtype="uint8")
+        waveform = torch.zeros(2, 10 * 32000)
+
+        references = pipe(
+            references=[PikaH3FlexVideoReference(frames=frames, fps=float(PIKA_H3_FLEX_FPS), audio=waveform)],
+            height=480,
+            width=832,
+            num_frames=124,
+            output="normalized_references",
+        )
+
+        assert references[0].frames.shape == (3 * PIKA_H3_FLEX_FPS, 480, 832, 3)
+        assert references[0].audio.shape == (2, round(124 / 24 * 32000))

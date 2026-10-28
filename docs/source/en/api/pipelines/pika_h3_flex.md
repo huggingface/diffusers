@@ -56,8 +56,6 @@ Passing the workflow prunes the blocks to that task, so only its own transformer
 - **Conditioning precision follows the adapter.** The FL2VA adapter rounds its keyframe anchors to bfloat16 before noising them (its `bf16_conditioning_v1` policy); the Ref2VA adapter conditions in float32.
 - **References follow the canvas' resolution tier.** Pika H3 Flex generates on a bucket table — a 480p tier and a 768p tier, eleven aspect ratios each — and a `ref2va` request conditions by the tier of its canvas: an image reference is encoded at a 1024 pixel short edge below the 768 tier and 2048 from it upwards, and a video reference is put on the tier's own canvas rule. Every video or standalone audio reference runs 2 to 15 seconds, and the video durations and the standalone audio durations each sum to at most 15 seconds.
 
-Everything else is MiniMax-H3's: 24 fps, 5 to 15 seconds with `num_frames` snapped up to `17 * n + 5`, a canvas that is a multiple of 32 and defaults to the 768p 16:9 bucket (or the first keyframe's aspect ratio at a 768 short edge), and the three reference dataclasses of the `ref2va` workflow. See the [MiniMax-H3 docs](./minimax_h3) for the memory recipes, which apply unchanged.
-
 ## Generation
 
 The released buckets are the canvases Pika H3 Flex was validated on. Pass one as `height` and `width`:
@@ -95,7 +93,12 @@ outputs = ["videos", "audio", "sampling_rate"]
 
 # Text to video + audio on the 480p 16:9 bucket, 5 seconds.
 results = pipe(
-    prompt=prompt, height=480, width=832, num_frames=124, generator=torch.Generator("cuda").manual_seed(42), output=outputs
+    prompt=prompt, 
+    height=480, 
+    width=832, 
+    num_frames=124, 
+    generator=torch.Generator("cuda").manual_seed(42), 
+    output=outputs
 )
 
 # First frame (and optionally `last_image`) to video + audio. The keyframe is center-cropped onto the canvas.
@@ -103,8 +106,13 @@ image = load_image(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
 )
 results = pipe(
-    prompt=prompt, image=image, height=480, width=832, num_frames=124,
-    generator=torch.Generator("cuda").manual_seed(42), output=outputs,
+    prompt=prompt, 
+    image=image, 
+    height=480, 
+    width=832, 
+    num_frames=124,
+    generator=torch.Generator("cuda").manual_seed(42), 
+    output=outputs,
 )
 
 encode_video(

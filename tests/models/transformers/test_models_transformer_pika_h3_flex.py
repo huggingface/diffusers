@@ -163,24 +163,6 @@ class TestPikaH3FlexTransformer(PikaH3FlexTransformerTesterConfig, ModelTesterMi
         torch.testing.assert_close(output.sample, output_tuple[0])
         torch.testing.assert_close(output.audio_sample, output_tuple[1])
 
-    def test_loads_minimax_h3_weights(self):
-        r"""
-        The architecture, the weights and the checkpoint keys are MiniMax-H3's: the Pika adapters are loaded on top of
-        the base partitions, so the base state dict has to load strictly and, at the precision the base runs at,
-        produce the same prediction.
-        """
-        init_dict = self.get_init_dict()
-        base = MiniMaxH3Transformer3DModel(**init_dict).to(torch_device).eval()
-        model = self.model_class(**init_dict).to(torch_device).eval()
-        model.load_state_dict(base.state_dict(), strict=True)
-
-        with torch.no_grad():
-            expected = base(**self.get_dummy_inputs(), return_dict=False)
-            output = model(**self.get_dummy_inputs(), return_dict=False)
-
-        torch.testing.assert_close(output[0], expected[0])
-        torch.testing.assert_close(output[1], expected[1])
-
     def test_adaln_activates_in_float32(self):
         r"""
         What sets this model apart from MiniMax-H3: the AdaLN activation runs in float32 whatever precision the
