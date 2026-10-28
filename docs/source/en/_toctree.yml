@@ -407,6 +407,8 @@
         title: OmniGenTransformer2DModel
       - local: api/models/ovisimage_transformer2d
         title: OvisImageTransformer2DModel
+      - local: api/models/pika_h3_flex_transformer3d
+        title: PikaH3FlexTransformer3DModel
       - local: api/models/pixart_transformer2d
         title: PixArtTransformer2DModel
       - local: api/models/prior_transformer
@@ -657,6 +659,8 @@
         title: Ovis-Image
       - local: api/pipelines/pag
         title: PAG
+      - local: api/pipelines/pika_h3_flex
+        title: Pika H3 Flex
       - local: api/pipelines/pixart
         title: PixArt-α
       - local: api/pipelines/pixart_sigma
@@ -848,6 +852,8 @@
       title: MiniMaxH3Scheduler
     - local: api/schedulers/piflow
       title: PiflowScheduler
+    - local: api/schedulers/pika_h3_flex
+      title: PikaH3FlexScheduler
     - local: api/schedulers/pndm
       title: PNDMScheduler
     - local: api/schedulers/repaint
