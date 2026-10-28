@@ -70,9 +70,9 @@ class PikaH3FlexAutoBeforeEncodeStep(ConditionalPipelineBlocks):
           width (`int`, *optional*):
               Width of the generated video in pixels, a multiple of 32.
           num_frames (`int`, *optional*):
-              Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video VAE can
-              decode; the resulting duration must stay between 5 and 15 seconds. To generate a video as long as a
-              reference soundtrack, pass `round(samples / sample_rate * 24)`.
+              Number of frames to generate, at the fixed 24 fps: 120 to 360, i.e. 5 to 15 seconds, snapped up to the
+              next `17 * n + 5` the video VAE can decode. To generate a video as long as a reference soundtrack, pass
+              `round(samples / sample_rate * 24)`.
           image (`Image`, *optional*):
               Keyframe the video starts from. It is center-cropped to the canvas' aspect ratio and resized onto it; the
               canvas by default is derived from its own aspect ratio.
@@ -257,8 +257,8 @@ class PikaH3FlexCoreDenoiseStep(SequentialPipelineBlocks):
           width (`int`, *optional*):
               Width of the generated video in pixels, a multiple of 32.
           num_frames (`int`, *optional*, defaults to 124):
-              Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video VAE can
-              decode; the resulting duration must stay between 5 and 15 seconds.
+              Number of frames to generate, at the fixed 24 fps: 120 to 360, i.e. 5 to 15 seconds, snapped up to the
+              next `17 * n + 5` the video VAE can decode.
           generator (`Generator`, *optional*):
               The generator of the request. The video noise is drawn from it first, then the audio noise.
           latents (`Tensor`, *optional*):
@@ -349,8 +349,8 @@ class PikaH3FlexFL2VACoreDenoiseStep(SequentialPipelineBlocks):
           width (`int`, *optional*):
               Width of the generated video in pixels, a multiple of 32.
           num_frames (`int`, *optional*, defaults to 124):
-              Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video VAE can
-              decode; the resulting duration must stay between 5 and 15 seconds.
+              Number of frames to generate, at the fixed 24 fps: 120 to 360, i.e. 5 to 15 seconds, snapped up to the
+              next `17 * n + 5` the video VAE can decode.
           keyframe_anchors (`tuple`, *optional*, defaults to ()):
               Which end of the video every keyframe is anchored to, in packed order.
           generator (`Generator`, *optional*):
@@ -704,9 +704,9 @@ class PikaH3FlexBlocks(SequentialPipelineBlocks):
           width (`int`, *optional*):
               Width of the generated video in pixels, a multiple of 32.
           num_frames (`int`, *optional*):
-              Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video VAE can
-              decode; the resulting duration must stay between 5 and 15 seconds. To generate a video as long as a
-              reference soundtrack, pass `round(samples / sample_rate * 24)`.
+              Number of frames to generate, at the fixed 24 fps: 120 to 360, i.e. 5 to 15 seconds, snapped up to the
+              next `17 * n + 5` the video VAE can decode. To generate a video as long as a reference soundtrack, pass
+              `round(samples / sample_rate * 24)`.
           image (`Image`, *optional*):
               Keyframe the video starts from. It is center-cropped to the canvas' aspect ratio and resized onto it; the
               canvas by default is derived from its own aspect ratio.

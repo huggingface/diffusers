@@ -239,9 +239,9 @@ class PikaH3FlexRef2VASetupStep(ModularPipelineBlocks):
                 type_hint=int,
                 required=True,
                 description=(
-                    "Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video "
-                    "VAE can decode; the resulting duration must stay between 5 and 15 seconds. To generate a video "
-                    "as long as a reference soundtrack, pass `round(samples / sample_rate * 24)`."
+                    "Number of frames to generate, at the fixed 24 fps: 120 to 360, i.e. 5 to 15 seconds, snapped up "
+                    "to the next `17 * n + 5` the video VAE can decode. To generate a video as long as a reference "
+                    "soundtrack, pass `round(samples / sample_rate * 24)`."
                 ),
             ),
         ]
@@ -436,25 +436,24 @@ class PikaH3FlexRef2VASetupStep(ModularPipelineBlocks):
                     f"{total:.2f} seconds."
                 )
 
-        # 2. Resolve the canvas and the frame count. The duration the request generates is the one of the *aligned*
-        # frame count, so that is what the ceiling holds for: 346 frames would otherwise pass the check and then be
-        # rounded up to 362, i.e. 15.083 seconds.
+        # 2. Resolve the canvas and the frame count.
         if block_state.height is None:
             block_state.height, block_state.width = resolve_canvas_size(
                 16, 9, multiple, components.config.canvas_short_edge, components.config.canvas_max_pixels
             )
+        # The released package bounds the *requested* duration and then snaps the frame count up to the next
+        # `17 * n + 5`, so a 15 second request is accepted and generates 362 frames (15.08 seconds).
+        duration = block_state.num_frames / components.fps
+        if not components.min_duration <= duration <= components.max_duration:
+            raise ValueError(
+                f"Pika H3 Flex generates between {components.min_duration:g} and {components.max_duration:g} seconds "
+                f"at {components.fps} fps, so `num_frames` must be between "
+                f"{int(components.min_duration * components.fps)} and {int(components.max_duration * components.fps)}, "
+                f"got {block_state.num_frames}."
+            )
         aligned_num_frames = align_num_frames(
             block_state.num_frames, components.vae_frames_per_chunk, components.vae_latents_per_chunk
         )
-        duration = aligned_num_frames / components.fps
-        if not components.min_duration <= duration <= components.max_duration:
-            raise ValueError(
-                f"Pika H3 Flex generates between {components.min_duration} and {components.max_duration} seconds at "
-                f"{components.fps} fps, so `num_frames`, rounded up to the next `17 * n + 5` the video VAE can "
-                f"encode, must be between {int(components.min_duration * components.fps)} and "
-                f"{int(components.max_duration * components.fps)}, got {block_state.num_frames} (rounded up to "
-                f"{aligned_num_frames})."
-            )
         if aligned_num_frames != block_state.num_frames:
             logger.warning(
                 f"`num_frames` has to be of the form 17 * n + 5 for the video VAE; rounding {block_state.num_frames} "
