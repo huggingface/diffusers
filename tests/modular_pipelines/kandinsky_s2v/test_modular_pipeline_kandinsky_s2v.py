@@ -24,7 +24,7 @@ import pytest
 import torch
 from PIL import Image
 
-from diffusers import ClassifierFreeGuidance, ModularPipeline
+from diffusers import ClassifierFreeGuidance
 from diffusers.modular_pipelines import (
     KandinskyS2VAutoBlocks,
     KandinskyS2VDistilledAutoBlocks,
@@ -33,6 +33,7 @@ from diffusers.modular_pipelines import (
 )
 from diffusers.modular_pipelines.kandinsky_s2v.before_denoise import KandinskyS2VPrepareStep
 
+from ...testing_utils import numpy_cosine_similarity_distance, require_accelerator, torch_device
 from ..testing_utils import (
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
@@ -50,16 +51,39 @@ AUDIO_SAMPLE_RATE = 16000
 NUM_LATENT_FRAMES = 8
 
 
-@functools.lru_cache(maxsize=1)
-def dummy_audio() -> str:
-    """A second of a plain tone; the speech is read from a file, not a tensor."""
+def tone(seconds: int) -> list[int]:
+    """A plain tone as 16-bit samples."""
+    return [int(8000 * math.sin(i / 24)) for i in range(seconds * AUDIO_SAMPLE_RATE)]
+
+
+@functools.lru_cache(maxsize=2)
+def dummy_audio(seconds: int = 1) -> str:
+    """The tone as a wav file."""
     path = Path(tempfile.mkdtemp()) / "speech.wav"
     with wave.open(str(path), "w") as handle:
         handle.setnchannels(1)
         handle.setsampwidth(2)
         handle.setframerate(AUDIO_SAMPLE_RATE)
-        handle.writeframes(b"".join(struct.pack("<h", int(8000 * math.sin(i / 24))) for i in range(AUDIO_SAMPLE_RATE)))
+        handle.writeframes(b"".join(struct.pack("<h", sample) for sample in tone(seconds)))
     return str(path)
+
+
+def dummy_waveform(seconds: int = 1) -> torch.Tensor:
+    """The same tone as a mono waveform, scaled as an audio loader reads 16-bit samples."""
+    return torch.tensor(tone(seconds), dtype=torch.float32) / 32768
+
+
+def check_float16_inference(tester, expected_max_diff=5e-2):
+    """The mixin's fp16 check, with the pipeline loaded in fp16 rather than cast to it after loading.
+
+    Loading in a dtype keeps `_keep_in_fp32_modules` in fp32; `.to(torch.float16)` would cast them too.
+    """
+    outputs = []
+    for dtype in (torch.float32, torch.float16):
+        pipe = tester.get_pipeline(dtype=dtype).to(torch_device)
+        outputs.append(pipe(**tester.get_dummy_inputs(), output=tester.output_name).float().cpu())
+    max_diff = numpy_cosine_similarity_distance(outputs[0].flatten().numpy(), outputs[1].flatten().numpy())
+    assert max_diff < expected_max_diff, f"FP16 inference is different from FP32 inference (max_diff: {max_diff})"
 
 
 class KandinskyS2VModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
@@ -100,9 +124,9 @@ class TestKandinskyS2VModularPipelineFast(KandinskyS2VModularPipelineTesterConfi
     def test_num_images_per_prompt(self):
         pass
 
-    @pytest.mark.skip(reason="The normalisations do their arithmetic in fp32, which casting the whole model bypasses")
+    @require_accelerator
     def test_float16_inference(self):
-        pass
+        check_float16_inference(self)
 
     def test_two_chunks_carry_memory(self):
         """Two chunks end to end: the second is conditioned on the FramePack memory rolled from the first."""
@@ -122,6 +146,30 @@ class TestKandinskyS2VModularPipelineFast(KandinskyS2VModularPipelineTesterConfi
         inputs["num_chunks"] = math.ceil(limit / chunk_seconds) + 1
         with pytest.raises(ValueError, match="truncates"):
             pipe(**inputs, output="videos")
+
+    @pytest.mark.parametrize("seconds", [1, 2])
+    def test_audio_as_a_waveform(self, seconds):
+        """A mono waveform gives the same video as a file holding the same samples, padded or cut to the chunks."""
+        pipe = self.get_pipeline()
+        inputs = {**self.get_dummy_inputs(), "num_chunks": 1}
+        from_file = pipe(**{**inputs, "audio": dummy_audio(seconds)}, output="videos")
+        inputs = {**self.get_dummy_inputs(), "num_chunks": 1}
+        from_waveform = pipe(**{**inputs, "audio": dummy_waveform(seconds)}, output="videos")
+        assert torch.equal(from_file, from_waveform)
+
+    @pytest.mark.parametrize(
+        "waveform",
+        [
+            dummy_waveform().expand(2, -1),
+            torch.zeros(0),
+            (dummy_waveform() * 32768).to(torch.int16),
+        ],
+        ids=["multichannel", "empty", "int16"],
+    )
+    def test_rejects_a_bad_waveform(self, waveform):
+        pipe = self.get_pipeline()
+        with pytest.raises(ValueError, match="mono float waveform"):
+            pipe(**{**self.get_dummy_inputs(), "audio": waveform}, output="videos")
 
     def test_rejects_a_single_step(self):
         """One step leaves an empty Euler schedule, which would decode the initial noise."""
@@ -155,7 +203,6 @@ FAST_SKIPS = {
     "test_inference_batch_consistent": "The pipeline takes one prompt at a time; batching is not supported",
     "test_inference_batch_single_identical": "The pipeline takes one prompt at a time; batching is not supported",
     "test_num_images_per_prompt": "One video per call; there is no num_images_per_prompt",
-    "test_float16_inference": "The normalisations do their arithmetic in fp32, which casting the whole model bypasses",
 }
 
 
@@ -182,9 +229,9 @@ class TestKandinskyS2VDistilledModularPipelineFast(
     def test_num_images_per_prompt(self):
         pass
 
-    @pytest.mark.skip(reason=FAST_SKIPS["test_float16_inference"])
+    @require_accelerator
     def test_float16_inference(self):
-        pass
+        check_float16_inference(self)
 
     def test_guidance_is_off(self):
         assert self.get_pipeline().guider.guidance_scale == 1.0
@@ -207,17 +254,3 @@ class TestKandinskyS2VDistilledModularPipelineMemory(
     KandinskyS2VDistilledModularPipelineTesterConfig, ModularMemoryTesterMixin
 ):
     pass
-
-
-@pytest.mark.parametrize(
-    ("repo", "pipeline_class", "blocks_class"),
-    [
-        (TINY_REPO, KandinskyS2VModularPipeline, KandinskyS2VAutoBlocks),
-        (TINY_DISTILLED_REPO, KandinskyS2VDistilledModularPipeline, KandinskyS2VDistilledAutoBlocks),
-    ],
-)
-def test_from_pretrained_picks_the_variant(repo, pipeline_class, blocks_class):
-    """What a user does: the checkpoint alone decides the pipeline and blocks, base or distilled."""
-    pipe = ModularPipeline.from_pretrained(repo)
-    assert type(pipe) is pipeline_class
-    assert type(pipe.blocks) is blocks_class

@@ -76,9 +76,35 @@ def select_resolution(
     return min(allowed, key=lambda res: abs(aspect - res[1] / res[0]))
 
 
-def audio_duration(path: str | Path) -> float:
-    info = sf.info(str(path))
+def audio_waveform(audio: torch.Tensor | np.ndarray) -> np.ndarray:
+    """A speech track passed as an array, as the speech encoder takes it: mono float32 at `AUDIO_SAMPLE_RATE`."""
+    is_float = (
+        audio.is_floating_point() if isinstance(audio, torch.Tensor) else np.issubdtype(audio.dtype, np.floating)
+    )
+    if audio.ndim != 1 or audio.shape[0] == 0 or not is_float:
+        raise ValueError(
+            f"`audio` as an array must be a non-empty mono float waveform in [-1, 1] at {AUDIO_SAMPLE_RATE} Hz, "
+            f"shaped (samples,); got shape {tuple(audio.shape)} and dtype {audio.dtype}"
+        )
+    if isinstance(audio, torch.Tensor):
+        return audio.detach().cpu().float().numpy()
+    return audio.astype(np.float32)
+
+
+def audio_duration(audio: str | Path | torch.Tensor | np.ndarray) -> float:
+    if not isinstance(audio, (str, Path)):
+        return audio_waveform(audio).shape[0] / AUDIO_SAMPLE_RATE
+    info = sf.info(str(audio))
     return info.frames / info.samplerate
+
+
+def pad_waveform_with_silence(waveform: np.ndarray, target_duration: float) -> np.ndarray:
+    """`pad_with_silence` for a waveform at `AUDIO_SAMPLE_RATE`, in memory."""
+    original = waveform.shape[0] / AUDIO_SAMPLE_RATE
+    if target_duration <= original + 0.01:
+        return waveform
+    pad_samples = int((target_duration - original) * AUDIO_SAMPLE_RATE)
+    return np.concatenate([waveform, np.zeros(pad_samples, dtype=waveform.dtype)])
 
 
 def pad_with_silence(path: str | Path, target_duration: float) -> Path | None:

@@ -67,24 +67,32 @@ export_to_video(video, "avatar.mp4", fps=25)
 example `ffmpeg -i avatar.mp4 -i speech.wav -c:v copy -c:a aac -shortest out.mp4`.
 
 The Pro checkpoints do not fit an 80 GB GPU next to the 7B speech and text encoder
-when every component is on the device. Keep one model on the GPU at a time, which
-brings the peak to about 50 GiB:
+when every component is on the device. Offload them through a `ComponentsManager`:
 
 ```py
-from diffusers import ComponentsManager
+import torch
+from diffusers import ComponentsManager, ModularPipeline
+from diffusers.utils import export_to_video
 
 manager = ComponentsManager()
 pipe = ModularPipeline.from_pretrained("kandinskylab/Kandinsky-S2V-1.0-Pro-Diffusers", components_manager=manager)
 pipe.load_components(dtype=torch.bfloat16)
-manager.enable_auto_cpu_offload(device="cuda", offload_strategy=lambda hooks, **_: hooks)
+manager.enable_auto_cpu_offload(device="cuda", memory_reserve_margin="40GiB")
+
+video = pipe(image="reference.png", audio="speech.wav", output="videos")[0]
+export_to_video(video, "avatar.mp4", fps=25)
 ```
 
-The default strategy is not enough here: it keeps the transformer beside the speech
-encoder because both fit, and the VAE decode that follows needs the room they hold.
-Enable the offload after `load_components`, so the strategy applies to every component.
+The margin is the memory kept free beyond the weights when a model is moved to the GPU.
+It has to hold the VAE decode of a chunk, about 33 GiB at 512x768: with the default 3 GB
+the transformer stays on the GPU through the decode, which then runs out of memory. With
+40 GiB the peak is about 50 GiB on an 80 GB GPU. Enable the offload after `load_components`,
+so it applies to every component.
 
 ## Notes
 
+- `audio` is a path to an audio file, or a mono float waveform in [-1, 1] at 16 kHz, as a
+  tensor or an array shaped `(samples,)`.
 - The number of chunks follows the length of the speech track unless `num_chunks`
   is passed. The video is trimmed to the track either way, so chunks past its end
   are computed and dropped, with a warning.

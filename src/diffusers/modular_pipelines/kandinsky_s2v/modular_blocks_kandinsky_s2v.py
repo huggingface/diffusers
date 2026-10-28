@@ -51,8 +51,9 @@ class KandinskyS2VAutoBlocks(SequentialPipelineBlocks):
       Inputs:
           image (`Image | str | Path`):
               The reference frame to animate: a PIL image or a path to one.
-          audio (`str | Path`):
-              The speech track that drives the generation: a path to an audio file.
+          audio (`str | Path | Tensor | ndarray`):
+              The speech track that drives the generation: a path to an audio file, or a mono float waveform in [-1, 1]
+              at 16000 Hz shaped (samples,).
           height (`int`, *optional*):
               The height in pixels of the generated video. Defaults to the 512 bucket closest to the reference frame.
           width (`int`, *optional*):

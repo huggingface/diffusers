@@ -45,24 +45,10 @@ def get_freqs(dim, max_period=10000.0):
     return freqs
 
 
-def to_rope(args: Tensor) -> Tensor:
-    rope = torch.stack([torch.cos(args), -torch.sin(args), torch.sin(args), torch.cos(args)], dim=-1)
-    return rope.view(*rope.shape[:-1], 2, 2).unsqueeze(-4)
-
-
 def apply_rotary(x: Tensor, rope: Tensor) -> Tensor:
     """RoPE apply in fp32 (rope tables are fp32), cast back to ``x.dtype``."""
     x_ = x.reshape(*x.shape[:-1], -1, 1, 2).float()
     return (rope.float() * x_).sum(dim=-1).reshape(*x.shape).to(dtype=x.dtype)
-
-
-def scale_shift_norm(norm: nn.Module, x: Tensor, scale: Tensor, shift: Tensor, idx: Tensor) -> Tensor:
-    """AdaLN with the modulation row selected per token."""
-    return norm(x.float()) * (scale.float().index_select(0, idx) + 1.0) + shift.float().index_select(0, idx)
-
-
-def gate_sum(x: Tensor, out: Tensor, gate: Tensor, idx: Tensor) -> Tensor:
-    return x.float() + gate.float().index_select(0, idx) * out.float()
 
 
 def split_lengths(total: int, groups: int, device: torch.device) -> Tensor:
@@ -332,10 +318,11 @@ class KandinskyS2VOutLayer(nn.Module):
 
     def forward(self, visual_embed: Tensor, time_embed: Tensor, time_embed_idx: Tensor) -> Tensor:
         """``(T, H, W, model_dim)`` -> ``(T*p0, H*p1, W*p2, visual_dim)``."""
-        shift, scale = torch.chunk(self.modulation(time_embed), 2, dim=-1)
-        visual_embed = scale_shift_norm(
-            self.norm, visual_embed, scale[:, None, None], shift[:, None, None], time_embed_idx
-        ).type_as(visual_embed)
+        shift, scale = (
+            p.float()[:, None, None].index_select(0, time_embed_idx)
+            for p in torch.chunk(self.modulation(time_embed), 2, dim=-1)
+        )
+        visual_embed = (self.norm(visual_embed.float()) * (scale + 1.0) + shift).type_as(visual_embed)
         x = self.out_layer(visual_embed)
 
         duration, height, width, _ = x.shape
@@ -362,7 +349,9 @@ class KandinskyS2VRoPE1D(nn.Module):
         self.args = torch.outer(pos, freq)
 
     def forward(self, pos: Tensor) -> Tensor:
-        return to_rope(self.args.to(device=pos.device)[pos])
+        args = self.args.to(device=pos.device)[pos]
+        rope = torch.stack([torch.cos(args), -torch.sin(args), torch.sin(args), torch.cos(args)], dim=-1)
+        return rope.view(*rope.shape[:-1], 2, 2).unsqueeze(-4)
 
 
 # Not copied from transformer_kandinsky6: its tables are buffers, and its temporal
@@ -416,7 +405,8 @@ class KandinskyS2VRoPE3D(nn.Module):
             ],
             dim=-1,
         )
-        return to_rope(args)
+        rope = torch.stack([torch.cos(args), -torch.sin(args), torch.sin(args), torch.cos(args)], dim=-1)
+        return rope.view(*rope.shape[:-1], 2, 2).unsqueeze(-4)
 
 
 class KandinskyS2VTransformerTextEncoderBlock(nn.Module):
@@ -434,14 +424,20 @@ class KandinskyS2VTransformerTextEncoderBlock(nn.Module):
         self_attn_params, ff_params = torch.chunk(self.text_modulation(time_embed), 2, dim=-1)
 
         shift, scale, gate = torch.chunk(self_attn_params, 3, dim=-1)
-        out = scale_shift_norm(self.self_attention_norm, x, scale, shift, time_embed_idx).type_as(x)
+        out = (
+            self.self_attention_norm(x.float()) * (scale.float().index_select(0, time_embed_idx) + 1.0)
+            + shift.float().index_select(0, time_embed_idx)
+        ).type_as(x)
         out = self.self_attention(out, rotary_emb=rope)
-        x = gate_sum(x, out, gate, time_embed_idx).type_as(x)
+        x = (x.float() + gate.float().index_select(0, time_embed_idx) * out.float()).type_as(x)
 
         shift, scale, gate = torch.chunk(ff_params, 3, dim=-1)
-        out = scale_shift_norm(self.feed_forward_norm, x, scale, shift, time_embed_idx).type_as(x)
+        out = (
+            self.feed_forward_norm(x.float()) * (scale.float().index_select(0, time_embed_idx) + 1.0)
+            + shift.float().index_select(0, time_embed_idx)
+        ).type_as(x)
         out = self.feed_forward(out)
-        return gate_sum(x, out, gate, time_embed_idx).type_as(x)
+        return (x.float() + gate.float().index_select(0, time_embed_idx) * out.float()).type_as(x)
 
 
 class KandinskyS2VTransformerAudioEncoderBlock(nn.Module):
@@ -503,18 +499,24 @@ class KandinskyS2VTransformerDecoderBlock(nn.Module):
         self_attn_params, cross_attn_params, ff_params = torch.chunk(self.visual_modulation(time_embed), 3, dim=-1)
 
         shift, scale, gate = torch.chunk(self_attn_params, 3, dim=-1)
-        out = scale_shift_norm(self.self_attention_norm, visual_embed, scale, shift, time_embed_idx).type_as(
+        out = (
+            self.self_attention_norm(visual_embed.float()) * (scale.float().index_select(0, time_embed_idx) + 1.0)
+            + shift.float().index_select(0, time_embed_idx)
+        ).type_as(visual_embed)
+        out = self.self_attention(out, rotary_emb=rope)
+        visual_embed = (visual_embed.float() + gate.float().index_select(0, time_embed_idx) * out.float()).type_as(
             visual_embed
         )
-        out = self.self_attention(out, rotary_emb=rope)
-        visual_embed = gate_sum(visual_embed, out, gate, time_embed_idx).type_as(visual_embed)
 
         shift, scale, gate = torch.chunk(cross_attn_params, 3, dim=-1)
-        out = scale_shift_norm(self.cross_attention_norm, visual_embed, scale, shift, time_embed_idx).type_as(
+        out = (
+            self.cross_attention_norm(visual_embed.float()) * (scale.float().index_select(0, time_embed_idx) + 1.0)
+            + shift.float().index_select(0, time_embed_idx)
+        ).type_as(visual_embed)
+        out = self.cross_attention(out, encoder_hidden_states=text_embed)
+        visual_embed = (visual_embed.float() + gate.float().index_select(0, time_embed_idx) * out.float()).type_as(
             visual_embed
         )
-        out = self.cross_attention(out, encoder_hidden_states=text_embed)
-        visual_embed = gate_sum(visual_embed, out, gate, time_embed_idx).type_as(visual_embed)
 
         if self.enable_audio:
             # Speech conditions only the noisy tail, frame by frame. The residual is
@@ -529,11 +531,14 @@ class KandinskyS2VTransformerDecoderBlock(nn.Module):
             visual_embed = torch.cat([head, noisy + out], dim=0)
 
         shift, scale, gate = torch.chunk(ff_params, 3, dim=-1)
-        out = scale_shift_norm(self.feed_forward_norm, visual_embed, scale, shift, time_embed_idx).type_as(
+        out = (
+            self.feed_forward_norm(visual_embed.float()) * (scale.float().index_select(0, time_embed_idx) + 1.0)
+            + shift.float().index_select(0, time_embed_idx)
+        ).type_as(visual_embed)
+        out = self.feed_forward(out)
+        return (visual_embed.float() + gate.float().index_select(0, time_embed_idx) * out.float()).type_as(
             visual_embed
         )
-        out = self.feed_forward(out)
-        return gate_sum(visual_embed, out, gate, time_embed_idx).type_as(visual_embed)
 
 
 class KandinskyS2VTransformer3DModel(
@@ -627,17 +632,33 @@ class KandinskyS2VTransformer3DModel(
         self.audio_embeddings = KandinskyS2VGeneralEmbeddings(in_audio_dim, model_dim)
 
         self.visual_embeddings = KandinskyS2VVisualEmbeddings(in_visual_dim, model_dim, patch_size)
-        for name, coef in (
-            ("proj1x", patch_proj1x_coef),
-            ("proj2x", patch_proj2x_coef),
-            ("proj4x", patch_proj4x_coef),
-        ):
-            scaled = (patch_size[0] * coef[0], patch_size[1] * coef[1], patch_size[2] * coef[2])
-            setattr(
-                self,
-                f"visual_embeddings_{name}",
-                KandinskyS2VVisualEmbeddings(in_visual_dim, model_dim, scaled),
-            )
+        self.visual_embeddings_proj1x = KandinskyS2VVisualEmbeddings(
+            in_visual_dim,
+            model_dim,
+            (
+                patch_size[0] * patch_proj1x_coef[0],
+                patch_size[1] * patch_proj1x_coef[1],
+                patch_size[2] * patch_proj1x_coef[2],
+            ),
+        )
+        self.visual_embeddings_proj2x = KandinskyS2VVisualEmbeddings(
+            in_visual_dim,
+            model_dim,
+            (
+                patch_size[0] * patch_proj2x_coef[0],
+                patch_size[1] * patch_proj2x_coef[1],
+                patch_size[2] * patch_proj2x_coef[2],
+            ),
+        )
+        self.visual_embeddings_proj4x = KandinskyS2VVisualEmbeddings(
+            in_visual_dim,
+            model_dim,
+            (
+                patch_size[0] * patch_proj4x_coef[0],
+                patch_size[1] * patch_proj4x_coef[1],
+                patch_size[2] * patch_proj4x_coef[2],
+            ),
+        )
         # 0 = visual, 1 = reference frame, 2 = memory
         self.mask_embeddings = nn.Embedding(3, model_dim)
 
@@ -671,31 +692,6 @@ class KandinskyS2VTransformer3DModel(
         self.out_layer = KandinskyS2VOutLayer(model_dim, time_dim, out_visual_dim, patch_size)
         self.gradient_checkpointing = False
 
-    def _embed_memory(
-        self,
-        memory_hidden_states: tuple[Tensor, Tensor, Tensor],
-        memory_rope_pos: tuple[list[Tensor], list[Tensor], list[Tensor]],
-        scale_factor: tuple[float, float, float],
-    ) -> tuple[Tensor, Tensor]:
-        """Embed the FramePack memory at its three temporal scales."""
-        memory_4x, memory_2x, memory_1x = memory_hidden_states
-        rope_4x, rope_2x, rope_1x = memory_rope_pos
-
-        parts = [(self.visual_embeddings_proj1x(memory_1x), rope_1x)]
-        if self.enable_framepack:
-            parts = [
-                (self.visual_embeddings_proj4x(memory_4x), rope_4x),
-                (self.visual_embeddings_proj2x(memory_2x), rope_2x),
-                *parts,
-            ]
-
-        embeds, ropes = [], []
-        for embed, rope_pos in parts:
-            rope = self.visual_rope_embeddings(embed.shape[:-1], rope_pos, scale_factor)
-            embeds.append(embed.flatten(0, 2))
-            ropes.append(rope.flatten(0, 2))
-        return torch.cat(embeds, dim=0), torch.cat(ropes, dim=0)
-
     def forward(  # noqa: PLR0913, PLR0915
         self,
         hidden_states: Tensor,
@@ -712,7 +708,7 @@ class KandinskyS2VTransformer3DModel(
         audio_rope_pos: Tensor,
         scale_factor: tuple[float, float, float] = (1.0, 1.0, 1.0),
         return_dict: bool = True,
-    ) -> Transformer2DModelOutput | Tensor:
+    ) -> Transformer2DModelOutput | tuple[Tensor]:
         """Denoise one chunk.
 
         Args:
@@ -786,7 +782,24 @@ class KandinskyS2VTransformer3DModel(
         ref_rope = self.visual_rope_embeddings(ref_embed.shape[:-1], reference_rope_pos, scale_factor).flatten(0, 2)
         ref_embed = ref_embed.flatten(0, 2)
 
-        memory_embed, memory_rope = self._embed_memory(memory, memory_rope_pos, scale_factor)
+        # The FramePack memory at its three temporal scales.
+        memory_4x, memory_2x, memory_1x = memory
+        rope_pos_4x, rope_pos_2x, rope_pos_1x = memory_rope_pos
+        memory_parts = [(self.visual_embeddings_proj1x(memory_1x), rope_pos_1x)]
+        if self.enable_framepack:
+            memory_parts = [
+                (self.visual_embeddings_proj4x(memory_4x), rope_pos_4x),
+                (self.visual_embeddings_proj2x(memory_2x), rope_pos_2x),
+                *memory_parts,
+            ]
+        memory_embed = torch.cat([embed.flatten(0, 2) for embed, _ in memory_parts], dim=0)
+        memory_rope = torch.cat(
+            [
+                self.visual_rope_embeddings(embed.shape[:-1], rope_pos, scale_factor).flatten(0, 2)
+                for embed, rope_pos in memory_parts
+            ],
+            dim=0,
+        )
 
         visual_embed = visual_embed + self.mask_embeddings(torch.tensor(0, device=device))
         ref_embed = ref_embed + self.mask_embeddings(torch.tensor(1, device=device))
@@ -807,21 +820,31 @@ class KandinskyS2VTransformer3DModel(
         audio_groups = audio_group_lengths(audio_embed.shape[0], duration, device)
 
         for block in self.visual_transformer_blocks:
-            args = (
-                visual_embed_full,
-                text_embed,
-                audio_embed,
-                time_embed_full,
-                visual_rope_full,
-                time_embed_idx_full,
-                num_visual_tokens,
-                visual_groups,
-                audio_groups,
-            )
             if torch.is_grad_enabled() and self.gradient_checkpointing:
-                visual_embed_full = self._gradient_checkpointing_func(block, *args)
+                visual_embed_full = self._gradient_checkpointing_func(
+                    block,
+                    visual_embed_full,
+                    text_embed,
+                    audio_embed,
+                    time_embed_full,
+                    visual_rope_full,
+                    time_embed_idx_full,
+                    num_visual_tokens,
+                    visual_groups,
+                    audio_groups,
+                )
             else:
-                visual_embed_full = block(*args)
+                visual_embed_full = block(
+                    visual_embed_full,
+                    text_embed,
+                    audio_embed,
+                    time_embed_full,
+                    visual_rope_full,
+                    time_embed_idx_full,
+                    num_visual_tokens,
+                    visual_groups,
+                    audio_groups,
+                )
 
         visual_embed = visual_embed_full[-num_visual_tokens:].reshape(*visual_shape, self.model_dim)
         visual_time_embed_idx = torch.zeros(visual_shape[0], dtype=torch.int32, device=device)

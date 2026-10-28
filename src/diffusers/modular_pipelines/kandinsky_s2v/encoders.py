@@ -16,6 +16,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import PIL.Image
 import torch
 from transformers import (
@@ -42,6 +43,8 @@ from .modular_pipeline import (
     TEMPORAL_COMPRESSION_RATIO,
     KandinskyS2VModularPipeline,
     audio_duration,
+    audio_waveform,
+    pad_waveform_with_silence,
     pad_with_silence,
     select_resolution,
 )
@@ -59,14 +62,17 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def encode_qwen_omni(
     components: KandinskyS2VModularPipeline,
     prompt: str,
-    audio_path: str | Path | None,
+    audio: str | Path | np.ndarray | None,
     audio_end: float | None,
     device: torch.device,
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
-    """Thinker hidden states for the prompt and audio-tower features for the speech."""
+    """Thinker hidden states for the prompt and audio-tower features for the speech.
+
+    ``audio`` is a path to an audio file or a mono waveform at `AUDIO_SAMPLE_RATE`.
+    """
     user_content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
-    if audio_path is not None:
-        item: dict[str, Any] = {"type": "audio", "audio": str(audio_path)}
+    if audio is not None:
+        item: dict[str, Any] = {"type": "audio", "audio": str(audio) if isinstance(audio, (str, Path)) else audio}
         if audio_end is not None:
             item |= {"audio_start": 0.0, "audio_end": audio_end}
         user_content.append(item)
@@ -77,8 +83,11 @@ def encode_qwen_omni(
 
     chat_text = components.tokenizer.apply_chat_template([conversation], add_generation_prompt=False, tokenize=False)
     audios = None
-    if audio_path is not None:
-        audios = [librosa.load(str(audio_path), sr=AUDIO_SAMPLE_RATE, offset=0.0, duration=audio_end)[0]]
+    if isinstance(audio, (str, Path)):
+        audios = [librosa.load(str(audio), sr=AUDIO_SAMPLE_RATE, offset=0.0, duration=audio_end)[0]]
+    elif audio is not None:
+        # The same cut as `librosa.load(duration=...)` makes.
+        audios = [audio if audio_end is None else audio[: int(AUDIO_SAMPLE_RATE * audio_end)]]
 
     inputs = components.tokenizer(
         text=chat_text,
@@ -167,8 +176,9 @@ class KandinskyS2VInputStep(ModularPipelineBlocks):
             InputParam(
                 "audio",
                 required=True,
-                type_hint=str | Path,
-                description="The speech track that drives the generation: a path to an audio file.",
+                type_hint=str | Path | torch.Tensor | np.ndarray,
+                description="The speech track that drives the generation: a path to an audio file, or a mono "
+                f"float waveform in [-1, 1] at {AUDIO_SAMPLE_RATE} Hz shaped (samples,).",
             ),
             InputParam.template(
                 "height",
@@ -212,6 +222,8 @@ class KandinskyS2VInputStep(ModularPipelineBlocks):
             raise ValueError("`image` is required: it is the reference frame to animate")
         if block_state.audio is None:
             raise ValueError("`audio` is required: it is the speech track that drives the generation")
+        if not isinstance(block_state.audio, (str, Path)):
+            audio_waveform(block_state.audio)
         if (block_state.height is None) != (block_state.width is None):
             raise ValueError("pass both `height` and `width`, or neither to pick a bucket from the image")
         if block_state.num_chunks is not None and block_state.num_chunks < 1:
@@ -301,7 +313,12 @@ class KandinskyS2VTextAudioEncoderStep(ModularPipelineBlocks):
                 description="The prompt for the unconditional pass of the guidance. Defaults to "
                 "`DEFAULT_NEGATIVE_PROMPT`.",
             ),
-            InputParam("audio", required=True, type_hint=str | Path, description="The speech track."),
+            InputParam(
+                "audio",
+                required=True,
+                type_hint=str | Path | torch.Tensor | np.ndarray,
+                description=f"The speech track: a path to an audio file, or a mono float waveform at {AUDIO_SAMPLE_RATE} Hz.",
+            ),
             InputParam("target_seconds", required=True, type_hint=float, description="Seconds of speech to encode."),
         ]
 
@@ -342,16 +359,22 @@ class KandinskyS2VTextAudioEncoderStep(ModularPipelineBlocks):
         device = components._execution_device
         target_seconds = block_state.target_seconds
 
-        padded_audio = None
-        try:
-            padded_audio = pad_with_silence(block_state.audio, target_seconds)
-            audio_for_encode = padded_audio if padded_audio is not None else Path(block_state.audio)
+        if isinstance(block_state.audio, (str, Path)):
+            padded_audio = None
+            try:
+                padded_audio = pad_with_silence(block_state.audio, target_seconds)
+                audio_for_encode = padded_audio if padded_audio is not None else Path(block_state.audio)
+                prompt_embeds, audio_embeds = encode_qwen_omni(
+                    components, block_state.prompt, audio_for_encode, target_seconds, device
+                )
+            finally:
+                if padded_audio is not None:
+                    padded_audio.unlink(missing_ok=True)
+        else:
+            waveform = pad_waveform_with_silence(audio_waveform(block_state.audio), target_seconds)
             prompt_embeds, audio_embeds = encode_qwen_omni(
-                components, block_state.prompt, audio_for_encode, target_seconds, device
+                components, block_state.prompt, waveform, target_seconds, device
             )
-        finally:
-            if padded_audio is not None:
-                padded_audio.unlink(missing_ok=True)
         if audio_embeds is None:
             raise ValueError("speech-to-video requires an audio track")
 
