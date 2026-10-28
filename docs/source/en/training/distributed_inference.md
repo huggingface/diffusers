@@ -354,6 +354,10 @@ The default Ulysses Attention mechanism requires that the sequence length of hid
 pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2, ulysses_anything=True))
 ```
 
+Ulysses Anything Attention also supports backpropagation through the attention output with uneven sequence lengths and supported padded-head layouts. Use an attention backend with a backward implementation, such as `native`, and zero attention dropout for training. Local key-padding masks are gathered according to each rank's actual sequence length; masks with a per-head dimension are not supported. Auxiliary log-sum-exp outputs are not differentiable.
+
+Context parallelism partitions activations, not model parameters. Each rank computes the gradients from its own sequence shard, so your training strategy must sum, not average, replicated parameter gradients across context-parallel ranks. Causal attention, grouped-query attention, and combining Ulysses Anything with Ring Attention remain unsupported. Helios raises an error on backward under context parallelism because its plan gathers activations inside every block.
+
 > [!TIP] To avoid multiple forced CUDA sync caused by H2D and D2H transfers, please add the **gloo** backend in `init_process_group`. This will significantly reduce communication latency.
 
 We ran a benchmark for FLUX.1-dev with Ulysses, Ring, Unified Attention and Ulysses Anything Attention with [this script](https://github.com/huggingface/diffusers/pull/12996#issuecomment-3797695999) on a node of 4 L20 GPUs. The results are summarized as follows:
