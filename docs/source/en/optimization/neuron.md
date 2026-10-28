@@ -84,9 +84,7 @@ image = pipe(
 image.save("output.png")
 ```
 
-For transformers with many identical blocks, compiling only the repeated blocks with
-`pipe.transformer.compile_repeated_blocks(backend="neuron", fullgraph=True, dynamic=False)` compiles one block and
-reuses it for the others, which cuts the warmup time considerably.
+For transformers with repeated blocks, use `compile_repeated_blocks(...)` to compile those blocks individually. This block is reused and reduces compile time considerably.
 
 ## Tensor parallelism
 
