@@ -205,7 +205,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
                 f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'linspace', 'leading' or 'trailing'."
             )
 
-        if self.config.skip_prk_steps:
+        # The PRK tile is order 4. With 1, 2, or 3 steps that tile cannot be built, so use PLMS.
+        if self.config.skip_prk_steps or len(self._timesteps) < self.pndm_order:
             # for some models like stable diffusion the prk steps can/should be skipped to
             # produce better results. When using PNDM with `self.config.skip_prk_steps` the implementation
             # is based on crowsonkb's PLMS sampler implementation: https://github.com/CompVis/latent-diffusion/pull/51
