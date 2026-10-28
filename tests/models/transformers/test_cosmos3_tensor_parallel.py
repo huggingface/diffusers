@@ -80,7 +80,7 @@ def _cosmos_tp_worker(rank, world_size, rendezvous, checkpoint, dtype):
         torch.manual_seed(2026)
         reference = Cosmos3OmniTransformer.from_pretrained(checkpoint, dtype=dtype).to(device).eval()
         native = copy.deepcopy(reference)
-        specs = resolve_tp_shard_specs(native, native._tp_plan, world_size)
+        specs = resolve_tp_shard_specs(native, native._get_tp_plan(), world_size)
         # Planned weights come from rank zero even when other ranks start with different values.
         if rank != 0:
             with torch.no_grad():
@@ -119,14 +119,15 @@ def _cosmos_tp_worker(rank, world_size, rendezvous, checkpoint, dtype):
 
 class TestCosmos3TensorParallelConfig(Cosmos3TensorParallelTesterConfig):
     def test_plan_covers_both_streams(self, model_config):
+        class_plan = self.model_class._tp_plan.copy()
         model = self.model_class(**model_config)
-        specs = resolve_tp_shard_specs(model, model._tp_plan, 2)
+        specs = resolve_tp_shard_specs(model, model._get_tp_plan(), 2)
         for name, parameter in model.named_parameters():
             if name.startswith("layers.") and parameter.ndim == 2:
                 assert name in specs
         assert "embed_tokens.weight" not in specs
         assert any("gate_proj" in key for key in specs) == (model_config["hidden_act"] == "silu")
-        assert any("gate_proj" in key for key in Cosmos3OmniTransformer._tp_plan)
+        assert self.model_class._tp_plan == class_plan
 
     @pytest.mark.parametrize("heads,kv_heads,degree", [(8, 1, 2), (6, 4, 4), (8, 4, 3)])
     def test_invalid_head_split(self, heads, kv_heads, degree):
