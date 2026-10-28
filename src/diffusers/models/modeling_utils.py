@@ -1738,8 +1738,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         config.setup(rank, world_size, device, mesh=mesh)
         self._parallel_config = config
 
-        seed_mesh = config.context_parallel_config._flattened_mesh if config.context_parallel_config else mesh
-        sync_default_rng_seed(group=seed_mesh.get_group())
+        if mesh is not None:
+            sync_default_rng_seed(device=config._device)
         return config
 
     def enable_parallelism(
