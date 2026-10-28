@@ -42,7 +42,7 @@ pipe.load_components(dtype=torch.bfloat16)
 pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex-Early-Access", weight_name="fl2va/adapter.safetensors")
 ```
 
-Passing the workflow prunes the blocks to that task, so only its own transformer partition is fetched and the adapter routes to the one partition present. A pipeline that holds both partitions (loaded without a `workflow=`) needs to be told where the Ref2VA adapter goes: `pipe.load_lora_weights(..., weight_name="ref2va/adapter.safetensors", load_into_transformer_ref=True)`.
+Passing the workflow prunes the blocks to that task, so only its own transformer partition is fetched, the adapter routes to the one partition present, and the pipeline accepts that task's requests alone — a `fl2va` pipeline needs a keyframe, a `t2va` one takes none. A pipeline that holds both partitions (loaded without a `workflow=`) needs to be told where the Ref2VA adapter goes: `pipe.load_lora_weights(..., weight_name="ref2va/adapter.safetensors", load_into_transformer_ref=True)`.
 
 > [!TIP]
 > `pipe.doc` prints what the pipeline in front of you takes and returns — every input with its default, the components it expects and the outputs it produces.
@@ -74,10 +74,10 @@ from diffusers.utils.export_utils import encode_video
 manager = ComponentsManager()
 manager.enable_auto_cpu_offload(device="cuda")  # or "mps", "xpu", "cpu"
 
-pipe = ModularPipeline.from_pretrained(
-    "Pika-Labs/Pika-H3-Flex-Early-Access", workflow="fl2va", components_manager=manager
-)
-pipe.load_components(dtype=torch.bfloat16)
+# Create one pipeline for all supported workflows, then load the `fl2va` workflow's components, which is
+# enough to run both the fl2va and t2va requests below.
+pipe = ModularPipeline.from_pretrained("Pika-Labs/Pika-H3-Flex-Early-Access", components_manager=manager)
+pipe.load_components(workflow="fl2va", dtype=torch.bfloat16)
 pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex-Early-Access", weight_name="fl2va/adapter.safetensors")
 
 prompt = (
@@ -99,12 +99,23 @@ results = pipe(
     output=outputs
 )
 
-# First frame (and optionally `last_image`) to video + audio. The keyframe is center-cropped onto the canvas.
+# First frame (and optionally `last_image`) to video + audio. The keyframe is center-cropped onto the canvas and
+# held as the first frame, so the prompt describes the keyframe and what happens from it.
 image = load_image(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
 )
+i2va_prompt = (
+    "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\n"
+    "integrated_multimodal_description: [Shot 1] Begin with the supplied image of a small toy astronaut figurine "
+    "standing on a grey rocky moon surface, holding a white egg-shaped object. Preserve the figurine, its orange "
+    "visor and the rocks. The astronaut slowly turns its helmet toward the camera and lifts the egg a little; fine "
+    "dust drifts up around its boots. The camera slowly pushes in in one continuous shot. By the end the astronaut "
+    "stands still, egg held up.\n\n"
+    "overall_soundscape: Soft low wind and faint crunch of dust under the boots. No speech.\n\n"
+    "non_diegetic_music: N/A\n"
+)
 results = pipe(
-    prompt=prompt, 
+    prompt=i2va_prompt, 
     image=image, 
     height=480, 
     width=832, 
