@@ -22,6 +22,7 @@ The Modular Diffusers docs are organized as shown below.
 ## Quickstart
 
 - The [quickstart](./quickstart) shows you how to run a modular pipeline, understand its structure, and customize it by modifying the blocks that compose it.
+- [Coming from DiffusionPipeline](./coming_from_diffusion_pipeline) lists what works differently from a [`DiffusionPipeline`], for readers who know the standard pipelines.
 
 ## ModularPipelineBlocks
 
