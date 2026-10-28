@@ -7514,7 +7514,7 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
 
 class PikaH3FlexLoraLoaderMixin(MiniMaxH3LoraLoaderMixin):
     r"""
-    Load LoRA layers into [`PikaH3FlexTransformer3DModel`]. Specific to [`PikaH3FlexModularPipeline`].
+    Load LoRA layers into [`MiniMaxH3Transformer3DModel`]. Specific to [`PikaH3FlexModularPipeline`].
 
     The Pika H3 Flex release *is* a pair of rank-128 adapters over the two MiniMax-H3 transformer partitions, published
     as plain PEFT dumps of the diffusers module names (`fl2va/adapter.safetensors` for `transformer`,

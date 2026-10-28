@@ -16,7 +16,7 @@ import inspect
 
 import torch
 
-from ...models import PikaH3FlexTransformer3DModel
+from ...models import MiniMaxH3Transformer3DModel
 from ...schedulers import PikaH3FlexScheduler
 from ...utils import logging
 from ..modular_pipeline import (
@@ -32,7 +32,7 @@ from .modular_pipeline import PikaH3FlexModularPipeline
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# Copied from diffusers.modular_pipelines.minimax_h3.denoise.MiniMaxH3LoopDenoiser with \bMiniMaxH3->PikaH3Flex, minimax-h3->pika-h3-flex
+# Copied from diffusers.modular_pipelines.minimax_h3.denoise.MiniMaxH3LoopDenoiser with \bMiniMaxH3->PikaH3Flex, minimax-h3->pika-h3-flex, PikaH3FlexTransformer3DModel->MiniMaxH3Transformer3DModel
 class PikaH3FlexLoopDenoiser(ModularPipelineBlocks):
     model_name = "pika-h3-flex"
 
@@ -59,7 +59,7 @@ class PikaH3FlexLoopDenoiser(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec(self.transformer_name, PikaH3FlexTransformer3DModel)]
+        return [ComponentSpec(self.transformer_name, MiniMaxH3Transformer3DModel)]
 
     @property
     def inputs(self) -> list[InputParam]:
