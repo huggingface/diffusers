@@ -58,8 +58,7 @@ across cores instead. See the [Tensor parallelism](#tensor-parallelism) section.
 ## Compiled mode
 
 TorchNeuron registers `"neuron"` as a `torch.compile` backend name, so components compile like any other
-`torch.compile` target. The first call (warmup) is slow because it compiles; later calls with the same shapes reuse the
-compiled graph.
+`torch.compile` target. The first call (warmup) is slow because it compiles; later calls with the same shapes reuse the compiled graph.
 
 > [!IMPORTANT]
 > TorchNeuron requires **static shapes**, so pass `dynamic=False`. A new `height` or `width` compiles again for that
