@@ -45,7 +45,7 @@ from .modular_pipeline import PIKA_H3_FLEX_FPS
 @dataclass
 class PikaH3FlexReference:
     r"""
-    Base class of the three references a [`PikaH3FlexRef2VABlocks`] request conditions on:
+    Base class of the three references a [`PikaH3FlexBlocks`] `ref2va` request conditions on:
     [`PikaH3FlexImageReference`], [`PikaH3FlexVideoReference`] and [`PikaH3FlexAudioReference`].
 
     References are passed to the blocks as a list, **in the order the model should read them**: the order labels them

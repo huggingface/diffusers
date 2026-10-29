@@ -47,8 +47,8 @@ from diffusers import (
 
 BASE_REPO = "MiniMaxAI/MiniMax-H3"
 BASE_REVISION = "42ed227ee7df40d41602854ae760620d6eb651fe"
-ADAPTER_REPO = "Pika-Labs/Pika-H3-Flex-Early-Access"
-ADAPTER_REVISION = "6f3072e1f557f34240951e393c832d8a23d75f47"
+ADAPTER_REPO = "Pika-Labs/Pika-H3-Flex"
+ADAPTER_REVISION = None
 ADAPTER_FILES = ("adapter.safetensors", "manifest.json")
 
 

@@ -225,7 +225,7 @@ class PikaH3FlexModularPipeline(ModularPipeline, PikaH3FlexLoraLoaderMixin):
     from diffusers import ModularPipeline
 
     pipe = ModularPipeline.from_pretrained("Pika-Labs/Pika-H3-Flex", workflow="fl2va")
-    pipe.load_components(dtype=torch.bfloat16)
+    pipe.load_components(dtype={"vae": torch.float32, "audio_vae": torch.float32, "default": torch.bfloat16})
     pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex", weight_name="fl2va/adapter.safetensors")
     ```
 

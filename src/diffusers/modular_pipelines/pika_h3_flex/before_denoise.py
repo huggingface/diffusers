@@ -972,7 +972,9 @@ class PikaH3FlexPrepareConditionLatentsStep(ModularPipelineBlocks):
         for condition in block_state.condition_latents:
             noise = randn_tensor(condition.shape, generator=block_state.generator, device=device, dtype=torch.float32)
             # The anchors are not fully clean: the released model noises them to `t = 0.999` and holds them there
-            # for every step. Mixing before the patchify is the same arithmetic, since patchify only permutes.
+            # for every step. Mixing before the patchify is the same arithmetic, since patchify only permutes. The
+            # level goes in as a Python float so `1 - t` is evaluated at double precision, as the released package
+            # does; MiniMax-H3 passes a tensor here and keeps its float32 mix.
             noised = components.scheduler.scale_noise(condition.to(device), components.keyframe_noise_aug, noise)
             packed.append(patchify_video_latents(noised, patch_size))
         block_state.condition_rows = torch.cat(packed)
