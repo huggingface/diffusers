@@ -115,9 +115,9 @@
     - local: optimization/habana
       title: Intel Gaudi
     - local: optimization/neuron
-      title: AWS Neuron
+      title: AWS Trainium
     - local: optimization/tpu
-      title: TPU
+      title: Google TPU
     title: Hardware-specific acceleration
   - isExpanded: false
     sections:
