@@ -17,7 +17,7 @@ specific language governing permissions and limitations under the License. -->
   </a>
 </div>
 
-[Pika H3 Flex](https://huggingface.co/Pika-Labs/Pika-H3-Flex-Early-Access) is Pika's post-training of [MiniMax-H3](./minimax_h3) into a six-step video-and-audio generator. It keeps MiniMax-H3's packed sequence, its Qwen3-VL conditioner and its two VAEs, and changes two things: the sampler, a fixed six-step schedule that re-noises the clean prediction at every step in place of the Euler update, and the weights, a pair of rank-128 LoRA adapters over the two MiniMax-H3 transformer partitions. Video and its synchronized stereo soundtrack come out of the same six forward passes.
+[Pika H3 Flex](https://huggingface.co/Pika-Labs/Pika-H3-Flex) is Pika's post-training of [MiniMax-H3](./minimax_h3) into a six-step video-and-audio generator. It keeps MiniMax-H3's packed sequence, its Qwen3-VL conditioner and its two VAEs, and changes two things: the sampler, a fixed six-step schedule that re-noises the clean prediction at every step in place of the Euler update, and the weights, a pair of rank-128 LoRA adapters over the two MiniMax-H3 transformer partitions. Video and its synchronized stereo soundtrack come out of the same six forward passes.
 
 The release is the adapters: the FL2VA adapter (`fl2va/adapter.safetensors`) drives the `transformer/` partition for text and endpoint-frame conditioning, the Ref2VA adapter (`ref2va/adapter.safetensors`) drives `transformer_ref/` for multimodal references. The base components stay in [MiniMaxAI/MiniMax-H3](https://huggingface.co/MiniMaxAI/MiniMax-H3).
 
@@ -37,9 +37,9 @@ A pipeline is assembled in two steps: the components are loaded through a `modul
 import torch
 from diffusers import ModularPipeline
 
-pipe = ModularPipeline.from_pretrained("Pika-Labs/Pika-H3-Flex-Early-Access", workflow="fl2va")
+pipe = ModularPipeline.from_pretrained("Pika-Labs/Pika-H3-Flex", workflow="fl2va")
 pipe.load_components(dtype=torch.bfloat16)
-pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex-Early-Access", weight_name="fl2va/adapter.safetensors")
+pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex", weight_name="fl2va/adapter.safetensors")
 ```
 
 Passing the workflow prunes the blocks to that task, so only its own transformer partition is fetched, the adapter routes to the one partition present, and the pipeline accepts that task's requests alone — a `fl2va` pipeline needs a keyframe, a `t2va` one takes none. A pipeline that holds both partitions (loaded without a `workflow=`) needs to be told where the Ref2VA adapter goes: `pipe.load_lora_weights(..., weight_name="ref2va/adapter.safetensors", load_into_transformer_ref=True)`.
@@ -76,9 +76,9 @@ manager.enable_auto_cpu_offload(device="cuda")  # or "mps", "xpu", "cpu"
 
 # Create one pipeline for all supported workflows, then load the `fl2va` workflow's components, which is
 # enough to run both the fl2va and t2va requests below.
-pipe = ModularPipeline.from_pretrained("Pika-Labs/Pika-H3-Flex-Early-Access", components_manager=manager)
+pipe = ModularPipeline.from_pretrained("Pika-Labs/Pika-H3-Flex", components_manager=manager)
 pipe.load_components(workflow="fl2va", dtype=torch.bfloat16)
-pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex-Early-Access", weight_name="fl2va/adapter.safetensors")
+pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex", weight_name="fl2va/adapter.safetensors")
 
 prompt = (
     "integrated_multimodal_description: A cinematic close shot of a red ceramic cup on a wooden table beside an "
@@ -148,10 +148,10 @@ manager = ComponentsManager()
 manager.enable_auto_cpu_offload(device="cuda")  # or "mps", "xpu", "cpu"
 
 pipe = ModularPipeline.from_pretrained(
-    "Pika-Labs/Pika-H3-Flex-Early-Access", workflow="ref2va", components_manager=manager
+    "Pika-Labs/Pika-H3-Flex", workflow="ref2va", components_manager=manager
 )
 pipe.load_components(dtype=torch.bfloat16)
-pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex-Early-Access", weight_name="ref2va/adapter.safetensors")
+pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex", weight_name="ref2va/adapter.safetensors")
 
 # Keep the transformer in CPU memory and bring in one block at a time while it runs.
 pipe.transformer_ref.enable_group_offload(

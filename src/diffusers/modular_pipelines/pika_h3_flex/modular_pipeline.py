@@ -224,9 +224,9 @@ class PikaH3FlexModularPipeline(ModularPipeline, PikaH3FlexLoraLoaderMixin):
     import torch
     from diffusers import ModularPipeline
 
-    pipe = ModularPipeline.from_pretrained("Pika-Labs/Pika-H3-Flex-Early-Access", workflow="fl2va")
+    pipe = ModularPipeline.from_pretrained("Pika-Labs/Pika-H3-Flex", workflow="fl2va")
     pipe.load_components(dtype=torch.bfloat16)
-    pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex-Early-Access", weight_name="fl2va/adapter.safetensors")
+    pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex", weight_name="fl2va/adapter.safetensors")
     ```
 
     Like MiniMax-H3, Pika H3 Flex denoises **one packed sequence** that holds the text conditioning, the keyframe or
