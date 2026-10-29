@@ -69,7 +69,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv pip install -e ".[quality]" "pyarrow<26"
+        uv pip install --prerelease=allow -e ".[quality]" "pyarrow<26"
 
     - name: Environment
       run: |
@@ -85,7 +85,7 @@ jobs:
     - name: Run example PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch_examples' }}
       run: |
-        uv pip install ".[training]"
+        uv pip install --prerelease=allow ".[training]"
         pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
           examples
