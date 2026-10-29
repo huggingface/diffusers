@@ -616,7 +616,6 @@ class PikaH3FlexAutoDenoiseStep(ConditionalPipelineBlocks):
 
 
 # auto_docstring
-# Copied from diffusers.modular_pipelines.minimax_h3.modular_blocks_minimax_h3.MiniMaxH3DecodeStep with \bMiniMaxH3->PikaH3Flex, minimax-h3->pika-h3-flex
 class PikaH3FlexDecodeStep(SequentialPipelineBlocks):
     """
     Decodes the denoised rows of the packed sequence into the generated video and its soundtrack.
@@ -631,6 +630,9 @@ class PikaH3FlexDecodeStep(SequentialPipelineBlocks):
               Output format: 'pil', 'np' or 'pt'.
           audio_latents (`Tensor`):
               The generated audio latents, one batch item per stereo channel.
+          num_frames (`int`, *optional*):
+              Number of video frames the soundtrack accompanies, at the fixed 24 fps. The waveform is truncated to that
+              duration; without it, it runs to the end of the last audio latent.
 
       Outputs:
           videos (`list`):

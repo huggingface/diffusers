@@ -199,15 +199,16 @@ class PikaH3FlexVideoDecodeStep(ModularPipelineBlocks):
         return components, state
 
 
-# Copied from diffusers.modular_pipelines.minimax_h3.decoders.MiniMaxH3AudioDecodeStep with \bMiniMaxH3->PikaH3Flex, minimax-h3->pika-h3-flex
 class PikaH3FlexAudioDecodeStep(ModularPipelineBlocks):
     model_name = "pika-h3-flex"
 
     @property
     def description(self) -> str:
         return (
-            "Denormalizes the generated audio latents and decodes them into a stereo waveform. The audio VAE is mono "
-            "and takes the two stereo channels as two batch items."
+            "Denormalizes the generated audio latents and decodes them into a stereo waveform, truncated to the "
+            "video's length when `num_frames` is known: the audio latents cover whole 25 ms hops, so the decoded "
+            "soundtrack runs a few milliseconds past the last frame. The audio VAE is mono and takes the two stereo "
+            "channels as two batch items."
         )
 
     @property
@@ -223,6 +224,14 @@ class PikaH3FlexAudioDecodeStep(ModularPipelineBlocks):
                 required=True,
                 description="The generated audio latents, one batch item per stereo channel.",
             ),
+            InputParam(
+                name="num_frames",
+                type_hint=int,
+                description=(
+                    "Number of video frames the soundtrack accompanies, at the fixed 24 fps. The waveform is "
+                    "truncated to that duration; without it, it runs to the end of the last audio latent."
+                ),
+            ),
         ]
 
     @property
@@ -231,7 +240,7 @@ class PikaH3FlexAudioDecodeStep(ModularPipelineBlocks):
             OutputParam(
                 "audio",
                 type_hint=torch.Tensor,
-                description="The generated soundtrack, of shape `(1, 2, num_samples)`.",
+                description="The generated soundtrack, of shape `(1, 2, num_samples)`, the video's duration long.",
             ),
             OutputParam(
                 "sampling_rate",
@@ -252,6 +261,8 @@ class PikaH3FlexAudioDecodeStep(ModularPipelineBlocks):
         audio_latents = block_state.audio_latents * audio_latents_std + audio_latents_mean
 
         audio = components.audio_vae.decode(audio_latents, return_dict=False)[0]
+        if block_state.num_frames is not None:
+            audio = audio[..., : round(block_state.num_frames / components.fps * components.audio_sampling_rate)]
         block_state.audio = audio.float().permute(1, 0, 2)
         block_state.sampling_rate = components.audio_sampling_rate
 

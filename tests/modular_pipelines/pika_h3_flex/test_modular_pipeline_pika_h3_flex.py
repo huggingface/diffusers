@@ -217,9 +217,9 @@ class TestPikaH3FlexModularPipelineFast(PikaH3FlexModularPipelineTesterConfig, M
 
         assert video.shape == (1, 124, 3, 32, 32)
         # The audio VAE is mono and takes the two stereo channels as two batch items, which the decoder block stacks
-        # back into `(batch, 2, samples)`.
-        # 207 audio latents at the tiny VAE's 4 samples per latent
-        assert audio.shape == (1, 2, 207 * 4)
+        # back into `(batch, 2, samples)`. 207 audio latents at the tiny VAE's 4 samples per latent cover 828 samples,
+        # truncated to the 124 frames' duration at the tiny VAE's sample rate.
+        assert audio.shape == (1, 2, round(124 / 24 * sampling_rate))
         assert video.min() >= 0.0 and video.max() <= 1.0
         assert sampling_rate == pipe.audio_vae.config.sampling_rate
 
@@ -334,7 +334,7 @@ class TestPikaH3FlexModularPipelineFast(PikaH3FlexModularPipelineTesterConfig, M
             assert video[0][0].size == (32, 32)
         else:
             assert video.shape == (1, 124, 3, 32, 32)
-        assert audio.shape == (1, 2, 207 * 4)
+        assert audio.shape == (1, 2, round(124 / 24 * pipe.audio_vae.config.sampling_rate))
 
     @pytest.mark.parametrize(
         "overrides,message",
@@ -443,8 +443,8 @@ class TestPikaH3FlexRef2VAModularPipelineFast(PikaH3FlexRef2VAModularPipelineTes
         video, audio = state.get("videos"), state.get("audio")
 
         assert video.shape == (1, 124, 3, 32, 32)
-        # 207 audio latents at the tiny VAE's 4 samples per latent
-        assert audio.shape == (1, 2, 207 * 4)
+        # 207 audio latents at the tiny VAE's 4 samples per latent, truncated to the 124 frames' duration
+        assert audio.shape == (1, 2, round(124 / 24 * pipe.audio_vae.config.sampling_rate))
         assert video.min() >= 0.0 and video.max() <= 1.0
         # a 16x16 reference on the 32 pixel canvas' tier: 1024x1024, i.e. a 64x64 latent packed into 32 * 32 rows
         assert state.get("normalized_references")[0].image.size == (1024, 1024)
