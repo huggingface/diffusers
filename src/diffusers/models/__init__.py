@@ -42,6 +42,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_hunyuanimage_refiner"] = ["AutoencoderKLHunyuanImageRefiner"]
     _import_structure["autoencoders.autoencoder_kl_hunyuanvideo15"] = ["AutoencoderKLHunyuanVideo15"]
     _import_structure["autoencoders.autoencoder_kl_kvae"] = ["AutoencoderKLKVAE"]
+    _import_structure["autoencoders.autoencoder_kl_kvae_audio"] = ["AutoencoderKLKVAEAudio"]
     _import_structure["autoencoders.autoencoder_kl_kvae_video"] = ["AutoencoderKLKVAEVideo"]
     _import_structure["autoencoders.autoencoder_kl_ltx"] = ["AutoencoderKLLTXVideo"]
     _import_structure["autoencoders.autoencoder_kl_ltx2"] = ["AutoencoderKLLTX2Video"]
@@ -58,6 +59,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_mmaudio"] = ["MMAudioVAE"]
     _import_structure["autoencoders.autoencoder_oobleck"] = ["AutoencoderOobleck"]
     _import_structure["autoencoders.autoencoder_rae"] = ["AutoencoderRAE"]
+    _import_structure["autoencoders.autoencoder_rfd4_proteina"] = ["RFD4ProteinaAutoencoder"]
     _import_structure["autoencoders.autoencoder_same"] = ["AutoencoderSAME"]
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
     _import_structure["autoencoders.autoencoder_vidtok"] = ["AutoencoderVidTok"]
@@ -67,8 +69,15 @@ if is_torch_available():
     _import_structure["autoencoders.mmaudio_vocoder"] = ["MMAudioVocoder"]
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
     _import_structure["cache_utils"] = ["CacheMixin"]
+    _import_structure["condition_embedders.condition_embedder_ace_step"] = ["AceStepConditionEncoder"]
     _import_structure["condition_embedders.condition_embedder_anima"] = ["AnimaTextConditioner"]
+    _import_structure["condition_embedders.condition_embedder_audioldm2"] = ["AudioLDM2ProjectionModel"]
+    _import_structure["condition_embedders.condition_embedder_flux_redux"] = ["ReduxImageEncoder"]
+    _import_structure["condition_embedders.condition_embedder_gligen"] = ["CLIPImageProjection"]
+    _import_structure["condition_embedders.condition_embedder_ltx2"] = ["LTX2TextConnectors"]
     _import_structure["condition_embedders.condition_embedder_minimax_music3"] = ["MiniMaxMusic3ConditionEncoder"]
+    _import_structure["condition_embedders.condition_embedder_stable_audio"] = ["StableAudioProjectionModel"]
+    _import_structure["condition_embedders.condition_embedder_stable_audio_3"] = ["StableAudio3DurationEmbedder"]
     _import_structure["controlnets.controlnet"] = ["ControlNetModel"]
     _import_structure["controlnets.controlnet_cosmos"] = ["CosmosControlNetModel"]
     _import_structure["controlnets.controlnet_flux"] = ["FluxControlNetModel", "FluxMultiControlNetModel"]
@@ -90,6 +99,8 @@ if is_torch_available():
     _import_structure["controlnets.multicontrolnet_union"] = ["MultiControlNetUnionModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["latent_upscaler.latent_upscaler_kandinsky6_sr"] = ["Kandinsky6SRLatentUpscalerBank"]
+    _import_structure["latent_upscaler.latent_upscaler_ltx"] = ["LTXLatentUpsamplerModel"]
+    _import_structure["latent_upscaler.latent_upscaler_ltx2"] = ["LTX2LatentUpsamplerModel"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["transformers.ace_step_transformer"] = ["AceStepTransformer1DModel"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
@@ -113,6 +124,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_anyflow_far"] = ["AnyFlowFARTransformer3DModel"]
     _import_structure["transformers.transformer_bria"] = ["BriaTransformer2DModel"]
     _import_structure["transformers.transformer_bria_fibo"] = ["BriaFiboTransformer2DModel"]
+    _import_structure["transformers.transformer_bria_fibo2"] = ["BriaFibo2Transformer2DModel"]
     _import_structure["transformers.transformer_chroma"] = ["ChromaTransformer2DModel"]
     _import_structure["transformers.transformer_chronoedit"] = ["ChronoEditTransformer3DModel"]
     _import_structure["transformers.transformer_cogview3plus"] = ["CogView3PlusTransformer2DModel"]
@@ -123,6 +135,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_ernie_image"] = ["ErnieImageTransformer2DModel"]
     _import_structure["transformers.transformer_flux"] = ["FluxTransformer2DModel"]
     _import_structure["transformers.transformer_flux2"] = ["Flux2Transformer2DModel"]
+    _import_structure["transformers.transformer_flux3"] = ["Flux3Transformer2DModel"]
     _import_structure["transformers.transformer_glm_image"] = ["GlmImageTransformer2DModel"]
     _import_structure["transformers.transformer_helios"] = ["HeliosTransformer3DModel"]
     _import_structure["transformers.transformer_hidream_image"] = ["HiDreamImageTransformer2DModel"]
@@ -152,7 +165,10 @@ if is_torch_available():
     _import_structure["transformers.transformer_prx"] = ["PRXTransformer2DModel"]
     _import_structure["transformers.transformer_qwenimage"] = ["QwenImageTransformer2DModel"]
     _import_structure["transformers.transformer_qwenimage21"] = ["QwenImage21Transformer2DModel"]
+    _import_structure["transformers.transformer_rfd4_proteina"] = ["RFD4ProteinaTransformer"]
     _import_structure["transformers.transformer_sana_video"] = ["SanaVideoTransformer3DModel"]
+    _import_structure["transformers.transformer_sana_wm"] = ["SanaWMTransformer3DModel"]
+    _import_structure["transformers.transformer_sana_wm_refiner"] = ["SanaWMLTX2RefinerTransformer3DModel"]
     _import_structure["transformers.transformer_sd3"] = ["SD3Transformer2DModel"]
     _import_structure["transformers.transformer_skyreels_v2"] = ["SkyReelsV2Transformer3DModel"]
     _import_structure["transformers.transformer_stable_audio3"] = ["StableAudio3DiTModel"]
@@ -194,6 +210,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLHunyuanVideo,
             AutoencoderKLHunyuanVideo15,
             AutoencoderKLKVAE,
+            AutoencoderKLKVAEAudio,
             AutoencoderKLKVAEVideo,
             AutoencoderKLLTX2Audio,
             AutoencoderKLLTX2Video,
@@ -219,10 +236,21 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MiniMaxMusic3Vocoder,
             MMAudioVAE,
             MMAudioVocoder,
+            RFD4ProteinaAutoencoder,
             VQModel,
         )
         from .cache_utils import CacheMixin
-        from .condition_embedders import AnimaTextConditioner, MiniMaxMusic3ConditionEncoder
+        from .condition_embedders import (
+            AceStepConditionEncoder,
+            AnimaTextConditioner,
+            AudioLDM2ProjectionModel,
+            CLIPImageProjection,
+            LTX2TextConnectors,
+            MiniMaxMusic3ConditionEncoder,
+            ReduxImageEncoder,
+            StableAudio3DurationEmbedder,
+            StableAudioProjectionModel,
+        )
         from .controlnets import (
             ControlNetModel,
             ControlNetUnionModel,
@@ -244,7 +272,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageControlNetModel,
         )
         from .embeddings import ImageProjection
-        from .latent_upscaler import Kandinsky6SRLatentUpscalerBank
+        from .latent_upscaler import Kandinsky6SRLatentUpscalerBank, LTX2LatentUpsamplerModel, LTXLatentUpsamplerModel
         from .modeling_utils import ModelMixin
         from .transformers import (
             AceStepTransformer1DModel,
@@ -252,6 +280,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AnyFlowFARTransformer3DModel,
             AnyFlowTransformer3DModel,
             AuraFlowTransformer2DModel,
+            BriaFibo2Transformer2DModel,
             BriaFiboTransformer2DModel,
             BriaTransformer2DModel,
             ChromaTransformer2DModel,
@@ -268,6 +297,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EasyAnimateTransformer3DModel,
             ErnieImageTransformer2DModel,
             Flux2Transformer2DModel,
+            Flux3Transformer2DModel,
             FluxTransformer2DModel,
             GlmImageTransformer2DModel,
             HeliosTransformer3DModel,
@@ -304,8 +334,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PRXTransformer2DModel,
             QwenImage21Transformer2DModel,
             QwenImageTransformer2DModel,
+            RFD4ProteinaTransformer,
             SanaTransformer2DModel,
             SanaVideoTransformer3DModel,
+            SanaWMLTX2RefinerTransformer3DModel,
+            SanaWMTransformer3DModel,
             SD3Transformer2DModel,
             SkyReelsV2Transformer3DModel,
             StableAudio3DiTModel,

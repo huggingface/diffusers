@@ -191,6 +191,26 @@ Default to taking that option. The only reason not to split is when the variant 
 
 Don't fall back to the standard-pipeline habit of a config flag branching inside a shared block (`ConfigSpec(name="is_distilled")` + `if components.config.is_distilled:`). That keeps both variants' behavior bundled in one blockset — and the input surface is the one thing it can never fix: a repo can override components and config values per checkpoint, but never which inputs the blocks declare, so the distilled checkpoint would still accept `negative_prompt` and silently ignore it.
 
+## Key pattern: One canonical latents form
+
+Three transformations can sit between a VAE and a transformer:
+
+- normalize / denormalize: apply or undo the VAE's latent statistics.
+- patchify / unpatchify: fold a `p x p` spatial patch into channels, `[B, C, H, W]` <-> `[B, C*p*p, H/p, W/p]`. The result is still a grid.
+- pack / unpack: collapse the grid into a token sequence, `[B, C, F, H, W]` <-> `[B, S, D]`.
+
+Each should be applied and undone in mirrored pairs, and the core denoise group hands latents back in the same form it received them. The `latents` output of the denoise group should always be in one form: unpacked and still normalized, the same form its VAE encoder blocks produce. Whatever runs next (a decoder, a latent upsampler, a second denoise group) consumes that form, and no block outside the group needs `height`/`width`/`num_frames` just to interpret tokens.
+
+The pattern: `encode -> norm -> pack -> denoise -> unpack -> denorm -> decode`
+
+In `flux/`: `FluxVaeEncoderStep` encodes and normalizes, `FluxPrepareLatentsStep` packs, `FluxUnpackLatentsStep` closes `FluxCoreDenoiseStep`, and `FluxDecodeStep` denormalizes and decodes.
+
+- Normalize / denormalize belong to the VAE blocks. The encoder step normalizes right after `vae.encode`, the decoder step denormalizes right before `vae.decode`. Denormalized latents never sit in the state.
+- Pack / unpack belong to the denoise group, either at block level (a prepare-latents step packs, an unpack step such as `FluxUnpackLatentsStep` closes the group) or inside the transformer's forward. Packing is a transformer layout detail; nothing outside the group should see tokens.
+- Patchify / unpatchify can sit on either side, as long as it is mirrored: usually it is fused with pack in the denoise group (Flux, Krea2, LTX, QwenImage); when the VAE statistics are defined over patchified channels (`AutoencoderKLFlux2`: Flux2, FLUX.3, Ernie-Image) it lives in the VAE blocks and the canonical form is the patchified grid.
+
+Don't pack inside the denoise group and unpack inside the decoder: that strands packed latents in the state and makes the decoder carry geometry inputs it doesn't otherwise need. `test_latents_output_in_canonical_form` in `tests/modular_pipelines/testing_utils/common.py` pins each family's form through the tester's `expected_latents_shape`.
+
 ## Key pattern: Standalone block reusability
 
 One of the core reason a pipeline is split into blocks at all: each block (text encoder, VAE encoder, prepare-latents, denoise, decoder) must be runnable on its own, and its output must be reusable as the input to a different downstream chain.
@@ -304,20 +324,22 @@ ComponentSpec(
 
 5. **Using `InputParam.template()` / `OutputParam.template()` when semantics don't match.** Templates carry predefined descriptions — e.g. the `"latents"` output template means "Denoised latents". Don't use it for initial noisy latents from a prepare-latents step. Use a plain `InputParam(...)` / `OutputParam(...)` with an accurate description instead.
 
-6. **Test model paths pointing to contributor repos.** Tiny test models ultimately live under `hf-internal-testing/`, not personal repos like `username/tiny-model`. Developing against a personal repo is fine and not merge-blocking — a maintainer moves the model (before or after merge) and updates the path.
+6. **`required=True` on an input that carries a default.** An input cannot be both required and have a default. When that happens, `InputParam` keeps the default, treats the input as optional and logs a warning. This is likely to happen when you reuse a template for its type hint and description but make it required: `InputParam.template("num_inference_steps", required=True)` stays an optional input that defaults to 50, plus a warning. Decide which one you mean: drop `required=True` to keep the template default without the warning, or pass `default=None` explicitly to make the input required.
 
-7. **Respect the declared IO system.** Components in `expected_components`, fields in `inputs` / `intermediate_outputs` — once declared, the modular framework guarantees them. So:
+7. **Test model paths pointing to contributor repos.** Tiny test models ultimately live under `hf-internal-testing/`, not personal repos like `username/tiny-model`. Developing against a personal repo is fine and not merge-blocking — a maintainer moves the model (before or after merge) and updates the path.
+
+8. **Respect the declared IO system.** Components in `expected_components`, fields in `inputs` / `intermediate_outputs` — once declared, the modular framework guarantees them. So:
     - **Don't read defensively.** Declared components are always set as attributes (possibly `None`); declared upstream outputs are always populated in `block_state` after the upstream block runs. `getattr(components, "vae", None)`, `hasattr(self, "vae")`, `getattr(block_state, "prompt_embeds", None)` are dead code that hides typos. Use `components.vae` / `block_state.prompt_embeds` directly. Check `is not None` only when nullability is meaningful (a component the user might not have loaded).
     - **Don't write undeclared.** If a block sets `block_state.foo = ...`, declare `OutputParam("foo", ...)` in `intermediate_outputs`. The declarations are the public contract — undeclared writes can't be wired to downstream blocks.
     - **Don't call `state.set()` directly inside a block.** Write to state only through declared `intermediate_outputs` via `self.get_block_state(state)` / `self.set_block_state(state, block_state)`. A direct `state.set("foo", value)` bypasses the block's interface entirely — the field never appears as a declared output, so downstream blocks can't see it through the normal wiring and the framework can't generate docs / validate types for it.
 
-8. **No-op skip logic inside an optional block.** If a step is conditional (e.g. an optional prompt enhancer), don't have the block check a flag at the top of `__call__` and `return` early. Wrap it in an `AutoPipelineBlocks` with `block_trigger_inputs = ["use_xxx"]` so the block is only assembled into the pipeline when the trigger input is provided. The block's own `__call__` should always assume its components and inputs are present.
+9. **No-op skip logic inside an optional block.** If a step is conditional (e.g. an optional prompt enhancer), don't have the block check a flag at the top of `__call__` and `return` early. Wrap it in an `AutoPipelineBlocks` with `block_trigger_inputs = ["use_xxx"]` so the block is only assembled into the pipeline when the trigger input is provided. The block's own `__call__` should always assume its components and inputs are present.
 
-9. **Serving a checkpoint variant through a config flag in a shared block.** `ConfigSpec(name="is_distilled")` plus `if components.config.is_distilled:` bundles two checkpoints' behavior into one blockset — and it can't change the input surface at all (the distilled variant would still accept `negative_prompt`). Suggest a separate blockset for the variant instead (see Key pattern: Checkpoint variants).
+10. **Serving a checkpoint variant through a config flag in a shared block.** `ConfigSpec(name="is_distilled")` plus `if components.config.is_distilled:` bundles two checkpoints' behavior into one blockset — and it can't change the input surface at all (the distilled variant would still accept `negative_prompt`). Suggest a separate blockset for the variant instead (see Key pattern: Checkpoint variants).
 
-10. **Raw `torch.randn(device=...)` for noise.** Use `randn_tensor(...)` from `utils/torch_utils`: it draws on the generator's device and moves the result, so CPU generators (what the test mixins pass) work, and the CUDA-generator path is bit-identical to `torch.randn`.
+11. **Raw `torch.randn(device=...)` for noise.** Use `randn_tensor(...)` from `utils/torch_utils`: it draws on the generator's device and moves the result, so CPU generators (what the test mixins pass) work, and the CUDA-generator path is bit-identical to `torch.randn`.
 
-11. **Helpers taking `components`.** Prefer explicit args, for example, `get_xx_prompt_embeds(text_encoder, tokenizer, prompt)` instead of `get_xx_prompt_embeds(components, prompt)`. Helpers and block methods should take only what they use so dependencies are visible and they can run without an assembled pipeline. Leave the full `components` object to `__call__`, which unpacks what its helpers need. See `get_qwen_prompt_embeds` in `qwenimage/encoders.py`.
+12. **Helpers taking `components`.** Prefer explicit args, for example, `get_xx_prompt_embeds(text_encoder, tokenizer, prompt)` instead of `get_xx_prompt_embeds(components, prompt)`. Helpers and block methods should take only what they use so dependencies are visible and they can run without an assembled pipeline. Leave the full `components` object to `__call__`, which unpacks what its helpers need. See `get_qwen_prompt_embeds` in `qwenimage/encoders.py`.
 
 ## Conversion checklist
 

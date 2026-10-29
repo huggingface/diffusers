@@ -41,7 +41,12 @@ from .constants import (
     WEIGHTS_INDEX_NAME,
     WEIGHTS_NAME,
 )
-from .deprecation_utils import _maybe_remap_transformers_class, _resolve_dtype, deprecate
+from .deprecation_utils import (
+    _maybe_remap_relocated_pipeline_class,
+    _maybe_remap_transformers_class,
+    _resolve_dtype,
+    deprecate,
+)
 from .doc_utils import replace_example_docstring
 from .dynamic_modules_utils import get_class_from_dynamic_module
 from .export_utils import encode_video, export_to_gif, export_to_obj, export_to_ply, export_to_video
@@ -78,6 +83,7 @@ from .import_utils import (
     is_flash_attn_3_available,
     is_flash_attn_available,
     is_flash_attn_version,
+    is_flashinfer_available,
     is_flashpack_available,
     is_ftfy_available,
     is_gguf_available,

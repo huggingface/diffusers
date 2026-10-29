@@ -12,18 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from torch import nn
-
-from ...configuration_utils import ConfigMixin, register_to_config
-from ...models.modeling_utils import ModelMixin
+from ...models.condition_embedders.condition_embedder_gligen import CLIPImageProjection as _CLIPImageProjection
+from ...utils import deprecate
 
 
-class CLIPImageProjection(ModelMixin, ConfigMixin):
-    @register_to_config
-    def __init__(self, hidden_size: int = 768):
-        super().__init__()
-        self.hidden_size = hidden_size
-        self.project = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
-
-    def forward(self, x):
-        return self.project(x)
+# Deprecated alias kept for backward compatibility. The warning is raised from `__new__` rather than `__init__` so
+# that the parent's `__init__` signature, which `ConfigMixin` inspects when loading a config, stays intact.
+class CLIPImageProjection(_CLIPImageProjection):
+    def __new__(cls, *args, **kwargs):
+        deprecate(
+            "CLIPImageProjection",
+            "1.0.0",
+            "Importing `CLIPImageProjection` from `diffusers.pipelines.stable_diffusion.clip_image_project_model` is deprecated. "
+            "Import it with `from diffusers import CLIPImageProjection` instead.",
+        )
+        return super().__new__(cls)
