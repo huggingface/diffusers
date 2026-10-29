@@ -7512,6 +7512,23 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
         super().unfuse_lora(components=components, **kwargs)
 
 
+class PikaH3FlexLoraLoaderMixin(MiniMaxH3LoraLoaderMixin):
+    r"""
+    Load LoRA layers into [`MiniMaxH3Transformer3DModel`]. Specific to [`PikaH3FlexModularPipeline`].
+
+    The Pika H3 Flex release *is* a pair of rank-128 adapters over the two MiniMax-H3 transformer partitions, published
+    as plain PEFT dumps of the diffusers module names (`fl2va/adapter.safetensors` for `transformer`,
+    `ref2va/adapter.safetensors` for `transformer_ref`). The alpha-less files load at `alpha == rank` (scale 1.0), the
+    adapters' own contract, and the loading, routing and saving are those of [`MiniMaxH3LoraLoaderMixin`]: the `fl2va`
+    adapter goes into `transformer`, and the `ref2va` adapter into `transformer_ref` — on its own when the pipeline
+    holds that partition alone (`workflow="ref2va"`), with `load_into_transformer_ref=True` when it holds both.
+
+    ```py
+    pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex", weight_name="fl2va/adapter.safetensors")
+    ```
+    """
+
+
 class RFD4ProteinaLoraLoaderMixin(LoraBaseMixin):
     r"""
     Load LoRA layers into [`RFD4ProteinaTransformer`].
