@@ -38,11 +38,11 @@ import torch
 from diffusers import ModularPipeline
 
 pipe = ModularPipeline.from_pretrained("Pika-Labs/Pika-H3-Flex", workflow="fl2va")
-pipe.load_components(dtype=torch.bfloat16)
+pipe.load_components(dtype={"vae": torch.float32, "audio_vae": torch.float32, "default": torch.bfloat16})
 pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex", weight_name="fl2va/adapter.safetensors")
 ```
 
-Passing the workflow prunes the blocks to that task, so only its own transformer partition is fetched, the adapter routes to the one partition present, and the pipeline accepts that task's requests alone — a `fl2va` pipeline needs a keyframe, a `t2va` one takes none. A pipeline that holds both partitions (loaded without a `workflow=`) needs to be told where the Ref2VA adapter goes: `pipe.load_lora_weights(..., weight_name="ref2va/adapter.safetensors", load_into_transformer_ref=True)`.
+Passing the workflow prunes the blocks to that task, so only its own transformer partition is fetched, the adapter routes to the one partition present, and the pipeline accepts that task's requests alone — a `fl2va` pipeline needs a keyframe, a `t2va` one takes none. A pipeline that holds both partitions (loaded without a `workflow=`) needs to be told where the Ref2VA adapter goes: `pipe.load_lora_weights(..., weight_name="ref2va/adapter.safetensors", load_into_transformer_ref=True)`. The two VAEs are released in float32 and decode in float32, as the released package does; everything else runs in bfloat16.
 
 > [!TIP]
 > `pipe.doc` prints what the pipeline in front of you takes and returns — every input with its default, the components it expects and the outputs it produces.
@@ -77,7 +77,9 @@ manager.enable_auto_cpu_offload(device="cuda")  # or "mps", "xpu", "cpu"
 # Create one pipeline for all supported workflows, then load the `fl2va` workflow's components, which is
 # enough to run both the fl2va and t2va requests below.
 pipe = ModularPipeline.from_pretrained("Pika-Labs/Pika-H3-Flex", components_manager=manager)
-pipe.load_components(workflow="fl2va", dtype=torch.bfloat16)
+pipe.load_components(
+    workflow="fl2va", dtype={"vae": torch.float32, "audio_vae": torch.float32, "default": torch.bfloat16}
+)
 pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex", weight_name="fl2va/adapter.safetensors")
 
 prompt = (
@@ -150,7 +152,7 @@ manager.enable_auto_cpu_offload(device="cuda")  # or "mps", "xpu", "cpu"
 pipe = ModularPipeline.from_pretrained(
     "Pika-Labs/Pika-H3-Flex", workflow="ref2va", components_manager=manager
 )
-pipe.load_components(dtype=torch.bfloat16)
+pipe.load_components(dtype={"vae": torch.float32, "audio_vae": torch.float32, "default": torch.bfloat16})
 pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex", weight_name="ref2va/adapter.safetensors")
 
 # Keep the transformer in CPU memory and bring in one block at a time while it runs.
