@@ -605,9 +605,17 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         Returns:
             `torch.Tensor`: sample tensor at previous timestep.
         """
-        t = timesteps
-        num_inference_steps = self.num_inference_steps if self.num_inference_steps else self.config.num_train_timesteps
-        prev_t = t - self.config.num_train_timesteps // num_inference_steps
+        t = timesteps.flatten()
+        if self.custom_timesteps or self.num_inference_steps:
+            schedule = self.timesteps.to(t.device)
+            previous_schedule = torch.cat([schedule[1:], schedule.new_tensor([-1])])
+            schedule_matches = t[:, None] == schedule[None, :]
+            if not schedule_matches.any(dim=-1).all():
+                raise ValueError("All timesteps must be present in the configured inference schedule.")
+            schedule_indices = schedule_matches.to(torch.int64).argmax(dim=-1)
+            prev_t = previous_schedule[schedule_indices]
+        else:
+            prev_t = t - 1
 
         t = t.view(-1, *([1] * (model_output.ndim - 1)))
         prev_t = prev_t.view(-1, *([1] * (model_output.ndim - 1)))
