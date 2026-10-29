@@ -54,21 +54,25 @@ no guider and no `negative_prompt`, because guidance is already part of the stud
 import librosa
 import torch
 from diffusers import ModularPipeline
-from diffusers.utils import export_to_video, load_image
+from diffusers.utils import encode_video, load_image
 
 pipe = ModularPipeline.from_pretrained("kandinskylab/Kandinsky-S2V-1.0-Lite-distill-Diffusers")
 pipe.load_components(dtype=torch.bfloat16)
 pipe.to("cuda")
 
 image = load_image("reference.png")
-audio, _ = librosa.load("speech.wav", sr=16000)  # a mono waveform at 16 kHz
+audio, _ = librosa.load("speech.wav", sr=16000)  # a mono waveform at 16 kHz, for the model
+speech, sample_rate = librosa.load("speech.wav", sr=None)  # the original track, added to the output video
 
 video = pipe(image=image, audio=audio, output="videos")[0]
-export_to_video(video, "avatar.mp4", fps=25)
+encode_video(
+    video,
+    fps=25,
+    output_path="avatar.mp4",
+    audio=torch.from_numpy(speech)[None],
+    audio_sample_rate=sample_rate,
+)
 ```
-
-`export_to_video` writes the frames only; add the speech track with any muxer, for
-example `ffmpeg -i avatar.mp4 -i speech.wav -c:v copy -c:a aac -shortest out.mp4`.
 
 The Pro checkpoints do not fit an 80 GB GPU next to the 7B speech and text encoder
 when every component is on the device. Offload them through a `ComponentsManager`:
@@ -77,7 +81,7 @@ when every component is on the device. Offload them through a `ComponentsManager
 import librosa
 import torch
 from diffusers import ComponentsManager, ModularPipeline
-from diffusers.utils import export_to_video, load_image
+from diffusers.utils import encode_video, load_image
 
 manager = ComponentsManager()
 pipe = ModularPipeline.from_pretrained("kandinskylab/Kandinsky-S2V-1.0-Pro-Diffusers", components_manager=manager)
@@ -86,9 +90,16 @@ manager.enable_auto_cpu_offload(device="cuda", memory_reserve_margin="40GiB")
 
 image = load_image("reference.png")
 audio, _ = librosa.load("speech.wav", sr=16000)
+speech, sample_rate = librosa.load("speech.wav", sr=None)
 
 video = pipe(image=image, audio=audio, output="videos")[0]
-export_to_video(video, "avatar.mp4", fps=25)
+encode_video(
+    video,
+    fps=25,
+    output_path="avatar.mp4",
+    audio=torch.from_numpy(speech)[None],
+    audio_sample_rate=sample_rate,
+)
 ```
 
 The margin is the memory kept free beyond the weights when a model is moved to the GPU.
