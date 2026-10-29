@@ -58,7 +58,6 @@ from ..utils import (
     is_bitsandbytes_version,
     is_flashpack_available,
     is_peft_available,
-    is_torch_version,
     logging,
 )
 from ..utils.distributed_utils import is_torch_dist_rank_zero
@@ -127,10 +126,7 @@ TORCH_INIT_FUNCTIONS = {
     "kaiming_normal": nn.init.kaiming_normal,
 }
 
-if is_torch_version(">=", "1.9.0"):
-    _LOW_CPU_MEM_USAGE_DEFAULT = True
-else:
-    _LOW_CPU_MEM_USAGE_DEFAULT = False
+_LOW_CPU_MEM_USAGE_DEFAULT = True
 
 
 if is_accelerate_available():
@@ -313,11 +309,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if gradient_checkpointing_func is None:
 
             def _gradient_checkpointing_func(module, *args):
-                ckpt_kwargs = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
                 return torch.utils.checkpoint.checkpoint(
                     module.__call__,
                     *args,
-                    **ckpt_kwargs,
+                    use_reentrant=False,
                 )
 
             gradient_checkpointing_func = _gradient_checkpointing_func
@@ -1091,19 +1086,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 " `device_map=None`. You can install accelerate with `pip install accelerate`."
             )
 
-        # Check if we can handle device_map and dispatching the weights
-        if device_map is not None and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `device_map=None`."
-            )
-
-        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `low_cpu_mem_usage=False`."
-            )
-
         if low_cpu_mem_usage is False and device_map is not None:
             raise ValueError(
                 f"You cannot set `low_cpu_mem_usage` to `False` while using device_map={device_map} for loading and"
@@ -1134,11 +1116,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 low_cpu_mem_usage = True
             elif not low_cpu_mem_usage:
                 raise ValueError("Passing along a `device_map` requires `low_cpu_mem_usage=True`")
-
-        if low_cpu_mem_usage:
-            if device_map is not None and not is_torch_version(">=", "1.10"):
-                # The max memory utils require PyTorch >= 1.10 to have torch.cuda.mem_get_info.
-                raise ValueError("`low_cpu_mem_usage` and `device_map` require PyTorch >= 1.10.")
 
         user_agent = {
             "diffusers": __version__,
@@ -1567,11 +1544,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     "Calling `cuda()` is not supported for `8-bit` quantized models with the installed version of bitsandbytes. "
                     f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.48.0."
                 )
-            elif getattr(self, "is_loaded_in_4bit", False) and is_bitsandbytes_version("<", "0.43.2"):
-                raise ValueError(
-                    "Calling `cuda()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
-                    f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
-                )
 
         # Checks if group offloading is enabled
         if _is_group_offload_enabled(self):
@@ -1625,11 +1597,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 raise ValueError(
                     "Calling `to()` is not supported for `8-bit` quantized models with the installed version of bitsandbytes. "
                     f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.48.0."
-                )
-            elif getattr(self, "is_loaded_in_4bit", False) and is_bitsandbytes_version("<", "0.43.2"):
-                raise ValueError(
-                    "Calling `to()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
-                    f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
                 )
         if _is_group_offload_enabled(self) and device_arg_or_kwarg_present:
             logger.warning(

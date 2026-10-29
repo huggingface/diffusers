@@ -27,8 +27,10 @@ from types import ModuleType
 from typing import Any
 
 from huggingface_hub.utils import is_jinja_available  # noqa: F401
+from packaging.requirements import Requirement
 from packaging.version import Version, parse
 
+from ..dependency_versions_table import deps
 from . import logging
 
 
@@ -57,9 +59,25 @@ STR_OPERATION_TO_FUNC = {">": op.gt, ">=": op.ge, "==": op.eq, "!=": op.ne, "<="
 
 _is_google_colab = "google.colab" in sys.modules or any(k.startswith("COLAB_") for k in os.environ)
 
+_PKG_TO_DEPS_KEY = {
+    "torch": "torch",
+    "transformers": "transformers",
+    "accelerate": "accelerate",
+    "peft": "peft",
+    "safetensors": "safetensors",
+    "bitsandbytes": "bitsandbytes",
+    "gguf": "gguf",
+    "torchao": "torchao",
+    "optimum": "optimum_quanto",
+    "modelopt": "nvidia_modelopt[hf]",
+    "sdnq": "sdnq",
+    "auto_round": "auto-round",
+}
+
 
 def _is_package_available(pkg_name: str, get_dist_name: bool = False) -> tuple[bool, str]:
     global _package_map
+    import_name = pkg_name
     pkg_exists = importlib.util.find_spec(pkg_name) is not None
     pkg_version = "N/A"
 
@@ -89,6 +107,15 @@ def _is_package_available(pkg_name: str, get_dist_name: bool = False) -> tuple[b
             pkg_version = importlib_metadata.version(pkg_name)
             logger.debug(f"Successfully imported {pkg_name} version {pkg_version}")
         except (ImportError, importlib_metadata.PackageNotFoundError):
+            pkg_exists = False
+
+    if pkg_exists and import_name in _PKG_TO_DEPS_KEY:
+        requirement = Requirement(deps[_PKG_TO_DEPS_KEY[import_name]])
+        if not requirement.specifier.contains(parse(pkg_version).base_version):
+            logger.warning(
+                f"Disabling {import_name} because diffusers requires `{requirement}` but found version {pkg_version}. "
+                f"Upgrade it with `pip install -U '{requirement}'`."
+            )
             pkg_exists = False
 
     return pkg_exists, pkg_version
@@ -458,9 +485,9 @@ inflect`
 """
 
 # docstyle-ignore
-PYTORCH_IMPORT_ERROR = """
-{0} requires the PyTorch library but it was not found in your environment. Checkout the instructions on the
-installation page: https://pytorch.org/get-started/locally/ and follow the ones that match your environment.
+PYTORCH_IMPORT_ERROR = f"""
+{{0}} requires `{deps["torch"]}` but a compatible version was not found in your environment. Checkout the instructions
+on the installation page: https://pytorch.org/get-started/locally/ and follow the ones that match your environment.
 """
 
 # docstyle-ignore
@@ -488,9 +515,9 @@ installation page: https://librosa.org/doc/latest/install.html and follow the on
 """
 
 # docstyle-ignore
-TRANSFORMERS_IMPORT_ERROR = """
-{0} requires the transformers library but it was not found in your environment. You can install it with pip: `pip
-install transformers`
+TRANSFORMERS_IMPORT_ERROR = f"""
+{{0}} requires `{deps["transformers"]}` but a compatible version was not found in your environment. You can install it
+with pip: `pip install -U '{deps["transformers"]}'`
 """
 
 # docstyle-ignore
@@ -547,13 +574,13 @@ INVISIBLE_WATERMARK_IMPORT_ERROR = """
 """
 
 # docstyle-ignore
-PEFT_IMPORT_ERROR = """
-{0} requires the peft library but it was not found in your environment. You can install it with pip: `pip install peft`
+PEFT_IMPORT_ERROR = f"""
+{{0}} requires `{deps["peft"]}` but a compatible version was not found in your environment. You can install it with pip: `pip install -U '{deps["peft"]}'`
 """
 
 # docstyle-ignore
-SAFETENSORS_IMPORT_ERROR = """
-{0} requires the safetensors library but it was not found in your environment. You can install it with pip: `pip install safetensors`
+SAFETENSORS_IMPORT_ERROR = f"""
+{{0}} requires `{deps["safetensors"]}` but a compatible version was not found in your environment. You can install it with pip: `pip install -U '{deps["safetensors"]}'`
 """
 
 # docstyle-ignore
@@ -563,8 +590,8 @@ SENTENCEPIECE_IMPORT_ERROR = """
 
 
 # docstyle-ignore
-BITSANDBYTES_IMPORT_ERROR = """
-{0} requires the bitsandbytes library but it was not found in your environment. You can install it with pip: `pip install bitsandbytes`
+BITSANDBYTES_IMPORT_ERROR = f"""
+{{0}} requires `{deps["bitsandbytes"]}` but a compatible version was not found in your environment. You can install it with pip: `pip install -U '{deps["bitsandbytes"]}'`
 """
 
 # docstyle-ignore
@@ -573,22 +600,22 @@ IMAGEIO_IMPORT_ERROR = """
 """
 
 # docstyle-ignore
-GGUF_IMPORT_ERROR = """
-{0} requires the gguf library but it was not found in your environment. You can install it with pip: `pip install gguf`
+GGUF_IMPORT_ERROR = f"""
+{{0}} requires `{deps["gguf"]}` but a compatible version was not found in your environment. You can install it with pip: `pip install -U '{deps["gguf"]}'`
 """
 
-TORCHAO_IMPORT_ERROR = """
-{0} requires the torchao library but it was not found in your environment. You can install it with pip: `pip install
-torchao`
+TORCHAO_IMPORT_ERROR = f"""
+{{0}} requires `{deps["torchao"]}` but a compatible version was not found in your environment. You can install it with
+pip: `pip install -U '{deps["torchao"]}'`
 """
 
-QUANTO_IMPORT_ERROR = """
-{0} requires the optimum-quanto library but it was not found in your environment. You can install it with pip: `pip
-install optimum-quanto`
+QUANTO_IMPORT_ERROR = f"""
+{{0}} requires `{deps["optimum_quanto"]}` but a compatible version was not found in your environment. You can install it
+with pip: `pip install -U '{deps["optimum_quanto"]}'`
 """
 
-SDNQ_IMPORT_ERROR = """
-{0} requires the sdnq library but it was not found in your environment. You can install it with pip: `pip install sdnq`
+SDNQ_IMPORT_ERROR = f"""
+{{0}} requires `{deps["sdnq"]}` but a compatible version was not found in your environment. You can install it with pip: `pip install -U '{deps["sdnq"]}'`
 """
 
 # docstyle-ignore
@@ -656,26 +683,6 @@ def requires_backends(obj, backends):
     failed = [msg.format(name) for available, msg in checks if not available()]
     if failed:
         raise ImportError("".join(failed))
-
-    if name in [
-        "VersatileDiffusionTextToImagePipeline",
-        "VersatileDiffusionPipeline",
-        "VersatileDiffusionDualGuidedPipeline",
-        "StableDiffusionImageVariationPipeline",
-        "UnCLIPPipeline",
-    ] and is_transformers_version("<", "4.25.0"):
-        raise ImportError(
-            f"You need to install `transformers>=4.25` in order to use {name}: \n```\n pip install"
-            " --upgrade transformers \n```"
-        )
-
-    if name in ["StableDiffusionDepth2ImgPipeline", "StableDiffusionPix2PixZeroPipeline"] and is_transformers_version(
-        "<", "4.26.0"
-    ):
-        raise ImportError(
-            f"You need to install `transformers>=4.26` in order to use {name}: \n```\n pip install"
-            " --upgrade transformers \n```"
-        )
 
 
 class DummyObject(type):

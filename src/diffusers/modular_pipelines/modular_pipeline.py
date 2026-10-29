@@ -2725,7 +2725,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
         def module_is_sequentially_offloaded(module):
-            if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
+            if not is_accelerate_available():
                 return False
 
             _, _, is_loaded_in_8bit_bnb = _check_bnb_status(module)
@@ -2740,7 +2740,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             )
 
         def module_is_offloaded(module):
-            if not is_accelerate_available() or is_accelerate_version("<", "0.17.0.dev0"):
+            if not is_accelerate_available():
                 return False
 
             return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, accelerate.hooks.CpuOffload)

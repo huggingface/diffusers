@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..utils import is_torch_npu_available, is_torch_version
+from ..utils import is_torch_npu_available
 from .activations import get_activation
 from .embeddings import CombinedTimestepLabelEmbeddings, PixArtAlphaCombinedTimestepSizeEmbeddings
 
@@ -469,42 +469,7 @@ class CogVideoXLayerNormZero(nn.Module):
         return hidden_states, encoder_hidden_states, gate[:, None, :], enc_gate[:, None, :]
 
 
-if is_torch_version(">=", "2.1.0"):
-    LayerNorm = nn.LayerNorm
-else:
-    # Has optional bias parameter compared to torch layer norm
-    # TODO: replace with torch layernorm once min required torch version >= 2.1
-    class LayerNorm(nn.Module):
-        r"""
-        LayerNorm with the bias parameter.
-
-        Args:
-            dim (`int`): Dimensionality to use for the parameters.
-            eps (`float`, defaults to 1e-5): Epsilon factor.
-            elementwise_affine (`bool`, defaults to `True`):
-                Boolean flag to denote if affine transformation should be applied.
-            bias (`bias`, defaults to `True`): Boolean flag to denote if bias should be use.
-        """
-
-        def __init__(self, dim, eps: float = 1e-5, elementwise_affine: bool = True, bias: bool = True):
-            super().__init__()
-
-            self.eps = eps
-
-            if isinstance(dim, numbers.Integral):
-                dim = (dim,)
-
-            self.dim = torch.Size(dim)
-
-            if elementwise_affine:
-                self.weight = nn.Parameter(torch.ones(dim))
-                self.bias = nn.Parameter(torch.zeros(dim)) if bias else None
-            else:
-                self.weight = None
-                self.bias = None
-
-        def forward(self, input) -> torch.Tensor:
-            return F.layer_norm(input, self.dim, self.weight, self.bias, self.eps)
+LayerNorm = nn.LayerNorm
 
 
 class RMSNorm(nn.Module):

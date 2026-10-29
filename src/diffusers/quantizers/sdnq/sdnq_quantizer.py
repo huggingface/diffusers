@@ -12,32 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
 from functools import lru_cache
 
-from ...utils import is_sdnq_available, is_sdnq_version, logging
+from ...utils import is_sdnq_available, logging
 from ..base import DiffusersQuantizer
 
 
 logger = logging.get_logger(__name__)
 
-# Recommended sdnq version. Older versions load/save most SDNQ checkpoints fine; only some of the
-# latest ones require this version, so a mismatch is a warning, not a hard error.
-_RECOMMENDED_SDNQ_VERSION = "0.2.2"
-
 
 def _check_sdnq_requirement():
     if not is_sdnq_available():
         raise ImportError(
-            f"Loading or creating an SDNQ quantized model requires the sdnq library: "
-            f"`pip install 'sdnq>={_RECOMMENDED_SDNQ_VERSION}'`"
-        )
-
-    if is_sdnq_version("<", _RECOMMENDED_SDNQ_VERSION) and not os.getenv("DIFFUSERS_NO_ADVISORY_WARNINGS"):
-        logger.warning(
-            f"Your installed sdnq is older than {_RECOMMENDED_SDNQ_VERSION}. Most SDNQ checkpoints will still "
-            f"load and save fine, but some of the latest ones require sdnq>={_RECOMMENDED_SDNQ_VERSION}. "
-            f"If you hit issues, upgrade with `pip install -U sdnq`."
+            "Loading or creating an SDNQ quantized model requires the sdnq library: `pip install 'sdnq>=0.2.2'`"
         )
 
 
