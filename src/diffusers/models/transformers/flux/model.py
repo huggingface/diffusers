@@ -21,6 +21,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ....configuration_utils import register_to_config
+from ....hooks.tensor_parallel import PackedRowwiseParallel
 from ....loaders.peft import PeftAdapterMixin
 from ....loaders.weight_mapping import WeightMappingMixin
 from ....utils import apply_lora_scale, logging
@@ -95,17 +96,19 @@ class FluxAttnProcessor:
             attn, hidden_states, encoder_hidden_states
         )
 
-        query = query.unflatten(-1, (attn.heads, -1))
-        key = key.unflatten(-1, (attn.heads, -1))
-        value = value.unflatten(-1, (attn.heads, -1))
+        # Reshape by a fixed `head_dim` and let `-1` absorb the head count. Under tensor parallelism each rank
+        # holds a column-sharded slice (`attn.heads // tp_degree` heads); this keeps the processor TP-agnostic.
+        query = query.unflatten(-1, (-1, attn.head_dim))
+        key = key.unflatten(-1, (-1, attn.head_dim))
+        value = value.unflatten(-1, (-1, attn.head_dim))
 
         query = attn.norm_q(query)
         key = attn.norm_k(key)
 
         if attn.added_kv_proj_dim is not None:
-            encoder_query = encoder_query.unflatten(-1, (attn.heads, -1))
-            encoder_key = encoder_key.unflatten(-1, (attn.heads, -1))
-            encoder_value = encoder_value.unflatten(-1, (attn.heads, -1))
+            encoder_query = encoder_query.unflatten(-1, (-1, attn.head_dim))
+            encoder_key = encoder_key.unflatten(-1, (-1, attn.head_dim))
+            encoder_value = encoder_value.unflatten(-1, (-1, attn.head_dim))
 
             encoder_query = attn.norm_added_q(encoder_query)
             encoder_key = attn.norm_added_k(encoder_key)
@@ -365,6 +368,9 @@ class FluxSingleTransformerBlock(nn.Module):
         self.proj_mlp = nn.Linear(dim, self.mlp_hidden_dim)
         self.act_mlp = nn.GELU(approximate="tanh")
         self.proj_out = nn.Linear(dim + self.mlp_hidden_dim, dim)
+        # proj_out input concatenates the attention output (`dim`) and the MLP branch (`mlp_hidden_dim`); each is
+        # independently column-sharded, so PackedRowwiseParallel splits its input columns along these block sizes.
+        self.proj_out._tp_packed_row_blocks = [dim, self.mlp_hidden_dim]
 
         self.attn = FluxAttention(
             query_dim=dim,
@@ -574,6 +580,35 @@ class FluxTransformer2DModel(
             "txt_ids": ContextParallelInput(split_dim=0, expected_dims=2, split_output=False),
         },
         "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+    }
+    # Tensor-parallel plan: how each block's fused/unfused Linears shard across the TP mesh. Flux1 is unfused, so
+    # nearly everything is plain "colwise"/"rowwise" (torch's ColwiseParallel / RowwiseParallel). The one exception is
+    # the single-stream `proj_out`, whose input is `cat([attn_output, mlp_hidden_states])` — two independently
+    # column-sharded streams — so it needs PackedRowwiseParallel with block sizes stored on the Linear at init.
+    # AdaLN modulation (norm1/norm1_context, the single-block norm, norm_out) and the QK-norms stay replicated
+    # (intentionally absent here): modulation indexes the full hidden dim, and QK-norm applies over head_dim after
+    # the heads are already split, so every rank needs the whole vector.
+    _tp_plan = {
+        # double-stream (MMDiT) blocks
+        "transformer_blocks.*.attn.to_q": "colwise",
+        "transformer_blocks.*.attn.to_k": "colwise",
+        "transformer_blocks.*.attn.to_v": "colwise",
+        "transformer_blocks.*.attn.to_out.0": "rowwise",
+        "transformer_blocks.*.attn.add_q_proj": "colwise",
+        "transformer_blocks.*.attn.add_k_proj": "colwise",
+        "transformer_blocks.*.attn.add_v_proj": "colwise",
+        "transformer_blocks.*.attn.to_add_out": "rowwise",
+        "transformer_blocks.*.ff.net.0.proj": "colwise",
+        "transformer_blocks.*.ff.net.2": "rowwise",
+        "transformer_blocks.*.ff_context.net.0.proj": "colwise",
+        "transformer_blocks.*.ff_context.net.2": "rowwise",
+        # single-stream (parallel attention + MLP) blocks
+        "single_transformer_blocks.*.attn.to_q": "colwise",
+        "single_transformer_blocks.*.attn.to_k": "colwise",
+        "single_transformer_blocks.*.attn.to_v": "colwise",
+        "single_transformer_blocks.*.proj_mlp": "colwise",
+        # input = cat([attn_output (inner_dim), mlp_hidden_states (mlp_hidden_dim)]); blocks set in __init__
+        "single_transformer_blocks.*.proj_out": PackedRowwiseParallel(),
     }
 
     _weight_mapping = FLUX_WEIGHT_MAPPING

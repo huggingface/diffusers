@@ -35,7 +35,7 @@ text_encoder_8bit = T5EncoderModel.from_pretrained(
     "fal/AuraFlow",
     subfolder="text_encoder",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 quant_config = DiffusersBitsAndBytesConfig(load_in_8bit=True)
@@ -43,14 +43,14 @@ transformer_8bit = AuraFlowTransformer2DModel.from_pretrained(
     "fal/AuraFlow",
     subfolder="transformer",
     quantization_config=quant_config,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 
 pipeline = AuraFlowPipeline.from_pretrained(
     "fal/AuraFlow",
     text_encoder=text_encoder_8bit,
     transformer=transformer_8bit,
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     device_map="balanced",
 )
 
@@ -72,13 +72,13 @@ from diffusers import (
 transformer = AuraFlowTransformer2DModel.from_single_file(
     "https://huggingface.co/city96/AuraFlow-v0.3-gguf/blob/main/aura_flow_0.3-Q2_K.gguf",
     quantization_config=GGUFQuantizationConfig(compute_dtype=torch.bfloat16),
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 
 pipeline = AuraFlowPipeline.from_pretrained(
     "fal/AuraFlow-v0.3",
     transformer=transformer,
-    torch_dtype=torch.bfloat16,
+    dtype=torch.bfloat16,
 )
 
 prompt = "a cute pony in a field of flowers"

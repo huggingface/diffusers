@@ -108,15 +108,16 @@ class Ideogram4CoreDenoiseStep(SequentialPipelineBlocks):
 # auto_docstring
 class Ideogram4AutoBlocks(SequentialPipelineBlocks):
     """
-    Auto Modular pipeline for text-to-image generation using Ideogram4: encode text -> core denoise (asymmetric CFG
-    over two transformers) -> decode.
+    Auto Modular pipeline for text-to-image generation using Ideogram4: (optional) prompt upsampling -> encode text ->
+    core denoise (asymmetric CFG over two transformers) -> decode.
 
       Supported workflows:
         - `text2image`: requires `prompt`
 
       Components:
           text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`Qwen2Tokenizer`): The tokenizer paired
-          with the text encoder. transformer (`Ideogram4Transformer2DModel`) scheduler
+          with the text encoder. prompt_enhancer_head (`Ideogram4PromptEnhancerHead`): LM head grafted onto the text
+          encoder for prompt upsampling. transformer (`Ideogram4Transformer2DModel`) scheduler
           (`FlowMatchEulerDiscreteScheduler`) unconditional_transformer (`Ideogram4Transformer2DModel`) vae
           (`AutoencoderKLFlux2`) image_processor (`VaeImageProcessor`)
 
@@ -124,21 +125,21 @@ class Ideogram4AutoBlocks(SequentialPipelineBlocks):
           prompt (`str`):
               The prompt or prompts to guide image generation.
           prompt_upsampling (`bool`, *optional*, defaults to False):
-              Rewrite the prompt into Ideogram4's native structured JSON caption before encoding.
+              If True, rewrite the prompt into Ideogram4's native JSON caption before encoding.
           prompt_upsampling_temperature (`float`, *optional*, defaults to 1.0):
               Sampling temperature for prompt upsampling.
+          height (`int`, *optional*):
+              The height in pixels of the generated image.
+          width (`int`, *optional*):
+              The width in pixels of the generated image.
           max_sequence_length (`int`, *optional*, defaults to 2048):
               Maximum sequence length for prompt encoding.
+          generator (`Generator`, *optional*):
+              Torch generator for deterministic generation.
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
-          height (`int`):
-              The height in pixels of the generated image.
-          width (`int`):
-              The width in pixels of the generated image.
-          generator (`Generator`, *optional*):
-              Torch generator for deterministic generation.
           num_inference_steps (`int`, *optional*, defaults to 48):
               The number of denoising steps.
           mu (`float`, *optional*, defaults to 0.0):

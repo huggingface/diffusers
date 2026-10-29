@@ -101,9 +101,9 @@ import torch
 base_model_path = "stabilityai/stable-diffusion-xl-base-1.0"
 adapter_path = "path to adapter"
 
-adapter = T2IAdapter.from_pretrained(adapter_path, torch_dtype=torch.float16)
+adapter = T2IAdapter.from_pretrained(adapter_path, dtype=torch.float16)
 pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
-    base_model_path, adapter=adapter, torch_dtype=torch.float16
+    base_model_path, adapter=adapter, dtype=torch.float16
 )
 
 # speed up diffusion process with faster scheduler and memory optimization

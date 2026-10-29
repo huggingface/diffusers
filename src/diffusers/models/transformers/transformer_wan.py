@@ -333,7 +333,7 @@ class WanTimeTextImageEmbedding(nn.Module):
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: torch.Tensor | None = None,
         timestep_seq_len: int | None = None,
-    ):
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
         timestep = self.timesteps_proj(timestep)
         if timestep_seq_len is not None:
             timestep = timestep.unflatten(0, (-1, timestep_seq_len))
@@ -546,7 +546,7 @@ class WanTransformer3DModel(
     _supports_gradient_checkpointing = True
     _skip_layerwise_casting_patterns = ["patch_embedding", "condition_embedder", "norm"]
     _no_split_modules = ["WanTransformerBlock"]
-    _keep_in_fp32_modules = ["time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
+    _keep_in_fp32_modules = ["rope", "time_embedder", "scale_shift_table", "norm1", "norm2", "norm3"]
     _keys_to_ignore_on_load_unexpected = ["norm_added_q"]
     _repeated_blocks = ["WanTransformerBlock"]
     _cp_plan = {
@@ -669,6 +669,9 @@ class WanTransformer3DModel(
 
         hidden_states = self.patch_embedding(hidden_states)
         hidden_states = hidden_states.flatten(2).transpose(1, 2)
+
+        # flatten+transpose produces a non-contiguous tensor; make it contiguous before the block loop.
+        hidden_states = hidden_states.contiguous()
 
         # timestep shape: batch_size, or batch_size, seq_len (wan 2.2 ti2v)
         if timestep.ndim == 2:

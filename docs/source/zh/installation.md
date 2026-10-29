@@ -14,10 +14,9 @@ specific language governing permissions and limitations under the License.
 
 在你正在使用的任意深度学习框架中安装 🤗 Diffusers 。
 
-🤗 Diffusers已在Python 3.8+、PyTorch 1.7.0+和Flax上进行了测试。按照下面的安装说明，针对你正在使用的深度学习框架进行安装：
+🤗 Diffusers已在Python 3.8+和PyTorch 1.7.0+上进行了测试。按照下面的安装说明，针对你正在使用的深度学习框架进行安装：
 
 - [PyTorch](https://pytorch.org/get-started/locally/) installation instructions.
-- [Flax](https://flax.readthedocs.io/en/latest/) installation instructions.
 
 ## 使用pip安装
 
@@ -45,12 +44,6 @@ source .env/bin/activate
 
 ```bash
 pip install diffusers["torch"]
-```
-
-**Flax**
-
-```bash
-pip install diffusers["flax"]
 ```
 
 ## 从源代码安装
@@ -99,12 +92,6 @@ cd diffusers
 pip install -e ".[torch]"
 ```
 
-**Flax**
-
-```sh
-pip install -e ".[flax]"
-```
-
 这些命令将连接到你克隆的版本库和你的 Python 库路径。
 现在，不只是在通常的库路径，Python 还会在你克隆的文件夹内寻找包。
 例如，如果你的 Python 包通常安装在 `~/anaconda3/envs/main/lib/python3.10/Site-packages/`，Python 也会搜索你克隆到的文件夹。`~/diffusers/`。
@@ -124,7 +111,7 @@ git pull
 
 ## 注意 Telemetry 日志
 
-我们的库会在使用`from_pretrained()`请求期间收集 telemetry 信息。这些数据包括Diffusers和PyTorch/Flax的版本，请求的模型或管道类，以及预训练检查点的路径（如果它被托管在Hub上的话）。
+我们的库会在使用`from_pretrained()`请求期间收集 telemetry 信息。这些数据包括Diffusers和PyTorch的版本，请求的模型或管道类，以及预训练检查点的路径（如果它被托管在Hub上的话）。
 这些使用数据有助于我们调试问题并确定新功能的开发优先级。
 Telemetry 数据仅在从 HuggingFace Hub 中加载模型和管道时发送，而不会在本地使用期间收集。
 

@@ -23,7 +23,7 @@ import torch
 from diffusers import AutoPipelineForImage2Image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-  "RunDiffusion/Juggernaut-XL-v9", torch_dtype=torch.bfloat16, device_map="cuda",
+  "RunDiffusion/Juggernaut-XL-v9", dtype=torch.bfloat16, device_map="cuda",
 )
 print(pipeline)
 "StableDiffusionXLImg2ImgPipeline {
@@ -39,7 +39,7 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-  "RunDiffusion/Juggernaut-XL-v9", torch_dtype=torch.bfloat16, device_map="cuda",
+  "RunDiffusion/Juggernaut-XL-v9", dtype=torch.bfloat16, device_map="cuda",
 )
 print(pipeline)
 "StableDiffusionXLPipeline {
@@ -57,7 +57,7 @@ import torch
 from diffusers import AutoPipelineForImage2Image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "openai/shap-e-img2img", torch_dtype=torch.float16,
+    "openai/shap-e-img2img", dtype=torch.float16,
 )
 "ValueError: AutoPipeline can't find a pipeline linked to ShapEImg2ImgPipeline for None"
 ```

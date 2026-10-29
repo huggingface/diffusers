@@ -267,7 +267,6 @@ def get_transformers_submodules():
 
 IGNORE_SUBMODULES = [
     "convert_pytorch_checkpoint_to_tf2",
-    "modeling_flax_pytorch_utils",
 ]
 
 

@@ -10,7 +10,7 @@ from ....configuration_utils import FrozenDict
 from ....schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ....utils import deprecate, logging
 from ...onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
-from ...pipeline_utils import DiffusionPipeline
+from ...pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline
 from ...stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 
 
@@ -38,7 +38,9 @@ def preprocess_mask(mask, scale_factor=8):
     return mask
 
 
-class OnnxStableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
+class OnnxStableDiffusionInpaintPipelineLegacy(DeprecatedPipelineMixin, DiffusionPipeline):
+    _last_supported_version = "0.43.0"
+
     r"""
     Pipeline for text-guided image inpainting using Stable Diffusion. This is a *legacy feature* for Onnx pipelines to
     provide compatibility with StableDiffusionInpaintPipelineLegacy and may be removed in the future.

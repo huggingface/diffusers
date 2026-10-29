@@ -28,7 +28,7 @@ manager = ComponentsManager()
 manager.enable_auto_cpu_offload(device="cuda:0")
 
 pipe = ModularPipeline.from_pretrained("Qwen/Qwen-Image", components_manager=manager)
-pipe.load_components(torch_dtype=torch.bfloat16)
+pipe.load_components(dtype=torch.bfloat16)
 
 image = pipe(
     prompt="cat wizard with red hat, gandalf, lord of the rings, detailed, fantasy, cute, adorable, Pixar, Disney",
@@ -243,12 +243,12 @@ Create a pipeline from the modified blocks and load a ControlNet model. The Cont
 ```py
 pipeline = blocks.init_pipeline("Qwen/Qwen-Image", components_manager=manager)
 
-pipeline.load_components(torch_dtype=torch.bfloat16)
+pipeline.load_components(dtype=torch.bfloat16)
 
 # Load the ControlNet model
 controlnet_spec = pipeline.get_component_spec("controlnet")
 controlnet_spec.pretrained_model_name_or_path = "InstantX/Qwen-Image-ControlNet-Union"
-controlnet = controlnet_spec.load(torch_dtype=torch.bfloat16)
+controlnet = controlnet_spec.load(dtype=torch.bfloat16)
 pipeline.update_components(controlnet=controlnet)
 ```
 

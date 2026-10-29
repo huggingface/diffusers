@@ -108,7 +108,7 @@ Once the training is finished the model will be saved in the `output_dir` specif
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipe = AutoPipelineForText2Image.from_pretrained(output_dir, torch_dtype=torch.float16)
+pipe = AutoPipelineForText2Image.from_pretrained(output_dir, dtype=torch.float16)
 pipe.enable_model_cpu_offload()
 
 prompt='A robot naruto, 4k photo'
@@ -124,7 +124,7 @@ model_path = "path_to_saved_model"
 
 unet = UNet2DConditionModel.from_pretrained(model_path + "/checkpoint-<N>/unet")
 
-pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", unet=unet, torch_dtype=torch.float16)
+pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", unet=unet, dtype=torch.float16)
 pipe.enable_model_cpu_offload()
 
 image = pipe(prompt="A robot naruto, 4k photo").images[0]
@@ -165,9 +165,9 @@ To perform inference with the fine-tuned prior model, you will need to first cre
 from diffusers import AutoPipelineForText2Image, DiffusionPipeline
 import torch
 
-pipe_prior = DiffusionPipeline.from_pretrained(output_dir, torch_dtype=torch.float16)
+pipe_prior = DiffusionPipeline.from_pretrained(output_dir, dtype=torch.float16)
 prior_components = {"prior_" + k: v for k,v in pipe_prior.components.items()}
-pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", **prior_components, torch_dtype=torch.float16)
+pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", **prior_components, dtype=torch.float16)
 
 pipe.enable_model_cpu_offload()
 prompt='A robot naruto, 4k photo'
@@ -281,7 +281,7 @@ Once you have trained a Kandinsky decoder model using the above command, inferen
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
+pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", dtype=torch.float16)
 pipe.unet.load_attn_procs(output_dir)
 pipe.enable_model_cpu_offload()
 
@@ -296,7 +296,7 @@ image.save("robot_naruto.png")
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
+pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", dtype=torch.float16)
 pipe.prior_prior.load_attn_procs(output_dir)
 pipe.enable_model_cpu_offload()
 

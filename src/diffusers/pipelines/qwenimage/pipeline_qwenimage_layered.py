@@ -185,9 +185,8 @@ class QwenImageLayeredPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         text_encoder ([`Qwen2.5-VL-7B-Instruct`]):
             [Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct), specifically the
             [Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) variant.
-        tokenizer (`QwenTokenizer`):
-            Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/en/model_doc/clip#transformers.CLIPTokenizer).
+        tokenizer (`Qwen2Tokenizer`):
+            Tokenizer of class https://huggingface.co/docs/transformers/en/model_doc/qwen2#transformers.Qwen2Tokenizer
     """
 
     model_cpu_offload_seq = "text_encoder->transformer->vae"
@@ -563,7 +562,7 @@ the image\n<|vision_start|><|image_pad|><|vision_end|><|im_end|>\n<|im_start|>as
         resolution: int = 640,
         cfg_normalize: bool = False,
         use_en_prompt: bool = False,
-    ):
+    ) -> QwenImagePipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

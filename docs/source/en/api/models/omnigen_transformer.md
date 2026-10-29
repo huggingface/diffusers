@@ -22,7 +22,7 @@ The abstract from the paper is:
 import torch
 from diffusers import OmniGenTransformer2DModel
 
-transformer = OmniGenTransformer2DModel.from_pretrained("Shitao/OmniGen-v1-diffusers", subfolder="transformer", torch_dtype=torch.bfloat16)
+transformer = OmniGenTransformer2DModel.from_pretrained("Shitao/OmniGen-v1-diffusers", subfolder="transformer", dtype=torch.bfloat16)
 ```
 
 ## OmniGenTransformer2DModel

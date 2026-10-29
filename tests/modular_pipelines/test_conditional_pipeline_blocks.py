@@ -18,7 +18,60 @@ from diffusers.modular_pipelines import (
     ConditionalPipelineBlocks,
     InputParam,
     ModularPipelineBlocks,
+    OutputParam,
 )
+from diffusers.modular_pipelines.modular_pipeline_utils import combine_inputs
+
+
+class TestConditionalBlocksInputs:
+    def test_combine_inputs_agreeing_defaults_stay_untouched(self):
+        combined = combine_inputs(
+            ("block-a", [InputParam(name="x", default=5)]),
+            ("block-b", [InputParam(name="x", default=5)]),
+        )
+        assert combined == [InputParam(name="x", default=5)]
+
+    def test_combine_inputs_first_occurrence_wins(self):
+        combined = combine_inputs(
+            ("block-a", [InputParam(name="x", default=5, description="from block-a")]),
+            ("block-b", [InputParam(name="x", default=5, description="from block-b")]),
+        )
+        # duplicate inputs keep the first occurrence: block-b's description is dropped
+        assert combined == [InputParam(name="x", default=5, description="from block-a")]
+
+    def test_combine_inputs_none_default_counts_as_disagreement(self):
+        # a None default is a sentinel ("user didn't pass this"), it must not be overridden by a sibling's default
+        combined = combine_inputs(
+            ("block-a", [InputParam(name="x", default=None)]),
+            ("block-b", [InputParam(name="x", default=5)]),
+        )
+        assert combined == [InputParam(name="x", default=None, defaults_by_block={"block-a": None, "block-b": 5})]
+
+    def test_combine_inputs_disagreement_records_every_block(self):
+        combined = combine_inputs(
+            ("block-a", [InputParam(name="x", default=1)]),
+            ("block-b", [InputParam(name="x", default=2)]),
+            ("block-c", [InputParam(name="x", default=1)]),
+        )
+        # any disagreement records every block's default, including the ones that agree with each other
+        assert combined == [
+            InputParam(name="x", default=None, defaults_by_block={"block-a": 1, "block-b": 2, "block-c": 1})
+        ]
+
+    def test_combine_inputs_nested_defaults_prefixed(self):
+        # block-b is itself a conditional block whose branches already disagree, so its param carries
+        # defaults_by_block; merging at the outer level prefixes those entries with the sub-block name
+        combined = combine_inputs(
+            ("block-a", [InputParam(name="x", default=3)]),
+            ("block-b", [InputParam(name="x", default=None, defaults_by_block={"branch-a": 1, "branch-b": 2})]),
+        )
+        assert combined == [
+            InputParam(
+                name="x",
+                default=None,
+                defaults_by_block={"block-a": 3, "block-b.branch-a": 1, "block-b.branch-b": 2},
+            )
+        ]
 
 
 class TextToImageBlock(ModularPipelineBlocks):
@@ -30,7 +83,7 @@ class TextToImageBlock(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self):
-        return []
+        return [OutputParam(name="workflow")]
 
     @property
     def description(self):
@@ -48,11 +101,15 @@ class ImageToImageBlock(ModularPipelineBlocks):
 
     @property
     def inputs(self):
-        return [InputParam(name="prompt"), InputParam(name="image")]
+        return [
+            InputParam(name="prompt"),
+            InputParam(name="image"),
+            InputParam(name="strength", type_hint=float, default=0.3),
+        ]
 
     @property
     def intermediate_outputs(self):
-        return []
+        return [OutputParam(name="workflow")]
 
     @property
     def description(self):
@@ -70,11 +127,16 @@ class InpaintBlock(ModularPipelineBlocks):
 
     @property
     def inputs(self):
-        return [InputParam(name="prompt"), InputParam(name="image"), InputParam(name="mask")]
+        return [
+            InputParam(name="prompt"),
+            InputParam(name="image"),
+            InputParam(name="mask"),
+            InputParam(name="strength", type_hint=float, default=0.9999),
+        ]
 
     @property
     def intermediate_outputs(self):
-        return []
+        return [OutputParam(name="workflow")]
 
     @property
     def description(self):
@@ -240,3 +302,73 @@ class TestConditionalPipelineBlocksStructure:
     def test_description(self):
         blocks = ConditionalImageBlocks()
         assert "Conditional" in blocks.description
+
+
+class NestedImageBlocks(ConditionalPipelineBlocks):
+    block_classes = [InpaintBlock, AutoImageBlocks]
+    block_names = ["refine", "image"]
+    block_trigger_inputs = ["mask"]
+    default_block_name = "image"
+
+    @property
+    def description(self):
+        return "Nested conditional blocks: refine when `mask` is provided, auto image blocks otherwise"
+
+    def select_block(self, mask=None) -> str | None:
+        if mask is not None:
+            return "refine"
+        return None
+
+
+class TestConditionalBlocksBranchDefaults:
+    def test_conflicting_defaults_merge_to_none(self):
+        # inpaint (0.9999) and img2img (0.3) disagree on strength: the merged input's default becomes None
+        # and the per-block defaults are recorded in defaults_by_block
+        strength_params = [p for p in AutoImageBlocks().inputs if p.name == "strength"]
+        assert len(strength_params) == 1
+        assert strength_params[0] == InputParam(
+            name="strength",
+            type_hint=float,
+            default=None,
+            defaults_by_block={"inpaint": 0.9999, "img2img": 0.3},
+        )
+
+        # the docstring renders the distinct per-block defaults instead of a single value
+        doc = " ".join(AutoImageBlocks().doc.split())
+        assert "strength (`float`, *optional*, defaults to 0.9999 or 0.3, depending on the workflow):" in doc
+
+    def test_branch_resolves_own_default(self):
+        pipe = AutoImageBlocks().init_pipeline()
+        state = pipe(prompt="p", image="i")
+        assert state.get("workflow") == "img2img"
+        assert state.get("strength") == 0.3
+
+        state = pipe(prompt="p", image="i", mask="m")
+        assert state.get("workflow") == "inpaint"
+        assert state.get("strength") == 0.9999
+
+    def test_explicit_value_overrides_branch_default(self):
+        pipe = AutoImageBlocks().init_pipeline()
+        state = pipe(prompt="p", image="i", strength=0.7)
+        assert state.get("workflow") == "img2img"
+        assert state.get("strength") == 0.7
+
+    def test_standalone_branch_keeps_default(self):
+        pipe = ImageToImageBlock().init_pipeline()
+        state = pipe(prompt="p", image="i")
+        assert state.get("workflow") == "img2img"
+        assert state.get("strength") == 0.3
+
+    def test_nested_defaults_prefixed_with_sub_block_name(self):
+        strength_params = [p for p in NestedImageBlocks().inputs if p.name == "strength"]
+        assert len(strength_params) == 1
+        assert strength_params[0] == InputParam(
+            name="strength",
+            type_hint=float,
+            default=None,
+            defaults_by_block={"refine": 0.9999, "image.inpaint": 0.9999, "image.img2img": 0.3},
+        )
+
+        # the docstring renders distinct values only: refine and image.inpaint both use 0.9999, shown once
+        doc = " ".join(NestedImageBlocks().doc.split())
+        assert "strength (`float`, *optional*, defaults to 0.9999 or 0.3, depending on the workflow):" in doc

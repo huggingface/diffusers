@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 import numpy as np
 import PIL.Image
 import torch
@@ -22,7 +20,7 @@ import torch
 from diffusers.image_processor import VaeImageProcessor
 
 
-class ImageProcessorTest(unittest.TestCase):
+class TestImageProcessor:
     @property
     def dummy_sample(self):
         batch_size = 1

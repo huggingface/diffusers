@@ -24,8 +24,8 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, safety_checker=None
-).to("cuda")
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, safety_checker=None
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.5, b2=1.6)
 generator = torch.Generator(device="cpu").manual_seed(33)
 prompt = ""
@@ -52,8 +52,8 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16, safety_checker=None
-).to("cuda")
+    "stabilityai/stable-diffusion-2-1", dtype=torch.float16, safety_checker=None
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.4, b2=1.6)
 generator = torch.Generator(device="cpu").manual_seed(80)
 prompt = "A squirrel eating a burger"
@@ -80,8 +80,8 @@ import torch
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16,
-).to("cuda")
+    "stabilityai/stable-diffusion-xl-base-1.0", dtype=torch.float16,
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.3, b2=1.4)
 generator = torch.Generator(device="cpu").manual_seed(13)
 prompt = "A squirrel eating a burger"
@@ -109,8 +109,8 @@ from diffusers import DiffusionPipeline
 from diffusers.utils import export_to_video
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "damo-vilab/text-to-video-ms-1.7b", torch_dtype=torch.float16
-).to("cuda")
+    "damo-vilab/text-to-video-ms-1.7b", dtype=torch.float16
+).to("cuda")  # or "mps", "xpu", "cpu"
 # values come from https://github.com/lyn-rgb/FreeU_Diffusers#video-pipelines
 pipeline.enable_freeu(b1=1.2, b2=1.4, s1=0.9, s2=0.2)
 prompt = "Confident teddy bear surfer rides the wave in the tropics"

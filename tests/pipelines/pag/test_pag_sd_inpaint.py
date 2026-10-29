@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2025 HuggingFace Inc.
+# Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,9 +15,9 @@
 
 import gc
 import random
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -26,6 +26,7 @@ from diffusers import (
     AutoencoderKL,
     AutoPipelineForInpainting,
     PNDMScheduler,
+    StableDiffusionInpaintPipeline,
     StableDiffusionPAGInpaintPipeline,
     UNet2DConditionModel,
 )
@@ -44,32 +45,29 @@ from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
 )
-from ..test_pipelines_common import (
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    FromPipeTesterMixin,
     IPAdapterTesterMixin,
-    PipelineFromPipeTesterMixin,
-    PipelineLatentTesterMixin,
-    PipelineTesterMixin,
+    MemoryTesterMixin,
 )
+from .testing_utils import PAGPipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class StableDiffusionPAGInpaintPipelineFastTests(
-    PipelineTesterMixin,
-    IPAdapterTesterMixin,
-    PipelineLatentTesterMixin,
-    PipelineFromPipeTesterMixin,
-    unittest.TestCase,
-):
+class StableDiffusionPAGInpaintPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = StableDiffusionPAGInpaintPipeline
-    params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS.union({"pag_scale", "pag_adaptive_scale"})
-    batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
-    image_params = frozenset([])
-    image_latents_params = frozenset([])
+    required_input_params_in_call_signature = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS.union(
+        {"pag_scale", "pag_adaptive_scale"}
+    )
+    batch_input_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union(
         {"add_text_embeds", "add_time_ids", "mask", "masked_image_latents"}
     )
+    # The output resolution follows the 64x64 input image.
+    output_shape = (3, 64, 64)
 
     def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
@@ -109,7 +107,7 @@ class StableDiffusionPAGInpaintPipelineFastTests(
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        components = {
+        return {
             "unet": unet,
             "scheduler": scheduler,
             "vae": vae,
@@ -119,42 +117,39 @@ class StableDiffusionPAGInpaintPipelineFastTests(
             "feature_extractor": None,
             "image_encoder": None,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
+    def get_dummy_inputs(self):
         # TODO: use tensor inputs instead of PIL, this is here just to leave the old expected_slices untouched
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(0)).to(torch_device)
         image = image.cpu().permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((64, 64))
         # create mask
         image[8:, 8:, :] = 255
         mask_image = Image.fromarray(np.uint8(image)).convert("L").resize((64, 64))
 
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
+        return {
             "prompt": "A painting of a squirrel eating a burger",
             "image": init_image,
             "mask_image": mask_image,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "strength": 1.0,
             "pag_scale": 0.9,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
         }
-        return inputs
+
+
+class TestStableDiffusionPAGInpaintPipeline(StableDiffusionPAGInpaintPipelineTesterConfig, PAGPipelineTesterMixin):
+    base_pipeline_class = StableDiffusionInpaintPipeline
+    # fmt: off
+    expected_pag_slice = torch.tensor([0.7173, 0.5821, 0.6031, 0.5765, 0.6412, 0.6558, 0.5803, 0.5675, 0.5246])
+    # fmt: on
 
     def test_pag_applied_layers(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-
-        # base pipeline
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline()
 
         # pag_applied_layers = ["mid","up","down"] should apply to all self-attention layers
         all_self_attn_layers = [k for k in pipe.unet.attn_processors.keys() if "attn1" in k]
@@ -192,7 +187,7 @@ class StableDiffusionPAGInpaintPipelineFastTests(
         # pag_applied_layers = ["mid.block_0.attentions_1"] does not exist in the model
         pipe.unet.set_attn_processor(original_attn_procs.copy())
         pag_layers = ["mid_block.attentions.1"]
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
 
         # pag_applied_layers = "down" should apply to all self-attention layers in down_blocks
@@ -207,7 +202,7 @@ class StableDiffusionPAGInpaintPipelineFastTests(
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
         pag_layers = ["down_blocks.0"]
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
 
         pipe.unet.set_attn_processor(original_attn_procs.copy())
@@ -220,50 +215,41 @@ class StableDiffusionPAGInpaintPipelineFastTests(
         pipe._set_pag_attn_processor(pag_applied_layers=pag_layers, do_classifier_free_guidance=False)
         assert len(pipe.pag_attn_processors) == 1
 
-    def test_pag_inference(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-
-        pipe_pag = self.pipeline_class(**components, pag_applied_layers=["mid", "up", "down"])
-        pipe_pag = pipe_pag.to(device)
-        pipe_pag.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        image = pipe_pag(**inputs).images
-        image_slice = image[0, -3:, -3:, -1]
-
-        assert image.shape == (
-            1,
-            64,
-            64,
-            3,
-        ), f"the shape of the output image should be (1, 64, 64, 3) but got {image.shape}"
-
-        expected_slice = np.array([0.7190, 0.5807, 0.6007, 0.5600, 0.6350, 0.6639, 0.5680, 0.5664, 0.5230])
-        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        assert max_diff < 1e-3, f"output is different from expected, {image_slice.flatten()}"
-
     def test_encode_prompt_works_in_isolation(self):
         extra_required_param_value_dict = {
             "device": torch.device(torch_device).type,
-            "do_classifier_free_guidance": self.get_dummy_inputs(device=torch_device).get("guidance_scale", 1.0) > 1.0,
+            "do_classifier_free_guidance": self.get_dummy_inputs().get("guidance_scale", 1.0) > 1.0,
         }
         return super().test_encode_prompt_works_in_isolation(extra_required_param_value_dict, atol=1e-3, rtol=1e-3)
 
 
+class TestStableDiffusionPAGInpaintPipelineMemory(StableDiffusionPAGInpaintPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the SD PAG inpaint pipeline."""
+
+
+class TestStableDiffusionPAGInpaintPipelineIPAdapter(
+    StableDiffusionPAGInpaintPipelineTesterConfig, IPAdapterTesterMixin
+):
+    """IP-Adapter tests for the SD PAG inpaint pipeline."""
+
+
+class TestStableDiffusionPAGInpaintPipelineFromPipe(
+    StableDiffusionPAGInpaintPipelineTesterConfig, FromPipeTesterMixin
+):
+    """`from_pipe` round-trip tests against `StableDiffusionPipeline`."""
+
+
 @slow
 @require_torch_accelerator
-class StableDiffusionPAGPipelineIntegrationTests(unittest.TestCase):
+class TestStableDiffusionPAGInpaintPipelineIntegration:
     pipeline_class = StableDiffusionPAGInpaintPipeline
     repo_id = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

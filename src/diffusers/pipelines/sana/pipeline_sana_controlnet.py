@@ -30,7 +30,6 @@ from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
     USE_PEFT_BACKEND,
-    deprecate,
     is_bs4_available,
     is_ftfy_available,
     is_torch_xla_available,
@@ -39,7 +38,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import get_device, is_torch_version, randn_tensor
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..pixart_alpha.pipeline_pixart_alpha import (
     ASPECT_RATIO_512_BIN,
@@ -232,59 +231,6 @@ class SanaControlNetPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             else 32
         )
         self.image_processor = PixArtImageProcessor(vae_scale_factor=self.vae_scale_factor)
-
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        depr_message = f"Calling `enable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_slicing()`."
-        deprecate(
-            "enable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_slicing()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_slicing()`."
-        deprecate(
-            "disable_vae_slicing",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_slicing()
-
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        depr_message = f"Calling `enable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.enable_tiling()`."
-        deprecate(
-            "enable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.enable_tiling()
-
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        depr_message = f"Calling `disable_vae_tiling()` on a `{self.__class__.__name__}` is deprecated and this method will be removed in a future version. Please use `pipe.vae.disable_tiling()`."
-        deprecate(
-            "disable_vae_tiling",
-            "0.40.0",
-            depr_message,
-        )
-        self.vae.disable_tiling()
 
     # Copied from diffusers.pipelines.sana.pipeline_sana.SanaPipeline._get_gemma_prompt_embeds
     def _get_gemma_prompt_embeds(
@@ -1107,15 +1053,9 @@ class SanaControlNetPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             image = latents
         else:
             latents = latents.to(self.vae.dtype)
-            torch_accelerator_module = getattr(torch, get_device(), torch.cuda)
-            oom_error = (
-                torch.OutOfMemoryError
-                if is_torch_version(">=", "2.5.0")
-                else torch_accelerator_module.OutOfMemoryError
-            )
             try:
                 image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-            except oom_error as e:
+            except torch.OutOfMemoryError as e:
                 warnings.warn(
                     f"{e}. \n"
                     f"Try to use VAE tiling for large images. For example: \n"

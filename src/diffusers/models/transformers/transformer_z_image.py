@@ -60,7 +60,7 @@ class TimestepEmbedder(nn.Module):
                 embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
             return embedding
 
-    def forward(self, t):
+    def forward(self, t) -> torch.Tensor:
         t_freq = self.timestep_embedding(t, self.frequency_embedding_size)
         weight_dtype = self.mlp[0].weight.dtype
         compute_dtype = getattr(self.mlp[0], "compute_dtype", None)
@@ -176,7 +176,7 @@ class FeedForward(nn.Module):
     def _forward_silu_gating(self, x1, x3):
         return F.silu(x1) * x3
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         return self.w2(self._forward_silu_gating(self.w1(x), self.w3(x)))
 
 
@@ -232,7 +232,7 @@ class ZImageTransformerBlock(nn.Module):
         noise_mask: torch.Tensor | None = None,
         adaln_noisy: torch.Tensor | None = None,
         adaln_clean: torch.Tensor | None = None,
-    ):
+    ) -> torch.Tensor:
         if self.modulation:
             seq_len = x.shape[1]
 
@@ -291,7 +291,7 @@ class FinalLayer(nn.Module):
             nn.Linear(min(hidden_size, ADALN_EMBED_DIM), hidden_size, bias=True),
         )
 
-    def forward(self, x, c=None, noise_mask=None, c_noisy=None, c_clean=None):
+    def forward(self, x, c=None, noise_mask=None, c_noisy=None, c_clean=None) -> torch.Tensor:
         seq_len = x.shape[1]
 
         if noise_mask is not None:
@@ -902,7 +902,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         image_noise_mask: list[list[int]] | None = None,
         patch_size: int = 2,
         f_patch_size: int = 1,
-    ):
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`ZImageTransformer2DModel`] forward method.
 
@@ -930,6 +930,10 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                 Spatial patch size used to patchify the input latents.
             f_patch_size (`int`, *optional*, defaults to 1):
                 Temporal patch size used to patchify the input latents.
+
+        Returns:
+            If `return_dict` is True, a [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
         """
         assert patch_size in self.all_patch_size and f_patch_size in self.all_f_patch_size
         omni_mode = isinstance(x[0], list)

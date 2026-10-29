@@ -26,7 +26,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "kandinsky-community/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16
+    "kandinsky-community/kandinsky-2-2-decoder-inpaint", dtype=torch.float16
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -92,7 +92,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image
 from PIL import Image
 
-pipeline = AutoPipelineForInpainting.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16).to('cuda')
+pipeline = AutoPipelineForInpainting.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to('cuda')  # or "mps", "xpu", "cpu"
 
 mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/seashore_mask.png")
 blurred_mask = pipeline.mask_processor.blur(mask, blur_factor=33)
@@ -124,7 +124,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
+    "stable-diffusion-v1-5/stable-diffusion-inpainting", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -150,7 +150,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "diffusers/stable-diffusion-xl-1.0-inpainting-0.1", torch_dtype=torch.float16, variant="fp16"
+    "diffusers/stable-diffusion-xl-1.0-inpainting-0.1", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -176,7 +176,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "kandinsky-community/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16
+    "kandinsky-community/kandinsky-2-2-decoder-inpaint", dtype=torch.float16
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -227,7 +227,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -252,7 +252,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
+    "stable-diffusion-v1-5/stable-diffusion-inpainting", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -293,7 +293,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -316,7 +316,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
+    "stable-diffusion-v1-5/stable-diffusion-inpainting", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -356,10 +356,10 @@ import torch
 from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
-device = "cuda"
+device = "cuda"  # or "mps", "xpu", "cpu"
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-inpainting",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
     variant="fp16"
 )
 pipeline = pipeline.to(device)
@@ -396,7 +396,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
+    "stable-diffusion-v1-5/stable-diffusion-inpainting", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -441,7 +441,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
+    "stable-diffusion-v1-5/stable-diffusion-inpainting", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -481,7 +481,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
+    "stable-diffusion-v1-5/stable-diffusion-inpainting", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -516,8 +516,8 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image
 from PIL import Image
 
-generator = torch.Generator(device='cuda').manual_seed(0)
-pipeline = AutoPipelineForInpainting.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16).to('cuda')
+generator = torch.Generator(device='cuda').manual_seed(0)  # or "mps", "xpu", "cpu"
+pipeline = AutoPipelineForInpainting.from_pretrained("stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16).to('cuda')
 
 base = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/seashore.png")
 mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/seashore_mask.png")
@@ -553,7 +553,7 @@ from diffusers import AutoPipelineForText2Image, AutoPipelineForInpainting
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -572,7 +572,7 @@ And let's inpaint the masked area with a waterfall:
 
 ```py
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "kandinsky-community/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16
+    "kandinsky-community/kandinsky-2-2-decoder-inpaint", dtype=torch.float16
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -606,7 +606,7 @@ from diffusers import AutoPipelineForInpainting, AutoPipelineForImage2Image
 from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
+    "stable-diffusion-v1-5/stable-diffusion-inpainting", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -627,7 +627,7 @@ Now let's pass the image to another inpainting pipeline with SDXL's refiner mode
 
 ```py
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, variant="fp16"
+    "stabilityai/stable-diffusion-xl-refiner-1.0", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -683,7 +683,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import make_image_grid
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-inpainting", torch_dtype=torch.float16,
+    "stable-diffusion-v1-5/stable-diffusion-inpainting", dtype=torch.float16,
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -710,11 +710,11 @@ from diffusers import ControlNetModel, StableDiffusionControlNetInpaintPipeline
 from diffusers.utils import load_image, make_image_grid
 
 # load ControlNet
-controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_inpaint", torch_dtype=torch.float16, variant="fp16")
+controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_inpaint", dtype=torch.float16, variant="fp16")
 
 # pass ControlNet to the pipeline
 pipeline = StableDiffusionControlNetInpaintPipeline.from_pretrained(
-    "stable-diffusion-v1-5/stable-diffusion-inpainting", controlnet=controlnet, torch_dtype=torch.float16, variant="fp16"
+    "stable-diffusion-v1-5/stable-diffusion-inpainting", controlnet=controlnet, dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
@@ -752,7 +752,7 @@ You can take this a step further and chain it with an image-to-image pipeline to
 from diffusers import AutoPipelineForImage2Image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "nitrosocke/elden-ring-diffusion", torch_dtype=torch.float16,
+    "nitrosocke/elden-ring-diffusion", dtype=torch.float16,
 )
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed

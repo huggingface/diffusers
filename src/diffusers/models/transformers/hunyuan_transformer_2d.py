@@ -367,7 +367,7 @@ class HunyuanDiT2DModel(ModelMixin, AttentionMixin, ConfigMixin):
         image_rotary_emb=None,
         controlnet_block_samples=None,
         return_dict=True,
-    ):
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`HunyuanDiT2DModel`] forward method.
 
@@ -396,6 +396,10 @@ class HunyuanDiT2DModel(ModelMixin, AttentionMixin, ConfigMixin):
             A list of tensors that if specified are added to the residuals of transformer blocks.
         return_dict: bool
             Whether to return a dictionary.
+
+        Returns:
+            If `return_dict` is True, a [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
         """
 
         height, width = hidden_states.shape[-2:]

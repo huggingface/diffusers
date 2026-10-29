@@ -14,9 +14,9 @@
 # limitations under the License.
 
 import gc
-import unittest
 
 import numpy as np
+import pytest
 import torch
 from transformers import AutoConfig, AutoTokenizer, BertModel, T5EncoderModel
 
@@ -31,21 +31,22 @@ from diffusers.utils import load_image
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
+    assert_tensors_close,
     backend_empty_cache,
     enable_full_determinism,
     require_torch_accelerator,
     slow,
     torch_device,
 )
-from ..test_pipelines_common import PipelineTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class HunyuanDiTControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMixin):
+class HunyuanDiTControlNetPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = HunyuanDiTControlNetPipeline
-    params = frozenset(
+    required_input_params_in_call_signature = frozenset(
         [
             "prompt",
             "height",
@@ -56,8 +57,8 @@ class HunyuanDiTControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMix
             "negative_prompt_embeds",
         ]
     )
-    batch_params = frozenset(["prompt", "negative_prompt"])
-    test_layerwise_casting = True
+    batch_input_params = frozenset(["prompt", "negative_prompt"])
+    output_shape = (3, 16, 16)
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -99,10 +100,12 @@ class HunyuanDiTControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMix
 
         torch.manual_seed(0)
         config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
-        text_encoder_2 = T5EncoderModel(config)
+        # `eval()` because a directly constructed model stays in training mode, which leaves T5's
+        # dropout active and makes the pipeline outputs non-deterministic across calls.
+        text_encoder_2 = T5EncoderModel(config).eval()
         tokenizer_2 = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
-        components = {
+        return {
             "transformer": transformer.eval(),
             "vae": vae.eval(),
             "scheduler": scheduler,
@@ -114,90 +117,81 @@ class HunyuanDiTControlNetPipelineFastTests(unittest.TestCase, PipelineTesterMix
             "feature_extractor": None,
             "controlnet": controlnet,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device="cpu").manual_seed(seed)
-
+    def get_dummy_inputs(self):
+        # The control image is drawn from the same generator that is handed to the pipeline, so the pipeline sees an
+        # already-advanced generator state — keep the order to stay comparable with the expected slice below.
+        generator = self.get_generator(0)
         control_image = randn_tensor(
             (1, 3, 16, 16),
             generator=generator,
-            device=torch.device(device),
+            device=torch.device(torch_device),
             dtype=torch.float32,
         )
 
-        controlnet_conditioning_scale = 0.5
-
-        inputs = {
+        return {
             "prompt": "A painting of a squirrel eating a burger",
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            # Note `"pt"` images are `(batch, channels, height, width)`, unlike `"np"` (`(batch, h, w, c)`).
+            "output_type": "pt",
             "control_image": control_image,
-            "controlnet_conditioning_scale": controlnet_conditioning_scale,
+            "controlnet_conditioning_scale": 0.5,
         }
 
-        return inputs
 
+class TestHunyuanDiTControlNetPipeline(HunyuanDiTControlNetPipelineTesterConfig, PipelineTesterMixin):
     def test_controlnet_hunyuandit(self):
-        components = self.get_dummy_components()
-        pipe = HunyuanDiTControlNetPipeline(**components)
-        pipe = pipe.to(torch_device, dtype=torch.float32)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline().to(torch_device, dtype=torch.float32)
 
-        inputs = self.get_dummy_inputs(torch_device)
-        output = pipe(**inputs)
-        image = output.images
+        image = pipe(**self.get_dummy_inputs()).images
+        assert image.shape == (1, *self.output_shape)
 
-        image_slice = image[0, -3:, -3:, -1]
-        assert image.shape == (1, 16, 16, 3)
+        image_slice = image[0, -1, -3:, -3:]
+        # fmt: off
+        expected_slice = torch.tensor([0.5925, 0.5392, 0.4450, 0.7140, 0.3954, 0.3553, 0.3842, 0.5994, 0.3765])
+        # fmt: on
 
-        expected_slice = np.array([0.5925, 0.5392, 0.4450, 0.7140, 0.3954, 0.3553, 0.3842, 0.5994, 0.3765])
+        assert_tensors_close(image_slice.flatten().cpu(), expected_slice, atol=1e-2)
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2, (
-            f"Expected: {expected_slice}, got: {image_slice.flatten()}"
-        )
+    def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-3):
+        super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
-    def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(
-            expected_max_diff=1e-3,
-        )
-
-    def test_sequential_cpu_offload_forward_pass(self):
-        # TODO(YiYi) need to fix later
-        pass
-
-    def test_sequential_offload_forward_pass_twice(self):
-        # TODO(YiYi) need to fix later
-        pass
-
+    @pytest.mark.skip("TODO(YiYi) need to fix later")
     def test_save_load_optional_components(self):
-        # TODO(YiYi) need to fix later
         pass
 
-    @unittest.skip(
+    @pytest.mark.skip(
         "Test not supported as `encode_prompt` is called two times separately which deivates from about 99% of the pipelines we have."
     )
     def test_encode_prompt_works_in_isolation(self):
         pass
 
 
+class TestHunyuanDiTControlNetPipelineMemory(HunyuanDiTControlNetPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the HunyuanDiT ControlNet pipeline."""
+
+    @pytest.mark.skip("TODO(YiYi) need to fix later")
+    def test_sequential_cpu_offload_forward_pass(self):
+        pass
+
+    @pytest.mark.skip("TODO(YiYi) need to fix later")
+    def test_sequential_offload_forward_pass_twice(self):
+        pass
+
+
 @slow
 @require_torch_accelerator
-class HunyuanDiTControlNetPipelineSlowTests(unittest.TestCase):
+class TestHunyuanDiTControlNetPipelineSlow:
     pipeline_class = HunyuanDiTControlNetPipeline
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 

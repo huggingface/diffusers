@@ -5,7 +5,6 @@ from ...utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
-    is_flax_available,
     is_torch_available,
     is_transformers_available,
 )

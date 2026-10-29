@@ -22,17 +22,21 @@ from .autoround import AutoRoundQuantizer
 from .bitsandbytes import BnB4BitDiffusersQuantizer, BnB8BitDiffusersQuantizer
 from .gguf import GGUFQuantizer
 from .modelopt import NVIDIAModelOptQuantizer
+from .nunchaku import NunchakuLiteQuantizer
 from .quantization_config import (
     AutoRoundConfig,
     BitsAndBytesConfig,
     GGUFQuantizationConfig,
+    NunchakuLiteQuantizationConfig,
     NVIDIAModelOptConfig,
     QuantizationConfigMixin,
     QuantizationMethod,
     QuantoConfig,
+    SDNQConfig,
     TorchAoConfig,
 )
 from .quanto import QuantoQuantizer
+from .sdnq import SDNQQuantizer
 from .torchao import TorchAoHfQuantizer
 
 
@@ -44,6 +48,8 @@ AUTO_QUANTIZER_MAPPING = {
     "torchao": TorchAoHfQuantizer,
     "modelopt": NVIDIAModelOptQuantizer,
     "auto-round": AutoRoundQuantizer,
+    "nunchaku_lite": NunchakuLiteQuantizer,
+    "sdnq": SDNQQuantizer,
 }
 
 AUTO_QUANTIZATION_CONFIG_MAPPING = {
@@ -54,6 +60,8 @@ AUTO_QUANTIZATION_CONFIG_MAPPING = {
     "torchao": TorchAoConfig,
     "modelopt": NVIDIAModelOptConfig,
     "auto-round": AutoRoundConfig,
+    "nunchaku_lite": NunchakuLiteQuantizationConfig,
+    "sdnq": SDNQConfig,
 }
 
 

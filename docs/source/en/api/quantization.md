@@ -30,9 +30,17 @@ Quantization techniques reduce memory and computational costs by representing we
 
 [[autodoc]] quantizers.quantization_config.GGUFQuantizationConfig
 
+## NunchakuLiteQuantizationConfig
+
+[[autodoc]] quantizers.quantization_config.NunchakuLiteQuantizationConfig
+
 ## QuantoConfig
 
 [[autodoc]] quantizers.quantization_config.QuantoConfig
+
+## SDNQConfig
+
+[[autodoc]] quantizers.quantization_config.SDNQConfig
 
 ## TorchAoConfig
 

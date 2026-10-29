@@ -1502,5 +1502,5 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin):
             dec = dec[:, :, :-time_padding, :, :]
 
         if not return_dict:
-            return dec
+            return (dec,)
         return DecoderOutput(sample=dec)
