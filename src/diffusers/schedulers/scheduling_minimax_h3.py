@@ -151,8 +151,8 @@ class MiniMaxH3Scheduler(SchedulerMixin, ConfigMixin):
         The grid is `linspace(1, 0, num_inference_steps)` pushed through the exponential shift, with consecutive
         duplicates collapsed, or the explicit `sigmas`, shifted as well when `shift_provided_sigmas` is set. The
         terminal `0` is already part of the grid — the shift maps `0` to exactly `0` — so the schedule holds
-        `num_inference_steps` sigmas and drives `num_inference_steps - 1` model evaluations, exposed as
-        `self.timesteps = 1 - sigmas[:-1]`.
+        `num_inference_steps` sigmas and drives `num_inference_steps - 1` model evaluations, exposed as `self.timesteps
+        = 1 - sigmas[:-1]`.
 
         Args:
             num_inference_steps (`int`, *optional*):
@@ -161,8 +161,8 @@ class MiniMaxH3Scheduler(SchedulerMixin, ConfigMixin):
                 Device the schedule tensors are moved to. The grid itself is always built on CPU in float32 so the
                 schedule does not depend on the accelerator.
             sigmas (`list[float]` or `torch.Tensor`, *optional*):
-                An explicit grid, strictly decreasing and terminating at `0.0`. With `shift_provided_sigmas=True` it
-                is a base grid in `[0, 1]` that goes through the shift like the `linspace` grid; otherwise it is used
+                An explicit grid, strictly decreasing and terminating at `0.0`. With `shift_provided_sigmas=True` it is
+                a base grid in `[0, 1]` that goes through the shift like the `linspace` grid; otherwise it is used
                 verbatim (deprecated default).
         """
         if sigmas is None:
