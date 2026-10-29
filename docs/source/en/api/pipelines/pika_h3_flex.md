@@ -19,7 +19,7 @@ specific language governing permissions and limitations under the License. -->
 
 [Pika H3 Flex](https://huggingface.co/Pika-Labs/Pika-H3-Flex) is Pika's post-training of [MiniMax-H3](./minimax_h3) into a six-step video-and-audio generator. It keeps MiniMax-H3's packed sequence, its Qwen3-VL conditioner and its two VAEs, and changes two things: the sampler, a fixed six-step schedule that re-noises the clean prediction at every step in place of the Euler update, and the weights, a pair of rank-128 LoRA adapters over the two MiniMax-H3 transformer partitions. Video and its synchronized stereo soundtrack come out of the same six forward passes.
 
-The release is the adapters: the FL2VA adapter (`fl2va/adapter.safetensors`) drives the `transformer/` partition for text and endpoint-frame conditioning, the Ref2VA adapter (`ref2va/adapter.safetensors`) drives `transformer_ref/` for multimodal references. The base components stay in [MiniMaxAI/MiniMax-H3](https://huggingface.co/MiniMaxAI/MiniMax-H3).
+The release is the adapters: the FL2VA adapter (`fl2va/adapter.safetensors`) drives the `transformer/` partition for text and endpoint-frame conditioning, the Ref2VA adapter (`ref2va/adapter.safetensors`) drives `transformer_ref/` for multimodal references. The base components are [MiniMaxAI/MiniMax-H3](https://huggingface.co/MiniMaxAI/MiniMax-H3)'s, unchanged, and the repository carries a copy of them so that it loads on its own.
 
 Pika H3 Flex is integrated as [Modular Diffusers](../../modular_diffusers/overview) blocks only, like MiniMax-H3: the blocks and their [`PikaH3FlexModularPipeline`] are the whole integration, and there is no `DiffusionPipeline` half.
 
@@ -46,6 +46,74 @@ Passing the workflow prunes the blocks to that task, so only its own transformer
 
 > [!TIP]
 > `pipe.doc` prints what the pipeline in front of you takes and returns — every input with its default, the components it expects and the outputs it produces.
+
+### Reusing a loaded MiniMax-H3
+
+The base components are MiniMax-H3's, so a MiniMax-H3 pipeline that is already loaded holds everything except the two schedulers and the adapters. This section assembles a Pika H3 Flex pipeline from those loaded components and keeps both pipelines ready side by side: one [`ComponentsManager`] holds each component once and offloads it for both, the Pika H3 Flex pipeline adds only its two schedulers, and the adapters decide which of the two models the shared transformers run.
+
+```py
+import torch
+from diffusers import ComponentsManager, ModularPipeline
+
+dtype = {"vae": torch.float32, "audio_vae": torch.float32, "default": torch.bfloat16}
+manager = ComponentsManager()
+manager.enable_auto_cpu_offload(device="cuda")
+
+# The MiniMax-H3 pipeline already in use, with every workflow loaded. `collection` registers its components in the
+# manager under that name, so they can be fetched by it later.
+minimax = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", components_manager=manager, collection="minimax-h3")
+minimax.load_components(dtype=dtype)
+
+# The Pika H3 Flex pipeline, in its own collection. Only its own components are loaded: the two schedulers.
+pika = ModularPipeline.from_pretrained("Pika-Labs/Pika-H3-Flex", components_manager=manager, collection="pika-h3-flex")
+pika.load_components(names=["scheduler", "audio_scheduler"])
+
+# The rest comes from the MiniMax-H3 collection, and `update_components` puts it in the Pika H3 Flex pipeline.
+shared = ["text_encoder", "tokenizer", "processor", "vae", "audio_vae", "transformer", "transformer_ref"]
+pika.update_components(**{name: manager.get_one(name=name, collection="minimax-h3") for name in shared})
+
+# The adapters go into the shared transformers.
+pika.load_lora_weights("Pika-Labs/Pika-H3-Flex", weight_name="fl2va/adapter.safetensors")
+pika.load_lora_weights(
+    "Pika-Labs/Pika-H3-Flex", weight_name="ref2va/adapter.safetensors", load_into_transformer_ref=True
+)
+```
+
+`print(manager)` shows the result: every shared component is listed once and belongs to both collections, the Pika H3 Flex collection adds its two schedulers, and the two transformers carry an adapter.
+
+```text
+Models:
+Name_ID               | Class                           | Size (GB) | Collection
+transformer_1397...   | MiniMaxH3Transformer3DModel     | 63.02     | minimax-h3
+                      |                                 |           | pika-h3-flex
+transformer_ref_13... | MiniMaxH3Transformer3DModel     | 63.02     | minimax-h3
+                      |                                 |           | pika-h3-flex
+text_encoder_1397...  | Qwen3VLForConditionalGeneration | 62.13     | minimax-h3
+                      |                                 |           | pika-h3-flex
+vae_1397...           | AutoencoderKLMiniMaxH3          | 9.70      | minimax-h3
+                      |                                 |           | pika-h3-flex
+audio_vae_1397...     | AutoencoderKLMiniMaxH3Audio     | 0.56      | minimax-h3
+                      |                                 |           | pika-h3-flex
+
+Other Components:
+ID                        | Class              | Collection
+scheduler_1397...         | MiniMaxH3Scheduler | minimax-h3
+audio_scheduler_1397...   | MiniMaxH3Scheduler | minimax-h3
+scheduler_1397...         | MiniMaxH3Scheduler | pika-h3-flex
+audio_scheduler_1397...   | MiniMaxH3Scheduler | pika-h3-flex
+tokenizer_1397...         | Qwen2Tokenizer     | minimax-h3
+                          |                    | pika-h3-flex
+processor_1397...         | Qwen3VLProcessor   | minimax-h3
+                          |                    | pika-h3-flex
+
+Additional Component Info:
+transformer_1397...:
+  Adapters: ['default_0']
+transformer_ref_13...:
+  Adapters: ['default_0']
+```
+
+The adapters decide which model the shared transformers are. To go back to MiniMax-H3, call `pika.disable_lora()`, and that is all: the next `minimax(...)` request runs the base model. `pika.enable_lora()` turns Pika H3 Flex back on. Nothing is reloaded in between; the manager moves each component on and off the accelerator as either pipeline reaches it.
 
 ## What differs from MiniMax-H3
 
