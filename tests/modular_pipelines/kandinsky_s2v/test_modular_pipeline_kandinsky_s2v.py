@@ -13,18 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import functools
 import math
-import struct
-import tempfile
-import wave
-from pathlib import Path
 
 import pytest
 import torch
 from PIL import Image
 
-from diffusers import ClassifierFreeGuidance
 from diffusers.modular_pipelines import (
     KandinskyS2VAutoBlocks,
     KandinskyS2VDistilledAutoBlocks,
@@ -32,6 +26,7 @@ from diffusers.modular_pipelines import (
     KandinskyS2VModularPipeline,
 )
 from diffusers.modular_pipelines.kandinsky_s2v.before_denoise import KandinskyS2VPrepareStep
+from diffusers.modular_pipelines.kandinsky_s2v.encoders import KandinskyS2VTextAudioEncoderStep
 
 from ...testing_utils import numpy_cosine_similarity_distance, require_accelerator, torch_device
 from ..testing_utils import (
@@ -51,26 +46,9 @@ AUDIO_SAMPLE_RATE = 16000
 NUM_LATENT_FRAMES = 8
 
 
-def tone(seconds: int) -> list[int]:
-    """A plain tone as 16-bit samples."""
-    return [int(8000 * math.sin(i / 24)) for i in range(seconds * AUDIO_SAMPLE_RATE)]
-
-
-@functools.lru_cache(maxsize=2)
-def dummy_audio(seconds: int = 1) -> str:
-    """The tone as a wav file."""
-    path = Path(tempfile.mkdtemp()) / "speech.wav"
-    with wave.open(str(path), "w") as handle:
-        handle.setnchannels(1)
-        handle.setsampwidth(2)
-        handle.setframerate(AUDIO_SAMPLE_RATE)
-        handle.writeframes(b"".join(struct.pack("<h", sample) for sample in tone(seconds)))
-    return str(path)
-
-
 def dummy_waveform(seconds: int = 1) -> torch.Tensor:
-    """The same tone as a mono waveform, scaled as an audio loader reads 16-bit samples."""
-    return torch.tensor(tone(seconds), dtype=torch.float32) / 32768
+    """A plain tone, as a mono waveform at 16 kHz."""
+    return 0.25 * torch.sin(torch.arange(seconds * AUDIO_SAMPLE_RATE) / 24)
 
 
 def check_float16_inference(tester, expected_max_diff=5e-2):
@@ -98,7 +76,7 @@ class KandinskyS2VModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     def get_dummy_inputs(self, seed=0):
         return {
             "image": Image.new("RGB", (64, 64), color="red"),
-            "audio": dummy_audio(),
+            "audio": dummy_waveform(),
             # Short prompts: the tiny transformer's text RoPE table is shorter than the default prompt.
             "prompt": "a person speaking",
             "negative_prompt": "static, motionless",
@@ -147,15 +125,28 @@ class TestKandinskyS2VModularPipelineFast(KandinskyS2VModularPipelineTesterConfi
         with pytest.raises(ValueError, match="truncates"):
             pipe(**inputs, output="videos")
 
-    @pytest.mark.parametrize("seconds", [1, 2])
-    def test_audio_as_a_waveform(self, seconds):
-        """A mono waveform gives the same video as a file holding the same samples, padded or cut to the chunks."""
+    def test_track_longer_than_the_chunks(self):
+        """The speech is cut to the chunks: a 2 s track in one 1.16 s chunk."""
         pipe = self.get_pipeline()
-        inputs = {**self.get_dummy_inputs(), "num_chunks": 1}
-        from_file = pipe(**{**inputs, "audio": dummy_audio(seconds)}, output="videos")
-        inputs = {**self.get_dummy_inputs(), "num_chunks": 1}
-        from_waveform = pipe(**{**inputs, "audio": dummy_waveform(seconds)}, output="videos")
-        assert torch.equal(from_file, from_waveform)
+        inputs = {**self.get_dummy_inputs(), "audio": dummy_waveform(seconds=2), "num_chunks": 1}
+        latents = pipe(**{**inputs, "output_type": "latent"}, output="videos")
+        assert latents.shape[1] == NUM_LATENT_FRAMES
+
+    def test_rejects_file_paths(self):
+        """The pipeline does not read files; the errors say how to load them."""
+        pipe = self.get_pipeline()
+        with pytest.raises(ValueError, match="load_image"):
+            pipe(**{**self.get_dummy_inputs(), "image": "reference.png"}, output="videos")
+        with pytest.raises(ValueError, match="librosa.load"):
+            pipe(**{**self.get_dummy_inputs(), "audio": "speech.wav"}, output="videos")
+
+    def test_text_encoder_standalone_encodes_negative_prompt_only_when_passed(self):
+        """Standalone, the text encoder has no guider: a negative prompt is encoded only when it is passed."""
+        text_pipe = KandinskyS2VTextAudioEncoderStep().init_pipeline(self.pretrained_model_name_or_path)
+        text_pipe.load_components()
+        inputs = {"prompt": "a person speaking", "audio": dummy_waveform(), "num_latent_frames": NUM_LATENT_FRAMES}
+        assert text_pipe(**inputs, output="negative_prompt_embeds") is None
+        assert text_pipe(**inputs, negative_prompt="static", output="negative_prompt_embeds") is not None
 
     @pytest.mark.parametrize(
         "waveform",
@@ -213,6 +204,11 @@ class KandinskyS2VDistilledModularPipelineTesterConfig(KandinskyS2VModularPipeli
     pipeline_blocks_class = KandinskyS2VDistilledAutoBlocks
     pretrained_model_name_or_path = TINY_DISTILLED_REPO
 
+    def get_dummy_inputs(self, seed=0):
+        inputs = super().get_dummy_inputs(seed)
+        inputs.pop("negative_prompt")
+        return inputs
+
 
 class TestKandinskyS2VDistilledModularPipelineFast(
     KandinskyS2VDistilledModularPipelineTesterConfig, ModularPipelineTesterMixin
@@ -233,15 +229,11 @@ class TestKandinskyS2VDistilledModularPipelineFast(
     def test_float16_inference(self):
         check_float16_inference(self)
 
-    def test_guidance_is_off(self):
-        assert self.get_pipeline().guider.guidance_scale == 1.0
-
-    def test_rejects_guidance(self):
-        """Guidance on top of the student would over-guide it, quietly and at twice the cost."""
+    def test_has_no_guidance(self):
+        """Guidance is distilled into the student: no guider, and no negative prompt to give it."""
         pipe = self.get_pipeline()
-        pipe.update_components(guider=ClassifierFreeGuidance(guidance_scale=4.0))
-        with pytest.raises(ValueError, match="distilled into the student"):
-            pipe(**self.get_dummy_inputs(), output="videos")
+        assert "guider" not in pipe.components
+        assert "negative_prompt" not in {param.name for param in pipe.blocks.inputs}
 
 
 class TestKandinskyS2VDistilledModularPipelineLoading(

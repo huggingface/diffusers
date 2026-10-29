@@ -12,22 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import tempfile
-from pathlib import Path
-
 import numpy as np
 import PIL.Image
 import torch
 
 from ...models.transformers.transformer_kandinsky_s2v import audio_group_lengths
-from ...utils import is_librosa_available, logging
+from ...utils import logging
 from ..modular_pipeline import ModularPipeline
 
-
-# soundfile is a dependency of librosa.
-if is_librosa_available():
-    import soundfile as sf
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -78,6 +70,11 @@ def select_resolution(
 
 def audio_waveform(audio: torch.Tensor | np.ndarray) -> np.ndarray:
     """A speech track passed as an array, as the speech encoder takes it: mono float32 at `AUDIO_SAMPLE_RATE`."""
+    if not isinstance(audio, (torch.Tensor, np.ndarray)):
+        raise ValueError(
+            f"`audio` must be a mono float waveform at {AUDIO_SAMPLE_RATE} Hz as a tensor or an array, got "
+            f"{type(audio).__name__}; load a file with e.g. `librosa.load(path, sr={AUDIO_SAMPLE_RATE})[0]`"
+        )
     is_float = (
         audio.is_floating_point() if isinstance(audio, torch.Tensor) else np.issubdtype(audio.dtype, np.floating)
     )
@@ -91,41 +88,13 @@ def audio_waveform(audio: torch.Tensor | np.ndarray) -> np.ndarray:
     return audio.astype(np.float32)
 
 
-def audio_duration(audio: str | Path | torch.Tensor | np.ndarray) -> float:
-    if not isinstance(audio, (str, Path)):
-        return audio_waveform(audio).shape[0] / AUDIO_SAMPLE_RATE
-    info = sf.info(str(audio))
-    return info.frames / info.samplerate
-
-
 def pad_waveform_with_silence(waveform: np.ndarray, target_duration: float) -> np.ndarray:
-    """`pad_with_silence` for a waveform at `AUDIO_SAMPLE_RATE`, in memory."""
+    """Append silence so a waveform at `AUDIO_SAMPLE_RATE` covers ``target_duration``."""
     original = waveform.shape[0] / AUDIO_SAMPLE_RATE
     if target_duration <= original + 0.01:
         return waveform
     pad_samples = int((target_duration - original) * AUDIO_SAMPLE_RATE)
     return np.concatenate([waveform, np.zeros(pad_samples, dtype=waveform.dtype)])
-
-
-def pad_with_silence(path: str | Path, target_duration: float) -> Path | None:
-    """Append silence so the track covers ``target_duration``; ``None`` if it already does."""
-    original = audio_duration(path)
-    if target_duration <= original + 0.01:
-        return None
-
-    data, sample_rate = sf.read(str(path))
-    pad_samples = int((target_duration - original) * sample_rate)
-    shape = (pad_samples,) if data.ndim == 1 else (pad_samples, data.shape[1])
-    padded = np.concatenate([data, np.zeros(shape, dtype=data.dtype)])
-
-    handle, temp_path = tempfile.mkstemp(suffix=".wav")
-    os.close(handle)
-    try:
-        sf.write(temp_path, padded, sample_rate)
-    except BaseException:
-        os.unlink(temp_path)
-        raise
-    return Path(temp_path)
 
 
 def split_audio_embeds(audio_embeds: torch.Tensor, chunks: int) -> list[torch.Tensor]:
@@ -164,8 +133,8 @@ class KandinskyS2VDistilledModularPipeline(KandinskyS2VModularPipeline):
     """
     A ModularPipeline for the pi-Flow distilled Kandinsky S2V 1.0 checkpoints.
 
-    Guidance is distilled into the student, so the guider defaults to `guidance_scale=1.0` and a single forward pass
-    runs per segment.
+    Guidance is distilled into the student, so its blocks have no guider and no negative prompt, and a single forward
+    pass runs per segment.
 
     """
 

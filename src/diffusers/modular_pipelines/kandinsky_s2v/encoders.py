@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -26,11 +25,8 @@ from transformers import (
     Qwen2_5OmniThinkerForConditionalGeneration,
 )
 
-from ...configuration_utils import FrozenDict
-from ...guiders import ClassifierFreeGuidance
 from ...models import AutoencoderKLHunyuanVideo
-from ...models.transformers.transformer_kandinsky_s2v import KandinskyS2VTransformer3DModel
-from ...utils import is_librosa_available, is_torchvision_available, logging
+from ...utils import is_torchvision_available, logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import (
@@ -42,16 +38,11 @@ from .modular_pipeline import (
     SYSTEM_PROMPT,
     TEMPORAL_COMPRESSION_RATIO,
     KandinskyS2VModularPipeline,
-    audio_duration,
     audio_waveform,
     pad_waveform_with_silence,
-    pad_with_silence,
     select_resolution,
 )
 
-
-if is_librosa_available():
-    import librosa
 
 if is_torchvision_available():
     from torchvision import transforms
@@ -59,20 +50,18 @@ if is_torchvision_available():
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def encode_qwen_omni(
-    components: KandinskyS2VModularPipeline,
+def encode_qwen_omni(  # noqa: PLR0913
+    tokenizer: Qwen2_5OmniProcessor,
+    text_encoder: Qwen2_5OmniThinkerForConditionalGeneration,
     prompt: str,
-    audio: str | Path | np.ndarray | None,
+    audio: np.ndarray | None,
     audio_end: float | None,
     device: torch.device,
 ) -> tuple[torch.Tensor, torch.Tensor | None]:
-    """Thinker hidden states for the prompt and audio-tower features for the speech.
-
-    ``audio`` is a path to an audio file or a mono waveform at `AUDIO_SAMPLE_RATE`.
-    """
+    """Thinker hidden states for the prompt and audio-tower features for the speech, a waveform at 16 kHz."""
     user_content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
     if audio is not None:
-        item: dict[str, Any] = {"type": "audio", "audio": str(audio) if isinstance(audio, (str, Path)) else audio}
+        item: dict[str, Any] = {"type": "audio", "audio": audio}
         if audio_end is not None:
             item |= {"audio_start": 0.0, "audio_end": audio_end}
         user_content.append(item)
@@ -81,22 +70,20 @@ def encode_qwen_omni(
         {"role": "user", "content": user_content},
     ]
 
-    chat_text = components.tokenizer.apply_chat_template([conversation], add_generation_prompt=False, tokenize=False)
+    chat_text = tokenizer.apply_chat_template([conversation], add_generation_prompt=False, tokenize=False)
     audios = None
-    if isinstance(audio, (str, Path)):
-        audios = [librosa.load(str(audio), sr=AUDIO_SAMPLE_RATE, offset=0.0, duration=audio_end)[0]]
-    elif audio is not None:
-        # The same cut as `librosa.load(duration=...)` makes.
+    if audio is not None:
+        # Cut to the seconds the chunks cover.
         audios = [audio if audio_end is None else audio[: int(AUDIO_SAMPLE_RATE * audio_end)]]
 
-    inputs = components.tokenizer(
+    inputs = tokenizer(
         text=chat_text,
         audio=audios,
         return_tensors="pt",
         padding=True,
         use_audio_in_video=False,
     )
-    inputs = inputs.to(device).to(components.text_encoder.dtype)
+    inputs = inputs.to(device).to(text_encoder.dtype)
 
     # The speech features are the audio tower's output, which the Thinker consumes internally; a hook on the tower
     # reads them out of the same forward that produces the text hidden states.
@@ -105,26 +92,31 @@ def encode_qwen_omni(
     def hook(_module, _inputs, output):
         captured["features"] = getattr(output, "last_hidden_state", output)
 
-    handle = components.text_encoder.audio_tower.register_forward_hook(hook)
+    handle = text_encoder.audio_tower.register_forward_hook(hook)
     try:
-        output = components.text_encoder(**inputs, output_hidden_states=True, return_dict=True)
+        output = text_encoder(**inputs, output_hidden_states=True, return_dict=True)
     finally:
         handle.remove()
 
-    prompt_embeds = slice_user_text(components, output.hidden_states[-1], inputs)
+    prompt_embeds = slice_user_text(tokenizer, text_encoder, output.hidden_states[-1], inputs)
     return prompt_embeds, captured.get("features")
 
 
-def slice_user_text(components: KandinskyS2VModularPipeline, hidden_states: torch.Tensor, inputs: Any) -> torch.Tensor:
+def slice_user_text(
+    tokenizer: Qwen2_5OmniProcessor,
+    text_encoder: Qwen2_5OmniThinkerForConditionalGeneration,
+    hidden_states: torch.Tensor,
+    inputs: Any,
+) -> torch.Tensor:
     """Keep only the hidden states of the user's own text span."""
     input_ids = inputs["input_ids"]
     attention_mask = inputs.get("attention_mask", torch.ones_like(input_ids))
     seq_len = input_ids.shape[1]
     device = input_ids.device
 
-    im_start_id = components.tokenizer.tokenizer.convert_tokens_to_ids("<|im_start|>")
-    audio_start_token_id = components.text_encoder.config.audio_start_token_id
-    user_role_len = len(components.tokenizer.tokenizer("user\n", add_special_tokens=False).input_ids)
+    im_start_id = tokenizer.tokenizer.convert_tokens_to_ids("<|im_start|>")
+    audio_start_token_id = text_encoder.config.audio_start_token_id
+    user_role_len = len(tokenizer.tokenizer("user\n", add_special_tokens=False).input_ids)
 
     positions = torch.arange(seq_len, device=device).unsqueeze(0)
     last_im_start = torch.where(input_ids == im_start_id, positions, -1).max(dim=1).values
@@ -135,9 +127,9 @@ def slice_user_text(components: KandinskyS2VModularPipeline, hidden_states: torc
 
 
 def encode_clip(
-    components: KandinskyS2VModularPipeline, prompt: str, device: torch.device, max_length: int = 77
+    tokenizer_2: CLIPTokenizer, text_encoder_2: CLIPTextModel, prompt: str, device: torch.device, max_length: int = 77
 ) -> torch.Tensor:
-    inputs = components.tokenizer_2(
+    inputs = tokenizer_2(
         [prompt],
         max_length=max_length,
         truncation=True,
@@ -145,48 +137,49 @@ def encode_clip(
         padding="max_length",
         return_tensors="pt",
     ).to(device)
-    return components.text_encoder_2(**inputs)["pooler_output"]
+    return text_encoder_2(**inputs)["pooler_output"]
 
 
-class KandinskyS2VInputStep(ModularPipelineBlocks):
+class KandinskyS2VTextAudioEncoderStep(ModularPipelineBlocks):
     model_name = "kandinsky-s2v"
 
     @property
     def description(self) -> str:
         return (
-            "Input step that checks the reference frame and the speech track, picks the resolution bucket and plans "
-            "the chunks: how many are needed to cover the track, and how many seconds of speech they take."
+            "Encoder step that plans the chunks the speech track needs and turns the prompt and the speech into the "
+            "transformer's conditions: Qwen2.5-Omni Thinker hidden states for the prompt, its audio-tower features "
+            "for the speech, and a CLIP pooled embedding. The negative prompt is encoded when it is passed, or when "
+            "the pipeline's guider needs an unconditional pass."
         )
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
         return [
+            ComponentSpec("text_encoder", Qwen2_5OmniThinkerForConditionalGeneration),
             ComponentSpec("tokenizer", Qwen2_5OmniProcessor),
-            ComponentSpec("transformer", KandinskyS2VTransformer3DModel),
+            ComponentSpec("text_encoder_2", CLIPTextModel),
+            ComponentSpec("tokenizer_2", CLIPTokenizer),
         ]
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template(
-                "image",
-                type_hint=PIL.Image.Image | str | Path,
-                description="The reference frame to animate: a PIL image or a path to one.",
+                "prompt",
+                required=False,
+                description="The prompt to guide the generation. Defaults to the reference prompt, `DEFAULT_PROMPT`.",
+            ),
+            InputParam.template(
+                "negative_prompt",
+                description="The prompt for the unconditional pass of the guidance. Defaults to "
+                "`DEFAULT_NEGATIVE_PROMPT` when the guidance needs one.",
             ),
             InputParam(
                 "audio",
                 required=True,
-                type_hint=str | Path | torch.Tensor | np.ndarray,
-                description="The speech track that drives the generation: a path to an audio file, or a mono "
-                f"float waveform in [-1, 1] at {AUDIO_SAMPLE_RATE} Hz shaped (samples,).",
-            ),
-            InputParam.template(
-                "height",
-                description="The height in pixels of the generated video. Defaults to the 512 bucket closest to the "
-                "reference frame.",
-            ),
-            InputParam.template(
-                "width", description="The width in pixels of the generated video, chosen together with `height`."
+                type_hint=torch.Tensor | np.ndarray,
+                description="The speech track that drives the generation: a mono float waveform in [-1, 1] at "
+                f"{AUDIO_SAMPLE_RATE} Hz, shaped (samples,).",
             ),
             InputParam(
                 "num_latent_frames",
@@ -206,125 +199,6 @@ class KandinskyS2VInputStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("reference_image", type_hint=PIL.Image.Image, description="The reference frame, in RGB."),
-            OutputParam("height", type_hint=int, description="The height in pixels of the generated video."),
-            OutputParam("width", type_hint=int, description="The width in pixels of the generated video."),
-            OutputParam("num_chunks", type_hint=int, description="Number of chunks to generate."),
-            OutputParam("track_seconds", type_hint=float, description="Length of the speech track in seconds."),
-            OutputParam(
-                "target_seconds", type_hint=float, description="Seconds of speech the chunks cover, padded if needed."
-            ),
-        ]
-
-    @staticmethod
-    def check_inputs(components, block_state):
-        if block_state.image is None:
-            raise ValueError("`image` is required: it is the reference frame to animate")
-        if block_state.audio is None:
-            raise ValueError("`audio` is required: it is the speech track that drives the generation")
-        if not isinstance(block_state.audio, (str, Path)):
-            audio_waveform(block_state.audio)
-        if (block_state.height is None) != (block_state.width is None):
-            raise ValueError("pass both `height` and `width`, or neither to pick a bucket from the image")
-        if block_state.num_chunks is not None and block_state.num_chunks < 1:
-            raise ValueError(f"`num_chunks` must be >= 1, got {block_state.num_chunks}")
-        needed = sum(components.transformer.config.frame_buckets)
-        if block_state.num_latent_frames < needed:
-            raise ValueError(
-                f"`num_latent_frames` must be >= {needed}, the FramePack memory window "
-                f"sum(frame_buckets), got {block_state.num_latent_frames}"
-            )
-
-    @torch.no_grad()
-    def __call__(self, components: KandinskyS2VModularPipeline, state: PipelineState) -> PipelineState:
-        block_state = self.get_block_state(state)
-        self.check_inputs(components, block_state)
-
-        image = block_state.image
-        if not isinstance(image, PIL.Image.Image):
-            image = PIL.Image.open(image)
-        block_state.reference_image = image.convert("RGB")
-        if block_state.height is None:
-            block_state.height, block_state.width = select_resolution(block_state.reference_image)
-
-        chunk_seconds = ((block_state.num_latent_frames - 1) * TEMPORAL_COMPRESSION_RATIO + 1) / block_state.fps
-        block_state.track_seconds = audio_duration(block_state.audio)
-        needed = max(1, math.ceil(block_state.track_seconds / chunk_seconds))
-        if block_state.num_chunks is not None and block_state.num_chunks > needed:
-            # The video is trimmed to the track, so these are computed and then dropped.
-            logger.warning(
-                f"{block_state.num_chunks - needed} chunk(s) past the end of the speech track are generated and "
-                f"then trimmed; pass num_chunks={needed} to save the time"
-            )
-        if block_state.num_chunks is None:
-            block_state.num_chunks = needed
-        block_state.target_seconds = block_state.num_chunks * chunk_seconds
-
-        # The speech encoder truncates its input; chunks past its limit would split too few speech tokens and drift
-        # out of sync. Refused here, before any encoding is spent on it.
-        extractor = components.tokenizer.feature_extractor
-        max_seconds = extractor.n_samples / extractor.sampling_rate
-        if block_state.target_seconds > max_seconds + 0.01:
-            raise ValueError(
-                f"{block_state.num_chunks} chunks need {block_state.target_seconds:g} s of speech, but the speech "
-                f"encoder truncates at {max_seconds:g} s; trim the track or pass fewer `num_chunks`"
-            )
-
-        self.set_block_state(state, block_state)
-        return components, state
-
-
-class KandinskyS2VTextAudioEncoderStep(ModularPipelineBlocks):
-    model_name = "kandinsky-s2v"
-
-    @property
-    def description(self) -> str:
-        return (
-            "Encoder step that turns the prompt and the speech track into the transformer's conditions: Qwen2.5-Omni "
-            "Thinker hidden states for the prompt, its audio-tower features for the speech, and a CLIP pooled "
-            "embedding. The negative prompt is encoded only when the guider needs an unconditional pass."
-        )
-
-    @property
-    def expected_components(self) -> list[ComponentSpec]:
-        return [
-            ComponentSpec("text_encoder", Qwen2_5OmniThinkerForConditionalGeneration),
-            ComponentSpec("tokenizer", Qwen2_5OmniProcessor),
-            ComponentSpec("text_encoder_2", CLIPTextModel),
-            ComponentSpec("tokenizer_2", CLIPTokenizer),
-            ComponentSpec(
-                "guider",
-                ClassifierFreeGuidance,
-                config=FrozenDict({"guidance_scale": 3.0}),
-                default_creation_method="from_config",
-            ),
-        ]
-
-    @property
-    def inputs(self) -> list[InputParam]:
-        return [
-            InputParam.template(
-                "prompt",
-                required=False,
-                description="The prompt to guide the generation. Defaults to the reference prompt, `DEFAULT_PROMPT`.",
-            ),
-            InputParam.template(
-                "negative_prompt",
-                description="The prompt for the unconditional pass of the guidance. Defaults to "
-                "`DEFAULT_NEGATIVE_PROMPT`.",
-            ),
-            InputParam(
-                "audio",
-                required=True,
-                type_hint=str | Path | torch.Tensor | np.ndarray,
-                description=f"The speech track: a path to an audio file, or a mono float waveform at {AUDIO_SAMPLE_RATE} Hz.",
-            ),
-            InputParam("target_seconds", required=True, type_hint=float, description="Seconds of speech to encode."),
-        ]
-
-    @property
-    def intermediate_outputs(self) -> list[OutputParam]:
-        return [
             OutputParam.template("prompt_embeds"),
             OutputParam.template("negative_prompt_embeds"),
             OutputParam("pooled_prompt_embeds", type_hint=torch.Tensor, description="CLIP pooled prompt embedding."),
@@ -336,48 +210,68 @@ class KandinskyS2VTextAudioEncoderStep(ModularPipelineBlocks):
             OutputParam(
                 "audio_embeds", type_hint=torch.Tensor, description="Audio-tower features of the speech track."
             ),
+            OutputParam("num_chunks", type_hint=int, description="Number of chunks to generate."),
+            OutputParam("track_seconds", type_hint=float, description="Length of the speech track in seconds."),
         ]
 
     @staticmethod
-    def check_inputs(components, block_state):
+    def check_inputs(block_state):
         if block_state.prompt is None:
             block_state.prompt = DEFAULT_PROMPT
-        if block_state.negative_prompt is None:
-            block_state.negative_prompt = DEFAULT_NEGATIVE_PROMPT
-        if not isinstance(block_state.prompt, str) or not isinstance(block_state.negative_prompt, str):
-            raise ValueError("`prompt` and `negative_prompt` must be strings; batching is not supported")
+        if not isinstance(block_state.prompt, str):
+            raise ValueError("`prompt` must be a string; batching is not supported")
         # Checked here because an empty prompt fails as a reshape error deep inside the transformer.
         if not block_state.prompt.strip():
             raise ValueError("`prompt` must not be empty; pass DEFAULT_PROMPT to use the reference prompt")
-        if components.requires_unconditional_embeds and not block_state.negative_prompt.strip():
-            raise ValueError("`negative_prompt` must not be empty when classifier-free guidance is enabled")
-
-    @torch.no_grad()
-    def __call__(self, components: KandinskyS2VModularPipeline, state: PipelineState) -> PipelineState:
-        block_state = self.get_block_state(state)
-        self.check_inputs(components, block_state)
-        device = components._execution_device
-        target_seconds = block_state.target_seconds
-
-        if isinstance(block_state.audio, (str, Path)):
-            padded_audio = None
-            try:
-                padded_audio = pad_with_silence(block_state.audio, target_seconds)
-                audio_for_encode = padded_audio if padded_audio is not None else Path(block_state.audio)
-                prompt_embeds, audio_embeds = encode_qwen_omni(
-                    components, block_state.prompt, audio_for_encode, target_seconds, device
-                )
-            finally:
-                if padded_audio is not None:
-                    padded_audio.unlink(missing_ok=True)
-        else:
-            waveform = pad_waveform_with_silence(audio_waveform(block_state.audio), target_seconds)
-            prompt_embeds, audio_embeds = encode_qwen_omni(
-                components, block_state.prompt, waveform, target_seconds, device
+        if block_state.audio is None:
+            raise ValueError("`audio` is required: it is the speech track that drives the generation")
+        audio_waveform(block_state.audio)
+        if block_state.num_chunks is not None and block_state.num_chunks < 1:
+            raise ValueError(f"`num_chunks` must be >= 1, got {block_state.num_chunks}")
+        if block_state.num_latent_frames < 1 or block_state.fps <= 0:
+            raise ValueError(
+                f"`num_latent_frames` and `fps` must be positive, got {block_state.num_latent_frames} and "
+                f"{block_state.fps}"
             )
-        if audio_embeds is None:
-            raise ValueError("speech-to-video requires an audio track")
 
+    @staticmethod
+    def encode_prompt_and_speech(components: KandinskyS2VModularPipeline, block_state) -> None:
+        """Plan the chunks the speech track needs, then encode the prompt and the speech for them."""
+        device = components._execution_device
+        waveform = audio_waveform(block_state.audio)
+        chunk_seconds = ((block_state.num_latent_frames - 1) * TEMPORAL_COMPRESSION_RATIO + 1) / block_state.fps
+        block_state.track_seconds = waveform.shape[0] / AUDIO_SAMPLE_RATE
+        needed = max(1, math.ceil(block_state.track_seconds / chunk_seconds))
+        if block_state.num_chunks is not None and block_state.num_chunks > needed:
+            # The video is trimmed to the track, so these are computed and then dropped.
+            logger.warning(
+                f"{block_state.num_chunks - needed} chunk(s) past the end of the speech track are generated and "
+                f"then trimmed; pass num_chunks={needed} to save the time"
+            )
+        if block_state.num_chunks is None:
+            block_state.num_chunks = needed
+        target_seconds = block_state.num_chunks * chunk_seconds
+
+        # The speech encoder truncates its input; chunks past its limit would split too few speech tokens and drift
+        # out of sync. Refused here, before any encoding is spent on it.
+        extractor = components.tokenizer.feature_extractor
+        max_seconds = extractor.n_samples / extractor.sampling_rate
+        if target_seconds > max_seconds + 0.01:
+            raise ValueError(
+                f"{block_state.num_chunks} chunks need {target_seconds:g} s of speech, but the speech encoder "
+                f"truncates at {max_seconds:g} s; trim the track or pass fewer `num_chunks`"
+            )
+
+        prompt_embeds, audio_embeds = encode_qwen_omni(
+            components.tokenizer,
+            components.text_encoder,
+            block_state.prompt,
+            pad_waveform_with_silence(waveform, target_seconds),
+            target_seconds,
+            device,
+        )
+        if audio_embeds is None:
+            raise ValueError("the speech encoder returned no features for the speech track")
         # The feature extractor truncates beyond its own chunk_length, and a short tensor would just be split
         # thinner, desyncing the speech silently. Checked rather than trusted.
         expected_tokens = round(target_seconds * AUDIO_TOKENS_PER_SECOND)
@@ -389,14 +283,39 @@ class KandinskyS2VTextAudioEncoderStep(ModularPipelineBlocks):
 
         block_state.prompt_embeds = prompt_embeds
         block_state.audio_embeds = audio_embeds
-        block_state.pooled_prompt_embeds = encode_clip(components, block_state.prompt, device)
+        block_state.pooled_prompt_embeds = encode_clip(
+            components.tokenizer_2, components.text_encoder_2, block_state.prompt, device
+        )
+
+    @torch.no_grad()
+    def __call__(self, components: KandinskyS2VModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        self.check_inputs(block_state)
+        if block_state.negative_prompt is None and components.requires_unconditional_embeds:
+            block_state.negative_prompt = DEFAULT_NEGATIVE_PROMPT
+        if not isinstance(block_state.negative_prompt, (str, type(None))):
+            raise ValueError("`negative_prompt` must be a string; batching is not supported")
+        # The same reshape error as an empty prompt, once the negative embeddings reach a guided denoise.
+        if block_state.negative_prompt is not None and not block_state.negative_prompt.strip():
+            raise ValueError("`negative_prompt` must not be empty; omit it to skip the unconditional pass")
+
+        self.encode_prompt_and_speech(components, block_state)
+        device = components._execution_device
+        # The guider is not a component of this block: inside the pipeline, `requires_unconditional_embeds` reads the
+        # denoise step's guider and the negative prompt defaults to `DEFAULT_NEGATIVE_PROMPT`; standalone, there is no
+        # guider and the negative prompt is encoded only when it is passed.
         block_state.negative_prompt_embeds = None
         block_state.negative_pooled_prompt_embeds = None
-        if components.requires_unconditional_embeds:
+        guidance_off = getattr(components, "guider", None) is not None and not components.requires_unconditional_embeds
+        if block_state.negative_prompt is not None and guidance_off:
+            logger.warning("`negative_prompt` is ignored: the guider runs no unconditional pass")
+        elif block_state.negative_prompt is not None:
             block_state.negative_prompt_embeds, _ = encode_qwen_omni(
-                components, block_state.negative_prompt, None, None, device
+                components.tokenizer, components.text_encoder, block_state.negative_prompt, None, None, device
             )
-            block_state.negative_pooled_prompt_embeds = encode_clip(components, block_state.negative_prompt, device)
+            block_state.negative_pooled_prompt_embeds = encode_clip(
+                components.tokenizer_2, components.text_encoder_2, block_state.negative_prompt, device
+            )
 
         self.set_block_state(state, block_state)
         return components, state
@@ -406,16 +325,27 @@ class KandinskyS2VDistilledTextAudioEncoderStep(KandinskyS2VTextAudioEncoderStep
     model_name = "kandinsky-s2v-distilled"
 
     @property
-    def expected_components(self) -> list[ComponentSpec]:
-        return [
-            *super().expected_components[:-1],
-            ComponentSpec(
-                "guider",
-                ClassifierFreeGuidance,
-                config=FrozenDict({"guidance_scale": 1.0}),
-                default_creation_method="from_config",
-            ),
-        ]
+    def description(self) -> str:
+        return (
+            "Encoder step of the distilled checkpoints, which sample without classifier-free guidance and so take no "
+            "negative prompt: it plans the chunks the speech track needs and encodes the prompt and the speech."
+        )
+
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [param for param in super().inputs if param.name != "negative_prompt"]
+
+    @property
+    def intermediate_outputs(self) -> list[OutputParam]:
+        return [param for param in super().intermediate_outputs if not param.name.startswith("negative_")]
+
+    @torch.no_grad()
+    def __call__(self, components: KandinskyS2VModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        self.check_inputs(block_state)
+        self.encode_prompt_and_speech(components, block_state)
+        self.set_block_state(state, block_state)
+        return components, state
 
 
 class KandinskyS2VVaeEncoderStep(ModularPipelineBlocks):
@@ -423,7 +353,10 @@ class KandinskyS2VVaeEncoderStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "VAE encoder step that encodes the reference frame into a scaled latent, resized and center-cropped."
+        return (
+            "VAE encoder step that picks the resolution bucket closest to the reference frame unless one is given, "
+            "and encodes the frame, resized and center-cropped, into a scaled latent."
+        )
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
@@ -432,11 +365,15 @@ class KandinskyS2VVaeEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(
-                "reference_image", required=True, type_hint=PIL.Image.Image, description="The reference frame."
+            InputParam.template("image", type_hint=PIL.Image.Image, description="The reference frame to animate."),
+            InputParam.template(
+                "height",
+                description="The height in pixels of the generated video. Defaults to the 512 bucket closest to the "
+                "reference frame.",
             ),
-            InputParam.template("height", required=True),
-            InputParam.template("width", required=True),
+            InputParam.template(
+                "width", description="The width in pixels of the generated video, chosen together with `height`."
+            ),
             InputParam.template("generator"),
         ]
 
@@ -450,11 +387,24 @@ class KandinskyS2VVaeEncoderStep(ModularPipelineBlocks):
             )
         ]
 
+    @staticmethod
+    def check_inputs(block_state):
+        if not isinstance(block_state.image, PIL.Image.Image):
+            raise ValueError(
+                "`image` is required and must be a PIL image; load a file with `diffusers.utils.load_image`"
+            )
+        if (block_state.height is None) != (block_state.width is None):
+            raise ValueError("pass both `height` and `width`, or neither to pick a bucket from the image")
+
     @torch.no_grad()
     def __call__(self, components: KandinskyS2VModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
+        self.check_inputs(block_state)
         device = components._execution_device
-        image, height, width = block_state.reference_image, block_state.height, block_state.width
+        image = block_state.image.convert("RGB")
+        height, width = block_state.height, block_state.width
+        if height is None:
+            height, width = select_resolution(image)
 
         scale = max(width / image.width, height / image.height)
         resized = transforms.functional.resize(
