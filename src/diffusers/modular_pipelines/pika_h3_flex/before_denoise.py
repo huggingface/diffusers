@@ -905,7 +905,6 @@ class PikaH3FlexPrepareLatentsStep(ModularPipelineBlocks):
         return components, state
 
 
-# Copied from diffusers.modular_pipelines.minimax_h3.before_denoise.MiniMaxH3PrepareConditionLatentsStep with \bMiniMaxH3->PikaH3Flex, minimax-h3->pika-h3-flex, PikaH3FlexScheduler->MiniMaxH3Scheduler
 class PikaH3FlexPrepareConditionLatentsStep(ModularPipelineBlocks):
     model_name = "pika-h3-flex"
 

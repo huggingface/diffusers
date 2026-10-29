@@ -247,7 +247,9 @@ class MiniMaxH3Scheduler(SchedulerMixin, ConfigMixin):
             `torch.FloatTensor`: The noised sample.
         """
         if not isinstance(timestep, torch.Tensor):
-            timestep = torch.tensor(timestep, dtype=sample.dtype, device=sample.device)
+            # A Python float keeps `1 - t` at double precision: `1 - 0.999` evaluated in float32 is off by 2e-7,
+            # which the bfloat16 forward amplifies into a visibly different sample.
+            return timestep * sample + (1.0 - timestep) * noise
         timestep = timestep.to(device=sample.device, dtype=sample.dtype)
         while timestep.ndim < sample.ndim:
             timestep = timestep.unsqueeze(-1)
