@@ -15,7 +15,7 @@
 import numpy as np
 import torch
 
-from ...schedulers import PikaH3FlexScheduler
+from ...schedulers import MiniMaxH3Scheduler
 from ...utils import logging
 from ...utils.torch_utils import maybe_adjust_dtype_for_device, randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
@@ -172,7 +172,6 @@ class PikaH3FlexNoKeyframeAnchorsStep(ModularPipelineBlocks):
         return components, state
 
 
-# Copied from diffusers.modular_pipelines.minimax_h3.before_denoise.MiniMaxH3PrepareLayoutStep with \bMiniMaxH3->PikaH3Flex, minimax-h3->pika-h3-flex
 class PikaH3FlexPrepareLayoutStep(ModularPipelineBlocks):
     model_name = "pika-h3-flex"
 
@@ -207,8 +206,8 @@ class PikaH3FlexPrepareLayoutStep(ModularPipelineBlocks):
                 type_hint=int,
                 default=124,
                 description=(
-                    "Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video "
-                    "VAE can decode; the resulting duration must stay between 5 and 15 seconds."
+                    "Number of frames to generate, at the fixed 24 fps: 120 to 360, i.e. 5 to 15 seconds, snapped up "
+                    "to the next `17 * n + 5` the video VAE can decode."
                 ),
             ),
             InputParam(
@@ -405,18 +404,17 @@ class PikaH3FlexPrepareLayoutStep(ModularPipelineBlocks):
 
         frames_per_chunk = components.vae_frames_per_chunk
         latents_per_chunk = components.vae_latents_per_chunk
-        aligned_num_frames = align_num_frames(block_state.num_frames, frames_per_chunk, latents_per_chunk)
-        # The duration the request generates is the one of the *aligned* frame count, so that is what the ceiling has
-        # to hold for: 346 frames would otherwise pass the check and then be rounded up to 362, i.e. 15.083 seconds.
-        duration = aligned_num_frames / components.fps
+        # The released package bounds the *requested* duration and then snaps the frame count up to the next
+        # `17 * n + 5`, so a 15 second request is accepted and generates 362 frames (15.08 seconds).
+        duration = block_state.num_frames / components.fps
         if not components.min_duration <= duration <= components.max_duration:
             raise ValueError(
-                f"MiniMax-H3 generates between {components.min_duration} and {components.max_duration} seconds at "
-                f"{components.fps} fps, so `num_frames`, rounded up to the next `17 * n + 5` the video VAE can "
-                f"encode, must be between {int(components.min_duration * components.fps)} and "
-                f"{int(components.max_duration * components.fps)}, got {block_state.num_frames} (rounded up to "
-                f"{aligned_num_frames})."
+                f"Pika H3 Flex generates between {components.min_duration:g} and {components.max_duration:g} seconds "
+                f"at {components.fps} fps, so `num_frames` must be between "
+                f"{int(components.min_duration * components.fps)} and {int(components.max_duration * components.fps)}, "
+                f"got {block_state.num_frames}."
             )
+        aligned_num_frames = align_num_frames(block_state.num_frames, frames_per_chunk, latents_per_chunk)
         if aligned_num_frames != block_state.num_frames:
             logger.warning(
                 f"`num_frames` has to be of the form 17 * n + 5 for the video VAE; rounding {block_state.num_frames} "
@@ -907,7 +905,6 @@ class PikaH3FlexPrepareLatentsStep(ModularPipelineBlocks):
         return components, state
 
 
-# Copied from diffusers.modular_pipelines.minimax_h3.before_denoise.MiniMaxH3PrepareConditionLatentsStep with \bMiniMaxH3->PikaH3Flex, minimax-h3->pika-h3-flex
 class PikaH3FlexPrepareConditionLatentsStep(ModularPipelineBlocks):
     model_name = "pika-h3-flex"
 
@@ -922,7 +919,7 @@ class PikaH3FlexPrepareConditionLatentsStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("scheduler", PikaH3FlexScheduler)]
+        return [ComponentSpec("scheduler", MiniMaxH3Scheduler)]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -1142,20 +1139,25 @@ class PikaH3FlexSetTimestepsStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Initializes the two re-noising ladders — `shift = 12.0` for video, `shift = 3.0` for audio, over the "
-            "six knots the released adapters were trained for — and stages the row-to-timestep plan of every "
-            "evaluation. One forward serves every modality and every noise level at once: the generated rows walk "
-            "down their own ladder while the conditioning rows stay pinned at their noise-augmentation level, and "
-            "that assignment is static per evaluation. There is no `num_inference_steps`: the evaluation count is "
-            "the adapter's, fixed by the knots of each scheduler."
+            "Initializes the two six-step schedules from the pipeline's `denoising_step_list` config — the sigmas the "
+            "released adapters were trained for, which each scheduler pushes through its shift (`12.0` for video, "
+            "`3.0` for audio) — and stages the row-to-timestep plan of every step. One forward serves every modality "
+            "and every noise level at once: the generated rows step down their own schedule while the conditioning "
+            "rows stay pinned at their noise-augmentation level, and that assignment is static per step. There is no "
+            "`num_inference_steps`: the step count is the adapter's, fixed by the schedule."
         )
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
         return [
-            ComponentSpec("scheduler", PikaH3FlexScheduler),
-            ComponentSpec("audio_scheduler", PikaH3FlexScheduler),
+            ComponentSpec("scheduler", MiniMaxH3Scheduler),
+            ComponentSpec("audio_scheduler", MiniMaxH3Scheduler),
         ]
+
+    @property
+    def expected_configs(self) -> list[ConfigSpec]:
+        # The released adapters' schedule on the 1000 scale: six steps plus the terminal 0, which is never evaluated.
+        return [ConfigSpec("denoising_step_list", [1000, 750, 500, 250, 100, 40, 0])]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -1195,14 +1197,14 @@ class PikaH3FlexSetTimestepsStep(ModularPipelineBlocks):
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("timesteps", type_hint=torch.Tensor, description="Timesteps of the video ladder."),
-            OutputParam("audio_timesteps", type_hint=torch.Tensor, description="Timesteps of the audio ladder."),
+            OutputParam("timesteps", type_hint=torch.Tensor, description="Timesteps of the video schedule."),
+            OutputParam("audio_timesteps", type_hint=torch.Tensor, description="Timesteps of the audio schedule."),
             OutputParam(
                 "row_timestep_plan",
                 type_hint=list,
                 description=(
-                    "One `(timestep, timestep_indices)` pair per evaluation: the distinct timesteps of the sequence "
-                    "and the index of every row into them."
+                    "One `(timestep, timestep_indices)` pair per step: the distinct timesteps of the sequence and "
+                    "the index of every row into them."
                 ),
             ),
         ]
@@ -1256,8 +1258,10 @@ class PikaH3FlexSetTimestepsStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
         device = components._execution_device
 
-        components.scheduler.set_timesteps(device=device)
-        components.audio_scheduler.set_timesteps(device=device)
+        # Each scheduler pushes the schedule through its own shift (12.0 for video, 3.0 for audio).
+        sigmas = [step / 1000.0 for step in components.config.denoising_step_list]
+        components.scheduler.set_timesteps(sigmas=sigmas, device=device)
+        components.audio_scheduler.set_timesteps(sigmas=sigmas, device=device)
         block_state.timesteps = components.scheduler.timesteps
         block_state.audio_timesteps = components.audio_scheduler.timesteps
 

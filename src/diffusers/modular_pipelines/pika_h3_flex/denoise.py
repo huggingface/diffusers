@@ -17,7 +17,7 @@ import inspect
 import torch
 
 from ...models import MiniMaxH3Transformer3DModel
-from ...schedulers import PikaH3FlexScheduler
+from ...schedulers import MiniMaxH3Scheduler
 from ...utils import logging
 from ..modular_pipeline import (
     BlockState,
@@ -148,9 +148,9 @@ class PikaH3FlexLoopSchedulerStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Re-noises the generated video and audio rows onto the next knot of their own ladder: each scheduler "
-            "turns the velocity into the clean prediction and, unless this was the last evaluation, mixes it with "
-            "fresh noise drawn from the request's generator — the video rows first, then the audio rows. The "
+            "Re-noises the generated video and audio rows onto the next sigma of their own schedule: each scheduler "
+            "turns the velocity into the clean prediction and, unless this was the last step, mixes it with fresh "
+            "noise drawn from the request's generator — the video rows first, then the audio rows. The "
             "conditioning rows are re-imposed by construction: only the generated rows are ever written, so the "
             "anchors survive the whole loop."
         )
@@ -158,8 +158,8 @@ class PikaH3FlexLoopSchedulerStep(ModularPipelineBlocks):
     @property
     def expected_components(self) -> list[ComponentSpec]:
         return [
-            ComponentSpec("scheduler", PikaH3FlexScheduler),
-            ComponentSpec("audio_scheduler", PikaH3FlexScheduler),
+            ComponentSpec("scheduler", MiniMaxH3Scheduler),
+            ComponentSpec("audio_scheduler", MiniMaxH3Scheduler),
         ]
 
     @property
@@ -193,7 +193,7 @@ class PikaH3FlexLoopSchedulerStep(ModularPipelineBlocks):
                 name="audio_timesteps",
                 type_hint=torch.Tensor,
                 required=True,
-                description="Timesteps of the audio ladder.",
+                description="Timesteps of the audio schedule.",
             ),
             InputParam(
                 name="num_condition_video_rows",
@@ -210,8 +210,8 @@ class PikaH3FlexLoopSchedulerStep(ModularPipelineBlocks):
             InputParam.template(
                 "generator",
                 description=(
-                    "The generator of the request. Every evaluation but the last draws the fresh noise of the next "
-                    "knot from it, the video rows' first and the audio rows' second."
+                    "The generator of the request. Every step but the last draws the fresh noise of the next sigma "
+                    "from it, the video rows' first and the audio rows' second."
                 ),
             ),
         ]
@@ -222,12 +222,12 @@ class PikaH3FlexLoopSchedulerStep(ModularPipelineBlocks):
             OutputParam(
                 "latents",
                 type_hint=torch.Tensor,
-                description="The video rows of the packed sequence after one evaluation.",
+                description="The video rows of the packed sequence after one step.",
             ),
             OutputParam(
                 "audio_latents",
                 type_hint=torch.Tensor,
-                description="The audio rows of the packed sequence after one evaluation.",
+                description="The audio rows of the packed sequence after one step.",
             ),
         ]
 
@@ -255,7 +255,7 @@ class PikaH3FlexLoopSchedulerStep(ModularPipelineBlocks):
         return components, block_state
 
 
-# Copied from diffusers.modular_pipelines.minimax_h3.denoise.MiniMaxH3DenoiseLoopWrapper with \bMiniMaxH3->PikaH3Flex, minimax-h3->pika-h3-flex
+# Copied from diffusers.modular_pipelines.minimax_h3.denoise.MiniMaxH3DenoiseLoopWrapper with \bMiniMaxH3->PikaH3Flex, minimax-h3->pika-h3-flex, PikaH3FlexScheduler->MiniMaxH3Scheduler
 class PikaH3FlexDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     model_name = "pika-h3-flex"
 
@@ -266,8 +266,8 @@ class PikaH3FlexDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     @property
     def loop_expected_components(self) -> list[ComponentSpec]:
         return [
-            ComponentSpec("scheduler", PikaH3FlexScheduler),
-            ComponentSpec("audio_scheduler", PikaH3FlexScheduler),
+            ComponentSpec("scheduler", MiniMaxH3Scheduler),
+            ComponentSpec("audio_scheduler", MiniMaxH3Scheduler),
         ]
 
     @property

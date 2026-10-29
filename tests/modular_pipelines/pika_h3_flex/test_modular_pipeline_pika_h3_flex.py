@@ -90,13 +90,13 @@ PIKA_H3_FLEX_REF2VA_WORKFLOWS = {
 # What each pruned workflow asks for, pinned explicitly: every component with its class (each half loads its own
 # transformer partition, nothing else differs), the pipeline configs it declares, and every input — the optional
 # ones with their defaults, the required ones by name. Unlike MiniMax-H3 there is no `num_inference_steps`: the
-# six evaluations are the adapters' contract, carried by the schedulers' knots.
+# six steps are the adapters' contract, carried by the pipeline's `denoising_step_list` config.
 _SHARED_COMPONENTS = {
     "text_encoder": "Qwen3VLForConditionalGeneration",
     "tokenizer": "Qwen2Tokenizer",
     "processor": "Qwen3VLProcessor",
-    "scheduler": "PikaH3FlexScheduler",
-    "audio_scheduler": "PikaH3FlexScheduler",
+    "scheduler": "MiniMaxH3Scheduler",
+    "audio_scheduler": "MiniMaxH3Scheduler",
     "vae": "AutoencoderKLMiniMaxH3",
     "audio_vae": "AutoencoderKLMiniMaxH3Audio",
     "video_processor": "VideoProcessor",
@@ -104,7 +104,11 @@ _SHARED_COMPONENTS = {
 # The default canvas, the 768p 16:9 bucket. Every workflow resolves a canvas somewhere — from a keyframe, from the
 # bare default — so all three declare the rule as pipeline config; the resolution a `ref2va` reference is
 # conditioned at follows the canvas' tier instead and is not a config.
-_SHARED_CONFIGS = {"canvas_short_edge": 768, "canvas_max_pixels": 768 * 1344}
+_SHARED_CONFIGS = {
+    "canvas_short_edge": 768,
+    "canvas_max_pixels": 768 * 1344,
+    "denoising_step_list": [1000, 750, 500, 250, 100, 40, 0],
+}
 _SHARED_INPUTS = {
     "height": None,
     "width": None,
@@ -154,7 +158,7 @@ class PikaH3FlexModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     params = frozenset(["prompt", "image", "last_image", "height", "width", "num_frames"])
     # Pika H3 Flex packs one request into one sequence and rejects a list of prompts, so nothing is batched.
     batch_params = frozenset()
-    # The adapters are guidance-distilled and run a fixed six-knot ladder, so neither `guidance_scale` nor
+    # The adapters are guidance-distilled and run a fixed six-step schedule, so neither `guidance_scale` nor
     # `num_inference_steps` exists, and one request generates one video.
     optional_params = frozenset(["latents", "output_type"])
     not_params = frozenset(["num_inference_steps", "guidance_scale", "negative_prompt"])
@@ -189,9 +193,9 @@ class TestPikaH3FlexModularPipelineFast(PikaH3FlexModularPipelineTesterConfig, M
     def test_num_images_per_prompt(self):
         pass
 
-    def test_six_evaluations_from_the_knots(self):
+    def test_six_steps_from_the_schedule(self):
         r"""
-        The ladder is the adapters' contract: six evaluations over the released knots, whatever the request says. There
+        The schedule is the adapters' contract: six steps, whatever the request says. There
         is no `num_inference_steps` input to say otherwise, and both schedulers expose the same count.
         """
         pipe = self.get_pipeline()
@@ -213,9 +217,9 @@ class TestPikaH3FlexModularPipelineFast(PikaH3FlexModularPipelineTesterConfig, M
 
         assert video.shape == (1, 124, 3, 32, 32)
         # The audio VAE is mono and takes the two stereo channels as two batch items, which the decoder block stacks
-        # back into `(batch, 2, samples)`.
-        # 207 audio latents at the tiny VAE's 4 samples per latent
-        assert audio.shape == (1, 2, 207 * 4)
+        # back into `(batch, 2, samples)`. 207 audio latents at the tiny VAE's 4 samples per latent cover 828 samples,
+        # truncated to the 124 frames' duration at the tiny VAE's sample rate.
+        assert audio.shape == (1, 2, round(124 / 24 * sampling_rate))
         assert video.min() >= 0.0 and video.max() <= 1.0
         assert sampling_rate == pipe.audio_vae.config.sampling_rate
 
@@ -249,7 +253,7 @@ class TestPikaH3FlexModularPipelineFast(PikaH3FlexModularPipelineTesterConfig, M
 
         The blocks draw from the one generator the request carries, in the order they run — a keyframe's conditioning
         noise in the prepare-condition-latents step, the video and the audio noise in the prepare-latents step, and the
-        fresh noise of every re-noising evaluation in the loop — which is the whole reproducibility contract of a
+        fresh noise of every re-noising step in the loop — which is the whole reproducibility contract of a
         request.
         """
         pipe = self.get_pipeline()
@@ -276,7 +280,7 @@ class TestPikaH3FlexModularPipelineFast(PikaH3FlexModularPipelineTesterConfig, M
         r"""
         `latents` and `audio_latents` stand in for the two initial draws, and only for those.
 
-        Unlike MiniMax-H3's Euler loop, every evaluation of the ladder but the last re-noises with fresh noise drawn
+        Unlike MiniMax-H3's Euler loop, every step but the last re-noises with fresh noise drawn
         from the request's generator, so injecting the initial noise does not make a `t2va` request independent of its
         seed: the same seed with other initial noise is another sample, and another seed with the same initial noise is
         still another sample.
@@ -330,7 +334,7 @@ class TestPikaH3FlexModularPipelineFast(PikaH3FlexModularPipelineTesterConfig, M
             assert video[0][0].size == (32, 32)
         else:
             assert video.shape == (1, 124, 3, 32, 32)
-        assert audio.shape == (1, 2, 207 * 4)
+        assert audio.shape == (1, 2, round(124 / 24 * pipe.audio_vae.config.sampling_rate))
 
     @pytest.mark.parametrize(
         "overrides,message",
@@ -392,7 +396,7 @@ class PikaH3FlexRef2VAModularPipelineTesterConfig(BaseModularPipelineTesterConfi
     params = frozenset(["prompt", "references", "height", "width", "num_frames"])
     # Pika H3 Flex packs one request into one sequence and rejects a list of prompts, so nothing is batched.
     batch_params = frozenset()
-    # The adapters are guidance-distilled and run a fixed six-knot ladder, so neither `guidance_scale` nor
+    # The adapters are guidance-distilled and run a fixed six-step schedule, so neither `guidance_scale` nor
     # `num_inference_steps` exists, and one request generates one video.
     optional_params = frozenset(["latents", "output_type"])
     not_params = frozenset(["num_inference_steps", "guidance_scale", "negative_prompt"])
@@ -439,8 +443,8 @@ class TestPikaH3FlexRef2VAModularPipelineFast(PikaH3FlexRef2VAModularPipelineTes
         video, audio = state.get("videos"), state.get("audio")
 
         assert video.shape == (1, 124, 3, 32, 32)
-        # 207 audio latents at the tiny VAE's 4 samples per latent
-        assert audio.shape == (1, 2, 207 * 4)
+        # 207 audio latents at the tiny VAE's 4 samples per latent, truncated to the 124 frames' duration
+        assert audio.shape == (1, 2, round(124 / 24 * pipe.audio_vae.config.sampling_rate))
         assert video.min() >= 0.0 and video.max() <= 1.0
         # a 16x16 reference on the 32 pixel canvas' tier: 1024x1024, i.e. a 64x64 latent packed into 32 * 32 rows
         assert state.get("normalized_references")[0].image.size == (1024, 1024)
@@ -451,7 +455,7 @@ class TestPikaH3FlexRef2VAModularPipelineFast(PikaH3FlexRef2VAModularPipelineTes
         Two runs from the same generator state are identical, two seeds differ.
 
         A `ref2va` request draws the reference conditioning noise before the video and the audio noise, and the fresh
-        noise of every re-noising evaluation after them, all off the one generator it carries, so this covers the whole
+        noise of every re-noising step after them, all off the one generator it carries, so this covers the whole
         stream.
         """
         pipe = self.get_pipeline()
@@ -644,6 +648,11 @@ class TestPikaH3FlexModularBlocks:
         assert [keyframe.size for keyframe in state.get("keyframes")] == [(1344, 768), (1344, 768)]
         assert state.get("keyframe_anchors") == ("first", "last")
 
+    @pytest.mark.parametrize(
+        "canvas,expected_size",
+        [((480, 832), (1696, 1024)), ((768, 1344), (3424, 2048))],
+        ids=["p480", "p768"],
+    )
     def test_reference_image_resolution_follows_the_canvas_tier(self, canvas, expected_size):
         r"""
         An image reference is encoded at the reference short edge of the tier the *generated* canvas falls in — 1024

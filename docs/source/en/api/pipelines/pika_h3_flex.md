@@ -17,7 +17,7 @@ specific language governing permissions and limitations under the License. -->
   </a>
 </div>
 
-[Pika H3 Flex](https://huggingface.co/Pika-Labs/Pika-H3-Flex-Early-Access) is Pika's post-training of [MiniMax-H3](./minimax_h3) into a six-evaluation video-and-audio generator. It keeps MiniMax-H3's packed sequence, its Qwen3-VL conditioner and its two VAEs, and changes two things: the sampler, a consistency re-noising ladder over six fixed knots in place of the Euler schedule, and the weights, a pair of rank-128 LoRA adapters over the two MiniMax-H3 transformer partitions. Video and its synchronized stereo soundtrack come out of the same six forward passes.
+[Pika H3 Flex](https://huggingface.co/Pika-Labs/Pika-H3-Flex) is Pika's post-training of [MiniMax-H3](./minimax_h3) into a six-step video-and-audio generator. It keeps MiniMax-H3's packed sequence, its Qwen3-VL conditioner and its two VAEs, and changes two things: the sampler, a fixed six-step schedule that re-noises the clean prediction at every step in place of the Euler update, and the weights, a pair of rank-128 LoRA adapters over the two MiniMax-H3 transformer partitions. Video and its synchronized stereo soundtrack come out of the same six forward passes.
 
 The release is the adapters: the FL2VA adapter (`fl2va/adapter.safetensors`) drives the `transformer/` partition for text and endpoint-frame conditioning, the Ref2VA adapter (`ref2va/adapter.safetensors`) drives `transformer_ref/` for multimodal references. The base components stay in [MiniMaxAI/MiniMax-H3](https://huggingface.co/MiniMaxAI/MiniMax-H3).
 
@@ -37,20 +37,20 @@ A pipeline is assembled in two steps: the components are loaded through a `modul
 import torch
 from diffusers import ModularPipeline
 
-pipe = ModularPipeline.from_pretrained("Pika-Labs/Pika-H3-Flex-Early-Access", workflow="fl2va")
-pipe.load_components(dtype=torch.bfloat16)
-pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex-Early-Access", weight_name="fl2va/adapter.safetensors")
+pipe = ModularPipeline.from_pretrained("Pika-Labs/Pika-H3-Flex", workflow="fl2va")
+pipe.load_components(dtype={"vae": torch.float32, "audio_vae": torch.float32, "default": torch.bfloat16})
+pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex", weight_name="fl2va/adapter.safetensors")
 ```
 
-Passing the workflow prunes the blocks to that task, so only its own transformer partition is fetched and the adapter routes to the one partition present. A pipeline that holds both partitions (loaded without a `workflow=`) needs to be told where the Ref2VA adapter goes: `pipe.load_lora_weights(..., weight_name="ref2va/adapter.safetensors", load_into_transformer_ref=True)`.
+Passing the workflow prunes the blocks to that task, so only its own transformer partition is fetched, the adapter routes to the one partition present, and the pipeline accepts that task's requests alone — a `fl2va` pipeline needs a keyframe, a `t2va` one takes none. A pipeline that holds both partitions (loaded without a `workflow=`) needs to be told where the Ref2VA adapter goes: `pipe.load_lora_weights(..., weight_name="ref2va/adapter.safetensors", load_into_transformer_ref=True)`. The two VAEs are released in float32 and decode in float32, as the released package does; everything else runs in bfloat16.
 
 > [!TIP]
 > `pipe.doc` prints what the pipeline in front of you takes and returns — every input with its default, the components it expects and the outputs it produces.
 
 ## What differs from MiniMax-H3
 
-- **Six evaluations, no `num_inference_steps`.** Both [`PikaH3FlexScheduler`] instances (`shift=12.0` for video, `shift=3.0` for audio) walk the released knots `[1000, 750, 500, 250, 100, 40, 0]`: every evaluation predicts the clean sample, and all but the last re-noise it with fresh noise to the next knot. The evaluation count is the adapter's contract and is not an input.
-- **Fresh noise at every knot.** A request draws from its `generator` in a fixed order: one draw per keyframe or visual reference for the conditioning noise, the video noise, the audio noise, and then the video and audio re-noising draws of each of the first five evaluations. Passing `latents` or `audio_latents` replaces the two initial draws and leaves the rest in place.
+- **Six steps, no `num_inference_steps`.** Both [`MiniMaxH3Scheduler`] instances (`shift=12.0` for video, `shift=3.0` for audio) run with `stochastic_sampling` over the pipeline's `denoising_step_list` config, the released schedule `[1000, 750, 500, 250, 100, 40, 0]`: every step predicts the clean sample, and all but the last re-noise it with fresh noise to the next sigma. The step count is the adapter's contract and is not an input.
+- **Fresh noise at every step.** A request draws from its `generator` in a fixed order: one draw per keyframe or visual reference for the conditioning noise, the video noise, the audio noise, and then the video and audio re-noising draws of each of the first five steps. Passing `latents` or `audio_latents` replaces the two initial draws and leaves the rest in place.
 - **Keyframes are cropped, not stretched.** A `fl2va` keyframe is center-cropped to the canvas' aspect ratio at its own resolution and resized onto the canvas.
 - **References follow the canvas' resolution tier.** Pika H3 Flex generates on a bucket table — a 480p tier and a 768p tier, eleven aspect ratios each — and a `ref2va` request conditions by the tier of its canvas: an image reference is encoded at a 1024 pixel short edge below the 768 tier and 2048 from it upwards, and a video reference is put on the tier's own canvas rule. Every video or standalone audio reference runs 2 to 15 seconds, and the video durations and the standalone audio durations each sum to at most 15 seconds.
 
@@ -74,11 +74,13 @@ from diffusers.utils.export_utils import encode_video
 manager = ComponentsManager()
 manager.enable_auto_cpu_offload(device="cuda")  # or "mps", "xpu", "cpu"
 
-pipe = ModularPipeline.from_pretrained(
-    "Pika-Labs/Pika-H3-Flex-Early-Access", workflow="fl2va", components_manager=manager
+# Create one pipeline for all supported workflows, then load the `fl2va` workflow's components, which is
+# enough to run both the fl2va and t2va requests below.
+pipe = ModularPipeline.from_pretrained("Pika-Labs/Pika-H3-Flex", components_manager=manager)
+pipe.load_components(
+    workflow="fl2va", dtype={"vae": torch.float32, "audio_vae": torch.float32, "default": torch.bfloat16}
 )
-pipe.load_components(dtype=torch.bfloat16)
-pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex-Early-Access", weight_name="fl2va/adapter.safetensors")
+pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex", weight_name="fl2va/adapter.safetensors")
 
 prompt = (
     "integrated_multimodal_description: A cinematic close shot of a red ceramic cup on a wooden table beside an "
@@ -99,12 +101,23 @@ results = pipe(
     output=outputs
 )
 
-# First frame (and optionally `last_image`) to video + audio. The keyframe is center-cropped onto the canvas.
+# First frame (and optionally `last_image`) to video + audio. The keyframe is center-cropped onto the canvas and
+# held as the first frame, so the prompt describes the keyframe and what happens from it.
 image = load_image(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
 )
+i2va_prompt = (
+    "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.\n\n"
+    "integrated_multimodal_description: [Shot 1] Begin with the supplied image of a small toy astronaut figurine "
+    "standing on a grey rocky moon surface, holding a white egg-shaped object. Preserve the figurine, its orange "
+    "visor and the rocks. The astronaut slowly turns its helmet toward the camera and lifts the egg a little; fine "
+    "dust drifts up around its boots. The camera slowly pushes in in one continuous shot. By the end the astronaut "
+    "stands still, egg held up.\n\n"
+    "overall_soundscape: Soft low wind and faint crunch of dust under the boots. No speech.\n\n"
+    "non_diegetic_music: N/A\n"
+)
 results = pipe(
-    prompt=prompt, 
+    prompt=i2va_prompt, 
     image=image, 
     height=480, 
     width=832, 
@@ -137,10 +150,10 @@ manager = ComponentsManager()
 manager.enable_auto_cpu_offload(device="cuda")  # or "mps", "xpu", "cpu"
 
 pipe = ModularPipeline.from_pretrained(
-    "Pika-Labs/Pika-H3-Flex-Early-Access", workflow="ref2va", components_manager=manager
+    "Pika-Labs/Pika-H3-Flex", workflow="ref2va", components_manager=manager
 )
-pipe.load_components(dtype=torch.bfloat16)
-pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex-Early-Access", weight_name="ref2va/adapter.safetensors")
+pipe.load_components(dtype={"vae": torch.float32, "audio_vae": torch.float32, "default": torch.bfloat16})
+pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex", weight_name="ref2va/adapter.safetensors")
 
 # Keep the transformer in CPU memory and bring in one block at a time while it runs.
 pipe.transformer_ref.enable_group_offload(

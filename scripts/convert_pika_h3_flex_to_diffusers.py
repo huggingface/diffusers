@@ -15,8 +15,8 @@
 Assemble the diffusers repository of Pika H3 Flex.
 
 Pika H3 Flex is MiniMax-H3 plus two LoRA adapters, so there are no weights to convert: the MiniMax-H3 components are
-re-serialized under the Pika classes, the released adapters are copied in next to them, the two `PikaH3FlexScheduler`
-configs (video and audio ladders) are written, and a `modular_model_index.json` names it all. The Hub deduplicates the
+copied as they are, the released adapters are copied in next to them, the two `MiniMaxH3Scheduler`
+configs (video and audio) are written, and a `modular_model_index.json` names it all. The Hub deduplicates the
 tensors against the MiniMax-H3 repository, so the copy costs no storage.
 
 ```sh
@@ -40,8 +40,8 @@ import diffusers
 from diffusers import (
     AutoencoderKLMiniMaxH3,
     AutoencoderKLMiniMaxH3Audio,
+    MiniMaxH3Scheduler,
     MiniMaxH3Transformer3DModel,
-    PikaH3FlexScheduler,
 )
 
 
@@ -49,7 +49,6 @@ BASE_REPO = "MiniMaxAI/MiniMax-H3"
 BASE_REVISION = "42ed227ee7df40d41602854ae760620d6eb651fe"
 ADAPTER_REPO = "Pika-Labs/Pika-H3-Flex-Early-Access"
 ADAPTER_REVISION = "6f3072e1f557f34240951e393c832d8a23d75f47"
-KNOTS = [1000, 750, 500, 250, 100, 40, 0]
 ADAPTER_FILES = ("adapter.safetensors", "manifest.json")
 
 
@@ -88,8 +87,8 @@ def main():
     base = {"pretrained_model_name_or_path": args.base_repo, "revision": args.base_revision}
 
     # 1. The MiniMax-H3 components, re-serialized one at a time (the conditioner and each transformer partition are
-    # 62 GB). The transformer partitions are saved under the Pika class; their weights are MiniMax-H3's, mixed
-    # precision as shipped, which `dtype=torch.bfloat16` with the class's `_keep_in_fp32_modules` reproduces.
+    # 62 GB). The transformer partitions are MiniMax-H3's, mixed precision as shipped, which `dtype=torch.bfloat16`
+    # with the class's `_keep_in_fp32_modules` reproduces.
     for subfolder in ("transformer", "transformer_ref"):
         model = MiniMaxH3Transformer3DModel.from_pretrained(**base, subfolder=subfolder, dtype=torch.bfloat16)
         model.save_pretrained(os.path.join(args.output_path, subfolder))
@@ -120,9 +119,9 @@ def main():
             shutil.copyfile(path, os.path.join(args.output_path, adapter, filename))
         print(f"Copied the {adapter} adapter")
 
-    # 3. The two re-noising ladders, and the index that names everything.
+    # 3. The two schedulers, and the index that names everything.
     for subfolder, shift in (("scheduler", 12.0), ("audio_scheduler", 3.0)):
-        PikaH3FlexScheduler(shift=shift, denoising_step_list=KNOTS).save_pretrained(
+        MiniMaxH3Scheduler(shift=shift, stochastic_sampling=True, shift_provided_sigmas=True).save_pretrained(
             os.path.join(args.output_path, subfolder)
         )
     index = {
@@ -136,8 +135,8 @@ def main():
         "audio_vae": component("diffusers", "AutoencoderKLMiniMaxH3Audio", args.repo_id, "audio_vae"),
         "transformer": component("diffusers", "MiniMaxH3Transformer3DModel", args.repo_id, "transformer"),
         "transformer_ref": component("diffusers", "MiniMaxH3Transformer3DModel", args.repo_id, "transformer_ref"),
-        "scheduler": component("diffusers", "PikaH3FlexScheduler", args.repo_id, "scheduler"),
-        "audio_scheduler": component("diffusers", "PikaH3FlexScheduler", args.repo_id, "audio_scheduler"),
+        "scheduler": component("diffusers", "MiniMaxH3Scheduler", args.repo_id, "scheduler"),
+        "audio_scheduler": component("diffusers", "MiniMaxH3Scheduler", args.repo_id, "audio_scheduler"),
     }
     with open(os.path.join(args.output_path, "modular_model_index.json"), "w") as f:
         json.dump(index, f, indent=2)

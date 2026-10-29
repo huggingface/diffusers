@@ -210,8 +210,8 @@ def audio_latent_num_frames(
 
 class PikaH3FlexModularPipeline(ModularPipeline, PikaH3FlexLoraLoaderMixin):
     """
-    A ModularPipeline for joint video + audio generation with Pika H3 Flex, the post-trained six-evaluation MiniMax-H3:
-    the `t2va` (text only) and `fl2va` (first and/or last keyframe) workflows against the `transformer/` checkpoint
+    A ModularPipeline for joint video + audio generation with Pika H3 Flex, the post-trained six-step MiniMax-H3: the
+    `t2va` (text only) and `fl2va` (first and/or last keyframe) workflows against the `transformer/` checkpoint
     partition with the `fl2va` adapter, and the `ref2va` (omni-reference) workflow against `transformer_ref/` with the
     `ref2va` adapter.
 
@@ -224,17 +224,18 @@ class PikaH3FlexModularPipeline(ModularPipeline, PikaH3FlexLoraLoaderMixin):
     import torch
     from diffusers import ModularPipeline
 
-    pipe = ModularPipeline.from_pretrained("Pika-Labs/Pika-H3-Flex-Early-Access", workflow="fl2va")
+    pipe = ModularPipeline.from_pretrained("Pika-Labs/Pika-H3-Flex", workflow="fl2va")
     pipe.load_components(dtype=torch.bfloat16)
-    pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex-Early-Access", weight_name="fl2va/adapter.safetensors")
+    pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex", weight_name="fl2va/adapter.safetensors")
     ```
 
     Like MiniMax-H3, Pika H3 Flex denoises **one packed sequence** that holds the text conditioning, the keyframe or
     reference conditioning latents, the audio latents and the video latents at once, which is why the blocks pass a row
     layout around rather than per-modality tensors, and why the pipeline carries two schedulers (`shift = 12.0` for
     video, `shift = 3.0` for audio) that are stepped inside a single transformer call. Unlike MiniMax-H3, the two
-    schedulers are [`PikaH3FlexScheduler`] re-noising ladders over a fixed six-knot schedule: there is no
-    `num_inference_steps`, and every step draws fresh noise from the request's generator.
+    schedulers are [`MiniMaxH3Scheduler`] instances with `stochastic_sampling` over the fixed six-step
+    `denoising_step_list`: there is no `num_inference_steps`, and every step draws fresh noise from the request's
+    generator.
 
     The adapters are guidance-distilled like their base: there is no guider, no `negative_prompt` and no
     `guidance_scale`, and every step runs exactly one forward pass.

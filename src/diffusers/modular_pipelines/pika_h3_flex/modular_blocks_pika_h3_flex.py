@@ -70,9 +70,9 @@ class PikaH3FlexAutoBeforeEncodeStep(ConditionalPipelineBlocks):
           width (`int`, *optional*):
               Width of the generated video in pixels, a multiple of 32.
           num_frames (`int`, *optional*):
-              Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video VAE can
-              decode; the resulting duration must stay between 5 and 15 seconds. To generate a video as long as a
-              reference soundtrack, pass `round(samples / sample_rate * 24)`.
+              Number of frames to generate, at the fixed 24 fps: 120 to 360, i.e. 5 to 15 seconds, snapped up to the
+              next `17 * n + 5` the video VAE can decode. To generate a video as long as a reference soundtrack, pass
+              `round(samples / sample_rate * 24)`.
           image (`Image`, *optional*):
               Keyframe the video starts from. It is center-cropped to the canvas' aspect ratio and resized onto it; the
               canvas by default is derived from its own aspect ratio.
@@ -238,15 +238,16 @@ class PikaH3FlexAutoVaeEncoderStep(ConditionalPipelineBlocks):
 class PikaH3FlexCoreDenoiseStep(SequentialPipelineBlocks):
     """
     Core denoising workflow for `t2va`: builds the packed layout, draws and packs the noise, plans the per-row
-    timesteps of the six evaluations, runs the re-noising loop against the `transformer` partition with the `fl2va`
-    adapter and unpacks the denoised rows back into latents.
+    timesteps of the six steps, runs the re-noising loop against the `transformer` partition with the `fl2va` adapter
+    and unpacks the denoised rows back into latents.
 
       Components:
-          scheduler (`PikaH3FlexScheduler`) audio_scheduler (`PikaH3FlexScheduler`) transformer
+          scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`) transformer
           (`MiniMaxH3Transformer3DModel`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
+          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192) denoising_step_list (default: [1000,
+          750, 500, 250, 100, 40, 0])
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -256,8 +257,8 @@ class PikaH3FlexCoreDenoiseStep(SequentialPipelineBlocks):
           width (`int`, *optional*):
               Width of the generated video in pixels, a multiple of 32.
           num_frames (`int`, *optional*, defaults to 124):
-              Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video VAE can
-              decode; the resulting duration must stay between 5 and 15 seconds.
+              Number of frames to generate, at the fixed 24 fps: 120 to 360, i.e. 5 to 15 seconds, snapped up to the
+              next `17 * n + 5` the video VAE can decode.
           generator (`Generator`, *optional*):
               The generator of the request. The video noise is drawn from it first, then the audio noise.
           latents (`Tensor`, *optional*):
@@ -303,7 +304,7 @@ class PikaH3FlexCoreDenoiseStep(SequentialPipelineBlocks):
     def description(self):
         return (
             "Core denoising workflow for `t2va`: builds the packed layout, draws and packs the noise, plans the "
-            "per-row timesteps of the six evaluations, runs the re-noising loop against the `transformer` partition "
+            "per-row timesteps of the six steps, runs the re-noising loop against the `transformer` partition "
             "with the `fl2va` adapter and unpacks the denoised rows back into latents."
         )
 
@@ -329,15 +330,16 @@ class PikaH3FlexCoreDenoiseStep(SequentialPipelineBlocks):
 class PikaH3FlexFL2VACoreDenoiseStep(SequentialPipelineBlocks):
     """
     Core denoising workflow for `fl2va`: builds the packed layout with the keyframes anchored, draws and packs the
-    noise around the keyframe conditioning, plans the per-row timesteps of the six evaluations, runs the re-noising
-    loop against the `transformer` partition with the `fl2va` adapter and unpacks the denoised rows back into latents.
+    noise around the keyframe conditioning, plans the per-row timesteps of the six steps, runs the re-noising loop
+    against the `transformer` partition with the `fl2va` adapter and unpacks the denoised rows back into latents.
 
       Components:
-          scheduler (`PikaH3FlexScheduler`) audio_scheduler (`PikaH3FlexScheduler`) transformer
+          scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`) transformer
           (`MiniMaxH3Transformer3DModel`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
+          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192) denoising_step_list (default: [1000,
+          750, 500, 250, 100, 40, 0])
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -347,8 +349,8 @@ class PikaH3FlexFL2VACoreDenoiseStep(SequentialPipelineBlocks):
           width (`int`, *optional*):
               Width of the generated video in pixels, a multiple of 32.
           num_frames (`int`, *optional*, defaults to 124):
-              Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video VAE can
-              decode; the resulting duration must stay between 5 and 15 seconds.
+              Number of frames to generate, at the fixed 24 fps: 120 to 360, i.e. 5 to 15 seconds, snapped up to the
+              next `17 * n + 5` the video VAE can decode.
           keyframe_anchors (`tuple`, *optional*, defaults to ()):
               Which end of the video every keyframe is anchored to, in packed order.
           generator (`Generator`, *optional*):
@@ -402,7 +404,7 @@ class PikaH3FlexFL2VACoreDenoiseStep(SequentialPipelineBlocks):
     def description(self):
         return (
             "Core denoising workflow for `fl2va`: builds the packed layout with the keyframes anchored, draws and "
-            "packs the noise around the keyframe conditioning, plans the per-row timesteps of the six evaluations, "
+            "packs the noise around the keyframe conditioning, plans the per-row timesteps of the six steps, "
             "runs the re-noising loop against the `transformer` partition with the `fl2va` adapter and unpacks the "
             "denoised rows back into latents."
         )
@@ -429,12 +431,15 @@ class PikaH3FlexFL2VACoreDenoiseStep(SequentialPipelineBlocks):
 class PikaH3FlexRef2VACoreDenoiseStep(SequentialPipelineBlocks):
     """
     Core denoising workflow for `ref2va`: builds the packed layout with one block per reference, draws and packs the
-    noise, plans the per-row timesteps of the six evaluations, runs the re-noising loop against the `transformer_ref`
+    noise, plans the per-row timesteps of the six steps, runs the re-noising loop against the `transformer_ref`
     partition with the `ref2va` adapter and unpacks the denoised rows back into latents.
 
       Components:
-          scheduler (`PikaH3FlexScheduler`) audio_scheduler (`PikaH3FlexScheduler`) transformer_ref
+          scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`) transformer_ref
           (`MiniMaxH3Transformer3DModel`)
+
+      Configs:
+          denoising_step_list (default: [1000, 750, 500, 250, 100, 40, 0])
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -500,7 +505,7 @@ class PikaH3FlexRef2VACoreDenoiseStep(SequentialPipelineBlocks):
     def description(self):
         return (
             "Core denoising workflow for `ref2va`: builds the packed layout with one block per reference, draws and "
-            "packs the noise, plans the per-row timesteps of the six evaluations, runs the re-noising loop against "
+            "packs the noise, plans the per-row timesteps of the six steps, runs the re-noising loop against "
             "the `transformer_ref` partition with the `ref2va` adapter and unpacks the denoised rows back into "
             "latents."
         )
@@ -535,11 +540,12 @@ class PikaH3FlexAutoDenoiseStep(ConditionalPipelineBlocks):
          adapter.
 
       Components:
-          scheduler (`PikaH3FlexScheduler`) audio_scheduler (`PikaH3FlexScheduler`) transformer_ref
+          scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`) transformer_ref
           (`MiniMaxH3Transformer3DModel`) transformer (`MiniMaxH3Transformer3DModel`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
+          denoising_step_list (default: [1000, 750, 500, 250, 100, 40, 0]) canvas_short_edge (default: 768)
+          canvas_max_pixels (default: 1032192)
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -610,7 +616,6 @@ class PikaH3FlexAutoDenoiseStep(ConditionalPipelineBlocks):
 
 
 # auto_docstring
-# Copied from diffusers.modular_pipelines.minimax_h3.modular_blocks_minimax_h3.MiniMaxH3DecodeStep with \bMiniMaxH3->PikaH3Flex, minimax-h3->pika-h3-flex
 class PikaH3FlexDecodeStep(SequentialPipelineBlocks):
     """
     Decodes the denoised rows of the packed sequence into the generated video and its soundtrack.
@@ -625,6 +630,9 @@ class PikaH3FlexDecodeStep(SequentialPipelineBlocks):
               Output format: 'pil', 'np' or 'pt'.
           audio_latents (`Tensor`):
               The generated audio latents, one batch item per stereo channel.
+          num_frames (`int`, *optional*):
+              Number of video frames the soundtrack accompanies, at the fixed 24 fps. The waveform is truncated to that
+              duration; without it, it runs to the end of the last audio latent.
 
       Outputs:
           videos (`list`):
@@ -674,12 +682,13 @@ class PikaH3FlexBlocks(SequentialPipelineBlocks):
       Components:
           image_processor (`VaeImageProcessor`) text_encoder (`Qwen3VLForConditionalGeneration`) tokenizer
           (`Qwen2Tokenizer`) processor (`Qwen3VLProcessor`) vae (`AutoencoderKLMiniMaxH3`) audio_vae
-          (`AutoencoderKLMiniMaxH3Audio`) scheduler (`PikaH3FlexScheduler`) audio_scheduler (`PikaH3FlexScheduler`)
+          (`AutoencoderKLMiniMaxH3Audio`) scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`)
           transformer_ref (`MiniMaxH3Transformer3DModel`) transformer (`MiniMaxH3Transformer3DModel`) video_processor
           (`VideoProcessor`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
+          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192) denoising_step_list (default: [1000,
+          750, 500, 250, 100, 40, 0])
 
       Inputs:
           references (`list`, *optional*):
@@ -697,9 +706,9 @@ class PikaH3FlexBlocks(SequentialPipelineBlocks):
           width (`int`, *optional*):
               Width of the generated video in pixels, a multiple of 32.
           num_frames (`int`, *optional*):
-              Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video VAE can
-              decode; the resulting duration must stay between 5 and 15 seconds. To generate a video as long as a
-              reference soundtrack, pass `round(samples / sample_rate * 24)`.
+              Number of frames to generate, at the fixed 24 fps: 120 to 360, i.e. 5 to 15 seconds, snapped up to the
+              next `17 * n + 5` the video VAE can decode. To generate a video as long as a reference soundtrack, pass
+              `round(samples / sample_rate * 24)`.
           image (`Image`, *optional*):
               Keyframe the video starts from. It is center-cropped to the canvas' aspect ratio and resized onto it; the
               canvas by default is derived from its own aspect ratio.

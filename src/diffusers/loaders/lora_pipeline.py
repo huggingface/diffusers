@@ -7524,7 +7524,7 @@ class PikaH3FlexLoraLoaderMixin(MiniMaxH3LoraLoaderMixin):
     holds that partition alone (`workflow="ref2va"`), with `load_into_transformer_ref=True` when it holds both.
 
     ```py
-    pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex-Early-Access", weight_name="fl2va/adapter.safetensors")
+    pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex", weight_name="fl2va/adapter.safetensors")
     ```
     """
 
