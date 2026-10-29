@@ -24,6 +24,7 @@ import torch.multiprocessing as mp
 from diffusers.models._modeling_parallel import ContextParallelConfig, TensorParallelConfig
 from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
 from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME
+from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
     is_attention,
@@ -108,7 +109,15 @@ def _context_parallel_worker(
 
         # Enable context parallelism
         cp_config = ContextParallelConfig(**cp_dict)
+        randn_tensor((rank + 1,), device=device)
         model.enable_parallelism(config=cp_config)
+
+        latents = randn_tensor((1, 4, 8, 8), device=device)
+        gathered_latents = [torch.empty_like(latents) for _ in range(world_size)]
+        dist.all_gather(gathered_latents, latents)
+        assert all(torch.equal(latents, other) for other in gathered_latents), (
+            "Unseeded latents differ across context-parallel ranks."
+        )
 
         # Run forward pass
         with torch.no_grad():
@@ -292,7 +301,15 @@ def _tensor_parallel_worker(
         inputs_on_device = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
 
         # Shard the model across all ranks; the device mesh is built from `tp_degree` on the active accelerator.
+        randn_tensor((rank + 1,), device=device)
         model.enable_parallelism(config=TensorParallelConfig(tp_degree=world_size))
+
+        latents = randn_tensor((1, 4, 8, 8), device=device)
+        gathered_latents = [torch.empty_like(latents) for _ in range(world_size)]
+        dist.all_gather(gathered_latents, latents)
+        assert all(torch.equal(latents, other) for other in gathered_latents), (
+            "Unseeded latents differ across tensor-parallel ranks."
+        )
 
         with torch.no_grad():
             output = model(**inputs_on_device, return_dict=False)[0]
