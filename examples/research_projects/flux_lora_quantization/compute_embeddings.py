@@ -61,7 +61,7 @@ def compute_embeddings(pipeline, prompts, max_sequence_length):
         all_pooled_prompt_embeds.append(pooled_prompt_embeds)
         all_text_ids.append(text_ids)
 
-    max_memory = torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024
+    max_memory = torch.accelerator.max_memory_allocated() / 1024 / 1024 / 1024
     print(f"Max memory allocated: {max_memory:.3f} GB")
     return all_prompt_embeds, all_pooled_prompt_embeds, all_text_ids
 
