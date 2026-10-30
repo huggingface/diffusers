@@ -19,6 +19,7 @@ import torch
 
 from diffusers import FasterCacheConfig, PyramidAttentionBroadcastConfig
 from diffusers.hooks.first_block_cache import FirstBlockCacheConfig
+from diffusers.hooks.hooks import BaseState, HookRegistry, ModelHook, StateManager
 from diffusers.hooks.mag_cache import MagCacheConfig
 from diffusers.hooks.pyramid_attention_broadcast import PyramidAttentionBroadcastHook
 from diffusers.hooks.taylorseer_cache import TaylorSeerCacheConfig
@@ -84,6 +85,67 @@ class CacheTesterMixin(BasePipelineOutputMixin):
             rtol=1e-5,
             msg="Outputs from normal inference and after disabling cache should not differ.",
         )
+
+
+class _CacheContextState(BaseState):
+    def __init__(self):
+        self.calls = 0
+
+    def reset(self):
+        self.calls = 0
+
+
+class _CacheContextRecorderHook(ModelHook):
+    _is_stateful = True
+
+    def __init__(self):
+        super().__init__()
+        self.state_manager = StateManager(_CacheContextState)
+        self.calls = []
+
+    def pre_forward(self, module, *args, **kwargs):
+        state = self.state_manager.get_state()
+        state.calls += 1
+        self.calls.append((self.state_manager.context.name, state, state.calls))
+        return args, kwargs
+
+    def reset_state(self, module):
+        self.state_manager.reset()
+        return module
+
+
+@is_cache
+class CacheContextTesterMixin(BasePipelineOutputMixin):
+    """Checks named denoiser contexts, state isolation, and cleanup across pipeline calls."""
+
+    cache_context_inputs = {}
+    expected_cache_contexts = {"cond", "uncond"}
+
+    def _test_cache_context(self, expected_contexts, **inputs):
+        pipe = self.get_pipeline().to(torch_device)
+        expected_output = self.run_pipe(pipe, **inputs)
+        hook = _CacheContextRecorderHook()
+        HookRegistry.check_if_exists_or_initialize(pipe.transformer).register_hook(hook, "cache_context_recorder")
+        previous_states = {}
+
+        for _ in range(2):
+            hook.calls.clear()
+            output = self.run_pipe(pipe, **inputs)
+            torch.testing.assert_close(output, expected_output, rtol=0, atol=0)
+            assert {name for name, _, _ in hook.calls} == expected_contexts
+            states = {}
+            for name in expected_contexts:
+                calls = [(state, count) for context, state, count in hook.calls if context == name]
+                states[name] = calls[0][0]
+                assert all(state is states[name] for state, _ in calls)
+                assert [count for _, count in calls] == list(range(1, len(calls) + 1))
+                assert states[name].calls == 0
+                assert states[name] is not previous_states.get(name)
+            assert len({id(state) for state in states.values()}) == len(expected_contexts)
+            previous_states = states
+
+    def test_cache_context(self):
+        self._test_cache_context(self.expected_cache_contexts, **self.cache_context_inputs)
 
 
 @is_cache
