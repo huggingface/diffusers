@@ -774,6 +774,8 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
+            # read timesteps on the host; a device scalar would sync every step
+            timesteps_cpu = timesteps.tolist()
             # for DPM-solver++
             old_pred_original_sample = None
             for i, t in enumerate(timesteps):
@@ -806,15 +808,18 @@ class CogVideoXFunControlPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
                 # perform guidance
                 if use_dynamic_cfg:
+                    t_cpu = timesteps_cpu[i]
                     self._guidance_scale = 1 + guidance_scale * (
-                        (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
+                        (1 - math.cos(math.pi * ((num_inference_steps - t_cpu) / num_inference_steps) ** 5.0)) / 2
                     )
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                latents = self.scheduler.step(
+                    noise_pred, timesteps_cpu[i], latents, **extra_step_kwargs, return_dict=False
+                )[0]
                 latents = latents.to(prompt_embeds.dtype)
 
                 # call the callback, if provided
