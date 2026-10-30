@@ -21,6 +21,7 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...utils import BaseOutput
+from .._modeling_parallel import TensorParallelConfig
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
@@ -64,13 +65,13 @@ class Cosmos3AttnProcessor:
         gen_seq: torch.Tensor,
         rotary_emb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        # Per-pathway projections
-        q_und = attn.to_q(und_seq).view(-1, attn.num_attention_heads, attn.head_dim)
-        k_und = attn.to_k(und_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
-        v_und = attn.to_v(und_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
-        q_gen = attn.add_q_proj(gen_seq).view(-1, attn.num_attention_heads, attn.head_dim)
-        k_gen = attn.add_k_proj(gen_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
-        v_gen = attn.add_v_proj(gen_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
+        # Infer local head counts from the projection widths after tensor parallel sharding.
+        q_und = attn.to_q(und_seq).unflatten(-1, (-1, attn.head_dim))
+        k_und = attn.to_k(und_seq).unflatten(-1, (-1, attn.head_dim))
+        v_und = attn.to_v(und_seq).unflatten(-1, (-1, attn.head_dim))
+        q_gen = attn.add_q_proj(gen_seq).unflatten(-1, (-1, attn.head_dim))
+        k_gen = attn.add_k_proj(gen_seq).unflatten(-1, (-1, attn.head_dim))
+        v_gen = attn.add_v_proj(gen_seq).unflatten(-1, (-1, attn.head_dim))
 
         q_und = attn.norm_q(q_und)
         k_und = attn.norm_k(k_und)
@@ -377,6 +378,15 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
     _repeated_blocks = ["Cosmos3VLTextMoTDecoderLayer"]
     _skip_layerwise_casting_patterns = ["embed_tokens", "time_embedder", "norm"]
     _keep_in_fp32_modules = ["time_embedder"]
+    _tp_plan = {
+        **{
+            f"layers.*.self_attn.{name}": "colwise"
+            for name in ("to_q", "to_k", "to_v", "add_q_proj", "add_k_proj", "add_v_proj")
+        },
+        **{f"layers.*.self_attn.{name}": "rowwise" for name in ("to_out", "to_add_out")},
+        **{f"layers.*.{mlp}.up_proj": "colwise" for mlp in ("mlp", "mlp_moe_gen")},
+        **{f"layers.*.{mlp}.down_proj": "rowwise" for mlp in ("mlp", "mlp_moe_gen")},
+    }
     # Optional context-parallelism seams. They default to ``None`` (no-op) so the
     # model itself carries no CP logic. `forward` applies `_cp_shard_fn` to the
     # per-pathway hidden states + rotary embeddings before the decoder layers, and
@@ -391,6 +401,25 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
     # so __init__ must accept it. Excluding it here keeps save_pretrained from writing it into
     # config.json — the value is a load-time runtime hint, not part of the model architecture.
     ignore_for_config = ["dtype"]
+
+    def _get_tp_plan(self):
+        tp_plan = super()._get_tp_plan().copy()
+        if self.config.hidden_act == "silu":
+            tp_plan.update(
+                {
+                    "layers.*.mlp.gate_proj": "colwise",
+                    "layers.*.mlp_moe_gen.gate_proj": "colwise",
+                }
+            )
+        return tp_plan
+
+    def _resolve_parallel_config(self, config):
+        tp = config if isinstance(config, TensorParallelConfig) else getattr(config, "tensor_parallel_config", None)
+        if tp is not None:
+            degree = tp.mesh.size() if tp.mesh is not None else tp.tp_degree
+            if self.config.num_attention_heads % degree or self.config.num_key_value_heads % degree:
+                raise ValueError("Cosmos3 TP degree must divide both query and KV head counts.")
+        return super()._resolve_parallel_config(config)
 
     @register_to_config
     def __init__(

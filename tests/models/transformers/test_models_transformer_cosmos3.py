@@ -15,11 +15,15 @@
 
 import pytest
 import torch
+import torch.multiprocessing as mp
+from accelerate.utils import send_to_device
 
 from diffusers import Cosmos3OmniTransformer, SeaCacheConfig
 from diffusers.hooks import sea_cache as sea_cache_module
 from diffusers.hooks._helpers import TransformerBlockRegistry
 from diffusers.hooks.sea_cache import _SEA_CACHE_ROOT_HOOK
+from diffusers.hooks.tensor_parallel import resolve_tp_shard_specs
+from diffusers.models._modeling_parallel import TensorParallelConfig
 from diffusers.models.cache_utils import CacheMixin
 from diffusers.models.transformers.transformer_cosmos3 import (
     Cosmos3NemotronRMSNorm,
@@ -27,6 +31,7 @@ from diffusers.models.transformers.transformer_cosmos3 import (
     Cosmos3PackedMoTAttention,
     Cosmos3VLTextMoTDecoderLayer,
 )
+from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -36,8 +41,16 @@ from ..testing_utils import (
     MemoryTesterMixin,
     ModelTesterMixin,
     SeaCacheTesterMixin,
+    TensorParallelTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
+)
+from ..testing_utils.common import cast_inputs_to_dtype
+from ..testing_utils.parallelism import (
+    _find_free_port,
+    _tensor_parallel_from_pretrained_worker,
+    _tensor_parallel_output,
+    _tensor_parallel_worker,
 )
 
 
@@ -710,3 +723,110 @@ class TestCosmos3OmniTransformerTraining(Cosmos3OmniTransformerTesterConfig, Tra
 
 class TestCosmos3OmniTransformerAttention(Cosmos3OmniTransformerTesterConfig, AttentionTesterMixin):
     pass
+
+
+class Cosmos3TensorParallelTesterConfig(Cosmos3OmniTransformerTesterConfig):
+    hidden_act = "relu2"
+
+    def get_init_dict(self):
+        return {
+            **super().get_init_dict(),
+            "head_dim": 8,
+            "hidden_size": 64,
+            "intermediate_size": 128,
+            "num_attention_heads": 8,
+            "num_key_value_heads": 4,
+            "rope_axes_dim": [2, 1, 1],
+            "attention_bias": True,
+            "hidden_act": self.hidden_act,
+            "qk_norm_for_text": self.hidden_act == "silu",
+            "use_und_k_norm_for_gen": self.hidden_act == "relu2",
+        }
+
+    def get_dummy_inputs(self, batch_size=1):
+        inputs = super().get_dummy_inputs(width=7)
+        device = inputs["input_ids"].device
+        und_len, gen_len = 5 * batch_size, 7 * batch_size
+        indexes = torch.arange(und_len, und_len + gen_len, device=device)
+        inputs.update(
+            input_ids=torch.arange(und_len, device=device) % self.get_init_dict()["vocab_size"],
+            text_indexes=torch.arange(und_len, device=device),
+            position_ids=torch.arange(und_len + gen_len, device=device).expand(3, -1),
+            und_len=und_len,
+            sequence_length=und_len + gen_len,
+            vision_tokens=[inputs["vision_tokens"][0] + index for index in range(batch_size)],
+            vision_token_shapes=inputs["vision_token_shapes"] * batch_size,
+            vision_sequence_indexes=indexes,
+            vision_mse_loss_indexes=indexes,
+            vision_timesteps=torch.ones(gen_len, device=device),
+            vision_noisy_frame_indexes=inputs["vision_noisy_frame_indexes"] * batch_size,
+        )
+        return inputs
+
+
+class TestCosmos3OmniTransformerTensorParallelConfig(Cosmos3TensorParallelTesterConfig):
+    @pytest.mark.parametrize("hidden_act", ["silu", "relu2"])
+    def test_plan_covers_both_streams(self, hidden_act):
+        class_plan = self.model_class._tp_plan.copy()
+        self.hidden_act = hidden_act
+        model = self.model_class(**self.get_init_dict())
+        plan = model._get_tp_plan()
+        specs = resolve_tp_shard_specs(model, plan, 2)
+        for name, parameter in model.named_parameters():
+            if name.startswith("layers.") and parameter.ndim == 2:
+                assert name in specs
+        assert "embed_tokens.weight" not in specs
+        assert any("gate_proj" in key for key in specs) == (hidden_act == "silu")
+        plan.clear()
+        assert model._get_tp_plan()
+        assert "_tp_plan" not in model.__dict__
+        assert self.model_class._tp_plan == class_plan
+
+    @pytest.mark.parametrize("heads,kv_heads,degree", [(8, 1, 2), (6, 4, 4), (8, 4, 3)])
+    def test_invalid_head_split(self, heads, kv_heads, degree):
+        config = self.get_init_dict()
+        config.update(num_attention_heads=heads, num_key_value_heads=kv_heads)
+        model = self.model_class(**config)
+        with pytest.raises(ValueError, match="both query and KV"):
+            model._resolve_parallel_config(TensorParallelConfig(tp_degree=degree))
+        assert model._parallel_config is None
+
+
+class TestCosmos3OmniTransformerTensorParallel(Cosmos3TensorParallelTesterConfig, TensorParallelTesterMixin):
+    @pytest.fixture(autouse=True, params=["silu", "relu2"])
+    def activation(self, request):
+        self.hidden_act = request.param
+
+    @pytest.mark.parametrize("sharded", [False, True], ids=["unsharded", "sharded"])
+    def test_tensor_parallel_bfloat16(self, tmp_path, sharded):
+        init_dict = self.get_init_dict()
+        model = self.model_class(**init_dict).eval()
+        model.save_pretrained(tmp_path, max_shard_size="100KB" if sharded else "5GB")
+        assert (tmp_path / SAFE_WEIGHTS_INDEX_NAME).is_file() == sharded
+        reference = self.model_class.from_pretrained(tmp_path, dtype=torch.bfloat16).to(torch_device).eval()
+        expected_dtypes = {name: parameter.dtype for name, parameter in reference.named_parameters()}
+        assert {dtype for name, dtype in expected_dtypes.items() if name.startswith("time_embedder.")} == {
+            torch.float32
+        }
+        assert torch.bfloat16 in expected_dtypes.values()
+        inputs = cast_inputs_to_dtype(self.get_dummy_inputs(), torch.float32, torch.bfloat16)
+        with torch.no_grad():
+            expected = _tensor_parallel_output(reference(**inputs, return_dict=False)[0]).float().cpu()
+        inputs = send_to_device(inputs, "cpu")
+        state_dict = {name: tensor.cpu() for name, tensor in reference.state_dict().items()}
+
+        with mp.Manager() as manager:
+            for loading in (False, True):
+                result = manager.dict()
+                args = (2, _find_free_port(), self.model_class)
+                if loading:
+                    worker = _tensor_parallel_from_pretrained_worker
+                    args += (str(tmp_path), inputs, result, torch.bfloat16)
+                else:
+                    worker = _tensor_parallel_worker
+                    args += (init_dict, inputs, result, state_dict)
+                mp.spawn(worker, args=args, nprocs=2, join=True)
+                assert result.get("status") == "success", result.get("error", "Unknown error")
+                torch.testing.assert_close(expected, torch.tensor(result["output"]), atol=0.025, rtol=0.025)
+                if loading:
+                    assert result["parameter_dtypes"] == expected_dtypes

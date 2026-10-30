@@ -725,6 +725,21 @@ pipe.transformer.compile_repeated_blocks(fullgraph=True)
 SeaCache also supports the Cosmos 3 Ulysses context-parallel and DTensor-based tensor-parallel helpers documented
 below. Cache decisions are synchronized across ranks. Full-model compilation and other model-sharding strategies are not claimed.
 
+## Native tensor parallelism
+
+Follow the [tensor parallelism guide](../../training/distributed_inference#tensor-parallelism) for distributed setup,
+launching, seeding, and rank-zero output handling. For Cosmos, adapt the
+[existing modular workflow](#modular-examples-for-all-existing-workflows) as follows:
+
+- Use `nvidia/Cosmos3-Super` or `nvidia/Cosmos3-Nano` with `Cosmos3OmniTransformer.from_pretrained`,
+  `subfolder="transformer"`, `dtype=torch.bfloat16`, and `parallel_config=TensorParallelConfig(tp_degree=4)`.
+- Create `Cosmos3OmniModularPipeline` from the same checkpoint, then call
+  `update_components(transformer=transformer)` before `load_components`. Place the remaining components
+  on each rank's local device and reuse the workflow's prompts, scheduler, and generation settings.
+
+Nano and Super support TP degrees 1, 2, 4, and 8; the degree must divide the query and KV head counts
+and the MLP intermediate size. For Cosmos CP or combined TP+CP, use the [existing example helpers](#context-parallelism).
+
 ## Context parallelism
 
 For long videos or high resolutions, a single forward pass can exceed the memory and latency budget of one GPU. Cosmos 3 supports **context parallelism (CP)** to shard the sequence dimension across multiple GPUs, splitting the attention computation so each device holds only a slice of the tokens.

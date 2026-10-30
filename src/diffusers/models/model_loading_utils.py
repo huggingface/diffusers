@@ -453,7 +453,7 @@ def _load_shard_file_tp(
                     param = param.to(dtype)
 
             if spec is None:
-                set_module_tensor_to_device(model, key, device, value=param)
+                set_module_tensor_to_device(model, key, device, value=param, dtype=param.dtype)
                 continue
 
             path, _, param_name = key.rpartition(".")
