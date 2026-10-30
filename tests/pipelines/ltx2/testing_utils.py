@@ -31,7 +31,9 @@ from diffusers import (
     LTX2VideoTransformer3DModel,
     LTXEulerAncestralRFScheduler,
 )
-from diffusers.pipelines.ltx2 import LTX2DurationHead, LTX2LatentUpsamplerModel, LTX2TextConnectors
+from diffusers.models.condition_embedders import LTX2TextConnectors
+from diffusers.models.latent_upscaler import LTX2LatentUpsamplerModel
+from diffusers.pipelines.ltx2 import LTX2DurationHead
 from diffusers.pipelines.ltx2.vocoder import LTX2Vocoder
 
 from ...testing_utils import torch_device

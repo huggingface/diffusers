@@ -18,6 +18,7 @@ import pytest
 import torch
 
 from diffusers import ZImageTransformer2DModel
+from diffusers.loaders.lora_pipeline import ZImageLoraLoaderMixin
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import assert_tensors_close, torch_device
@@ -25,6 +26,7 @@ from ..testing_utils import (
     AutoRoundCompileTesterMixin,
     AutoRoundTesterMixin,
     BaseModelTesterConfig,
+    LoKrTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
@@ -32,6 +34,7 @@ from ..testing_utils import (
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
+from ..testing_utils.lokr import check_lokr_deltas, make_lokr_factors
 
 
 # Z-Image requires torch.use_deterministic_algorithms(False) due to complex64 RoPE operations
@@ -181,6 +184,36 @@ class TestZImageTransformerTraining(ZImageTransformerTesterConfig, TrainingTeste
 
 class TestZImageTransformerLoRA(ZImageTransformerTesterConfig, LoraTesterMixin):
     """LoRA adapter tests for Z-Image Transformer."""
+
+
+class TestZImageTransformerLoKr(ZImageTransformerTesterConfig, LoKrTesterMixin):
+    """LoKr adapter tests for Z-Image Transformer, including the ai-toolkit Z-Image LoKr checkpoint format."""
+
+    @torch.no_grad()
+    def test_lokr_ai_toolkit_checkpoint(self):
+        # ai-toolkit stores the diffusers module paths under a `diffusion_model.` prefix. Full-matrix factors come with
+        # a placeholder alpha, where LoKr applies no scaling; rank-decomposed factors are scaled by `alpha / rank`.
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
+        rank = 1
+        state_dict, expected_deltas = {}, {}
+        for module, factor_rank, alpha in [
+            ("layers.0.attention.to_q", None, 9999220736.0),
+            ("layers.0.feed_forward.w1", None, 9999220736.0),
+            ("layers.0.adaLN_modulation.0", None, 9999220736.0),
+            ("layers.0.attention.to_v", rank, 0.5),
+        ]:
+            linear = model.get_submodule(module)
+            factors, delta = make_lokr_factors(linear.out_features, linear.in_features, rank=factor_rank)
+            state_dict.update({f"diffusion_model.{module}.{k}": v for k, v in factors.items()})
+            state_dict[f"diffusion_model.{module}.alpha"] = torch.tensor(alpha)
+            expected_deltas[module] = delta if factor_rank is None else (alpha / rank) * delta
+
+        converted = ZImageLoraLoaderMixin.lora_state_dict(state_dict)
+        assert all(k.startswith("transformer.") and ".lokr_" in k for k in converted)
+        model.load_lora_adapter(converted, prefix="transformer", adapter_name="default")
+
+        check_lokr_deltas(model, expected_deltas)
 
 
 # TODO: Add pretrained_model_name_or_path once a tiny Z-Image model is available on the Hub
