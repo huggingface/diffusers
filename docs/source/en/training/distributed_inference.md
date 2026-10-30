@@ -561,6 +561,79 @@ Validate a new plan numerically rather than by eye: generate with a fixed seed o
 > [!TIP]
 > Start from an existing plan for a similar architecture. [`QwenImageTransformer2DModel`] is fully unfused and every entry is plain `"colwise"`/`"rowwise"`, [`FluxTransformer2DModel`] adds a single packed row-wise projection, and [`Flux2Transformer2DModel`] covers both packed styles — see [`transformer_qwenimage.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_qwenimage.py), [`transformer_flux.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux.py), and [`transformer_flux2.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux2.py) respectively.
 
+## Combining context and tensor parallelism
+
+The two strategies split a model along different axes: tensor parallelism shards the weights, context parallelism splits the sequence. A model whose weights don't fit on one device *and* whose sequence is too long for one device's attention needs both, and neither alone can help: TP doesn't divide the sequence, and CP doesn't divide the weights.
+
+Set both in one [`ParallelConfig`]. [`~ModelMixin.enable_parallelism`] (or `from_pretrained(..., parallel_config=...)`) builds a single device mesh with a dimension for each, `("tp", "ring", "ulysses")`, so the TP all-reduces and the CP all-gathers or all-to-alls each stay inside their own process group. The model must define both a `_tp_plan` and a `_cp_plan`.
+
+```py
+import torch
+from torch import distributed as dist
+from diffusers import (
+    ContextParallelConfig,
+    DiffusionPipeline,
+    Flux2Transformer2DModel,
+    ParallelConfig,
+    TensorParallelConfig,
+)
+
+def main():
+    dist.init_process_group(backend="nccl")
+    rank = dist.get_rank()
+    device = torch.device(f"cuda:{rank}")
+    torch.cuda.set_device(device)
+
+    # 4 devices: each weight is sharded 2 ways, and each shard's sequence is split 2 ways with Ulysses.
+    transformer = Flux2Transformer2DModel.from_pretrained(
+        "black-forest-labs/FLUX.2-dev",
+        subfolder="transformer",
+        torch_dtype=torch.bfloat16,
+        parallel_config=ParallelConfig(
+            tensor_parallel_config=TensorParallelConfig(tp_degree=2),
+            context_parallel_config=ContextParallelConfig(ulysses_degree=2),
+        ),
+    )
+
+    pipeline = DiffusionPipeline.from_pretrained(
+        "black-forest-labs/FLUX.2-dev", transformer=transformer, torch_dtype=torch.bfloat16
+    )
+    # As with tensor parallelism alone, move the other components individually, not with `pipeline.to(device)`.
+    pipeline.text_encoder.to(device)
+    pipeline.vae.to(device)
+
+    generator = torch.Generator().manual_seed(42)
+    image = pipeline(prompt="a cat holding a sign that says hello", generator=generator).images[0]
+    if rank == 0:
+        image.save("output.png")
+    dist.destroy_process_group()
+
+if __name__ == "__main__":
+    main()
+```
+
+```shell
+torchrun --nproc-per-node 4 tp_cp_flux2.py
+```
+
+The degrees are checked before anything is sharded:
+
+- `tp_degree` × `ring_degree` × `ulysses_degree` must not exceed the world size.
+- Ulysses splits the heads that TP left on each rank, so `num_attention_heads` must be divisible by `tp_degree` × `ulysses_degree`. Ring attention doesn't touch the head dimension, so with `ring_degree` only `tp_degree` has to divide the head count. Pass `ulysses_anything=True` to pad the heads instead when they don't divide.
+
+The default mesh puts `"tp"` outermost, so the Ulysses groups are runs of consecutive ranks. Some accelerator runtimes, AWS Neuron among them, only accept contiguous replica groups for all-to-all while tolerating strided groups for the all-reduce TP needs, and only one axis of the mesh can be contiguous. On multi-node CUDA the opposite order is usually better, since TP's per-layer all-reduce is the most bandwidth-hungry collective and wants to stay inside one NVLink domain. To choose the layout yourself, build the mesh with `"tp"`, `"ring"` and `"ulysses"` dimensions and pass it as `mesh=` on either config.
+
+Which degree to raise first depends on what you are short of. TP is what lowers per-device memory; CP mostly lowers latency. For example, [MiniMax-H3](https://huggingface.co/MiniMaxAI/MiniMax-H3) (a 33B audio-video DiT, 56 heads) at 1344×768 and 124 frames on one AWS Trainium2 instance (trn2.48xlarge, loaded with `from_pretrained(..., parallel_config=...)`; peak memory is measured during denoising):
+
+| NeuronCores | config | weights / core | peak memory / core | s / step |
+|---|---|---|---|---|
+| 8 | TP=8 | 7.84 GiB | 18.7 GiB | 9.33 |
+| 16 | TP=4 × Ulysses=4 | 15.53 GiB | 21.7 GiB | 5.31 |
+| 32 | TP=4 × Ulysses=8 | 15.53 GiB | 20.5 GiB | 3.97 |
+| 32 | TP=8 × Ulysses=4 | 7.84 GiB | 13.7 GiB | 3.81 |
+
+At the same 32 cores, TP=8 × Ulysses=4 is both faster and lighter than TP=4 × Ulysses=8, so on this model it pays to max out TP first and add CP on top. Its 56 heads cap TP at 8, so going further means raising the CP degree.
+
 ## Choosing a strategy
 
 The strategies above solve different problems, and the useful question is not which is fastest in the abstract but what you are running out of.
@@ -577,4 +650,4 @@ Some practical guidance:
 - **Throughput on many prompts, model already fits.** Use data parallelism. It is the only strategy here that scales throughput linearly without touching the model, and it leaves single-prompt latency alone.
 - **A single component's weights don't fit.** Reach for tensor parallelism first, since it lowers both memory and latency. It communicates at every block boundary, so it wants a fast interconnect like NVLink; over PCIe that per-layer traffic can outweigh the compute it saves, and `device_map` becomes the better choice. `device_map` also handles the case where the components are individually fine but collectively too large.
 - **Activations, not weights, are the problem.** This is the long-sequence regime — large images, many frames — and context parallelism is the direct answer. Pick a backend from the [Ulysses/Ring benchmarks](#ulysses-attention) above.
-- **Both weights and sequence are too large.** Combine tensor and context parallelism. [`TensorParallelConfig`] accepts a `mesh` argument so both can share one device mesh. This combination is not yet validated, so treat it as experimental.
+- **Both weights and sequence are too large.** [Combine tensor and context parallelism](#combining-context-and-tensor-parallelism) in one [`ParallelConfig`], raising `tp_degree` until the weights fit and adding context parallelism on top for latency.
