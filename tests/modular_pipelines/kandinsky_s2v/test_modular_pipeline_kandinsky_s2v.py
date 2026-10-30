@@ -25,7 +25,6 @@ from diffusers.modular_pipelines import (
     KandinskyS2VDistilledModularPipeline,
     KandinskyS2VModularPipeline,
 )
-from diffusers.modular_pipelines.kandinsky_s2v.before_denoise import KandinskyS2VPrepareStep
 from diffusers.modular_pipelines.kandinsky_s2v.encoders import KandinskyS2VTextAudioEncoderStep
 
 from ...testing_utils import numpy_cosine_similarity_distance, require_accelerator, torch_device
@@ -111,9 +110,9 @@ class TestKandinskyS2VModularPipelineFast(KandinskyS2VModularPipelineTesterConfi
         pipe = self.get_pipeline()
         inputs = self.get_dummy_inputs()
         inputs["num_chunks"] = 2
-        latents = pipe(**{**inputs, "output_type": "latent"}, output="videos")
-        assert latents.shape[1] == 2 * NUM_LATENT_FRAMES
-        assert torch.isfinite(latents).all()
+        latent_chunks = pipe(**inputs, output="latent_chunks")
+        assert len(latent_chunks) == 2
+        assert all(chunk.shape[0] == NUM_LATENT_FRAMES and torch.isfinite(chunk).all() for chunk in latent_chunks)
 
     def test_rejects_speech_past_the_encoder_limit(self):
         pipe = self.get_pipeline()
@@ -129,16 +128,8 @@ class TestKandinskyS2VModularPipelineFast(KandinskyS2VModularPipelineTesterConfi
         """The speech is cut to the chunks: a 2 s track in one 1.16 s chunk."""
         pipe = self.get_pipeline()
         inputs = {**self.get_dummy_inputs(), "audio": dummy_waveform(seconds=2), "num_chunks": 1}
-        latents = pipe(**{**inputs, "output_type": "latent"}, output="videos")
-        assert latents.shape[1] == NUM_LATENT_FRAMES
-
-    def test_rejects_file_paths(self):
-        """The pipeline does not read files; the errors say how to load them."""
-        pipe = self.get_pipeline()
-        with pytest.raises(ValueError, match="load_image"):
-            pipe(**{**self.get_dummy_inputs(), "image": "reference.png"}, output="videos")
-        with pytest.raises(ValueError, match="librosa.load"):
-            pipe(**{**self.get_dummy_inputs(), "audio": "speech.wav"}, output="videos")
+        latent_chunks = pipe(**inputs, output="latent_chunks")
+        assert len(latent_chunks) == 1 and latent_chunks[0].shape[0] == NUM_LATENT_FRAMES
 
     def test_text_encoder_standalone_encodes_negative_prompt_only_when_passed(self):
         """Standalone, the text encoder has no guider: a negative prompt is encoded only when it is passed."""
@@ -161,25 +152,6 @@ class TestKandinskyS2VModularPipelineFast(KandinskyS2VModularPipelineTesterConfi
         pipe = self.get_pipeline()
         with pytest.raises(ValueError, match="mono float waveform"):
             pipe(**{**self.get_dummy_inputs(), "audio": waveform}, output="videos")
-
-    def test_rejects_a_single_step(self):
-        """One step leaves an empty Euler schedule, which would decode the initial noise."""
-        pipe = self.get_pipeline()
-        with pytest.raises(ValueError, match="at least 2"):
-            pipe(**{**self.get_dummy_inputs(), "num_inference_steps": 1}, output="videos")
-
-    def test_rejects_negative_embeds_without_pooled(self):
-        prepare_pipe = KandinskyS2VPrepareStep().init_pipeline(self.pretrained_model_name_or_path)
-        prepare_pipe.load_components()
-        with pytest.raises(ValueError, match="must be passed together"):
-            prepare_pipe(
-                reference_latents=torch.randn(1, 8, 8, 4),
-                audio_embeds=torch.randn(16, 16),
-                num_chunks=1,
-                prompt_embeds=torch.randn(3, 16),
-                pooled_prompt_embeds=torch.randn(16),
-                negative_prompt_embeds=torch.randn(3, 16),
-            )
 
 
 class TestKandinskyS2VModularPipelineLoading(KandinskyS2VModularPipelineTesterConfig, ModularLoadingTesterMixin):

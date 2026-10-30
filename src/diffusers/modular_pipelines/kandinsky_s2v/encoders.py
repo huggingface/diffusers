@@ -25,8 +25,10 @@ from transformers import (
     Qwen2_5OmniThinkerForConditionalGeneration,
 )
 
+from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKLHunyuanVideo
-from ...utils import is_torchvision_available, logging
+from ...utils import logging
+from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import (
@@ -38,14 +40,10 @@ from .modular_pipeline import (
     SYSTEM_PROMPT,
     TEMPORAL_COMPRESSION_RATIO,
     KandinskyS2VModularPipeline,
-    audio_waveform,
     pad_waveform_with_silence,
     select_resolution,
 )
 
-
-if is_torchvision_available():
-    from torchvision import transforms
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -165,9 +163,7 @@ class KandinskyS2VTextAudioEncoderStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template(
-                "prompt",
-                required=False,
-                description="The prompt to guide the generation. Defaults to the reference prompt, `DEFAULT_PROMPT`.",
+                "prompt", required=False, default=DEFAULT_PROMPT, description="The prompt to guide the generation."
             ),
             InputParam.template(
                 "negative_prompt",
@@ -216,16 +212,25 @@ class KandinskyS2VTextAudioEncoderStep(ModularPipelineBlocks):
 
     @staticmethod
     def check_inputs(block_state):
-        if block_state.prompt is None:
-            block_state.prompt = DEFAULT_PROMPT
         if not isinstance(block_state.prompt, str):
             raise ValueError("`prompt` must be a string; batching is not supported")
         # Checked here because an empty prompt fails as a reshape error deep inside the transformer.
         if not block_state.prompt.strip():
             raise ValueError("`prompt` must not be empty; pass DEFAULT_PROMPT to use the reference prompt")
-        if block_state.audio is None:
-            raise ValueError("`audio` is required: it is the speech track that drives the generation")
-        audio_waveform(block_state.audio)
+        audio = block_state.audio
+        if not isinstance(audio, (torch.Tensor, np.ndarray)):
+            raise ValueError(
+                f"`audio` must be a mono float waveform at {AUDIO_SAMPLE_RATE} Hz as a tensor or an array, got "
+                f"{type(audio).__name__}; load a file with e.g. `librosa.load(path, sr={AUDIO_SAMPLE_RATE})[0]`"
+            )
+        is_float = (
+            audio.is_floating_point() if isinstance(audio, torch.Tensor) else np.issubdtype(audio.dtype, np.floating)
+        )
+        if audio.ndim != 1 or audio.shape[0] == 0 or not is_float:
+            raise ValueError(
+                f"`audio` must be a non-empty mono float waveform in [-1, 1] at {AUDIO_SAMPLE_RATE} Hz, shaped "
+                f"(samples,); got shape {tuple(audio.shape)} and dtype {audio.dtype}"
+            )
         if block_state.num_chunks is not None and block_state.num_chunks < 1:
             raise ValueError(f"`num_chunks` must be >= 1, got {block_state.num_chunks}")
         if block_state.num_latent_frames < 1 or block_state.fps <= 0:
@@ -238,7 +243,10 @@ class KandinskyS2VTextAudioEncoderStep(ModularPipelineBlocks):
     def encode_prompt_and_speech(components: KandinskyS2VModularPipeline, block_state) -> None:
         """Plan the chunks the speech track needs, then encode the prompt and the speech for them."""
         device = components._execution_device
-        waveform = audio_waveform(block_state.audio)
+        audio = block_state.audio
+        waveform = (
+            audio.detach().cpu().float().numpy() if isinstance(audio, torch.Tensor) else audio.astype(np.float32)
+        )
         chunk_seconds = ((block_state.num_latent_frames - 1) * TEMPORAL_COMPRESSION_RATIO + 1) / block_state.fps
         block_state.track_seconds = waveform.shape[0] / AUDIO_SAMPLE_RATE
         needed = max(1, math.ceil(block_state.track_seconds / chunk_seconds))
@@ -321,7 +329,52 @@ class KandinskyS2VTextAudioEncoderStep(ModularPipelineBlocks):
         return components, state
 
 
+# auto_docstring
 class KandinskyS2VDistilledTextAudioEncoderStep(KandinskyS2VTextAudioEncoderStep):
+    """
+    Encoder step of the distilled checkpoints, which sample without classifier-free guidance and so take no negative
+    prompt: it plans the chunks the speech track needs and encodes the prompt and the speech.
+
+      Components:
+          text_encoder (`Qwen2_5OmniThinkerForConditionalGeneration`) tokenizer (`Qwen2_5OmniProcessor`) text_encoder_2
+          (`CLIPTextModel`) tokenizer_2 (`CLIPTokenizer`)
+
+      Inputs:
+          prompt (`str`, *optional*, defaults to The video presents a stable medium close-up of a subject facing the
+          camera directly. The subject exhibits natural, lifelike body dynamics: the head and shoulders move fluidly
+          with the rhythm of speech. The lighting is even, maintaining a balanced natural exposure to clearly define
+          facial features without washout. Throughout the sequence, the subject engages in continuous speech marked by
+          precise, high-fidelity articulation. The lips move in a rhythmic, natural pattern: alternating between brief
+          firm closures and relaxed openings. During these openings, the tips of the upper teeth are momentarily and
+          realistically visible, exhibiting natural enamel texture. The upper lip lifts subtly over the teeth during
+          enunciation, while the jaw performs minimal vertical oscillations synchronized with the speech cadence.
+          Facial micro-expressions are active yet restrained; eyebrows rise and lower slightly with minute asymmetry.
+          The eyes maintain a steady, engaged gaze forward, punctuated by smooth, deliberate blinks. ):
+              The prompt to guide the generation.
+          audio (`Tensor | ndarray`):
+              The speech track that drives the generation: a mono float waveform in [-1, 1] at 16000 Hz, shaped
+              (samples,).
+          num_latent_frames (`int`, *optional*, defaults to 32):
+              Latent frames per chunk; 32 gives 125 frames (5 s at 25 fps).
+          fps (`int`, *optional*, defaults to 25):
+              Frame rate the chunk length is computed at.
+          num_chunks (`int`, *optional*):
+              Number of chunks to generate. Defaults to however many cover the speech track; the video is trimmed to
+              the track either way.
+
+      Outputs:
+          prompt_embeds (`Tensor`):
+              The prompt embeddings.
+          pooled_prompt_embeds (`Tensor`):
+              CLIP pooled prompt embedding.
+          audio_embeds (`Tensor`):
+              Audio-tower features of the speech track.
+          num_chunks (`int`):
+              Number of chunks to generate.
+          track_seconds (`float`):
+              Length of the speech track in seconds.
+    """
+
     model_name = "kandinsky-s2v-distilled"
 
     @property
@@ -360,7 +413,15 @@ class KandinskyS2VVaeEncoderStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("vae", AutoencoderKLHunyuanVideo)]
+        return [
+            ComponentSpec("vae", AutoencoderKLHunyuanVideo),
+            ComponentSpec(
+                "video_processor",
+                VideoProcessor,
+                config=FrozenDict({"vae_scale_factor": 8}),
+                default_creation_method="from_config",
+            ),
+        ]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -395,6 +456,10 @@ class KandinskyS2VVaeEncoderStep(ModularPipelineBlocks):
             )
         if (block_state.height is None) != (block_state.width is None):
             raise ValueError("pass both `height` and `width`, or neither to pick a bucket from the image")
+        if block_state.height is not None and (block_state.height % 16 or block_state.width % 16):
+            raise ValueError(
+                f"`height` and `width` must be multiples of 16, got {block_state.height} and {block_state.width}"
+            )
 
     @torch.no_grad()
     def __call__(self, components: KandinskyS2VModularPipeline, state: PipelineState) -> PipelineState:
@@ -406,17 +471,17 @@ class KandinskyS2VVaeEncoderStep(ModularPipelineBlocks):
         if height is None:
             height, width = select_resolution(image)
 
+        # Resized to cover the bucket and center-cropped with the rounding the model was trained with; the
+        # processor's own `resize_mode="crop"` rounds differently and shifts some aspect ratios by a pixel.
         scale = max(width / image.width, height / image.height)
-        resized = transforms.functional.resize(
-            image,
-            (round(image.height * scale), round(image.width * scale)),
-            interpolation=transforms.InterpolationMode.BILINEAR,
+        resized = image.resize(
+            (round(image.width * scale), round(image.height * scale)), resample=PIL.Image.Resampling.BILINEAR
         )
-        cropped = transforms.functional.center_crop(resized, (height, width))
+        left, top = round((resized.width - width) / 2), round((resized.height - height) / 2)
+        cropped = resized.crop((left, top, left + width, top + height))
 
-        tensor = transforms.ToTensor()(cropped).unsqueeze(0)
-        tensor = tensor.to(device=device, dtype=components.vae.dtype) * 2.0 - 1.0
-        tensor = tensor.unsqueeze(2)  # (1, 3, 1, H, W)
+        tensor = components.video_processor.preprocess(cropped, height=height, width=width)
+        tensor = tensor.to(device=device, dtype=components.vae.dtype).unsqueeze(2)  # (1, 3, 1, H, W)
         # The posterior is sampled, so it takes the generator like every other draw.
         latent = components.vae.encode(tensor).latent_dist.sample(block_state.generator).permute(0, 2, 3, 4, 1)
         block_state.reference_latents = (latent * components.vae.config.scaling_factor).squeeze(1)

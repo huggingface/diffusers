@@ -233,7 +233,53 @@ class KandinskyS2VPrepareStep(ModularPipelineBlocks):
         return components, state
 
 
+# auto_docstring
 class KandinskyS2VDistilledPrepareStep(KandinskyS2VPrepareStep):
+    """
+    Prepare step that crops the reference latent to whole patches, casts the conditions to the transformer's dtype,
+    splits the speech features evenly over the chunks, builds the RoPE positions and the empty FramePack memory the
+    first chunk starts from.
+
+      Components:
+          transformer (`KandinskyS2VTransformer3DModel`)
+
+      Inputs:
+          reference_latents (`Tensor`):
+              Scaled VAE latent of the reference frame, from the VAE encoder step.
+          audio_embeds (`Tensor`):
+              Audio-tower features of the speech track, from the text encoder step.
+          num_chunks (`int`):
+              Number of chunks to generate.
+          num_latent_frames (`int`, *optional*, defaults to 32):
+              Latent frames per chunk; 32 gives 125 frames (5 s at 25 fps).
+          prompt_embeds (`Tensor`):
+              text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          pooled_prompt_embeds (`Tensor`):
+              CLIP pooled prompt embedding.
+
+      Outputs:
+          reference_hidden_states (`Tensor`):
+              Reference latent, cropped and cast.
+          latent_height (`int`):
+              Height of the latents.
+          latent_width (`int`):
+              Width of the latents.
+          audio_chunks (`list`):
+              Speech features of each chunk.
+          prompt_embeds (`Tensor`):
+              The prompt embeddings.
+          pooled_prompt_embeds (`Tensor`):
+              CLIP pooled prompt embedding.
+          text_rope_pos (`Tensor`):
+              RoPE positions of the prompt tokens.
+          visual_rope_pos (`list`):
+              Per-axis RoPE positions of a chunk.
+          reference_rope_pos (`list`):
+              Per-axis RoPE positions of the reference frame.
+          memory (`list`):
+              FramePack memory in [1x, 2x, 4x] order.
+    """
+
     model_name = "kandinsky-s2v-distilled"
 
     @property

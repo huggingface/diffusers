@@ -348,7 +348,14 @@ class KandinskyS2VChunkLoopWrapper(LoopSequentialPipelineBlocks):
 
     @property
     def loop_intermediate_outputs(self) -> list[OutputParam]:
-        return [OutputParam("latent_chunks", type_hint=list, description="Denoised latents of each chunk.")]
+        return [
+            OutputParam(
+                "latent_chunks",
+                type_hint=list,
+                description="Denoised latents of each chunk, each shaped "
+                "(num_latent_frames, latent_height, latent_width, channels).",
+            )
+        ]
 
     @torch.no_grad()
     def __call__(self, components: KandinskyS2VModularPipeline, state: PipelineState) -> PipelineState:

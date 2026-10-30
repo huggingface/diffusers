@@ -68,26 +68,6 @@ def select_resolution(
     return min(allowed, key=lambda res: abs(aspect - res[1] / res[0]))
 
 
-def audio_waveform(audio: torch.Tensor | np.ndarray) -> np.ndarray:
-    """A speech track passed as an array, as the speech encoder takes it: mono float32 at `AUDIO_SAMPLE_RATE`."""
-    if not isinstance(audio, (torch.Tensor, np.ndarray)):
-        raise ValueError(
-            f"`audio` must be a mono float waveform at {AUDIO_SAMPLE_RATE} Hz as a tensor or an array, got "
-            f"{type(audio).__name__}; load a file with e.g. `librosa.load(path, sr={AUDIO_SAMPLE_RATE})[0]`"
-        )
-    is_float = (
-        audio.is_floating_point() if isinstance(audio, torch.Tensor) else np.issubdtype(audio.dtype, np.floating)
-    )
-    if audio.ndim != 1 or audio.shape[0] == 0 or not is_float:
-        raise ValueError(
-            f"`audio` as an array must be a non-empty mono float waveform in [-1, 1] at {AUDIO_SAMPLE_RATE} Hz, "
-            f"shaped (samples,); got shape {tuple(audio.shape)} and dtype {audio.dtype}"
-        )
-    if isinstance(audio, torch.Tensor):
-        return audio.detach().cpu().float().numpy()
-    return audio.astype(np.float32)
-
-
 def pad_waveform_with_silence(waveform: np.ndarray, target_duration: float) -> np.ndarray:
     """Append silence so a waveform at `AUDIO_SAMPLE_RATE` covers ``target_duration``."""
     original = waveform.shape[0] / AUDIO_SAMPLE_RATE

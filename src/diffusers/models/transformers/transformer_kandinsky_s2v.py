@@ -81,36 +81,6 @@ def pad_groups(x: Tensor, lengths: Tensor, max_len: int) -> tuple[Tensor, Tensor
     return out, valid
 
 
-def grouped_attention(  # noqa: PLR0913
-    q: Tensor,
-    k: Tensor,
-    v: Tensor,
-    q_lengths: Tensor,
-    kv_lengths: Tensor,
-    backend=None,
-    parallel_config=None,
-) -> Tensor:
-    """Block-diagonal attention: query group ``i`` attends exactly to key group ``i``.
-
-    Groups are uneven, so they are padded into a batch axis and masked rather than reshaped. Inputs and output are
-    packed ``(S, heads, head_dim)``.
-    """
-    q_pad, q_valid = pad_groups(q, q_lengths, int(q_lengths.max()))
-    kv_max = int(kv_lengths.max())
-    k_pad, kv_valid = pad_groups(k, kv_lengths, kv_max)
-    v_pad, _ = pad_groups(v, kv_lengths, kv_max)
-
-    out = dispatch_attention_fn(
-        q_pad,
-        k_pad,
-        v_pad,
-        attn_mask=kv_valid[:, None, None, :],
-        backend=backend,
-        parallel_config=parallel_config,
-    )
-    return out[q_valid]
-
-
 class KandinskyS2VTimeEmbeddings(nn.Module):
     def __init__(self, model_dim: int, time_dim: int, max_period: float = 10000.0):
         super().__init__()
@@ -249,15 +219,20 @@ class KandinskyS2VAttnProcessor:
         if q_lengths is not None:
             if kv_lengths is None:
                 raise ValueError("kv_lengths is required when q_lengths is given")
-            hidden_states = grouped_attention(
+            # Block-diagonal attention: query group i attends exactly to key group i. The groups are uneven, so they
+            # are padded into a batch axis and masked rather than reshaped.
+            query, q_valid = pad_groups(query, q_lengths, int(q_lengths.max()))
+            kv_max = int(kv_lengths.max())
+            key, kv_valid = pad_groups(key, kv_lengths, kv_max)
+            value, _ = pad_groups(value, kv_lengths, kv_max)
+            hidden_states = dispatch_attention_fn(
                 query,
                 key,
                 value,
-                q_lengths,
-                kv_lengths,
+                attn_mask=kv_valid[:, None, None, :],
                 backend=self._attention_backend,
                 parallel_config=self._parallel_config,
-            )
+            )[q_valid]
         else:
             hidden_states = dispatch_attention_fn(
                 query.unsqueeze(0),

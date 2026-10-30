@@ -66,13 +66,16 @@ class KandinskyS2VDecodeStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam("latent_chunks", required=True, type_hint=list),
+            InputParam(
+                "latent_chunks",
+                required=True,
+                type_hint=list,
+                description="Denoised latents of each chunk, each shaped "
+                "(num_latent_frames, latent_height, latent_width, channels).",
+            ),
             InputParam("track_seconds", required=True, type_hint=float),
             InputParam("fps", default=25, type_hint=int),
-            InputParam.template(
-                "output_type",
-                description="Output format: 'pil', 'np', 'pt' or 'latent'. Latents are returned whole, untrimmed.",
-            ),
+            InputParam.template("output_type"),
         ]
 
     @property
@@ -83,15 +86,10 @@ class KandinskyS2VDecodeStep(ModularPipelineBlocks):
     def __call__(self, components: KandinskyS2VModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
 
-        if block_state.output_type == "latent":
-            block_state.videos = torch.cat(block_state.latent_chunks, dim=0).unsqueeze(0)
-        else:
-            decoded = [decode_latents(components.vae, latents).cpu() for latents in block_state.latent_chunks]
-            frames = torch.cat(decoded, dim=2)  # (1, C, T, H, W)
-            frames = frames[:, :, : min(frames.shape[2], int(block_state.track_seconds * block_state.fps))]
-            block_state.videos = components.video_processor.postprocess_video(
-                frames, output_type=block_state.output_type
-            )
+        decoded = [decode_latents(components.vae, latents).cpu() for latents in block_state.latent_chunks]
+        frames = torch.cat(decoded, dim=2)  # (1, C, T, H, W)
+        frames = frames[:, :, : min(frames.shape[2], int(block_state.track_seconds * block_state.fps))]
+        block_state.videos = components.video_processor.postprocess_video(frames, output_type=block_state.output_type)
 
         self.set_block_state(state, block_state)
         return components, state

@@ -63,7 +63,7 @@ class KandinskyS2VDistilledCoreDenoiseStep(SequentialPipelineBlocks):
 
       Outputs:
           latent_chunks (`list`):
-              Denoised latents of each chunk.
+              Denoised latents of each chunk, each shaped (num_latent_frames, latent_height, latent_width, channels).
     """
 
     model_name = "kandinsky-s2v-distilled"
@@ -72,7 +72,14 @@ class KandinskyS2VDistilledCoreDenoiseStep(SequentialPipelineBlocks):
 
     @property
     def outputs(self):
-        return [OutputParam("latent_chunks", type_hint=list, description="Denoised latents of each chunk.")]
+        return [
+            OutputParam(
+                "latent_chunks",
+                type_hint=list,
+                description="Denoised latents of each chunk, each shaped "
+                "(num_latent_frames, latent_height, latent_width, channels).",
+            )
+        ]
 
     @property
     def description(self):
@@ -100,12 +107,21 @@ class KandinskyS2VDistilledAutoBlocks(SequentialPipelineBlocks):
 
       Components:
           text_encoder (`Qwen2_5OmniThinkerForConditionalGeneration`) tokenizer (`Qwen2_5OmniProcessor`) text_encoder_2
-          (`CLIPTextModel`) tokenizer_2 (`CLIPTokenizer`) vae (`AutoencoderKLHunyuanVideo`) transformer
-          (`KandinskyS2VTransformer3DModel`) scheduler (`PiflowScheduler`) video_processor (`VideoProcessor`)
+          (`CLIPTextModel`) tokenizer_2 (`CLIPTokenizer`) vae (`AutoencoderKLHunyuanVideo`) video_processor
+          (`VideoProcessor`) transformer (`KandinskyS2VTransformer3DModel`) scheduler (`PiflowScheduler`)
 
       Inputs:
-          prompt (`str`, *optional*):
-              The prompt to guide the generation. Defaults to the reference prompt, `DEFAULT_PROMPT`.
+          prompt (`str`, *optional*, defaults to The video presents a stable medium close-up of a subject facing the
+          camera directly. The subject exhibits natural, lifelike body dynamics: the head and shoulders move fluidly
+          with the rhythm of speech. The lighting is even, maintaining a balanced natural exposure to clearly define
+          facial features without washout. Throughout the sequence, the subject engages in continuous speech marked by
+          precise, high-fidelity articulation. The lips move in a rhythmic, natural pattern: alternating between brief
+          firm closures and relaxed openings. During these openings, the tips of the upper teeth are momentarily and
+          realistically visible, exhibiting natural enamel texture. The upper lip lifts subtly over the teeth during
+          enunciation, while the jaw performs minimal vertical oscillations synchronized with the speech cadence.
+          Facial micro-expressions are active yet restrained; eyebrows rise and lower slightly with minute asymmetry.
+          The eyes maintain a steady, engaged gaze forward, punctuated by smooth, deliberate blinks. ):
+              The prompt to guide the generation.
           audio (`Tensor | ndarray`):
               The speech track that drives the generation: a mono float waveform in [-1, 1] at 16000 Hz, shaped
               (samples,).
@@ -129,7 +145,7 @@ class KandinskyS2VDistilledAutoBlocks(SequentialPipelineBlocks):
           scale_factor (`tuple`, *optional*, defaults to (1.0, 2.0, 2.0)):
               Per-axis RoPE scale for the resolution bucket.
           output_type (`str`, *optional*, defaults to pil):
-              Output format: 'pil', 'np', 'pt' or 'latent'. Latents are returned whole, untrimmed.
+              Output format: 'pil', 'np', 'pt'.
 
       Outputs:
           videos (`list`):
