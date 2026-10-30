@@ -276,6 +276,7 @@ else:
     ]
     _import_structure["diffusion_gemma"] = ["DiffusionGemmaPipeline", "DiffusionGemmaPipelineOutput"]
     _import_structure["dreamlite"] = ["DreamLitePipeline", "DreamLiteMobilePipeline", "DreamLitePipelineOutput"]
+    _import_structure["edenlive"] = ["EdenLiveCausalPipeline", "EdenLivePipeline", "EdenLivePipelineOutput"]
     _import_structure["easyanimate"] = [
         "EasyAnimatePipeline",
         "EasyAnimateInpaintPipeline",
@@ -728,6 +729,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             EasyAnimateInpaintPipeline,
             EasyAnimatePipeline,
         )
+        from .edenlive import EdenLiveCausalPipeline, EdenLivePipeline, EdenLivePipelineOutput
         from .ernie_image import ErnieImagePipeline
         from .flux import (
             FluxControlImg2ImgPipeline,
