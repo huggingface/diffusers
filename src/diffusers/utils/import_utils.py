@@ -610,12 +610,13 @@ pip: `pip install -U '{deps["torchao"]}'`
 """
 
 QUANTO_IMPORT_ERROR = f"""
-{{0}} requires `{deps["optimum_quanto"]}` but a compatible version was not found in your environment. You can install it
-with pip: `pip install -U '{deps["optimum_quanto"]}'`
+{{0}} requires `{deps["optimum_quanto"]}` but a compatible version was not found in your environment. You can install
+it with pip: `pip install -U '{deps["optimum_quanto"]}'`
 """
 
 SDNQ_IMPORT_ERROR = f"""
-{{0}} requires `{deps["sdnq"]}` but a compatible version was not found in your environment. You can install it with pip: `pip install -U '{deps["sdnq"]}'`
+{{0}} requires `{deps["sdnq"]}` but a compatible version was not found in your environment. You can install it with
+pip: `pip install -U '{deps["sdnq"]}'`
 """
 
 # docstyle-ignore
