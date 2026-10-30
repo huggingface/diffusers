@@ -591,13 +591,12 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         # Check inputs
         for input_param in state_inputs:
             if input_param.name:
-                value = state.get(input_param.name)
-                if value is None:
-                    # if the value is None (not passed, or passed as None), the first block that reads it sets the
-                    # default at call time. For sequential blocks the default is already resolved at compile time
-                    # (first declaring block wins, see _get_inputs), but for conditional blocks the selected branch
-                    # is only known at runtime: disagreeing branch defaults merge to None (see combine_inputs) and
-                    # the block that actually runs applies its own declared default here
+                if input_param.name in state.values:
+                    # a value in the state, None included, is what the user passed or an earlier block set
+                    value = state.get(input_param.name)
+                else:
+                    # the first block that reads an input fills in its own default; `set_block_state` records it so
+                    # the blocks after it read the same value
                     value = input_param.default
                 if input_param.required and value is None:
                     raise ValueError(f"Required input '{input_param.name}' is missing")
@@ -627,9 +626,10 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         for input_param in self.inputs:
             if input_param.name and hasattr(block_state, input_param.name):
                 param = getattr(block_state, input_param.name)
-                # Only add if the value is different from what's in the state
+                # Only add if the value is different from what's in the state, or the state did not hold it yet (the
+                # default this block filled in, see `get_block_state`)
                 current_value = state.get(input_param.name)
-                if current_value is not param:  # Using identity comparison to check if object was modified
+                if input_param.name not in state.values or current_value is not param:  # identity: object modified?
                     state.set(input_param.name, param, input_param.kwargs_type)
 
             elif input_param.kwargs_type:
@@ -3009,6 +3009,9 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
         # Add inputs to state, using defaults if not provided in the kwargs or the state
         # if same input already in the state, will override it if provided in the kwargs
+        # a None passed by the user is stored as None. A None default is not prefilled: the first block that reads
+        # the input fills in its own default and records it, see `get_block_state` and `set_block_state`. That is how
+        # a conditional branch gets its own default (`defaults_by_block`)
         for expected_input_param in self._blocks.inputs:
             name = expected_input_param.name
             default = expected_input_param.default
@@ -3019,7 +3022,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 kwargs_dict = passed_kwargs.pop(kwargs_type)
                 for k, v in kwargs_dict.items():
                     state.set(k, v, kwargs_type)
-            elif name is not None and name not in state.values:
+            elif name is not None and name not in state.values and default is not None:
                 state.set(name, default, kwargs_type)
 
         # Warn about unexpected inputs
