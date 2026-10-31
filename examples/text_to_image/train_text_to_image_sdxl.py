@@ -1258,7 +1258,11 @@ def main(args):
                     if args.seed is not None
                     else None
                 )
-                pipeline_args = {"prompt": args.validation_prompt}
+                pipeline_args = {
+                    "prompt": args.validation_prompt,
+                    "height": args.resolution,
+                    "width": args.resolution,
+                }
 
                 with autocast_ctx:
                     images = [
@@ -1327,7 +1331,13 @@ def main(args):
 
             with autocast_ctx:
                 images = [
-                    pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
+                    pipeline(
+                        args.validation_prompt,
+                        height=args.resolution,
+                        width=args.resolution,
+                        num_inference_steps=25,
+                        generator=generator,
+                    ).images[0]
                     for _ in range(args.num_validation_images)
                 ]
 

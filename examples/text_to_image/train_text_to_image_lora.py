@@ -131,7 +131,15 @@ def log_validation(
 
     with autocast_ctx:
         for _ in range(args.num_validation_images):
-            images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
+            images.append(
+                pipeline(
+                    args.validation_prompt,
+                    height=args.resolution,
+                    width=args.resolution,
+                    num_inference_steps=30,
+                    generator=generator,
+                ).images[0]
+            )
 
     for tracker in accelerator.trackers:
         phase_name = "test" if is_final_validation else "validation"
