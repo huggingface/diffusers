@@ -46,8 +46,10 @@ Follow the flux-fast pattern: **annotate key pipeline methods** with `torch.prof
 ### New Files
 
 ```bash
+pipeline_registry.py    # Shared pipeline configs used by the profiling CLIs
 profiling_utils.py       # Annotation helper + profiler setup
 profiling_pipelines.py   # CLI entry point with pipeline configs
+profile_pipeline_recipes.py  # Recipe benchmark CLI that emits JSON + Markdown reports
 run_profiling.sh         # Bulk launch runs for multiple pipelines
 ```
 
@@ -121,7 +123,45 @@ All configs use `output_type="latent"` by default (skip VAE decode for cleaner d
 
 **Output:** `{output_dir}/{pipeline}_{mode}.json` Chrome trace + stdout summary.
 
-### Step 3: Known Sync Issues to Validate
+### Step 3: `profile_pipeline_recipes.py` — Benchmark optimization recipes
+
+This companion CLI focuses on end-to-end tradeoffs instead of timeline traces. It runs real pipeline calls under a
+set of optimization recipes and emits both a machine-readable JSON file and a Markdown table that can be attached to
+an issue or PR.
+
+Example:
+
+```bash
+python examples/profiling/profile_pipeline_recipes.py --pipeline flux
+python examples/profiling/profile_pipeline_recipes.py --pipeline wan --full_decode
+python examples/profiling/profile_pipeline_recipes.py \
+  --pipeline qwenimage \
+  --recipe baseline \
+  --recipe layerwise_casting+attention:_native_flash \
+  --recipe compile+attention:sage
+```
+
+Supported actions:
+
+- `baseline`
+- `model_cpu_offload`
+- `group_offload_leaf`
+- `layerwise_casting`
+- `attention:<backend>`
+- `compile`
+- `vae_tiling`
+- `channels_last`
+
+Important notes:
+
+- The recipe runner is capability-checked. If a pipeline does not expose the required component or method, that recipe fails with an explicit note in the report.
+- `vae_tiling` is only meaningful with `--full_decode` because the default profiling configs use `output_type="latent"`.
+- `channels_last` is primarily useful for UNet-based pipelines and is therefore not part of the default recipe set for the current transformer-heavy registry.
+- The built-in default recipe set is intentionally conservative: `baseline`, `model_cpu_offload`, `group_offload_leaf`, `layerwise_casting`, and `compile`.
+
+**Output:** `{output_dir}/{pipeline}_recipes.json` and `{output_dir}/{pipeline}_recipes.md`.
+
+### Step 4: Known Sync Issues to Validate
 
 The profiling should surface these known/suspected issues:
 
