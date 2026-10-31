@@ -39,6 +39,7 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 - [`ErnieImageLoraLoaderMixin`] provides similar functions for [Ernie-Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/ernie_image).
 - [`LTX2LoraLoaderMixin`] provides similar functions for [Flux2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/ltx2).
 - [`MiniMaxH3LoraLoaderMixin`] provides similar functions for [MiniMax-H3](https://huggingface.co/docs/diffusers/main/en/api/pipelines/minimax_h3).
+- [`PikaH3FlexLoraLoaderMixin`] provides similar functions for [Pika H3 Flex](https://huggingface.co/docs/diffusers/main/en/api/pipelines/pika_h3_flex).
 - [`RFD4ProteinaLoraLoaderMixin`] provides similar functions for [RFD4-Proteína](https://huggingface.co/docs/diffusers/main/en/api/pipelines/rfd4_proteina).
 - [`BriaFibo2LoraLoaderMixin`] provides similar functions for [fibo-2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/bria_fibo2).
 - [`LoraBaseMixin`] provides a base class with several utility methods to fuse, unfuse, unload, LoRAs and more.
@@ -175,6 +176,10 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 ## MiniMaxH3LoraLoaderMixin
 
 [[autodoc]] loaders.lora_pipeline.MiniMaxH3LoraLoaderMixin
+
+## PikaH3FlexLoraLoaderMixin
+
+[[autodoc]] loaders.lora_pipeline.PikaH3FlexLoraLoaderMixin
 
 ## LoraBaseMixin
 

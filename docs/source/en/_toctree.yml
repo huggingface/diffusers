@@ -657,6 +657,8 @@
         title: Ovis-Image
       - local: api/pipelines/pag
         title: PAG
+      - local: api/pipelines/pika_h3_flex
+        title: Pika H3 Flex
       - local: api/pipelines/pixart
         title: PixArt-α
       - local: api/pipelines/pixart_sigma

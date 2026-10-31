@@ -819,22 +819,28 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 state_dict, max_shard_size=max_shard_size, filename_pattern=weights_name_pattern
             )
 
-            # Clean the folder from a previous save
+            # Clean the folder from a previous save. Match only shards of the exact
+            # checkpoint being written (same variant and serialization format): the
+            # prefix must be anchored, or a default save (weights_name
+            # "diffusion_pytorch_model") would also match another variant's shards
+            # ("diffusion_pytorch_model.ema-00001-of-00002") via a bare startswith
+            # and delete them while leaving that variant's index behind.
             if is_main_process:
+                weights_without_ext, ext = os.path.splitext(weights_name)
+                index_file = _add_variant(
+                    SAFE_WEIGHTS_INDEX_NAME if safe_serialization else WEIGHTS_INDEX_NAME, variant
+                )
                 for filename in os.listdir(save_directory):
                     if filename in state_dict_split.filename_to_tensors.keys():
                         continue
                     full_filename = os.path.join(save_directory, filename)
                     if not os.path.isfile(full_filename):
                         continue
-                    weights_without_ext = weights_name_pattern.replace(".bin", "").replace(".safetensors", "")
-                    weights_without_ext = weights_without_ext.replace("{suffix}", "")
-                    filename_without_ext = filename.replace(".bin", "").replace(".safetensors", "")
-                    # make sure that file to be deleted matches format of sharded file, e.g. pytorch_model-00001-of-00005
-                    if (
-                        filename.startswith(weights_without_ext)
-                        and _REGEX_SHARD.fullmatch(filename_without_ext) is not None
-                    ):
+                    # only remove shards of the checkpoint being written; another variant's shards share the prefix
+                    shard_match = _REGEX_SHARD.fullmatch(filename.removesuffix(ext))
+                    is_prior_shard = shard_match is not None and shard_match.group(1) == weights_without_ext
+                    is_stale_index = filename == index_file and not state_dict_split.is_sharded
+                    if is_prior_shard or is_stale_index:
                         os.remove(full_filename)
 
             for filename, tensors in state_dict_split.filename_to_tensors.items():
