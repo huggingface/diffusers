@@ -5,8 +5,6 @@ on:
   schedule:
     - cron: "0 0 * * *" # every day at midnight
 
-permissions:
-  contents: read
 
 env:
   DIFFUSERS_IS_CI: yes
@@ -25,8 +23,12 @@ env:
   #     (torchvision::nms). The pinned set is (re)written into the override file per job below.
   UV_OVERRIDE: /tmp/uv-overrides.txt
 
+permissions: {}
+
 jobs:
   setup_torch_cuda_pipeline_matrix:
+    permissions:
+      contents: read
     name: Setup Torch Pipelines CUDA Slow Tests Matrix
     runs-on:
       group: aws-general-8-plus
@@ -36,7 +38,7 @@ jobs:
       pipeline_test_matrix: ${{ steps.fetch_pipeline_matrix.outputs.pipeline_test_matrix }}
     steps:
       - name: Checkout diffusers
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 2
       - name: Install dependencies
@@ -52,12 +54,15 @@ jobs:
 
       - name: Pipeline Tests Artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: test-pipelines.json
           path: reports
 
   run_nightly_tests_for_torch_pipelines:
+    permissions:
+      contents: read
+      id-token: write
     name: Nightly Torch Pipelines CUDA Tests
     needs: setup_torch_cuda_pipeline_matrix
     strategy:
@@ -72,7 +77,7 @@ jobs:
       options: --shm-size "16gb" --ipc host --gpus all
     steps:
       - name: Checkout diffusers
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 2
       - name: NVIDIA-SMI
@@ -89,7 +94,7 @@ jobs:
           diffusers-cli env
       - name: Pipeline CUDA Test
         env:
-          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+          HF_OIDC_RESOURCE: Diffusers-CI-Bot
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
@@ -104,12 +109,15 @@ jobs:
           cat reports/tests_pipeline_${{ matrix.module }}_cuda_failures_short.txt
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: pipeline_${{ matrix.module }}_test_reports
           path: reports
 
   run_nightly_tests_for_other_torch_modules:
+    permissions:
+      contents: read
+      id-token: write
     name: Nightly Torch CUDA Tests
     runs-on:
       group: aws-g4dn-2xlarge
@@ -126,7 +134,7 @@ jobs:
         module: [models, schedulers, hooks, lora, others, single_file, examples]
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
         fetch-depth: 2
 
@@ -144,7 +152,7 @@ jobs:
     - name: Run nightly PyTorch CUDA tests for non-pipeline modules
       if: ${{ matrix.module != 'examples'}}
       env:
-        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+        HF_OIDC_RESOURCE: Diffusers-CI-Bot
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
@@ -157,7 +165,7 @@ jobs:
     - name: Run nightly example tests with Torch
       if: ${{ matrix.module == 'examples' }}
       env:
-        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+        HF_OIDC_RESOURCE: Diffusers-CI-Bot
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
@@ -174,12 +182,15 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
       with:
         name: torch_${{ matrix.module }}_cuda_test_reports
         path: reports
 
   run_torch_compile_tests:
+    permissions:
+      contents: read
+      id-token: write
     name: PyTorch Compile CUDA tests
 
     runs-on:
@@ -191,7 +202,7 @@ jobs:
 
     steps:
     - name: Checkout diffusers
-      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
         fetch-depth: 2
 
@@ -208,7 +219,7 @@ jobs:
         diffusers-cli env
     - name: Run torch compile tests on GPU
       env:
-        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+        HF_OIDC_RESOURCE: Diffusers-CI-Bot
       run: |
         pytest -n 1 --max-worker-restart=0 --dist=loadfile -m compile --make-reports=tests_torch_compile_cuda tests/
     - name: Failure short reports
@@ -217,12 +228,15 @@ jobs:
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
       with:
         name: torch_compile_test_reports
         path: reports
 
   run_big_gpu_torch_tests:
+    permissions:
+      contents: read
+      id-token: write
     name: Torch tests on big GPU
     strategy:
       fail-fast: false
@@ -234,7 +248,7 @@ jobs:
       options: --shm-size "16gb" --ipc host --gpus all
     steps:
       - name: Checkout diffusers
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 2
       - name: NVIDIA-SMI
@@ -252,7 +266,7 @@ jobs:
           diffusers-cli env
       - name: Selected Torch CUDA Test on big GPU
         env:
-          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+          HF_OIDC_RESOURCE: Diffusers-CI-Bot
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
           BIG_GPU_MEMORY: 40
@@ -269,12 +283,15 @@ jobs:
           cat reports/tests_big_gpu_torch_cuda_failures_short.txt
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: torch_cuda_big_gpu_test_reports
           path: reports
 
   torch_minimum_version_cuda_tests:
+    permissions:
+      contents: read
+      id-token: write
     name: Torch Minimum Version CUDA Tests
     runs-on:
       group: aws-g4dn-2xlarge
@@ -286,7 +303,7 @@ jobs:
         shell: bash
     steps:
       - name: Checkout diffusers
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 2
 
@@ -304,14 +321,13 @@ jobs:
 
       - name: Run PyTorch CUDA tests
         env:
-          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+          HF_OIDC_RESOURCE: Diffusers-CI-Bot
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
           pytest -n 1 --max-worker-restart=0 --dist=loadfile \
             --make-reports=tests_torch_minimum_version_cuda \
             tests/models/test_modeling_common.py \
-            tests/pipelines/test_pipelines_common.py \
             tests/pipelines/test_pipeline_utils.py \
             tests/pipelines/test_pipelines.py \
             tests/pipelines/test_pipelines_auto.py \
@@ -326,12 +342,15 @@ jobs:
 
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: torch_minimum_version_cuda_test_reports
           path: reports
 
   run_nightly_quantization_tests:
+    permissions:
+      contents: read
+      id-token: write
     name: Torch quantization nightly tests
     strategy:
       fail-fast: false
@@ -357,7 +376,7 @@ jobs:
       options: --shm-size "20gb" --ipc host --gpus all
     steps:
       - name: Checkout diffusers
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 2
       - name: NVIDIA-SMI
@@ -377,7 +396,7 @@ jobs:
           diffusers-cli env
       - name: ${{ matrix.config.backend }} quantization tests on GPU
         env:
-          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+          HF_OIDC_RESOURCE: Diffusers-CI-Bot
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
           BIG_GPU_MEMORY: 40
@@ -396,12 +415,15 @@ jobs:
           cat reports/tests_${{ matrix.config.backend }}_torch_cuda_failures_short.txt
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: torch_cuda_${{ matrix.config.backend }}_reports
           path: reports
           
   run_nightly_pipeline_level_quantization_tests:
+    permissions:
+      contents: read
+      id-token: write
     name: Torch quantization nightly tests
     strategy:
       fail-fast: false
@@ -413,7 +435,7 @@ jobs:
       options: --shm-size "20gb" --ipc host --gpus all
     steps:
       - name: Checkout diffusers
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 2
       - name: NVIDIA-SMI
@@ -430,7 +452,7 @@ jobs:
           diffusers-cli env
       - name: Pipeline-level quantization tests on GPU
         env:
-          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+          HF_OIDC_RESOURCE: Diffusers-CI-Bot
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
           BIG_GPU_MEMORY: 40
@@ -447,12 +469,14 @@ jobs:
           cat reports/tests_pipeline_level_quant_torch_cuda_failures_short.txt
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: torch_cuda_pipeline_level_quant_reports
           path: reports
 
   generate_consolidated_report:
+    permissions:
+      contents: read
     name: Generate Consolidated Test Report
     needs: [
       run_nightly_tests_for_torch_pipelines,
@@ -470,7 +494,7 @@ jobs:
       image: diffusers/diffusers-pytorch-cpu
     steps:
       - name: Checkout diffusers
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 2
 
@@ -478,7 +502,7 @@ jobs:
         run: mkdir -p combined_reports
 
       - name: Download all test reports
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131  # v7
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
           path: artifacts
 
@@ -504,7 +528,7 @@ jobs:
           cat $CONSOLIDATED_REPORT_PATH >> $GITHUB_STEP_SUMMARY
 
       - name: Upload consolidated report
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: consolidated_test_report
           path: ${{ env.CONSOLIDATED_REPORT_PATH }}
@@ -518,7 +542,7 @@ jobs:
 #
 #    steps:
 #      - name: Checkout diffusers
-#        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+#        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 #        with:
 #          fetch-depth: 2
 #
@@ -558,7 +582,7 @@ jobs:
 #
 #      - name: Test suite reports artifacts
 #        if: ${{ always() }}
-#        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+#        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
 #        with:
 #          name: torch_mps_test_reports
 #          path: reports
@@ -574,7 +598,7 @@ jobs:
 #
 #    steps:
 #      - name: Checkout diffusers
-#        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+#        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 #        with:
 #          fetch-depth: 2
 #
@@ -614,7 +638,7 @@ jobs:
 #
 #      - name: Test suite reports artifacts
 #        if: ${{ always() }}
-#        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+#        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
 #        with:
 #          name: torch_mps_test_reports
 #          path: reports

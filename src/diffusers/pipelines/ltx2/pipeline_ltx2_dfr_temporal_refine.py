@@ -29,15 +29,15 @@ from transformers import (
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import FromSingleFileMixin, LTX2LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
+from ...models.condition_embedders import LTX2TextConnectors
+from ...models.latent_upscaler import LTX2LatentUpsamplerModel
 from ...models.transformers import LTX2VideoTransformer3DModel
 from ...schedulers import LTXEulerAncestralRFScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
-from .connectors import LTX2TextConnectors
 from .dfr_layout import temporal_tile_plan
-from .latent_upsampler import LTX2LatentUpsamplerModel
 from .pipeline_ltx2_condition import LTX2VideoCondition
 from .pipeline_output import LTX2DFRPipelineOutput
 from .utils import (
@@ -101,7 +101,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import LTX2DFRPipeline, LTX2DFRTemporalRefinePipeline, LTXEulerAncestralRFScheduler
-        >>> from diffusers.pipelines.ltx2 import LTX2LatentUpsamplerModel
+        >>> from diffusers.models.latent_upscaler import LTX2LatentUpsamplerModel
 
         >>> pipe = LTX2DFRPipeline.from_pretrained("Lightricks/LTX-2.5-Diffusers", torch_dtype=torch.bfloat16)
         >>> temporal_upsampler = LTX2LatentUpsamplerModel.from_pretrained(
@@ -1377,7 +1377,7 @@ class LTX2DFRTemporalRefinePipeline(DiffusionPipeline, FromSingleFileMixin, LTX2
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 1024,
-    ):
+    ) -> LTX2DFRPipelineOutput | tuple:
         r"""
         Run one temporal refine round.
 

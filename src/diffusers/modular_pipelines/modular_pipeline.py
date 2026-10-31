@@ -30,13 +30,23 @@ from tqdm.auto import tqdm
 from typing_extensions import Self
 
 from ..configuration_utils import ConfigMixin, FrozenDict
+from ..models.auto_model import AutoModel
+from ..models.modeling_utils import ModelMixin
 from ..pipelines.pipeline_loading_utils import (
     LOADABLE_CLASSES,
     _fetch_class_library_tuple,
     _unwrap_model,
+    filter_model_files,
     simple_get_class_obj,
 )
-from ..utils import PushToHubMixin, deprecate, is_accelerate_available, logging
+from ..utils import (
+    TRANSFORMERS_COMPONENT_AUX_FILES,
+    PushToHubMixin,
+    deprecate,
+    is_accelerate_available,
+    is_transformers_available,
+    logging,
+)
 from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
 from ..utils.hub_utils import _resolve_revision, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import empty_device_cache, is_compiled_module
@@ -59,10 +69,44 @@ from .modular_pipeline_utils import (
 )
 
 
+# classes whose components are loaded from weight files; a component without a type hint is loaded with `AutoModel`
+_MODEL_CLASSES = (ModelMixin, AutoModel)
+if is_transformers_available():
+    from transformers import PreTrainedModel
+
+    _MODEL_CLASSES = (*_MODEL_CLASSES, PreTrainedModel)
+
 if is_accelerate_available():
     import accelerate
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def _is_local_component(
+    pretrained_model_name_or_path: str | os.PathLike | None, component_spec: ComponentSpec
+) -> bool:
+    """
+    Whether the component's files are in `pretrained_model_name_or_path`, a local pipeline directory: weight files for
+    a model, the config file its class saves for a diffusers component without weights (schedulers, guiders, ...), one
+    of `TRANSFORMERS_COMPONENT_AUX_FILES` for a transformers one (tokenizers, processors, ...).
+    """
+    if pretrained_model_name_or_path is None:
+        return False
+    component_dir = os.path.join(pretrained_model_name_or_path, component_spec.subfolder or "")
+    if not os.path.isdir(component_dir):
+        return False
+    filenames = os.listdir(component_dir)
+
+    class_obj = component_spec.type_hint
+    is_model = class_obj is None or issubclass(class_obj, _MODEL_CLASSES)
+
+    if is_model:
+        return len(filter_model_files(filenames)) > 0
+
+    if issubclass(class_obj, ConfigMixin):
+        return class_obj.config_name in filenames
+
+    return any(filename in filenames for filename in TRANSFORMERS_COMPONENT_AUX_FILES)
 
 
 # map regular pipeline to modular pipeline class name
@@ -85,6 +129,17 @@ def _flux2_klein_map_fn(config_dict=None):
         return "Flux2KleinModularPipeline"
     else:
         return "Flux2KleinBaseModularPipeline"
+
+
+def _qwenimage21_map_fn(config_dict=None):
+    if config_dict is None:
+        return "QwenImage21ModularPipeline"
+
+    # The Turbo checkpoint ships its sampling grid as pipeline config; the base checkpoint has none.
+    if config_dict.get("sample_sigmas"):
+        return "QwenImage21TurboModularPipeline"
+    else:
+        return "QwenImage21ModularPipeline"
 
 
 def _wan_map_fn(config_dict=None):
@@ -140,23 +195,29 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("flux-kontext", _create_default_map_fn("FluxKontextModularPipeline")),
         ("flux2", _create_default_map_fn("Flux2ModularPipeline")),
         ("flux2-klein", _flux2_klein_map_fn),
+        ("flux3", _create_default_map_fn("Flux3ModularPipeline")),
+        ("flux3-distilled", _create_default_map_fn("Flux3DistilledModularPipeline")),
         ("ideogram4", _create_default_map_fn("Ideogram4ModularPipeline")),
         ("krea2", _krea2_map_fn),
         ("qwenimage", _create_default_map_fn("QwenImageModularPipeline")),
         ("qwenimage-edit", _create_default_map_fn("QwenImageEditModularPipeline")),
         ("qwenimage-edit-plus", _create_default_map_fn("QwenImageEditPlusModularPipeline")),
         ("qwenimage-layered", _create_default_map_fn("QwenImageLayeredModularPipeline")),
+        ("qwenimage21", _qwenimage21_map_fn),
+        ("qwenimage21-turbo", _create_default_map_fn("QwenImage21TurboModularPipeline")),
         ("anima", _create_default_map_fn("AnimaModularPipeline")),
         ("z-image", _create_default_map_fn("ZImageModularPipeline")),
         ("cosmos3-omni", _create_default_map_fn("Cosmos3OmniModularPipeline")),
         ("helios", _create_default_map_fn("HeliosModularPipeline")),
         ("helios-pyramid", _helios_pyramid_map_fn),
         ("hunyuan-video-1.5", _create_default_map_fn("HunyuanVideo15ModularPipeline")),
+        ("echo", _create_default_map_fn("EchoModularPipeline")),
         ("ltx", _create_default_map_fn("LTXModularPipeline")),
         ("ltx2", _create_default_map_fn("LTX2ModularPipeline")),
         ("ltx2.5", _create_default_map_fn("LTX25ModularPipeline")),
         ("minimax-h3", _create_default_map_fn("MiniMaxH3ModularPipeline")),
         ("minimax-music3", _create_default_map_fn("MiniMaxMusic3ModularPipeline")),
+        ("pika-h3-flex", _create_default_map_fn("PikaH3FlexModularPipeline")),
         ("ernie-image", _create_default_map_fn("ErnieImageModularPipeline")),
     ]
 )
@@ -454,11 +515,13 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         trust_remote_code = resolve_trust_remote_code(
             trust_remote_code, pretrained_model_name_or_path, has_remote_code
         )
-        if not has_remote_code and trust_remote_code:
+        if not has_remote_code:
             raise ValueError(
-                "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
+                f"Selected model repository does not appear to have any custom code for {cls.__name__} or does not"
+                " have a valid `modular_config.json` file."
             )
 
+        # Only once the repository is trusted do we act on anything else it declares.
         if "requirements" in config and config["requirements"] is not None:
             _ = _validate_requirements(config["requirements"])
 
@@ -777,7 +840,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         raise NotImplementedError(f"Subclass {self.__class__.__name__} must implement the `select_block` method.")
 
     @torch.no_grad()
-    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, pipeline, state: PipelineState) -> tuple["ModularPipeline", PipelineState]:
         trigger_kwargs = {name: state.get(name) for name in self.block_trigger_inputs if name is not None}
         block_name = self.select_block(**trigger_kwargs)
 
@@ -1149,7 +1212,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         return self.intermediate_outputs
 
     @torch.no_grad()
-    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, pipeline, state: PipelineState) -> tuple["ModularPipeline", PipelineState]:
         for block_name, block in self.sub_blocks.items():
             try:
                 pipeline, state = block(pipeline, state)
@@ -1533,7 +1596,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
                 raise
         return components, state
 
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple["ModularPipeline", PipelineState]:
         raise NotImplementedError("`__call__` method needs to be implemented by the subclass")
 
     @property
@@ -1765,6 +1828,11 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     library, class_name, component_spec_dict = value
                     component_spec = self._dict_to_component_spec(name, component_spec_dict)
                     component_spec.default_creation_method = "from_pretrained"
+                    # a local copy of the repo (e.g. `hf download --local-dir`) keeps the original index, which
+                    # points at the Hub; load the components whose files are present locally from the copy
+                    if _is_local_component(pretrained_model_name_or_path, component_spec):
+                        component_spec.pretrained_model_name_or_path = str(pretrained_model_name_or_path)
+                        component_spec.revision = None
                     self._component_specs[name] = component_spec
 
                 elif name in self._config_specs:

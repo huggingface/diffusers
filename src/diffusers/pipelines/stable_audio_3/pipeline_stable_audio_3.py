@@ -35,12 +35,12 @@ import torch
 from transformers import GemmaTokenizer, GemmaTokenizerFast, T5GemmaEncoderModel
 
 from ...models.autoencoders.autoencoder_same import AutoencoderSAME
+from ...models.condition_embedders import StableAudio3DurationEmbedder
 from ...models.transformers.transformer_stable_audio3 import StableAudio3DiTModel
 from ...schedulers.scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
-from .modeling_stable_audio_3 import StableAudio3DurationEmbedder
 
 
 if is_torch_xla_available():
@@ -418,7 +418,7 @@ class StableAudio3Pipeline(DiffusionPipeline):
         callback_on_step_end: Optional[Callable[[int, int, dict], dict]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         output_type: str = "pt",
-    ) -> Union[AudioPipelineOutput, tuple]:
+    ) -> AudioPipelineOutput | tuple:
         r"""
         Generate audio from a text prompt.
 

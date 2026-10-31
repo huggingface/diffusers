@@ -182,7 +182,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
-    ):
+    ) -> ImagePipelineOutput | tuple:
         r"""
         Args:
             batch_size (`int`, *optional*, defaults to 1):

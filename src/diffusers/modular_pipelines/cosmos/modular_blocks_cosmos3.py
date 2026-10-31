@@ -394,7 +394,7 @@ class Cosmos3VisionCoreDenoiseStep(SequentialPipelineBlocks):
               Pre-generated noisy vision latents.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           mixed_precision_format (`str`, *optional*):
               None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
@@ -474,7 +474,7 @@ class Cosmos3VisionSoundCoreDenoiseStep(SequentialPipelineBlocks):
               Pre-generated noisy vision latents.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           sound_latents (`Tensor`, *optional*):
               Pre-generated noisy sound latents.
@@ -567,7 +567,7 @@ class Cosmos3VisionActionCoreDenoiseStep(SequentialPipelineBlocks):
               Pre-generated noisy vision latents.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           action (`CosmosActionCondition`):
               Action-conditioning metadata.
@@ -664,7 +664,7 @@ class Cosmos3VisionSoundActionCoreDenoiseStep(SequentialPipelineBlocks):
               Pre-generated noisy vision latents.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           sound_latents (`Tensor`, *optional*):
               Pre-generated noisy sound latents.
@@ -782,7 +782,7 @@ class Cosmos3TransferChunkDenoiseStep(SequentialPipelineBlocks):
               Unconditional text segment.
           fps (`float`, *optional*, defaults to 24.0):
               Frame rate of the generated video.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           mixed_precision_format (`str`, *optional*):
               None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
@@ -882,11 +882,15 @@ class Cosmos3TransferChunkDenoiseStep(SequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         num_chunks = state.get("num_chunks")
         state.set("output_chunks", [])
         state.set("previous_output", None)
         for chunk_id in range(num_chunks):
+            if chunk_id > 0:
+                components.transformer._reset_stateful_cache()
             state.set("chunk_id", chunk_id)
             for _, block in self.sub_blocks.items():
                 components, state = block(components, state)
@@ -933,7 +937,7 @@ class Cosmos3TransferCoreDenoiseStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           fps (`float`, *optional*, defaults to 24.0):
               Frame rate of the generated video.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           mixed_precision_format (`str`, *optional*):
               None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is

@@ -43,7 +43,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, randn_tensor
 from ..chroma.pipeline_output import ChromaPipelineOutput
 from ..pipeline_utils import DiffusionPipeline
 
@@ -401,7 +401,7 @@ class ChromaInpaintPipeline(
         if not isinstance(image, torch.Tensor):
             image = self.feature_extractor(image, return_tensors="pt").pixel_values
 
-        image = image.to(device=device, dtype=dtype)
+        image = image.to(device=get_module_execution_device(self.image_encoder), dtype=dtype)
         image_embeds = self.image_encoder(image).image_embeds
         image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
         return image_embeds
@@ -795,7 +795,7 @@ class ChromaInpaintPipeline(
         max_sequence_length: int = 256,
         prompt_attention_mask: torch.Tensor | None = None,
         negative_prompt_attention_mask: torch.Tensor | None = None,
-    ):
+    ) -> ChromaPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

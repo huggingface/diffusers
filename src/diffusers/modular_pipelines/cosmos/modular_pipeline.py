@@ -18,6 +18,14 @@ class Cosmos3OmniModularPipeline(ModularPipeline):
     inverse_image_resolution_template = "This image is not of {height}x{width} resolution."
     inverse_video_resolution_template = "This video is not of {height}x{width} resolution."
 
+    def __call__(self, *args, **kwargs):
+        transformer = getattr(self, "transformer", None)
+        try:
+            return super().__call__(*args, **kwargs)
+        finally:
+            if hasattr(transformer, "_reset_stateful_cache"):
+                transformer._reset_stateful_cache()
+
     @property
     def vae_scale_factor_spatial(self):
         if getattr(self, "vae", None) is not None:

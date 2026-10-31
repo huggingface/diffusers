@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Installation
 
-Diffusers is tested on Python 3.8+ and PyTorch 2.6+. Install [PyTorch](https://pytorch.org/get-started/locally/) according to your system and setup.
+Diffusers requires Python 3.10+ and is tested with PyTorch 2.6+. Install [PyTorch](https://pytorch.org/get-started/locally/) according to your system and setup.
 
 Create a [virtual environment](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/) for easier management of separate projects and to avoid compatibility issues between dependencies. Use [uv](https://docs.astral.sh/uv/), a Rust-based Python package and project manager, to create a virtual environment and install Diffusers.
 
@@ -25,8 +25,6 @@ Install Diffusers with one of the following methods.
 
 <hfoptions id="install">
 <hfoption id="pip">
-
-PyTorch only supports Python 3.8 - 3.11 on Windows.
 
 ```bash
 uv pip install diffusers["torch"] transformers
@@ -76,6 +74,8 @@ uv pip install git+https://github.com/huggingface/diffusers
 
 </hfoption>
 </hfoptions>
+
+Install with extras when you need them. `diffusers["torch"]` pulls PyTorch and Accelerate. Other extras cover quantization backends, training, and docs. See [`setup.py`](https://github.com/huggingface/diffusers/blob/main/setup.py) for the full list.
 
 ## Devices
 

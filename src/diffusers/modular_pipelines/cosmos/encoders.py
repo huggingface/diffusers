@@ -162,7 +162,9 @@ class Cosmos3TextEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         if block_state.num_frames is None:
             block_state.num_frames = 189
@@ -273,7 +275,9 @@ class Cosmos3TransferTextStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self._check_inputs(block_state)
 
@@ -379,8 +383,8 @@ class Cosmos3DistilledTextEncoderStep(ModularPipelineBlocks):
             InputParam(name="fps", type_hint=float, default=24.0, description="Frame rate of the generated video."),
             InputParam(
                 name="use_system_prompt",
-                type_hint=bool,
-                default=True,
+                type_hint=bool | None,
+                default=None,
                 description="Whether to prepend the Cosmos3 system prompt.",
             ),
             InputParam(
@@ -412,7 +416,9 @@ class Cosmos3DistilledTextEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         if block_state.num_frames is None:
             block_state.num_frames = 189
@@ -420,6 +426,8 @@ class Cosmos3DistilledTextEncoderStep(ModularPipelineBlocks):
             block_state.height = 720
         if block_state.width is None:
             block_state.width = 1280
+        if block_state.use_system_prompt is None:
+            block_state.use_system_prompt = components.config.default_use_system_prompt
 
         self._check_inputs(block_state)
         if components.requires_safety_checker:
@@ -572,7 +580,9 @@ class Cosmos3ActionTextStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self._check_inputs(block_state)
         if block_state.use_system_prompt is None:
@@ -666,7 +676,9 @@ class Cosmos3ImageVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -770,7 +782,9 @@ class Cosmos3VideoVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -939,7 +953,9 @@ class Cosmos3TransferChunkVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         dtype = components.vae.dtype
@@ -1054,7 +1070,9 @@ class Cosmos3ActionVisionVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device

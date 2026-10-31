@@ -49,6 +49,7 @@ else:
     _import_structure["consistency_models"] = ["ConsistencyModelPipeline"]
     _import_structure["ddim"] = ["DDIMPipeline"]
     _import_structure["ddpm"] = ["DDPMPipeline"]
+    _import_structure["rfd4_proteina"] = ["RFD4ProteinaPipeline"]
     _import_structure["dit"] = ["DiTPipeline"]
     _import_structure["latent_diffusion"].extend(["LDMSuperResolutionPipeline"])
     _import_structure["pipeline_utils"] = [
@@ -170,6 +171,7 @@ else:
     ]
     _import_structure["bria"] = ["BriaPipeline"]
     _import_structure["bria_fibo"] = ["BriaFiboPipeline", "BriaFiboEditPipeline"]
+    _import_structure["bria_fibo2"] = ["BriaFibo2Pipeline"]
     _import_structure["flux2"] = [
         "Flux2Pipeline",
         "Flux2KleinPipeline",
@@ -355,8 +357,8 @@ else:
         "JoyImageEditPlusPipeline",
         "JoyImageEditPlusPipelineOutput",
     ]
-    _import_structure["lumina"] = ["LuminaPipeline", "LuminaText2ImgPipeline"]
-    _import_structure["lumina2"] = ["Lumina2Pipeline", "Lumina2Text2ImgPipeline"]
+    _import_structure["lumina"] = ["LuminaPipeline"]
+    _import_structure["lumina2"] = ["Lumina2Pipeline"]
     _import_structure["lucy"] = ["LucyEditPipeline"]
     _import_structure["longcat_image"] = ["LongCatImagePipeline", "LongCatImageEditPipeline"]
     _import_structure["longcat_audio_dit"] = ["LongCatAudioDiTPipeline"]
@@ -387,6 +389,11 @@ else:
     _import_structure["sana_video"] = [
         "SanaVideoPipeline",
         "SanaImageToVideoPipeline",
+    ]
+    _import_structure["sana_wm"] = [
+        "SanaWMPipeline",
+        "SanaWMLTX2Refiner",
+        "SanaWMPipelineOutput",
     ]
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
     _import_structure["stable_audio"] = [
@@ -451,6 +458,12 @@ else:
         "Kandinsky5T2IPipeline",
         "Kandinsky5I2IPipeline",
     ]
+    _import_structure["kandinsky6"] = [
+        "Kandinsky6SRPipeline",
+        "Kandinsky6SRPipelineOutput",
+        "Kandinsky6TI2VAPipeline",
+        "Kandinsky6TI2VAPipelineOutput",
+    ]
     _import_structure["z_image"] = [
         "ZImageControlNetInpaintPipeline",
         "ZImageControlNetPipeline",
@@ -467,6 +480,7 @@ else:
         "SkyReelsV2Pipeline",
     ]
     _import_structure["nucleusmoe_image"] = ["NucleusMoEImagePipeline"]
+    _import_structure["qwenimage21"] = ["QwenImage21Pipeline"]
     _import_structure["qwenimage"] = [
         "QwenImagePipeline",
         "QwenImageImg2ImgPipeline",
@@ -568,6 +582,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ImagePipelineOutput,
             StableDiffusionMixin,
         )
+        from .rfd4_proteina import RFD4ProteinaPipeline
 
     try:
         if not (is_torch_available() and is_librosa_available()):
@@ -610,6 +625,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .aura_flow import AuraFlowPipeline
         from .bria import BriaPipeline
         from .bria_fibo import BriaFiboEditPipeline, BriaFiboPipeline
+        from .bria_fibo2 import BriaFibo2Pipeline
         from .chroma import ChromaImg2ImgPipeline, ChromaInpaintPipeline, ChromaPipeline
         from .chronoedit import ChronoEditPipeline
         from .cogvideo import (
@@ -780,6 +796,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky5T2IPipeline,
             Kandinsky5T2VPipeline,
         )
+        from .kandinsky6 import (
+            Kandinsky6SRPipeline,
+            Kandinsky6SRPipelineOutput,
+            Kandinsky6TI2VAPipeline,
+            Kandinsky6TI2VAPipelineOutput,
+        )
         from .krea2 import Krea2Pipeline
         from .latent_consistency_models import (
             LatentConsistencyModelImg2ImgPipeline,
@@ -816,8 +838,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTX2VideoDiffusionDecodePipeline,
         )
         from .lucy import LucyEditPipeline
-        from .lumina import LuminaPipeline, LuminaText2ImgPipeline
-        from .lumina2 import Lumina2Pipeline, Lumina2Text2ImgPipeline
+        from .lumina import LuminaPipeline
+        from .lumina2 import Lumina2Pipeline
         from .marigold import (
             MarigoldDepthPipeline,
             MarigoldIntrinsicsPipeline,
@@ -864,6 +886,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageLayeredPipeline,
             QwenImagePipeline,
         )
+        from .qwenimage21 import QwenImage21Pipeline
         from .sana import (
             SanaControlNetPipeline,
             SanaPipeline,
@@ -871,6 +894,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaSprintPipeline,
         )
         from .sana_video import SanaImageToVideoPipeline, SanaVideoPipeline
+        from .sana_wm import (
+            SanaWMLTX2Refiner,
+            SanaWMPipeline,
+            SanaWMPipelineOutput,
+        )
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
         from .stable_audio_3 import (

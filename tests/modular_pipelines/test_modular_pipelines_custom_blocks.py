@@ -14,6 +14,7 @@
 
 import json
 import os
+import sys
 import tempfile
 from collections import deque
 from typing import List
@@ -571,6 +572,46 @@ class TestCustomBlockRequirements:
         msg_abc = template.format(req="abc")
         assert msg_xyz in str(cap_logger.out)
         assert msg_abc in str(cap_logger.out)
+
+    def test_requirement_name_is_resolved_without_importing(self, tmp_path, monkeypatch):
+        # Requirement names are read from `modular_config.json`, which ships with the repository. Resolving
+        # "pkg.sub.name" with `importlib.util.find_spec` would import "pkg" and "pkg.sub" to get there, so the lookup
+        # has to go through the installed distribution metadata instead.
+        from diffusers.modular_pipelines.modular_pipeline_utils import _validate_requirements
+
+        (tmp_path / "requirement_pkg").mkdir()
+        (tmp_path / "requirement_pkg" / "__init__.py").write_text(
+            "raise AssertionError('the package named in the requirements was imported')"
+        )
+        monkeypatch.syspath_prepend(str(tmp_path))
+
+        _validate_requirements({"requirement_pkg.anything": ">=1.0"})
+
+        assert "requirement_pkg" not in sys.modules
+
+    def test_installed_requirement_is_still_resolved(self):
+        from diffusers.modular_pipelines.modular_pipeline_utils import _validate_requirements
+
+        logger = logging.get_logger("diffusers.modular_pipelines.modular_pipeline_utils")
+        logger.setLevel(30)
+
+        # `PIL` is imported under a different name than the distribution that provides it
+        # (`pillow`), so this also covers the import-name-to-distribution mapping.
+        with CaptureLogger(logger) as cap_logger:
+            _validate_requirements({"PIL": ">=0.0.1"})
+
+        assert "wasn't found in the current environment" not in str(cap_logger.out)
+
+    def test_from_pretrained_raises_without_auto_map(self, tmp_path):
+        repo = tmp_path / "block_repo"
+        repo.mkdir()
+        (repo / "modular_config.json").write_text(
+            json.dumps({"_class_name": "SequentialPipelineBlocks", "_diffusers_version": "0.0.0"})
+        )
+
+        with pytest.raises(ValueError) as cm:
+            ModularPipelineBlocks.from_pretrained(str(repo))
+        assert "does not appear to have any custom code" in str(cm.value)
 
     def test_conditional_block_requirements_save_load(self, tmp_path):
         pipe = self.get_dummy_conditional_block_pipe()

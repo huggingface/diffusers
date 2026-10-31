@@ -600,7 +600,7 @@ class AnimateDiffPAGPipeline(
         decode_chunk_size: int = 16,
         pag_scale: float = 3.0,
         pag_adaptive_scale: float = 0.0,
-    ):
+    ) -> AnimateDiffPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

@@ -363,7 +363,7 @@ class MarigoldDepthPipeline(DiffusionPipeline):
         output_uncertainty: bool = False,
         output_latent: bool = False,
         return_dict: bool = True,
-    ):
+    ) -> MarigoldDepthOutput | tuple:
         """
         Function invoked when calling the pipeline.
 
