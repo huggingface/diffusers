@@ -45,7 +45,7 @@ EXAMPLE_DOC_STRING = """
         >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained(
         ...     "warp-ai/wuerstchen-prior", torch_dtype=torch.float16
         ... ).to("cuda")
-        >>> gen_pipe = WuerstchenDecoderPipeline.from_pretrain("warp-ai/wuerstchen", torch_dtype=torch.float16).to(
+        >>> gen_pipe = WuerstchenDecoderPipeline.from_pretrained("warp-ai/wuerstchen", torch_dtype=torch.float16).to(
         ...     "cuda"
         ... )
 
