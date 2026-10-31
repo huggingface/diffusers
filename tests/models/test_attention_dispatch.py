@@ -193,6 +193,50 @@ class TestContextParallelAttentionBackward:
 
 
 @is_attention
+class TestAttentionModuleSetAttentionBackend:
+    @pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available.")
+    def test_hub_kernel_is_loaded(self, monkeypatch):
+        import types
+
+        import kernels
+
+        from diffusers.models import attention_dispatch
+        from diffusers.models.attention_dispatch import AttentionBackendName
+        from diffusers.models.transformers.transformer_flux import FluxAttention
+
+        def fake_sageattn(*args, **kwargs):
+            raise NotImplementedError
+
+        fake_kernel = types.SimpleNamespace(__name__="fake_sage_attention", sageattn=fake_sageattn)
+        monkeypatch.setattr(kernels, "get_kernel", lambda *args, **kwargs: fake_kernel)
+        monkeypatch.setattr(attention_dispatch, "DIFFUSERS_TRUST_REMOTE_KERNELS", True)
+        config = attention_dispatch._HUB_KERNELS_REGISTRY[AttentionBackendName.SAGE_HUB]
+        monkeypatch.setattr(config, "kernel_fn", None)
+
+        attn = FluxAttention(query_dim=8, heads=2, dim_head=4)
+        attn.set_attention_backend("sage_hub")
+
+        assert attn.processor._attention_backend == AttentionBackendName.SAGE_HUB
+        assert config.kernel_fn is fake_sageattn
+
+    def test_backend_requirements_are_checked(self, monkeypatch):
+        from diffusers.models import attention_dispatch
+        from diffusers.models.transformers.transformer_flux import FluxAttention
+
+        attn = FluxAttention(query_dim=8, heads=2, dim_head=4)
+
+        monkeypatch.setattr(attention_dispatch, "_CAN_USE_FLASH_ATTN", False)
+        with pytest.raises(RuntimeError, match="Flash Attention backend 'flash' is not usable"):
+            attn.set_attention_backend("flash")
+
+        monkeypatch.setattr(attention_dispatch, "is_kernels_available", lambda: False)
+        with pytest.raises(RuntimeError, match="Backend 'sage_hub' is not usable because the `kernels` package"):
+            attn.set_attention_backend("sage_hub")
+
+        assert attn.processor._attention_backend is None
+
+
+@is_attention
 class TestVarlenAttentionCompile:
     """Op-level tests for the varlen backends under `torch.compile` with dynamic shapes, model independent."""
 
