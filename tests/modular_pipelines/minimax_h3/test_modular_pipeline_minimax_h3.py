@@ -20,7 +20,9 @@ import pytest
 import safetensors.torch
 import torch
 from PIL import Image
+from torch.utils._python_dispatch import TorchDispatchMode
 
+from diffusers import AutoencoderKLMiniMaxH3
 from diffusers.modular_pipelines import (
     MiniMaxH3Blocks,
     MiniMaxH3ModularPipeline,
@@ -31,6 +33,7 @@ from diffusers.modular_pipelines.minimax_h3 import (
     MiniMaxH3VideoReference,
 )
 from diffusers.modular_pipelines.minimax_h3.before_encoder import MiniMaxH3Ref2VASetupStep
+from diffusers.modular_pipelines.minimax_h3.decoders import MiniMaxH3VideoDecodeStep
 from diffusers.modular_pipelines.minimax_h3.encoders import (
     MiniMaxH3FL2VATextEncoderStep,
     MiniMaxH3KeyframeVaeEncoderStep,
@@ -39,6 +42,7 @@ from diffusers.modular_pipelines.minimax_h3.encoders import (
 )
 from diffusers.modular_pipelines.minimax_h3.modular_pipeline import MINIMAX_H3_FPS
 from diffusers.utils import is_peft_available, logging
+from diffusers.video_processor import VideoProcessor
 
 from ...testing_utils import CaptureLogger
 from ..testing_utils import (
@@ -964,6 +968,95 @@ class TestMiniMaxH3Ref2VAModularPipelineWorkflow(
 
 class TestMiniMaxH3Ref2VAModularPipelineMemory(MiniMaxH3Ref2VAModularPipelineTesterConfig, ModularMemoryTesterMixin):
     pass
+
+
+class TestMiniMaxH3VideoDecode:
+    def get_pipeline(self, dtype, do_normalize=False):
+        torch.manual_seed(0)
+        vae = (
+            AutoencoderKLMiniMaxH3(
+                latent_channels=4,
+                block_out_channels=(8, 16),
+                layers_per_block=1,
+                spatial_downsample_factors=(2, 2),
+                temporal_downsample_factors=(2, 2),
+                norm_num_groups=8,
+                decoder_num_layers=2,
+                decoder_num_attention_heads=2,
+                decoder_attention_head_dim=8,
+                decoder_num_register_tokens=2,
+                decoder_ffn_mult=2,
+                latents_mean=(0.0,) * 4,
+                latents_std=(1.0,) * 4,
+            )
+            .to(dtype=dtype)
+            .eval()
+        )
+        pipe = MiniMaxH3VideoDecodeStep().init_pipeline()
+        pipe.update_components(vae=vae, video_processor=VideoProcessor(do_normalize=do_normalize))
+        return pipe
+
+    @pytest.mark.parametrize(
+        "output_type,dtype,do_normalize",
+        [
+            ("pt", torch.float32, False),
+            ("np", torch.float16, False),
+            ("pil", torch.bfloat16, False),
+            ("pt", torch.float16, True),
+            ("np", torch.bfloat16, True),
+            ("pil", torch.float32, True),
+        ],
+    )
+    @torch.no_grad()
+    def test_video_postprocess_outputs(self, output_type, dtype, do_normalize):
+        pipe = self.get_pipeline(dtype, do_normalize)
+        latents = torch.randn(2, 4, 7, 2, 2, generator=torch.Generator().manual_seed(0))
+        decoded = pipe.vae.decode(latents, return_dict=False)[0]
+        pixel_mean = torch.tensor(pipe.pixel_mean).view(1, -1, 1, 1, 1)
+        pixel_std = torch.tensor(pipe.pixel_std).view(1, -1, 1, 1, 1)
+        expected = pipe.video_processor.postprocess_video(
+            (decoded.float() * pixel_std + pixel_mean).clamp(0, 1), output_type=output_type
+        )
+
+        actual = pipe(latents=latents, output_type=output_type, output="videos")
+
+        if output_type == "pt":
+            torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+            assert actual.is_contiguous()
+        elif output_type == "np":
+            np.testing.assert_array_equal(actual, expected)
+            assert actual.dtype == expected.dtype
+        else:
+            assert len(actual) == len(expected)
+            for actual_video, expected_video in zip(actual, expected):
+                assert len(actual_video) == len(expected_video)
+                for actual_frame, expected_frame in zip(actual_video, expected_video):
+                    np.testing.assert_array_equal(np.asarray(actual_frame), np.asarray(expected_frame))
+
+    def test_video_postprocess_fp32_storage_is_bounded(self):
+        pipe = self.get_pipeline(torch.float16)
+        latents = torch.randn(2, 4, 7, 2, 2, generator=torch.Generator().manual_seed(0))
+        pixel_storage_bytes = []
+
+        class PixelStorageMode(TorchDispatchMode):
+            def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+                result = func(*args, **(kwargs or {}))
+                if (
+                    isinstance(result, torch.Tensor)
+                    and result.dtype == torch.float32
+                    and result.ndim == 5
+                    and result.shape[:2] == (2, 3)
+                    and result.shape[-2:] == (8, 8)
+                ):
+                    pixel_storage_bytes.append(result.untyped_storage().nbytes())
+                return result
+
+        with PixelStorageMode():
+            videos = pipe(latents=latents, output_type="np", output="videos")
+
+        assert videos.shape == (2, 22, 8, 8, 3)
+        assert pixel_storage_bytes
+        assert max(pixel_storage_bytes) <= 2 * 3 * 16 * 8 * 8 * 4
 
 
 class TestMiniMaxH3Reference:
