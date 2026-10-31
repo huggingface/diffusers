@@ -90,3 +90,23 @@ class TestInstructPix2Pix(ExamplesTestsAccelerate):
 
             # check checkpoint directories exist
             assert {x for x in os.listdir(tmpdir) if "checkpoint" in x} == {"checkpoint-6", "checkpoint-8"}
+
+    def test_instruct_pix2pix_sdxl_num_train_epochs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_args = f"""
+                examples/instruct_pix2pix/train_instruct_pix2pix_sdxl.py
+                --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-xl-pipe
+                --dataset_name=hf-internal-testing/instructpix2pix-10-samples
+                --resolution=64
+                --random_flip
+                --train_batch_size=1
+                --num_train_epochs=1
+                --checkpointing_steps=1
+                --output_dir {tmpdir}
+                --seed=0
+                --lr_warmup_steps=0
+                """.split()
+
+            run_command(self._launch_args + test_args)
+
+            assert os.path.isfile(os.path.join(tmpdir, "model_index.json"))
