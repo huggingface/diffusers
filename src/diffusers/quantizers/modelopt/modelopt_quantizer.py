@@ -161,8 +161,10 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
 
         if modules_to_not_convert is None:
             modules_to_not_convert = []
-        if isinstance(modules_to_not_convert, str):
+        elif isinstance(modules_to_not_convert, str):
             modules_to_not_convert = [modules_to_not_convert]
+        else:
+            modules_to_not_convert = list(modules_to_not_convert)
         modules_to_not_convert.extend(keep_in_fp32_modules)
         if self.quantization_config.disable_conv_quantization:
             modules_to_not_convert.extend(self.get_conv_param_names(model))

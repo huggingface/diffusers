@@ -69,3 +69,36 @@ class TestBnB8bitBasic:
             "You are loading your model in 8bit or 4bit but no linear modules were found in your model."
             in cap_logger.out
         )
+
+    def test_bnb_8bit_modules_to_not_convert_does_not_mutate_config(self):
+        from diffusers.quantizers.bitsandbytes.bnb_quantizer import BnB8BitDiffusersQuantizer
+
+        skip_modules = ["proj_out"]
+        quantization_config = BitsAndBytesConfig(load_in_8bit=True, llm_int8_skip_modules=skip_modules)
+        model = torch.nn.Sequential(torch.nn.Linear(4, 4), torch.nn.Linear(4, 4))
+
+        for _ in range(2):
+            quantizer = BnB8BitDiffusersQuantizer(quantization_config)
+            quantizer._process_model_before_weight_loading(model, device_map=None, keep_in_fp32_modules=["norm_out"])
+
+        assert quantization_config.llm_int8_skip_modules == skip_modules
+
+    def test_bnb_8bit_scb_lookup_is_suffix_safe(self):
+        import bitsandbytes as bnb
+
+        from diffusers.quantizers.bitsandbytes.bnb_quantizer import BnB8BitDiffusersQuantizer
+
+        quantization_config = BitsAndBytesConfig(load_in_8bit=True)
+        quantizer = BnB8BitDiffusersQuantizer(quantization_config)
+        quantizer.pre_quantized = True
+
+        # "weight" appears outside the trailing ".weight" param, which a naive str.replace corrupts.
+        model = torch.nn.Module()
+        model.weight_proj = torch.nn.Linear(4, 4, bias=False)
+        model.weight_proj.weight = bnb.nn.Int8Params(torch.zeros(4, 4, dtype=torch.int8), requires_grad=False)
+
+        param_name = "weight_proj.weight"
+        state_dict = {"weight_proj.SCB": torch.zeros(4, dtype=torch.float32)}
+        assert quantizer.check_if_quantized_param(
+            model, param_value=torch.zeros(4, 4, dtype=torch.int8), param_name=param_name, state_dict=state_dict
+        )

@@ -443,6 +443,8 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
 
         if not isinstance(self.modules_to_not_convert, list):
             self.modules_to_not_convert = [self.modules_to_not_convert]
+        else:
+            self.modules_to_not_convert = list(self.modules_to_not_convert)
 
         self.modules_to_not_convert.extend(keep_in_fp32_modules)
 

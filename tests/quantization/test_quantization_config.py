@@ -1,0 +1,88 @@
+# coding=utf-8
+# Copyright 2026 The HuggingFace Team Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""CPU-only tests for quantization config logic that doesn't need a backend installed."""
+
+import json
+
+import pytest
+
+from diffusers.quantizers.auto import DiffusersAutoQuantizer
+from diffusers.quantizers.quantization_config import (
+    AutoRoundConfig,
+    GGUFQuantizationConfig,
+    NunchakuLiteQuantizationConfig,
+    NVIDIAModelOptConfig,
+    QuantoConfig,
+)
+
+
+class TestAutoRoundConfigMerge:
+    def test_only_backend_is_overridden_from_args(self):
+        checkpoint_config = AutoRoundConfig(bits=4, group_size=32, sym=False, backend="torch")
+        args_config = AutoRoundConfig(backend="auto")
+
+        merged = DiffusersAutoQuantizer.merge_quantization_configs(checkpoint_config, args_config)
+
+        assert merged.backend == "auto"
+        assert merged.bits == 4
+        assert merged.group_size == 32
+        assert merged.sym is False
+
+
+class TestNVIDIAModelOptConfigToDict:
+    def test_to_dict_drops_forward_loop_callable(self):
+        config = NVIDIAModelOptConfig(
+            quant_type="FP8", forward_loop=lambda model: model, modelopt_config={"quant_cfg": {}}
+        )
+
+        output = config.to_dict()
+
+        assert "forward_loop" not in output
+        json.dumps(output)
+
+
+class TestQuantizationConfigEqAndRepr:
+    def test_gguf_config_eq_does_not_ignore_fields(self):
+        import torch
+
+        a = GGUFQuantizationConfig(compute_dtype=torch.float16)
+        b = GGUFQuantizationConfig(compute_dtype=torch.bfloat16)
+
+        assert a != b
+
+    def test_gguf_config_repr_shows_fields(self):
+        import torch
+
+        config = GGUFQuantizationConfig(compute_dtype=torch.float16)
+        assert "float16" in repr(config)
+
+    def test_quanto_config_to_json_string_does_not_raise(self):
+        config = QuantoConfig(weights_dtype="int8")
+        json_string = config.to_json_string()
+        assert "int8" in json_string
+
+
+class TestNunchakuAwqGroupSize:
+    def test_awq_rejects_group_size_other_than_64(self):
+        with pytest.raises(ValueError, match="group_size=64"):
+            NunchakuLiteQuantizationConfig(
+                awq_w4a16={"precision": "int4", "group_size": 128, "targets": ["final_linear"]}
+            )
+
+    def test_awq_accepts_group_size_64(self):
+        config = NunchakuLiteQuantizationConfig(
+            awq_w4a16={"precision": "int4", "group_size": 64, "targets": ["final_linear"]}
+        )
+        assert config.awq_w4a16["group_size"] == 64

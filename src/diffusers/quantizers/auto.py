@@ -160,11 +160,10 @@ class DiffusersAutoQuantizer:
             quantization_config.check_model_patching()
 
         if quantization_config_from_args is not None and isinstance(quantization_config, AutoRoundConfig):
-            # For AutoRound, allow overriding fields like `backend` from user args,
-            # since the model config may store a default value (e.g. backend="auto").
-            for key, value in quantization_config_from_args.__dict__.items():
-                if key in ("quant_method",):
-                    continue
+            # Only `backend` is runtime-only; bits/group_size/sym/etc. describe how the
+            # checkpoint was quantized and must come from the checkpoint's own config.
+            for key in ("backend",):
+                value = getattr(quantization_config_from_args, key, None)
                 if hasattr(quantization_config, key) and getattr(quantization_config, key) != value:
                     warnings.warn(
                         f"Overriding `{key}` in the model's quantization_config with value {value!r} "
