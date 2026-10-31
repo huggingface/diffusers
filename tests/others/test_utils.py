@@ -17,11 +17,12 @@ import importlib
 import os
 import warnings
 
+import PIL.Image
 import pytest
 import torch
 
 from diffusers import __version__
-from diffusers.utils import deprecate, torch_utils
+from diffusers.utils import deprecate, load_video, torch_utils
 from diffusers.utils.torch_utils import TorchDeviceBackend, empty_device_cache, get_device
 
 from ..testing_utils import CaptureLogger, Expectations, str_to_bool
@@ -370,6 +371,18 @@ class TestExpectations:
         expectations = Expectations({("cuda", 8): 1})
         with pytest.raises(ValueError):
             expectations.find_expectation(("xpu", None))
+
+
+class TestLoadVideo:
+    def test_gif_frames_are_rgb(self, tmp_path):
+        # Pillow decodes the first GIF frame as "P" and later frames as "RGB"
+        frames = [PIL.Image.new("RGB", (8, 8), color) for color in ("red", "green", "blue")]
+        path = str(tmp_path / "video.gif")
+        frames[0].save(path, save_all=True, append_images=frames[1:], duration=100)
+
+        video = load_video(path)
+
+        assert [frame.mode for frame in video] == ["RGB", "RGB", "RGB"]
 
 
 def parse_flag_from_env(key, default=False):
