@@ -752,10 +752,11 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         m0, m1 = model_output_list[-1], model_output_list[-2]
 
+        # Convert to float64 scalars to avoid catastrophic cancellation in polynomial coefficients (#15090)
         rho_t, rho_s0, rho_s1 = (
-            sigma_t / alpha_t,
-            sigma_s0 / alpha_s0,
-            sigma_s1 / alpha_s1,
+            float(sigma_t / alpha_t),
+            float(sigma_s0 / alpha_s0),
+            float(sigma_s1 / alpha_s1),
         )
 
         if self.config.algorithm_type == "deis":
@@ -764,8 +765,8 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
                 # Integrate[(log(t) - log(c)) / (log(b) - log(c)), {t}]
                 return t * (-np.log(c) + np.log(t) - 1) / (np.log(b) - np.log(c))
 
-            coef1 = ind_fn(rho_t, rho_s0, rho_s1) - ind_fn(rho_s0, rho_s0, rho_s1)
-            coef2 = ind_fn(rho_t, rho_s1, rho_s0) - ind_fn(rho_s0, rho_s1, rho_s0)
+            coef1 = float(ind_fn(rho_t, rho_s0, rho_s1) - ind_fn(rho_s0, rho_s0, rho_s1))
+            coef2 = float(ind_fn(rho_t, rho_s1, rho_s0) - ind_fn(rho_s0, rho_s1, rho_s0))
 
             x_t = alpha_t * (sample / alpha_s0 + coef1 * m0 + coef2 * m1)
             return x_t
@@ -828,11 +829,12 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         m0, m1, m2 = model_output_list[-1], model_output_list[-2], model_output_list[-3]
 
+        # Convert to float64 scalars to avoid catastrophic cancellation in polynomial coefficients (#15090)
         rho_t, rho_s0, rho_s1, rho_s2 = (
-            sigma_t / alpha_t,
-            sigma_s0 / alpha_s0,
-            sigma_s1 / alpha_s1,
-            sigma_s2 / alpha_s2,
+            float(sigma_t / alpha_t),
+            float(sigma_s0 / alpha_s0),
+            float(sigma_s1 / alpha_s1),
+            float(sigma_s2 / alpha_s2),
         )
 
         if self.config.algorithm_type == "deis":
@@ -850,9 +852,9 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
                 denominator = (np.log(b) - np.log(c)) * (np.log(b) - np.log(d))
                 return numerator / denominator
 
-            coef1 = ind_fn(rho_t, rho_s0, rho_s1, rho_s2) - ind_fn(rho_s0, rho_s0, rho_s1, rho_s2)
-            coef2 = ind_fn(rho_t, rho_s1, rho_s2, rho_s0) - ind_fn(rho_s0, rho_s1, rho_s2, rho_s0)
-            coef3 = ind_fn(rho_t, rho_s2, rho_s0, rho_s1) - ind_fn(rho_s0, rho_s2, rho_s0, rho_s1)
+            coef1 = float(ind_fn(rho_t, rho_s0, rho_s1, rho_s2) - ind_fn(rho_s0, rho_s0, rho_s1, rho_s2))
+            coef2 = float(ind_fn(rho_t, rho_s1, rho_s2, rho_s0) - ind_fn(rho_s0, rho_s1, rho_s2, rho_s0))
+            coef3 = float(ind_fn(rho_t, rho_s2, rho_s0, rho_s1) - ind_fn(rho_s0, rho_s2, rho_s0, rho_s1))
 
             x_t = alpha_t * (sample / alpha_s0 + coef1 * m0 + coef2 * m1 + coef3 * m2)
 
