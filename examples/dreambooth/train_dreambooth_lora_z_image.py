@@ -200,7 +200,6 @@ def log_validation(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
     )
-    pipeline = pipeline.to(dtype=torch_dtype)
     pipeline.enable_model_cpu_offload()
     pipeline.set_progress_bar_config(disable=True)
 
