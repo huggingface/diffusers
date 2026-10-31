@@ -21,7 +21,7 @@ import torch
 from datasets import load_dataset
 from huggingface_hub.utils import insecure_hashlib
 from tqdm.auto import tqdm
-from transformers import T5EncoderModel
+from transformers import BitsAndBytesConfig, T5EncoderModel
 
 from diffusers import FluxPipeline
 
@@ -36,7 +36,10 @@ def generate_image_hash(image):
 
 def load_flux_dev_pipeline():
     id = "black-forest-labs/FLUX.1-dev"
-    text_encoder = T5EncoderModel.from_pretrained(id, subfolder="text_encoder_2", load_in_8bit=True, device_map="auto")
+    quantization_config = BitsAndBytesConfig(load_in_8bit=True)
+    text_encoder = T5EncoderModel.from_pretrained(
+        id, subfolder="text_encoder_2", quantization_config=quantization_config, device_map="auto"
+    )
     pipeline = FluxPipeline.from_pretrained(
         id, text_encoder_2=text_encoder, transformer=None, vae=None, device_map="balanced"
     )
@@ -58,7 +61,7 @@ def compute_embeddings(pipeline, prompts, max_sequence_length):
         all_pooled_prompt_embeds.append(pooled_prompt_embeds)
         all_text_ids.append(text_ids)
 
-    max_memory = torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024
+    max_memory = torch.accelerator.max_memory_allocated() / 1024 / 1024 / 1024
     print(f"Max memory allocated: {max_memory:.3f} GB")
     return all_prompt_embeds, all_pooled_prompt_embeds, all_text_ids
 
@@ -86,7 +89,7 @@ def run(args):
 
     # Convert embedding lists to arrays (for proper storage in parquet)
     for col in embedding_cols:
-        df[col] = df[col].apply(lambda x: x.cpu().numpy().flatten().tolist())
+        df[col] = df[col].apply(lambda x: x.cpu().float().numpy().flatten().tolist())
 
     # Save the dataframe to a parquet file
     df.to_parquet(args.output_path)
