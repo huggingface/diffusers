@@ -17,12 +17,12 @@ import torch
 
 from ...image_processor import PipelineImageInput
 from ...models import AutoencoderKLLTX2Video
+from ...models.latent_upscaler import LTX2LatentUpsamplerModel
 from ...utils import get_logger, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..ltx.pipeline_output import LTXPipelineOutput
 from ..pipeline_utils import DiffusionPipeline
-from .latent_upsampler import LTX2LatentUpsamplerModel
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -34,7 +34,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import LTX2ImageToVideoPipeline, LTX2LatentUpsamplePipeline
         >>> from diffusers.utils import encode_video
-        >>> from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
+        >>> from diffusers.models.latent_upscaler import LTX2LatentUpsamplerModel
         >>> from diffusers.utils import load_image
 
         >>> pipe = LTX2ImageToVideoPipeline.from_pretrained("Lightricks/LTX-2", torch_dtype=torch.bfloat16)
@@ -171,7 +171,7 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
         tensor.
 
         Args:
-            latent (`torch.Tensor`):
+            latents (`torch.Tensor`):
                 Input latents to normalize
             reference_latents (`torch.Tensor`):
                 The reference latents providing style statistics.
@@ -280,7 +280,7 @@ class LTX2LatentUpsamplePipeline(DiffusionPipeline):
         generator: torch.Generator | list[torch.Generator] | None = None,
         output_type: str | None = "pil",
         return_dict: bool = True,
-    ):
+    ) -> LTXPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

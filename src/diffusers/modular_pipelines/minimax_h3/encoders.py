@@ -181,7 +181,9 @@ class MiniMaxH3TextEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         if not isinstance(block_state.prompt, str):
             raise ValueError(
@@ -258,7 +260,9 @@ class MiniMaxH3FL2VATextEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         if not isinstance(block_state.prompt, str):
             raise ValueError(
@@ -354,7 +358,9 @@ class MiniMaxH3KeyframeVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -606,7 +612,9 @@ class MiniMaxH3Ref2VATextEncoderStep(ModularPipelineBlocks):
         return token_ids, token_tags
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         if not isinstance(block_state.prompt, str):
             raise ValueError(
@@ -705,7 +713,9 @@ class MiniMaxH3Ref2VAReferenceEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 

@@ -28,7 +28,7 @@ from ...schedulers import DDIMScheduler, DDPMScheduler, UnCLIPScheduler
 from ...utils import (
     replace_example_docstring,
 )
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .pipeline_kandinsky import KandinskyPipeline
 from .pipeline_kandinsky_img2img import KandinskyImg2ImgPipeline
 from .pipeline_kandinsky_inpaint import KandinskyInpaintPipeline
@@ -231,7 +231,7 @@ class KandinskyCombinedPipeline(DiffusionPipeline):
         callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
         return_dict: bool = True,
-    ):
+    ) -> ImagePipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 
@@ -452,7 +452,7 @@ class KandinskyImg2ImgCombinedPipeline(DiffusionPipeline):
         callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
         return_dict: bool = True,
-    ):
+    ) -> ImagePipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 
@@ -693,7 +693,7 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
         callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
         return_dict: bool = True,
-    ):
+    ) -> ImagePipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 

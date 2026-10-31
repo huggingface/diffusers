@@ -273,7 +273,7 @@ class VisualClozePipeline(
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
         upsampling_strength: float = 1.0,
-    ):
+    ) -> FluxPipelineOutput | tuple:
         r"""
         Function invoked when calling the VisualCloze pipeline for generation.
 

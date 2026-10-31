@@ -355,7 +355,7 @@ class SkyReelsV2TimeTextImageEmbedding(nn.Module):
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: torch.Tensor | None = None,
-    ):
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
         timestep = self.timesteps_proj(timestep)
 
         time_embedder_dtype = get_parameter_dtype(self.time_embedder)

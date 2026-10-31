@@ -19,12 +19,14 @@ import pytest
 import torch
 import torch.nn as nn
 from safetensors.torch import save_file
+from transformers import CLIPTextConfig, CLIPTextModel
 
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.loaders import StableDiffusionLoraLoaderMixin, lora_base
 from diffusers.loaders.lora_base import LoraBaseMixin
 from diffusers.loaders.peft import PeftAdapterMixin
 from diffusers.models.modeling_utils import ModelMixin
+from diffusers.utils import is_transformers_version
 from diffusers.utils.import_utils import is_peft_available
 
 from ..testing_utils import CaptureLogger, require_peft_backend
@@ -159,3 +161,45 @@ def test_unfuse_lora_partial_components_keeps_merged_adapters_in_sync():
 
     pipe.unfuse_lora(components=["unet"])
     assert pipe.num_fused_loras == 0
+
+
+@require_peft_backend
+@pytest.mark.skipif(
+    not is_transformers_version(">=", "5.6.0"),
+    reason="CLIPTextModel uses a flattened module namespace starting with transformers 5.6",
+)
+def test_load_lora_into_flattened_clip_text_encoder():
+    config = CLIPTextConfig(
+        vocab_size=100,
+        hidden_size=32,
+        intermediate_size=64,
+        num_hidden_layers=1,
+        num_attention_heads=4,
+        max_position_embeddings=77,
+        bos_token_id=0,
+        eos_token_id=1,
+        pad_token_id=2,
+    )
+    text_encoder = CLIPTextModel(config)
+
+    lora_a = torch.randn(4, 32)
+    lora_b = torch.randn(32, 4)
+
+    state_dict = {
+        "text_encoder.text_model.encoder.layers.0.self_attn.q_proj.lora_A.weight": lora_a,
+        "text_encoder.text_model.encoder.layers.0.self_attn.q_proj.lora_B.weight": lora_b,
+    }
+
+    StableDiffusionLoraLoaderMixin.load_lora_into_text_encoder(
+        state_dict=state_dict,
+        network_alphas=None,
+        text_encoder=text_encoder,
+        prefix="text_encoder",
+        adapter_name="test",
+        low_cpu_mem_usage=False,
+    )
+
+    q_proj = text_encoder.encoder.layers[0].self_attn.q_proj
+
+    torch.testing.assert_close(q_proj.lora_A["test"].weight, lora_a)
+    torch.testing.assert_close(q_proj.lora_B["test"].weight, lora_b)

@@ -8,12 +8,14 @@ Shared reference for model-related conventions, patterns, and gotchas.
 - Prefer descriptive variable names over short ones. For example, prefer spelling out `query` over `q`.
 - Avoid graph breaks for `torch.compile` compatibility — do not insert NumPy operations in forward implementations and any other patterns that can break `torch.compile` compatibility with `fullgraph=True`.
 - No new mandatory dependency without discussion (e.g. `einops`). Optional deps guarded with `is_X_available()` and a dummy in `utils/dummy_*.py`.
+- Pass `forward` inputs by name and return a dataclass with named fields rather than a dict of tensors, and keep `__init__` arguments flat (plain values, not nested dicts) — a dict hides what a signature takes and makes you validate the keys by hand. There are a few standard exceptions, such as `attention_kwargs` and `RFD4ProteinaPipeline`'s `conditioning_features`; use your judgment and bring it up in review if your case needs one.
 
 ## Common model conventions
 
 * Models use `ModelMixin` with `register_to_config` for config serialization. 
 * When adding a new transformer (or reviewing one), skim `src/diffusers/models/transformers/transformer_flux.py`, `src/diffusers/models/transformers/transformer_flux2.py`, `src/diffusers/models/transformers/transformer_qwenimage.py`, and `src/diffusers/models/transformers/transformer_wan.py` first to establish the pattern. Most conventions (mixin set, file structure, naming, gradient-checkpointing implementation, `_no_split_modules` settings, etc.) are easiest to internalize by comparison rather than from a fixed list.
 * **Loading goes through `from_pretrained` / `from_single_file`.** Weights and configs load through the standard paths — never fetched or imported out-of-band at runtime. Don't override or add a custom `from_pretrained`, and don't load weights manually (`load_file(...)`, `hf_hub_download(...)`, or `sys.path.insert(...)` to import a reference repo). For an original-format single checkpoint, add `from_single_file` support (mixin + weight-mapping).
+* **Support only what released checkpoints use.** Ship only the config options, branches, and classes that published checkpoints need. Every config argument must appear in a real released config. Don’t add options for a checkpoint you plan to release later. Add them in the PR that ships that checkpoint. Same bar for runtime arguments, if nothing in the official pipeline/examples/recipes passes a `forward` or `__call__` parameter, don’t add it. Trim those surfaces, then delete the unreachable paths. Smaller surface area is easier to review.
 
 ## Single-file model layout
 

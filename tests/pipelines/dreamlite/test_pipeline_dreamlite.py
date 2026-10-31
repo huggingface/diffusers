@@ -37,9 +37,10 @@ from PIL import Image
 from diffusers import DreamLitePipeline, DreamLiteUNetModel
 
 from ...testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     nightly,
-    require_torch_gpu,
+    require_torch_accelerator,
     torch_device,
 )
 from ..testing_utils import MemoryTesterMixin, PipelineTesterMixin
@@ -221,7 +222,7 @@ class TestDreamLitePipelineMemory(DreamLitePipelineTesterConfig, MemoryTesterMix
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
 class TestDreamLitePipelineIntegration:
     """End-to-end test against the real DreamLite-base checkpoint on the Hub.
 
@@ -236,10 +237,10 @@ class TestDreamLitePipelineIntegration:
     @pytest.fixture(autouse=True)
     def cleanup(self):
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
         yield
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def _from_pretrained_kwargs(self):
         local = os.getenv("DREAMLITE_BASE_PATH")
@@ -249,7 +250,7 @@ class TestDreamLitePipelineIntegration:
 
     def test_dreamlite_t2i_real_checkpoint(self):
         pipe = DreamLitePipeline.from_pretrained(**self._from_pretrained_kwargs(), torch_dtype=torch.bfloat16).to(
-            "cuda"
+            torch_device
         )
         out = pipe(
             prompt="a dog running on the grass",
@@ -266,7 +267,7 @@ class TestDreamLitePipelineIntegration:
 
     def test_dreamlite_i2i_real_checkpoint(self):
         pipe = DreamLitePipeline.from_pretrained(**self._from_pretrained_kwargs(), torch_dtype=torch.bfloat16).to(
-            "cuda"
+            torch_device
         )
 
         src = Image.fromarray((np.random.RandomState(0).rand(1024, 1024, 3) * 255).astype(np.uint8))

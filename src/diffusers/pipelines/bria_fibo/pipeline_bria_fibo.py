@@ -453,7 +453,7 @@ class BriaFiboPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 3000,
         do_patching=False,
-    ):
+    ) -> BriaFiboPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

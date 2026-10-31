@@ -25,6 +25,7 @@ from ...models import AutoencoderKLWan
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .modular_pipeline import WanAnimate2ModularPipeline
 from .video_processor import WanAnimate2VideoProcessor
 
 
@@ -177,7 +178,7 @@ class WanAnimate2TextEncoderStep(ModularPipelineBlocks):
             raise ValueError(f"`prompt` has to be of type `str` but is {type(block_state.prompt)}")
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[WanAnimate2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
 
@@ -277,7 +278,7 @@ class WanAnimate2ProcessImagesInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[WanAnimate2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -395,7 +396,7 @@ class WanAnimate2ProcessVideosInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[WanAnimate2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -481,7 +482,7 @@ class WanAnimate2ImageClipEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[WanAnimate2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -531,7 +532,7 @@ class WanAnimate2VideoClipEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[WanAnimate2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -586,7 +587,7 @@ class WanAnimate2ImageVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[WanAnimate2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device

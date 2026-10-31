@@ -343,6 +343,16 @@ build powerful generative AI applications.
 
 By adding a new model, pipeline, or scheduler you might enable a new powerful use case for any of the user interfaces relying on Diffusers which can be of immense value for the whole generative AI ecosystem.
 
+#### When new model or pipeline support is released
+
+A new model or pipeline may be included in a release if you coordinate the integration with the Diffusers team in advance. Feel free to reach out to us, either via an issue on the Diffusers repository or by emailing to `diffusers@huggingface.co`.
+
+A release does not happen automatically when a model or pipeline pull request is merged. Before a release, maintainers first check that the integration is complete and that release tests pass.
+
+New model or pipeline support normally goes into the next minor release. The integration is merged into `main` and the release branch is created from it. The release contains all changes merged since the previous release, rather than only the model or pipeline integration.
+
+Release notes highlight the new model or pipeline and also summarize the other changes included in the release. Patch releases are normally reserved for fixes to an existing release.
+
 Diffusers has a couple of open feature requests for all three components - feel free to gloss over them
 if you don't know yet what specific component you would like to add:
 - [Model or pipeline](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22)

@@ -27,6 +27,7 @@ from ..modular_pipeline import (
     PipelineState,
 )
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .modular_pipeline import StableDiffusionXLModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -84,7 +85,7 @@ class StableDiffusionXLDecodeStep(ModularPipelineBlocks):
         components.vae.to(dtype=torch.float32)
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[StableDiffusionXLModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         if not block_state.output_type == "latent":
@@ -182,7 +183,7 @@ class StableDiffusionXLInpaintOverlayMaskStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[StableDiffusionXLModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         if block_state.padding_mask_crop is not None and block_state.crops_coords is not None:

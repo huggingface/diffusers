@@ -34,13 +34,13 @@ from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
 from ...loaders import FromSingleFileMixin, LTX2LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
+from ...models.condition_embedders import LTX2TextConnectors
 from ...models.transformers import LTX2VideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
-from .connectors import LTX2TextConnectors
 from .pipeline_ltx2_condition import LTX2VideoCondition
 from .pipeline_output import LTX2PipelineOutput
 from .prompt_enhancement import (
@@ -55,6 +55,9 @@ from .utils import (
     LTX2_5_T2V_DEFAULT_SYSTEM_PROMPT,
     apply_image_conditioning_crf,
     resolve_default_image_crf,
+)
+from .utils import (
+    conditioning_frame_rate as get_conditioning_frame_rate,
 )
 from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
 
@@ -1787,6 +1790,7 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         width: int = 768,
         num_frames: int = 121,
         frame_rate: float = 24.0,
+        motion_speed: float = 1.0,
         num_inference_steps: int = 30,
         sigmas: list[float] | None = None,
         timesteps: list[float] | None = None,
@@ -1822,7 +1826,7 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 1024,
-    ):
+    ) -> LTX2PipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
@@ -1864,6 +1868,11 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                 The number of video frames to generate. Must satisfy `(n - 1) % 8 == 0`.
             frame_rate (`float`, *optional*, defaults to `24.0`):
                 The frames per second (FPS) of the generated video.
+            motion_speed (`float`, *optional*, defaults to `1.0`):
+                Speed of the motion relative to real time. The positional embeddings are conditioned on `frame_rate /
+                motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the Slow-Motion-Control LoRA's 5x
+                slow motion. `frame_rate` stays the playback rate: audio duration and the predicted number of frames
+                follow it.
             num_inference_steps (`int`, *optional*, defaults to 30):
                 The number of denoising steps.
             sigmas (`List[float]`, *optional*):
@@ -1963,6 +1972,8 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         audio_stg_scale = audio_stg_scale or stg_scale
         audio_modality_scale = audio_modality_scale or modality_scale
         audio_guidance_rescale = audio_guidance_rescale or guidance_rescale
+
+        conditioning_frame_rate = get_conditioning_frame_rate(frame_rate, motion_speed)
 
         # 1. Check inputs
         self.check_inputs(
@@ -2101,7 +2112,7 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
             height=height,
             width=width,
             num_frames=num_frames,
-            frame_rate=frame_rate,
+            frame_rate=conditioning_frame_rate,
             noise_scale=noise_scale,
             dtype=torch.float32,
             device=device,
@@ -2195,7 +2206,12 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
 
         # 7. Prepare positional coordinates
         video_coords = self.transformer.rope.prepare_video_coords(
-            latents.shape[0], latent_num_frames, latent_height, latent_width, latents.device, fps=frame_rate
+            latents.shape[0],
+            latent_num_frames,
+            latent_height,
+            latent_width,
+            latents.device,
+            fps=conditioning_frame_rate,
         )
         if appended_coords is not None:
             video_coords = torch.cat([video_coords, appended_coords], dim=2)
@@ -2258,7 +2274,7 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                         num_frames=latent_num_frames,
                         height=latent_height,
                         width=latent_width,
-                        fps=frame_rate,
+                        fps=conditioning_frame_rate,
                         audio_num_frames=audio_num_frames,
                         video_coords=video_coords,
                         audio_coords=audio_coords,
@@ -2347,7 +2363,7 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                             num_frames=latent_num_frames,
                             height=latent_height,
                             width=latent_width,
-                            fps=frame_rate,
+                            fps=conditioning_frame_rate,
                             audio_num_frames=audio_num_frames,
                             video_coords=video_pos_ids,
                             audio_coords=audio_pos_ids,
@@ -2396,7 +2412,7 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                             num_frames=latent_num_frames,
                             height=latent_height,
                             width=latent_width,
-                            fps=frame_rate,
+                            fps=conditioning_frame_rate,
                             audio_num_frames=audio_num_frames,
                             video_coords=video_pos_ids,
                             audio_coords=audio_pos_ids,
