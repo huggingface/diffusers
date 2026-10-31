@@ -841,7 +841,7 @@ class NucleusMoEImageTransformer2DModel(
         timestep: torch.LongTensor = None,
         attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> torch.Tensor | Transformer2DModelOutput:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`NucleusMoEImageTransformer2DModel`] forward method.
 

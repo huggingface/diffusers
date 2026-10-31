@@ -300,7 +300,7 @@ class Flux3PosEmbed(nn.Module):
         self.theta = theta
         self.axes_dim = axes_dim
 
-    def forward(self, ids: torch.Tensor) -> torch.Tensor:
+    def forward(self, ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         # Expected ids shape: [S, len(self.axes_dim)]
         cos_out = []
         sin_out = []

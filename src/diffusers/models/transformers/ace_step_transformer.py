@@ -539,7 +539,7 @@ class AceStepTransformer1DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Atten
         context_latents: torch.Tensor,
         attention_kwargs: Optional[dict] = None,
         return_dict: bool = True,
-    ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+    ) -> Union[Transformer2DModelOutput, tuple[torch.Tensor]]:
         """The [`AceStepTransformer1DModel`] forward method.
 
         Args:

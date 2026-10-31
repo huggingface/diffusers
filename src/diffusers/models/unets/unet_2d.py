@@ -252,7 +252,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         timestep: torch.Tensor | float | int,
         class_labels: torch.Tensor | None = None,
         return_dict: bool = True,
-    ) -> UNet2DOutput | tuple:
+    ) -> UNet2DOutput | tuple[torch.Tensor]:
         r"""
         The [`UNet2DModel`] forward method.
 
