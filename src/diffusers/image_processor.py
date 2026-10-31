@@ -232,7 +232,10 @@ class VaeImageProcessor(ConfigMixin):
             `np.ndarray` or `torch.Tensor`:
                 The denormalized image array.
         """
-        return (images * 0.5 + 0.5).clamp(0, 1)
+        images = images * 0.5 + 0.5
+        if isinstance(images, torch.Tensor):
+            return images.clamp(0, 1)
+        return np.clip(images, 0, 1)
 
     @staticmethod
     def convert_to_rgb(image: PIL.Image.Image) -> PIL.Image.Image:
