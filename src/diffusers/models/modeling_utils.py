@@ -139,6 +139,47 @@ if is_accelerate_available():
     from accelerate.utils import load_offloaded_weights, save_offload_index
 
 
+def _get_superseded_checkpoint_files(save_directory: str, weights_name_pattern: str) -> list[str]:
+    """List checkpoint files left by an earlier save that the current one supersedes.
+
+    A save writes either `.bin` or `.safetensors`, as a single file or as shards plus an index.
+    Re-saving into the same directory with a different container or layout must remove the previous
+    artifacts: `from_pretrained` prefers sharded and safetensors checkpoints, so survivors shadow
+    the freshly written weights and get loaded silently.
+
+    Only files belonging to the same variant are returned -- checkpoints of other variants (e.g.
+    `ema`) coexist in the same directory and must be preserved.
+    """
+    # `weights_name_pattern` looks like "diffusion_pytorch_model{suffix}.safetensors" or
+    # "...ema{suffix}.bin"; stripping the container and the shard placeholder leaves the stem every
+    # artifact of this save shares, e.g. "diffusion_pytorch_model" or "diffusion_pytorch_model.ema".
+    stem = weights_name_pattern.replace(".bin", "").replace(".safetensors", "").replace("{suffix}", "")
+    superseded = []
+    for filename in os.listdir(save_directory):
+        if not os.path.isfile(os.path.join(save_directory, filename)):
+            continue
+        # Single-file weights and sharded indexes of this variant, in either container: a re-save
+        # with the other container supersedes them.
+        if filename in (
+            f"{stem}.bin",
+            f"{stem}.safetensors",
+            f"{stem}.bin.index.json",
+            f"{stem}.safetensors.index.json",
+        ):
+            superseded.append(filename)
+            continue
+        # Shards are recognized by the same `-00001-of-00005` marker used when splitting the state
+        # dict. The stem is matched exactly instead of by prefix, so a default save leaves another
+        # variant's shards (`diffusion_pytorch_model.ema-00001-of-00002`) untouched.
+        shard_stem, ext = os.path.splitext(filename)
+        if ext not in (".bin", ".safetensors"):
+            continue
+        match = _REGEX_SHARD.fullmatch(shard_stem)
+        if match is not None and match.group(1) == stem:
+            superseded.append(filename)
+    return superseded
+
+
 def get_parameter_device(parameter: torch.nn.Module) -> torch.device:
     from ..hooks.group_offloading import _get_group_onload_device
 
@@ -819,29 +860,15 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 state_dict, max_shard_size=max_shard_size, filename_pattern=weights_name_pattern
             )
 
-            # Clean the folder from a previous save. Match only shards of the exact
-            # checkpoint being written (same variant and serialization format): the
-            # prefix must be anchored, or a default save (weights_name
-            # "diffusion_pytorch_model") would also match another variant's shards
-            # ("diffusion_pytorch_model.ema-00001-of-00002") via a bare startswith
-            # and delete them while leaving that variant's index behind.
+            # Clean the folder from a previous save. Only artifacts of the checkpoint being written
+            # are removed (same variant, either container): matching by bare prefix would also hit
+            # another variant's shards ("diffusion_pytorch_model.ema-00001-of-00002") and delete
+            # them while leaving that variant's index behind.
             if is_main_process:
-                weights_without_ext, ext = os.path.splitext(weights_name)
-                index_file = _add_variant(
-                    SAFE_WEIGHTS_INDEX_NAME if safe_serialization else WEIGHTS_INDEX_NAME, variant
-                )
-                for filename in os.listdir(save_directory):
+                for filename in _get_superseded_checkpoint_files(save_directory, weights_name_pattern):
                     if filename in state_dict_split.filename_to_tensors.keys():
                         continue
-                    full_filename = os.path.join(save_directory, filename)
-                    if not os.path.isfile(full_filename):
-                        continue
-                    # only remove shards of the checkpoint being written; another variant's shards share the prefix
-                    shard_match = _REGEX_SHARD.fullmatch(filename.removesuffix(ext))
-                    is_prior_shard = shard_match is not None and shard_match.group(1) == weights_without_ext
-                    is_stale_index = filename == index_file and not state_dict_split.is_sharded
-                    if is_prior_shard or is_stale_index:
-                        os.remove(full_filename)
+                    os.remove(os.path.join(save_directory, filename))
 
             for filename, tensors in state_dict_split.filename_to_tensors.items():
                 shard = {tensor: state_dict[tensor].contiguous() for tensor in tensors}

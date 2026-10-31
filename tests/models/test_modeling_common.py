@@ -302,6 +302,49 @@ class TestModelUtils:
             reloaded = UNet2DModel.from_pretrained(path, variant=variant)
             assert all(torch.equal(p1, p2) for p1, p2 in zip(model.parameters(), reloaded.parameters()))
 
+    @pytest.mark.parametrize("variant", [None, "ema"])
+    def test_save_pretrained_removes_superseded_checkpoints(self, variant):
+        r"""
+        Re-saving a checkpoint with a different container must not leave the previous files behind.
+        `from_pretrained` prefers safetensors and sharded checkpoints, so leftovers would shadow the
+        freshly written weights and be loaded silently.
+        """
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model = UNet2DConditionModel(
+                block_out_channels=(4, 8),
+                norm_num_groups=4,
+                down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+                up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+                cross_attention_dim=8,
+                attention_head_dim=2,
+                sample_size=8,
+                in_channels=4,
+                out_channels=4,
+                layers_per_block=1,
+            )
+            kwargs = {"variant": variant} if variant is not None else {}
+            # A checkpoint of the other variant lives in the same directory and must survive.
+            other_kwargs = {"variant": "ema"} if variant is None else {}
+            other_stem = "diffusion_pytorch_model" + (".ema" if other_kwargs else "")
+            model.save_pretrained(tmpdirname, safe_serialization=True, **other_kwargs)
+
+            model.save_pretrained(tmpdirname, safe_serialization=True, **kwargs)
+            expected_stem = "diffusion_pytorch_model" + (f".{variant}" if variant else "")
+            assert f"{expected_stem}.safetensors" in os.listdir(tmpdirname)
+
+            # Re-save with the other container: the safetensors file must not survive.
+            model.save_pretrained(tmpdirname, safe_serialization=False, **kwargs)
+            files = os.listdir(tmpdirname)
+            assert f"{expected_stem}.bin" in files
+            assert f"{expected_stem}.safetensors" not in files
+            if other_stem != expected_stem:
+                assert f"{other_stem}.safetensors" in files
+
+            # And the reloaded weights must come from the freshly written file.
+            reloaded = UNet2DConditionModel.from_pretrained(tmpdirname, **kwargs)
+            for key, value in model.state_dict().items():
+                assert torch.equal(value, reloaded.state_dict()[key])
+
 
 @is_staging_test
 class TestModelPushToHub:
