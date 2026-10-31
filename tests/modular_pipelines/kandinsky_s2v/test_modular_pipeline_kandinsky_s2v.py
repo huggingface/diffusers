@@ -26,13 +26,16 @@ from diffusers.modular_pipelines import (
     KandinskyS2VModularPipeline,
 )
 from diffusers.modular_pipelines.kandinsky_s2v.encoders import KandinskyS2VTextAudioEncoderStep
+from diffusers.modular_pipelines.kandinsky_s2v.modular_pipeline import DEFAULT_PROMPT
 
 from ...testing_utils import numpy_cosine_similarity_distance, require_accelerator, torch_device
 from ..testing_utils import (
     BaseModularPipelineTesterConfig,
+    ModularGuiderTesterMixin,
     ModularLoadingTesterMixin,
     ModularMemoryTesterMixin,
     ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
 )
 
 
@@ -74,6 +77,37 @@ class KandinskyS2VModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     latents_output_name = "latent_chunks"
     # One chunk, channels last: (num_latent_frames, latent_height, latent_width, channels).
     expected_latents_shape = (NUM_LATENT_FRAMES, 8, 8, 4)
+    expected_workflow_defaults = {
+        None: {
+            "components": {
+                "text_encoder": "Qwen2_5OmniThinkerForConditionalGeneration",
+                "tokenizer": "Qwen2_5OmniProcessor",
+                "text_encoder_2": "CLIPTextModel",
+                "tokenizer_2": "CLIPTokenizer",
+                "vae": "AutoencoderKLHunyuanVideo",
+                "video_processor": "VideoProcessor",
+                "transformer": "KandinskyS2VTransformer3DModel",
+                "scheduler": "FlowMatchEulerDiscreteScheduler",
+                "guider": "ClassifierFreeGuidance",
+            },
+            # The speech track drives the video; the prompt defaults to the one the checkpoints were trained with.
+            "required_inputs": ["image", "audio"],
+            "inputs": {
+                "prompt": DEFAULT_PROMPT,
+                "negative_prompt": None,
+                "num_latent_frames": 32,
+                "fps": 25,
+                "num_chunks": None,
+                "height": None,
+                "width": None,
+                "generator": None,
+                "num_inference_steps": 50,
+                "scale_factor": (1.0, 2.0, 2.0),
+                "output_type": "pil",
+            },
+            "component_configs": {"video_processor": {"vae_scale_factor": 8}, "guider": {"guidance_scale": 3.0}},
+        },
+    }
 
     def get_dummy_inputs(self, seed=0):
         return {
@@ -161,6 +195,14 @@ class TestKandinskyS2VModularPipelineLoading(KandinskyS2VModularPipelineTesterCo
     pass
 
 
+class TestKandinskyS2VModularPipelineGuider(KandinskyS2VModularPipelineTesterConfig, ModularGuiderTesterMixin):
+    pass
+
+
+class TestKandinskyS2VModularPipelineWorkflow(KandinskyS2VModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
 class TestKandinskyS2VModularPipelineMemory(KandinskyS2VModularPipelineTesterConfig, ModularMemoryTesterMixin):
     pass
 
@@ -178,6 +220,34 @@ class KandinskyS2VDistilledModularPipelineTesterConfig(KandinskyS2VModularPipeli
     pipeline_class = KandinskyS2VDistilledModularPipeline
     pipeline_blocks_class = KandinskyS2VDistilledAutoBlocks
     pretrained_model_name_or_path = TINY_DISTILLED_REPO
+    expected_workflow_defaults = {
+        None: {
+            "components": {
+                "text_encoder": "Qwen2_5OmniThinkerForConditionalGeneration",
+                "tokenizer": "Qwen2_5OmniProcessor",
+                "text_encoder_2": "CLIPTextModel",
+                "tokenizer_2": "CLIPTokenizer",
+                "vae": "AutoencoderKLHunyuanVideo",
+                "video_processor": "VideoProcessor",
+                "transformer": "KandinskyS2VTransformer3DModel",
+                "scheduler": "PiflowScheduler",
+            },
+            "required_inputs": ["image", "audio"],
+            "inputs": {
+                "prompt": DEFAULT_PROMPT,
+                "num_latent_frames": 32,
+                "fps": 25,
+                "num_chunks": None,
+                "height": None,
+                "width": None,
+                "generator": None,
+                "num_inference_steps": 16,
+                "scale_factor": (1.0, 2.0, 2.0),
+                "output_type": "pil",
+            },
+            "component_configs": {"video_processor": {"vae_scale_factor": 8}},
+        },
+    }
 
     def get_dummy_inputs(self, seed=0):
         inputs = super().get_dummy_inputs(seed)
@@ -204,15 +274,15 @@ class TestKandinskyS2VDistilledModularPipelineFast(
     def test_float16_inference(self):
         check_float16_inference(self)
 
-    def test_has_no_guidance(self):
-        """Guidance is distilled into the student: no guider, and no negative prompt to give it."""
-        pipe = self.get_pipeline()
-        assert "guider" not in pipe.components
-        assert "negative_prompt" not in {param.name for param in pipe.blocks.inputs}
-
 
 class TestKandinskyS2VDistilledModularPipelineLoading(
     KandinskyS2VDistilledModularPipelineTesterConfig, ModularLoadingTesterMixin
+):
+    pass
+
+
+class TestKandinskyS2VDistilledModularPipelineWorkflow(
+    KandinskyS2VDistilledModularPipelineTesterConfig, ModularWorkflowTesterMixin
 ):
     pass
 

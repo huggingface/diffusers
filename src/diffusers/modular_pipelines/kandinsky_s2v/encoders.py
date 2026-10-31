@@ -59,10 +59,7 @@ def encode_qwen_omni(
     """Thinker hidden states for the prompt and audio-tower features for the speech, a waveform at 16 kHz."""
     user_content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
     if audio is not None:
-        item: dict[str, Any] = {"type": "audio", "audio": audio}
-        if audio_end is not None:
-            item |= {"audio_start": 0.0, "audio_end": audio_end}
-        user_content.append(item)
+        user_content.append({"type": "audio", "audio": audio, "audio_start": 0.0, "audio_end": audio_end})
     conversation = [
         {"role": "system", "content": [{"type": "text", "text": SYSTEM_PROMPT}]},
         {"role": "user", "content": user_content},
@@ -72,7 +69,7 @@ def encode_qwen_omni(
     audios = None
     if audio is not None:
         # Cut to the seconds the chunks cover.
-        audios = [audio if audio_end is None else audio[: int(AUDIO_SAMPLE_RATE * audio_end)]]
+        audios = [audio[: int(AUDIO_SAMPLE_RATE * audio_end)]]
 
     inputs = tokenizer(
         text=chat_text,
@@ -88,7 +85,7 @@ def encode_qwen_omni(
     captured: dict[str, torch.Tensor] = {}
 
     def hook(_module, _inputs, output):
-        captured["features"] = getattr(output, "last_hidden_state", output)
+        captured["features"] = output.last_hidden_state
 
     handle = text_encoder.audio_tower.register_forward_hook(hook)
     try:
@@ -125,11 +122,11 @@ def slice_user_text(
 
 
 def encode_clip(
-    tokenizer_2: CLIPTokenizer, text_encoder_2: CLIPTextModel, prompt: str, device: torch.device, max_length: int = 77
+    tokenizer_2: CLIPTokenizer, text_encoder_2: CLIPTextModel, prompt: str, device: torch.device
 ) -> torch.Tensor:
     inputs = tokenizer_2(
         [prompt],
-        max_length=max_length,
+        max_length=77,
         truncation=True,
         add_special_tokens=True,
         padding="max_length",
@@ -182,8 +179,6 @@ def encode_prompt_and_speech(
     prompt_embeds, audio_embeds = encode_qwen_omni(
         tokenizer, text_encoder, prompt, pad_waveform_with_silence(waveform, target_seconds), target_seconds, device
     )
-    if audio_embeds is None:
-        raise ValueError("the speech encoder returned no features for the speech track")
     # The feature extractor truncates beyond its own chunk_length, and a short tensor would just be split
     # thinner, desyncing the speech silently. Checked rather than trusted.
     expected_tokens = round(target_seconds * AUDIO_TOKENS_PER_SECOND)

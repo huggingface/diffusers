@@ -59,13 +59,10 @@ def align(size: int, multiple: int) -> int:
     return (size // multiple) * multiple
 
 
-def select_resolution(
-    image: PIL.Image.Image,
-    allowed: tuple[tuple[int, int], ...] = ((512, 512), (768, 512), (512, 768)),
-) -> tuple[int, int]:
+def select_resolution(image: PIL.Image.Image) -> tuple[int, int]:
     """Pick the ``(height, width)`` bucket closest in aspect ratio to the image."""
     aspect = image.width / image.height
-    return min(allowed, key=lambda res: abs(aspect - res[1] / res[0]))
+    return min(((512, 512), (768, 512), (512, 768)), key=lambda res: abs(aspect - res[1] / res[0]))
 
 
 def pad_waveform_with_silence(waveform: np.ndarray, target_duration: float) -> np.ndarray:
@@ -87,7 +84,7 @@ def split_audio_embeds(audio_embeds: torch.Tensor, chunks: int) -> list[torch.Te
 
 def audio_rope_pos(num_audio_tokens: int, duration: int, device: torch.device) -> torch.Tensor:
     """Audio token -> index of the latent frame it belongs to."""
-    lengths = audio_group_lengths(num_audio_tokens, duration, device)
+    lengths = torch.tensor(audio_group_lengths(num_audio_tokens, duration), device=device)
     return torch.arange(duration, device=device).repeat_interleave(lengths).to(torch.int32)
 
 

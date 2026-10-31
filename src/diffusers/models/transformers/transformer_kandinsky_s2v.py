@@ -20,11 +20,11 @@ import math
 from typing import Any
 
 import torch
-import torch.nn.functional as F  # noqa: N812
+import torch.nn.functional as F
 from torch import Tensor, nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
+from ...loaders import PeftAdapterMixin
 from ...utils import logging
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
@@ -51,13 +51,7 @@ def apply_rotary(x: Tensor, rope: Tensor) -> Tensor:
     return (rope.float() * x_).sum(dim=-1).reshape(*x.shape).to(dtype=x.dtype)
 
 
-def split_lengths(total: int, groups: int, device: torch.device) -> Tensor:
-    """Split ``total`` items into ``groups`` with boundaries at ``total * i // groups``."""
-    bounds = torch.arange(groups + 1, device=device) * total // groups
-    return torch.diff(bounds)
-
-
-def audio_group_lengths(num_audio_tokens: int, duration: int, device: torch.device) -> Tensor:
+def audio_group_lengths(num_audio_tokens: int, duration: int) -> list[int]:
     """First latent frame gets one audio token, the remaining frames split the rest evenly."""
     if duration < _MIN_DURATION:
         raise ValueError(f"duration must be >= {_MIN_DURATION} to split audio tokens, got {duration}")
@@ -67,18 +61,24 @@ def audio_group_lengths(num_audio_tokens: int, duration: int, device: torch.devi
         raise ValueError(
             f"{num_audio_tokens} audio tokens cannot cover {duration} latent frames: every frame needs at least one"
         )
-    rest = split_lengths(num_audio_tokens - 1, duration - 1, device)
-    first = torch.ones(1, dtype=rest.dtype, device=device)
-    return torch.cat([first, rest])
+    # Boundaries at `rest * i // (duration - 1)`.
+    rest = num_audio_tokens - 1
+    bounds = [rest * i // (duration - 1) for i in range(duration)]
+    return [1] + [end - start for start, end in zip(bounds[:-1], bounds[1:], strict=True)]
 
 
-def pad_groups(x: Tensor, lengths: Tensor, max_len: int) -> tuple[Tensor, Tensor]:
-    """Scatter a packed ``(S, ...)`` tensor into ``(G, max_len, ...)`` plus a validity mask."""
-    positions = torch.arange(max_len, device=x.device)
-    valid = positions[None, :] < lengths[:, None]
-    out = x.new_zeros(lengths.shape[0], max_len, *x.shape[1:])
-    out[valid] = x
-    return out, valid
+def audio_group_index(num_audio_tokens: int, duration: int, device: torch.device) -> tuple[Tensor, Tensor]:
+    """Gather index ``(duration, max_len)`` of each latent frame's audio tokens, and a mask of the real ones.
+
+    The lengths follow from the shapes alone, so the padded size is a Python int and the attention keeps static shapes.
+    """
+    lengths = audio_group_lengths(num_audio_tokens, duration)
+    starts = [sum(lengths[:i]) for i in range(duration)]
+    positions = torch.arange(max(lengths), device=device)
+    mask = positions < torch.tensor(lengths, device=device)[:, None]
+    # The last group is the longest, so the padded index of every other group still stays in range.
+    index = torch.tensor(starts, device=device)[:, None] + positions
+    return index, mask
 
 
 class KandinskyS2VTimeEmbeddings(nn.Module):
@@ -86,8 +86,6 @@ class KandinskyS2VTimeEmbeddings(nn.Module):
         super().__init__()
         if model_dim % 2 != 0:
             raise ValueError(f"model_dim must be even, got {model_dim}")
-        self.model_dim = model_dim
-        self.max_period = max_period
         # A plain attribute rather than a buffer: it must survive a meta-device build.
         self.freqs = get_freqs(model_dim // 2, max_period)
 
@@ -120,7 +118,7 @@ class KandinskyS2VGeneralEmbeddings(nn.Module):
 
 
 class KandinskyS2VVisualEmbeddings(nn.Module):
-    """Patch projection for ``[T,H,W,C]`` or ``[B,T,H,W,C]`` visual tokens."""
+    """Patch projection for ``[T,H,W,C]`` visual tokens."""
 
     def __init__(self, visual_dim: int, model_dim: int, patch_size: tuple[int, int, int]):
         super().__init__()
@@ -128,35 +126,13 @@ class KandinskyS2VVisualEmbeddings(nn.Module):
         self.in_layer = nn.Linear(math.prod(patch_size) * visual_dim, model_dim)
 
     def forward(self, x: Tensor) -> Tensor:
-        batched = bool(x.ndim == 5)
-        offset = 1 if batched else 0
-        if not batched and x.ndim != 4:
-            raise ValueError("visual input must have shape (T,H,W,C) or (B,T,H,W,C)")
-
-        shape = x.shape
-        duration, height, width, channels = shape[offset:]
+        duration, height, width, channels = x.shape
         p_t, p_h, p_w = self.patch_size
-        if batched:
-            x = (
-                x.view(
-                    shape[0],
-                    duration // p_t,
-                    p_t,
-                    height // p_h,
-                    p_h,
-                    width // p_w,
-                    p_w,
-                    channels,
-                )
-                .permute(0, 1, 3, 5, 2, 4, 6, 7)
-                .flatten(4, 7)
-            )
-        else:
-            x = (
-                x.view(duration // p_t, p_t, height // p_h, p_h, width // p_w, p_w, channels)
-                .permute(0, 2, 4, 1, 3, 5, 6)
-                .flatten(3, 6)
-            )
+        x = (
+            x.view(duration // p_t, p_t, height // p_h, p_h, width // p_w, p_w, channels)
+            .permute(0, 2, 4, 1, 3, 5, 6)
+            .flatten(3, 6)
+        )
         return self.in_layer(x)
 
 
@@ -193,14 +169,14 @@ class KandinskyS2VAttnProcessor:
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError(f"{self.__class__.__name__} requires PyTorch 2.0. Please upgrade your pytorch version.")
 
-    def __call__(  # noqa: PLR0913
+    def __call__(
         self,
         attn: KandinskyS2VAttention,
         hidden_states: Tensor,
         encoder_hidden_states: Tensor | None = None,
         rotary_emb: Tensor | None = None,
-        q_lengths: Tensor | None = None,
-        kv_lengths: Tensor | None = None,
+        kv_index: Tensor | None = None,
+        kv_mask: Tensor | None = None,
     ) -> Tensor:
         cond = hidden_states if encoder_hidden_states is None else encoder_hidden_states
         shape, cond_shape = hidden_states.shape[:-1], cond.shape[:-1]
@@ -216,23 +192,21 @@ class KandinskyS2VAttnProcessor:
             query = apply_rotary(query, rotary_emb).type_as(query)
             key = apply_rotary(key, rotary_emb).type_as(key)
 
-        if q_lengths is not None:
-            if kv_lengths is None:
-                raise ValueError("kv_lengths is required when q_lengths is given")
-            # Block-diagonal attention: query group i attends exactly to key group i. The groups are uneven, so they
-            # are padded into a batch axis and masked rather than reshaped.
-            query, q_valid = pad_groups(query, q_lengths, int(q_lengths.max()))
-            kv_max = int(kv_lengths.max())
-            key, kv_valid = pad_groups(key, kv_lengths, kv_max)
-            value, _ = pad_groups(value, kv_lengths, kv_max)
+        if kv_index is not None:
+            # Block-diagonal attention: latent frame i attends exactly to its own audio tokens. The frames are equal
+            # in size, so the query is reshaped; the audio groups are not, so they are gathered into a padded batch
+            # axis and masked.
+            query = query.reshape(kv_index.shape[0], -1, *query.shape[1:])
+            key = key[kv_index]
+            value = value[kv_index]
             hidden_states = dispatch_attention_fn(
                 query,
                 key,
                 value,
-                attn_mask=kv_valid[:, None, None, :],
+                attn_mask=kv_mask[:, None, None, :],
                 backend=self._attention_backend,
                 parallel_config=self._parallel_config,
-            )[q_valid]
+            ).flatten(0, 1)
         else:
             hidden_states = dispatch_attention_fn(
                 query.unsqueeze(0),
@@ -315,9 +289,6 @@ class KandinskyS2VOutLayer(nn.Module):
 class KandinskyS2VRoPE1D(nn.Module):
     def __init__(self, dim: int, max_pos: int = 1024, max_period: float = 10000.0):
         super().__init__()
-        self.dim = dim
-        self.max_pos = max_pos
-        self.max_period = max_period
         freq = get_freqs(dim // 2, max_period)
         pos = torch.arange(max_pos, dtype=freq.dtype)
         # A plain attribute rather than a buffer, so `.to(torch.bfloat16)` leaves the table in fp32.
@@ -342,9 +313,6 @@ class KandinskyS2VRoPE3D(nn.Module):
         max_period: float = 10000.0,
     ):
         super().__init__()
-        self.axes_dims = axes_dims
-        self.max_pos = max_pos
-        self.max_period = max_period
         self.offsets_t = max_pos[0]
 
         # Plain attributes rather than buffers, so `.to(torch.bfloat16)` leaves the tables in fp32.
@@ -434,7 +402,7 @@ class KandinskyS2VTransformerAudioEncoderBlock(nn.Module):
 class KandinskyS2VTransformerDecoderBlock(nn.Module):
     """Visual block; ``enable_audio`` adds the frame-aligned speech adapter."""
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         model_dim: int,
         time_dim: int,
@@ -459,7 +427,7 @@ class KandinskyS2VTransformerDecoderBlock(nn.Module):
         self.feed_forward_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
         self.feed_forward = KandinskyS2VFeedForward(model_dim, ff_dim)
 
-    def forward(  # noqa: PLR0913
+    def forward(
         self,
         visual_embed: Tensor,
         text_embed: Tensor,
@@ -468,8 +436,8 @@ class KandinskyS2VTransformerDecoderBlock(nn.Module):
         rope: Tensor,
         time_embed_idx: Tensor,
         num_visual_tokens: int,
-        visual_group_lengths: Tensor,
-        audio_group_lengths: Tensor,
+        audio_index: Tensor,
+        audio_mask: Tensor,
     ) -> Tensor:
         self_attn_params, cross_attn_params, ff_params = torch.chunk(self.visual_modulation(time_embed), 3, dim=-1)
 
@@ -500,8 +468,8 @@ class KandinskyS2VTransformerDecoderBlock(nn.Module):
             out = self.cross_attention_v2a(
                 self.cross_attention_norm_v2a(noisy.float()).type_as(noisy),
                 encoder_hidden_states=audio_embed,
-                q_lengths=visual_group_lengths,
-                kv_lengths=audio_group_lengths,
+                kv_index=audio_index,
+                kv_mask=audio_mask,
             )
             visual_embed = torch.cat([head, noisy + out], dim=0)
 
@@ -520,7 +488,6 @@ class KandinskyS2VTransformer3DModel(
     ModelMixin,
     ConfigMixin,
     PeftAdapterMixin,
-    FromOriginalModelMixin,
     CacheMixin,
     AttentionMixin,
 ):
@@ -567,7 +534,7 @@ class KandinskyS2VTransformer3DModel(
     _supports_gradient_checkpointing = True
 
     @register_to_config
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         in_visual_dim: int = 16,
         out_visual_dim: int = 16,
@@ -593,13 +560,8 @@ class KandinskyS2VTransformer3DModel(
     ):
         super().__init__()
         head_dim = sum(axes_dims)
-        self.in_visual_dim = in_visual_dim
         self.model_dim = model_dim
-        self.patch_size = patch_size
-        self.frame_buckets = frame_buckets
         self.enable_framepack = enable_framepack
-        self.index_rope_ref_image = index_rope_ref_image
-        self.audio_inject_layers = tuple(audio_inject_layers)
 
         self.time_embeddings = KandinskyS2VTimeEmbeddings(model_dim, time_dim)
         self.text_embeddings = KandinskyS2VGeneralEmbeddings(in_text_dim, model_dim)
@@ -658,7 +620,7 @@ class KandinskyS2VTransformer3DModel(
                     time_dim,
                     ff_dim,
                     head_dim,
-                    enable_audio=(i in self.audio_inject_layers),
+                    enable_audio=(i in audio_inject_layers),
                 )
                 for i in range(num_visual_blocks)
             ]
@@ -667,7 +629,7 @@ class KandinskyS2VTransformer3DModel(
         self.out_layer = KandinskyS2VOutLayer(model_dim, time_dim, out_visual_dim, patch_size)
         self.gradient_checkpointing = False
 
-    def forward(  # noqa: PLR0913, PLR0915
+    def forward(
         self,
         hidden_states: Tensor,
         encoder_hidden_states: Tensor,
@@ -791,8 +753,7 @@ class KandinskyS2VTransformer3DModel(
             ]
         )
 
-        visual_groups = split_lengths(num_visual_tokens, duration, device)
-        audio_groups = audio_group_lengths(audio_embed.shape[0], duration, device)
+        audio_index, audio_mask = audio_group_index(audio_embed.shape[0], duration, device)
 
         for block in self.visual_transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
@@ -805,8 +766,8 @@ class KandinskyS2VTransformer3DModel(
                     visual_rope_full,
                     time_embed_idx_full,
                     num_visual_tokens,
-                    visual_groups,
-                    audio_groups,
+                    audio_index,
+                    audio_mask,
                 )
             else:
                 visual_embed_full = block(
@@ -817,8 +778,8 @@ class KandinskyS2VTransformer3DModel(
                     visual_rope_full,
                     time_embed_idx_full,
                     num_visual_tokens,
-                    visual_groups,
-                    audio_groups,
+                    audio_index,
+                    audio_mask,
                 )
 
         visual_embed = visual_embed_full[-num_visual_tokens:].reshape(*visual_shape, self.model_dim)
