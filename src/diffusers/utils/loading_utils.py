@@ -38,7 +38,7 @@ def load_image(
                 f"Incorrect path or URL. URLs must start with `http://` or `https://`, and {image} is not a valid path."
             )
     elif isinstance(image, PIL.Image.Image):
-        image = image
+        pass
     else:
         raise ValueError(
             "Incorrect format used for the image. Should be a URL linking to an image, a local path, or a PIL image."
