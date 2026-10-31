@@ -48,7 +48,7 @@ from .modular_pipeline import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def encode_qwen_omni(  # noqa: PLR0913
+def encode_qwen_omni(
     tokenizer: Qwen2_5OmniProcessor,
     text_encoder: Qwen2_5OmniThinkerForConditionalGeneration,
     prompt: str,
@@ -136,6 +136,64 @@ def encode_clip(
         return_tensors="pt",
     ).to(device)
     return text_encoder_2(**inputs)["pooler_output"]
+
+
+def encode_prompt_and_speech(
+    tokenizer: Qwen2_5OmniProcessor,
+    text_encoder: Qwen2_5OmniThinkerForConditionalGeneration,
+    tokenizer_2: CLIPTokenizer,
+    text_encoder_2: CLIPTextModel,
+    prompt: str,
+    audio: torch.Tensor | np.ndarray,
+    num_latent_frames: int,
+    fps: int,
+    num_chunks: int | None,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int, float]:
+    """Plan the chunks the speech track needs, then encode the prompt and the speech for them.
+
+    Returns the prompt embeddings, the pooled prompt embedding, the speech features, the number of chunks and the
+    length of the track in seconds.
+    """
+    waveform = audio.detach().cpu().float().numpy() if isinstance(audio, torch.Tensor) else audio.astype(np.float32)
+    chunk_seconds = ((num_latent_frames - 1) * TEMPORAL_COMPRESSION_RATIO + 1) / fps
+    track_seconds = waveform.shape[0] / AUDIO_SAMPLE_RATE
+    needed = max(1, math.ceil(track_seconds / chunk_seconds))
+    if num_chunks is not None and num_chunks > needed:
+        # The video is trimmed to the track, so these are computed and then dropped.
+        logger.warning(
+            f"{num_chunks - needed} chunk(s) past the end of the speech track are generated and then trimmed; "
+            f"pass num_chunks={needed} to save the time"
+        )
+    if num_chunks is None:
+        num_chunks = needed
+    target_seconds = num_chunks * chunk_seconds
+
+    # The speech encoder truncates its input; chunks past its limit would split too few speech tokens and drift
+    # out of sync. Refused here, before any encoding is spent on it.
+    extractor = tokenizer.feature_extractor
+    max_seconds = extractor.n_samples / extractor.sampling_rate
+    if target_seconds > max_seconds + 0.01:
+        raise ValueError(
+            f"{num_chunks} chunks need {target_seconds:g} s of speech, but the speech encoder truncates at "
+            f"{max_seconds:g} s; trim the track or pass fewer `num_chunks`"
+        )
+
+    prompt_embeds, audio_embeds = encode_qwen_omni(
+        tokenizer, text_encoder, prompt, pad_waveform_with_silence(waveform, target_seconds), target_seconds, device
+    )
+    if audio_embeds is None:
+        raise ValueError("the speech encoder returned no features for the speech track")
+    # The feature extractor truncates beyond its own chunk_length, and a short tensor would just be split
+    # thinner, desyncing the speech silently. Checked rather than trusted.
+    expected_tokens = round(target_seconds * AUDIO_TOKENS_PER_SECOND)
+    if audio_embeds.shape[0] < expected_tokens * AUDIO_TOKEN_TOLERANCE:
+        raise ValueError(
+            f"the speech encoder returned {audio_embeds.shape[0]} tokens for {target_seconds:.1f} s, "
+            f"expected about {expected_tokens}; the track is likely longer than the encoder accepts"
+        )
+    pooled_prompt_embeds = encode_clip(tokenizer_2, text_encoder_2, prompt, device)
+    return prompt_embeds, pooled_prompt_embeds, audio_embeds, num_chunks, track_seconds
 
 
 class KandinskyS2VTextAudioEncoderStep(ModularPipelineBlocks):
@@ -239,62 +297,6 @@ class KandinskyS2VTextAudioEncoderStep(ModularPipelineBlocks):
                 f"{block_state.fps}"
             )
 
-    @staticmethod
-    def encode_prompt_and_speech(components: KandinskyS2VModularPipeline, block_state) -> None:
-        """Plan the chunks the speech track needs, then encode the prompt and the speech for them."""
-        device = components._execution_device
-        audio = block_state.audio
-        waveform = (
-            audio.detach().cpu().float().numpy() if isinstance(audio, torch.Tensor) else audio.astype(np.float32)
-        )
-        chunk_seconds = ((block_state.num_latent_frames - 1) * TEMPORAL_COMPRESSION_RATIO + 1) / block_state.fps
-        block_state.track_seconds = waveform.shape[0] / AUDIO_SAMPLE_RATE
-        needed = max(1, math.ceil(block_state.track_seconds / chunk_seconds))
-        if block_state.num_chunks is not None and block_state.num_chunks > needed:
-            # The video is trimmed to the track, so these are computed and then dropped.
-            logger.warning(
-                f"{block_state.num_chunks - needed} chunk(s) past the end of the speech track are generated and "
-                f"then trimmed; pass num_chunks={needed} to save the time"
-            )
-        if block_state.num_chunks is None:
-            block_state.num_chunks = needed
-        target_seconds = block_state.num_chunks * chunk_seconds
-
-        # The speech encoder truncates its input; chunks past its limit would split too few speech tokens and drift
-        # out of sync. Refused here, before any encoding is spent on it.
-        extractor = components.tokenizer.feature_extractor
-        max_seconds = extractor.n_samples / extractor.sampling_rate
-        if target_seconds > max_seconds + 0.01:
-            raise ValueError(
-                f"{block_state.num_chunks} chunks need {target_seconds:g} s of speech, but the speech encoder "
-                f"truncates at {max_seconds:g} s; trim the track or pass fewer `num_chunks`"
-            )
-
-        prompt_embeds, audio_embeds = encode_qwen_omni(
-            components.tokenizer,
-            components.text_encoder,
-            block_state.prompt,
-            pad_waveform_with_silence(waveform, target_seconds),
-            target_seconds,
-            device,
-        )
-        if audio_embeds is None:
-            raise ValueError("the speech encoder returned no features for the speech track")
-        # The feature extractor truncates beyond its own chunk_length, and a short tensor would just be split
-        # thinner, desyncing the speech silently. Checked rather than trusted.
-        expected_tokens = round(target_seconds * AUDIO_TOKENS_PER_SECOND)
-        if audio_embeds.shape[0] < expected_tokens * AUDIO_TOKEN_TOLERANCE:
-            raise ValueError(
-                f"the speech encoder returned {audio_embeds.shape[0]} tokens for {target_seconds:.1f} s, "
-                f"expected about {expected_tokens}; the track is likely longer than the encoder accepts"
-            )
-
-        block_state.prompt_embeds = prompt_embeds
-        block_state.audio_embeds = audio_embeds
-        block_state.pooled_prompt_embeds = encode_clip(
-            components.tokenizer_2, components.text_encoder_2, block_state.prompt, device
-        )
-
     @torch.no_grad()
     def __call__(self, components: KandinskyS2VModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
@@ -307,8 +309,25 @@ class KandinskyS2VTextAudioEncoderStep(ModularPipelineBlocks):
         if block_state.negative_prompt is not None and not block_state.negative_prompt.strip():
             raise ValueError("`negative_prompt` must not be empty; omit it to skip the unconditional pass")
 
-        self.encode_prompt_and_speech(components, block_state)
         device = components._execution_device
+        (
+            block_state.prompt_embeds,
+            block_state.pooled_prompt_embeds,
+            block_state.audio_embeds,
+            block_state.num_chunks,
+            block_state.track_seconds,
+        ) = encode_prompt_and_speech(
+            tokenizer=components.tokenizer,
+            text_encoder=components.text_encoder,
+            tokenizer_2=components.tokenizer_2,
+            text_encoder_2=components.text_encoder_2,
+            prompt=block_state.prompt,
+            audio=block_state.audio,
+            num_latent_frames=block_state.num_latent_frames,
+            fps=block_state.fps,
+            num_chunks=block_state.num_chunks,
+            device=device,
+        )
         # The guider is not a component of this block: inside the pipeline, `requires_unconditional_embeds` reads the
         # denoise step's guider and the negative prompt defaults to `DEFAULT_NEGATIVE_PROMPT`; standalone, there is no
         # guider and the negative prompt is encoded only when it is passed.
@@ -396,7 +415,24 @@ class KandinskyS2VDistilledTextAudioEncoderStep(KandinskyS2VTextAudioEncoderStep
     def __call__(self, components: KandinskyS2VModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
-        self.encode_prompt_and_speech(components, block_state)
+        (
+            block_state.prompt_embeds,
+            block_state.pooled_prompt_embeds,
+            block_state.audio_embeds,
+            block_state.num_chunks,
+            block_state.track_seconds,
+        ) = encode_prompt_and_speech(
+            tokenizer=components.tokenizer,
+            text_encoder=components.text_encoder,
+            tokenizer_2=components.tokenizer_2,
+            text_encoder_2=components.text_encoder_2,
+            prompt=block_state.prompt,
+            audio=block_state.audio,
+            num_latent_frames=block_state.num_latent_frames,
+            fps=block_state.fps,
+            num_chunks=block_state.num_chunks,
+            device=components._execution_device,
+        )
         self.set_block_state(state, block_state)
         return components, state
 

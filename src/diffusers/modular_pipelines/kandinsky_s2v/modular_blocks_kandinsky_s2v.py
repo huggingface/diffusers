@@ -15,7 +15,7 @@
 from ...utils import logging
 from ..modular_pipeline import SequentialPipelineBlocks
 from ..modular_pipeline_utils import InsertableDict, OutputParam
-from .before_denoise import KandinskyS2VPrepareStep
+from .before_denoise import KandinskyS2VPrepareNegativeStep, KandinskyS2VPrepareStep
 from .decoders import KandinskyS2VDecodeStep
 from .denoise import KandinskyS2VChunkDenoiseStep
 from .encoders import KandinskyS2VTextAudioEncoderStep, KandinskyS2VVaeEncoderStep
@@ -27,6 +27,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 KandinskyS2VCoreDenoiseBlocks = InsertableDict(
     [
         ("prepare", KandinskyS2VPrepareStep()),
+        ("prepare_negative", KandinskyS2VPrepareNegativeStep()),
         ("chunk_loop", KandinskyS2VChunkDenoiseStep()),
     ]
 )
@@ -52,10 +53,10 @@ class KandinskyS2VCoreDenoiseStep(SequentialPipelineBlocks):
               Latent frames per chunk; 32 gives 125 frames (5 s at 25 fps).
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          negative_prompt_embeds (`Tensor`, *optional*):
-              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
           pooled_prompt_embeds (`Tensor`):
               CLIP pooled prompt embedding.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
           negative_pooled_prompt_embeds (`Tensor`, *optional*):
               CLIP pooled negative prompt embedding.
           generator (`Generator`, *optional*):

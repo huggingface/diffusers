@@ -15,7 +15,7 @@
 from ...utils import logging
 from ..modular_pipeline import SequentialPipelineBlocks
 from ..modular_pipeline_utils import InsertableDict, OutputParam
-from .before_denoise import KandinskyS2VDistilledPrepareStep
+from .before_denoise import KandinskyS2VPrepareStep
 from .decoders import KandinskyS2VDecodeStep
 from .denoise import KandinskyS2VDistilledChunkDenoiseStep
 from .encoders import KandinskyS2VDistilledTextAudioEncoderStep, KandinskyS2VVaeEncoderStep
@@ -26,7 +26,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 KandinskyS2VDistilledCoreDenoiseBlocks = InsertableDict(
     [
-        ("prepare", KandinskyS2VDistilledPrepareStep()),
+        ("prepare", KandinskyS2VPrepareStep()),
         ("chunk_loop", KandinskyS2VDistilledChunkDenoiseStep()),
     ]
 )

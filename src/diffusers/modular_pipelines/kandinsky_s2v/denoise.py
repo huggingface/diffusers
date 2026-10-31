@@ -133,6 +133,30 @@ class KandinskyS2VDistilledChunkSchedulerResetStep(KandinskyS2VChunkSchedulerRes
         return components, block_state
 
 
+def shared_transformer_kwargs(
+    transformer: KandinskyS2VTransformer3DModel,
+    reference_hidden_states: torch.Tensor,
+    memory: list[torch.Tensor],
+    visual_rope_pos: list[torch.Tensor],
+    reference_rope_pos: list[torch.Tensor],
+    num_audio_tokens: int,
+    num_latent_frames: int,
+    scale_factor: tuple[float, float, float],
+    device: torch.device,
+) -> dict:
+    """The transformer inputs of a chunk that are the same in every pass."""
+    return {
+        "reference_hidden_states": reference_hidden_states.unsqueeze(0),
+        "memory_hidden_states": tuple(m.unsqueeze(0).to(transformer.dtype) for m in reversed(memory)),
+        "visual_rope_pos": visual_rope_pos,
+        "reference_rope_pos": reference_rope_pos,
+        "memory_rope_pos": tuple(reversed(memory_rope_pos(transformer.config, memory, device))),
+        "audio_rope_pos": audio_rope_pos(num_audio_tokens, num_latent_frames, device),
+        "scale_factor": scale_factor,
+        "return_dict": False,
+    }
+
+
 class KandinskyS2VChunkDenoiseInner(ModularPipelineBlocks):
     model_name = "kandinsky-s2v"
 
@@ -180,23 +204,6 @@ class KandinskyS2VChunkDenoiseInner(ModularPipelineBlocks):
             InputParam.template("num_inference_steps"),
         ]
 
-    @staticmethod
-    def shared_transformer_kwargs(components: KandinskyS2VModularPipeline, block_state: BlockState) -> dict:
-        """The transformer inputs of a chunk that are the same in every pass."""
-        config = components.transformer.config
-        device = components._execution_device
-        memory = block_state.memory
-        return {
-            "reference_hidden_states": block_state.reference_hidden_states.unsqueeze(0),
-            "memory_hidden_states": tuple(m.unsqueeze(0).to(components.transformer.dtype) for m in reversed(memory)),
-            "visual_rope_pos": block_state.visual_rope_pos,
-            "reference_rope_pos": block_state.reference_rope_pos,
-            "memory_rope_pos": tuple(reversed(memory_rope_pos(config, memory, device))),
-            "audio_rope_pos": audio_rope_pos(block_state.chunk_audio.shape[0], block_state.num_latent_frames, device),
-            "scale_factor": block_state.scale_factor,
-            "return_dict": False,
-        }
-
     @torch.no_grad()
     def __call__(
         self, components: KandinskyS2VModularPipeline, block_state: BlockState, k: int
@@ -217,7 +224,17 @@ class KandinskyS2VChunkDenoiseInner(ModularPipelineBlocks):
             "text_rope_pos": (block_state.text_rope_pos, block_state.negative_text_rope_pos),
         }
         # Tuples here are not (cond, uncond) pairs, so they stay out of the guider's inputs.
-        shared_kwargs = self.shared_transformer_kwargs(components, block_state)
+        shared_kwargs = shared_transformer_kwargs(
+            transformer=components.transformer,
+            reference_hidden_states=block_state.reference_hidden_states,
+            memory=block_state.memory,
+            visual_rope_pos=block_state.visual_rope_pos,
+            reference_rope_pos=block_state.reference_rope_pos,
+            num_audio_tokens=block_state.chunk_audio.shape[0],
+            num_latent_frames=block_state.num_latent_frames,
+            scale_factor=block_state.scale_factor,
+            device=components._execution_device,
+        )
 
         timesteps = block_state.timesteps
         for i, t in enumerate(tqdm(timesteps, desc=f"chunk {k + 1}", leave=False)):
@@ -278,7 +295,17 @@ class KandinskyS2VDistilledChunkDenoiseInner(KandinskyS2VChunkDenoiseInner):
     ) -> tuple[KandinskyS2VModularPipeline, BlockState]:
         transformer_dtype = components.transformer.dtype
         latents = block_state.latents
-        shared_kwargs = self.shared_transformer_kwargs(components, block_state)
+        shared_kwargs = shared_transformer_kwargs(
+            transformer=components.transformer,
+            reference_hidden_states=block_state.reference_hidden_states,
+            memory=block_state.memory,
+            visual_rope_pos=block_state.visual_rope_pos,
+            reference_rope_pos=block_state.reference_rope_pos,
+            num_audio_tokens=block_state.chunk_audio.shape[0],
+            num_latent_frames=block_state.num_latent_frames,
+            scale_factor=block_state.scale_factor,
+            device=components._execution_device,
+        )
 
         timesteps = block_state.timesteps
         for t in tqdm(timesteps, desc=f"chunk {k + 1}", leave=False):

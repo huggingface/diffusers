@@ -127,17 +127,11 @@ class KandinskyS2VPrepareStep(ModularPipelineBlocks):
                 description="Latent frames per chunk; 32 gives 125 frames (5 s at 25 fps).",
             ),
             InputParam.template("prompt_embeds", required=True),
-            InputParam.template("negative_prompt_embeds"),
             InputParam(
                 "pooled_prompt_embeds",
                 required=True,
                 type_hint=torch.Tensor,
                 description="CLIP pooled prompt embedding.",
-            ),
-            InputParam(
-                "negative_pooled_prompt_embeds",
-                type_hint=torch.Tensor,
-                description="CLIP pooled negative prompt embedding.",
             ),
         ]
 
@@ -151,19 +145,8 @@ class KandinskyS2VPrepareStep(ModularPipelineBlocks):
             OutputParam("latent_width", type_hint=int, description="Width of the latents."),
             OutputParam("audio_chunks", type_hint=list, description="Speech features of each chunk."),
             OutputParam.template("prompt_embeds"),
-            OutputParam.template("negative_prompt_embeds"),
             OutputParam("pooled_prompt_embeds", type_hint=torch.Tensor, description="CLIP pooled prompt embedding."),
-            OutputParam(
-                "negative_pooled_prompt_embeds",
-                type_hint=torch.Tensor,
-                description="CLIP pooled negative prompt embedding.",
-            ),
             OutputParam("text_rope_pos", type_hint=torch.Tensor, description="RoPE positions of the prompt tokens."),
-            OutputParam(
-                "negative_text_rope_pos",
-                type_hint=torch.Tensor,
-                description="RoPE positions of the negative prompt tokens.",
-            ),
             OutputParam("visual_rope_pos", type_hint=list, description="Per-axis RoPE positions of a chunk."),
             OutputParam(
                 "reference_rope_pos", type_hint=list, description="Per-axis RoPE positions of the reference frame."
@@ -172,32 +155,19 @@ class KandinskyS2VPrepareStep(ModularPipelineBlocks):
         ]
 
     @staticmethod
-    def check_inputs(components, block_state):
-        needed = sum(components.transformer.config.frame_buckets)
-        if block_state.num_latent_frames < needed:
+    def check_inputs(num_latent_frames: int, frame_buckets: list[int]):
+        if num_latent_frames < sum(frame_buckets):
             raise ValueError(
-                f"`num_latent_frames` must be >= {needed}, the FramePack memory window "
-                f"sum(frame_buckets), got {block_state.num_latent_frames}"
-            )
-
-    @staticmethod
-    def prepare_negative_embeds(block_state, dtype: torch.dtype, device: torch.device) -> None:
-        block_state.negative_text_rope_pos = None
-        if (block_state.negative_prompt_embeds is None) != (block_state.negative_pooled_prompt_embeds is None):
-            raise ValueError("`negative_prompt_embeds` and `negative_pooled_prompt_embeds` must be passed together.")
-        if block_state.negative_prompt_embeds is not None:
-            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.to(dtype)
-            block_state.negative_pooled_prompt_embeds = block_state.negative_pooled_prompt_embeds.to(dtype)
-            block_state.negative_text_rope_pos = torch.arange(
-                block_state.negative_prompt_embeds.shape[0], device=device
+                f"`num_latent_frames` must be >= {sum(frame_buckets)}, the FramePack memory window "
+                f"sum(frame_buckets), got {num_latent_frames}"
             )
 
     @torch.no_grad()
     def __call__(self, components: KandinskyS2VModularPipeline, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        self.check_inputs(components, block_state)
-        device = components._execution_device
         config = components.transformer.config
+        self.check_inputs(block_state.num_latent_frames, config.frame_buckets)
+        device = components._execution_device
         dtype = components.transformer.dtype
         patch_size = config.patch_size
 
@@ -211,7 +181,6 @@ class KandinskyS2VPrepareStep(ModularPipelineBlocks):
         block_state.prompt_embeds = block_state.prompt_embeds.to(dtype)
         block_state.pooled_prompt_embeds = block_state.pooled_prompt_embeds.to(dtype)
         block_state.text_rope_pos = torch.arange(block_state.prompt_embeds.shape[0], device=device)
-        self.prepare_negative_embeds(block_state, dtype, device)
 
         block_state.audio_chunks = split_audio_embeds(block_state.audio_embeds.to(dtype), block_state.num_chunks)
 
@@ -233,64 +202,65 @@ class KandinskyS2VPrepareStep(ModularPipelineBlocks):
         return components, state
 
 
-# auto_docstring
-class KandinskyS2VDistilledPrepareStep(KandinskyS2VPrepareStep):
-    """
-    Prepare step that crops the reference latent to whole patches, casts the conditions to the transformer's dtype,
-    splits the speech features evenly over the chunks, builds the RoPE positions and the empty FramePack memory the
-    first chunk starts from.
+class KandinskyS2VPrepareNegativeStep(ModularPipelineBlocks):
+    model_name = "kandinsky-s2v"
 
-      Components:
-          transformer (`KandinskyS2VTransformer3DModel`)
+    @property
+    def description(self) -> str:
+        return (
+            "Prepare step for the unconditional pass of the guidance: casts the negative prompt embeddings to the "
+            "transformer's dtype and builds their RoPE positions. Without a negative prompt it passes nothing on."
+        )
 
-      Inputs:
-          reference_latents (`Tensor`):
-              Scaled VAE latent of the reference frame, from the VAE encoder step.
-          audio_embeds (`Tensor`):
-              Audio-tower features of the speech track, from the text encoder step.
-          num_chunks (`int`):
-              Number of chunks to generate.
-          num_latent_frames (`int`, *optional*, defaults to 32):
-              Latent frames per chunk; 32 gives 125 frames (5 s at 25 fps).
-          prompt_embeds (`Tensor`):
-              text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          pooled_prompt_embeds (`Tensor`):
-              CLIP pooled prompt embedding.
-
-      Outputs:
-          reference_hidden_states (`Tensor`):
-              Reference latent, cropped and cast.
-          latent_height (`int`):
-              Height of the latents.
-          latent_width (`int`):
-              Width of the latents.
-          audio_chunks (`list`):
-              Speech features of each chunk.
-          prompt_embeds (`Tensor`):
-              The prompt embeddings.
-          pooled_prompt_embeds (`Tensor`):
-              CLIP pooled prompt embedding.
-          text_rope_pos (`Tensor`):
-              RoPE positions of the prompt tokens.
-          visual_rope_pos (`list`):
-              Per-axis RoPE positions of a chunk.
-          reference_rope_pos (`list`):
-              Per-axis RoPE positions of the reference frame.
-          memory (`list`):
-              FramePack memory in [1x, 2x, 4x] order.
-    """
-
-    model_name = "kandinsky-s2v-distilled"
+    @property
+    def expected_components(self) -> list[ComponentSpec]:
+        return [ComponentSpec("transformer", KandinskyS2VTransformer3DModel)]
 
     @property
     def inputs(self) -> list[InputParam]:
-        return [param for param in super().inputs if not param.name.startswith("negative_")]
+        return [
+            InputParam.template("negative_prompt_embeds"),
+            InputParam(
+                "negative_pooled_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="CLIP pooled negative prompt embedding.",
+            ),
+        ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
-        return [param for param in super().intermediate_outputs if not param.name.startswith("negative_")]
+        return [
+            OutputParam.template("negative_prompt_embeds"),
+            OutputParam(
+                "negative_pooled_prompt_embeds",
+                type_hint=torch.Tensor,
+                description="CLIP pooled negative prompt embedding.",
+            ),
+            OutputParam(
+                "negative_text_rope_pos",
+                type_hint=torch.Tensor,
+                description="RoPE positions of the negative prompt tokens.",
+            ),
+        ]
 
     @staticmethod
-    def prepare_negative_embeds(block_state, dtype: torch.dtype, device: torch.device) -> None:
-        # No guidance on the distilled checkpoints, so there are no negative embeddings to prepare.
-        pass
+    def check_inputs(negative_prompt_embeds: torch.Tensor | None, negative_pooled_prompt_embeds: torch.Tensor | None):
+        if (negative_prompt_embeds is None) != (negative_pooled_prompt_embeds is None):
+            raise ValueError("`negative_prompt_embeds` and `negative_pooled_prompt_embeds` must be passed together.")
+
+    @torch.no_grad()
+    def __call__(self, components: KandinskyS2VModularPipeline, state: PipelineState) -> PipelineState:
+        block_state = self.get_block_state(state)
+        self.check_inputs(block_state.negative_prompt_embeds, block_state.negative_pooled_prompt_embeds)
+        dtype = components.transformer.dtype
+
+        block_state.negative_text_rope_pos = None
+        if block_state.negative_prompt_embeds is not None:
+            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.to(dtype)
+            block_state.negative_pooled_prompt_embeds = block_state.negative_pooled_prompt_embeds.to(dtype)
+            block_state.negative_text_rope_pos = torch.arange(
+                block_state.negative_prompt_embeds.shape[0], device=components._execution_device
+            )
+
+        self.set_block_state(state, block_state)
+        return components, state
