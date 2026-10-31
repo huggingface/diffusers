@@ -48,6 +48,7 @@ if is_torch_available():
             "ErnieImageLoraLoaderMixin",
             "CosmosLoraLoaderMixin",
             "MiniMaxH3LoraLoaderMixin",
+            "PikaH3FlexLoraLoaderMixin",
         ]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
         _import_structure["ip_adapter"] = [
@@ -101,6 +102,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
                 Lumina2LoraLoaderMixin,
                 MiniMaxH3LoraLoaderMixin,
                 Mochi1LoraLoaderMixin,
+                PikaH3FlexLoraLoaderMixin,
                 QwenImageLoraLoaderMixin,
                 SanaLoraLoaderMixin,
                 SD3LoraLoaderMixin,
