@@ -345,6 +345,9 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             ValueError: If `num_inference_steps` is larger than `self.config.num_train_timesteps`.
         """
 
+        if num_inference_steps <= 0:
+            raise ValueError("num_inference_steps must be > 0")
+
         if num_inference_steps > self.config.num_train_timesteps:
             raise ValueError(
                 f"`num_inference_steps`: {num_inference_steps} cannot be larger than `self.config.train_timesteps`:"
