@@ -93,17 +93,18 @@ class FluxLoopDenoiser(ModularPipelineBlocks):
     def __call__(
         self, components: FluxModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
     ) -> tuple[FluxModularPipeline, BlockState]:
-        noise_pred = components.transformer(
-            hidden_states=block_state.latents,
-            timestep=t.flatten() / 1000,
-            guidance=block_state.guidance,
-            encoder_hidden_states=block_state.prompt_embeds,
-            pooled_projections=block_state.pooled_prompt_embeds,
-            joint_attention_kwargs=block_state.joint_attention_kwargs,
-            txt_ids=block_state.txt_ids,
-            img_ids=block_state.img_ids,
-            return_dict=False,
-        )[0]
+        with components.transformer.cache_context("inference", timestep=t):
+            noise_pred = components.transformer(
+                hidden_states=block_state.latents,
+                timestep=t.flatten() / 1000,
+                guidance=block_state.guidance,
+                encoder_hidden_states=block_state.prompt_embeds,
+                pooled_projections=block_state.pooled_prompt_embeds,
+                joint_attention_kwargs=block_state.joint_attention_kwargs,
+                txt_ids=block_state.txt_ids,
+                img_ids=block_state.img_ids,
+                return_dict=False,
+            )[0]
         block_state.noise_pred = noise_pred
 
         return components, block_state
@@ -182,17 +183,18 @@ class FluxKontextLoopDenoiser(ModularPipelineBlocks):
             latent_model_input = torch.cat([latent_model_input, image_latents], dim=1)
 
         timestep = t.expand(latents.shape[0]).to(latents.dtype)
-        noise_pred = components.transformer(
-            hidden_states=latent_model_input,
-            timestep=timestep / 1000,
-            guidance=block_state.guidance,
-            encoder_hidden_states=block_state.prompt_embeds,
-            pooled_projections=block_state.pooled_prompt_embeds,
-            joint_attention_kwargs=block_state.joint_attention_kwargs,
-            txt_ids=block_state.txt_ids,
-            img_ids=block_state.img_ids,
-            return_dict=False,
-        )[0]
+        with components.transformer.cache_context("inference", timestep=t):
+            noise_pred = components.transformer(
+                hidden_states=latent_model_input,
+                timestep=timestep / 1000,
+                guidance=block_state.guidance,
+                encoder_hidden_states=block_state.prompt_embeds,
+                pooled_projections=block_state.pooled_prompt_embeds,
+                joint_attention_kwargs=block_state.joint_attention_kwargs,
+                txt_ids=block_state.txt_ids,
+                img_ids=block_state.img_ids,
+                return_dict=False,
+            )[0]
         noise_pred = noise_pred[:, : latents.size(1)]
         block_state.noise_pred = noise_pred
 

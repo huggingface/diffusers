@@ -233,6 +233,7 @@ class Cosmos3LoopDenoiser(ModularPipelineBlocks):
             }
             with components.transformer.cache_context(
                 pass_name,
+                timestep=t,
                 step_index=i,
                 sigma=float(components.scheduler.sigmas[i]),
                 num_inference_steps=components.scheduler.num_inference_steps,
@@ -797,9 +798,11 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
         return [OutputParam("velocity", type_hint=torch.Tensor, description="Predicted (masked) transfer velocity.")]
 
     @staticmethod
-    def _forward(components, static, vision_tokens, vision_timesteps, context_name, step, sigma, num_inference_steps):
+    def _forward(
+        components, static, vision_tokens, vision_timesteps, context_name, step, timestep, sigma, num_inference_steps
+    ):
         with components.transformer.cache_context(
-            context_name, step_index=step, sigma=sigma, num_inference_steps=num_inference_steps
+            context_name, step_index=step, timestep=timestep, sigma=sigma, num_inference_steps=num_inference_steps
         ):
             preds_vision, _, _ = components.transformer(
                 input_ids=static["input_ids"],
@@ -847,6 +850,7 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
             block_state.vision_timesteps,
             "cond",
             step=i,
+            timestep=t,
             sigma=float(components.scheduler.sigmas[i]),
             num_inference_steps=components.scheduler.num_inference_steps,
         )
@@ -860,6 +864,7 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
                 block_state.vision_timesteps,
                 "cond_no_control",
                 step=i,
+                timestep=t,
                 sigma=float(components.scheduler.sigmas[i]),
                 num_inference_steps=components.scheduler.num_inference_steps,
             )
@@ -873,6 +878,7 @@ class Cosmos3TransferLoopDenoiser(ModularPipelineBlocks):
                 block_state.vision_timesteps,
                 "uncond",
                 step=i,
+                timestep=t,
                 sigma=float(components.scheduler.sigmas[i]),
                 num_inference_steps=components.scheduler.num_inference_steps,
             )
