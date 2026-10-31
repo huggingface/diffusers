@@ -13,9 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from dataclasses import replace
+from datetime import timedelta
+
+import pytest
 import torch
+import torch.distributed as dist
+import torch.multiprocessing as mp
 
 from diffusers import MiniMaxH3Transformer3DModel
+from diffusers.models._modeling_parallel import ContextParallelConfig, gather_size_by_comm
+from diffusers.models.attention_dispatch import dispatch_attention_fn
 from diffusers.models.transformers.transformer_minimax_h3 import MiniMaxH3TransformerOutput
 from diffusers.utils.torch_utils import randn_tensor
 
@@ -34,6 +42,77 @@ from ..testing_utils import (
 
 
 enable_full_determinism()
+
+
+def _sequence_plan_worker(rank, port):
+    torch.set_num_threads(1)
+    dist.init_process_group(
+        "cpu:gloo", init_method=f"tcp://127.0.0.1:{port}", rank=rank, world_size=2, timeout=timedelta(seconds=60)
+    )
+    try:
+        fixture = MiniMaxH3TransformerTesterConfig()
+        torch.manual_seed(7)
+        model = MiniMaxH3Transformer3DModel(**fixture.get_init_dict()).eval()
+        model.set_attention_backend("native")
+        mesh = dist.device_mesh.init_device_mesh("cpu", (1, 2), mesh_dim_names=("ring", "ulysses"))
+        model.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2, ulysses_anything=True, mesh=mesh))
+        original_config = model._parallel_config
+        with torch.no_grad():
+            for video_tokens in (8, 10, 8):
+                inputs = fixture.get_dummy_inputs(num_video_tokens=video_tokens, batch_size=1)
+                with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as baseline_profile:
+                    expected = model(**inputs, return_dict=False)
+                with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU]) as planned_profile:
+                    actual = model(**inputs, attention_kwargs={"reuse_ulysses_metadata": True}, return_dict=False)
+                for output, reference in zip(actual, expected):
+                    torch.testing.assert_close(output, reference, rtol=0, atol=0)
+                counts = [
+                    sum(event.count for event in profile.key_averages() if "allgather" in event.key.lower())
+                    for profile in (baseline_profile, planned_profile)
+                ]
+                assert counts[1] < counts[0], counts
+                assert model._parallel_config is original_config
+                assert original_config._ulysses_sequence_lengths is None
+
+            # Rank zero keeps five rows across 9 -> 10 -> 9, while rank one's length changes.
+            for sequence_length in (9, 10, 9):
+                lengths = gather_size_by_comm(sequence_length, mesh["ulysses"].get_group())
+                assert lengths == [sequence_length, sequence_length]
+                plan = replace(
+                    original_config,
+                    _ulysses_sequence_lengths=(sequence_length // 2 + sequence_length % 2, sequence_length // 2),
+                )
+                torch.manual_seed(5)
+                q, k, v = (torch.randn(1, sequence_length, 2, 16) for _ in range(3))
+                q, k, v = (x.tensor_split(2, dim=1)[rank].contiguous() for x in (q, k, v))
+                expected = dispatch_attention_fn(q, k, v, backend="native", parallel_config=original_config)
+                actual = dispatch_attention_fn(q, k, v, backend="native", parallel_config=plan)
+                torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+            with pytest.raises(ValueError, match="agree on the packed sequence length"):
+                model(
+                    **fixture.get_dummy_inputs(num_video_tokens=8 + 2 * rank, batch_size=1),
+                    attention_kwargs={"reuse_ulysses_metadata": True},
+                )
+            assert model._parallel_config is original_config
+            assert original_config._ulysses_sequence_lengths is None
+    finally:
+        dist.destroy_process_group()
+
+
+class TestMiniMaxH3SequencePlan:
+    def test_forward_plan_reuses_collectives_without_leaking_between_requests(self):
+        if torch_device != "cpu" or not dist.is_gloo_available():
+            pytest.skip("This focused distributed test uses CPU Gloo.")
+        from ..testing_utils.parallelism import _find_free_port
+
+        mp.spawn(_sequence_plan_worker, args=(_find_free_port(),), nprocs=2, join=True)
+
+    def test_metadata_reuse_requires_inference_context_parallelism(self):
+        fixture = MiniMaxH3TransformerTesterConfig()
+        model = MiniMaxH3Transformer3DModel(**fixture.get_init_dict())
+        with pytest.raises(ValueError, match="inference with Ulysses Anything"):
+            model(**fixture.get_dummy_inputs(), attention_kwargs={"reuse_ulysses_metadata": True})
 
 
 # The packed layout the dummy inputs describe: a text block, then the audio rows, then the target video rows, which
