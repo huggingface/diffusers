@@ -681,7 +681,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
             masked_image_latents = torch.cat(new_mask_pixel_values, dim=0)
             masked_image_latents = masked_image_latents * self.vae.config.scaling_factor
 
-            # aligning device to prevent device errors when concating it with the latent model input
+            # aligning device to prevent device errors when concatenating it with the latent model input
             masked_image_latents = masked_image_latents.to(device=device, dtype=dtype)
         else:
             masked_image_latents = None
