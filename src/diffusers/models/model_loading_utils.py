@@ -407,12 +407,7 @@ def _load_shard_file_tp(
     from ..hooks.tensor_parallel import _local_shard
 
     tp_mesh = tp_config._mesh
-    # `TensorParallelConfig._device` is derived from the default accelerator, which is not meaningful on
-    # Neuron; resolve it the way the Neuron pre-shard backend does.
-    if tp_mesh.device_type == "neuron":
-        device = torch.neuron.current_device()
-    else:
-        device = tp_config._device
+    device = tp_config._device
 
     mismatched_keys = []
 

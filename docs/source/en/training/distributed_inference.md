@@ -495,7 +495,7 @@ torchrun --nproc-per-node 4 tensor_parallel_flux.py
 >
 > Combining tensor parallelism with quantization, offloading, or LoRA adapters isn't supported yet either, so those raise however the model is sharded.
 >
-> To shard a model that is already in memory, call [`~ModelMixin.enable_parallelism`] with the same config instead — that loads everything first and reshards it, so it costs full checkpoint memory on every rank.
+> To shard a model that is already in memory, call [`~ModelMixin.enable_parallelism`] with the same config instead — that loads everything first and reshards it, so it costs full checkpoint memory on every rank. Each rank keeps its own slice of its own copy, so every rank must hold the same weights.
 
 Saving a tensor-parallel model isn't supported yet, and [`~ModelMixin.save_pretrained`] raises on one. Save the model before sharding it.
 
@@ -511,6 +511,7 @@ Each key may contain **at most one `*`**, and the prefix before it must resolve 
 |---|---|---|---|
 | `"colwise"` | output features (`weight` dim 0) | computes a slice of the output | `to_q`, `to_k`, `to_v`, FFN in-projection |
 | `"rowwise"` | input features (`weight` dim 1) | computes a partial sum | `to_out.0`, FFN out-projection |
+| `"rowwise_split_input"` | input features (`weight` dim 1) | slices its replicated input, then computes a partial sum | a standalone projection that reads a replicated activation and must output the full width, e.g. an AdaLN modulation projection off the timestep embedding |
 
 Always pair them in that order. A `"colwise"` projection leaves its output sharded, the following `"rowwise"` projection consumes that shard directly, and a single `AllReduce` at the block boundary reconstructs the result. Sharding the pair any other way forces a gather in the middle and communicates far more.
 
