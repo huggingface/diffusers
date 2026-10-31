@@ -42,7 +42,6 @@ from ..utils import (
     is_accelerate_version,
     is_gguf_available,
     is_torch_available,
-    is_torch_version,
     logging,
 )
 from ..utils.distributed_utils import is_torch_dist_rank_zero
@@ -173,17 +172,15 @@ def load_state_dict(
             return load_gguf_checkpoint(checkpoint_file)
         else:
             extra_args = {}
-            weights_only_kwarg = {"weights_only": True} if is_torch_version(">=", "1.13") else {}
             # mmap can only be used with files serialized with zipfile-based format.
             if (
                 isinstance(checkpoint_file, str)
                 and map_location != "meta"
-                and is_torch_version(">=", "2.1.0")
                 and is_zipfile(checkpoint_file)
                 and not disable_mmap
             ):
                 extra_args = {"mmap": True}
-            return torch.load(checkpoint_file, map_location=map_location, **weights_only_kwarg, **extra_args)
+            return torch.load(checkpoint_file, map_location=map_location, weights_only=True, **extra_args)
     except Exception as e:
         try:
             with open(checkpoint_file) as f:
@@ -549,8 +546,6 @@ def _load_state_dict_into_model(
     def load(module: torch.nn.Module, prefix: str = "", assign_to_params_buffers: bool = False):
         local_metadata = {}
         local_metadata["assign_to_params_buffers"] = assign_to_params_buffers
-        if assign_to_params_buffers and not is_torch_version(">=", "2.1"):
-            logger.info("You need to have torch>=2.1 in order to load the model with assign_to_params_buffers=True")
         args = (state_dict, prefix, local_metadata, True, [], [], error_msgs)
         module._load_from_state_dict(*args)
 

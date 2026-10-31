@@ -49,7 +49,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import get_module_execution_device, is_compiled_module, is_torch_version, randn_tensor
+from ...utils.torch_utils import get_module_execution_device, is_compiled_module, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 from .pag_utils import PAGMixin
@@ -1485,16 +1485,11 @@ class StableDiffusionXLControlNetPAGPipeline(
 
         is_unet_compiled = is_compiled_module(self.unet)
         is_controlnet_compiled = is_compiled_module(self.controlnet)
-        is_torch_higher_equal_2_1 = is_torch_version(">=", "2.1")
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # Relevant thread:
                 # https://dev-discuss.pytorch.org/t/cudagraphs-in-pytorch-2-0/1428
-                if (
-                    torch.cuda.is_available()
-                    and (is_unet_compiled and is_controlnet_compiled)
-                    and is_torch_higher_equal_2_1
-                ):
+                if torch.cuda.is_available() and (is_unet_compiled and is_controlnet_compiled):
                     torch._inductor.cudagraph_mark_step_begin()
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * (prompt_embeds.shape[0] // latents.shape[0]))

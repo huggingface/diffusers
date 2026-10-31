@@ -19,7 +19,7 @@ from ..models.embeddings import (
 )
 from ..models.model_loading_utils import load_model_dict_into_meta
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
-from ..utils import is_accelerate_available, is_torch_version, logging
+from ..utils import is_accelerate_available, logging
 from ..utils.torch_utils import empty_device_cache
 
 
@@ -47,12 +47,6 @@ class FluxTransformer2DLoadersMixin:
                     " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
                     " install accelerate\n```\n."
                 )
-
-        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `low_cpu_mem_usage=False`."
-            )
 
         updated_state_dict = {}
         image_projection = None
@@ -101,12 +95,6 @@ class FluxTransformer2DLoadersMixin:
                     " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
                     " install accelerate\n```\n."
                 )
-
-        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `low_cpu_mem_usage=False`."
-            )
 
         # set ip-adapter cross-attention processors & load state_dict
         attn_procs = {}

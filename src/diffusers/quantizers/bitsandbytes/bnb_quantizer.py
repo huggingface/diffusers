@@ -27,9 +27,7 @@ if TYPE_CHECKING:
 
 from ...utils import (
     is_accelerate_available,
-    is_accelerate_version,
     is_bitsandbytes_available,
-    is_bitsandbytes_version,
     is_torch_available,
     logging,
 )
@@ -63,11 +61,11 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
     def validate_environment(self, *args, **kwargs):
         if not (torch.cuda.is_available() or torch.xpu.is_available() or torch.mps.is_available()):
             raise RuntimeError("No GPU found. A GPU is needed for quantization.")
-        if not is_accelerate_available() or is_accelerate_version("<", "0.26.0"):
+        if not is_accelerate_available():
             raise ImportError(
                 "Using `bitsandbytes` 4-bit quantization requires Accelerate: `pip install 'accelerate>=0.26.0'`"
             )
-        if not is_bitsandbytes_available() or is_bitsandbytes_version("<", "0.43.3"):
+        if not is_bitsandbytes_available():
             raise ImportError(
                 "Using `bitsandbytes` 4-bit quantization requires the latest version of bitsandbytes: `pip install -U bitsandbytes`"
             )
@@ -381,11 +379,11 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
     def validate_environment(self, *args, **kwargs):
         if not (torch.cuda.is_available() or torch.xpu.is_available()):
             raise RuntimeError("No GPU found. A GPU is needed for quantization.")
-        if not is_accelerate_available() or is_accelerate_version("<", "0.26.0"):
+        if not is_accelerate_available():
             raise ImportError(
                 "Using `bitsandbytes` 8-bit quantization requires Accelerate: `pip install 'accelerate>=0.26.0'`"
             )
-        if not is_bitsandbytes_available() or is_bitsandbytes_version("<", "0.43.3"):
+        if not is_bitsandbytes_available():
             raise ImportError(
                 "Using `bitsandbytes` 8-bit quantization requires the latest version of bitsandbytes: `pip install -U bitsandbytes`"
             )

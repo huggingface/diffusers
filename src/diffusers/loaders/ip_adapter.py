@@ -27,7 +27,6 @@ from ..utils import (
     _get_model_file,
     _is_valid_type,
     is_accelerate_available,
-    is_torch_version,
     is_transformers_available,
     is_transformers_version,
     logging,
@@ -150,12 +149,6 @@ class IPAdapterMixin:
                 " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
                 " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
                 " install accelerate\n```\n."
-            )
-
-        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `low_cpu_mem_usage=False`."
             )
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
@@ -451,12 +444,6 @@ class ModularIPAdapterMixin:
                 " install accelerate\n```\n."
             )
 
-        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `low_cpu_mem_usage=False`."
-            )
-
         user_agent = {
             "file_type": "attn_procs_weights",
             "framework": "pytorch",
@@ -709,12 +696,6 @@ class FluxIPAdapterMixin:
                 " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
                 " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
                 " install accelerate\n```\n."
-            )
-
-        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `low_cpu_mem_usage=False`."
             )
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
@@ -994,12 +975,6 @@ class SD3IPAdapterMixin:
                 " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
                 " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
                 " install accelerate\n```\n."
-            )
-
-        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `low_cpu_mem_usage=False`."
             )
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}

@@ -33,7 +33,7 @@ from typing import Any, Callable
 
 from packaging import version
 
-from ..utils import deprecate, is_torch_available, is_torchao_version, logging
+from ..utils import deprecate, is_torch_available, is_torchao_available, logging
 
 
 if is_torch_available():
@@ -619,7 +619,7 @@ class TorchAoConfig(QuantizationConfigMixin):
         self.post_init()
 
     def post_init(self):
-        if is_torchao_version("<", "0.15.0"):
+        if not is_torchao_available():
             raise ValueError("TorchAoConfig requires torchao >= 0.15.0. Please upgrade with `pip install -U torchao`.")
 
         from torchao.quantization.quant_api import AOBaseConfig
@@ -644,7 +644,7 @@ class TorchAoConfig(QuantizationConfigMixin):
     @classmethod
     def from_dict(cls, config_dict, return_unused_kwargs=False, **kwargs):
         """Create configuration from a dictionary."""
-        if not is_torchao_version(">=", "0.15.0"):
+        if not is_torchao_available():
             raise NotImplementedError("TorchAoConfig requires torchao >= 0.15.0 for construction from dict")
         config_dict = config_dict.copy()
         quant_type = config_dict.pop("quant_type")

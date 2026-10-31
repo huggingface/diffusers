@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from ...utils import get_module_from_name, is_accelerate_available, is_accelerate_version, is_torch_available
+from ...utils import get_module_from_name, is_accelerate_available, is_torch_available
 from ..base import DiffusersQuantizer
 
 
@@ -47,7 +47,7 @@ class BFLQuantizer(DiffusersQuantizer):
         self.keep_in_fp32_modules = []
 
     def validate_environment(self, *args, **kwargs):
-        if not is_accelerate_available() or is_accelerate_version("<", "0.26.0"):
+        if not is_accelerate_available():
             raise ImportError(
                 "Loading BFL quantized checkpoints requires `accelerate` installed in your environment: `pip install 'accelerate>=0.26.0'`"
             )

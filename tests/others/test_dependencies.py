@@ -85,3 +85,24 @@ class TestDependencies:
 
         if failures:
             pytest.fail("Unguarded optional-dependency imports found:\n" + "\n".join(failures))
+
+    def test_min_version_deps_are_in_deps_table(self):
+        from diffusers.dependency_versions_table import deps
+        from diffusers.utils.import_utils import _PKG_TO_DEPS_KEY
+
+        for pkg_name, deps_key in _PKG_TO_DEPS_KEY.items():
+            assert deps_key in deps, f"{deps_key} (for {pkg_name}) is not in the deps table!"
+
+    def test_package_below_min_version_is_unavailable(self, monkeypatch):
+        from diffusers.utils import import_utils
+
+        monkeypatch.setitem(import_utils.deps, "gguf", "gguf>=0.10.0")
+        monkeypatch.setattr(import_utils.importlib.util, "find_spec", lambda name: object())
+        monkeypatch.setattr(import_utils.importlib_metadata, "version", lambda name: "0.9.0")
+        assert import_utils._is_package_available("gguf") == (False, "0.9.0")
+
+        monkeypatch.setattr(import_utils.importlib_metadata, "version", lambda name: "0.10.0")
+        assert import_utils._is_package_available("gguf") == (True, "0.10.0")
+
+        monkeypatch.setattr(import_utils.importlib_metadata, "version", lambda name: "0.10.0a0+abc")
+        assert import_utils._is_package_available("gguf") == (True, "0.10.0a0+abc")
