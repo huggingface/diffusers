@@ -517,7 +517,12 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
 
     @classmethod
     def from_transformer(cls, controlnet, transformer):
+        # Scalar value — immutable, direct assignment is safe
         controlnet.t_scale = transformer.t_scale
+
+        # Shared modules from transformer — these are intentionally shared references.
+        # They should remain frozen during controlnet training; only control_* modules
+        # are meant to be trained.
         controlnet.t_embedder = transformer.t_embedder
         controlnet.all_x_embedder = transformer.all_x_embedder
         controlnet.cap_embedder = transformer.cap_embedder
@@ -526,6 +531,18 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         controlnet.context_refiner = transformer.context_refiner
         controlnet.x_pad_token = transformer.x_pad_token
         controlnet.cap_pad_token = transformer.cap_pad_token
+
+        # Freeze all shared modules/parameters to prevent accidental training.
+        # Only control_* modules (control_layers, control_all_x_embedder,
+        # control_noise_refiner) should be trained.
+        controlnet.t_embedder.requires_grad_(False)
+        controlnet.all_x_embedder.requires_grad_(False)
+        controlnet.cap_embedder.requires_grad_(False)
+        controlnet.noise_refiner.requires_grad_(False)
+        controlnet.context_refiner.requires_grad_(False)
+        controlnet.x_pad_token.requires_grad_(False)
+        controlnet.cap_pad_token.requires_grad_(False)
+
         return controlnet
 
     @staticmethod
