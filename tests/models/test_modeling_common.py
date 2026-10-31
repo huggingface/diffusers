@@ -18,14 +18,17 @@ import os
 import tempfile
 import unittest.mock as mock
 import uuid
+from types import SimpleNamespace
 
 import pytest
 import requests_mock
 import torch
 from huggingface_hub import ModelCard, delete_repo, snapshot_download, try_to_load_from_cache
 from huggingface_hub.utils import HfHubHTTPError, is_jinja_available
+from safetensors.torch import save_file
 
 from diffusers.models import FluxTransformer2DModel, SD3Transformer2DModel, UNet2DConditionModel
+from diffusers.models.model_loading_utils import _load_shard_file_tp
 
 from ..others.test_utils import TOKEN, USER, is_staging_test
 from ..testing_utils import (
@@ -36,6 +39,34 @@ from ..testing_utils import (
 
 
 class TestModelUtils:
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("keep_in_fp32_modules", [None, ["keep"]])
+    def test_tensor_parallel_loading_preserves_dtype(self, tmp_path, dtype, keep_in_fp32_modules):
+        with torch.device("meta"):
+            model = torch.nn.ModuleDict({name: torch.nn.Linear(2, 2, dtype=dtype) for name in ("keep", "other")})
+        state_dict = {
+            name: torch.arange(param.numel()).reshape(param.shape) / 10 for name, param in model.state_dict().items()
+        }
+        checkpoint = tmp_path / "model.safetensors"
+        save_file(state_dict, checkpoint)
+
+        tp_config = SimpleNamespace(_device=torch.device("cpu"), _mesh=SimpleNamespace(device_type="cpu"))
+        _load_shard_file_tp(
+            checkpoint,
+            model,
+            model.state_dict(),
+            tp_shard_specs={},
+            tp_config=tp_config,
+            dtype=dtype,
+            keep_in_fp32_modules=keep_in_fp32_modules,
+            unexpected_keys=[],
+        )
+
+        for name, param in model.named_parameters():
+            expected_dtype = torch.float32 if keep_in_fp32_modules and name.startswith("keep.") else dtype
+            assert param.dtype == expected_dtype
+            torch.testing.assert_close(param, state_dict[name].to(expected_dtype), rtol=0, atol=0)
+
     def test_missing_key_loading_warning_message(self):
         logger = logging.getLogger("diffusers.models.modeling_utils")
         with CaptureLogger(logger) as cap_logger:
