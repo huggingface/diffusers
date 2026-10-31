@@ -87,7 +87,7 @@ class TestStableDiffusion3ModularPipelineLoading(
         base_pipe = self.get_pipeline().to(torch_device)
         pipes.append(base_pipe)
 
-        base_pipe.save_pretrained(str(tmp_path))
+        base_pipe.save_pretrained(str(tmp_path), overwrite_modular_index=True)
         pipe = self.pipeline_class.from_pretrained(tmp_path).to(torch_device)
         pipe.load_components(dtype=torch.float32)
         pipe.to(torch_device)
@@ -103,7 +103,7 @@ class TestStableDiffusion3ModularPipelineLoading(
 
     def test_load_expected_components_from_save_pretrained(self, tmp_path):
         base_pipe = self.get_pipeline()
-        base_pipe.save_pretrained(str(tmp_path))
+        base_pipe.save_pretrained(str(tmp_path), overwrite_modular_index=True)
 
         pipe = self.pipeline_class.from_pretrained(tmp_path)
         pipe.load_components(dtype=torch.float32)
@@ -193,7 +193,7 @@ class TestStableDiffusion3Img2ImgModularPipelineLoading(
         base_pipe = self.get_pipeline().to(torch_device)
         pipes.append(base_pipe)
 
-        base_pipe.save_pretrained(str(tmp_path))
+        base_pipe.save_pretrained(str(tmp_path), overwrite_modular_index=True)
         pipe = self.pipeline_class.from_pretrained(tmp_path).to(torch_device)
         pipe.load_components(dtype=torch.float32)
         pipe.to(torch_device)
@@ -210,7 +210,7 @@ class TestStableDiffusion3Img2ImgModularPipelineLoading(
 
     def test_load_expected_components_from_save_pretrained(self, tmp_path):
         base_pipe = self.get_pipeline()
-        base_pipe.save_pretrained(str(tmp_path))
+        base_pipe.save_pretrained(str(tmp_path), overwrite_modular_index=True)
 
         pipe = self.pipeline_class.from_pretrained(tmp_path)
         pipe.load_components(dtype=torch.float32)
