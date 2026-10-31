@@ -23,7 +23,6 @@ from PIL import Image
 from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
 from diffusers import (
-    AutoPipelineForImage2Image,
     Kandinsky3Img2ImgPipeline,
     Kandinsky3UNet,
     VQModel,
@@ -192,6 +191,8 @@ class TestKandinsky3Img2ImgPipelineIntegration:
         backend_empty_cache(torch_device)
 
     def test_kandinskyV3_img2img(self):
+        from diffusers import AutoPipelineForImage2Image
+
         pipe = AutoPipelineForImage2Image.from_pretrained(
             "kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16
         )
