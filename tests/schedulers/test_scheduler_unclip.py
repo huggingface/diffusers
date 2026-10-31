@@ -27,6 +27,22 @@ class UnCLIPSchedulerTest(SchedulerCommonTest):
         for timesteps in [1, 5, 100, 1000]:
             self.check_over_configs(num_train_timesteps=timesteps)
 
+    def test_set_timesteps_at_least_two_steps(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        # 0 and 1 steps have no valid karlo-style schedule (the step ratio divides by
+        # num_inference_steps - 1) and must fail with a clear error instead of a ZeroDivisionError
+        for num_inference_steps in [0, 1]:
+            with self.assertRaises(ValueError) as context:
+                scheduler.set_timesteps(num_inference_steps)
+            self.assertIn("num_inference_steps", str(context.exception))
+
+        # 2 steps is the lowest valid input and spans the full training schedule
+        scheduler.set_timesteps(2)
+        self.assertEqual(scheduler.timesteps.tolist(), [999, 0])
+
     def test_variance_type(self):
         for variance in ["fixed_small_log", "learned_range"]:
             self.check_over_configs(variance_type=variance)
