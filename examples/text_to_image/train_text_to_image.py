@@ -1041,8 +1041,7 @@ def main():
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
-            # Checks if the accelerator has performed an optimization step behind the scenes
-            if accelerator.sync_gradients:
+            if accelerator.sync_gradients and not accelerator.optimizer_step_was_skipped:
                 if args.use_ema:
                     if args.offload_ema:
                         ema_unet.to(device="cuda", non_blocking=True)
@@ -1052,7 +1051,6 @@ def main():
                 progress_bar.update(1)
                 global_step += 1
                 accelerator.log({"train_loss": train_loss}, step=global_step)
-                train_loss = 0.0
 
                 if global_step % args.checkpointing_steps == 0:
                     if accelerator.is_main_process:
@@ -1079,6 +1077,9 @@ def main():
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
+
+            if accelerator.sync_gradients:
+                train_loss = 0.0
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
