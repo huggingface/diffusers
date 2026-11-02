@@ -65,6 +65,7 @@ jobs:
   torch_pipelines_cuda_tests:
     permissions:
       contents: read
+      id-token: write
     name: Torch Pipelines CUDA Tests
     needs: setup_torch_cuda_pipeline_matrix
     strategy:
@@ -96,7 +97,7 @@ jobs:
           diffusers-cli env
       - name: Slow PyTorch CUDA checkpoint tests on Ubuntu
         env:
-          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+          HF_OIDC_RESOURCE: Diffusers-CI-Bot
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
@@ -118,6 +119,7 @@ jobs:
   torch_cuda_tests:
     permissions:
       contents: read
+      id-token: write
     name: Torch CUDA Tests
     runs-on:
       group: aws-g4dn-2xlarge
@@ -152,7 +154,7 @@ jobs:
 
     - name: Run PyTorch CUDA tests
       env:
-        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+        HF_OIDC_RESOURCE: Diffusers-CI-Bot
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
@@ -177,6 +179,7 @@ jobs:
   torch_minimum_version_cuda_tests:
     permissions:
       contents: read
+      id-token: write
     name: Torch Minimum Version CUDA Tests
     runs-on:
       group: aws-g4dn-2xlarge
@@ -206,7 +209,7 @@ jobs:
 
       - name: Run PyTorch CUDA tests
         env:
-          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+          HF_OIDC_RESOURCE: Diffusers-CI-Bot
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
@@ -235,6 +238,7 @@ jobs:
   run_torch_compile_tests:
     permissions:
       contents: read
+      id-token: write
     name: PyTorch Compile CUDA tests
 
     runs-on:
@@ -263,7 +267,7 @@ jobs:
         diffusers-cli env
     - name: Run torch compile tests on GPU
       env:
-        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+        HF_OIDC_RESOURCE: Diffusers-CI-Bot
       run: |
         pytest -n 1 --max-worker-restart=0 --dist=loadfile -m compile --make-reports=tests_torch_compile_cuda tests/
     - name: Failure short reports
@@ -280,6 +284,7 @@ jobs:
   run_examples_tests:
     permissions:
       contents: read
+      id-token: write
     name: Examples PyTorch CUDA tests on Ubuntu
 
     runs-on:
@@ -311,7 +316,7 @@ jobs:
 
     - name: Run example tests on GPU
       env:
-        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+        HF_OIDC_RESOURCE: Diffusers-CI-Bot
       run: |
         uv pip install ".[training]"
         pytest -n 1 --max-worker-restart=0 --dist=loadfile --make-reports=examples_torch_cuda examples/

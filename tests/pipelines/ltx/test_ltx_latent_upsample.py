@@ -16,7 +16,7 @@ import pytest
 import torch
 
 from diffusers import AutoencoderKLLTXVideo, LTXLatentUpsamplePipeline
-from diffusers.pipelines.ltx.modeling_latent_upsampler import LTXLatentUpsamplerModel
+from diffusers.models.latent_upscaler import LTXLatentUpsamplerModel
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
