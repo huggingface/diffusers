@@ -271,6 +271,18 @@ class TestRandnTensor:
         assert "moved to" in cuda_out, f"Non-MPS target should still emit the CPU-fallback info log, got: {cuda_out}"
 
 
+class TestApplyForwardHook:
+    def test_preserves_wrapped_function_metadata(self):
+        from diffusers.utils.accelerate_utils import apply_forward_hook
+
+        @apply_forward_hook
+        def example(self):
+            """Example method docstring."""
+
+        assert example.__name__ == "example"
+        assert example.__doc__ == "Example method docstring."
+
+
 class TestTorchDeviceBackend:
     """Tests for :class:`diffusers.utils.torch_utils.TorchDeviceBackend` on the CPU backend."""
 

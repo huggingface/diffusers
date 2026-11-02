@@ -68,6 +68,39 @@ def _maybe_remap_transformers_class(class_name: str) -> str | None:
     return None
 
 
+# Model classes that moved from a pipeline folder to `diffusers.models`. Existing `model_index.json` files still
+# reference them as `[<pipeline folder>, <class name>]`, so they are resolved to the top-level `diffusers` export
+# instead of the deprecated alias left in the pipeline folder.
+_RELOCATED_PIPELINE_CLASSES = {
+    ("ace_step", "AceStepConditionEncoder"),
+    ("audioldm2", "AudioLDM2ProjectionModel"),
+    ("flux", "ReduxImageEncoder"),
+    ("ltx", "LTXLatentUpsamplerModel"),
+    ("ltx2", "LTX2LatentUpsamplerModel"),
+    ("ltx2", "LTX2TextConnectors"),
+    ("stable_audio", "StableAudioProjectionModel"),
+    ("stable_audio_3", "StableAudio3DurationEmbedder"),
+    ("stable_diffusion", "CLIPImageProjection"),
+}
+
+
+def _maybe_remap_relocated_pipeline_class(library_name: str, class_name: str) -> str | None:
+    """
+    Check if a class listed under a pipeline folder has moved to `diffusers.models`.
+
+    Args:
+        library_name: The library or pipeline folder the class is listed under
+        class_name: The name of the class to check
+
+    Returns:
+        The library to load the class from if it has moved, None otherwise
+    """
+    if (library_name, class_name) in _RELOCATED_PIPELINE_CLASSES:
+        return "diffusers"
+
+    return None
+
+
 def deprecate(*args, take_from: dict | Any | None = None, standard_warn=True, stacklevel=2):
     from .. import __version__
 

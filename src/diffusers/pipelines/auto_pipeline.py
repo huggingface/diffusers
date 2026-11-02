@@ -115,6 +115,7 @@ from .qwenimage import (
     QwenImageLayeredPipeline,
     QwenImagePipeline,
 )
+from .qwenimage21 import QwenImage21Pipeline
 from .sana import SanaPipeline
 from .stable_audio import StableAudioPipeline
 from .stable_audio_3 import StableAudio3Pipeline
@@ -193,6 +194,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("cogview4-control", CogView4ControlPipeline),
         ("nucleusmoe-image", NucleusMoEImagePipeline),
         ("qwenimage", QwenImagePipeline),
+        ("qwenimage21", QwenImage21Pipeline),
         ("qwenimage-controlnet", QwenImageControlNetPipeline),
         ("z-image", ZImagePipeline),
         ("z-image-controlnet", ZImageControlNetPipeline),

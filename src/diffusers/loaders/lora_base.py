@@ -777,7 +777,7 @@ class LoraBaseMixin:
 
             for adapter_name, weights in zip(adapter_names, adapter_weights):
                 if isinstance(weights, dict):
-                    component_adapter_weights = weights.pop(component, None)
+                    component_adapter_weights = weights.get(component, None)
                     if component_adapter_weights is not None and component not in invert_list_adapters[adapter_name]:
                         logger.warning(
                             (

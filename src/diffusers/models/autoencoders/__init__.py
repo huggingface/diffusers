@@ -12,6 +12,7 @@ from .autoencoder_kl_hunyuanimage import AutoencoderKLHunyuanImage
 from .autoencoder_kl_hunyuanimage_refiner import AutoencoderKLHunyuanImageRefiner
 from .autoencoder_kl_hunyuanvideo15 import AutoencoderKLHunyuanVideo15
 from .autoencoder_kl_kvae import AutoencoderKLKVAE
+from .autoencoder_kl_kvae_audio import AutoencoderKLKVAEAudio
 from .autoencoder_kl_kvae_video import AutoencoderKLKVAEVideo
 from .autoencoder_kl_ltx import AutoencoderKLLTXVideo
 from .autoencoder_kl_ltx2 import AutoencoderKLLTX2Video
@@ -28,6 +29,7 @@ from .autoencoder_longcat_audio_dit import LongCatAudioDiTVae
 from .autoencoder_mmaudio import MMAudioVAE
 from .autoencoder_oobleck import AutoencoderOobleck
 from .autoencoder_rae import AutoencoderRAE
+from .autoencoder_rfd4_proteina import RFD4ProteinaAutoencoder
 from .autoencoder_same import AutoencoderSAME
 from .autoencoder_tiny import AutoencoderTiny
 from .autoencoder_vidtok import AutoencoderVidTok
