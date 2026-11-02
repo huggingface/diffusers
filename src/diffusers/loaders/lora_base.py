@@ -728,8 +728,14 @@ class LoraBaseMixin:
         pipeline.load_lora_weights(
             "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
         )
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.set_adapters(["cinematic", "pixel"], adapter_weights=[0.5, 0.5])
+        pipeline.load_lora_weights(
+            "troveski/sdxl-lora", weight_name="pytorch_lora_weights.safetensors", adapter_name="illustration"
+        )
+        pipeline.set_adapters(["cinematic", "illustration"], adapter_weights=[0.5, 0.5])
+        pipeline.set_adapters(
+            ["cinematic", "illustration"],
+            adapter_weights=[{"unet": 0.5}, {"unet": 0.8, "text_encoder": 0.6}],
+        )
         ```
         """
         if isinstance(adapter_weights, dict):
