@@ -1788,6 +1788,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 model=self,
             )
             resolve_tp_shard_specs(self, self._tp_plan, _tp_degree(tp_config))
+            logger.warning(
+                "Sharding an in-memory model costs full checkpoint memory on every rank. Prefer "
+                "`from_pretrained(..., parallel_config=...)`, which reads only each rank's shard."
+            )
 
         config = self._resolve_parallel_config(config)
 
