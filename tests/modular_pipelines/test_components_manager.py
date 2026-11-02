@@ -218,6 +218,15 @@ class TestComponentsManager:
         assert first_id == second_id
         assert len(cm.components) == 1
 
+    def test_add_same_component_to_second_collection(self):
+        cm = ComponentsManager()
+        model = self.get_dummy_model()
+        first_id = cm.add("unet", model, collection="first")
+        second_id = cm.add("unet", model, collection="second")
+        assert first_id == second_id
+        assert len(cm.components) == 1
+        assert cm.collections["first"] == cm.collections["second"] == {first_id}
+
     def test_remove(self):
         cm = ComponentsManager()
         component_id = cm.add("unet", self.get_dummy_model())
