@@ -88,13 +88,19 @@ class DDPMSchedulerTest(SchedulerCommonTest):
             t = scheduler.timesteps[-1]
             assert scheduler.previous_timestep(t) == -1
 
+            generator = torch.Generator().manual_seed(0)
+            initial_state = generator.get_state()
             output = scheduler.step(
                 pred_original_sample,
                 t,
                 sample,
-                generator=torch.Generator().manual_seed(0),
+                generator=generator,
             )
             assert torch.equal(output.prev_sample, output.pred_original_sample)
+            # The terminal step must not draw at all: output equality alone
+            # would miss a draw whose variance is zero or rounds away, so
+            # also require the supplied generator to be untouched.
+            assert torch.equal(generator.get_state(), initial_state)
 
     def test_rescale_betas_zero_snr(self):
         for rescale_betas_zero_snr in [True, False]:
