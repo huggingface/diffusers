@@ -145,6 +145,66 @@ class TestTextToImage(ExamplesTestsAccelerate):
         assert (tmp_path / "unet" / "diffusion_pytorch_model.safetensors").is_file()
         assert {path.name for path in tmp_path.glob("checkpoint-*")} == {"checkpoint-1", "checkpoint-2"}
 
+    def test_text_to_image_ema_skipped_step_at_epoch_boundary(self, monkeypatch, tmp_path):
+        """Overflow on the last batch of an epoch must not shorten training below max_train_steps."""
+        import datasets
+
+        original_optimizer_step = AcceleratedOptimizer.step
+        optimizer_attempts = 0
+        applied_steps = 0
+
+        def optimizer_step(optimizer, *args, **kwargs):
+            nonlocal optimizer_attempts, applied_steps
+            if optimizer.gradient_state.sync_gradients:
+                optimizer_attempts += 1
+                # Skip the 2nd attempt: the last step of epoch 0 (epoch boundary).
+                if optimizer_attempts == 2:
+                    optimizer._is_overflow = True
+                    return
+                applied_steps += 1
+                optimizer._is_overflow = False
+            return original_optimizer_step(optimizer, *args, **kwargs)
+
+        def load_dataset(*args, **kwargs):
+            # 2 images → 2 optimizer steps per epoch with batch_size=1, grad_accum=1.
+            images = [Image.fromarray(np.full((64, 64, 3), value, dtype=np.uint8)) for value in range(2)]
+            return DatasetDict({"train": Dataset.from_dict({"image": images, "text": ["a photo"] * 2})})
+
+        monkeypatch.setattr(AcceleratedOptimizer, "step", optimizer_step)
+        monkeypatch.setattr(datasets, "load_dataset", load_dataset)
+
+        model_path = "hf-internal-testing/tiny-stable-diffusion-torch"
+        script_path = Path(__file__).with_name("train_text_to_image.py")
+        # max_train_steps=2, 2 steps/epoch → num_train_epochs=1 initially,
+        # but the epoch-boundary skip forces a second epoch to reach global_step=2.
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                str(script_path),
+                f"--pretrained_model_name_or_path={model_path}",
+                "--dataset_name=dummy_image_text_data",
+                "--resolution=64",
+                "--center_crop",
+                "--train_batch_size=1",
+                "--gradient_accumulation_steps=1",
+                "--max_train_steps=2",
+                "--lr_scheduler=constant",
+                "--lr_warmup_steps=0",
+                "--use_ema",
+                "--report_to=no",
+                f"--output_dir={tmp_path}",
+            ],
+        )
+        namespace = runpy.run_path(str(script_path), run_name="test_text_to_image_training")
+        namespace["main"]()
+
+        # 3 attempts: step1 OK, step2 skipped (epoch boundary), step3 OK.
+        assert optimizer_attempts == 3
+        # Training must complete the full 2 requested steps despite the mid-run overflow.
+        assert applied_steps == 2
+        assert (tmp_path / "unet" / "diffusion_pytorch_model.safetensors").is_file()
+
     def test_text_to_image(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""

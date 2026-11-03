@@ -951,7 +951,8 @@ def main():
         disable=not accelerator.is_local_main_process,
     )
 
-    for epoch in range(first_epoch, args.num_train_epochs):
+    epoch = first_epoch
+    while global_step < args.max_train_steps:
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
@@ -1086,6 +1087,8 @@ def main():
 
             if global_step >= args.max_train_steps:
                 break
+
+        epoch += 1
 
         if accelerator.is_main_process:
             if args.validation_prompts is not None and epoch % args.validation_epochs == 0:
