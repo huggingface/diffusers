@@ -138,7 +138,8 @@ def tiny_prompt_upsampler():
         if edit:
             prompt = _EDIT_BRIEF.format(request=edit.group(1))
         else:
-            prompt = f"A detailed picture of {re.search(r'Request: (.*?)<\|im_end\|>', request, re.S).group(1)}."
+            text = re.search(r"Request: (.*?)<\|im_end\|>", request, re.S).group(1)
+            prompt = f"A detailed picture of {text}."
         answer = tokenizer(f"Thinking.\n</think>\n\n{prompt}<|im_end|>", add_special_tokens=False, return_tensors="pt")
         return torch.cat([input_ids, answer["input_ids"].to(input_ids.device)], dim=1)
 

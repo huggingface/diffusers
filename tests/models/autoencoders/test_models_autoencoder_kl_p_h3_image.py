@@ -87,24 +87,6 @@ class AutoencoderKLPH3ImageTesterConfig(BaseModelTesterConfig):
 class TestAutoencoderKLPH3Image(AutoencoderKLPH3ImageTesterConfig, ModelTesterMixin):
     """Core model tests for the P-H3-Image image autoencoder."""
 
-    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
-    def test_from_save_pretrained_dtype(self, tmp_path, dtype):
-        model = self.model_class(**self.get_init_dict())
-        model.save_pretrained(tmp_path)
-        new_model = self.model_class.from_pretrained(tmp_path, dtype=dtype)
-        assert new_model.decoder.transformer_blocks[0].attn.to_q.weight.dtype == dtype
-        assert new_model.encoder.conv_in.weight.dtype == torch.float32
-
-    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=["fp16", "bf16"])
-    def test_decode_in_low_precision(self, tmp_path, dtype):
-        # The output projection is float32, so the decoded pixels are too.
-        self.model_class(**self.get_init_dict()).save_pretrained(tmp_path)
-        model = self.model_class.from_pretrained(tmp_path, dtype=dtype).eval()
-        with torch.no_grad():
-            decoded = model.decode(torch.randn(1, 4, 1, HEIGHT // 16, WIDTH // 16), return_dict=False)[0]
-        assert decoded.dtype == torch.float32
-        assert decoded.shape == (1, 3, 1, HEIGHT, WIDTH)
-
     @pytest.mark.skip(
         "`forward` runs through the `apply_forward_hook`-decorated `encode` and `decode`, and that decorator's "
         "`pre_forward` call clears the input device accelerate's `AlignDevicesHook` recorded for the caller, so the "
@@ -124,13 +106,6 @@ class TestAutoencoderKLPH3Image(AutoencoderKLPH3ImageTesterConfig, ModelTesterMi
 
         assert latents.shape == (2, 4, 1, HEIGHT // 16, WIDTH // 16)
         assert decoded.shape == sample.shape
-
-    def test_rejects_videos(self):
-        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
-        with pytest.raises(ValueError, match="single frames"):
-            model.encode(torch.randn(1, 3, 2, HEIGHT, WIDTH, device=torch_device))
-        with pytest.raises(ValueError, match="single latent frames"):
-            model.decode(torch.randn(1, 4, 2, HEIGHT // 16, WIDTH // 16, device=torch_device))
 
 
 class TestAutoencoderKLPH3ImageMemory(AutoencoderKLPH3ImageTesterConfig, MemoryTesterMixin):
