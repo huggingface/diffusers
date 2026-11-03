@@ -21,9 +21,9 @@ import PIL.Image
 import torch
 from transformers import (
     Gemma3ForConditionalGeneration,
-    Gemma4UnifiedForConditionalGeneration,
     GemmaTokenizer,
     GemmaTokenizerFast,
+    PreTrainedModel,
 )
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -33,7 +33,7 @@ from ...models.condition_embedders import LTX2TextConnectors
 from ...models.latent_upscaler import LTX2LatentUpsamplerModel
 from ...models.transformers import LTX2VideoTransformer3DModel
 from ...schedulers import LTXEulerAncestralRFScheduler
-from ...utils import is_torch_xla_available, logging, replace_example_docstring
+from ...utils import is_torch_xla_available, is_transformers_version, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
@@ -51,6 +51,11 @@ from .utils import (
 )
 from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
 
+
+# Proxy for version-gated Transformers dependency (Issue #14773)
+Gemma4UnifiedForConditionalGeneration = PreTrainedModel
+if is_transformers_version(">=", "5.10.0"):
+    from transformers import Gemma4UnifiedForConditionalGeneration
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
