@@ -40,8 +40,8 @@ from ..testing_utils import (
 
 
 # One tiny repository per variant, laid out like the real checkpoints.
-TINY_REPO = "kandinskylab/tiny-kandinsky-s2v-modular-pipe"
-TINY_DISTILLED_REPO = "kandinskylab/tiny-kandinsky-s2v-distilled-modular-pipe"
+TINY_REPO = "hf-internal-testing/tiny-kandinsky-s2v-modular-pipe"
+TINY_DISTILLED_REPO = "hf-internal-testing/tiny-kandinsky-s2v-distilled-modular-pipe"
 AUDIO_SAMPLE_RATE = 16000
 # One chunk of NUM_LATENT_FRAMES covers ((8 - 1) * 4 + 1) / 25 = 1.16 s at 25 fps; the speech is shorter, so the
 # video is trimmed back to it. NUM_LATENT_FRAMES has to reach the FramePack memory window, sum(frame_buckets) = 7.
