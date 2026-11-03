@@ -88,7 +88,7 @@ For transformers with repeated blocks, use `compile_repeated_blocks(...)` to com
 
 ## Tensor parallelism
 
-Follow the [Tensor parallelism](../training/distributed_inference#tensor-parallelism) guide for model loading,
+Follow the [Tensor parallelism](./tensor_parallelism) guide for model loading,
 sharding plans, and limitations. To adapt its example for Neuron, replace the CUDA process-group and device setup
 with the following.
 

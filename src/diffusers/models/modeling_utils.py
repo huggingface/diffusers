@@ -984,7 +984,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 more information about each option see [designing a device
                 map](https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference#the-devicemap). You
                 can also refer to the [Diffusers-specific
-                documentation](https://huggingface.co/docs/diffusers/main/en/training/distributed_inference#model-sharding)
+                documentation](https://huggingface.co/docs/diffusers/main/en/optimization/device_map)
                 for more concrete examples.
             max_memory (`Dict`, *optional*):
                 A dictionary device identifier for the maximum memory. Will default to the maximum memory available for
