@@ -49,7 +49,8 @@ from diffusers.commands.schema import SchemaCommand, _parse_docstring_args
 from diffusers.utils.testing_utils import (
     require_accelerator,
     require_kernels_version_greater_or_equal,
-    require_torch_gpu,
+    require_torch,
+    require_torch_accelerator,
 )
 
 
@@ -201,7 +202,7 @@ class TestRunCommand:
             ]
         )
 
-    @require_torch_gpu
+    @require_torch_accelerator
     def test_group_offload_arg(self):
         from diffusers.hooks.group_offloading import _is_group_offload_enabled
 
@@ -227,7 +228,7 @@ class TestRunCommand:
         pipeline = _load_pipeline(args)
         assert pipeline.vae.use_slicing is True
 
-    @require_torch_gpu
+    @require_torch
     def test_compile_arg(self):
         args = self._parse_run_argv(["--compile"])
         pipeline = _load_pipeline(args)
@@ -241,7 +242,7 @@ class TestRunCommand:
         assert compiled_blocks
         assert all(m._compiled_call_impl is not None for m in compiled_blocks)
 
-    @require_torch_gpu
+    @require_torch
     # `--attention-backend` only exposes Hub-hosted kernels, all of which need `kernels>=0.12`.
     @require_kernels_version_greater_or_equal("0.12")
     def test_attention_backend_arg(self):
@@ -431,9 +432,16 @@ class TestCustomBlocksCommand:
             "class OtherBase:\n    pass\n"
             "class NotABlock(OtherBase):\n    pass\n"
             "class MyBlock(ModularPipelineBlocks):\n    pass\n"
+            # composite blocks are packageable too, and the base may be referenced through its module
+            "class MyBlocks(SequentialPipelineBlocks):\n    pass\n"
+            "class MyAutoBlocks(diffusers.modular_pipelines.AutoPipelineBlocks):\n    pass\n"
         )
         cmd = CustomBlocksCommand()
-        assert cmd._get_class_names(block_py) == [("MyBlock", "ModularPipelineBlocks")]
+        assert cmd._get_class_names(block_py) == [
+            ("MyBlock", "ModularPipelineBlocks"),
+            ("MyBlocks", "SequentialPipelineBlocks"),
+            ("MyAutoBlocks", "AutoPipelineBlocks"),
+        ]
 
         broken = tmp_path / "broken.py"
         broken.write_text("class Broken(:\n    pass\n")
@@ -455,6 +463,25 @@ class TestCustomBlocksCommand:
         CustomBlocksCommand(str(block_py), "MyBlock").run()
         assert (tmp_path / "modular_config.json").exists()
         assert (tmp_path / "modular_model_index.json").exists()
+
+    def test_packaging_composite_block(self, tmp_path, monkeypatch):
+        # a `SequentialPipelineBlocks` subclass is the usual thing to publish; it must be selectable by name
+        block_py = tmp_path / "block.py"
+        block_py.write_text(
+            "from diffusers.modular_pipelines import ModularPipelineBlocks, SequentialPipelineBlocks\n"
+            "\n"
+            "class MyStep(ModularPipelineBlocks):\n"
+            "    model_name = 'test'\n"
+            "\n"
+            "class MyBlocks(SequentialPipelineBlocks):\n"
+            "    model_name = 'test'\n"
+            "    block_classes = [MyStep]\n"
+            "    block_names = ['step']\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        CustomBlocksCommand(str(block_py), "MyBlocks").run()
+        config = json.loads((tmp_path / "modular_config.json").read_text())
+        assert config["auto_map"] == {"ModularPipelineBlocks": "block.MyBlocks"}
 
 
 class TestCli:

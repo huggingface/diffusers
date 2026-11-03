@@ -300,7 +300,7 @@ class JoyImageEditPlusTimeTextImageEmbedding(nn.Module):
         self,
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-    ):
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         timestep = self.timesteps_proj(timestep)
 
         time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype

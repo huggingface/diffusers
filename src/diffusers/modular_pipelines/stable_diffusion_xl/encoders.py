@@ -188,7 +188,9 @@ class StableDiffusionXLIPAdapterStep(ModularPipelineBlocks):
         return ip_adapter_image_embeds
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusionXLModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.prepare_unconditional_embeds = components.guider.num_conditions > 1
@@ -534,7 +536,9 @@ class StableDiffusionXLTextEncoderStep(ModularPipelineBlocks):
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusionXLModularPipeline, PipelineState]:
         # Get inputs and intermediates
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
@@ -655,7 +659,9 @@ class StableDiffusionXLVaeEncoderStep(ModularPipelineBlocks):
         return image_latents
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusionXLModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         block_state.preprocess_kwargs = block_state.preprocess_kwargs or {}
         block_state.device = components._execution_device
@@ -825,7 +831,9 @@ class StableDiffusionXLInpaintVaeEncoderStep(ModularPipelineBlocks):
         return mask, masked_image_latents
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusionXLModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusionXLModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusionXLModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.dtype = block_state.dtype if block_state.dtype is not None else components.vae.dtype

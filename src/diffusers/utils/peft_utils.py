@@ -368,6 +368,126 @@ def check_peft_version(min_version: str) -> None:
         )
 
 
+def _maybe_fuse_qkv_projections_for_lokr(model, state_dict) -> None:
+    """
+    Fuse the model's QKV projections when a peft-format LoKr state dict targets fused `to_qkv` / `to_added_qkv`
+    projections that the model does not have yet.
+
+    BFL-format Flux2 LoKr checkpoints apply LoKr to the fused QKV projections. Unlike a LoRA delta, a Kronecker product
+    delta over the fused projection cannot be split exactly into separate Q/K/V factors, so the model's projections are
+    fused instead and the adapter maps 1:1.
+    """
+    fused_targets = {
+        module
+        for module in (k.rpartition(".lokr_")[0] for k in state_dict if ".lokr_" in k)
+        if module.rsplit(".", 1)[-1] in ("to_qkv", "to_added_qkv")
+    }
+    named_modules = dict(model.named_modules())
+    if all(module in named_modules for module in fused_targets) or not hasattr(model, "fuse_qkv_projections"):
+        return
+
+    if getattr(model, "is_quantized", False):
+        raise ValueError(
+            "This LoKr checkpoint targets fused QKV projections. Fusing concatenates the Q/K/V weights into a new "
+            "`nn.Linear`, which is not possible with quantized weights. Please load the transformer without "
+            "quantization."
+        )
+
+    # Fusing replaces to_q/to_k/to_v (and the add_*_proj) with a single projection, which would orphan any adapter
+    # already injected on the unfused ones.
+    from peft.tuners.tuners_utils import BaseTunerLayer
+
+    unfused_projections = {"to_q", "to_k", "to_v", "add_q_proj", "add_k_proj", "add_v_proj"}
+    adapted = [
+        name
+        for name, module in named_modules.items()
+        if isinstance(module, BaseTunerLayer) and name.rsplit(".", 1)[-1] in unfused_projections
+    ]
+    if adapted:
+        raise ValueError(
+            "This LoKr checkpoint targets fused QKV projections, but an adapter is already loaded on the unfused "
+            f"projections (e.g. `{adapted[0]}`). Unload it with `unload_lora_weights()` before loading this checkpoint."
+        )
+
+    logger.info("The LoKr checkpoint targets fused QKV projections; calling `fuse_qkv_projections()` on the model.")
+    model.fuse_qkv_projections()
+
+
+def _create_lokr_config(state_dict, metadata):
+    """
+    Create a `LoKrConfig` from a peft-format LoKr state dict (keys like `{module}.lokr_w1`).
+
+    Without metadata, the config is inferred from the tensor shapes. The checkpoint alpha is expected to be already
+    baked into the weights by the state dict conversion, so `alpha` is set equal to the rank (runtime scaling 1.0).
+    peft re-derives each module's Kronecker factorization from `decompose_factor` and only creates rank-decomposed
+    factors when the rank is small compared to the factorized dimensions, so for modules whose checkpoint factors are
+    full matrices the rank is set to `max(lokr_w2.shape)` to make peft create full matrices as well.
+    """
+    from peft import LoKrConfig
+    from peft.tuners.lokr.layer import factorization
+
+    if metadata is not None:
+        try:
+            return LoKrConfig(**metadata)
+        except TypeError as e:
+            raise TypeError("`LoKrConfig` class could not be instantiated.") from e
+
+    modules = sorted({k.rpartition(".lokr_")[0] for k in state_dict if ".lokr_" in k})
+
+    # Reconstruct each module's factorized dimensions, (out_l, out_k) x (in_m, in_n), from the checkpoint. A factor
+    # is either stored as a full matrix (`lokr_w1`) or rank-decomposed into `lokr_w1_a @ lokr_w1_b` (same for w2).
+    factorizations = {}
+    rank_dict = {}
+    for module in modules:
+        w1, w1_a, w1_b = (state_dict.get(f"{module}.lokr_w1{s}") for s in ("", "_a", "_b"))
+        w2, w2_a, w2_b = (state_dict.get(f"{module}.lokr_w2{s}") for s in ("", "_a", "_b"))
+        out_l, in_m = w1.shape if w1 is not None else (w1_a.shape[0], w1_b.shape[1])
+        out_k, in_n = w2.shape if w2 is not None else (w2_a.shape[0], w2_b.shape[1])
+        factorizations[module] = ((out_l, out_k), (in_m, in_n))
+        if w2_a is not None:
+            rank_dict[module] = w2_a.shape[1]
+        elif w1_a is not None:
+            rank_dict[module] = w1_a.shape[1]
+        else:
+            rank_dict[module] = max(w2.shape)
+
+    # Find the `decompose_factor` under which peft reproduces the checkpoint factorizations. A fixed factor shows up
+    # as the left dimension of the modules it divides (modules it does not divide fall back to a near-square
+    # factorization, like with factor -1), so every observed left dimension is a candidate.
+    left_dims = {dims[0][0] for dims in factorizations.values()}
+    decompose_factor = None
+    for candidate in sorted(left_dims) + [-1]:
+        if all(
+            factorization(out_l * out_k, candidate) == (out_l, out_k)
+            and factorization(in_m * in_n, candidate) == (in_m, in_n)
+            for (out_l, out_k), (in_m, in_n) in factorizations.values()
+        ):
+            decompose_factor = candidate
+            break
+    if decompose_factor is None:
+        raise ValueError(
+            "Could not infer a `decompose_factor` that reproduces the Kronecker factorizations of this LoKr "
+            "state dict. Please open an issue: https://github.com/huggingface/diffusers/issues/new"
+        )
+
+    r = collections.Counter(rank_dict.values()).most_common(1)[0][0]
+    rank_pattern = {k: v for k, v in rank_dict.items() if v != r}
+
+    lokr_config_kwargs = {
+        "r": r,
+        "alpha": r,
+        "rank_pattern": rank_pattern,
+        "alpha_pattern": dict(rank_pattern),
+        "target_modules": modules,
+        "decompose_both": any(".lokr_w1_a" in k for k in state_dict),
+        "decompose_factor": decompose_factor,
+    }
+    try:
+        return LoKrConfig(**lokr_config_kwargs)
+    except TypeError as e:
+        raise TypeError("`LoKrConfig` class could not be instantiated.") from e
+
+
 def _create_lora_config(
     state_dict, network_alphas, metadata, rank_pattern_dict, is_unet=True, model_state_dict=None, adapter_name=None
 ):
@@ -397,7 +517,7 @@ def _maybe_warn_for_unhandled_keys(incompatible_keys, adapter_name: str) -> None
         # Check only for unexpected keys.
         unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
         if unexpected_keys:
-            lora_unexpected_keys = [k for k in unexpected_keys if ".lora_" in k]
+            lora_unexpected_keys = [k for k in unexpected_keys if ".lora_" in k or "lokr_" in k]
             if lora_unexpected_keys:
                 warn_msg = (
                     f"Loading adapter weights from state_dict led to unexpected keys found in the model:"
@@ -407,7 +527,7 @@ def _maybe_warn_for_unhandled_keys(incompatible_keys, adapter_name: str) -> None
         # Filter missing keys specific to the current adapter.
         missing_keys = getattr(incompatible_keys, "missing_keys", None)
         if missing_keys:
-            lora_missing_keys = [k for k in missing_keys if ".lora_" in k and adapter_name in k]
+            lora_missing_keys = [k for k in missing_keys if (".lora_" in k or "lokr_" in k) and adapter_name in k]
             if lora_missing_keys:
                 warn_msg += (
                     f"Loading adapter weights from state_dict led to missing keys in the model:"

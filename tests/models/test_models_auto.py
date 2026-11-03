@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
@@ -79,6 +80,68 @@ class TestAutoModel(unittest.TestCase):
             model = AutoModel.from_pretrained(tmpdir, subfolder=subfolder, trust_remote_code=True)
             assert model.__class__.__name__ == "CustomModel"
             assert model.config["hidden_size"] == 8
+
+    def test_library_name_from_model_index_is_not_imported(self):
+        # `AutoModel` reads the library name of a subfolder out of `model_index.json`. That file ships with the
+        # repository, so the name must not be handed to `importlib.import_module`, which would run the module.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = os.path.join(tmpdir, "model_repo")
+            os.makedirs(os.path.join(repo, "unet"))
+
+            with open(os.path.join(repo, "payload.py"), "w") as f:
+                f.write("raise AssertionError('the module named in model_index.json was imported')\n")
+
+            config = {
+                "_class_name": "StableDiffusionPipeline",
+                "_diffusers_version": "0.0.0",
+                "unet": ["model_repo.payload", "UNet2DConditionModel"],
+            }
+            with open(os.path.join(repo, "model_index.json"), "w") as f:
+                json.dump(config, f)
+            with open(os.path.join(repo, "unet", "config.json"), "w") as f:
+                json.dump({"_class_name": "UNet2DConditionModel"}, f)
+
+            # the repository is importable, which is what a `git clone` into the working directory gives you
+            sys.path.insert(0, tmpdir)
+            try:
+                with self.assertRaises(ValueError) as cm:
+                    AutoModel.from_pretrained(repo, subfolder="unet")
+            finally:
+                sys.path.remove(tmpdir)
+
+            assert "has not been imported" in str(cm.exception)
+            assert "model_repo.payload" not in sys.modules
+
+    def test_library_name_matching_pipeline_submodule_is_not_imported(self):
+        # A library name that collides with a `diffusers.pipelines` submodule (e.g. `flux`) must resolve to that
+        # submodule, not to a top-level module of the same name shipped by the repository on `sys.path`.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = os.path.join(tmpdir, "model_repo")
+            os.makedirs(os.path.join(repo, "unet"))
+            os.makedirs(os.path.join(tmpdir, "flux"))
+
+            with open(os.path.join(tmpdir, "flux", "__init__.py"), "w") as f:
+                f.write("raise AssertionError('the top-level module named in model_index.json was imported')\n")
+
+            config = {
+                "_class_name": "StableDiffusionPipeline",
+                "_diffusers_version": "0.0.0",
+                "unet": ["flux", "UNet2DConditionModel"],
+            }
+            with open(os.path.join(repo, "model_index.json"), "w") as f:
+                json.dump(config, f)
+            with open(os.path.join(repo, "unet", "config.json"), "w") as f:
+                json.dump({"_class_name": "UNet2DConditionModel"}, f)
+
+            sys.path.insert(0, tmpdir)
+            try:
+                with self.assertRaises(ValueError) as cm:
+                    AutoModel.from_pretrained(repo, subfolder="unet")
+            finally:
+                sys.path.remove(tmpdir)
+
+            assert "diffusers.pipelines.flux" in str(cm.exception)
+            assert getattr(sys.modules.get("flux"), "__file__", "") != os.path.join(tmpdir, "flux", "__init__.py")
 
 
 class TestAutoModelFromConfig(unittest.TestCase):

@@ -7,27 +7,36 @@ on:
       - main
       - update_diffusers_metadata*
 
-permissions:
-  contents: read
+
+permissions: {}
 
 jobs:
   update_metadata:
+    permissions:
+      contents: read
+      id-token: write  # needed for the HF Trusted Publisher token exchange
     runs-on: ubuntu-22.04
     defaults:
       run:
         shell: bash -l {0}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
 
       - name: Setup environment
         run: |
           pip install --upgrade pip
-          pip install datasets pandas
+          pip install datasets pandas "huggingface_hub>=1.19.0"
           pip install .[torch]
 
       - name: Update metadata
         env:
-          HF_TOKEN: ${{ secrets.SAYAK_HF_TOKEN }}
+          # Short-lived token (1h) from the Hub's Trusted Publishers, scoped to this dataset only
+          HF_OIDC_RESOURCE: datasets/huggingface/diffusers-metadata
         run: |
           python utils/update_metadata.py --commit_sha ${{ github.sha }}

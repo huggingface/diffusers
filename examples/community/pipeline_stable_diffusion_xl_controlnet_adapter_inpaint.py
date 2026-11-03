@@ -43,8 +43,8 @@ from diffusers.models import (
     T2IAdapter,
     UNet2DConditionModel,
 )
+from diffusers.models.controlnets.multicontrolnet import MultiControlNetModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
-from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 from diffusers.schedulers import KarrasDiffusionSchedulers

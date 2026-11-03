@@ -501,7 +501,7 @@ class Ideogram4Pipeline(DiffusionPipeline, Ideogram4LoraLoaderMixin):
         attention_kwargs: dict[str, Any] | None = None,
         callback_on_step_end: Callable[["Ideogram4Pipeline", int, int, dict[str, Any]], dict[str, Any]] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-    ) -> Ideogram4PipelineOutput | tuple[Any]:
+    ) -> Ideogram4PipelineOutput | tuple:
         r"""
         Run text-to-image generation.
 
@@ -714,7 +714,9 @@ class Ideogram4Pipeline(DiffusionPipeline, Ideogram4LoraLoaderMixin):
                 latents = self.scheduler.step(-v, t, latents, return_dict=False)[0]
 
                 if callback_on_step_end is not None:
-                    callback_kwargs = {k: locals()[k] for k in callback_on_step_end_tensor_inputs}
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
                     callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
                     latents = callback_outputs.pop("latents", latents)
 

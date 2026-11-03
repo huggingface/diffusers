@@ -89,3 +89,5 @@ src/diffusers/pipelines/<model>/
    The bug is invisible until someone actually passes `callback_on_step_end` — the `PipelineTesterMixin` callback tests are what catch it.
 
 10. **Raw `torch.randn(device=...)` for noise.** Use `randn_tensor(...)` from `utils/torch_utils`: it draws on the generator's device and moves the result, so CPU generators work, and the CUDA-generator path is bit-identical to `torch.randn`.
+
+11. **Bundling `__call__` inputs into a dict.** Pass inputs by name — a dict hides what the signature takes and makes you validate the keys by hand. There are a few exceptions: `attention_kwargs` is a standard dict input across our pipelines, and `RFD4ProteinaPipeline` takes its ~30 optional annotation tensors as one `conditioning_features` mapping because the checkpoint's config decides which are read. Use your judgment, and bring it up in review if your case genuinely needs one. The same rule for models is in [models.md](models.md).

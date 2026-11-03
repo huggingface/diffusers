@@ -56,10 +56,10 @@ from ..pipeline_params import (
 )
 from ..testing_utils import (
     BasePipelineTesterConfig,
+    IPAdapterTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
 )
-from .ip_adapter_tester import IPAdapterTesterMixin
 
 
 class StableDiffusionInpaintPipelineTesterConfig(BasePipelineTesterConfig):

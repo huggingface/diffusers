@@ -385,7 +385,7 @@ class LongCatImageTimestepEmbeddings(nn.Module):
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
 
-    def forward(self, timestep, hidden_dtype):
+    def forward(self, timestep, hidden_dtype) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, D)
 

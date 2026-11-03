@@ -20,12 +20,11 @@ import pytest
 import torch
 from transformers import AutoTokenizer, Qwen3Config, Qwen3Model
 
-from diffusers import AutoencoderOobleck, FlowMatchEulerDiscreteScheduler
+from diffusers import AceStepConditionEncoder, AutoencoderOobleck, FlowMatchEulerDiscreteScheduler
 from diffusers.models.transformers.ace_step_transformer import AceStepTransformer1DModel
 from diffusers.pipelines.ace_step import (
     AceStepAudioTokenDetokenizer,
     AceStepAudioTokenizer,
-    AceStepConditionEncoder,
     AceStepPipeline,
 )
 

@@ -87,7 +87,7 @@ class HeliosOutputNorm(nn.Module):
         self.scale_shift_table = nn.Parameter(torch.randn(1, 2, dim) / dim**0.5)
         self.norm = FP32LayerNorm(dim, eps, elementwise_affine=False)
 
-    def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor, original_context_length: int):
+    def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor, original_context_length: int) -> torch.Tensor:
         temb = temb[:, -original_context_length:, :]
         shift, scale = (self.scale_shift_table.unsqueeze(0).to(temb.device) + temb.unsqueeze(2)).chunk(2, dim=2)
         shift, scale = shift.squeeze(2).to(hidden_states.device), scale.squeeze(2).to(hidden_states.device)
@@ -308,7 +308,7 @@ class HeliosTimeTextEmbedding(nn.Module):
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor | None = None,
         is_return_encoder_hidden_states: bool = True,
-    ):
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
         timestep = self.timesteps_proj(timestep)
 
         time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
@@ -354,7 +354,7 @@ class HeliosRotaryPosEmbed(nn.Module):
         return grid_y, grid_x
 
     @torch.no_grad()
-    def forward(self, frame_indices, height, width, device):
+    def forward(self, frame_indices, height, width, device) -> torch.Tensor:
         batch_size = frame_indices.shape[0]
         num_frames = frame_indices.shape[1]
 

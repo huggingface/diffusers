@@ -440,7 +440,7 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
                 torch device
             batch_size (`int`):
                 batch size of prompts, defaults to 1
-            num_images_per_prompt (`int`):
+            num_videos_per_prompt (`int`):
                 number of images that should be generated per prompt
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. If not provided, text embeddings will be generated from `prompt` input
@@ -671,7 +671,7 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
         output_type: str | None = "np",
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
-    ):
+    ) -> HunyuanVideo15PipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

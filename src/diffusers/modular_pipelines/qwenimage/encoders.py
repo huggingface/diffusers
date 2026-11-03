@@ -325,7 +325,9 @@ class QwenImageEditResizeStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         images = block_state.image
@@ -414,7 +416,9 @@ class QwenImageLayeredResizeStep(ModularPipelineBlocks):
             raise ValueError(f"Resolution must be 1024 or 640 but is {resolution}")
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         self.check_inputs(resolution=block_state.resolution)
@@ -505,7 +509,9 @@ class QwenImageEditPlusResizeStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         images = block_state.image
@@ -619,7 +625,9 @@ class QwenImageLayeredGetImagePromptStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -743,7 +751,9 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
             raise ValueError(f"`max_sequence_length` cannot be greater than 1024 but is {max_sequence_length}")
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -874,7 +884,9 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         self.check_inputs(block_state.prompt, block_state.negative_prompt)
@@ -1002,7 +1014,9 @@ class QwenImageEditPlusTextEncoderStep(ModularPipelineBlocks):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         self.check_inputs(block_state.prompt, block_state.negative_prompt)
@@ -1132,7 +1146,9 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
             raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         self.check_inputs(
@@ -1228,7 +1244,9 @@ class QwenImageEditInpaintProcessImagesInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         width, height = block_state.resized_image[0].size
@@ -1312,7 +1330,9 @@ class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
             raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         self.check_inputs(
@@ -1387,7 +1407,9 @@ class QwenImageEditProcessImagesInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         width, height = block_state.resized_image[0].size
@@ -1459,7 +1481,9 @@ class QwenImageEditPlusProcessImagesInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         image = block_state.resized_image
@@ -1563,7 +1587,9 @@ class QwenImageVaeEncoderStep(ModularPipelineBlocks):
         return [self._output]  # default is "image_latents"
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -1670,7 +1696,9 @@ class QwenImageControlNetVaeEncoderStep(ModularPipelineBlocks):
             raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         self.check_inputs(block_state.height, block_state.width, components.vae_scale_factor)
@@ -1769,7 +1797,7 @@ class QwenImageLayeredPermuteLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         # Permute: (B, C, 1, H, W) -> (B, 1, C, H, W)

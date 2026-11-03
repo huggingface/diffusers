@@ -576,7 +576,7 @@ class PRXPipeline(
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         tokenizer_max_length: int | None = None,
         skip_text_cleaning: bool = False,
-    ):
+    ) -> PRXPipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 

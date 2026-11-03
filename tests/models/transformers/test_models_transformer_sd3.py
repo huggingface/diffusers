@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import SD3Transformer2DModel
@@ -20,6 +21,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
+    AttentionTesterMixin,
     BaseModelTesterConfig,
     BitsAndBytesTesterMixin,
     LoraTesterMixin,
@@ -115,6 +117,10 @@ class TestSD3TransformerTraining(SD3TransformerTesterConfig, TrainingTesterMixin
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"SD3Transformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class TestSD3TransformerAttention(SD3TransformerTesterConfig, AttentionTesterMixin):
+    """Attention processor tests for SD3 Transformer."""
 
 
 class TestSD3TransformerCompile(SD3TransformerTesterConfig, TorchCompileTesterMixin):
@@ -214,6 +220,22 @@ class TestSD35TransformerTraining(SD35TransformerTesterConfig, TrainingTesterMix
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"SD3Transformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class TestSD35TransformerAttention(SD35TransformerTesterConfig, AttentionTesterMixin):
+    """Attention processor tests for SD3.5 Transformer."""
+
+    @pytest.mark.xfail(
+        reason=(
+            "fuse_qkv_projections() sets FusedJointAttnProcessor2_0 on every attention module, including the "
+            "self-attention-only `attn2` of the dual-attention layers, which is then called without "
+            "`encoder_hidden_states` and raises."
+        ),
+        raises=AttributeError,
+        strict=True,
+    )
+    def test_fuse_unfuse_qkv_projections(self, request, atol=1e-3, rtol=0):
+        super().test_fuse_unfuse_qkv_projections(request, atol=atol, rtol=rtol)
 
 
 class TestSD35TransformerCompile(SD35TransformerTesterConfig, TorchCompileTesterMixin):

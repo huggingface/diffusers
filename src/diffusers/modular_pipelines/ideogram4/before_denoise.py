@@ -178,7 +178,9 @@ class Ideogram4TextInputsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Ideogram4ModularPipeline, state: PipelineState
+    ) -> tuple[Ideogram4ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         prompt_batch = block_state.text_features.shape[0]
@@ -256,7 +258,9 @@ class Ideogram4PrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Ideogram4ModularPipeline, state: PipelineState
+    ) -> tuple[Ideogram4ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -351,7 +355,9 @@ class Ideogram4SetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Ideogram4ModularPipeline, state: PipelineState
+    ) -> tuple[Ideogram4ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -520,7 +526,9 @@ class Ideogram4PrepareAdditionalInputsStep(ModularPipelineBlocks):
         return position_ids.to(device), segment_ids.to(device), indicator.to(device)
 
     @torch.no_grad()
-    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Ideogram4ModularPipeline, state: PipelineState
+    ) -> tuple[Ideogram4ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device

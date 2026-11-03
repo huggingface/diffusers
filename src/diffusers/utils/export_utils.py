@@ -276,8 +276,9 @@ def _write_audio(
 ) -> None:
     import torch
 
-    if samples.ndim == 1:
-        samples = samples[:, None]
+    # Mono audio is written as stereo, with the channel duplicated.
+    if samples.ndim == 1 or 1 in samples.shape:
+        samples = samples.reshape(-1, 1).repeat(1, 2)
 
     if samples.shape[1] != 2 and samples.shape[0] == 2:
         samples = samples.T

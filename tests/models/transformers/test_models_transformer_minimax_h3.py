@@ -27,6 +27,7 @@ from ..testing_utils import (
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -189,3 +190,19 @@ class TestMiniMaxH3TransformerContextParallel(MiniMaxH3TransformerTesterConfig, 
 
 class TestMiniMaxH3TransformerLoRA(MiniMaxH3TransformerTesterConfig, LoraTesterMixin):
     """LoRA tests for the MiniMax-H3 transformer."""
+
+
+class TestMiniMaxH3TransformerSingleFile(MiniMaxH3TransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return (
+            "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_fl2va_bf16.safetensors"
+        )
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "MiniMaxAI/MiniMax-H3"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
