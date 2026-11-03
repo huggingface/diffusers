@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import inspect
+import subprocess
+import sys
 from importlib import import_module
 
 import pytest
@@ -85,3 +87,52 @@ class TestDependencies:
 
         if failures:
             pytest.fail("Unguarded optional-dependency imports found:\n" + "\n".join(failures))
+
+    def test_ltx2_pipelines_import_on_older_transformers(self):
+        for tf_version, hide_symbols in [
+            ("5.5.0", ["Gemma4UnifiedForConditionalGeneration"]),
+            ("5.4.0", ["Gemma4ForConditionalGeneration", "Gemma4UnifiedForConditionalGeneration"]),
+        ]:
+            code = f"""
+import sys
+import importlib.metadata
+
+import transformers
+for sym in {hide_symbols!r}:
+    if hasattr(transformers, "_class_to_module") and sym in transformers._class_to_module:
+        del transformers._class_to_module[sym]
+    if hasattr(transformers, "_objects") and sym in transformers._objects:
+        del transformers._objects[sym]
+    if hasattr(transformers, sym):
+        delattr(transformers, sym)
+
+orig_version = importlib.metadata.version
+def fake_version(pkg):
+    if pkg == "transformers":
+        return {tf_version!r}
+    return orig_version(pkg)
+importlib.metadata.version = fake_version
+
+from diffusers import (
+    LTX2Pipeline,
+    LTX2ImageToVideoPipeline,
+    LTX2ConditionPipeline,
+    LTX2InContextPipeline,
+    LTX2HDRPipeline,
+    LTX2DFRPipeline,
+    LTX2DFRTemporalRefinePipeline,
+    LTX2AutoBlocks,
+    LTX25AutoBlocks,
+)
+assert LTX2Pipeline is not None
+assert LTX2ImageToVideoPipeline is not None
+assert LTX2ConditionPipeline is not None
+assert LTX2InContextPipeline is not None
+assert LTX2HDRPipeline is not None
+assert LTX2DFRPipeline is not None
+assert LTX2DFRTemporalRefinePipeline is not None
+assert LTX2AutoBlocks is not None
+assert LTX25AutoBlocks is not None
+"""
+            result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+            assert result.returncode == 0, f"Import failed for transformers {tf_version} with stderr:\n{result.stderr}"
