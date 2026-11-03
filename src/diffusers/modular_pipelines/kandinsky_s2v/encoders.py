@@ -80,21 +80,15 @@ def encode_qwen_omni(
     )
     inputs = inputs.to(device).to(text_encoder.dtype)
 
-    # The speech features are the audio tower's output, which the Thinker consumes internally; a hook on the tower
-    # reads them out of the same forward that produces the text hidden states.
-    captured: dict[str, torch.Tensor] = {}
-
-    def hook(_module, _inputs, output):
-        captured["features"] = output.last_hidden_state
-
-    handle = text_encoder.audio_tower.register_forward_hook(hook)
-    try:
-        output = text_encoder(**inputs, output_hidden_states=True, return_dict=True)
-    finally:
-        handle.remove()
-
+    output = text_encoder(**inputs, output_hidden_states=True, return_dict=True)
     prompt_embeds = slice_user_text(tokenizer, text_encoder, output.hidden_states[-1], inputs)
-    return prompt_embeds, captured.get("features")
+
+    audio_embeds = None
+    if audio is not None:
+        audio_embeds = text_encoder.get_audio_features(
+            inputs["input_features"], inputs["feature_attention_mask"]
+        ).last_hidden_state
+    return prompt_embeds, audio_embeds
 
 
 def slice_user_text(
