@@ -112,14 +112,10 @@ def _is_package_available(pkg_name: str, get_dist_name: bool = False) -> tuple[b
     if pkg_exists and import_name in _PKG_TO_DEPS_KEY:
         requirement = Requirement(deps[_PKG_TO_DEPS_KEY[import_name]])
         try:
-            base_version = parse(pkg_version).base_version
+            is_supported = requirement.specifier.contains(parse(pkg_version).base_version)
         except InvalidVersion:
-            logger.warning(
-                f"Could not parse {import_name} version {pkg_version} to check it against `{requirement}`. "
-                f"Assuming it is supported."
-            )
-            base_version = None
-        if base_version is not None and not requirement.specifier.contains(base_version):
+            is_supported = False
+        if not is_supported:
             logger.warning(
                 f"Disabling {import_name} because diffusers requires `{requirement}` but found version {pkg_version}. "
                 f"Upgrade it with `pip install -U '{requirement}'`."

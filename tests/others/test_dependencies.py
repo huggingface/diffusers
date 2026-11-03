@@ -111,4 +111,4 @@ class TestDependencies:
         assert import_utils._is_package_available("gguf") == (True, "0.10.0a0+abc")
 
         monkeypatch.setattr(import_utils.importlib_metadata, "version", lambda name: "not-a-version")
-        assert import_utils._is_package_available("gguf") == (True, "not-a-version")
+        assert import_utils._is_package_available("gguf") == (False, "not-a-version")
