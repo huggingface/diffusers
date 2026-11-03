@@ -63,7 +63,7 @@ class BnB4BitDiffusersQuantizer(DiffusersQuantizer):
             raise RuntimeError("No GPU found. A GPU is needed for quantization.")
         if not is_accelerate_available():
             raise ImportError(
-                "Using `bitsandbytes` 4-bit quantization requires Accelerate: `pip install 'accelerate>=0.26.0'`"
+                "Using `bitsandbytes` 4-bit quantization requires Accelerate: `pip install -U accelerate`"
             )
         if not is_bitsandbytes_available():
             raise ImportError(
@@ -381,7 +381,7 @@ class BnB8BitDiffusersQuantizer(DiffusersQuantizer):
             raise RuntimeError("No GPU found. A GPU is needed for quantization.")
         if not is_accelerate_available():
             raise ImportError(
-                "Using `bitsandbytes` 8-bit quantization requires Accelerate: `pip install 'accelerate>=0.26.0'`"
+                "Using `bitsandbytes` 8-bit quantization requires Accelerate: `pip install -U accelerate`"
             )
         if not is_bitsandbytes_available():
             raise ImportError(

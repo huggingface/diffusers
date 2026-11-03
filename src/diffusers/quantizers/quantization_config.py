@@ -23,15 +23,12 @@ https://github.com/huggingface/transformers/blob/52cb4034ada381fe1ffe8d428a1076e
 from __future__ import annotations
 
 import copy
-import importlib.metadata
 import json
 import os
 import warnings
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable
-
-from packaging import version
 
 from ..utils import deprecate, is_torch_available, is_torchao_available, logging
 
@@ -341,13 +338,6 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
 
         if not isinstance(self.bnb_4bit_use_double_quant, bool):
             raise TypeError("bnb_4bit_use_double_quant must be a boolean")
-
-        if self.load_in_4bit and not version.parse(importlib.metadata.version("bitsandbytes")) >= version.parse(
-            "0.39.0"
-        ):
-            raise ValueError(
-                "4 bit quantization requires bitsandbytes>=0.39.0 - please upgrade your bitsandbytes version"
-            )
 
     def is_quantizable(self):
         r"""

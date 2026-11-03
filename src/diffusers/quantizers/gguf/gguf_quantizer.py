@@ -51,7 +51,7 @@ class GGUFQuantizer(DiffusersQuantizer):
     def validate_environment(self, *args, **kwargs):
         if not is_accelerate_available():
             raise ImportError(
-                "Loading GGUF Parameters requires `accelerate` installed in your environment: `pip install 'accelerate>=0.26.0'`"
+                "Loading GGUF Parameters requires `accelerate` installed in your environment: `pip install -U accelerate`"
             )
         if not is_gguf_available():
             raise ImportError(

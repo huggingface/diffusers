@@ -1186,7 +1186,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if is_accelerate_available():
             from accelerate import cpu_offload_with_hook
         else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+            raise ImportError("`enable_model_cpu_offload` requires `accelerate`: `pip install accelerate`")
 
         self.remove_all_hooks()
 
@@ -1294,7 +1294,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if is_accelerate_available():
             from accelerate import cpu_offload
         else:
-            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
+            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate`: `pip install accelerate`")
         self.remove_all_hooks()
 
         is_pipeline_device_mapped = self._is_pipeline_device_mapped()

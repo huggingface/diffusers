@@ -337,7 +337,7 @@ class AdaLayerNormContinuous(nn.Module):
         self.silu = nn.SiLU()
         self.linear = nn.Linear(conditioning_embedding_dim, embedding_dim * 2, bias=bias)
         if norm_type == "layer_norm":
-            self.norm = LayerNorm(embedding_dim, eps, elementwise_affine, bias)
+            self.norm = nn.LayerNorm(embedding_dim, eps, elementwise_affine, bias)
         elif norm_type == "rms_norm":
             self.norm = RMSNorm(embedding_dim, eps, elementwise_affine)
         else:
@@ -374,7 +374,7 @@ class LuminaLayerNormContinuous(nn.Module):
         self.linear_1 = nn.Linear(conditioning_embedding_dim, embedding_dim, bias=bias)
 
         if norm_type == "layer_norm":
-            self.norm = LayerNorm(embedding_dim, eps, elementwise_affine, bias)
+            self.norm = nn.LayerNorm(embedding_dim, eps, elementwise_affine, bias)
         elif norm_type == "rms_norm":
             self.norm = RMSNorm(embedding_dim, eps=eps, elementwise_affine=elementwise_affine)
         else:
@@ -467,9 +467,6 @@ class CogVideoXLayerNormZero(nn.Module):
         hidden_states = self.norm(hidden_states) * (1 + scale)[:, None, :] + shift[:, None, :]
         encoder_hidden_states = self.norm(encoder_hidden_states) * (1 + enc_scale)[:, None, :] + enc_shift[:, None, :]
         return hidden_states, encoder_hidden_states, gate[:, None, :], enc_gate[:, None, :]
-
-
-LayerNorm = nn.LayerNorm
 
 
 class RMSNorm(nn.Module):

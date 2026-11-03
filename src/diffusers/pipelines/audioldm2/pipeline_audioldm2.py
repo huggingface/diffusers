@@ -232,7 +232,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         if is_accelerate_available():
             from accelerate import cpu_offload_with_hook
         else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+            raise ImportError("`enable_model_cpu_offload` requires `accelerate`: `pip install accelerate`")
 
         torch_device = torch.device(device)
         device_index = torch_device.index

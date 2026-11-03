@@ -404,7 +404,7 @@ class MusicLDMPipeline(DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusi
         if is_accelerate_available():
             from accelerate import cpu_offload_with_hook
         else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+            raise ImportError("`enable_model_cpu_offload` requires `accelerate`: `pip install accelerate`")
 
         device_type = get_device()
         device = torch.device(f"{device_type}:{gpu_id}")

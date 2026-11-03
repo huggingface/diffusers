@@ -181,12 +181,6 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
             raise ImportError(
                 "Loading a TorchAO quantized model requires the torchao library. Please install with `pip install torchao`"
             )
-        torchao_version = version.parse(importlib.metadata.version("torchao"))
-        if torchao_version < version.parse("0.15.0"):
-            raise RuntimeError(
-                f"The minimum required version of `torchao` is 0.15.0, but the current version is {torchao_version}. Please upgrade with `pip install -U torchao`."
-            )
-
         self.offload = False
 
         device_map = kwargs.get("device_map", None)
@@ -199,16 +193,6 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
                     )
                 else:
                     self.offload = True
-
-        if self.pre_quantized:
-            weights_only = kwargs.get("weights_only", None)
-            if weights_only:
-                torch_version = version.parse(importlib.metadata.version("torch"))
-                if torch_version < version.parse("2.5.0"):
-                    # TODO(aryan): TorchAO is compatible with Pytorch >= 2.2 for certain quantization types. Try to see if we can support it in future
-                    raise RuntimeError(
-                        f"In order to use TorchAO pre-quantized model, you need to have torch>=2.5.0. However, the current version is {torch_version}."
-                    )
 
     def update_torch_dtype(self, torch_dtype):
         config_name = self.quantization_config.quant_type.__class__.__name__

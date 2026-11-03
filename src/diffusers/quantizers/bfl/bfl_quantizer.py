@@ -49,7 +49,7 @@ class BFLQuantizer(DiffusersQuantizer):
     def validate_environment(self, *args, **kwargs):
         if not is_accelerate_available():
             raise ImportError(
-                "Loading BFL quantized checkpoints requires `accelerate` installed in your environment: `pip install 'accelerate>=0.26.0'`"
+                "Loading BFL quantized checkpoints requires `accelerate` installed in your environment: `pip install -U accelerate`"
             )
 
     def adjust_target_dtype(self, target_dtype: "torch.dtype") -> "torch.dtype":

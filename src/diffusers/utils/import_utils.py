@@ -28,7 +28,7 @@ from typing import Any
 
 from huggingface_hub.utils import is_jinja_available  # noqa: F401
 from packaging.requirements import Requirement
-from packaging.version import Version, parse
+from packaging.version import InvalidVersion, Version, parse
 
 from ..dependency_versions_table import deps
 from . import logging
@@ -111,7 +111,15 @@ def _is_package_available(pkg_name: str, get_dist_name: bool = False) -> tuple[b
 
     if pkg_exists and import_name in _PKG_TO_DEPS_KEY:
         requirement = Requirement(deps[_PKG_TO_DEPS_KEY[import_name]])
-        if not requirement.specifier.contains(parse(pkg_version).base_version):
+        try:
+            base_version = parse(pkg_version).base_version
+        except InvalidVersion:
+            logger.warning(
+                f"Could not parse {import_name} version {pkg_version} to check it against `{requirement}`. "
+                f"Assuming it is supported."
+            )
+            base_version = None
+        if base_version is not None and not requirement.specifier.contains(base_version):
             logger.warning(
                 f"Disabling {import_name} because diffusers requires `{requirement}` but found version {pkg_version}. "
                 f"Upgrade it with `pip install -U '{requirement}'`."
