@@ -116,7 +116,9 @@ class FluxProcessImagesInputStep(ModularPipelineBlocks):
             raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
 
     @torch.no_grad()
-    def __call__(self, components: FluxModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: FluxModularPipeline, state: PipelineState
+    ) -> tuple[FluxModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         if block_state.resized_image is None and block_state.image is None:
@@ -169,7 +171,9 @@ class FluxKontextProcessImagesInputStep(ModularPipelineBlocks):
         return [OutputParam(name="processed_image")]
 
     @torch.no_grad()
-    def __call__(self, components: FluxModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: FluxModularPipeline, state: PipelineState
+    ) -> tuple[FluxModularPipeline, PipelineState]:
         from ...pipelines.flux.pipeline_flux_kontext import PREFERRED_KONTEXT_RESOLUTIONS
 
         block_state = self.get_block_state(state)
@@ -260,7 +264,9 @@ class FluxVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: FluxModularPipeline, state: PipelineState
+    ) -> tuple[FluxModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         image = getattr(block_state, self._image_input_name)
 
@@ -451,7 +457,9 @@ class FluxTextEncoderStep(ModularPipelineBlocks):
         return prompt_embeds, pooled_prompt_embeds
 
     @torch.no_grad()
-    def __call__(self, components: FluxModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: FluxModularPipeline, state: PipelineState
+    ) -> tuple[FluxModularPipeline, PipelineState]:
         # Get inputs and intermediates
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)

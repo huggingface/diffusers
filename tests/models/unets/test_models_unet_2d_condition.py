@@ -51,7 +51,6 @@ from ...testing_utils import (
     torch_all_close,
     torch_device,
 )
-from ..test_modeling_common import UNetTesterMixin
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
@@ -60,6 +59,7 @@ from ..testing_utils import (
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -381,7 +381,28 @@ class UNet2DConditionTesterConfig(BaseModelTesterConfig):
         }
 
 
-class TestUNet2DCondition(UNet2DConditionTesterConfig, ModelTesterMixin, UNetTesterMixin):
+class TestUNet2DCondition(UNet2DConditionTesterConfig, ModelTesterMixin):
+    def test_forward_with_norm_groups(self):
+        init_dict = self.get_init_dict()
+        inputs_dict = self.get_dummy_inputs()
+
+        init_dict["norm_num_groups"] = 16
+        init_dict["block_out_channels"] = (16, 32)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.to_tuple()[0]
+
+        assert output is not None
+        expected_shape = inputs_dict["sample"].shape
+        assert output.shape == expected_shape, "Input and output shapes do not match"
+
     def test_model_with_attention_head_dim_tuple(self):
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
@@ -1443,3 +1464,17 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         expected_output_slice = torch.tensor(expected_slice)
 
         assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
+
+
+class TestUNet2DConditionSingleFile(UNet2DConditionTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "stable-diffusion-v1-5/stable-diffusion-v1-5"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "unet"}

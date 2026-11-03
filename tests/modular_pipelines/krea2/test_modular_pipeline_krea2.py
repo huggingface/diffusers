@@ -14,9 +14,19 @@
 # limitations under the License.
 
 
+import pytest
+import torch
+
 from diffusers.modular_pipelines import Krea2AutoBlocks, Krea2ModularPipeline
 
-from ..test_modular_pipelines_common import ModularPipelineTesterMixin
+from ...testing_utils import torch_device
+from ..testing_utils import (
+    BaseModularPipelineTesterConfig,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 KREA2_WORKFLOWS = {
@@ -27,16 +37,17 @@ KREA2_WORKFLOWS = {
         ("denoise.set_timesteps", "Krea2SetTimestepsStep"),
         ("denoise.prepare_position_ids", "Krea2PreparePositionIdsStep"),
         ("denoise.denoise", "Krea2DenoiseStep"),
+        ("denoise.unpack_latents", "Krea2UnpackLatentsStep"),
         ("decode", "Krea2DecodeStep"),
     ],
 }
 
 
-class TestKrea2ModularPipelineFast(ModularPipelineTesterMixin):
+class Krea2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = Krea2ModularPipeline
     pipeline_blocks_class = Krea2AutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-krea2-modular-pipe"
-
+    expected_latents_shape = (1, 4, 1, 8, 8)
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
     expected_workflow_blocks = KREA2_WORKFLOWS
@@ -54,5 +65,32 @@ class TestKrea2ModularPipelineFast(ModularPipelineTesterMixin):
         }
         return inputs
 
+
+class TestKrea2ModularPipelineFast(Krea2ModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    def test_decode_accepts_packed_latents_with_deprecation(self):
+        # The old packed `[B, S, C]` form is still accepted by the decode step for a deprecation window.
+        decoder = self.pipeline_blocks_class().sub_blocks["decode"].init_pipeline(self.pretrained_model_name_or_path)
+        decoder.load_components(dtype=torch.float32)
+        decoder.to(torch_device)
+
+        # The 32x32 dummy canvas is a `[1, 4, 1, 8, 8]` latent, packed in 2x2 patches to 16 tokens of 16 channels.
+        packed_latents = torch.randn(1, 16, 16, generator=self.get_generator()).to(torch_device)
+        with pytest.warns(FutureWarning, match="packed latents"):
+            images = decoder(latents=packed_latents, height=32, width=32, output_type="pt", output="images")
+
+        assert images.shape == (1, 3, 32, 32)
+
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-3)
+
+
+class TestKrea2ModularPipelineLoading(Krea2ModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestKrea2ModularPipelineWorkflow(Krea2ModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestKrea2ModularPipelineMemory(Krea2ModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass

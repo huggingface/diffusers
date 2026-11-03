@@ -18,7 +18,7 @@ The model can be loaded with the following code snippet.
 ```python
 from diffusers import LTXVideoTransformer3DModel
 
-transformer = LTXVideoTransformer3DModel.from_pretrained("Lightricks/LTX-Video", subfolder="transformer", dtype=torch.bfloat16).to("cuda")
+transformer = LTXVideoTransformer3DModel.from_pretrained("Lightricks/LTX-Video", subfolder="transformer", dtype=torch.bfloat16).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 ## LTXVideoTransformer3DModel

@@ -37,7 +37,6 @@ from ..utils import (
     get_adapter_name,
     is_accelerate_available,
     is_peft_available,
-    is_peft_version,
     is_transformers_available,
     is_transformers_version,
     logging,
@@ -47,7 +46,7 @@ from ..utils import (
     set_weights_and_activate_adapters,
 )
 from ..utils.peft_utils import _create_lora_config
-from ..utils.state_dict_utils import _load_sft_state_dict_metadata
+from ..utils.state_dict_utils import _load_sft_file_metadata, _load_sft_state_dict_metadata
 
 
 if is_transformers_available():
@@ -209,7 +208,15 @@ def _fetch_state_dict(
     user_agent,
     allow_pickle,
     metadata=None,
+    return_file_metadata=False,
 ):
+    """
+    `metadata` is diffusers' own LoRA adapter metadata, parsed out of the file's `__metadata__`. With
+    `return_file_metadata`, that `__metadata__` is returned in full as a third element. It is `None` whenever the
+    weights did not come from a safetensors file — a state dict passed in memory, or a pickled checkpoint — since there
+    is nowhere else for a header to live.
+    """
+    file_metadata = None
     model_file = None
     if not isinstance(pretrained_model_name_or_path_or_dict, dict):
         # Let's first try to load .safetensors weights
@@ -240,6 +247,8 @@ def _fetch_state_dict(
                 )
                 state_dict = safetensors.torch.load_file(model_file, device="cpu")
                 metadata = _load_sft_state_dict_metadata(model_file)
+                if return_file_metadata:
+                    file_metadata = _load_sft_file_metadata(model_file)
 
             except (IOError, safetensors.SafetensorError) as e:
                 if not allow_pickle:
@@ -247,6 +256,7 @@ def _fetch_state_dict(
                 # try loading non-safetensors weights
                 model_file = None
                 metadata = None
+                file_metadata = None
                 pass
 
         if model_file is None:
@@ -271,6 +281,8 @@ def _fetch_state_dict(
     else:
         state_dict = pretrained_model_name_or_path_or_dict
 
+    if return_file_metadata:
+        return state_dict, metadata, file_metadata
     return state_dict, metadata
 
 
@@ -340,10 +352,6 @@ def _load_lora_into_text_encoder(
 
     peft_kwargs = {}
     if low_cpu_mem_usage:
-        if not is_peft_version(">=", "0.13.1"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
         if not is_transformers_version(">", "4.45.2"):
             # Note from sayakpaul: It's not in `transformers` stable yet.
             # https://github.com/huggingface/transformers/pull/33725/
@@ -374,6 +382,11 @@ def _load_lora_into_text_encoder(
 
         # convert state dict
         state_dict = convert_state_dict_to_peft(state_dict)
+
+        # CLIPTextModel is flattened in recent transformers versions, while older
+        # LoRA checkpoints can still contain the 'text_model.' prefix.
+        if not hasattr(text_encoder, "text_model"):
+            state_dict = {k.removeprefix("text_model."): v for k, v in state_dict.items()}
 
         for name, _ in text_encoder.named_modules():
             if name.endswith((".q_proj", ".k_proj", ".v_proj", ".out_proj", ".fc1", ".fc2")):
@@ -764,7 +777,7 @@ class LoraBaseMixin:
 
             for adapter_name, weights in zip(adapter_names, adapter_weights):
                 if isinstance(weights, dict):
-                    component_adapter_weights = weights.pop(component, None)
+                    component_adapter_weights = weights.get(component, None)
                     if component_adapter_weights is not None and component not in invert_list_adapters[adapter_name]:
                         logger.warning(
                             (
@@ -908,7 +921,7 @@ class LoraBaseMixin:
 
         for component in self._lora_loadable_modules:
             model = getattr(self, component, None)
-            if model is not None and issubclass(model.__class__, ModelMixin):
+            if model is not None and issubclass(model.__class__, (ModelMixin, PreTrainedModel)):
                 for module in model.modules():
                     if isinstance(module, BaseTunerLayer):
                         active_adapters = module.active_adapters

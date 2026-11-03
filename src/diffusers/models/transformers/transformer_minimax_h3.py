@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import BaseOutput, apply_lora_scale, logging
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
@@ -46,12 +46,14 @@ class MiniMaxH3TransformerOutput(BaseOutput):
         sample (`torch.Tensor` of shape `(batch_size, num_video_tokens, in_channels * prod(patch_size))`):
             The video velocity prediction for the rows addressed by `video_indices`, in the same order. Conditioning
             rows are returned unmasked — masking them out before the scheduler step is the caller's job.
-        audio_sample (`torch.Tensor` of shape `(batch_size, num_audio_tokens, audio_in_channels)`):
-            The audio velocity prediction for the rows addressed by `audio_indices`, in the same order.
+        audio_sample (`torch.Tensor` of shape `(batch_size, num_audio_tokens, audio_in_channels)`, defaults to `None`):
+            The audio velocity prediction for the rows addressed by `audio_indices`, in the same order. `forward`
+            always populates it; it only defaults to `None` so that the output can be rebuilt from a plain dict of its
+            fields, which is how the accelerate offload hooks move a `BaseOutput` back to the input device.
     """
 
     sample: torch.Tensor
-    audio_sample: torch.Tensor
+    audio_sample: torch.Tensor | None = None
 
 
 def _apply_rotary_emb(hidden_states: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
@@ -371,7 +373,9 @@ class MiniMaxH3TransformerBlock(nn.Module):
         return hidden_states
 
 
-class MiniMaxH3Transformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapterMixin, CacheMixin):
+class MiniMaxH3Transformer3DModel(
+    ModelMixin, ConfigMixin, AttentionMixin, PeftAdapterMixin, FromOriginalModelMixin, CacheMixin
+):
     r"""
     A Transformer model for joint video + audio generation, introduced in MiniMax-H3.
 

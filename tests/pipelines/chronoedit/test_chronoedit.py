@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
+import pytest
 import torch
 from PIL import Image
 from transformers import (
@@ -32,31 +31,21 @@ from diffusers import (
     FlowMatchEulerDiscreteScheduler,
 )
 
-from ...testing_utils import enable_full_determinism
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ...testing_utils import assert_tensors_close
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
-enable_full_determinism()
-
-
-class ChronoEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class ChronoEditPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = ChronoEditPipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs", "height", "width"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "generator",
-            "latents",
-            "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
-        ]
+    required_input_params_in_call_signature = frozenset(
+        ["image", "prompt", "negative_prompt", "guidance_scale", "prompt_embeds", "negative_prompt_embeds"]
     )
-    test_xformers_attention = False
+    batch_input_params = frozenset(["prompt"])
+    output_shape = (5, 3, 16, 16)
+    # ChronoEdit is a video pipeline: it exposes `num_videos_per_prompt`, not the base default `num_images_per_prompt`.
+    optional_input_params = frozenset(
+        ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
+    )
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -72,7 +61,9 @@ class ChronoEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # TODO: impl FlowDPMSolverMultistepScheduler
         scheduler = FlowMatchEulerDiscreteScheduler(shift=7.0)
         config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
-        text_encoder = T5EncoderModel(config)
+        # `eval()` because a directly constructed model stays in training mode, which leaves T5's
+        # dropout active and makes the pipeline outputs non-deterministic across calls.
+        text_encoder = T5EncoderModel(config).eval()
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
@@ -107,7 +98,7 @@ class ChronoEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         image_processor = CLIPImageProcessor(crop_size=32, size=32)
 
-        components = {
+        return {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
@@ -116,43 +107,36 @@ class ChronoEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "image_encoder": image_encoder,
             "image_processor": image_processor,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
+    def get_dummy_inputs(self):
         image_height = 16
         image_width = 16
         image = Image.new("RGB", (image_width, image_height))
-        inputs = {
+        return {
             "image": image,
             "prompt": "dance monkey",
             "negative_prompt": "negative",  # TODO
             "height": image_height,
             "width": image_width,
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "num_frames": 5,
             "max_sequence_length": 16,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
-        return inputs
 
+
+class TestChronoEditPipeline(ChronoEditPipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs()
         video = pipe(**inputs).frames
         generated_video = video[0]
-        self.assertEqual(generated_video.shape, (5, 3, 16, 16))
+        assert generated_video.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.4525, 0.4520, 0.4485, 0.4533, 0.4522, 0.4522, 0.4529, 0.4528, 0.5023, 0.5067, 0.5023, 0.5061, 0.5024, 0.4977, 0.5118, 0.5190])
@@ -160,18 +144,18 @@ class ChronoEditPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         generated_slice = generated_video.flatten()
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
-        self.assertTrue(torch.allclose(generated_slice, expected_slice, atol=1e-3))
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
-    @unittest.skip("Test not supported")
-    def test_attention_slicing_forward_pass(self):
-        pass
-
-    @unittest.skip("TODO: revisit failing as it requires a very high threshold to pass")
+    @pytest.mark.skip("TODO: revisit failing as it requires a very high threshold to pass")
     def test_inference_batch_single_identical(self):
         pass
 
-    @unittest.skip(
+    @pytest.mark.skip(
         "ChronoEditPipeline has to run in mixed precision. Save/Load the entire pipeline in FP16 will result in errors"
     )
     def test_save_load_float16(self):
         pass
+
+
+class TestChronoEditPipelineMemory(ChronoEditPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the ChronoEdit pipeline."""

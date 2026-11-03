@@ -20,6 +20,7 @@ import gguf
 import torch
 import torch.nn as nn
 
+from ... import __version__
 from ...utils import is_accelerate_available, is_kernels_available, is_kernels_version
 from ...utils.constants import DIFFUSERS_TRUST_REMOTE_KERNELS
 
@@ -46,7 +47,7 @@ if can_use_cuda_kernels and is_kernels_available():
         )
     # `kernels<0.14.0` has no `trust_remote_code` argument and executes the downloaded code unconditionally.
     trust_kwargs = {"trust_remote_code": True} if is_kernels_version(">=", "0.14.0") else {}
-    ops = get_kernel("Isotr0py/ggml", **trust_kwargs)
+    ops = get_kernel("Isotr0py/ggml", user_agent={"diffusers": __version__}, **trust_kwargs)
 else:
     ops = None
 

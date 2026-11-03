@@ -121,8 +121,6 @@
       title: (번역중) Stable Diffusion XL
     - local: in_translation # training/kandinsky
       title: (번역중) Kandinsky 2.2
-    - local: in_translation # training/wuerstchen
-      title: (번역중) Wuerstchen
     - local: training/controlnet
       title: ControlNet
     - local: in_translation # training/t2i_adapters

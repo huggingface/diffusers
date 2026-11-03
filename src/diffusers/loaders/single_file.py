@@ -21,7 +21,7 @@ from huggingface_hub.utils import LocalEntryNotFoundError, validate_hf_hub_args
 from packaging import version
 from typing_extensions import Self
 
-from ..utils import deprecate, is_transformers_available, logging
+from ..utils import _maybe_remap_relocated_pipeline_class, deprecate, is_transformers_available, logging
 from .single_file_utils import (
     SingleFileComponentError,
     _is_legacy_scheduler_kwargs,
@@ -64,6 +64,11 @@ def load_single_file_sub_model(
     disable_mmap=False,
     **kwargs,
 ):
+    relocated_library_name = _maybe_remap_relocated_pipeline_class(library_name, class_name)
+    if relocated_library_name is not None:
+        library_name = relocated_library_name
+        is_pipeline_module = False
+
     if is_pipeline_module:
         pipeline_module = getattr(pipelines, library_name)
         class_obj = getattr(pipeline_module, class_name)

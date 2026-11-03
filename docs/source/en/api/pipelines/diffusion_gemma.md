@@ -145,11 +145,11 @@ is not overwritten); this is the setup shown in [Usage](#usage). Drop both the `
 
 ## Adaptive stopping
 
-A block usually converges before all `num_inference_steps` are spent, so by default the pipeline leaves a block's
-denoising loop early once every example's argmax prediction is stable for `stability_threshold` steps and the mean
-per-token entropy falls below `confidence_threshold` (`0.005`, the value used by the released checkpoint). This roughly
-halves the number of decoder forwards at matched quality and is the largest single throughput lever. Pass
-`confidence_threshold=None` to always run the full `num_inference_steps`:
+A block usually converges before all `num_inference_steps` are spent, so by default the pipeline freezes each batch
+example once its argmax prediction is stable for `stability_threshold` steps and its mean per-token entropy falls below
+`confidence_threshold` (`0.005`, the value used by the released checkpoint). The denoising loop ends once every example
+is frozen. This roughly halves the number of decoder forwards at matched quality and is the largest single throughput
+lever. Pass `confidence_threshold=None` to always run the full `num_inference_steps`:
 
 ```py
 output = pipe(prompt="Why is the sky blue?", gen_length=256, confidence_threshold=None)  # disable adaptive stopping

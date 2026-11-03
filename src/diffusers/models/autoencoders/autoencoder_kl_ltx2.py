@@ -40,7 +40,7 @@ class PerChannelRMSNorm(nn.Module):
     def __init__(self, channel_dim: int = 1, eps: float = 1e-8) -> None:
         """
         Args:
-            dim: Dimension along which to compute the RMS (typically channels).
+            channel_dim: Dimension along which to compute the RMS (typically channels).
             eps: Small constant added for numerical stability.
         """
         super().__init__()

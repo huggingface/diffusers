@@ -17,6 +17,7 @@ import unittest
 
 import numpy as np
 import PIL.Image
+import pytest
 import torch
 
 from diffusers import (
@@ -25,9 +26,18 @@ from diffusers import (
     AnimaTextConditioner,
     CosmosTransformer3DModel,
 )
+from diffusers.modular_pipelines.anima.modular_blocks_anima import AnimaCoreDenoiseStep
 
-from ...testing_utils import enable_full_determinism, require_peft_backend
-from ..test_modular_pipelines_common import ModularGuiderTesterMixin, ModularPipelineTesterMixin
+from ...testing_utils import enable_full_determinism, is_lora, require_peft_backend
+from ..testing_utils import (
+    BaseModularPipelineOutputMixin,
+    BaseModularPipelineTesterConfig,
+    ModularGuiderTesterMixin,
+    ModularLoadingTesterMixin,
+    ModularMemoryTesterMixin,
+    ModularPipelineTesterMixin,
+    ModularWorkflowTesterMixin,
+)
 
 
 enable_full_determinism()
@@ -96,10 +106,11 @@ class AnimaTextConditionerFastTests(unittest.TestCase):
         self.assertTrue(torch.allclose(output[:, 4:], torch.zeros_like(output[:, 4:]), atol=1e-5))
 
 
-class TestAnimaModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTesterMixin):
+class AnimaModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = AnimaModularPipeline
     pipeline_blocks_class = AnimaAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-anima-modular-pipe"
+    expected_latents_shape = (1, 4, 1, 8, 8)
     params = frozenset(["prompt", "height", "width", "negative_prompt"])
     batch_params = frozenset(["prompt", "negative_prompt"])
     expected_workflow_blocks = ANIMA_TEXT2IMAGE_WORKFLOWS
@@ -117,6 +128,57 @@ class TestAnimaModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTest
             "output_type": "pt",
         }
 
+
+class TestAnimaModularPipelineFast(AnimaModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    @pytest.mark.parametrize("negative_prompt", [None, "", "bad quality"])
+    def test_split_text_encoder(self, negative_prompt):
+        pipe = self.get_pipeline()
+        inputs = self.get_dummy_inputs()
+        inputs["negative_prompt"] = negative_prompt
+        expected = pipe(**inputs).images
+
+        blocks = self.pipeline_blocks_class()
+        text_block = blocks.sub_blocks.pop("text_encoder")
+        text_pipe = text_block.init_pipeline(self.pretrained_model_name_or_path)
+        text_pipe.load_components(dtype=torch.float32)
+        denoise_pipe = blocks.init_pipeline(self.pretrained_model_name_or_path)
+        denoise_pipe.load_components(dtype=torch.float32)
+
+        inputs = self.get_dummy_inputs()
+        inputs["negative_prompt"] = negative_prompt
+        text_inputs = {name: inputs.pop(name) for name in ("prompt", "negative_prompt", "max_sequence_length")}
+        embeddings = text_pipe(**text_inputs).get_by_kwargs("denoiser_input_fields")
+        output = denoise_pipe(**embeddings, **inputs).images
+
+        torch.testing.assert_close(output, expected, rtol=1e-5, atol=1e-5)
+
+    def test_standalone_core_denoise(self):
+        text_block = self.pipeline_blocks_class().sub_blocks["text_encoder"]
+        text_pipe = text_block.init_pipeline(self.pretrained_model_name_or_path)
+        text_pipe.load_components(dtype=torch.float32)
+        inputs = self.get_dummy_inputs()
+        text_inputs = {name: inputs.pop(name) for name in ("prompt", "negative_prompt", "max_sequence_length")}
+        embeddings = text_pipe(**text_inputs).get(
+            [
+                "qwen_prompt_embeds",
+                "qwen_attention_mask",
+                "t5_input_ids",
+                "t5_attention_mask",
+                "negative_qwen_prompt_embeds",
+                "negative_qwen_attention_mask",
+                "negative_t5_input_ids",
+                "negative_t5_attention_mask",
+            ]
+        )
+
+        denoise_pipe = AnimaCoreDenoiseStep().init_pipeline(self.pretrained_model_name_or_path)
+        denoise_pipe.load_components(dtype=torch.float32)
+        inputs.pop("output_type")
+        output = denoise_pipe(**embeddings, **inputs).get("latents")
+
+        assert output.shape == (1, 4, 1, 4, 4)
+        assert torch.isfinite(output).all()
+
     def test_inference_empty_negative_prompt(self):
         pipe = self.get_pipeline()
 
@@ -130,6 +192,8 @@ class TestAnimaModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTest
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-4)
 
+
+class TestAnimaModularPipelineLoading(AnimaModularPipelineTesterConfig, ModularLoadingTesterMixin):
     def test_save_load_components(self):
         pipe = self.get_pipeline()
 
@@ -141,6 +205,9 @@ class TestAnimaModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTest
         assert isinstance(pipe.text_conditioner, AnimaTextConditioner)
         assert isinstance(pipe.transformer, CosmosTransformer3DModel)
 
+
+@is_lora
+class TestAnimaModularPipelineLoRA(AnimaModularPipelineTesterConfig, BaseModularPipelineOutputMixin):
     def test_lora_state_dict_conversion(self):
         state_dict = {
             "diffusion_model.blocks.0.self_attn.q_proj.lora_A.weight": torch.randn(2, 32),
@@ -173,10 +240,23 @@ class TestAnimaModularPipelineFast(ModularPipelineTesterMixin, ModularGuiderTest
         assert "dummy" in pipe.text_conditioner.peft_config
 
 
-class TestAnimaImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
+class TestAnimaModularPipelineWorkflow(AnimaModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestAnimaModularPipelineMemory(AnimaModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass
+
+
+class TestAnimaModularPipelineGuider(AnimaModularPipelineTesterConfig, ModularGuiderTesterMixin):
+    pass
+
+
+class AnimaImg2ImgModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = AnimaModularPipeline
     pipeline_blocks_class = AnimaAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-anima-modular-pipe"
+    expected_latents_shape = (1, 4, 1, 8, 8)
     params = frozenset(["prompt", "image", "strength", "height", "width", "negative_prompt"])
     batch_params = frozenset(["prompt", "negative_prompt"])
     expected_workflow_blocks = ANIMA_IMG2IMG_WORKFLOWS
@@ -196,6 +276,8 @@ class TestAnimaImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
             "output_type": "pt",
         }
 
+
+class TestAnimaImg2ImgModularPipelineFast(AnimaImg2ImgModularPipelineTesterConfig, ModularPipelineTesterMixin):
     def test_inference_basic(self):
         pipe = self.get_pipeline()
         inputs = self.get_dummy_inputs()
@@ -233,3 +315,15 @@ class TestAnimaImg2ImgModularPipelineFast(ModularPipelineTesterMixin):
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-4)
+
+
+class TestAnimaImg2ImgModularPipelineLoading(AnimaImg2ImgModularPipelineTesterConfig, ModularLoadingTesterMixin):
+    pass
+
+
+class TestAnimaImg2ImgModularPipelineWorkflow(AnimaImg2ImgModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+    pass
+
+
+class TestAnimaImg2ImgModularPipelineMemory(AnimaImg2ImgModularPipelineTesterConfig, ModularMemoryTesterMixin):
+    pass

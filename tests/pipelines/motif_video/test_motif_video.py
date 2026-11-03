@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
+import pytest
 import torch
 from transformers import (
     AutoTokenizer,
@@ -25,32 +24,25 @@ from transformers import (
 from diffusers import AutoencoderKLWan, FlowMatchEulerDiscreteScheduler, MotifVideoPipeline
 from diffusers.guiders import AdaptiveProjectedGuidance
 from diffusers.models.transformers.transformer_motif_video import MotifVideoTransformer3DModel
-from diffusers.utils.testing_utils import enable_full_determinism
 
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ...testing_utils import enable_full_determinism, torch_device
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class MotifVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class MotifVideoPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = MotifVideoPipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs", "guidance_scale"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "generator",
-            "latents",
-            "return_dict",
-            "callback_on_step_end",
-            "callback_on_step_end_tensor_inputs",
-        ]
+    required_input_params_in_call_signature = frozenset(
+        ["prompt", "height", "width", "negative_prompt", "prompt_embeds", "negative_prompt_embeds"]
     )
-    test_xformers_attention = False
+    batch_input_params = frozenset(["prompt", "negative_prompt"])
+    output_shape = (9, 3, 16, 16)
+    # MotifVideo is a video pipeline: it exposes `num_videos_per_prompt`, not `num_images_per_prompt`.
+    optional_input_params = frozenset(
+        ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
+    )
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -99,7 +91,7 @@ class MotifVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         guider = AdaptiveProjectedGuidance()
 
-        components = {
+        return {
             "transformer": transformer,
             "vae": vae,
             "scheduler": scheduler,
@@ -108,40 +100,42 @@ class MotifVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "feature_extractor": None,
             "guider": guider,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "A test video",
             "negative_prompt": "bad quality",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "height": 16,
             "width": 16,
             "num_frames": 9,
             "max_sequence_length": 16,
-            "output_type": "np",
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
+            "output_type": "pt",
         }
-        return inputs
 
+
+class TestMotifVideoPipeline(MotifVideoPipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        device = "cpu"
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
+        pipe = self.get_pipeline()
 
-        inputs = self.get_dummy_inputs(device)
-        video = pipe(**inputs).frames
+        video = pipe(**self.get_dummy_inputs()).frames
         generated_video = video[0]
 
-        self.assertEqual(generated_video.shape, (9, 16, 16, 3))
+        assert generated_video.shape == self.output_shape
 
-    def test_save_load_float16(self):
-        # T5Gemma2Encoder rebuilds non-persistent RoPE buffers after save/load, which causes small fp16 drift.
-        super().test_save_load_float16(expected_max_diff=5e-2)
+    # T5Gemma2Encoder rebuilds its non-persistent RoPE buffers on load, so the reloaded encoder computes the prompt
+    # embeddings from fp16 buffers rather than the fp32-derived ones the in-memory pipeline half()-ed. The drift stays
+    # within tolerance on CPU but measures ~0.1 on an accelerator.
+    @pytest.mark.xfail(
+        condition=torch_device != "cpu",
+        reason="fp16 drift from the text encoder's rebuilt RoPE buffers exceeds the tolerance on accelerators.",
+        strict=False,
+    )
+    def test_save_load_float16(self, tmp_path, expected_max_diff=5e-2):
+        super().test_save_load_float16(tmp_path, expected_max_diff=expected_max_diff)
+
+
+class TestMotifVideoPipelineMemory(MotifVideoPipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the MotifVideo pipeline."""

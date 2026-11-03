@@ -283,13 +283,11 @@ class TransformerSpatioTemporalModel(nn.Module):
         encoder_hidden_states: torch.Tensor | None = None,
         image_only_indicator: torch.Tensor | None = None,
         return_dict: bool = True,
-    ):
+    ) -> TransformerTemporalModelOutput | tuple[torch.Tensor]:
         """
         Args:
             hidden_states (`torch.Tensor` of shape `(batch size, channel, height, width)`):
                 Input hidden_states.
-            num_frames (`int`):
-                The number of frames to be processed per batch. This is used to reshape the hidden states.
             encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, encoder_hidden_states dim)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.

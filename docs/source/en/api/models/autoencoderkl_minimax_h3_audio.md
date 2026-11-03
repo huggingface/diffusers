@@ -25,7 +25,7 @@ from diffusers import AutoencoderKLMiniMaxH3Audio
 
 audio_vae = AutoencoderKLMiniMaxH3Audio.from_pretrained(
     "MiniMaxAI/MiniMax-H3", subfolder="audio_vae", dtype=torch.float32
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 ## AutoencoderKLMiniMaxH3Audio

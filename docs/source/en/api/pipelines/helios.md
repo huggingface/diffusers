@@ -110,7 +110,7 @@ pipeline = HeliosPipeline.from_pretrained(
     vae=vae,
     dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 # attention backend
 # pipeline.transformer.set_attention_backend("flash")
@@ -170,7 +170,7 @@ pipeline = HeliosPipeline.from_pretrained(
     vae=vae,
     dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 negative_prompt = """
 Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality,
@@ -265,7 +265,7 @@ pipeline = HeliosPyramidPipeline.from_pretrained(
     vae=vae,
     dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 negative_prompt = """
 Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality,
@@ -366,7 +366,7 @@ pipeline = HeliosPyramidPipeline.from_pretrained(
     vae=vae,
     dtype=torch.bfloat16
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 negative_prompt = """
 Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality,

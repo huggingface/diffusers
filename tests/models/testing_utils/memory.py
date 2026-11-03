@@ -40,6 +40,21 @@ from ...testing_utils import (
 from .common import BaseModelOutputMixin, cast_inputs_to_dtype, check_device_map_is_respected
 
 
+def reseed_generator_input(model, inputs_dict):
+    """Re-seed a `generator` entry in `inputs_dict`, in place, if the model's forward takes one.
+
+    A `torch.Generator` is stateful, so a model that draws noise in its forward (e.g. a diffusion decoder)
+    returns something different on every call. Tests below reuse one `inputs_dict` across several forwards
+    and compare the outputs, which only holds if each pass starts from the same generator state.
+
+    The signature is read off the class, not the instance: offloading hooks replace `model.forward` with a
+    `(*args, **kwargs)` wrapper, so an instance lookup finds no `generator` on exactly the models these
+    tests offload.
+    """
+    if "generator" in inspect.signature(type(model).forward).parameters:
+        inputs_dict["generator"] = torch.manual_seed(0)
+
+
 def require_offload_support(func):
     """
     Decorator to skip tests if model doesn't support offloading (requires _no_split_modules).
@@ -215,6 +230,7 @@ class GroupOffloadTesterMixin(BaseModelOutputMixin):
                 if hasattr(module, "_diffusers_hook")
             ), "Group offloading hook should be set"
             model.eval()
+            reseed_generator_input(model, inputs_dict)
             return model(**inputs_dict)[0]
 
         output_without_group_offloading = base_model_output
@@ -304,15 +320,8 @@ class GroupOffloadTesterMixin(BaseModelOutputMixin):
     @torch.no_grad()
     @torch.inference_mode()
     def test_group_offloading_with_disk(self, tmp_path, record_stream, offload_type, atol=1e-5, rtol=0):
-        def _has_generator_arg(model):
-            sig = inspect.signature(model.forward)
-            params = sig.parameters
-            return "generator" in params
-
         def _run_forward(model, inputs_dict):
-            accepts_generator = _has_generator_arg(model)
-            if accepts_generator:
-                inputs_dict["generator"] = torch.manual_seed(0)
+            reseed_generator_input(model, inputs_dict)
             torch.manual_seed(0)
             return model(**inputs_dict)[0]
 
