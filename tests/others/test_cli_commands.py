@@ -56,7 +56,7 @@ from diffusers.utils.testing_utils import (
 )
 
 
-AVAILABLE_COMMANDS = ("env", "fp16_safetensors", "custom_blocks", "generate", "run", "schema", "serve", "skills")
+AVAILABLE_COMMANDS = ("env", "fp16_safetensors", "custom_blocks", "run", "schema", "serve", "skills")
 
 
 class TestRunCommand:

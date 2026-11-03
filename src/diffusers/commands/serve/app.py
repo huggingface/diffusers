@@ -20,6 +20,7 @@ import asyncio
 import base64
 import json
 import re
+import time
 import uuid
 from typing import Any
 from urllib.parse import urlparse
@@ -92,10 +93,14 @@ def create_app(
     # With that path as the root path, routing accepts both forms.
     root_path = urlparse(public_url).path.rstrip("/") if public_url is not None else ""
     app = FastAPI(title="diffusers-cli serve", docs_url=None, redoc_url=None, openapi_url=None, root_path=root_path)
+    app.state.last_request = time.monotonic()
 
     @app.middleware("http")
     async def request_id(request: Request, call_next) -> Response:
         request.state.request_id = request.headers.get(REQUEST_ID_HEADER) or str(uuid.uuid4())
+        # Health checks come from monitors rather than users, and must not keep an idle server alive.
+        if not request.url.path.rstrip("/").endswith("/health"):
+            app.state.last_request = time.monotonic()
         response = await call_next(request)
         response.headers[REQUEST_ID_HEADER] = request.state.request_id
         return response

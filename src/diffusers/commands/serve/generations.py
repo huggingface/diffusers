@@ -108,10 +108,14 @@ class GenerationQueue:
         self._generations: dict[str, Generation] = {}
         self._lock = threading.Lock()
         self._pending: queue.Queue[Generation] = queue.Queue()
+        self._running = False
         threading.Thread(target=self._work, name="diffusers-serve-worker", daemon=True).start()
 
     def failure(self) -> str | None:
         return self._backend.failure()
+
+    def busy(self) -> bool:
+        return self._running or not self._pending.empty()
 
     def submit(self, generation: Generation) -> None:
         self._prune()
@@ -165,6 +169,7 @@ class GenerationQueue:
                 if generation.done:
                     continue
                 generation.status = "generating"
+                self._running = True
             generation.directory = self._output_dir / generation.id
 
             started = time.perf_counter()
@@ -190,5 +195,6 @@ class GenerationQueue:
                     generation.outputs = outputs
                     generation.usage = {"compute_seconds": round(time.perf_counter() - started, 2)}
                     generation.finish("complete")
+                self._running = False
             if deleted or generation.status != "complete":
                 self._remove_files(generation)

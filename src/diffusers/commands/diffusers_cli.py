@@ -20,7 +20,6 @@ from huggingface_hub.cli._output import OutputFormat, out
 from .custom_blocks import CustomBlocksCommand
 from .env import EnvironmentCommand
 from .fp16_safetensors import FP16SafetensorsCommand
-from .generate import GenerateCommand
 from .run import RunCommand
 from .schema import SchemaCommand
 from .serve import ServeCommand
@@ -49,7 +48,6 @@ def main():
     EnvironmentCommand.register_subcommand(commands_parser)
     FP16SafetensorsCommand.register_subcommand(commands_parser)
     CustomBlocksCommand.register_subcommand(commands_parser)
-    GenerateCommand.register_subcommand(commands_parser)
     RunCommand.register_subcommand(commands_parser)
     SchemaCommand.register_subcommand(commands_parser)
     ServeCommand.register_subcommand(commands_parser)

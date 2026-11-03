@@ -21,6 +21,7 @@ import base64
 import inspect
 import io
 import json
+import shlex
 import subprocess
 import sys
 import threading
@@ -34,8 +35,7 @@ import torch
 from huggingface_hub.utils import httpx
 from PIL import Image
 
-from diffusers.commands.generate import GenerateCommand
-from diffusers.commands.serve import ServeCommand
+from diffusers.commands.serve import ServeCommand, _shut_down_when_idle
 from diffusers.commands.serve.backends import (
     DiffusersBackend,
     EngineBackend,
@@ -505,6 +505,14 @@ class TestServeApp:
         response = client.get("/health")
         assert (response.status_code, response.json()) == (200, {"status": "ok"})
 
+    def test_health_checks_do_not_count_as_activity(self, serve):
+        client, _ = serve()
+        client.app.state.last_request = 0.0
+        client.get("/health")
+        assert client.app.state.last_request == 0.0, "a health check must not keep an idle server alive"
+        client.get("/v1/models")
+        assert client.app.state.last_request > 0.0, "a request should reset the idle clock"
+
     def test_request_id_is_generated_or_echoed(self, serve):
         client, _ = serve()
         assert client.get("/health").headers["x-request-id"], "a request without an id should be given one"
@@ -525,7 +533,7 @@ class TestServeApp:
         expected = f"https://proxy.example/sandbox/proxy/8000/v1/generations/{generation['id']}/files/image-0.png"
         assert generation["outputs"]["image"][0]["url"] == expected
 
-        # The sandbox proxy forwards some requests with the published path still attached.
+        # A reverse proxy may forward requests with the published path still attached.
         for path in ("/v1/models", "/sandbox/proxy/8000/v1/models"):
             assert client.get(path).status_code == 200, path
         prefixed = client.post("/sandbox/proxy/8000/v1/generations", json=body, headers=WAIT)
@@ -789,112 +797,116 @@ class TestEngineBackend:
         assert _served(backend="vllm", manifest=manifest).tasks == {}
 
 
-class TestGenerateCommand:
-    def _run(self, monkeypatch, client, argv):
-        parser = ArgumentParser()
-        GenerateCommand.register_subcommand(parser.add_subparsers())
-        monkeypatch.setattr("diffusers.commands.generate._POLL_SECONDS", 0.01)
-        monkeypatch.setattr(GenerateCommand, "_client", lambda self: client)
-        GenerateCommand(parser.parse_args(["generate", "--url", "http://testserver", *argv])).run()
+class FakeJobsApi:
+    def __init__(self, logs=("server started",), stage="COMPLETED"):
+        self.logs = logs
+        self.stage = stage
+        self.run_kwargs = None
+        self.cancelled = False
 
-    def test_generate_saves_outputs(self, serve, tmp_path, monkeypatch):
-        client, pipeline = serve()
-        output = tmp_path / "saved"
-        argv = ["--inputs", '{"prompt": "a cat"}', "--parameters", '{"width": 64, "seed": 5}', "-o", str(output)]
-        self._run(monkeypatch, client, argv)
+    def run_job(self, **kwargs):
+        self.run_kwargs = kwargs
+        return SimpleNamespace(id="job-1", owner=SimpleNamespace(name="me"))
 
-        assert pipeline.calls[0]["prompt"] == "a cat"
-        assert [path.name for path in output.iterdir()] == ["image-0.png"], list(output.iterdir())
-        assert Image.open(output / "image-0.png").size == (64, 32)
+    def fetch_job_logs(self, **kwargs):
+        for line in self.logs:
+            if isinstance(line, BaseException):
+                raise line
+            yield line
 
-    def test_local_file_is_sent_as_a_media_value(self, serve, tmp_path, monkeypatch):
-        client, pipeline = serve()
-        source = tmp_path / "cat.png"
-        Image.new("RGB", (8, 8), "blue").save(source)
-        inputs = json.dumps({"prompt": "make it grey", "image": str(source)})
-        self._run(monkeypatch, client, ["--inputs", inputs, "-o", str(tmp_path / "saved")])
+    def inspect_job(self, **kwargs):
+        return SimpleNamespace(status=SimpleNamespace(stage=self.stage, expose_urls=None))
 
-        assert pipeline.calls[0]["image"].size == (8, 8)
-
-    def test_server_error_is_reported(self, serve, tmp_path, monkeypatch):
-        client, _ = serve()
-        argv = ["--inputs", '{"prompt": "a cat"}', "--parameters", '{"cfg": 1}', "-o", str(tmp_path)]
-        with pytest.raises(SystemExit, match=r"HTTP 400: invalid_request: .*\(at /parameters/cfg\)"):
-            self._run(monkeypatch, client, argv)
-
-
-class FakeSandbox:
-    id = "sbx-1"
-    proxy_headers = {"Authorization": "Bearer hf_x", "X-Sandbox-Token": "tok"}
-
-    def __init__(self):
-        self.commands = []
-        self.uploads = []
-        self.killed = False
-        self.files = SimpleNamespace(upload=lambda local, remote: self.uploads.append((local, remote)))
-
-    def proxy_url_for(self, port, path="/"):
-        return f"https://job.hf.jobs/v1/sandboxes/s/proxy/{port}{path}"
-
-    def run(self, cmd, **kwargs):
-        self.commands.append(cmd)
-        return SimpleNamespace(exit_code=0, stdout="/usr/bin/python3\n")
-
-    def kill(self):
-        self.killed = True
+    def cancel_job(self, **kwargs):
+        self.cancelled = True
 
 
 class TestServeRemote:
-    def test_remote_starts_the_server_in_a_sandbox(self, tmp_path, monkeypatch):
-        sandbox = FakeSandbox()
-        created = {}
-        monkeypatch.setattr(
-            "diffusers.commands.serve.remote.Sandbox",
-            SimpleNamespace(create=lambda **kwargs: created.update(kwargs) or sandbox),
-        )
-        manifest = tmp_path / "gms.json"
-        manifest.write_text("{}")
+    def _run(self, monkeypatch, api, argv):
+        monkeypatch.setattr("diffusers.commands.serve.remote.HfApi", lambda token: api)
+        monkeypatch.setattr("diffusers.commands.serve.remote.get_token", lambda: "hf_x")
         parser = ArgumentParser()
         ServeCommand.register_subcommand(parser.add_subparsers())
-        argv = ["serve", "-m", "org/model", "--dtype", "bf16", "--remote", "--flavor", "a10g-large"]
-        argv += ["--manifest", str(manifest), "--port", "9000", "--dependencies", "extra-package"]
-        ServeCommand(parser.parse_args(argv)).run()
+        ServeCommand(parser.parse_args(["serve", "org/model", "--remote", *argv])).run()
 
-        assert created["flavor"] == "a10g-large"
-        assert created["image"] == "pytorch/pytorch:2.10.0-cuda12.8-cudnn9-runtime"
-        install, _, serve_argv = sandbox.commands
+    def test_remote_starts_the_server_in_a_job(self, monkeypatch):
+        api = FakeJobsApi()
+        argv = ["--dtype", "fp16", "--flavor", "a10g-large", "--port", "9000"]
+        self._run(monkeypatch, api, [*argv, "--dependencies", "extra-package"])
+
+        job = api.run_kwargs
+        assert (job["flavor"], job["image"]) == ("a10g-large", "diffusers/diffusers-cli-cuda:latest"), job
+        assert job["expose"] == [8000] and job["timeout"] == "24h", job
+        assert job["secrets"] == {"HF_TOKEN": "hf_x"}, "gated models need the HF token inside the Job"
+
+        assert job["command"][:2] == ["sh", "-c"], job["command"]
+        install, start = job["command"][2].split(" && ")
         assert "fastapi" in install and "extra-package" in install, install
+        start = shlex.split(start)
         # The server runs under the interpreter the dependencies were installed into, not whatever is on PATH.
-        assert serve_argv[:3] == ["/usr/bin/python3", "-m", "diffusers.commands.diffusers_cli"], serve_argv
-        assert serve_argv[3:7] == ["--format", "quiet", "serve", "--model"], serve_argv
-        options = dict(zip(serve_argv[6::2], serve_argv[7::2]))
-        assert options["--dtype"] == "bf16"
-        # The sandbox server always binds the proxied port and builds output links on the proxied address.
-        assert options["--port"] == "8000"
-        assert options["--public-url"] == "https://job.hf.jobs/v1/sandboxes/s/proxy/8000/"
-        assert options["--manifest"] == "/tmp/diffusers-cli/gms.json"
-        assert sandbox.uploads == [(str(manifest), "/tmp/diffusers-cli/gms.json")]
-        assert "--remote" not in serve_argv and "--flavor" not in serve_argv, serve_argv
-        assert sandbox.killed, "the sandbox must be killed once the server stops"
+        assert start[:4] == ["exec", "$(uv python find --system)", "-m", "diffusers.commands.diffusers_cli"], start
+        serve_argv = start[start.index("serve") + 1 :]
+        options = dict(zip(serve_argv[::2], serve_argv[1::2]))
+        assert options["--model"] == "org/model" and options["--dtype"] == "fp16", options
+        # The server binds the exposed port on every interface, and builds output links on the public address.
+        assert (options["--host"], options["--port"]) == ("0.0.0.0", "8000"), options
+        assert options["--public-url"] == "https://${JOB_ID}--8000.hf.jobs", options
+        assert options["--idle-timeout"] == "30m", "a remote server should shut itself down when idle by default"
+        assert not {"--remote", "--flavor", "--timeout", "--dependencies"} & set(serve_argv), serve_argv
+        assert not api.cancelled, "a Job that completed on its own needs no cancel"
+
+    def test_local_manifest_is_rejected(self, tmp_path, monkeypatch):
+        api = FakeJobsApi()
+        manifest = tmp_path / "gms.json"
+        manifest.write_text("{}")
+        with pytest.raises(SystemExit, match="Upload it as `gms.json` to the model repo"):
+            self._run(monkeypatch, api, ["--manifest", str(manifest)])
+        assert api.run_kwargs is None, "no Job should start when the manifest can't reach it"
+
+    def test_interrupt_cancels_the_job(self, monkeypatch):
+        api = FakeJobsApi(logs=("server started", KeyboardInterrupt()))
+        with pytest.raises(KeyboardInterrupt):
+            self._run(monkeypatch, api, [])
+        assert api.cancelled, "Ctrl-C must cancel the Job so it stops billing"
+
+    def test_failed_job_is_reported(self, monkeypatch):
+        with pytest.raises(SystemExit, match="Job job-1 ended with status ERROR"):
+            self._run(monkeypatch, FakeJobsApi(stage="ERROR"), [])
 
     @pytest.mark.parametrize(
         "backend, image", [("sglang", "lmsysorg/sglang:latest"), ("vllm", "vllm/vllm-omni:latest")]
     )
     def test_engine_backend_defaults_to_the_engine_image(self, monkeypatch, backend, image):
-        created = {}
-        monkeypatch.setattr(
-            "diffusers.commands.serve.remote.Sandbox",
-            SimpleNamespace(create=lambda **kwargs: created.update(kwargs) or FakeSandbox()),
-        )
-        parser = ArgumentParser()
-        ServeCommand.register_subcommand(parser.add_subparsers())
-        ServeCommand(parser.parse_args(["serve", "-m", "org/model", "--backend", backend, "--remote"])).run()
-        assert created["image"] == image
+        api = FakeJobsApi()
+        self._run(monkeypatch, api, ["--backend", backend])
+        assert api.run_kwargs["image"] == image
 
-        ServeCommand(
-            parser.parse_args(["serve", "-m", "org/model", "--backend", backend, "--remote", "--image", "mine"])
-        ).run()
-        assert created["image"] == "mine", "an explicit --image must win over the engine default"
+        self._run(monkeypatch, api, ["--backend", backend, "--image", "mine"])
+        assert api.run_kwargs["image"] == "mine", "an explicit --image must win over the engine default"
+
+
+class TestIdleShutdown:
+    def _watch(self, busy):
+        server = SimpleNamespace(should_exit=False)
+        app = SimpleNamespace(state=SimpleNamespace(last_request=0.0))
+        generations = SimpleNamespace(busy=lambda: busy[0])
+        watcher = threading.Thread(target=_shut_down_when_idle, args=(server, app, generations, "0.05"), daemon=True)
+        watcher.start()
+        return server, watcher
+
+    def test_idle_server_shuts_down(self):
+        server, watcher = self._watch(busy=[False])
+        watcher.join(timeout=5)
+        assert server.should_exit, "an idle server should be told to exit"
+
+    def test_busy_server_stays_up_until_the_work_ends(self):
+        busy = [True]
+        server, watcher = self._watch(busy)
+        watcher.join(timeout=0.3)
+        assert not server.should_exit, "a queued or running generation must keep the server up"
+        busy[0] = False
+        watcher.join(timeout=5)
+        assert server.should_exit, "the server should exit once the work ends and the timeout passes"
 
 
 class TestServeCommand:
@@ -910,11 +922,33 @@ class TestServeCommand:
             raise RuntimeError("stop after the flag check")
 
         monkeypatch.setattr("diffusers.commands.serve._resolve_pipeline", stop)
-        args = self._parse(["-m", "org/model", "--backend", "vllm", "--dtype", "bf16", "--vae-tiling"])
+        args = self._parse(["-m", "org/model", "--backend", "vllm", "--dtype", "fp16", "--vae-tiling"])
         with CaptureLogger(logging.get_logger("diffusers-cli/serve")) as captured:
             with pytest.raises(RuntimeError, match="stop after the flag check"):
                 ServeCommand(args).run()
         assert "--dtype, --vae-tiling configure the in-process pipeline and are ignored" in captured.out
+
+    def test_model_is_positional_and_loads_in_bf16(self, monkeypatch):
+        pytest.importorskip("fastapi", reason="`diffusers-cli serve` needs the `diffusers[serve]` extra")
+        resolved = {}
+
+        def stop(args):
+            resolved.update(vars(args))
+            raise RuntimeError("stop after the flag check")
+
+        monkeypatch.setattr("diffusers.commands.serve._resolve_pipeline", stop)
+        with pytest.raises(RuntimeError, match="stop after the flag check"):
+            ServeCommand(self._parse(["org/model"])).run()
+        assert resolved["model"] == "org/model", resolved
+        assert resolved["dtype"] == "bf16", "serve should default to bf16 rather than `run`'s fp32 `auto`"
+
+    def test_two_different_models_are_rejected(self):
+        with pytest.raises(SystemExit, match="Got two models"):
+            ServeCommand(self._parse(["org/model", "-m", "org/other"])).run()
+
+    def test_missing_model_is_rejected(self):
+        with pytest.raises(SystemExit, match="Pass the model to serve"):
+            ServeCommand(self._parse([])).run()
 
     def test_context_parallel_is_rejected(self):
         pytest.importorskip("fastapi", reason="`diffusers-cli serve` needs the `diffusers[serve]` extra")

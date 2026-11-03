@@ -22,14 +22,17 @@ vLLM-Omni server with `--backend`.
 from __future__ import annotations
 
 import inspect
+import threading
+import time
 from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter, _SubParsersAction
 from pathlib import Path
+from typing import Any
 
 from huggingface_hub.cli._output import out
 
 from ...utils import logging
 from .. import BaseDiffusersCLICommand
-from ..run import _add_loading_arguments, _add_optimization_arguments
+from ..run import _add_loading_arguments, _add_optimization_arguments, _duration_to_seconds
 from .remote import add_remote_arguments, serve_remote
 
 
@@ -41,7 +44,7 @@ BACKEND_CHOICES = ("diffusers", "sglang", "vllm")
 # Flags that configure the in-process pipeline, paired with the value argparse gives them when unset.
 _DIFFUSERS_ONLY_FLAGS = {
     "device_map": None,
-    "dtype": "auto",
+    "dtype": "bf16",
     "variant": None,
     "lora": None,
     "cpu_offload": None,
@@ -92,6 +95,19 @@ def _resolve_pipeline(args: Namespace) -> tuple[type, inspect.Signature, str | N
     return type(pipeline), blocks_signature(pipeline.blocks), commit_hash
 
 
+def _shut_down_when_idle(server: Any, app: Any, generations: Any, idle_timeout: str) -> None:
+    limit = _duration_to_seconds(idle_timeout)
+    while True:
+        time.sleep(min(limit, 30.0))
+        if generations.busy():
+            app.state.last_request = time.monotonic()
+            continue
+        if time.monotonic() - app.state.last_request >= limit:
+            logger.info(f"No requests for {idle_timeout}; shutting down.")
+            server.should_exit = True
+            return
+
+
 class ServeCommand(BaseDiffusersCLICommand):
     task = "serve"
 
@@ -99,10 +115,10 @@ class ServeCommand(BaseDiffusersCLICommand):
     def register_subcommand(subparsers: _SubParsersAction) -> None:
         epilog = (
             "Examples\n"
-            "  $ diffusers-cli serve -m black-forest-labs/FLUX.1-dev --dtype bf16\n"
-            "  $ diffusers-cli serve -m black-forest-labs/FLUX.1-dev --dtype bf16 --compile --port 9000\n"
-            "  $ diffusers-cli serve -m Wan-AI/Wan2.2-T2V-A14B-Diffusers --backend vllm\n"
-            "  $ diffusers-cli serve -m Qwen/Qwen-Image --backend sglang --backend-args '--num-gpus 2'\n"
+            "  $ diffusers-cli serve black-forest-labs/FLUX.1-dev\n"
+            "  $ diffusers-cli serve black-forest-labs/FLUX.1-dev --compile --port 9000\n"
+            "  $ diffusers-cli serve Wan-AI/Wan2.2-T2V-A14B-Diffusers --backend vllm\n"
+            "  $ diffusers-cli serve Qwen/Qwen-Image --backend sglang --backend-args '--num-gpus 2'\n"
             "\n"
             "  $ curl localhost:8000/v1/generations -H 'Prefer: wait=120' \\\n"
             '      -d \'{"model": "black-forest-labs/FLUX.1-dev", "inputs": {"prompt": "a cat on the moon"}}\'\n'
@@ -115,12 +131,19 @@ class ServeCommand(BaseDiffusersCLICommand):
         parser: ArgumentParser = subparsers.add_parser(
             "serve",
             help="Serve a diffusers pipeline over HTTP with the Generative Media Spec API.",
-            usage="\n  diffusers-cli serve [options]",
+            usage="\n  diffusers-cli serve <model> [options]",
             epilog=epilog,
             formatter_class=RawDescriptionHelpFormatter,
         )
         parser._optionals.title = "Options"
-        _add_loading_arguments(parser)
+        parser.add_argument(
+            "model_id",
+            nargs="?",
+            default=None,
+            metavar="MODEL",
+            help="Model id on the Hugging Face Hub or local path.",
+        )
+        _add_loading_arguments(parser, require_model=False)
         _add_optimization_arguments(parser)
         parser.add_argument(
             "--backend",
@@ -195,15 +218,36 @@ class ServeCommand(BaseDiffusersCLICommand):
             default=None,
             help="Logging level for diffusers and the HTTP server. Defaults to the current diffusers verbosity.",
         )
+        parser.add_argument(
+            "--idle-timeout",
+            default=None,
+            help=(
+                "Shut the server down after this long without requests while no generation is queued or running "
+                "(e.g. 30m, 2h). Defaults to never, or to 30m with --remote."
+            ),
+        )
         add_remote_arguments(parser)
         # `_load_pipeline` reads these `run` flags, which `serve` does not expose.
-        parser.set_defaults(func=ServeCommand, workflow=None, offload_margin=None)
+        # Most served models are DiTs trained in bf16; `run`'s `auto` would load them in fp32.
+        parser.set_defaults(func=ServeCommand, workflow=None, offload_margin=None, dtype="bf16")
 
     def __init__(self, args: Namespace):
         self.args = args
 
     def run(self) -> None:
         args = self.args
+        if args.model_id is not None and args.model is not None and args.model_id != args.model:
+            raise SystemExit(f"Got two models: {args.model_id!r} and --model {args.model!r}. Pass only one.")
+        args.model = args.model or args.model_id
+        # Cleared so `serve --remote` does not forward it to the Job as `--model-id`.
+        args.model_id = None
+        if args.model is None:
+            raise SystemExit("Pass the model to serve, e.g. `diffusers-cli serve black-forest-labs/FLUX.1-dev`.")
+        if args.idle_timeout is not None:
+            try:
+                _duration_to_seconds(args.idle_timeout)
+            except ValueError:
+                raise SystemExit(f"--idle-timeout {args.idle_timeout!r} is not a duration such as 30m or 2h.")
         if args.log_level is not None:
             logging.set_verbosity(logging.get_log_levels_dict()[args.log_level])
 
@@ -279,9 +323,10 @@ class ServeCommand(BaseDiffusersCLICommand):
             backend = EngineBackend.launch(args, served)
 
         try:
+            generations = GenerationQueue(backend, args.output_dir)
             app = create_app(
                 served,
-                GenerationQueue(backend, args.output_dir),
+                generations,
                 default_seed=args.default_seed,
                 enable_cors=args.enable_cors,
                 public_url=args.public_url,
@@ -295,6 +340,16 @@ class ServeCommand(BaseDiffusersCLICommand):
                 tasks=list(served.tasks),
                 capabilities=served.capabilities,
             )
-            uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level or "info")
+            server = uvicorn.Server(
+                uvicorn.Config(app, host=args.host, port=args.port, log_level=args.log_level or "info")
+            )
+            if args.idle_timeout is not None:
+                threading.Thread(
+                    target=_shut_down_when_idle,
+                    args=(server, app, generations, args.idle_timeout),
+                    name="diffusers-serve-idle",
+                    daemon=True,
+                ).start()
+            server.run()
         finally:
             backend.close()

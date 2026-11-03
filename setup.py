@@ -290,7 +290,12 @@ setup(
     python_requires=">=3.10.0",
     install_requires=list(install_requires),
     extras_require=extras,
-    entry_points={"console_scripts": ["diffusers-cli=diffusers.commands.diffusers_cli:main"]},
+    entry_points={
+        "console_scripts": [
+            "diffusers-cli=diffusers.commands.diffusers_cli:main",
+            "diffusers=diffusers.commands.diffusers_cli:main",
+        ]
+    },
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",
