@@ -889,6 +889,21 @@ class AutoencoderKLMochi(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
+class AutoencoderKLPH3Image(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
 class AutoencoderKLQwenImage(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -2240,6 +2255,21 @@ class OvisImageTransformer2DModel(metaclass=DummyObject):
 
 
 class ParallelConfig(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class PH3ImageTextConnector(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

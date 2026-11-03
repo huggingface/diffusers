@@ -159,6 +159,10 @@ else:
         "MiniMaxMusic3Blocks",
         "MiniMaxMusic3ModularPipeline",
     ]
+    _import_structure["p_h3_image"] = [
+        "PH3ImageBlocks",
+        "PH3ImageModularPipeline",
+    ]
     _import_structure["pika_h3_flex"] = [
         "PikaH3FlexBlocks",
         "PikaH3FlexModularPipeline",
@@ -250,6 +254,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SequentialPipelineBlocks,
         )
         from .modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, InsertableDict, OutputParam
+        from .p_h3_image import (
+            PH3ImageBlocks,
+            PH3ImageModularPipeline,
+        )
         from .pika_h3_flex import (
             PikaH3FlexBlocks,
             PikaH3FlexModularPipeline,
