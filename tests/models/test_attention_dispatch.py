@@ -15,6 +15,7 @@
 
 import contextlib
 import os
+import types
 
 import pytest
 import torch
@@ -22,9 +23,11 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 import torch.nn.functional as F
 
+from diffusers.models import attention_dispatch
 from diffusers.models._modeling_parallel import ContextParallelConfig, ParallelConfig
+from diffusers.models.attention_dispatch import AttentionBackendName, dispatch_attention_fn
 from diffusers.models.attention_dispatch import attention_backend as attention_backend_ctx
-from diffusers.models.attention_dispatch import dispatch_attention_fn
+from diffusers.models.transformers.transformer_flux import FluxAttention
 
 from ..testing_utils import (
     is_attention,
@@ -190,13 +193,7 @@ class TestContextParallelAttentionBackward:
 class TestAttentionModuleSetAttentionBackend:
     @pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available.")
     def test_hub_kernel_is_loaded(self, monkeypatch):
-        import types
-
         import kernels
-
-        from diffusers.models import attention_dispatch
-        from diffusers.models.attention_dispatch import AttentionBackendName
-        from diffusers.models.transformers.transformer_flux import FluxAttention
 
         def fake_sageattn(*args, **kwargs):
             raise NotImplementedError
@@ -214,9 +211,6 @@ class TestAttentionModuleSetAttentionBackend:
         assert config.kernel_fn is fake_sageattn
 
     def test_backend_requirements_are_checked(self, monkeypatch):
-        from diffusers.models import attention_dispatch
-        from diffusers.models.transformers.transformer_flux import FluxAttention
-
         attn = FluxAttention(query_dim=8, heads=2, dim_head=4)
 
         monkeypatch.setattr(attention_dispatch, "_CAN_USE_FLASH_ATTN", False)
