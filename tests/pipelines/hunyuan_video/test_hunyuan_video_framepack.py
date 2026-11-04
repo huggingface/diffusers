@@ -196,7 +196,6 @@ class HunyuanVideoFramepackPipelineTesterConfig(BasePipelineTesterConfig):
             "num_frames": 9,
             "latent_window_size": 3,
             "max_sequence_length": 256,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 

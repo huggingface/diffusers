@@ -126,7 +126,6 @@ class AnimateDiffVideoToVideoControlNetPipelineTesterConfig(MotionPipelineTester
             "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "guidance_scale": 7.5,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
 

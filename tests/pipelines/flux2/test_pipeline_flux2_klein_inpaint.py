@@ -97,7 +97,6 @@ class Flux2KleinInpaintPipelineTesterConfig(BasePipelineTesterConfig):
             "max_sequence_length": 64,
             "strength": 0.8,
             "text_encoder_out_layers": (1,),
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
         return inputs
