@@ -1221,7 +1221,7 @@ class LTXConditionPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraL
                         )
 
                 denoised_latents = self.scheduler.step(
-                    -noise_pred, t, latents, per_token_timesteps=timestep, return_dict=False
+                    noise_pred, t, latents, per_token_timesteps=timestep, return_dict=False
                 )[0]
                 if is_conditioning_image_or_video:
                     tokens_to_denoise_mask = (t / 1000 - 1e-6 < (1.0 - conditioning_mask)).unsqueeze(-1)
