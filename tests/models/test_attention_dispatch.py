@@ -231,61 +231,6 @@ class TestAttentionModuleSetAttentionBackend:
 
 
 @is_attention
-@pytest.mark.parametrize("return_lse", [False, True])
-@pytest.mark.parametrize("use_mask", [False, True])
-def test_flash_varlen_return_lse(monkeypatch, return_lse, use_mask):
-    query = torch.randn(2, 3, 2, 4)
-    expected_lse = torch.randn(2, 6)
-    attn_mask = torch.tensor([[True, True, False], [True, False, False]]) if use_mask else None
-
-    def flash_attn_varlen_func(*, q, return_attn_probs, **kwargs):
-        assert return_attn_probs is return_lse
-        out = q + 1
-        return (out, expected_lse, None) if return_attn_probs else out
-
-    monkeypatch.setattr(attention_dispatch, "flash_attn_varlen_func", flash_attn_varlen_func, raising=False)
-    monkeypatch.setattr(_AttentionBackendRegistry, "_checks_enabled", False)
-    result = dispatch_attention_fn(
-        query,
-        query,
-        query,
-        attn_mask=attn_mask,
-        backend=AttentionBackendName.FLASH_VARLEN,
-        attention_kwargs={"return_lse": return_lse},
-    )
-
-    if return_lse:
-        out, lse = result
-        torch.testing.assert_close(out, query + 1)
-        assert lse is expected_lse
-    else:
-        torch.testing.assert_close(result, query + 1)
-
-
-@is_attention
-@require_torch_accelerator
-@pytest.mark.skipif(not attention_dispatch._CAN_USE_FLASH_ATTN, reason="Flash Attention is not available.")
-@pytest.mark.skipif(torch_device != "cuda", reason="CUDA is required for flash attention.")
-def test_flash_varlen_return_lse_cuda():
-    query = torch.randn(2, 32, 2, 64, device=torch_device, dtype=torch.float16)
-    with torch.no_grad():
-        out, lse = dispatch_attention_fn(
-            query,
-            query,
-            query,
-            backend=AttentionBackendName.FLASH_VARLEN,
-            attention_kwargs={"return_lse": True},
-        )
-        q = query.transpose(1, 2)
-        reference = F.scaled_dot_product_attention(q, q, q).transpose(1, 2)
-        scores = torch.matmul(q.float(), q.float().transpose(-2, -1)) * q.shape[-1] ** -0.5
-        reference_lse = torch.logsumexp(scores, dim=-1).permute(1, 0, 2).reshape(q.shape[1], -1)
-
-    torch.testing.assert_close(out, reference, atol=2e-3, rtol=2e-3)
-    torch.testing.assert_close(lse, reference_lse, atol=2e-3, rtol=2e-3)
-
-
-@is_attention
 class TestVarlenAttentionCompile:
     """Op-level tests for the varlen backends under `torch.compile` with dynamic shapes, model independent."""
 
@@ -405,3 +350,58 @@ class TestAiterSageHubKernel:
         assert not torch.equal(out, ref)
         cos = F.cosine_similarity(out.float().flatten(), ref.float().flatten(), dim=0)
         assert cos > 0.99
+
+
+@is_attention
+@pytest.mark.parametrize("return_lse", [False, True])
+@pytest.mark.parametrize("use_mask", [False, True])
+def test_flash_varlen_return_lse(monkeypatch, return_lse, use_mask):
+    query = torch.randn(2, 3, 2, 4)
+    expected_lse = torch.randn(2, 6)
+    attn_mask = torch.tensor([[True, True, False], [True, False, False]]) if use_mask else None
+
+    def flash_attn_varlen_func(*, q, return_attn_probs, **kwargs):
+        assert return_attn_probs is return_lse
+        out = q + 1
+        return (out, expected_lse, None) if return_attn_probs else out
+
+    monkeypatch.setattr(attention_dispatch, "flash_attn_varlen_func", flash_attn_varlen_func, raising=False)
+    monkeypatch.setattr(_AttentionBackendRegistry, "_checks_enabled", False)
+    result = dispatch_attention_fn(
+        query,
+        query,
+        query,
+        attn_mask=attn_mask,
+        backend=AttentionBackendName.FLASH_VARLEN,
+        attention_kwargs={"return_lse": return_lse},
+    )
+
+    if return_lse:
+        out, lse = result
+        torch.testing.assert_close(out, query + 1)
+        assert lse is expected_lse
+    else:
+        torch.testing.assert_close(result, query + 1)
+
+
+@is_attention
+@require_torch_accelerator
+@pytest.mark.skipif(not attention_dispatch._CAN_USE_FLASH_ATTN, reason="Flash Attention is not available.")
+@pytest.mark.skipif(torch_device != "cuda", reason="CUDA is required for flash attention.")
+def test_flash_varlen_return_lse_cuda():
+    query = torch.randn(2, 32, 2, 64, device=torch_device, dtype=torch.float16)
+    with torch.no_grad():
+        out, lse = dispatch_attention_fn(
+            query,
+            query,
+            query,
+            backend=AttentionBackendName.FLASH_VARLEN,
+            attention_kwargs={"return_lse": True},
+        )
+        q = query.transpose(1, 2)
+        reference = F.scaled_dot_product_attention(q, q, q).transpose(1, 2)
+        scores = torch.matmul(q.float(), q.float().transpose(-2, -1)) * q.shape[-1] ** -0.5
+        reference_lse = torch.logsumexp(scores, dim=-1).permute(1, 0, 2).reshape(q.shape[1], -1)
+
+    torch.testing.assert_close(out, reference, atol=2e-3, rtol=2e-3)
+    torch.testing.assert_close(lse, reference_lse, atol=2e-3, rtol=2e-3)
