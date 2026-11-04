@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable
 
+from ..dependency_versions_table import deps
 from ..utils import deprecate, is_torch_available, is_torchao_available, logging
 
 
@@ -610,7 +611,9 @@ class TorchAoConfig(QuantizationConfigMixin):
 
     def post_init(self):
         if not is_torchao_available():
-            raise ValueError("TorchAoConfig requires torchao >= 0.15.0. Please upgrade with `pip install -U torchao`.")
+            raise ValueError(
+                f"TorchAoConfig requires `{deps['torchao']}`. Please upgrade with `pip install -U '{deps['torchao']}'`."
+            )
 
         from torchao.quantization.quant_api import AOBaseConfig
 
@@ -635,7 +638,7 @@ class TorchAoConfig(QuantizationConfigMixin):
     def from_dict(cls, config_dict, return_unused_kwargs=False, **kwargs):
         """Create configuration from a dictionary."""
         if not is_torchao_available():
-            raise NotImplementedError("TorchAoConfig requires torchao >= 0.15.0 for construction from dict")
+            raise NotImplementedError(f"TorchAoConfig requires `{deps['torchao']}` for construction from dict")
         config_dict = config_dict.copy()
         quant_type = config_dict.pop("quant_type")
 

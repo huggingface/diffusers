@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from ...models.modeling_utils import ModelMixin
 
 
+from ...dependency_versions_table import deps
 from ...utils import (
     get_module_from_name,
     is_accelerate_available,
@@ -55,7 +56,7 @@ class GGUFQuantizer(DiffusersQuantizer):
             )
         if not is_gguf_available():
             raise ImportError(
-                "To load GGUF format files you must have `gguf` installed in your environment: `pip install gguf>=0.10.0`"
+                f"To load GGUF format files you must have `gguf` installed in your environment: `pip install -U '{deps['gguf']}'`"
             )
 
     # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.adjust_max_memory

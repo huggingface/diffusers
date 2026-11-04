@@ -28,6 +28,7 @@ import safetensors
 import torch
 from huggingface_hub.utils import EntryNotFoundError
 
+from ..dependency_versions_table import deps
 from ..quantizers import DiffusersQuantizer
 from ..utils import (
     DEFAULT_HF_PARALLEL_LOADING_WORKERS,
@@ -713,10 +714,10 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
         from ..quantizers.gguf.utils import SUPPORTED_GGUF_QUANT_TYPES, GGUFParameter
     else:
         logger.error(
-            "Loading a GGUF checkpoint in PyTorch, requires both PyTorch and GGUF>=0.10.0 to be installed. Please see "
+            f"Loading a GGUF checkpoint in PyTorch, requires both PyTorch and `{deps['gguf']}` to be installed. Please see "
             "https://pytorch.org/ and https://github.com/ggerganov/llama.cpp/tree/master/gguf-py for installation instructions."
         )
-        raise ImportError("Please install torch and gguf>=0.10.0 to load a GGUF checkpoint in PyTorch.")
+        raise ImportError(f"Please install torch and `{deps['gguf']}` to load a GGUF checkpoint in PyTorch.")
 
     reader = GGUFReader(gguf_checkpoint_path)
 

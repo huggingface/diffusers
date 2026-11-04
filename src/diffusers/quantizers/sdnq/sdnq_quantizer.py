@@ -14,6 +14,7 @@
 
 from functools import lru_cache
 
+from ...dependency_versions_table import deps
 from ...utils import is_sdnq_available, logging
 from ..base import DiffusersQuantizer
 
@@ -24,7 +25,7 @@ logger = logging.get_logger(__name__)
 def _check_sdnq_requirement():
     if not is_sdnq_available():
         raise ImportError(
-            "Loading or creating an SDNQ quantized model requires the sdnq library: `pip install 'sdnq>=0.2.2'`"
+            f"Loading or creating an SDNQ quantized model requires the sdnq library: `pip install '{deps['sdnq']}'`"
         )
 
 
