@@ -7,12 +7,70 @@ import torch
 from packaging import version
 
 from diffusers import DiffusionPipeline
-from diffusers.models.attention_processor import Attention, AttnAddedKVProcessor
+from diffusers.models.attention import AttentionModuleMixin
+from diffusers.models.attention_processor import (
+    Attention,
+    AttnAddedKVProcessor,
+    AttnAddedKVProcessor2_0,
+    SlicedAttnAddedKVProcessor,
+)
 
 from ..testing_utils import torch_device
 
 
+class TestPrepareAttentionMask:
+    @pytest.mark.parametrize(
+        "prepare_mask", [Attention.prepare_attention_mask, AttentionModuleMixin.prepare_attention_mask]
+    )
+    @pytest.mark.parametrize("out_dim", [3, 4])
+    @pytest.mark.parametrize("mask_length", [2, 6, 8])
+    def test_target_length(self, prepare_mask, out_dim, mask_length):
+        attn = Attention(query_dim=8, heads=2, dim_head=4)
+        mask = torch.arange(2 * mask_length, dtype=torch.float32, device=torch_device).reshape(2, 1, mask_length)
+        original = mask.clone()
+
+        result = prepare_mask(attn, mask, target_length=6, batch_size=2, out_dim=out_dim)
+
+        expected = torch.cat([original, original.new_zeros(2, 1, max(6 - mask_length, 0))], dim=-1)
+        if out_dim == 3:
+            expected = expected.repeat_interleave(2, dim=0)
+        else:
+            expected = expected.unsqueeze(1).repeat_interleave(2, dim=1)
+        torch.testing.assert_close(result, expected)
+        torch.testing.assert_close(mask, original)
+
+    @pytest.mark.parametrize(
+        "prepare_mask", [Attention.prepare_attention_mask, AttentionModuleMixin.prepare_attention_mask]
+    )
+    def test_no_mask(self, prepare_mask):
+        attn = Attention(query_dim=8, heads=2, dim_head=4)
+        assert prepare_mask(attn, None, target_length=6, batch_size=2) is None
+
+
 class TestAttnAddedKVProcessor:
+    @pytest.mark.parametrize(
+        "processor", [AttnAddedKVProcessor(), AttnAddedKVProcessor2_0(), SlicedAttnAddedKVProcessor(1)]
+    )
+    @pytest.mark.parametrize("only_cross_attention", [False, True])
+    @pytest.mark.parametrize("text_length", [2, 4, 6, 8])
+    def test_attention_mask_with_added_keys(self, processor, only_cross_attention, text_length):
+        torch.manual_seed(0)
+        constructor_args = self.get_constructor_arguments(only_cross_attention=only_cross_attention)
+        constructor_args["query_dim"] = 8
+        constructor_args["cross_attention_dim"] = 8
+        constructor_args["processor"] = processor
+        attn = Attention(**constructor_args).to(torch_device).eval()
+        hidden_states = torch.randn(2, constructor_args["query_dim"], 3, 2, device=torch_device)
+        encoder_hidden_states = torch.randn(2, text_length, constructor_args["added_kv_proj_dim"], device=torch_device)
+        attention_mask = torch.zeros(2, 1, text_length, device=torch_device)
+        attention_mask[:, :, -1] = -10000.0
+
+        with torch.no_grad():
+            output = attn(hidden_states, encoder_hidden_states, attention_mask=attention_mask)
+            expected = attn(hidden_states, encoder_hidden_states[:, :-1])
+
+        torch.testing.assert_close(output, expected)
+
     def get_constructor_arguments(self, only_cross_attention: bool = False):
         query_dim = 10
 
