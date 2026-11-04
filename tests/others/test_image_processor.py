@@ -18,7 +18,7 @@ import PIL.Image
 import pytest
 import torch
 
-from diffusers.image_processor import InpaintProcessor, VaeImageProcessor
+from diffusers.image_processor import InpaintProcessor, VaeImageProcessor, VaeImageProcessorLDM3D
 
 
 class TestImageProcessor:
@@ -342,3 +342,23 @@ class TestImageProcessor:
             assert postprocessing_kwargs["crops_coords"] is None
             assert postprocessing_kwargs["original_image"] is None
             assert postprocessing_kwargs["original_mask"] is None
+
+    def test_vae_image_processor_ldm3d_config(self):
+        processor = VaeImageProcessorLDM3D(
+            do_resize=False,
+            vae_scale_factor=4,
+            resample="nearest",
+            do_normalize=False,
+        )
+
+        assert processor.config.do_resize is False
+        assert processor.config.vae_scale_factor == 4
+        assert processor.config.resample == "nearest"
+        assert processor.config.do_normalize is False
+
+        # Verify default configuration values
+        default_processor = VaeImageProcessorLDM3D()
+        assert default_processor.config.do_resize is True
+        assert default_processor.config.vae_scale_factor == 8
+        assert default_processor.config.resample == "lanczos"
+        assert default_processor.config.do_normalize is True
