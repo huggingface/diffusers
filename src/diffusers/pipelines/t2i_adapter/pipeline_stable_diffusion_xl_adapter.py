@@ -75,13 +75,13 @@ EXAMPLE_DOC_STRING = """
         >>> adapter = T2IAdapter.from_pretrained(
         ...     "Adapter/t2iadapter",
         ...     subfolder="sketch_sdxl_1.0",
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ...     adapter_type="full_adapter_xl",
         ... )
         >>> scheduler = DDPMScheduler.from_pretrained(model_id, subfolder="scheduler")
 
         >>> pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
-        ...     model_id, adapter=adapter, torch_dtype=torch.float16, variant="fp16", scheduler=scheduler
+        ...     model_id, adapter=adapter, dtype=torch.float16, variant="fp16", scheduler=scheduler
         ... ).to("cuda")
 
         >>> generator = torch.manual_seed(42)

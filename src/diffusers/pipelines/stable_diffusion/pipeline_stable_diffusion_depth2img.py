@@ -726,7 +726,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline, TextualInversionLoader
 
         >>> pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-2-depth",
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ... )
         >>> pipe.to("cuda")
 

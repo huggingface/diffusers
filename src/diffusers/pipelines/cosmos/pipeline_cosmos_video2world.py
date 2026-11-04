@@ -69,7 +69,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video, load_image
 
         >>> model_id = "nvidia/Cosmos-1.0-Diffusion-7B-Video2World"
-        >>> pipe = CosmosVideoToWorldPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        >>> pipe = CosmosVideoToWorldPipeline.from_pretrained(model_id, dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "The video depicts a long, straight highway stretching into the distance, flanked by metal guardrails. The road is divided into multiple lanes, with a few vehicles visible in the far distance. The surrounding landscape features dry, grassy fields on one side and rolling hills on the other. The sky is mostly clear with a few scattered clouds, suggesting a bright, sunny day."
@@ -89,7 +89,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video, load_video
 
         >>> model_id = "nvidia/Cosmos-1.0-Diffusion-7B-Video2World"
-        >>> pipe = CosmosVideoToWorldPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        >>> pipe = CosmosVideoToWorldPipeline.from_pretrained(model_id, dtype=torch.bfloat16)
         >>> pipe.transformer = torch.compile(pipe.transformer)
         >>> pipe.to("cuda")
 

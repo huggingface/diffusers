@@ -65,7 +65,7 @@ EXAMPLE_DOC_STRING = """
         >>> edit_instruction = "Turn sky into a cloudy one"
 
         >>> pipe = StableDiffusionXLInstructPix2PixPipeline.from_pretrained(
-        ...     "diffusers/sdxl-instructpix2pix-768", torch_dtype=torch.float16
+        ...     "diffusers/sdxl-instructpix2pix-768", dtype=torch.float16
         ... ).to("cuda")
 
         >>> edited_image = pipe(

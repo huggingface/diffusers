@@ -56,7 +56,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import StableDiffusionPipeline
 
         >>> pipe = StableDiffusionPipeline.from_pretrained(
-        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 

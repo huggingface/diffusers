@@ -58,14 +58,14 @@ EXAMPLE_DOC_STRING = """
         ...     "meta-llama/Meta-Llama-3.1-8B-Instruct",
         ...     output_hidden_states=True,
         ...     output_attentions=True,
-        ...     torch_dtype=torch.bfloat16,
+        ...     dtype=torch.bfloat16,
         ... )
 
         >>> pipe = HiDreamImagePipeline.from_pretrained(
         ...     "HiDream-ai/HiDream-I1-Full",
         ...     tokenizer_4=tokenizer_4,
         ...     text_encoder_4=text_encoder_4,
-        ...     torch_dtype=torch.bfloat16,
+        ...     dtype=torch.bfloat16,
         ... )
         >>> pipe.enable_model_cpu_offload()
 

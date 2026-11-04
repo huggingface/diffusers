@@ -53,7 +53,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import AltDiffusionPipeline
 
-        >>> pipe = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion-m9", torch_dtype=torch.float16)
+        >>> pipe = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion-m9", dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
         >>> # "dark elf princess, highly detailed, d & d, fantasy, highly detailed, digital painting, trending on artstation, concept art, sharp focus, illustration, art by artgerm and greg rutkowski and fuji choko and viktoria gavrilenko and hoang lap"

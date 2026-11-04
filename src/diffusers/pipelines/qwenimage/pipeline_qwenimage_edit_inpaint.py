@@ -49,7 +49,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import QwenImageEditInpaintPipeline
         >>> from diffusers.utils import load_image
 
-        >>> pipe = QwenImageEditInpaintPipeline.from_pretrained("Qwen/Qwen-Image-Edit", torch_dtype=torch.bfloat16)
+        >>> pipe = QwenImageEditInpaintPipeline.from_pretrained("Qwen/Qwen-Image-Edit", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
 

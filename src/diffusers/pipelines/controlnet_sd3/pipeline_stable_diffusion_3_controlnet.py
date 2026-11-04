@@ -62,10 +62,10 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.models import SD3ControlNetModel, SD3MultiControlNetModel
         >>> from diffusers.utils import load_image
 
-        >>> controlnet = SD3ControlNetModel.from_pretrained("InstantX/SD3-Controlnet-Canny", torch_dtype=torch.float16)
+        >>> controlnet = SD3ControlNetModel.from_pretrained("InstantX/SD3-Controlnet-Canny", dtype=torch.float16)
 
         >>> pipe = StableDiffusion3ControlNetPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-3-medium-diffusers", controlnet=controlnet, torch_dtype=torch.float16
+        ...     "stabilityai/stable-diffusion-3-medium-diffusers", controlnet=controlnet, dtype=torch.float16
         ... )
         >>> pipe.to("cuda")
         >>> control_image = load_image(

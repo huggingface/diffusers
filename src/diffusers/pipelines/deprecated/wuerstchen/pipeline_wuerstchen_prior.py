@@ -47,7 +47,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import WuerstchenPriorPipeline
 
         >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained(
-        ...     "warp-ai/wuerstchen-prior", torch_dtype=torch.float16
+        ...     "warp-ai/wuerstchen-prior", dtype=torch.float16
         ... ).to("cuda")
 
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"

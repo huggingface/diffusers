@@ -80,7 +80,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_gif
 
         >>> adapter = MotionAdapter.from_pretrained(
-        ...     "a-r-r-o-w/animatediff-motion-adapter-sdxl-beta", torch_dtype=torch.float16
+        ...     "a-r-r-o-w/animatediff-motion-adapter-sdxl-beta", dtype=torch.float16
         ... )
 
         >>> model_id = "stabilityai/stable-diffusion-xl-base-1.0"
@@ -96,7 +96,7 @@ EXAMPLE_DOC_STRING = """
         ...     model_id,
         ...     motion_adapter=adapter,
         ...     scheduler=scheduler,
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ...     variant="fp16",
         ... ).to("cuda")
 

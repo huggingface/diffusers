@@ -66,7 +66,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # Insert objects described by image at the region defined by bounding boxes
         >>> pipe = StableDiffusionGLIGENTextImagePipeline.from_pretrained(
-        ...     "anhnct/Gligen_Inpainting_Text_Image", torch_dtype=torch.float16
+        ...     "anhnct/Gligen_Inpainting_Text_Image", dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 
@@ -96,7 +96,7 @@ EXAMPLE_DOC_STRING = """
         >>> # Generate an image described by the prompt and
         >>> # insert objects described by text and image at the region defined by bounding boxes
         >>> pipe = StableDiffusionGLIGENTextImagePipeline.from_pretrained(
-        ...     "anhnct/Gligen_Text_Image", torch_dtype=torch.float16
+        ...     "anhnct/Gligen_Text_Image", dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 
@@ -122,7 +122,7 @@ EXAMPLE_DOC_STRING = """
         >>> # Generate an image described by the prompt and
         >>> # transfer style described by image at the region defined by bounding boxes
         >>> pipe = StableDiffusionGLIGENTextImagePipeline.from_pretrained(
-        ...     "anhnct/Gligen_Text_Image", torch_dtype=torch.float16
+        ...     "anhnct/Gligen_Text_Image", dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 

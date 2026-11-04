@@ -60,7 +60,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import StableUnCLIPImg2ImgPipeline
 
         >>> pipe = StableUnCLIPImg2ImgPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-2-1-unclip-small", torch_dtype=torch.float16
+        ...     "stabilityai/stable-diffusion-2-1-unclip-small", dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 

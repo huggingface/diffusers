@@ -75,7 +75,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-xl-base-1.0",
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ...     variant="fp16",
         ...     use_safetensors=True,
         ... )

@@ -62,20 +62,20 @@ EXAMPLE_DOC_STRING = """
         >>> from transformers import SiglipImageProcessor, SiglipVisionModel
 
         >>> transformer = HunyuanVideoFramepackTransformer3DModel.from_pretrained(
-        ...     "lllyasviel/FramePackI2V_HY", torch_dtype=torch.bfloat16
+        ...     "lllyasviel/FramePackI2V_HY", dtype=torch.bfloat16
         ... )
         >>> feature_extractor = SiglipImageProcessor.from_pretrained(
         ...     "lllyasviel/flux_redux_bfl", subfolder="feature_extractor"
         ... )
         >>> image_encoder = SiglipVisionModel.from_pretrained(
-        ...     "lllyasviel/flux_redux_bfl", subfolder="image_encoder", torch_dtype=torch.float16
+        ...     "lllyasviel/flux_redux_bfl", subfolder="image_encoder", dtype=torch.float16
         ... )
         >>> pipe = HunyuanVideoFramepackPipeline.from_pretrained(
         ...     "hunyuanvideo-community/HunyuanVideo",
         ...     transformer=transformer,
         ...     feature_extractor=feature_extractor,
         ...     image_encoder=image_encoder,
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ... )
         >>> pipe.vae.enable_tiling()
         >>> pipe.to("cuda")
@@ -106,20 +106,20 @@ EXAMPLE_DOC_STRING = """
         >>> from transformers import SiglipImageProcessor, SiglipVisionModel
 
         >>> transformer = HunyuanVideoFramepackTransformer3DModel.from_pretrained(
-        ...     "lllyasviel/FramePackI2V_HY", torch_dtype=torch.bfloat16
+        ...     "lllyasviel/FramePackI2V_HY", dtype=torch.bfloat16
         ... )
         >>> feature_extractor = SiglipImageProcessor.from_pretrained(
         ...     "lllyasviel/flux_redux_bfl", subfolder="feature_extractor"
         ... )
         >>> image_encoder = SiglipVisionModel.from_pretrained(
-        ...     "lllyasviel/flux_redux_bfl", subfolder="image_encoder", torch_dtype=torch.float16
+        ...     "lllyasviel/flux_redux_bfl", subfolder="image_encoder", dtype=torch.float16
         ... )
         >>> pipe = HunyuanVideoFramepackPipeline.from_pretrained(
         ...     "hunyuanvideo-community/HunyuanVideo",
         ...     transformer=transformer,
         ...     feature_extractor=feature_extractor,
         ...     image_encoder=image_encoder,
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ... )
         >>> pipe.to("cuda")
 
