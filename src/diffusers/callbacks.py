@@ -86,12 +86,14 @@ class SDCFGCutoffCallback(PipelineCallback):
         )
 
         if step_index == cutoff_step:
-            prompt_embeds = callback_kwargs[self.tensor_inputs[0]]
-            prompt_embeds = prompt_embeds[-1:]  # "-1" denotes the embeddings for conditional text tokens.
+            if pipeline.do_classifier_free_guidance:
+                # the CFG batches are `[negative, conditional]`; keep the conditional half of each tensor
+                batch_size = callback_kwargs[self.tensor_inputs[0]].shape[0] // 2
+                for name in self.tensor_inputs:
+                    callback_kwargs[name] = callback_kwargs[name][-batch_size:]
 
             pipeline._guidance_scale = 0.0
 
-            callback_kwargs[self.tensor_inputs[0]] = prompt_embeds
         return callback_kwargs
 
 
@@ -119,20 +121,13 @@ class SDXLCFGCutoffCallback(PipelineCallback):
         )
 
         if step_index == cutoff_step:
-            prompt_embeds = callback_kwargs[self.tensor_inputs[0]]
-            prompt_embeds = prompt_embeds[-1:]  # "-1" denotes the embeddings for conditional text tokens.
-
-            add_text_embeds = callback_kwargs[self.tensor_inputs[1]]
-            add_text_embeds = add_text_embeds[-1:]  # "-1" denotes the embeddings for conditional pooled text tokens
-
-            add_time_ids = callback_kwargs[self.tensor_inputs[2]]
-            add_time_ids = add_time_ids[-1:]  # "-1" denotes the embeddings for conditional added time vector
+            if pipeline.do_classifier_free_guidance:
+                # the CFG batches are `[negative, conditional]`; keep the conditional half of each tensor
+                batch_size = callback_kwargs[self.tensor_inputs[0]].shape[0] // 2
+                for name in self.tensor_inputs:
+                    callback_kwargs[name] = callback_kwargs[name][-batch_size:]
 
             pipeline._guidance_scale = 0.0
-
-            callback_kwargs[self.tensor_inputs[0]] = prompt_embeds
-            callback_kwargs[self.tensor_inputs[1]] = add_text_embeds
-            callback_kwargs[self.tensor_inputs[2]] = add_time_ids
 
         return callback_kwargs
 
@@ -162,25 +157,14 @@ class SDXLControlnetCFGCutoffCallback(PipelineCallback):
         )
 
         if step_index == cutoff_step:
-            prompt_embeds = callback_kwargs[self.tensor_inputs[0]]
-            prompt_embeds = prompt_embeds[-1:]  # "-1" denotes the embeddings for conditional text tokens.
-
-            add_text_embeds = callback_kwargs[self.tensor_inputs[1]]
-            add_text_embeds = add_text_embeds[-1:]  # "-1" denotes the embeddings for conditional pooled text tokens
-
-            add_time_ids = callback_kwargs[self.tensor_inputs[2]]
-            add_time_ids = add_time_ids[-1:]  # "-1" denotes the embeddings for conditional added time vector
-
-            # For Controlnet
-            image = callback_kwargs[self.tensor_inputs[3]]
-            image = image[-1:]
+            if pipeline.do_classifier_free_guidance:
+                # the CFG batches are `[negative, conditional]`; keep the conditional half of each tensor. In guess
+                # mode the controlnet `image` is not duplicated, so the slice keeps it whole.
+                batch_size = callback_kwargs[self.tensor_inputs[0]].shape[0] // 2
+                for name in self.tensor_inputs:
+                    callback_kwargs[name] = callback_kwargs[name][-batch_size:]
 
             pipeline._guidance_scale = 0.0
-
-            callback_kwargs[self.tensor_inputs[0]] = prompt_embeds
-            callback_kwargs[self.tensor_inputs[1]] = add_text_embeds
-            callback_kwargs[self.tensor_inputs[2]] = add_time_ids
-            callback_kwargs[self.tensor_inputs[3]] = image
 
         return callback_kwargs
 
@@ -229,16 +213,12 @@ class SD3CFGCutoffCallback(PipelineCallback):
         )
 
         if step_index == cutoff_step:
-            prompt_embeds = callback_kwargs[self.tensor_inputs[0]]
-            prompt_embeds = prompt_embeds[-1:]  # "-1" denotes the embeddings for conditional text tokens.
-
-            pooled_prompt_embeds = callback_kwargs[self.tensor_inputs[1]]
-            pooled_prompt_embeds = pooled_prompt_embeds[
-                -1:
-            ]  # "-1" denotes the embeddings for conditional pooled text tokens.
+            if pipeline.do_classifier_free_guidance:
+                # the CFG batches are `[negative, conditional]`; keep the conditional half of each tensor
+                batch_size = callback_kwargs[self.tensor_inputs[0]].shape[0] // 2
+                for name in self.tensor_inputs:
+                    callback_kwargs[name] = callback_kwargs[name][-batch_size:]
 
             pipeline._guidance_scale = 0.0
 
-            callback_kwargs[self.tensor_inputs[0]] = prompt_embeds
-            callback_kwargs[self.tensor_inputs[1]] = pooled_prompt_embeds
         return callback_kwargs
