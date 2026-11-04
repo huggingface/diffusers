@@ -71,6 +71,8 @@ class LLaDA2Pipeline(DiffusionPipeline):
     scheduler: BlockRefinementScheduler
     tokenizer: Any
 
+    _optional_components = ["tokenizer"]
+
     _callback_tensor_inputs = [
         "block_x",
         "transfer_index",

@@ -1,7 +1,15 @@
 import pytest
 import torch
+from transformers import CLIPTokenizer, GPT2Config, GPT2LMHeadModel
 
 from diffusers import BlockRefinementScheduler, LLaDA2Pipeline
+
+from ...testing_utils import assert_tensors_close, enable_full_determinism, torch_device
+from ..pipeline_params import TEXT_TO_TEXT_BATCH_PARAMS, TEXT_TO_TEXT_PARAMS
+from ..testing_utils import BasePipelineTesterConfig, PipelineTesterMixin
+
+
+enable_full_determinism()
 
 
 class _DummyModelOutput:
@@ -40,7 +48,92 @@ def _make_pipeline(tokenizer=None):
     return LLaDA2Pipeline(model=model, scheduler=scheduler, tokenizer=tokenizer)
 
 
-class TestLLaDA2Pipeline:
+class LLaDA2PipelineTesterConfig(BasePipelineTesterConfig):
+    pipeline_class = LLaDA2Pipeline
+    required_input_params_in_call_signature = TEXT_TO_TEXT_PARAMS
+    batch_input_params = TEXT_TO_TEXT_BATCH_PARAMS
+    # LLaDA2 has neither `num_images_per_prompt` (batching is over `prompt` only) nor `latents` (the template is a
+    # fully-masked sequence built fresh inside `__call__`), and `output_type` is `"seq"`/`"text"`, not an image format.
+    optional_input_params = frozenset(["num_inference_steps", "generator", "output_type", "return_dict"])
+    # `gen_length` for the dummy inputs below (see `get_dummy_inputs`); `_DummyCausalLM` ignores token values (only
+    # reads `input_ids.shape`), so this is independent of the tokenizer's own vocab size.
+    output_shape = (16,)
+    mask_token_id = 31
+
+    def get_dummy_components(self):
+        # `LLaDA2Pipeline.model` accepts any object exposing `forward(input_ids, attention_mask, position_ids) ->
+        # logits`, so unlike `DiffusionGemma`'s VLM-backed pipeline there's no pretrained checkpoint to pull. The
+        # `save_pretrained`/`from_pretrained` round trip the mixin exercises does need a real `PreTrainedModel`
+        # though (the `_DummyCausalLM` stand-in the hand-written tests below use isn't one), so build a tiny
+        # `GPT2LMHeadModel` locally instead, matching its `vocab_size` to the tokenizer's like other pipeline tests do.
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        torch.manual_seed(0)
+        model = GPT2LMHeadModel(GPT2Config(n_embd=16, n_head=1, n_layer=1, vocab_size=len(tokenizer), n_ctx=99))
+        return {"model": model, "scheduler": BlockRefinementScheduler(), "tokenizer": tokenizer}
+
+    def get_dummy_inputs(self):
+        return {"prompt": "Name a color.", **self._common_inputs()}
+
+    def _common_inputs(self):
+        """Generation knobs shared by every dummy call, regardless of how the prompt is supplied."""
+        return {
+            "use_chat_template": False,
+            "generator": self.get_generator(0),
+            "gen_length": self.output_shape[0],
+            "block_length": self.output_shape[0],
+            "num_inference_steps": 4,
+            "temperature": 0.0,
+            "threshold": 2.0,  # force top-k commits so every step transfers a deterministic number of tokens
+            "minimal_topk": 1,
+            "eos_early_stop": False,
+            "mask_token_id": self.mask_token_id,
+            "output_type": "seq",
+        }
+
+
+class TestLLaDA2Pipeline(LLaDA2PipelineTesterConfig, PipelineTesterMixin):
+    # LLaDA2 samples its template with a single `torch.randint`/`torch.multinomial` call inside the scheduler, unlike
+    # the `randn_tensor`-backed image pipelines the base test assumes, so it can't take a per-batch-row generator list.
+    def test_inference_batch_consistent(self):
+        super().test_inference_batch_consistent(batch_generator=False)
+
+    @pytest.mark.skip(
+        "Test not supported: passes a per-row generator list, which the scheduler's single-generator sampling "
+        "doesn't accept."
+    )
+    def test_inference_batch_single_identical(self):
+        pass
+
+    @pytest.mark.skip(
+        "Test not supported: assumes an image/video pipeline (`output_type='latent'`, tensor key `'latents'`), "
+        "neither of which LLaDA2's `check_inputs` accepts."
+    )
+    def test_callback_inputs(self):
+        pass
+
+    def test_save_load_optional_components(self, tmp_path, expected_max_difference=1e-4):
+        # Adapted from the base test: dropping `tokenizer` means there's nothing left to encode a `prompt` string
+        # with, so the dummy input switches to pre-tokenized `input_ids` instead (see `_common_inputs`).
+        pipe = self.get_pipeline().to(torch_device)
+        pipe.tokenizer = None
+
+        input_ids = torch.tensor([[5, 6, 7, 8]], dtype=torch.long)
+        output = pipe(input_ids=input_ids, **self._common_inputs())[0]
+
+        pipe.save_pretrained(tmp_path, safe_serialization=False)
+        pipe_loaded = self.pipeline_class.from_pretrained(tmp_path)
+        pipe_loaded.to(torch_device)
+        pipe_loaded.set_progress_bar_config(disable=None)
+        assert pipe_loaded.tokenizer is None, "`tokenizer` did not stay set to None after loading."
+
+        output_loaded = pipe_loaded(input_ids=input_ids, **self._common_inputs())[0]
+        assert_tensors_close(
+            output_loaded,
+            output,
+            atol=expected_max_difference,
+            msg="Output changed after dropping optional components.",
+        )
+
     def test_pipeline_runs(self):
         pipe = _make_pipeline().to("cpu")
 
