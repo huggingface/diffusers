@@ -127,6 +127,7 @@ class ParallelBackend:
 
         self._served = served
         self._failure: str | None = None
+        self._failed = threading.Event()
         self._closing = False
         # Spawned rather than forked: a forked child inherits whatever CUDA state its parent has.
         context = multiprocessing.get_context("spawn")
@@ -173,7 +174,10 @@ class ParallelBackend:
         dead = sentinels[wait(list(sentinels))[0]]
         if self._closing:
             return
+        # `exitcode` polls without waiting, so it can still be None just after the sentinel fires.
+        dead.join()
         self._failure = f"context-parallel worker {dead.name} exited with code {dead.exitcode}"
+        self._failed.set()
         logger.error(f"{self._failure}; the remaining workers are stopped and the server no longer generates.")
         # The other ranks would wait forever in their next collective, so the group is not reused.
         self.close()
@@ -205,13 +209,9 @@ class ParallelBackend:
                     continue
                 message = rank_0.recv()
             except (EOFError, OSError) as e:
-                # The monitor may not have noticed yet; rank 0's pipe only breaks once it has exited.
-                self._processes[0].join()
-                if self._failure is None:
-                    self._failure = (
-                        f"context-parallel worker {self._processes[0].name} exited with code "
-                        f"{self._processes[0].exitcode}"
-                    )
+                # Rank 0's pipe only breaks once it has exited. Only the monitor reaps workers: a second
+                # thread joining the same process can read its exit code before it is recorded.
+                self._failed.wait()
                 raise GMSError("internal", self._failure) from e
             if message[0] == "progress":
                 generation.report_progress(*message[1:])

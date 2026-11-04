@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Backends that execute a resolved generation: an in-process pipeline, or an SGLang / vLLM-Omni server."""
+"""The backend that executes a resolved generation with an in-process pipeline."""
 
 from __future__ import annotations
 
@@ -21,12 +21,7 @@ import inspect
 import io
 import mimetypes
 import os
-import shlex
-import shutil
-import socket
-import subprocess
 import tempfile
-import time
 import wave
 from argparse import Namespace
 from pathlib import Path
@@ -55,49 +50,11 @@ from .manifest import GMSError, ServedModel, blocks_signature
 
 logger = logging.get_logger("diffusers-cli/serve")
 
-# Request fields both engines accept on their OpenAI-compatible image and video routes, named as the
-# pipeline kwargs they correspond to.
-_ENGINE_KWARGS = frozenset(
-    {
-        "prompt",
-        "negative_prompt",
-        "image",
-        "width",
-        "height",
-        "num_frames",
-        "fps",
-        "num_inference_steps",
-        "guidance_scale",
-        "guidance_scale_2",
-        "true_cfg_scale",
-        "generator",
-        "num_images_per_prompt",
-    }
-)
-_ENGINE_FIELDS = {"num_images_per_prompt": "n"}
-_ENGINE_INSTALL = {"sglang": 'pip install "sglang[diffusion]"', "vllm": "pip install vllm-omni"}
-_POLL_SECONDS = 1.0
-
 _OUTPUT_FIELDS = {"image": ("images",), "video": ("frames", "videos"), "audio": ("audios", "audio")}
-
-
-def backend_kwargs(backend: str, signature: inspect.Signature) -> set[str]:
-    names = set(signature.parameters) - {"self"}
-    if backend == "diffusers":
-        return names
-    return names & _ENGINE_KWARGS
-
-
-def backend_output_types(backend: str) -> set[str]:
-    if backend == "diffusers":
-        return {"image", "video", "audio"}
-    return {"image", "video"}
 
 
 def backend_capabilities(args: Namespace, pipeline_cls: type) -> list[str]:
     capabilities = ["sse", "wait"]
-    if args.backend != "diffusers":
-        return capabilities
     # Swapping adapter weights retraces a compiled denoiser on every request, and LoRAs passed at
     # startup are part of the deployment rather than something a request may replace. Under context
     # parallelism every rank would have to swap them in lockstep, which is untested.
@@ -111,25 +68,17 @@ def backend_capabilities(args: Namespace, pipeline_cls: type) -> list[str]:
     return capabilities
 
 
-def _media_bytes(name: str, value: dict[str, Any], pointer: str) -> bytes:
+def _load_media(name: str, value: dict[str, Any], pointer: str) -> Any:
     try:
         if "base64" in value:
-            return base64.b64decode(value["base64"], validate=True)
-        response = httpx.get(value["url"], follow_redirects=True, timeout=DIFFUSERS_REQUEST_TIMEOUT)
-        response.raise_for_status()
-        return response.content
+            content = base64.b64decode(value["base64"], validate=True)
+        else:
+            response = httpx.get(value["url"], follow_redirects=True, timeout=DIFFUSERS_REQUEST_TIMEOUT)
+            response.raise_for_status()
+            content = response.content
     except (ValueError, httpx.HTTPError) as e:
         raise GMSError("invalid_request", f"could not read input {name!r}: {e}", pointer) from e
 
-
-def _media_suffix(value: dict[str, Any], default: str) -> str:
-    if value.get("media_type"):
-        return mimetypes.guess_extension(value["media_type"]) or default
-    return Path(urlparse(value.get("url", "")).path).suffix or default
-
-
-def _load_media(name: str, value: dict[str, Any], pointer: str) -> Any:
-    content = _media_bytes(name, value, pointer)
     try:
         if value["type"] in ("image", "mask"):
             return load_image(Image.open(io.BytesIO(content)))
@@ -137,7 +86,11 @@ def _load_media(name: str, value: dict[str, Any], pointer: str) -> Any:
             import torchaudio
 
             return torchaudio.load(io.BytesIO(content))
-        with tempfile.NamedTemporaryFile(suffix=_media_suffix(value, ".mp4")) as file:
+        if value.get("media_type"):
+            suffix = mimetypes.guess_extension(value["media_type"]) or ".mp4"
+        else:
+            suffix = Path(urlparse(value.get("url", "")).path).suffix or ".mp4"
+        with tempfile.NamedTemporaryFile(suffix=suffix) as file:
             file.write(content)
             file.flush()
             return load_video(file.name)
@@ -335,165 +288,3 @@ class DiffusersBackend:
                 weights.append(scale)
             names.append(name)
         self.pipeline.set_adapters(names, adapter_weights=weights)
-
-
-class EngineBackend:
-    def __init__(self, engine: str, served: ServedModel, client: Any, process: subprocess.Popen | None = None):
-        self._engine = engine
-        self._served = served
-        self._client = client
-        self._process = process
-
-    @classmethod
-    def launch(cls, args: Namespace, served: ServedModel) -> EngineBackend:
-        with socket.socket() as probe:
-            probe.bind(("127.0.0.1", 0))
-            port = probe.getsockname()[1]
-
-        if args.backend == "sglang":
-            command = ["sglang", "serve", "--model-path", args.model]
-        else:
-            command = ["vllm", "serve", args.model, "--omni"]
-        command += ["--host", "127.0.0.1", "--port", str(port)]
-        if args.revision:
-            command += ["--revision", args.revision]
-        command += shlex.split(args.backend_args or "")
-
-        if shutil.which(command[0]) is None:
-            raise SystemExit(
-                f"--backend {args.backend} needs the `{command[0]}` executable on PATH. "
-                f"Install it with: {_ENGINE_INSTALL[args.backend]}"
-            )
-
-        logger.info(f"starting {args.backend} backend: {shlex.join(command)}")
-        process = subprocess.Popen(command)
-        client = httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=None)
-        backend = cls(args.backend, served, client, process)
-        try:
-            backend._wait_until_ready(command)
-        except BaseException:
-            backend.close()
-            raise
-        return backend
-
-    def failure(self) -> str | None:
-        if self._process is None or self._process.poll() is None:
-            return None
-        return f"the {self._engine} backend exited with code {self._process.returncode}"
-
-    def close(self) -> None:
-        self._client.close()
-        if self._process is None or self._process.poll() is not None:
-            return
-        self._process.terminate()
-        try:
-            self._process.wait(timeout=30)
-        except subprocess.TimeoutExpired:
-            self._process.kill()
-            self._process.wait()
-
-    def generate(self, generation: Generation) -> dict[str, list[dict[str, Any]]]:
-        request = generation.request
-        outputs = {spec["type"]: name for name, spec in self._served.tasks[request.task]["outputs"].items()}
-
-        fields = {_ENGINE_FIELDS.get(kwarg, kwarg): value for kwarg, value in request.kwargs.items()}
-        if generation.seed is not None:
-            fields["seed"] = generation.seed
-        width = fields.pop("width", None)
-        height = fields.pop("height", None)
-        if (width is None) != (height is None):
-            missing = "width" if width is None else "height"
-            raise GMSError(
-                "invalid_request",
-                f"the {self._engine} backend takes width and height together; {missing} is missing",
-                f"/parameters/{missing}",
-            )
-        if width is not None:
-            fields["size"] = f"{width}x{height}"
-
-        images = []
-        if "image" in request.media:
-            name, value = request.media["image"]
-            for index, item in enumerate(value if isinstance(value, list) else [value]):
-                pointer = f"/inputs/{name}/{index}" if isinstance(value, list) else f"/inputs/{name}"
-                content = _media_bytes(name, item, pointer)
-                images.append((f"image-{index}{_media_suffix(item, '.png')}", content, item.get("media_type")))
-
-        if "video" in outputs:
-            return {outputs["video"]: self._generate_video(generation, fields, images)}
-        return {outputs["image"]: self._generate_images(generation, fields, images)}
-
-    def _generate_images(self, generation: Generation, fields: dict[str, Any], images: list) -> list[dict[str, Any]]:
-        media_type = generation.request.output_formats["image"]
-        extension = media_type.split("/")[1]
-        fields = {**fields, "response_format": "b64_json", "output_format": extension}
-        if images:
-            response = self._client.post("/v1/images/edits", files=self._form(fields, "image", images))
-        else:
-            response = self._client.post("/v1/images/generations", json=fields)
-
-        artifacts = []
-        for index, item in enumerate(self._json(response)["data"]):
-            content = base64.b64decode(item["b64_json"])
-            filename = f"image-{index}.{extension}"
-            (generation.directory / filename).write_bytes(content)
-            width, height = Image.open(io.BytesIO(content)).size
-            artifacts.append({"file": filename, "media_type": media_type, "width": width, "height": height})
-        return artifacts
-
-    def _generate_video(self, generation: Generation, fields: dict[str, Any], images: list) -> list[dict[str, Any]]:
-        job = self._json(self._client.post("/v1/videos", files=self._form(fields, "input_reference", images[:1])))
-        while job["status"] in ("queued", "in_progress"):
-            if generation.cancel_requested:
-                self._client.delete(f"/v1/videos/{job['id']}")
-                return []
-            time.sleep(_POLL_SECONDS)
-            job = self._json(self._client.get(f"/v1/videos/{job['id']}"))
-        if job["status"] != "completed":
-            message = (job.get("error") or {}).get("message", f"video job ended with status {job['status']!r}")
-            raise GMSError("internal", f"{self._engine} backend: {message}")
-
-        response = self._client.get(f"/v1/videos/{job['id']}/content")
-        if response.status_code >= 400:
-            self._json(response)
-        filename = "video-0.mp4"
-        (generation.directory / filename).write_bytes(response.content)
-        self._client.delete(f"/v1/videos/{job['id']}")
-
-        artifact = {"file": filename, "media_type": "video/mp4"}
-        if job.get("fps"):
-            artifact["fps"] = job["fps"]
-        if job.get("duration_s"):
-            artifact["duration"] = job["duration_s"]
-        return [artifact]
-
-    @staticmethod
-    def _form(fields: dict[str, Any], file_field: str, files: list) -> list:
-        # Both engines read these routes as multipart forms, so plain fields are sent as nameless
-        # parts: httpx falls back to urlencoding when a request carries no file parts.
-        parts = []
-        for key, value in fields.items():
-            text = str(value).lower() if isinstance(value, bool) else str(value)
-            parts.append((key, (None, text)))
-        for filename, content, media_type in files:
-            parts.append((file_field, (filename, content, media_type or "application/octet-stream")))
-        return parts
-
-    def _json(self, response: Any) -> Any:
-        if response.status_code >= 400:
-            code = "invalid_request" if response.status_code < 500 else "internal"
-            raise GMSError(code, f"{self._engine} backend returned {response.status_code}: {response.text[:500]}")
-        return response.json()
-
-    def _wait_until_ready(self, command: list[str]) -> None:
-        while True:
-            if self._process.poll() is not None:
-                raise SystemExit(
-                    f"`{shlex.join(command)}` exited with code {self._process.returncode} before becoming ready."
-                )
-            try:
-                if self._client.get("/health", timeout=5.0).status_code == 200:
-                    return
-            except httpx.HTTPError:
-                pass
-            time.sleep(2.0)

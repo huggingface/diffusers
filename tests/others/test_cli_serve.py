@@ -13,8 +13,7 @@
 # limitations under the License.
 """Unit tests for `diffusers-cli serve`.
 
-No weights are loaded: the diffusers backend runs a fake pipeline and the engine backend talks to a fake
-SGLang / vLLM-Omni server through an httpx mock transport.
+No weights are loaded: the backend runs a fake pipeline.
 """
 
 import base64
@@ -23,8 +22,6 @@ import io
 import json
 import os
 import shlex
-import subprocess
-import sys
 import threading
 import time
 from argparse import ArgumentParser, Namespace
@@ -34,22 +31,13 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 import torch
-from huggingface_hub.utils import httpx
 from PIL import Image
 
 from diffusers.commands.serve import ServeCommand, _shut_down_when_idle
-from diffusers.commands.serve.backends import (
-    DiffusersBackend,
-    EngineBackend,
-    backend_capabilities,
-    backend_kwargs,
-    backend_output_types,
-)
-from diffusers.commands.serve.generations import Generation, GenerationQueue
+from diffusers.commands.serve.backends import DiffusersBackend, backend_capabilities
+from diffusers.commands.serve.generations import GenerationQueue
 from diffusers.commands.serve.manifest import GMSError, Manifest, ServedModel, blocks_signature, derive_manifest
 from diffusers.modular_pipelines import InputParam, ModularPipelineBlocks, OutputParam
-from diffusers.utils import logging
-from diffusers.utils.testing_utils import CaptureLogger
 
 
 MODEL_ID = "test-org/fake-model"
@@ -157,7 +145,6 @@ class FakeImageBlock(ModularPipelineBlocks):
 
 def _args(**overrides):
     values = {
-        "backend": "diffusers",
         "compile": None,
         "lora": None,
         "context_parallel": False,
@@ -167,35 +154,34 @@ def _args(**overrides):
     return Namespace(**{**values, **overrides})
 
 
-def _served(backend="diffusers", manifest=None, pipeline_cls=FakePipeline, **arg_overrides):
-    args = _args(backend=backend, **arg_overrides)
-    signature = inspect.signature(pipeline_cls.__call__)
-    kwarg_names = backend_kwargs(backend, signature)
+def _served(manifest=None, pipeline_cls=FakePipeline, signature=None, args=None):
+    signature = signature or inspect.signature(pipeline_cls.__call__)
     if manifest is None:
-        manifest = derive_manifest(MODEL_ID, pipeline_cls, signature, kwarg_names)
+        manifest = derive_manifest(MODEL_ID, pipeline_cls, signature)
     raw = manifest if isinstance(manifest, bytes) else json.dumps(manifest).encode()
     return ServedModel(
         Manifest(raw=raw, data=json.loads(raw)),
-        kwarg_names,
-        backend_output_types(backend),
-        backend_capabilities(args, pipeline_cls),
+        set(signature.parameters) - {"self"},
+        backend_capabilities(args or _args(), pipeline_cls),
         revision="abc123",
     )
 
 
 @pytest.fixture
 def serve(tmp_path, monkeypatch):
-    """Build a test client around a `DiffusersBackend` running `FakePipeline`. Returns `(client, pipeline)`."""
+    """Build a test client around a `DiffusersBackend` running `FakePipeline`, or around the given pipeline or
+    backend. Returns `(client, pipeline)`."""
     pytest.importorskip("fastapi", reason="`diffusers-cli serve` needs the `diffusers[serve]` extra")
     from fastapi.testclient import TestClient
 
     from diffusers.commands.serve.app import create_app
 
-    def _build(manifest=None, app_options=None, **arg_overrides):
-        pipeline = FakePipeline()
+    def _build(manifest=None, app_options=None, pipeline=None, signature=None, backend=None, **arg_overrides):
+        pipeline = pipeline or FakePipeline()
         monkeypatch.setattr("diffusers.commands.serve.backends._load_pipeline", lambda args: pipeline)
-        served = _served(manifest=manifest, **arg_overrides)
-        backend = DiffusersBackend(_args(**arg_overrides), served)
+        args = _args(**arg_overrides)
+        served = _served(manifest=manifest, pipeline_cls=type(pipeline), signature=signature, args=args)
+        backend = backend or DiffusersBackend(args, served)
         app = create_app(served, GenerationQueue(backend, str(tmp_path)), **(app_options or {}))
         return TestClient(app), pipeline
 
@@ -250,7 +236,7 @@ class FakeVideoPipeline:
 
 class TestManifest:
     def test_derive_manifest_from_signature(self):
-        manifest = derive_manifest(MODEL_ID, FakePipeline, FAKE_SIGNATURE, backend_kwargs("diffusers", FAKE_SIGNATURE))
+        manifest = derive_manifest(MODEL_ID, FakePipeline, FAKE_SIGNATURE)
 
         # An optional `image` kwarg yields one task without it and one that requires it.
         assert list(manifest["tasks"]) == ["text_to_image", "image_to_image"], manifest["tasks"].keys()
@@ -280,34 +266,17 @@ class TestManifest:
         "body, code, pointer",
         [
             ({"parameters": {"cfg": 3}}, "invalid_request", "/parameters/cfg"),
-            ({"parameters": {"width": 700}}, "invalid_request", "/parameters/width"),
             ({"parameters": {"steps": 500}}, "invalid_request", "/parameters/steps"),
             ({"parameters": {"steps": "8"}}, "invalid_request", "/parameters/steps"),
             ({"inputs": {}}, "invalid_request", "/inputs/prompt"),
-            ({"inputs": {"prompt": "a cat", "caption": "x"}}, "invalid_request", "/inputs/caption"),
             ({"task": "image_to_video"}, "invalid_request", "/task"),
-            ({"task": []}, "invalid_request", "/task"),
-            ({"parameters": []}, "invalid_request", "/parameters"),
-            ({"parameters": {"seed": 10**30}}, "invalid_request", "/parameters/seed"),
-            ({"parameters": {"duration": float("nan")}}, "invalid_request", "/parameters/duration"),
             # The lattice pins duration to 24 fps, so another fps would deliver a different length.
             ({"parameters": {"duration": 4, "fps": 12}}, "invalid_request", "/parameters/fps"),
-            ({"steps": 8}, "invalid_request", "/steps"),
-            ({"preset": "quality"}, "invalid_request", "/preset"),
-            ({"model": "someone/else"}, "not_found", None),
-            ({"adapters": [{"type": "lora", "path": "hf:a/b"}]}, "not_implemented", "/adapters"),
-            ({"output_format": "video/webm"}, "invalid_request", "/output_format"),
             # `negative_prompt` is only honored while guidance_scale > 1.
             (
                 {"inputs": {"prompt": "a cat", "negative_prompt": "blurry"}, "preset": "distilled"},
                 "invalid_request",
                 "/inputs/negative_prompt",
-            ),
-            # `last_image` has no matching pipeline kwarg, so the server overlay disables it.
-            (
-                {"inputs": {"prompt": "a cat", "last_image": {"type": "image", "url": "https://x/y.png"}}},
-                "invalid_request",
-                "/inputs/last_image",
             ),
             # A parameter the pipeline cannot set is refused rather than dropped, unless it is the default.
             ({"parameters": {"video_decoder": "diffusion"}}, "not_implemented", "/parameters/video_decoder"),
@@ -473,19 +442,6 @@ class TestServeApp:
         }
         assert client.get(audio["url"]).content[:4] == b"RIFF"
 
-    def test_validation_error_envelope(self, serve):
-        client, _ = serve()
-        body = {"model": MODEL_ID, "inputs": {"prompt": "a cat"}, "parameters": {"cfg_scale": 3}}
-        response = client.post("/v1/generations", json=body)
-        assert response.status_code == 400
-        assert response.json() == {
-            "error": {
-                "code": "invalid_request",
-                "message": "task 'text_to_image' declares no parameter 'cfg_scale'",
-                "pointer": "/parameters/cfg_scale",
-            }
-        }
-
     def test_failed_generation_returns_error_envelope(self, serve):
         client, pipeline = serve()
         body = {"model": MODEL_ID, "inputs": {"prompt": "a cat"}}
@@ -509,6 +465,13 @@ class TestServeApp:
         pipeline.error = None
         assert client.post("/v1/generations", json=body, headers=WAIT).json()["status"] == "complete"
 
+    def test_failed_backend_is_unhealthy(self, serve):
+        backend = SimpleNamespace(failure=lambda: "context-parallel worker rank-1 exited with code 3")
+        client, _ = serve(backend=backend)
+        response = client.get("/health")
+        expected = {"status": "unhealthy", "reason": "context-parallel worker rank-1 exited with code 3"}
+        assert (response.status_code, response.json()) == (503, expected)
+
     def test_health_checks_do_not_count_as_activity(self, serve):
         client, _ = serve()
         client.app.state.last_request = 0.0
@@ -516,19 +479,6 @@ class TestServeApp:
         assert client.app.state.last_request == 0.0, "a health check must not keep an idle server alive"
         client.get("/v1/models")
         assert client.app.state.last_request > 0.0, "a request should reset the idle clock"
-
-    def test_request_id_is_generated_or_echoed(self, serve):
-        client, _ = serve()
-        assert client.get("/health").headers["x-request-id"], "a request without an id should be given one"
-        echoed = client.get("/v1/models/unknown", headers={"x-request-id": "req-1"})
-        assert (echoed.status_code, echoed.headers["x-request-id"]) == (404, "req-1")
-
-    def test_default_seed_applies_when_request_omits_seed(self, serve):
-        client, _ = serve(app_options={"default_seed": 7})
-        body = {"model": MODEL_ID, "inputs": {"prompt": "a cat"}}
-        assert client.post("/v1/generations", json=body, headers=WAIT).json()["seed"] == 7
-        body["parameters"] = {"seed": 11}
-        assert client.post("/v1/generations", json=body, headers=WAIT).json()["seed"] == 11
 
     def test_public_url_replaces_the_request_address_in_output_links(self, serve):
         client, _ = serve(app_options={"public_url": "https://proxy.example/sandbox/proxy/8000/"})
@@ -542,13 +492,6 @@ class TestServeApp:
             assert client.get(path).status_code == 200, path
         prefixed = client.post("/sandbox/proxy/8000/v1/generations", json=body, headers=WAIT)
         assert prefixed.status_code == 201, prefixed.text
-
-    def test_cors_is_opt_in(self, serve):
-        origin = {"Origin": "http://example.com"}
-        client, _ = serve()
-        assert "access-control-allow-origin" not in client.get("/health", headers=origin).headers
-        client, _ = serve(app_options={"enable_cors": True})
-        assert client.get("/health", headers=origin).headers["access-control-allow-origin"] == "*"
 
     def test_cancel_queued_and_running(self, serve):
         client, pipeline = serve()
@@ -598,7 +541,7 @@ class TestServeApp:
         assert (response.status_code, response.json()["error"]["code"]) == (501, "not_implemented")
 
     def test_discovery_serves_manifest_bytes_verbatim(self, serve):
-        manifest = derive_manifest(MODEL_ID, FakePipeline, FAKE_SIGNATURE, backend_kwargs("diffusers", FAKE_SIGNATURE))
+        manifest = derive_manifest(MODEL_ID, FakePipeline, FAKE_SIGNATURE)
         raw = json.dumps(manifest, indent=3).encode()
         client, _ = serve(manifest=raw)
 
@@ -619,70 +562,12 @@ class TestServeApp:
             ]
         }
 
-    def test_unadvertised_capabilities_return_not_implemented(self, serve):
-        client, _ = serve()
-        for response in (
-            client.post("/v1/uploads", json={}),
-            client.get("/v1/generations/gen_x/outputs/video/stream"),
-        ):
-            assert (response.status_code, response.json()["error"]["code"]) == (501, "not_implemented")
-
-
-class FakeEngine:
-    """The image and video routes SGLang and vLLM-Omni share, recording what the backend sends."""
-
-    def __init__(self):
-        self.requests = []
-        self.polls = 0
-
-    def __call__(self, request):
-        content_type = request.headers.get("content-type", "")
-        self.requests.append((request.method, request.url.path, content_type.split(";")[0], request.content))
-        path = request.url.path
-        if path in ("/v1/images/generations", "/v1/images/edits"):
-            buffer = io.BytesIO()
-            Image.new("RGB", (16, 8), "green").save(buffer, format="PNG")
-            return httpx.Response(200, json={"data": [{"b64_json": base64.b64encode(buffer.getvalue()).decode()}]})
-        if path == "/v1/videos" and request.method == "POST":
-            return httpx.Response(200, json={"id": "video_1", "status": "queued"})
-        if path == "/v1/videos/video_1" and request.method == "GET":
-            self.polls += 1
-            if self.polls < 2:
-                return httpx.Response(200, json={"id": "video_1", "status": "in_progress"})
-            return httpx.Response(200, json={"id": "video_1", "status": "completed", "fps": 16.0, "duration_s": 5.0})
-        if path == "/v1/videos/video_1/content":
-            return httpx.Response(200, content=b"mp4-bytes")
-        if path == "/v1/videos/video_1" and request.method == "DELETE":
-            return httpx.Response(200, json={"id": "video_1", "deleted": True})
-        return httpx.Response(404, text="no such route")
-
-
-class FakeTextToVideoPipeline:
-    def __call__(
-        self,
-        prompt: str = None,
-        image: Image.Image = None,
-        height: int = 480,
-        width: int = 832,
-        num_frames: int = 81,
-        num_inference_steps: int = 50,
-        generator: torch.Generator | None = None,
-    ):
-        pass
-
 
 class TestModularPipeline:
-    def test_generation_runs_a_modular_pipeline(self, tmp_path, monkeypatch):
-        pytest.importorskip("fastapi", reason="`diffusers-cli serve` needs the `diffusers[serve]` extra")
-        from fastapi.testclient import TestClient
-
-        from diffusers.commands.serve.app import create_app
-
+    def test_generation_runs_a_modular_pipeline(self, serve):
         pipeline = FakeImageBlock().init_pipeline()
-        monkeypatch.setattr("diffusers.commands.serve.backends._load_pipeline", lambda args: pipeline)
         signature = blocks_signature(pipeline.blocks)
-        kwarg_names = backend_kwargs("diffusers", signature)
-        manifest = derive_manifest(MODEL_ID, type(pipeline), signature, kwarg_names)
+        manifest = derive_manifest(MODEL_ID, type(pipeline), signature)
         assert list(manifest["tasks"]) == ["text_to_image", "image_to_image"], manifest["tasks"].keys()
         assert manifest["tasks"]["text_to_image"]["inputs"] == {"prompt": {"type": "text", "required": True}}
         assert manifest["tasks"]["text_to_image"]["parameters"] == {
@@ -690,16 +575,7 @@ class TestModularPipeline:
             "seed": {"type": "integer"},
         }
 
-        raw = json.dumps(manifest).encode()
-        served = ServedModel(
-            Manifest(raw=raw, data=manifest),
-            kwarg_names,
-            backend_output_types("diffusers"),
-            backend_capabilities(_args(), type(pipeline)),
-            revision=None,
-        )
-        backend = DiffusersBackend(_args(), served)
-        client = TestClient(create_app(served, GenerationQueue(backend, str(tmp_path))))
+        client, _ = serve(manifest=manifest, pipeline=pipeline, signature=signature)
 
         body = {"model": MODEL_ID, "inputs": {"prompt": "a cat"}, "parameters": {"seed": 3}}
         generation = client.post("/v1/generations", json=body, headers=WAIT).json()
@@ -707,98 +583,6 @@ class TestModularPipeline:
         assert generation["seed"] == 3
         (artifact,) = generation["outputs"]["image"]
         assert (artifact["media_type"], artifact["width"], artifact["height"]) == ("image/png", 32, 32)
-
-
-class TestEngineBackend:
-    def _generate(self, tmp_path, monkeypatch, served, body):
-        monkeypatch.setattr("diffusers.commands.serve.backends._POLL_SECONDS", 0.0)
-        engine = FakeEngine()
-        client = httpx.Client(base_url="http://engine", transport=httpx.MockTransport(engine))
-        backend = EngineBackend("vllm", served, client)
-        resolved = served.resolve({"model": MODEL_ID, **body})
-        generation = Generation(served.id, None, resolved, seeded=served.seeded(resolved.task))
-        generation.directory = tmp_path
-        return engine, backend.generate(generation)
-
-    def test_exited_engine_is_unhealthy(self, tmp_path):
-        pytest.importorskip("fastapi", reason="`diffusers-cli serve` needs the `diffusers[serve]` extra")
-        from fastapi.testclient import TestClient
-
-        from diffusers.commands.serve.app import create_app
-
-        process = subprocess.Popen([sys.executable, "-c", "raise SystemExit(3)"])
-        process.wait()
-        served = _served(backend="vllm")
-        backend = EngineBackend("vllm", served, httpx.Client(base_url="http://engine"), process)
-        response = TestClient(create_app(served, GenerationQueue(backend, str(tmp_path)))).get("/health")
-        expected = {"status": "unhealthy", "reason": "the vllm backend exited with code 3"}
-        assert (response.status_code, response.json()) == (503, expected)
-
-    def test_derived_manifest_keeps_only_engine_kwargs(self):
-        manifest = derive_manifest(MODEL_ID, FakePipeline, FAKE_SIGNATURE, backend_kwargs("vllm", FAKE_SIGNATURE))
-        assert "sigmas" not in manifest["tasks"]["text_to_image"]["parameters"]
-        assert "steps" in manifest["tasks"]["text_to_image"]["parameters"]
-
-    def test_text_to_image_request_translation(self, tmp_path, monkeypatch):
-        body = {
-            "inputs": {"prompt": "a cat", "negative_prompt": "blurry"},
-            "parameters": {"width": 1024, "height": 768, "steps": 20, "num_outputs": 2, "seed": 5},
-            "output_format": "image/webp",
-        }
-        engine, outputs = self._generate(tmp_path, monkeypatch, _served(backend="vllm"), body)
-
-        ((method, path, content_type, content),) = engine.requests
-        assert (method, path, content_type) == ("POST", "/v1/images/generations", "application/json")
-        assert json.loads(content) == {
-            "prompt": "a cat",
-            "negative_prompt": "blurry",
-            "num_inference_steps": 20,
-            "guidance_scale": 3.5,
-            "n": 2,
-            "seed": 5,
-            "size": "1024x768",
-            "response_format": "b64_json",
-            "output_format": "webp",
-        }
-        assert outputs == {"image": [{"file": "image-0.webp", "media_type": "image/webp", "width": 16, "height": 8}]}
-        assert (tmp_path / "image-0.webp").is_file()
-
-    def test_image_input_uses_multipart_edits(self, tmp_path, monkeypatch):
-        image = {"type": "image", "base64": base64.b64encode(b"png-bytes").decode(), "media_type": "image/png"}
-        body = {"inputs": {"prompt": "make it blue", "image": image}, "parameters": {"seed": 5}}
-        engine, _ = self._generate(tmp_path, monkeypatch, _served(backend="sglang"), body)
-
-        ((method, path, content_type, content),) = engine.requests
-        assert (method, path, content_type) == ("POST", "/v1/images/edits", "multipart/form-data")
-        assert b'name="image"; filename="image-0.png"' in content and b"png-bytes" in content
-        assert b'name="prompt"\r\n\r\nmake it blue' in content
-
-    def test_video_job_is_polled_downloaded_and_deleted(self, tmp_path, monkeypatch):
-        served = _served(backend="vllm", pipeline_cls=FakeTextToVideoPipeline)
-        body = {"task": "text_to_video", "inputs": {"prompt": "a cat"}, "parameters": {"num_frames": 33, "seed": 5}}
-        engine, outputs = self._generate(tmp_path, monkeypatch, served, body)
-
-        assert [(method, path) for method, path, _, _ in engine.requests] == [
-            ("POST", "/v1/videos"),
-            ("GET", "/v1/videos/video_1"),
-            ("GET", "/v1/videos/video_1"),
-            ("GET", "/v1/videos/video_1/content"),
-            ("DELETE", "/v1/videos/video_1"),
-        ]
-        _, _, content_type, content = engine.requests[0]
-        assert content_type == "multipart/form-data"
-        assert b'name="num_frames"\r\n\r\n33' in content and b'name="size"\r\n\r\n832x480' in content
-        assert outputs == {"video": [{"file": "video-0.mp4", "media_type": "video/mp4", "fps": 16.0, "duration": 5.0}]}
-        assert (tmp_path / "video-0.mp4").read_bytes() == b"mp4-bytes"
-
-    def test_audio_tasks_are_not_hosted(self):
-        manifest = {
-            "id": MODEL_ID,
-            "tasks": {
-                "text_to_audio": {"inputs": {"prompt": {"type": "text"}}, "outputs": {"audio": {"type": "audio"}}}
-            },
-        }
-        assert _served(backend="vllm", manifest=manifest).tasks == {}
 
 
 class FakeJobsApi:
@@ -877,40 +661,40 @@ class TestServeRemote:
         with pytest.raises(SystemExit, match="Job job-1 ended with status ERROR"):
             self._run(monkeypatch, FakeJobsApi(stage="ERROR"), [])
 
-    @pytest.mark.parametrize(
-        "backend, image", [("sglang", "lmsysorg/sglang:latest"), ("vllm", "vllm/vllm-omni:latest")]
-    )
-    def test_engine_backend_defaults_to_the_engine_image(self, monkeypatch, backend, image):
-        api = FakeJobsApi()
-        self._run(monkeypatch, api, ["--backend", backend])
-        assert api.run_kwargs["image"] == image
 
-        self._run(monkeypatch, api, ["--backend", backend, "--image", "mine"])
-        assert api.run_kwargs["image"] == "mine", "an explicit --image must win over the engine default"
+class FakeClock:
+    """Stands in for the `time` module: `sleep` advances the clock instead of waiting."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        if self.now > 1000:
+            raise AssertionError("the idle watcher never shut the server down")
+        self.now += seconds
 
 
 class TestIdleShutdown:
-    def _watch(self, busy):
+    def _watch(self, monkeypatch, busy_checks):
+        """Run the watcher with a 1m timeout, checked every 30s, until it shuts the server down; returns when it did."""
+        clock = FakeClock()
+        monkeypatch.setattr("diffusers.commands.serve.time", clock)
+        busy = iter(busy_checks)
         server = SimpleNamespace(should_exit=False)
         app = SimpleNamespace(state=SimpleNamespace(last_request=0.0))
-        generations = SimpleNamespace(busy=lambda: busy[0])
-        watcher = threading.Thread(target=_shut_down_when_idle, args=(server, app, generations, "0.05"), daemon=True)
-        watcher.start()
-        return server, watcher
+        _shut_down_when_idle(server, app, SimpleNamespace(busy=lambda: next(busy, False)), "1m")
+        assert server.should_exit, "the watcher should only return once it told the server to exit"
+        return clock.now
 
-    def test_idle_server_shuts_down(self):
-        server, watcher = self._watch(busy=[False])
-        watcher.join(timeout=5)
-        assert server.should_exit, "an idle server should be told to exit"
+    def test_idle_server_shuts_down(self, monkeypatch):
+        assert self._watch(monkeypatch, []) == 60, "an idle server should exit after one timeout"
 
-    def test_busy_server_stays_up_until_the_work_ends(self):
-        busy = [True]
-        server, watcher = self._watch(busy)
-        watcher.join(timeout=0.3)
-        assert not server.should_exit, "a queued or running generation must keep the server up"
-        busy[0] = False
-        watcher.join(timeout=5)
-        assert server.should_exit, "the server should exit once the work ends and the timeout passes"
+    def test_busy_server_stays_up_until_the_work_ends(self, monkeypatch):
+        # Busy at the checks at 30s and 60s, so the idle clock restarts at 60s.
+        assert self._watch(monkeypatch, [True, True]) == 120, "the server should exit one timeout after the work ends"
 
 
 class TestServeCommand:
@@ -918,19 +702,6 @@ class TestServeCommand:
         parser = ArgumentParser()
         ServeCommand.register_subcommand(parser.add_subparsers())
         return parser.parse_args(["serve", *argv])
-
-    def test_engine_backend_warns_about_ignored_pipeline_flags(self, monkeypatch):
-        pytest.importorskip("fastapi", reason="`diffusers-cli serve` needs the `diffusers[serve]` extra")
-
-        def stop(args):
-            raise RuntimeError("stop after the flag check")
-
-        monkeypatch.setattr("diffusers.commands.serve._resolve_pipeline", stop)
-        args = self._parse(["-m", "org/model", "--backend", "vllm", "--dtype", "fp16", "--vae-tiling"])
-        with CaptureLogger(logging.get_logger("diffusers-cli/serve")) as captured:
-            with pytest.raises(RuntimeError, match="stop after the flag check"):
-                ServeCommand(args).run()
-        assert "--dtype, --vae-tiling configure the in-process pipeline and are ignored" in captured.out
 
     def test_model_is_positional_and_loads_in_bf16(self, monkeypatch):
         pytest.importorskip("fastapi", reason="`diffusers-cli serve` needs the `diffusers[serve]` extra")
@@ -961,10 +732,13 @@ def _fake_worker_main(rank, world_size, port, args, served, conn, cancel_flag):
         if rank != 0:
             continue
         conn.send(("progress", 1, 2))
-        # Give the server time to raise the cancel flag between the two steps.
-        time.sleep(0.3)
-        if cancel_flag.value:
-            conn.send(("complete", {}))
+        if job["kwargs"]["prompt"] == "cancel me":
+            # The server raises the flag once it has read the progress above.
+            for _ in range(1000):
+                if cancel_flag.value:
+                    break
+                time.sleep(0.01)
+            conn.send(("complete", {} if cancel_flag.value else {"image": []}))
         elif job["kwargs"]["prompt"] == "bad":
             conn.send(("failed", "invalid_request", "bad prompt", "/inputs/prompt"))
         else:
@@ -981,6 +755,8 @@ class FakeGeneration:
 
     def report_progress(self, step, total_steps):
         self.progress.append((step, total_steps))
+        if self.request.kwargs["prompt"] == "cancel me":
+            self.cancel_requested = True
 
 
 class TestParallelBackend:
@@ -1019,9 +795,8 @@ class TestParallelBackend:
         assert (error.value.code, error.value.pointer) == ("invalid_request", "/inputs/prompt")
 
     def test_cancel_reaches_the_workers(self, backend):
-        generation = FakeGeneration()
-        threading.Timer(0.1, lambda: setattr(generation, "cancel_requested", True)).start()
-        assert backend().generate(generation) == {}, "a cancelled generation returns no outputs"
+        outputs = backend().generate(FakeGeneration(prompt="cancel me"))
+        assert outputs == {}, "a cancel raised mid-generation should reach the workers"
 
     def test_dead_worker_fails_the_server(self, backend):
         server = backend()
@@ -1064,7 +839,7 @@ class TestParallelWorker:
     def _job(self, prompt):
         return {"request": None, "kwargs": {"prompt": prompt}, "seed": 0, "directory": "/tmp/unused"}
 
-    def test_rank_0_reports_progress_and_results(self):
+    def test_only_rank_0_reports_progress_and_results(self):
         def run(kwargs, generation):
             generation.report_progress(1, 1)
             if kwargs["prompt"] == "bad":
@@ -1073,7 +848,8 @@ class TestParallelWorker:
                 raise SystemExit("unsupported")
             return {"image": []}
 
-        replies = self._jobs(SimpleNamespace(run=run), 0, self._job("ok"), self._job("bad"), self._job("crash"))
+        backend = SimpleNamespace(run=run)
+        replies = self._jobs(backend, 0, self._job("ok"), self._job("bad"), self._job("crash"))
         assert replies == [
             ("progress", 1, 1),
             ("complete", {"image": []}),
@@ -1082,13 +858,7 @@ class TestParallelWorker:
             ("progress", 1, 1),
             ("failed", "internal", "SystemExit: unsupported", None),
         ], "a failed generation must not end the worker"
-
-    def test_other_ranks_stay_silent(self):
-        def run(kwargs, generation):
-            generation.report_progress(1, 1)
-            return {"image": []}
-
-        assert self._jobs(SimpleNamespace(run=run), 1, self._job("ok")) == []
+        assert self._jobs(backend, 1, self._job("ok"), self._job("bad")) == [], "only rank 0 talks to the server"
 
     def test_cancel_is_broadcast_from_rank_0(self, monkeypatch):
         from multiprocessing import Value

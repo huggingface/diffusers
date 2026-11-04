@@ -15,8 +15,7 @@
 """`diffusers-cli serve` — serve a pipeline over HTTP with the Generative Media Spec (GMS) API.
 
 Generations run one at a time on a background worker: a request returns immediately with a queued generation that
-clients poll or follow over server-sent events. The pipeline runs in-process by default, or behind an SGLang or
-vLLM-Omni server with `--backend`.
+clients poll or follow over server-sent events.
 """
 
 from __future__ import annotations
@@ -39,22 +38,6 @@ from .remote import add_remote_arguments, serve_remote
 logger = logging.get_logger("diffusers-cli/serve")
 
 DEFAULT_OUTPUT_DIR = str(Path.home() / ".diffusers" / "cli" / "serve" / "outputs")
-BACKEND_CHOICES = ("diffusers", "sglang", "vllm")
-
-# Flags that configure the in-process pipeline, paired with the value argparse gives them when unset.
-_DIFFUSERS_ONLY_FLAGS = {
-    "device_map": None,
-    "dtype": "bf16",
-    "variant": None,
-    "lora": None,
-    "cpu_offload": None,
-    "attention_backend": "default",
-    "vae_tiling": False,
-    "vae_slicing": False,
-    "compile": None,
-    "compile_mode": "regional",
-    "context_parallel": False,
-}
 
 
 def _resolve_pipeline(args: Namespace) -> tuple[type, inspect.Signature, str | None]:
@@ -82,11 +65,6 @@ def _resolve_pipeline(args: Namespace) -> tuple[type, inspect.Signature, str | N
         if not issubclass(pipeline_cls, diffusers.ModularPipeline):
             return pipeline_cls, inspect.signature(pipeline_cls.__call__), commit_hash
 
-    if args.backend != "diffusers":
-        raise SystemExit(
-            f"{args.model!r} is a modular pipeline, which --backend {args.backend} cannot serve. "
-            "Use --backend diffusers."
-        )
     try:
         pipeline = diffusers.ModularPipeline.from_pretrained(
             args.model, trust_remote_code=args.trust_remote_code, token=args.token, revision=args.revision
@@ -118,8 +96,6 @@ class ServeCommand(BaseDiffusersCLICommand):
             "Examples\n"
             "  $ diffusers-cli serve black-forest-labs/FLUX.1-dev\n"
             "  $ diffusers-cli serve black-forest-labs/FLUX.1-dev --compile --port 9000\n"
-            "  $ diffusers-cli serve Wan-AI/Wan2.2-T2V-A14B-Diffusers --backend vllm\n"
-            "  $ diffusers-cli serve Qwen/Qwen-Image --backend sglang --backend-args '--num-gpus 2'\n"
             "\n"
             "  $ curl localhost:8000/v1/generations -H 'Prefer: wait=120' \\\n"
             '      -d \'{"model": "black-forest-labs/FLUX.1-dev", "inputs": {"prompt": "a cat on the moon"}}\'\n'
@@ -146,25 +122,6 @@ class ServeCommand(BaseDiffusersCLICommand):
         )
         _add_loading_arguments(parser, require_model=False)
         _add_optimization_arguments(parser)
-        parser.add_argument(
-            "--backend",
-            choices=BACKEND_CHOICES,
-            default="diffusers",
-            help=(
-                "What runs the model. 'diffusers' loads the pipeline in this process. 'sglang' and 'vllm' start "
-                "`sglang serve` / `vllm serve --omni` as a child process and translate requests to its "
-                "OpenAI-compatible image and video routes."
-            ),
-        )
-        parser.add_argument(
-            "--backend-args",
-            default=None,
-            metavar="ARGS",
-            help=(
-                "Extra arguments appended to the `sglang serve` / `vllm serve` command, as one quoted string "
-                "(e.g. '--num-gpus 2'). Only used with --backend sglang or vllm."
-            ),
-        )
         parser.add_argument("--host", default="127.0.0.1", help="Interface to bind. Defaults to 127.0.0.1.")
         parser.add_argument("--port", type=int, default=8000, help="Port to bind. Defaults to 8000.")
         parser.add_argument(
@@ -256,19 +213,6 @@ class ServeCommand(BaseDiffusersCLICommand):
             raise SystemExit(
                 "--device-map does not apply with --context-parallel: each worker loads the pipeline on its own GPU."
             )
-        if args.backend == "diffusers" and args.backend_args is not None:
-            raise SystemExit("--backend-args only applies to --backend sglang or vllm.")
-        if args.backend != "diffusers":
-            ignored = [
-                "--" + name.replace("_", "-")
-                for name, unset in _DIFFUSERS_ONLY_FLAGS.items()
-                if getattr(args, name) != unset
-            ]
-            if ignored:
-                logger.warning(
-                    f"{', '.join(ignored)} configure the in-process pipeline and are ignored with "
-                    f"--backend {args.backend}. Pass the engine's own flags through --backend-args instead."
-                )
 
         if args.remote:
             serve_remote(args, self.task)
@@ -283,47 +227,36 @@ class ServeCommand(BaseDiffusersCLICommand):
             ) from e
 
         from .app import create_app
-        from .backends import (
-            DiffusersBackend,
-            EngineBackend,
-            backend_capabilities,
-            backend_kwargs,
-            backend_output_types,
-        )
+        from .backends import DiffusersBackend, backend_capabilities
         from .generations import GenerationQueue
         from .manifest import ServedModel, load_manifest
         from .parallel import ParallelBackend
 
         pipeline_cls, signature, commit_hash = _resolve_pipeline(args)
-        kwarg_names = backend_kwargs(args.backend, signature)
         manifest = load_manifest(
             args.model,
             pipeline_cls,
             signature,
-            kwarg_names,
             manifest_path=args.manifest,
             revision=args.revision,
             token=args.token,
         )
         served = ServedModel(
             manifest,
-            kwarg_names,
-            backend_output_types(args.backend),
+            set(signature.parameters) - {"self"},
             backend_capabilities(args, pipeline_cls),
             revision=commit_hash,
         )
         if not served.tasks:
             raise SystemExit(
                 f"None of the tasks {list(manifest.data['tasks'])} in the manifest for {args.model!r} can be "
-                f"served by {pipeline_cls.__name__} with --backend {args.backend}."
+                f"served by {pipeline_cls.__name__}."
             )
 
-        if args.backend == "diffusers" and args.context_parallel:
+        if args.context_parallel:
             backend = ParallelBackend(args, served)
-        elif args.backend == "diffusers":
-            backend = DiffusersBackend(args, served)
         else:
-            backend = EngineBackend.launch(args, served)
+            backend = DiffusersBackend(args, served)
 
         try:
             generations = GenerationQueue(backend, args.output_dir)
@@ -338,7 +271,6 @@ class ServeCommand(BaseDiffusersCLICommand):
                 self.task,
                 url=f"http://{args.host}:{args.port}",
                 model=served.id,
-                backend=args.backend,
                 pipeline_class=pipeline_cls.__name__,
                 tasks=list(served.tasks),
                 capabilities=served.capabilities,

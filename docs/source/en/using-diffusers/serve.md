@@ -40,8 +40,8 @@ so keep it on a trusted network. Run `diffusers serve --help` for every option.
 long and no generation is queued or running. Health checks don't count as requests. By default a local server
 never shuts itself down.
 
-[Modular repos](../modular_diffusers/overview) are detected the same way as in `run` and served in-process. They
-report no step progress, and a cancel request only takes effect once the pipeline call returns.
+[Modular repos](../modular_diffusers/overview) are detected the same way as in `run`. They report no step
+progress, and a cancel request only takes effect once the pipeline call returns.
 
 ## Generations
 
@@ -165,24 +165,3 @@ how long the Job runs even while it is busy. `--flavor`, `--image`, `--dependenc
 do for [`run --remote`](./cli#remote-execution---remote). With `--context-parallel`, pick a flavor with
 several GPUs. The model must be a Hub repo id. `--manifest` is not
 supported with `--remote`: publish the manifest as `gms.json` in the model repo instead.
-
-## SGLang and vLLM-Omni backends
-
-`--backend sglang` and `--backend vllm` run the model in [SGLang Diffusion](https://docs.sglang.io/) or
-[vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni) instead of in-process. `serve` starts `sglang serve` or
-`vllm serve --omni` as a child process, waits for it to become healthy, and translates GMS requests to the
-engine's OpenAI-compatible image and video routes. Clients only talk to the GMS endpoints of `serve`. The engine
-must be installed separately.
-
-```bash
-diffusers serve Qwen/Qwen-Image --backend sglang --backend-args '--num-gpus 2'
-diffusers serve Wan-AI/Wan2.2-T2V-A14B-Diffusers --backend vllm
-```
-
-The pipeline flags (`--dtype`, `--cpu-offload`, `--compile`, ...) are ignored with a warning. Pass the engine's own
-flags with `--backend-args`. Compared with the in-process backend, these backends serve image and video outputs
-only, accept `image` as the only media input, expose only the parameters both engines share, report no step
-progress, and apply no request adapters. `GET /health` returns `503` once the engine has exited.
-
-With `--remote`, the Job starts from the engine's own image (`lmsysorg/sglang:latest` or
-`vllm/vllm-omni:latest`) unless `--image` names another.

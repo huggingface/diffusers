@@ -38,8 +38,6 @@ logger = logging.get_logger("diffusers-cli/serve")
 JOB_PORT = 8000
 _SERVE_DEPS = ("fastapi", "uvicorn")
 _DEFAULT_REMOTE_IDLE_TIMEOUT = "30m"
-# Each engine's own image carries the engine, its kernels and the CUDA toolchain they are built with.
-_ENGINE_IMAGES = {"sglang": "lmsysorg/sglang:latest", "vllm": "vllm/vllm-omni:latest"}
 _READY_POLL_SECONDS = 5.0
 
 # Flags the Job command sets itself. `_build_task_kwargs` already drops the flags that say how the Job is set up.
@@ -71,10 +69,7 @@ def add_remote_arguments(parser: ArgumentParser) -> None:
     parser.add_argument(
         "--image",
         default=None,
-        help=(
-            f"Job image for --remote. Defaults to {_DEFAULT_REMOTE_IMAGE!r}, or to the engine's own image "
-            f"with --backend sglang ({_ENGINE_IMAGES['sglang']!r}) or vllm ({_ENGINE_IMAGES['vllm']!r})."
-        ),
+        help=f"Job image for --remote. Defaults to {_DEFAULT_REMOTE_IMAGE!r}.",
     )
     parser.add_argument(
         "--timeout",
@@ -119,8 +114,8 @@ def _job_script(args: Namespace, task: str) -> str:
 
     dependencies = [*_DEFAULT_REMOTE_DEPS, *_SERVE_DEPS, *(args.dependencies or [])]
     install = shlex.join(["uv", "pip", "install", "--system", "--break-system-packages", *dependencies])
-    # An image can put another environment first on PATH, with its own older `diffusers-cli` (the SGLang image
-    # does), so the server is started with the interpreter the install went into. The Job id is only known
+    # An `--image` can put another environment first on PATH, with its own older `diffusers-cli`, so the server
+    # is started with the interpreter the install went into. The Job id is only known
     # inside the Job, and output links must be built on the public address.
     start = (
         'exec "$(uv python find --system)" -m diffusers.commands.diffusers_cli --format quiet '
@@ -153,7 +148,7 @@ def serve_remote(args: Namespace, task: str) -> None:
     api = HfApi(token=hf_token)
     logger.info(f"starting a Job on flavor={args.flavor!r}...")
     job = api.run_job(
-        image=args.image or _ENGINE_IMAGES.get(args.backend, _DEFAULT_REMOTE_IMAGE),
+        image=args.image or _DEFAULT_REMOTE_IMAGE,
         command=["sh", "-c", _job_script(args, task)],
         env=env,
         secrets={"HF_TOKEN": hf_token} if hf_token else None,

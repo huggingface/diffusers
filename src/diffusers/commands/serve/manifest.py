@@ -167,7 +167,6 @@ def load_manifest(
     model: str,
     pipeline_cls: type,
     signature: inspect.Signature,
-    kwarg_names: set[str],
     manifest_path: str | None = None,
     revision: str | None = None,
     token: str | None = None,
@@ -190,7 +189,7 @@ def load_manifest(
             return manifest
 
     model_id = Path(model).name if Path(model).is_dir() else model
-    data = derive_manifest(model_id, pipeline_cls, signature, kwarg_names)
+    data = derive_manifest(model_id, pipeline_cls, signature)
     return Manifest(raw=json.dumps(data).encode(), data=data)
 
 
@@ -239,10 +238,8 @@ def _annotation_schema(annotation: Any, default: Any) -> dict[str, Any] | None:
     return {"type": "array", "items": {"type": scalar_type}}
 
 
-def derive_manifest(
-    model_id: str, pipeline_cls: type, signature: inspect.Signature, kwarg_names: set[str]
-) -> dict[str, Any]:
-    """Build a server-authored manifest from the pipeline call `signature`, keeping only kwargs in `kwarg_names`."""
+def derive_manifest(model_id: str, pipeline_cls: type, signature: inspect.Signature) -> dict[str, Any]:
+    """Build a server-authored manifest from the pipeline call `signature`."""
     inputs: dict[str, dict[str, Any]] = {}
     parameters: dict[str, dict[str, Any]] = {}
     input_kwargs: dict[str, str] = {}
@@ -257,7 +254,7 @@ def derive_manifest(
     del kwarg_parameters["num_frames"]
 
     for kwarg, parameter in signature.parameters.items():
-        if kwarg == "self" or kwarg in _SKIPPED_KWARGS or kwarg not in kwarg_names:
+        if kwarg == "self" or kwarg in _SKIPPED_KWARGS:
             continue
         if parameter.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
             continue
@@ -447,13 +444,12 @@ def _check_media(name: str, value: Any, spec: dict[str, Any], pointer: str) -> N
 
 
 class ServedModel:
-    """One manifest bound to the kwargs a backend accepts: the discovery document and request resolution."""
+    """One manifest bound to the kwargs the pipeline accepts: the discovery document and request resolution."""
 
     def __init__(
         self,
         manifest: Manifest,
         kwarg_names: set[str],
-        output_types: set[str],
         capabilities: list[str],
         revision: str | None = None,
     ):
@@ -481,7 +477,7 @@ class ServedModel:
                 parameters["duration"] = None
             if any(inputs[key] is None for key, spec in task["inputs"].items() if spec.get("required")):
                 continue
-            if not any(spec["type"] in output_types for spec in task["outputs"].values()):
+            if not any(spec["type"] in OUTPUT_FORMATS for spec in task["outputs"].values()):
                 continue
             self.tasks[name] = task
             self._inputs[name] = inputs
