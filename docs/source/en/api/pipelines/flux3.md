@@ -106,7 +106,7 @@ This way it can be served as a separate stage, on its own GPU or behind its own 
 
 ## Image-to-image
 
-Pass one or more reference images with `image`. Every reference keeps its own resolution (center-cropped to the 16-pixel grid; references above 16 megapixels are downscaled first), and the generation size defaults to one megapixel at the first reference's aspect ratio. The prompt the image model takes is the *target* image as a complete caption of the reference with the edit folded in, not a one-line instruction; the upsampler sees the references too and writes it from your instruction: what to keep, what to change.
+Pass one or more reference images with `image`. A single reference is kept whole: it is downscaled only above 4 megapixels, padded to the 16-pixel grid, and the generation defaults to its size, so the edit comes back at the size of the input. Several references are each fitted under 1 megapixel and cropped to the grid, and the generation defaults to the first one's size. A given `height`/`width` overrides the default. Describe the *target* image as a complete caption of the reference with your edit folded in, rather than a one-line instruction, or let the [prompt upsampler](#prompt-upsampling) write it from the instruction and the references:
 
 ```python
 night = pipe(

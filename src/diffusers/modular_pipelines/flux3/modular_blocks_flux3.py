@@ -47,12 +47,16 @@ class Flux3VaeEncoderSequentialStep(SequentialPipelineBlocks):
 
       Inputs:
           image (`Image | list`):
-              The reference image or images to condition the generation on; each keeps its own resolution
-              (center-cropped to the 16-pixel grid)
+              The reference image or images to condition the generation on. One reference is kept whole (padded to the
+              16-pixel grid, up to 4 megapixels); several are fitted under 1 megapixel each and cropped to the grid
 
       Outputs:
           condition_images (`list`):
               The preprocessed reference images, one tensor of shape (1, 3, height_i, width_i) in [-1, 1] per image
+          reference_crop (`list`):
+              Per reference, the (left, top, right, bottom) box of the reference inside its padded canvas (a single
+              reference) or None (several, cropped); the decoded image is cropped back to the box when the generation
+              size was not given
           image_cond_latents (`list`):
               Normalized packed latents of the reference images, one tensor of shape (1, 128, height_i//16,
               width_i//16) per image
@@ -79,12 +83,16 @@ class Flux3AutoVaeEncoderStep(AutoPipelineBlocks):
 
       Inputs:
           image (`Image | list`, *optional*):
-              The reference image or images to condition the generation on; each keeps its own resolution
-              (center-cropped to the 16-pixel grid)
+              The reference image or images to condition the generation on. One reference is kept whole (padded to the
+              16-pixel grid, up to 4 megapixels); several are fitted under 1 megapixel each and cropped to the grid
 
       Outputs:
           condition_images (`list`):
               The preprocessed reference images, one tensor of shape (1, 3, height_i, width_i) in [-1, 1] per image
+          reference_crop (`list`):
+              Per reference, the (left, top, right, bottom) box of the reference inside its padded canvas (a single
+              reference) or None (several, cropped); the decoded image is cropped back to the box when the generation
+              size was not given
           image_cond_latents (`list`):
               Normalized packed latents of the reference images, one tensor of shape (1, 128, height_i//16,
               width_i//16) per image
@@ -209,11 +217,11 @@ class Flux3ImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
               Normalized packed latents of the reference images, one tensor of shape (B, C, height_i//16, width_i//16)
               per image
           height (`int`, *optional*):
-              The height in pixels of the generated image; defaults to the first reference image's aspect ratio at the
-              default area
+              The height in pixels of the generated image; defaults to the first reference image's own height
           width (`int`, *optional*):
-              The width in pixels of the generated image; defaults to the first reference image's aspect ratio at the
-              default area
+              The width in pixels of the generated image; defaults to the first reference image's own width
+          reference_crop (`list | NoneType`, *optional*):
+              Per reference, the box of the reference inside its padded canvas or None, from the preprocess step
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
@@ -273,11 +281,11 @@ class Flux3AutoCoreDenoiseStep(AutoPipelineBlocks):
               Normalized packed latents of the reference images, one tensor of shape (B, C, height_i//16, width_i//16)
               per image
           height (`int`, *optional*, defaults to None or 1024, depending on the workflow):
-              The height in pixels of the generated image; defaults to the first reference image's aspect ratio at the
-              default area
+              The height in pixels of the generated image; defaults to the first reference image's own height
           width (`int`, *optional*, defaults to None or 1024, depending on the workflow):
-              The width in pixels of the generated image; defaults to the first reference image's aspect ratio at the
-              default area
+              The width in pixels of the generated image; defaults to the first reference image's own width
+          reference_crop (`list | NoneType`, *optional*):
+              Per reference, the box of the reference inside its padded canvas or None, from the preprocess step
           latents (`Tensor`):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
@@ -366,11 +374,11 @@ class Flux3AutoBlocks(SequentialPipelineBlocks):
               Normalized packed latents of the reference images, one tensor of shape (B, C, height_i//16, width_i//16)
               per image
           height (`int`, *optional*, defaults to None or 1024, depending on the workflow):
-              The height in pixels of the generated image; defaults to the first reference image's aspect ratio at the
-              default area
+              The height in pixels of the generated image; defaults to the first reference image's own height
           width (`int`, *optional*, defaults to None or 1024, depending on the workflow):
-              The width in pixels of the generated image; defaults to the first reference image's aspect ratio at the
-              default area
+              The width in pixels of the generated image; defaults to the first reference image's own width
+          reference_crop (`list | NoneType`, *optional*):
+              Per reference, the box of the reference inside its padded canvas or None, from the preprocess step
           latents (`Tensor`):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):

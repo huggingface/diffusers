@@ -24,6 +24,7 @@ if is_torch_available():
     from .transformer_anyflow_far import AnyFlowFARTransformer3DModel
     from .transformer_bria import BriaTransformer2DModel
     from .transformer_bria_fibo import BriaFiboTransformer2DModel
+    from .transformer_bria_fibo2 import BriaFibo2Transformer2DModel
     from .transformer_chroma import ChromaTransformer2DModel
     from .transformer_chronoedit import ChronoEditTransformer3DModel
     from .transformer_cogview3plus import CogView3PlusTransformer2DModel
@@ -48,6 +49,7 @@ if is_torch_available():
     from .transformer_kandinsky import Kandinsky5Transformer3DModel
     from .transformer_kandinsky6 import Kandinsky6Transformer3DModel
     from .transformer_kandinsky6_sr import Kandinsky6SRTransformer3DModel
+    from .transformer_kandinsky_s2v import KandinskyS2VTransformer3DModel
     from .transformer_krea2 import Krea2Transformer2DModel
     from .transformer_longcat_audio_dit import LongCatAudioDiTTransformer
     from .transformer_longcat_image import LongCatImageTransformer2DModel
@@ -64,6 +66,7 @@ if is_torch_available():
     from .transformer_prx import PRXTransformer2DModel
     from .transformer_qwenimage import QwenImageTransformer2DModel
     from .transformer_qwenimage21 import QwenImage21Transformer2DModel
+    from .transformer_rfd4_proteina import RFD4ProteinaTransformer
     from .transformer_sana_video import SanaVideoTransformer3DModel
     from .transformer_sana_wm import SanaWMTransformer3DModel
     from .transformer_sana_wm_refiner import SanaWMLTX2RefinerTransformer3DModel

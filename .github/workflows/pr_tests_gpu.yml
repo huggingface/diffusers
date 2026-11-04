@@ -126,6 +126,7 @@ jobs:
   torch_pipelines_cuda_tests:
     permissions:
       contents: read
+      id-token: write
     name: Torch Pipelines CUDA Tests
     needs: setup_torch_cuda_pipeline_matrix
     strategy:
@@ -166,7 +167,7 @@ jobs:
 
       - name: PyTorch CUDA checkpoint tests on Ubuntu
         env:
-          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+          HF_OIDC_RESOURCE: ${{ !github.event.pull_request.head.repo.fork && 'Diffusers-CI-Bot' || '' }}
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
@@ -197,6 +198,7 @@ jobs:
   torch_cuda_tests:
     permissions:
       contents: read
+      id-token: write
     name: Torch CUDA Tests
     needs: [check_code_quality, check_repository_consistency]
     runs-on:
@@ -239,7 +241,7 @@ jobs:
 
     - name: Run PyTorch CUDA tests
       env:
-        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+        HF_OIDC_RESOURCE: ${{ !github.event.pull_request.head.repo.fork && 'Diffusers-CI-Bot' || '' }}
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
@@ -268,6 +270,7 @@ jobs:
   run_examples_tests:
     permissions:
       contents: read
+      id-token: write
     name: Examples PyTorch CUDA tests on Ubuntu
     needs: [check_code_quality, check_repository_consistency]
     runs-on:
@@ -297,7 +300,7 @@ jobs:
 
     - name: Run example tests on GPU
       env:
-        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+        HF_OIDC_RESOURCE: ${{ !github.event.pull_request.head.repo.fork && 'Diffusers-CI-Bot' || '' }}
       run: |
         uv pip install ".[training]"
         pytest -n 1 --max-worker-restart=0 --dist=loadfile --make-reports=examples_torch_cuda examples/

@@ -2074,6 +2074,12 @@ class BFLTesterMixin(BFLConfigMixin, QuantizationTesterMixin):
 @is_torch_compile
 @require_accelerator
 @require_accelerate
+# Both schemes store E4M3 tensors (fp8r weights, nvfp4 block scales) and compute in bf16; Triton cannot compile either
+# below compute capability 8.9 (e.g. T4).
+@pytest.mark.skipif(
+    torch_device == "cuda" and torch.cuda.get_device_capability() < (8, 9),
+    reason="torch.compile of BFL models needs FP8 support in Triton (compute capability 8.9+)",
+)
 class BFLCompileTesterMixin(BFLConfigMixin, QuantizationCompileTesterMixin):
     """
     Mixin class for testing torch.compile with BFL (`fp8r` / `nvfp4`) quantized models.
