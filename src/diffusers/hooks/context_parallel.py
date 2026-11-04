@@ -57,6 +57,9 @@ class ModuleForwardMetadata:
             index = self.cached_parameter_indices.get(identifier, None)
             if index is None:
                 raise ValueError(f"Parameter '{identifier}' not found in cached indices.")
+            if index >= len(args):
+                # Not passed positionally or as a kwarg; the forward will use its default value.
+                return None, False, index
             return args[index], False, index
 
         if self._cls is None:
@@ -72,7 +75,8 @@ class ModuleForwardMetadata:
         index = self.cached_parameter_indices[identifier]
 
         if index >= len(args):
-            raise ValueError(f"Expected {index} arguments but got {len(args)}.")
+            # Not passed positionally or as a kwarg; the forward will use its default value.
+            return None, False, index
 
         return args[index], False, index
 
