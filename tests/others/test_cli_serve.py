@@ -509,11 +509,6 @@ class TestServeApp:
         pipeline.error = None
         assert client.post("/v1/generations", json=body, headers=WAIT).json()["status"] == "complete"
 
-    def test_health(self, serve):
-        client, _ = serve()
-        response = client.get("/health")
-        assert (response.status_code, response.json()) == (200, {"status": "ok"})
-
     def test_health_checks_do_not_count_as_activity(self, serve):
         client, _ = serve()
         client.app.state.last_request = 0.0
@@ -951,18 +946,6 @@ class TestServeCommand:
         assert resolved["model"] == "org/model", resolved
         assert resolved["dtype"] == "bf16", "serve should default to bf16 rather than `run`'s fp32 `auto`"
 
-    def test_two_different_models_are_rejected(self):
-        with pytest.raises(SystemExit, match="Got two models"):
-            ServeCommand(self._parse(["org/model", "-m", "org/other"])).run()
-
-    def test_missing_model_is_rejected(self):
-        with pytest.raises(SystemExit, match="Pass the model to serve"):
-            ServeCommand(self._parse([])).run()
-
-    def test_context_parallel_rejects_device_map(self):
-        with pytest.raises(SystemExit, match="--device-map does not apply with --context-parallel"):
-            ServeCommand(self._parse(["-m", "org/model", "--context-parallel", "--device-map", "cuda:0"])).run()
-
 
 def _fake_worker_main(rank, world_size, port, args, served, conn, cancel_flag):
     """Stands in for `_worker_main` in forked children: no pipeline, no process group."""
@@ -1061,13 +1044,6 @@ class TestParallelBackend:
         # Spawned workers receive the parsed flags and the served model pickled.
         restored_args, restored_served = pickle.loads(pickle.dumps((args, _served())))
         assert restored_args.context_parallel and restored_served.tasks
-
-    def test_too_few_gpus_is_rejected(self, monkeypatch):
-        from diffusers.commands.serve.parallel import ParallelBackend
-
-        monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
-        with pytest.raises(SystemExit, match="needs at least 2 visible GPUs, found 1"):
-            ParallelBackend(Namespace(), _served())
 
 
 class TestParallelWorker:

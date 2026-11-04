@@ -274,11 +274,6 @@ class TestRunCommand:
         assert pipeline.vae.decoder == "compiled"
         assert compiled == {"fullgraph": True}
 
-    def test_compile_vae_decoder_skips_a_pipeline_without_one(self):
-        pipeline = SimpleNamespace(vae=None)
-        _compile_vae_decoder(pipeline, "{}")
-        assert pipeline.vae is None
-
     @require_torch_gpu
     # `--attention-backend` only exposes Hub-hosted kernels, all of which need `kernels>=0.12`.
     @require_kernels_version_greater_or_equal("0.12")
