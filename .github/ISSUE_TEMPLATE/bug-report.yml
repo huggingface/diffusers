@@ -32,10 +32,16 @@ body:
     id: reproduction
     attributes:
       label: Reproduction
-      description: Please provide a minimal reproducible code which we can copy/paste and reproduce the issue.
+      description: Please provide a minimal reproducible code which we can copy/paste and reproduce the issue. Keep it the real failing call, trimmed, not a script that tests your theory about the cause (see the [reporting guide](https://github.com/huggingface/diffusers/blob/main/.ai/references/reporting.md#bug-reports)).
       placeholder: Reproduction
     validations:
       required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What were you working on when you run into this issue? A little bit of context helps us understand the impact and prioritize. A link to the project is great if you have one, not required.
+      placeholder: "Working on X [link], run into this issue when ..."
   - type: textarea
     id: logs
     attributes:

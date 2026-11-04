@@ -29,7 +29,7 @@ Fixes # (issue)
       [documentation guidelines](https://github.com/huggingface/diffusers/tree/main/docs), and
       [here are tips on formatting docstrings](https://github.com/huggingface/diffusers/tree/main/docs#writing-source-documentation).
 - [ ] Did you write any new necessary tests?
-- [ ] Are you the author (or part of the team) of the model/pipeline (only applicable for model/pipeline related PRs)?
+- [ ] Are you the author (or part of the team we work with) of the model/pipeline this PR relates to?
 
 
 ## Who can review?

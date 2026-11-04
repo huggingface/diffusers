@@ -31,7 +31,8 @@ Behavior:
   come back on every run.
 - Once the warning is `AUTOCLOSE_DAYS` old and the PR is still not linked, the PR is
   closed with an explanatory comment.
-- PRs labeled `no-issue-needed` and bot-authored PRs are skipped.
+- PRs labeled `no-issue-needed`, PRs whose description has the author/team checkbox
+  ticked, and bot-authored PRs are skipped.
 - PRs authored by maintainers, users with write (or admin) access, and collaborators
   are skipped; the reminder only targets external contributors.
 """
@@ -75,12 +76,13 @@ PRIVILEGED_PERMISSIONS = {"admin", "write", "maintain", "triage"}
 # These are available on the PR payload without needing extra token scopes.
 PRIVILEGED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 
-# A PR authored by the model/pipeline's own team does not need to link an issue.
-# Matches a checked task-list item for the corresponding PR template checkbox.
-AUTHOR_CHECKBOX_PATTERN = re.compile(
-    r"-\s*\[\s*[xX]\s*\]\s*Are you the author \(or part of the team\) of the model/pipeline"
+# A PR from the author or team behind the model/pipeline it relates to does not need to link
+# an issue. Matches a checked task-list item for the PR template checkbox;
+AUTHOR_CHECKBOX_TEXT = (
+    "Are you the author (or part of the team we work with) of the model/pipeline this PR relates to?"
 )
-CONTRIBUTION_GUIDE_URL = "https://huggingface.co/docs/diffusers/main/en/conceptual/contribution#coding-with-ai-agents"
+AUTHOR_CHECKBOX_PATTERN = re.compile(r"-\s*\[\s*[xX]\s*\]\s*Are you the author\b")
+CONTRIBUTION_GUIDE_URL = "https://huggingface.co/docs/diffusers/main/en/conceptual/contribution#how-to-write-a-good-pr"
 
 GRAPHQL_URL = "https://api.github.com/graphql"
 GRAPHQL_QUERY = """
@@ -146,16 +148,21 @@ def reminder_body(author):
     return (
         f"{REMINDER_MARKER}\n"
         f"{AUTOCLOSE_MARKER}\n"
-        f"Hi @{author}, thanks for the PR! It does not appear to link an issue it fixes. "
-        "If this PR addresses an existing issue, please add a closing keyword "
-        "(e.g. `Fixes #1234`) to the PR description so the issue is linked. "
-        f"See the [contribution guide]({CONTRIBUTION_GUIDE_URL}) for more details. "
-        "If this PR intentionally does not fix a tracked issue, a maintainer can "
-        "add the `no-issue-needed` label to silence this reminder.\n\n"
+        f"Hi @{author}, thanks for the PR! It does not appear to link an issue it fixes.\n\n"
+        "- If this PR addresses an existing issue, please add a closing keyword (e.g. `Fixes #1234`) "
+        "to the PR description so the issue is linked.\n"
+        "- If you are the author of the model/pipeline this PR relates to, or part of the team "
+        f"we work with on it, tick the `{AUTHOR_CHECKBOX_TEXT}` box in the PR description (if "
+        "you removed the template, paste that line back, checked). This reminder then no "
+        "longer applies.\n"
+        "- Otherwise there is nothing you need to do: a maintainer will look at the PR and add "
+        "the `no-issue-needed` label to silence this reminder if it should stay open without an issue.\n\n"
+        f"See the [contribution guide]({CONTRIBUTION_GUIDE_URL}) for more details.\n\n"
         f"**Please note that PRs without a linked issue are likely to be automatically "
         f"closed {AUTOCLOSE_DAYS} days after this notice.**\n\n"
-        "Once the PR links an issue (or gets the `no-issue-needed` label), you can ignore "
-        "this message \u2014 it stays here as a comment, but it no longer applies."
+        "Once the PR links an existing issue, the author box is ticked, or the `no-issue-needed` label "
+        "is added, you can ignore this message \u2014 it stays here as a comment, but it no "
+        "longer applies."
     )
 
 
@@ -166,8 +173,9 @@ def followup_body(author):
         "an issue it fixes.\n\n"
         f"**Please note that PRs without a linked issue are likely to be automatically "
         f"closed {AUTOCLOSE_DAYS} days after this notice.** Adding a closing keyword "
-        "(e.g. `Fixes #1234`) to the PR description, or a maintainer adding the "
-        "`no-issue-needed` label, will prevent that."
+        f"(e.g. `Fixes #1234`) to the PR description, ticking the `{AUTHOR_CHECKBOX_TEXT}` "
+        "box if it applies to you, or a maintainer adding the `no-issue-needed` label, will "
+        "prevent that."
     )
 
 
@@ -176,8 +184,8 @@ def autoclose_body():
         "This PR has been automatically closed because it does not link an issue and "
         f"the reminder above was not addressed within {AUTOCLOSE_DAYS} days. "
         "If this PR is still relevant, please link the issue it fixes "
-        "(e.g. `Fixes #1234`) or ask a maintainer to add the `no-issue-needed` label, "
-        "and it can be reopened.\n\n"
+        f"(e.g. `Fixes #1234`), tick the `{AUTHOR_CHECKBOX_TEXT}` box if it applies to you, "
+        "or ask a maintainer to add the `no-issue-needed` label, and it can be reopened.\n\n"
         "We are experimenting with this process to keep the review queue manageable, "
         "and it will sometimes get it wrong. If you think this PR should stay open, "
         "please just say so here and we will reopen it \u2014 no need to justify it at length.\n\n"
