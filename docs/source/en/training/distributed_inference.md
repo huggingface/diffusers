@@ -495,7 +495,7 @@ torchrun --nproc-per-node 4 tensor_parallel_flux.py
 >
 > Combining tensor parallelism with quantization, offloading, or LoRA adapters isn't supported yet either, so those raise however the model is sharded.
 >
-> We recommend loading tensor-parallel models this way. You can also shard a model that is already in memory by calling [`~ModelMixin.enable_parallelism`] with the same config, but that loads everything first and reshards it, so it costs full checkpoint memory on every rank. Each rank keeps its own slice of its own copy, so every rank must hold the same weights.
+> We recommend loading tensor-parallel models this way. You can also shard a model that is already in memory by calling [`~ModelMixin.enable_parallelism`] with the same config, but that loads everything first and reshards it, so it costs full checkpoint memory on every rank.
 
 Saving a tensor-parallel model isn't supported yet, and [`~ModelMixin.save_pretrained`] raises on one. Save the model before sharding it.
 
