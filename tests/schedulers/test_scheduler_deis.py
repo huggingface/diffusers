@@ -271,3 +271,21 @@ class DEISMultistepSchedulerTest(SchedulerCommonTest):
 
     def test_exponential_sigmas(self):
         self.check_over_configs(use_exponential_sigmas=True)
+
+    def test_high_step_coefficient_precision(self):
+        # Regression test for #15090: DEIS coefficient precision causes increasing error as inference steps increase
+        for solver_order in [2, 3]:
+            scheduler = DEISMultistepScheduler(solver_order=solver_order)
+            for steps in [50, 100]:
+                scheduler.set_timesteps(steps)
+                rho0 = float(scheduler.sigmas[0])
+                sample = torch.full((1, 1), rho0 / (1 + rho0**2) ** 0.5, dtype=torch.float64)
+                constant = sample.item() * (1 + rho0**2) ** 0.5 - rho0
+                epsilon = torch.ones_like(sample)
+                for t in scheduler.timesteps:
+                    sample = scheduler.step(epsilon, t, sample).prev_sample
+
+                rho = float(scheduler.sigmas[-1])
+                expected = (constant + rho) / (1 + rho**2) ** 0.5
+                assert sample.dtype == torch.float64
+                assert abs(sample.item() - expected) < 1e-4
