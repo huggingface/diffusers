@@ -21,6 +21,7 @@ import inspect
 import io
 import json
 import os
+import re
 import shlex
 import threading
 import time
@@ -35,8 +36,8 @@ from PIL import Image
 
 from diffusers.commands.serve import ServeCommand, _shut_down_when_idle
 from diffusers.commands.serve.backends import DiffusersBackend, backend_capabilities
-from diffusers.commands.serve.generations import GenerationQueue
-from diffusers.commands.serve.manifest import GMSError, Manifest, ServedModel, blocks_signature, derive_manifest
+from diffusers.commands.serve.manifest import GMSError, Manifest, blocks_signature, derive_manifest
+from diffusers.commands.serve.scheduler import Scheduler
 from diffusers.modular_pipelines import InputParam, ModularPipelineBlocks, OutputParam
 
 
@@ -154,17 +155,14 @@ def _args(**overrides):
     return Namespace(**{**values, **overrides})
 
 
-def _served(manifest=None, pipeline_cls=FakePipeline, signature=None, args=None):
+def _manifest(manifest=None, pipeline_cls=FakePipeline, signature=None, args=None):
+    """A `Manifest` bound to `pipeline_cls`, from the given manifest dict or bytes, or derived from the pipeline."""
     signature = signature or inspect.signature(pipeline_cls.__call__)
+    capabilities = backend_capabilities(args or _args(), pipeline_cls)
     if manifest is None:
-        manifest = derive_manifest(MODEL_ID, pipeline_cls, signature)
+        manifest = derive_manifest(MODEL_ID, pipeline_cls, signature, capabilities)
     raw = manifest if isinstance(manifest, bytes) else json.dumps(manifest).encode()
-    return ServedModel(
-        Manifest(raw=raw, data=json.loads(raw)),
-        set(signature.parameters) - {"self"},
-        backend_capabilities(args or _args(), pipeline_cls),
-        revision="abc123",
-    )
+    return Manifest(raw, json.loads(raw), pipeline_cls, signature, capabilities, revision="abc123")
 
 
 @pytest.fixture
@@ -180,9 +178,9 @@ def serve(tmp_path, monkeypatch):
         pipeline = pipeline or FakePipeline()
         monkeypatch.setattr("diffusers.commands.serve.backends._load_pipeline", lambda args: pipeline)
         args = _args(**arg_overrides)
-        served = _served(manifest=manifest, pipeline_cls=type(pipeline), signature=signature, args=args)
-        backend = backend or DiffusersBackend(args, served)
-        app = create_app(served, GenerationQueue(backend, str(tmp_path)), **(app_options or {}))
+        bound = _manifest(manifest=manifest, pipeline_cls=type(pipeline), signature=signature, args=args)
+        backend = backend or DiffusersBackend(args, bound)
+        app = create_app(bound, Scheduler(backend, str(tmp_path)), **(app_options or {}))
         return TestClient(app), pipeline
 
     return _build
@@ -196,7 +194,6 @@ LATTICE_MANIFEST = {
             "inputs": {
                 "prompt": {"type": "text", "required": True},
                 "negative_prompt": {"type": "text", "active_when": {"parameter": "guidance_scale", "gt": 1}},
-                "last_image": {"type": "image"},
             },
             "outputs": {"video": {"type": "video"}},
             "parameters": {
@@ -205,17 +202,15 @@ LATTICE_MANIFEST = {
                 "steps": {"type": "integer", "default": 30, "min": 1, "max": 100},
                 "fps": {"type": "number"},
                 "guidance_scale": {"type": "number", "default": 3.0, "min": 1.0, "max": 10.0},
-                "guidance_type": {"type": "string", "enum": ["cfg", "distilled"], "default": "cfg"},
                 "seed": {"type": "integer"},
-                "video_decoder": {"type": "string", "enum": ["conv", "diffusion"], "default": "conv"},
             },
             "presets": {
                 "default": {},
                 "distilled": {"parameters": {"steps": 8, "guidance_scale": 1.0}},
-                "quality": {"parameters": {"steps": 40, "video_decoder": "diffusion"}},
             },
         }
     },
+    "capabilities": ["sse", "wait"],
 }
 
 
@@ -236,7 +231,7 @@ class FakeVideoPipeline:
 
 class TestManifest:
     def test_derive_manifest_from_signature(self):
-        manifest = derive_manifest(MODEL_ID, FakePipeline, FAKE_SIGNATURE)
+        manifest = derive_manifest(MODEL_ID, FakePipeline, FAKE_SIGNATURE, ["sse", "wait", "adapters"])
 
         # An optional `image` kwarg yields one task without it and one that requires it.
         assert list(manifest["tasks"]) == ["text_to_image", "image_to_image"], manifest["tasks"].keys()
@@ -260,6 +255,7 @@ class TestManifest:
         assert text_to_image["x-diffusers"] == {
             "parameters": {"steps": "num_inference_steps", "num_outputs": "num_images_per_prompt", "seed": "generator"}
         }
+        assert manifest["capabilities"] == ["sse", "wait", "adapters"]
         assert manifest["adapters"] == {"lora": {"targets": ["transformer", "text_encoder"]}}
 
     @pytest.mark.parametrize(
@@ -278,42 +274,40 @@ class TestManifest:
                 "invalid_request",
                 "/inputs/negative_prompt",
             ),
-            # A parameter the pipeline cannot set is refused rather than dropped, unless it is the default.
-            ({"parameters": {"video_decoder": "diffusion"}}, "not_implemented", "/parameters/video_decoder"),
         ],
     )
     def test_resolve_rejects_invalid_requests(self, body, code, pointer):
-        served = _served(manifest=LATTICE_MANIFEST, pipeline_cls=FakeVideoPipeline)
+        bound = _manifest(manifest=LATTICE_MANIFEST, pipeline_cls=FakeVideoPipeline)
         with pytest.raises(GMSError) as error:
-            served.resolve({"model": MODEL_ID, "inputs": {"prompt": "a cat"}, **body})
+            bound.resolve({"model": MODEL_ID, "inputs": {"prompt": "a cat"}, **body})
         assert (error.value.code, error.value.pointer) == (code, pointer), error.value.message
 
     def test_resolve_rejects_non_http_media_urls(self):
-        served = _served()
+        bound = _manifest()
         body = {"model": MODEL_ID, "inputs": {"prompt": "a cat", "image": {"type": "image", "url": "/etc/passwd"}}}
         with pytest.raises(GMSError) as error:
-            served.resolve(body)
+            bound.resolve(body)
         assert error.value.pointer == "/inputs/image/url", error.value.message
 
     @pytest.mark.parametrize("path", ["hf:/etc/passwd", "hf:../loras/x", "/etc/passwd", "https://x/y.safetensors"])
     def test_resolve_rejects_adapter_paths_that_are_not_repo_ids(self, path):
         body = {"model": MODEL_ID, "inputs": {"prompt": "a cat"}, "adapters": [{"type": "lora", "path": path}]}
         with pytest.raises(GMSError) as error:
-            _served().resolve(body)
+            _manifest().resolve(body)
         assert (error.value.code, error.value.pointer) == ("invalid_request", "/adapters/0/path"), error.value.message
 
     def test_resolve_maps_request_to_pipeline_kwargs(self):
-        served = _served(manifest=LATTICE_MANIFEST, pipeline_cls=FakeVideoPipeline)
-        resolved = served.resolve(
+        bound = _manifest(manifest=LATTICE_MANIFEST, pipeline_cls=FakeVideoPipeline)
+        resolved = bound.resolve(
             {
                 "model": MODEL_ID,
                 "preset": "distilled",
                 "inputs": {"prompt": "a cat"},
-                "parameters": {"duration": 8, "seed": 7, "guidance_type": "cfg"},
+                "parameters": {"duration": 8, "seed": 7},
             }
         )
         # 8 s at 24 fps is 192 frames; the nearest point on the 8k+1 lattice is 193. The preset overrides the
-        # task defaults, and `guidance_type` at its default is accepted although the pipeline has no such kwarg.
+        # task defaults.
         assert resolved.kwargs == {
             "prompt": "a cat",
             "num_frames": 193,
@@ -325,13 +319,28 @@ class TestManifest:
         assert resolved.seed == 7
         assert resolved.task == "text_to_video"
 
-    def test_discovery_overlay(self):
-        served = _served(manifest=LATTICE_MANIFEST, pipeline_cls=FakeVideoPipeline)
-        assert served.overlay() == {
-            "tasks": {"text_to_video": {"presets": ["default", "distilled"]}},
-            "capabilities": ["sse", "wait"],
-            "limits": {"text_to_video": {"inputs": {"last_image": False}}},
-        }
+    @pytest.mark.parametrize(
+        "change, args, message",
+        [
+            # flux2-klein's published manifest declares `guidance_type`, which its pipeline does not take.
+            (
+                {"parameters": {"guidance_type": {"type": "string", "enum": ["distilled"]}}},
+                {},
+                "declares parameter 'guidance_type' on task 'text_to_video', which FakeVideoPipeline does not take",
+            ),
+            ({"capabilities": ["adapters"]}, {}, "request adapters are off"),
+            ({"capabilities": ["stream"]}, {}, "declares the 'stream' capability, which this server does not provide"),
+            ({"parameters": {"duration": {"type": "number"}}}, {}, "without a frame lattice"),
+        ],
+    )
+    def test_manifest_the_server_cannot_honor_fails_startup(self, change, args, message):
+        manifest = json.loads(json.dumps(LATTICE_MANIFEST))
+        if "parameters" in change:
+            manifest["tasks"]["text_to_video"]["parameters"].update(change["parameters"])
+        else:
+            manifest.update(change)
+        with pytest.raises(SystemExit, match=re.escape(message)):
+            _manifest(manifest=manifest, pipeline_cls=FakeVideoPipeline, args=_args(**args))
 
 
 class TestServeApp:
@@ -415,6 +424,7 @@ class TestServeApp:
                     "outputs": {"video": {"type": "video"}, "audio": {"type": "audio"}},
                 }
             },
+            "capabilities": ["wait"],
         }
         client, pipeline = serve(manifest=manifest)
         pipeline.result = SimpleNamespace(
@@ -464,6 +474,22 @@ class TestServeApp:
         assert client.post("/v1/generations", json=body, headers=WAIT).status_code == 500
         pipeline.error = None
         assert client.post("/v1/generations", json=body, headers=WAIT).json()["status"] == "complete"
+
+    def test_undeclared_capabilities_are_off(self, serve):
+        manifest = json.loads(json.dumps(LATTICE_MANIFEST))
+        manifest["tasks"]["text_to_video"] = {
+            "inputs": {"prompt": {"type": "text", "required": True}},
+            "outputs": {"image": {"type": "image"}},
+        }
+        manifest["capabilities"] = []
+        client, pipeline = serve(manifest=manifest)
+        # The pipeline is held, so a response that waited for the generation could never return.
+        pipeline.release.clear()
+        created = client.post("/v1/generations", json={"model": MODEL_ID, "inputs": {"prompt": "a cat"}}, headers=WAIT)
+        assert created.json()["status"] in ("queued", "generating"), "without `wait`, Prefer: wait is ignored"
+        events = client.get(f"/v1/generations/{created.json()['id']}/events")
+        assert (events.status_code, events.json()["error"]["code"]) == (501, "not_implemented")
+        pipeline.release.set()
 
     def test_failed_backend_is_unhealthy(self, serve):
         backend = SimpleNamespace(failure=lambda: "context-parallel worker rank-1 exited with code 3")
@@ -535,13 +561,13 @@ class TestServeApp:
     def test_adapters_not_advertised_when_compiled(self, serve):
         client, _ = serve(compile="{}")
         discovery = client.get(f"/v1/models/{MODEL_ID}").json()
-        assert "adapters" not in discovery["server"]["capabilities"]
+        assert "adapters" not in discovery["manifest"]["capabilities"]
         body = {"model": MODEL_ID, "inputs": {"prompt": "a cat"}, "adapters": [{"type": "lora", "path": "hf:a/b"}]}
         response = client.post("/v1/generations", json=body)
         assert (response.status_code, response.json()["error"]["code"]) == (501, "not_implemented")
 
     def test_discovery_serves_manifest_bytes_verbatim(self, serve):
-        manifest = derive_manifest(MODEL_ID, FakePipeline, FAKE_SIGNATURE)
+        manifest = derive_manifest(MODEL_ID, FakePipeline, FAKE_SIGNATURE, ["sse", "wait", "adapters"])
         raw = json.dumps(manifest, indent=3).encode()
         client, _ = serve(manifest=raw)
 
@@ -550,8 +576,7 @@ class TestServeApp:
         discovery = response.json()
         assert discovery["spec"] == "gms/0.1"
         assert discovery["manifest"] == manifest
-        assert discovery["server"]["tasks"] == {"text_to_image": {}, "image_to_image": {}}
-        assert discovery["server"]["adapters"] == {"max": 4, "sources": ["hf"]}
+        assert "server" not in discovery, "the manifest describes the server, so nothing is added to it"
         assert client.get("/v1/models").json() == {
             "data": [
                 {
@@ -567,7 +592,7 @@ class TestModularPipeline:
     def test_generation_runs_a_modular_pipeline(self, serve):
         pipeline = FakeImageBlock().init_pipeline()
         signature = blocks_signature(pipeline.blocks)
-        manifest = derive_manifest(MODEL_ID, type(pipeline), signature)
+        manifest = derive_manifest(MODEL_ID, type(pipeline), signature, ["wait"])
         assert list(manifest["tasks"]) == ["text_to_image", "image_to_image"], manifest["tasks"].keys()
         assert manifest["tasks"]["text_to_image"]["inputs"] == {"prompt": {"type": "text", "required": True}}
         assert manifest["tasks"]["text_to_image"]["parameters"] == {
@@ -718,7 +743,7 @@ class TestServeCommand:
         assert resolved["dtype"] == "bf16", "serve should default to bf16 rather than `run`'s fp32 `auto`"
 
 
-def _fake_worker_main(rank, world_size, port, args, served, conn, cancel_flag):
+def _fake_worker_main(rank, world_size, port, args, manifest, conn, cancel_flag):
     """Stands in for `_worker_main` in forked children: no pipeline, no process group."""
     if args.fail_at_startup:
         os._exit(3)
@@ -776,7 +801,7 @@ class TestParallelBackend:
 
         def _build(**arg_overrides):
             args = Namespace(**{"fail_at_startup": False, **arg_overrides})
-            backends.append(parallel.ParallelBackend(args, _served()))
+            backends.append(parallel.ParallelBackend(args, _manifest()))
             return backends[-1]
 
         yield _build
@@ -816,9 +841,9 @@ class TestParallelBackend:
         parser = ArgumentParser()
         ServeCommand.register_subcommand(parser.add_subparsers())
         args = parser.parse_args(["serve", "org/model", "--context-parallel"])
-        # Spawned workers receive the parsed flags and the served model pickled.
-        restored_args, restored_served = pickle.loads(pickle.dumps((args, _served())))
-        assert restored_args.context_parallel and restored_served.tasks
+        # Spawned workers receive the parsed flags and the manifest pickled.
+        restored_args, restored_manifest = pickle.loads(pickle.dumps((args, _manifest())))
+        assert restored_args.context_parallel and restored_manifest.tasks
 
 
 class TestParallelWorker:
@@ -863,14 +888,14 @@ class TestParallelWorker:
     def test_cancel_is_broadcast_from_rank_0(self, monkeypatch):
         from multiprocessing import Value
 
-        from diffusers.commands.serve.parallel import _WorkerGeneration
+        from diffusers.commands.serve.parallel import _WorkerJob
 
         monkeypatch.setenv("MASTER_ADDR", "127.0.0.1")
         monkeypatch.setenv("MASTER_PORT", str(_free_port()))
         torch.distributed.init_process_group("gloo", rank=0, world_size=1)
         try:
             flag = Value("b", 0)
-            generation = _WorkerGeneration(self._job("ok"), 0, None, flag)
+            generation = _WorkerJob(self._job("ok"), 0, None, flag)
             assert not generation.cancel_requested
             flag.value = 1
             assert generation.cancel_requested, "rank 0 should broadcast the flag the server raised"

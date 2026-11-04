@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""The generation resource and the single-worker queue that runs generations one at a time."""
+"""Generation jobs, and the scheduler that runs them through the backend in arrival order, one at a time."""
 
 from __future__ import annotations
 
@@ -35,7 +35,9 @@ logger = logging.get_logger("diffusers-cli/serve")
 EXPIRY_SECONDS = 3600
 
 
-class Generation:
+class GenerationJob:
+    """One generation, from the request that created it to its outputs: the resource `/v1/generations/{id}` returns."""
+
     def __init__(
         self,
         model: str,
@@ -101,13 +103,18 @@ class Generation:
             self._condition.notify_all()
 
 
-class GenerationQueue:
+class Scheduler:
+    """Runs generation jobs through the backend on a single worker thread, first in, first out.
+
+    It also keeps every job until it expires, so the API can look jobs up, cancel them and delete them.
+    """
+
     def __init__(self, backend: Any, output_dir: str):
         self._backend = backend
         self._output_dir = Path(output_dir)
-        self._generations: dict[str, Generation] = {}
+        self._generations: dict[str, GenerationJob] = {}
         self._lock = threading.Lock()
-        self._pending: queue.Queue[Generation] = queue.Queue()
+        self._pending: queue.Queue[GenerationJob] = queue.Queue()
         self._running = False
         threading.Thread(target=self._work, name="diffusers-serve-worker", daemon=True).start()
 
@@ -117,13 +124,13 @@ class GenerationQueue:
     def busy(self) -> bool:
         return self._running or not self._pending.empty()
 
-    def submit(self, generation: Generation) -> None:
+    def submit(self, generation: GenerationJob) -> None:
         self._prune()
         with self._lock:
             self._generations[generation.id] = generation
         self._pending.put(generation)
 
-    def get(self, generation_id: str) -> Generation:
+    def get(self, generation_id: str) -> GenerationJob:
         self._prune()
         with self._lock:
             generation = self._generations.get(generation_id)
@@ -131,7 +138,7 @@ class GenerationQueue:
             raise GMSError("not_found", f"no generation with id {generation_id!r}")
         return generation
 
-    def cancel(self, generation_id: str) -> Generation:
+    def cancel(self, generation_id: str) -> GenerationJob:
         generation = self.get(generation_id)
         with self._lock:
             if generation.done:
@@ -158,7 +165,7 @@ class GenerationQueue:
         for generation in expired:
             self._remove_files(generation)
 
-    def _remove_files(self, generation: Generation) -> None:
+    def _remove_files(self, generation: GenerationJob) -> None:
         if generation.directory is not None:
             shutil.rmtree(generation.directory, ignore_errors=True)
 

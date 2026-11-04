@@ -33,8 +33,8 @@ from typing import Any
 
 from ...utils import logging
 from .backends import DiffusersBackend, load_request_media
-from .generations import Generation
-from .manifest import GMSError, ServedModel
+from .manifest import GMSError, Manifest
+from .scheduler import GenerationJob
 
 
 logger = logging.get_logger("diffusers-cli/serve")
@@ -43,7 +43,7 @@ _POLL_SECONDS = 0.1
 _SHUTDOWN_SECONDS = 30.0
 
 
-class _WorkerGeneration:
+class _WorkerJob:
     """The parts of a generation `DiffusersBackend.run` reads, inside a worker.
 
     `cancel_requested` is a collective: rank 0 reads the flag the server sets and broadcasts it, so every rank
@@ -76,7 +76,7 @@ def _serve_jobs(backend: Any, rank: int, conn: Connection, cancel_flag: Any) -> 
         job = conn.recv()
         if job is None:
             return
-        generation = _WorkerGeneration(job, rank, conn, cancel_flag)
+        generation = _WorkerJob(job, rank, conn, cancel_flag)
         try:
             reply = ("complete", backend.run(job["kwargs"], generation))
         except GMSError as e:
@@ -90,7 +90,7 @@ def _serve_jobs(backend: Any, rank: int, conn: Connection, cancel_flag: Any) -> 
 
 
 def _worker_main(
-    rank: int, world_size: int, port: int, args: Namespace, served: ServedModel, conn: Connection, cancel_flag: Any
+    rank: int, world_size: int, port: int, args: Namespace, manifest: Manifest, conn: Connection, cancel_flag: Any
 ) -> None:
     import torch
 
@@ -106,7 +106,7 @@ def _worker_main(
     if args.log_level is not None:
         logging.set_verbosity(logging.get_log_levels_dict()[args.log_level])
     # Loading applies `--context-parallel`, which joins the process group of all ranks.
-    backend = DiffusersBackend(args, served, save_outputs=rank == 0)
+    backend = DiffusersBackend(args, manifest, save_outputs=rank == 0)
     conn.send(("ready",))
     try:
         _serve_jobs(backend, rank, conn, cancel_flag)
@@ -115,7 +115,7 @@ def _worker_main(
 
 
 class ParallelBackend:
-    def __init__(self, args: Namespace, served: ServedModel):
+    def __init__(self, args: Namespace, manifest: Manifest):
         import torch
 
         world_size = torch.cuda.device_count()
@@ -125,7 +125,7 @@ class ParallelBackend:
             probe.bind(("127.0.0.1", 0))
             port = probe.getsockname()[1]
 
-        self._served = served
+        self._manifest = manifest
         self._failure: str | None = None
         self._failed = threading.Event()
         self._closing = False
@@ -139,7 +139,7 @@ class ParallelBackend:
             parent_conn, child_conn = context.Pipe()
             process = context.Process(
                 target=_worker_main,
-                args=(rank, world_size, port, args, served, child_conn, self._cancel_flag),
+                args=(rank, world_size, port, args, manifest, child_conn, self._cancel_flag),
                 name=f"diffusers-serve-rank-{rank}",
                 daemon=True,
             )
@@ -185,12 +185,12 @@ class ParallelBackend:
     def failure(self) -> str | None:
         return self._failure
 
-    def generate(self, generation: Generation) -> dict[str, list[dict[str, Any]]]:
+    def generate(self, generation: GenerationJob) -> dict[str, list[dict[str, Any]]]:
         if self._failure is not None:
             raise GMSError("internal", self._failure)
         job = {
             "request": generation.request,
-            "kwargs": load_request_media(self._served, generation.request),
+            "kwargs": load_request_media(self._manifest, generation.request),
             "seed": generation.seed,
             "directory": str(generation.directory),
         }

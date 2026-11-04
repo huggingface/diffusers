@@ -74,11 +74,11 @@ def _resolve_pipeline(args: Namespace) -> tuple[type, inspect.Signature, str | N
     return type(pipeline), blocks_signature(pipeline.blocks), commit_hash
 
 
-def _shut_down_when_idle(server: Any, app: Any, generations: Any, idle_timeout: str) -> None:
+def _shut_down_when_idle(server: Any, app: Any, scheduler: Any, idle_timeout: str) -> None:
     limit = _duration_to_seconds(idle_timeout)
     while True:
         time.sleep(min(limit, 30.0))
-        if generations.busy():
+        if scheduler.busy():
             app.state.last_request = time.monotonic()
             continue
         if time.monotonic() - app.state.last_request >= limit:
@@ -228,41 +228,33 @@ class ServeCommand(BaseDiffusersCLICommand):
 
         from .app import create_app
         from .backends import DiffusersBackend, backend_capabilities
-        from .generations import GenerationQueue
-        from .manifest import ServedModel, load_manifest
+        from .manifest import load_manifest
         from .parallel import ParallelBackend
+        from .scheduler import Scheduler
 
         pipeline_cls, signature, commit_hash = _resolve_pipeline(args)
+        capabilities = backend_capabilities(args, pipeline_cls)
         manifest = load_manifest(
             args.model,
             pipeline_cls,
             signature,
+            capabilities,
             manifest_path=args.manifest,
             revision=args.revision,
+            commit_hash=commit_hash,
             token=args.token,
         )
-        served = ServedModel(
-            manifest,
-            set(signature.parameters) - {"self"},
-            backend_capabilities(args, pipeline_cls),
-            revision=commit_hash,
-        )
-        if not served.tasks:
-            raise SystemExit(
-                f"None of the tasks {list(manifest.data['tasks'])} in the manifest for {args.model!r} can be "
-                f"served by {pipeline_cls.__name__}."
-            )
 
         if args.context_parallel:
-            backend = ParallelBackend(args, served)
+            backend = ParallelBackend(args, manifest)
         else:
-            backend = DiffusersBackend(args, served)
+            backend = DiffusersBackend(args, manifest)
 
         try:
-            generations = GenerationQueue(backend, args.output_dir)
+            scheduler = Scheduler(backend, args.output_dir)
             app = create_app(
-                served,
-                generations,
+                manifest,
+                scheduler,
                 default_seed=args.default_seed,
                 enable_cors=args.enable_cors,
                 public_url=args.public_url,
@@ -270,10 +262,10 @@ class ServeCommand(BaseDiffusersCLICommand):
             out.result(
                 self.task,
                 url=f"http://{args.host}:{args.port}",
-                model=served.id,
+                model=manifest.id,
                 pipeline_class=pipeline_cls.__name__,
-                tasks=list(served.tasks),
-                capabilities=served.capabilities,
+                tasks=list(manifest.tasks),
+                capabilities=manifest.capabilities,
             )
             server = uvicorn.Server(
                 uvicorn.Config(app, host=args.host, port=args.port, log_level=args.log_level or "info")
@@ -281,7 +273,7 @@ class ServeCommand(BaseDiffusersCLICommand):
             if args.idle_timeout is not None:
                 threading.Thread(
                     target=_shut_down_when_idle,
-                    args=(server, app, generations, args.idle_timeout),
+                    args=(server, app, scheduler, args.idle_timeout),
                     name="diffusers-serve-idle",
                     daemon=True,
                 ).start()

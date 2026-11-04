@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Generative Media Spec (GMS) manifests: loading, derivation from a pipeline signature, and request validation."""
+"""Generative Media Spec (GMS) manifests.
+
+A manifest describes what this server offers: its tasks with their inputs and parameters, and its capabilities. It is
+loaded from a published `gms.json` or derived from the pipeline signature, checked against the pipeline at startup,
+served for discovery, and used to validate each request and map it to the pipeline call.
+"""
 
 from __future__ import annotations
 
@@ -41,12 +46,17 @@ from ...pipelines.auto_pipeline import (
 from ..run import _AUDIO_INPUT_KEYS, _IMAGE_INPUT_KEYS, _VIDEO_INPUT_KEYS
 
 
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
 SPEC_VERSION = "gms/0.1"
 MANIFEST_FILENAME = "gms.json"
 EXTENSION_KEY = "x-diffusers"
 
 MAX_ADAPTERS = 4
-ADAPTER_SOURCES = ("hf",)
+# What a manifest may declare under `capabilities`; the server checks each one it declares at startup.
+SUPPORTED_CAPABILITIES = ("sse", "wait", "adapters")
 
 # First entry of each tuple is the default when the request names no `output_format`.
 OUTPUT_FORMATS = {
@@ -62,17 +72,8 @@ _ERROR_STATUS = {
     "internal": 500,
     "not_implemented": 501,
 }
-
-_REQUEST_FIELDS = (
-    "model",
-    "task",
-    "preset",
-    "inputs",
-    "parameters",
-    "output_format",
-    "response_format",
-    "adapters",
-)
+_REQUEST_FIELDS = ("model", "task", "preset", "inputs", "parameters", "output_format", "response_format", "adapters")
+_ADAPTER_FIELDS = ("type", "path", "scale", "targets")
 
 # GMS name -> pipeline kwargs that carry the same meaning, tried in order before the name itself.
 _PARAMETER_KWARGS = {
@@ -95,6 +96,12 @@ _AUTO_TASKS = (
     ("text_to_audio", AUTO_TEXT2AUDIO_PIPELINES_MAPPING, (), "audio"),
 )
 
+_MEDIA_KWARGS = {
+    **dict.fromkeys(_IMAGE_INPUT_KEYS, "image"),
+    **dict.fromkeys(_VIDEO_INPUT_KEYS, "video"),
+    **dict.fromkeys(_AUDIO_INPUT_KEYS, "audio"),
+    "mask_image": "mask",
+}
 _SKIPPED_KWARGS = frozenset({"output_type", "return_dict", "callback_steps", "callback_on_step_end_tensor_inputs"})
 _AUDIO_OUTPUT_KWARGS = frozenset({"audio_length_in_s", "audio_end_in_s", "num_waveforms_per_prompt"})
 _SCALAR_TYPES = {"float": "number", "int": "integer", "bool": "boolean", "str": "string"}
@@ -108,6 +115,11 @@ _COMPARISONS = {
 }
 _FRAME_LATTICE = re.compile(r"(\d+)k\+(\d+)")
 _HF_ADAPTER_PATH = re.compile(r"hf:[\w.-]+/[\w.-]+")
+
+
+# ---------------------------------------------------------------------------
+# Types
+# ---------------------------------------------------------------------------
 
 
 class GMSError(Exception):
@@ -126,17 +138,6 @@ class GMSError(Exception):
 
 
 @dataclass
-class Manifest:
-    raw: bytes
-    data: dict[str, Any]
-    source: str | None = None
-
-    @property
-    def hash(self) -> str:
-        return f"sha256:{hashlib.sha256(self.raw).hexdigest()}"
-
-
-@dataclass
 class ResolvedRequest:
     task: str
     kwargs: dict[str, Any]
@@ -146,6 +147,69 @@ class ResolvedRequest:
     output_formats: dict[str, str]
     response_format: str
     adapters: list[dict[str, Any]] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Loading a manifest
+# ---------------------------------------------------------------------------
+
+
+def load_manifest(
+    model: str,
+    pipeline_cls: type,
+    signature: inspect.Signature,
+    capabilities: list[str],
+    manifest_path: str | None = None,
+    revision: str | None = None,
+    commit_hash: str | None = None,
+    token: str | None = None,
+) -> Manifest:
+    """Load the model's manifest and bind it to the pipeline: `--manifest`, else the repo's `gms.json`, else derived.
+
+    `revision` is the one requested for the download; `commit_hash` is the one the pipeline was resolved at, which
+    generations report.
+    """
+    source = None
+    raw = None
+    if manifest_path is not None:
+        raw, origin = Path(manifest_path).read_bytes(), manifest_path
+    elif Path(model).is_dir():
+        published = Path(model) / MANIFEST_FILENAME
+        if published.is_file():
+            raw, origin = published.read_bytes(), str(published)
+    else:
+        try:
+            published = hf_hub_download(model, MANIFEST_FILENAME, revision=revision, token=token)
+        except EntryNotFoundError:
+            published = None
+        if published is not None:
+            raw, origin = Path(published).read_bytes(), f"{model}/{MANIFEST_FILENAME}"
+            source = f"hf:{model}/{MANIFEST_FILENAME}"
+
+    if raw is not None:
+        data = _parse_manifest(raw, origin)
+    else:
+        model_id = Path(model).name if Path(model).is_dir() else model
+        data = derive_manifest(model_id, pipeline_cls, signature, capabilities)
+        raw = json.dumps(data).encode()
+    return Manifest(raw, data, pipeline_cls, signature, capabilities, source=source, revision=commit_hash)
+
+
+def _parse_manifest(raw: bytes, origin: str) -> dict[str, Any]:
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise SystemExit(f"GMS manifest {origin!r} is not valid JSON: {e}") from e
+    if not isinstance(data, dict) or not isinstance(data.get("id"), str):
+        raise SystemExit(f"GMS manifest {origin!r} must be a JSON object with a string `id`.")
+    if not isinstance(data.get("tasks"), dict) or not data["tasks"]:
+        raise SystemExit(f"GMS manifest {origin!r} declares no `tasks`, so there is nothing to serve.")
+    return data
+
+
+# ---------------------------------------------------------------------------
+# Deriving a manifest from the pipeline signature
+# ---------------------------------------------------------------------------
 
 
 def blocks_signature(blocks: Any) -> inspect.Signature:
@@ -163,156 +227,13 @@ def blocks_signature(blocks: Any) -> inspect.Signature:
     return inspect.Signature(parameters)
 
 
-def load_manifest(
-    model: str,
-    pipeline_cls: type,
-    signature: inspect.Signature,
-    manifest_path: str | None = None,
-    revision: str | None = None,
-    token: str | None = None,
-) -> Manifest:
-    if manifest_path is not None:
-        return _parse_manifest(Path(manifest_path).read_bytes(), origin=manifest_path)
-
-    if Path(model).is_dir():
-        published = Path(model) / MANIFEST_FILENAME
-        if published.is_file():
-            return _parse_manifest(published.read_bytes(), origin=str(published))
-    else:
-        try:
-            published = hf_hub_download(model, MANIFEST_FILENAME, revision=revision, token=token)
-        except EntryNotFoundError:
-            published = None
-        if published is not None:
-            manifest = _parse_manifest(Path(published).read_bytes(), origin=f"{model}/{MANIFEST_FILENAME}")
-            manifest.source = f"hf:{model}/{MANIFEST_FILENAME}"
-            return manifest
-
-    model_id = Path(model).name if Path(model).is_dir() else model
-    data = derive_manifest(model_id, pipeline_cls, signature)
-    return Manifest(raw=json.dumps(data).encode(), data=data)
-
-
-def _parse_manifest(raw: bytes, origin: str) -> Manifest:
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise SystemExit(f"GMS manifest {origin!r} is not valid JSON: {e}") from e
-    if not isinstance(data, dict) or not isinstance(data.get("id"), str):
-        raise SystemExit(f"GMS manifest {origin!r} must be a JSON object with a string `id`.")
-    if not isinstance(data.get("tasks"), dict) or not data["tasks"]:
-        raise SystemExit(f"GMS manifest {origin!r} declares no `tasks`, so there is nothing to serve.")
-    return Manifest(raw=raw, data=data)
-
-
-def _annotation_schema(annotation: Any, default: Any) -> dict[str, Any] | None:
-    """Map a `__call__` annotation to a GMS parameter schema, or `None` when it is not a scalar or list of scalars."""
-    if annotation is inspect.Parameter.empty:
-        text = type(default).__name__ if default is not None else ""
-    elif isinstance(annotation, str):
-        text = annotation
-    elif type(annotation) is type:
-        text = annotation.__name__
-    else:
-        text = str(annotation)
-    text = text.replace("typing.", "")
-
-    def scalar(fragment: str) -> str | None:
-        names = set(re.findall(r"[A-Za-z_][\w.]*", fragment))
-        names -= {"Optional", "Union", "None", "NoneType", "list", "List"}
-        if not names or not names <= set(_SCALAR_TYPES):
-            return None
-        return next(gms for python, gms in _SCALAR_TYPES.items() if python in names)
-
-    outside_lists = re.sub(r"\b[Ll]ist\[[^\[\]]*\]", "", text)
-    if outside_lists == text:
-        scalar_type = scalar(text)
-        return {"type": scalar_type} if scalar_type else None
-
-    # `str | list[str]` is a scalar that also accepts a batch; only a bare list is an array parameter.
-    scalar_type = scalar(text)
-    if scalar_type is None:
-        return None
-    if scalar(outside_lists):
-        return {"type": scalar_type}
-    return {"type": "array", "items": {"type": scalar_type}}
-
-
-def derive_manifest(model_id: str, pipeline_cls: type, signature: inspect.Signature) -> dict[str, Any]:
-    """Build a server-authored manifest from the pipeline call `signature`."""
-    inputs: dict[str, dict[str, Any]] = {}
-    parameters: dict[str, dict[str, Any]] = {}
-    input_kwargs: dict[str, str] = {}
-    parameter_kwargs: dict[str, str] = {}
-    media_types = {
-        **dict.fromkeys(_IMAGE_INPUT_KEYS, "image"),
-        **dict.fromkeys(_VIDEO_INPUT_KEYS, "video"),
-        **dict.fromkeys(_AUDIO_INPUT_KEYS, "audio"),
-        "mask_image": "mask",
-    }
-    kwarg_parameters = {kwarg: name for name, kwargs in _PARAMETER_KWARGS.items() for kwarg in kwargs}
-    del kwarg_parameters["num_frames"]
-
-    for kwarg, parameter in signature.parameters.items():
-        if kwarg == "self" or kwarg in _SKIPPED_KWARGS:
-            continue
-        if parameter.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
-            continue
-        has_default = parameter.default is not inspect.Parameter.empty
-        default = parameter.default if has_default else None
-
-        if kwarg in media_types:
-            name = "mask" if kwarg == "mask_image" else kwarg
-            spec: dict[str, Any] = {"type": media_types[kwarg]}
-            if not has_default:
-                spec["required"] = True
-            if re.search(r"\b[Ll]ist\b", str(parameter.annotation)):
-                spec["multiple"] = {}
-            inputs[name] = spec
-            if name != kwarg:
-                input_kwargs[name] = kwarg
-            continue
-
-        if kwarg == "generator":
-            parameters["seed"] = {"type": "integer"}
-            parameter_kwargs["seed"] = kwarg
-            continue
-
-        schema = _annotation_schema(parameter.annotation, default)
-        # Modular blocks often declare `prompt` without a type hint or a default to infer one from.
-        if schema is None and kwarg == "prompt" and parameter.annotation is inspect.Parameter.empty:
-            schema = {"type": "string"}
-        if schema is None:
-            continue
-        if schema["type"] == "string" and re.fullmatch(r"(.*_)?prompt(_\d+)?", kwarg):
-            inputs[kwarg] = {"type": "text", "required": True} if kwarg == "prompt" else {"type": "text"}
-            continue
-
-        name = kwarg_parameters.get(kwarg, kwarg)
-        if name in parameters:
-            continue
-        if default is not None and isinstance(default, (bool, int, float, str, list)):
-            schema["default"] = default
-        parameters[name] = schema
-        if name != kwarg:
-            parameter_kwargs[name] = kwarg
-
+def derive_manifest(
+    model_id: str, pipeline_cls: type, signature: inspect.Signature, capabilities: list[str]
+) -> dict[str, Any]:
+    """Build a server-authored manifest from the pipeline call `signature`, declaring the server's `capabilities`."""
+    inputs, parameters, extension = _describe_kwargs(signature)
     registered = [entry for entry in _AUTO_TASKS if pipeline_cls in entry[1].values()]
-    names = set(signature.parameters)
-    if registered:
-        output = registered[0][3]
-    elif "num_frames" in names or "Video" in pipeline_cls.__name__:
-        output = "video"
-    elif names & _AUDIO_OUTPUT_KWARGS:
-        output = "audio"
-    else:
-        output = "image"
-
-    extension: dict[str, Any] = {}
-    if input_kwargs:
-        extension["inputs"] = input_kwargs
-    if parameter_kwargs:
-        extension["parameters"] = parameter_kwargs
+    output = _output_modality(pipeline_cls, signature, registered)
 
     def task(required: tuple[str, ...], excluded: set[str]) -> dict[str, Any]:
         task_inputs = {
@@ -348,40 +269,500 @@ def derive_manifest(model_id: str, pipeline_cls: type, signature: inspect.Signat
         "id": model_id,
         "modalities": {"in": modalities_in or ["text"], "out": [output]},
         "tasks": tasks,
+        "capabilities": list(capabilities),
     }
-    if hasattr(pipeline_cls, "load_lora_weights"):
+    if "adapters" in capabilities:
         manifest["adapters"] = {"lora": {"targets": list(getattr(pipeline_cls, "_lora_loadable_modules", []))}}
     return manifest
 
 
-def _bind(name: str, aliases: dict[str, tuple[str, ...]], declared: dict[str, str], kwarg_names: set[str]):
-    candidates = (declared[name],) if name in declared else (*aliases.get(name, ()), name)
-    return next((kwarg for kwarg in candidates if kwarg in kwarg_names), None)
+def _describe_kwargs(signature: inspect.Signature) -> tuple[dict, dict, dict]:
+    """Sort the call kwargs into GMS inputs and parameters, and record the ones whose GMS name differs."""
+    inputs: dict[str, dict[str, Any]] = {}
+    parameters: dict[str, dict[str, Any]] = {}
+    input_kwargs: dict[str, str] = {}
+    parameter_kwargs: dict[str, str] = {}
+    kwarg_parameters = {kwarg: name for name, kwargs in _PARAMETER_KWARGS.items() for kwarg in kwargs}
+    # `num_frames` keeps its name: `duration` is in seconds, which only a written manifest's frame lattice converts.
+    del kwarg_parameters["num_frames"]
 
-
-def _frame_lattice(spec: dict[str, Any]) -> tuple[int, int, float] | None:
-    lattice = spec.get("lattice") or {}
-    match = _FRAME_LATTICE.fullmatch(str(lattice.get("frames", "")).replace(" ", ""))
-    if match is None or not isinstance(lattice.get("fps"), (int, float)):
-        return None
-    return int(match.group(1)), int(match.group(2)), lattice["fps"]
-
-
-def _is_active(condition: dict[str, Any], values: dict[str, Any]) -> bool:
-    if "all" in condition:
-        return all(_is_active(item, values) for item in condition["all"])
-    actual = values.get(condition["parameter"])
-    for name, compare in _COMPARISONS.items():
-        if name not in condition:
+    for kwarg, parameter in signature.parameters.items():
+        if kwarg == "self" or kwarg in _SKIPPED_KWARGS:
             continue
-        if actual is None or isinstance(actual, str) != isinstance(condition[name], str):
-            return False
-        if not compare(actual, condition[name]):
-            return False
-    return True
+        if parameter.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            continue
+        has_default = parameter.default is not inspect.Parameter.empty
+        default = parameter.default if has_default else None
+
+        if kwarg in _MEDIA_KWARGS:
+            name = "mask" if kwarg == "mask_image" else kwarg
+            spec: dict[str, Any] = {"type": _MEDIA_KWARGS[kwarg]}
+            if not has_default:
+                spec["required"] = True
+            if re.search(r"\b[Ll]ist\b", str(parameter.annotation)):
+                spec["multiple"] = {}
+            inputs[name] = spec
+            if name != kwarg:
+                input_kwargs[name] = kwarg
+            continue
+
+        if kwarg == "generator":
+            parameters["seed"] = {"type": "integer"}
+            parameter_kwargs["seed"] = kwarg
+            continue
+
+        schema = _annotation_schema(parameter.annotation, default)
+        # Modular blocks often declare `prompt` without a type hint or a default to infer one from.
+        if schema is None and kwarg == "prompt" and parameter.annotation is inspect.Parameter.empty:
+            schema = {"type": "string"}
+        if schema is None:
+            continue
+        if schema["type"] == "string" and re.fullmatch(r"(.*_)?prompt(_\d+)?", kwarg):
+            inputs[kwarg] = {"type": "text", "required": True} if kwarg == "prompt" else {"type": "text"}
+            continue
+
+        name = kwarg_parameters.get(kwarg, kwarg)
+        if name in parameters:
+            continue
+        if default is not None and isinstance(default, (bool, int, float, str, list)):
+            schema["default"] = default
+        parameters[name] = schema
+        if name != kwarg:
+            parameter_kwargs[name] = kwarg
+
+    extension: dict[str, Any] = {}
+    if input_kwargs:
+        extension["inputs"] = input_kwargs
+    if parameter_kwargs:
+        extension["parameters"] = parameter_kwargs
+    return inputs, parameters, extension
+
+
+def _output_modality(pipeline_cls: type, signature: inspect.Signature, registered: list) -> str:
+    if registered:
+        return registered[0][3]
+    names = set(signature.parameters)
+    if "num_frames" in names or "Video" in pipeline_cls.__name__:
+        return "video"
+    if names & _AUDIO_OUTPUT_KWARGS:
+        return "audio"
+    return "image"
+
+
+def _annotation_schema(annotation: Any, default: Any) -> dict[str, Any] | None:
+    """Map a `__call__` annotation to a GMS parameter schema, or `None` when it is not a scalar or list of scalars."""
+    if annotation is inspect.Parameter.empty:
+        text = type(default).__name__ if default is not None else ""
+    elif isinstance(annotation, str):
+        text = annotation
+    elif type(annotation) is type:
+        text = annotation.__name__
+    else:
+        text = str(annotation)
+    text = text.replace("typing.", "")
+
+    def scalar(fragment: str) -> str | None:
+        names = set(re.findall(r"[A-Za-z_][\w.]*", fragment))
+        names -= {"Optional", "Union", "None", "NoneType", "list", "List"}
+        if not names or not names <= set(_SCALAR_TYPES):
+            return None
+        return next(gms for python, gms in _SCALAR_TYPES.items() if python in names)
+
+    outside_lists = re.sub(r"\b[Ll]ist\[[^\[\]]*\]", "", text)
+    if outside_lists == text:
+        scalar_type = scalar(text)
+        return {"type": scalar_type} if scalar_type else None
+
+    # `str | list[str]` is a scalar that also accepts a batch; only a bare list is an array parameter.
+    scalar_type = scalar(text)
+    if scalar_type is None:
+        return None
+    if scalar(outside_lists):
+        return {"type": scalar_type}
+    return {"type": "array", "items": {"type": scalar_type}}
+
+
+# ---------------------------------------------------------------------------
+# The manifest bound to the pipeline: startup checks, discovery and request resolution
+# ---------------------------------------------------------------------------
+
+
+class Manifest:
+    """A model's manifest, bound to the pipeline that serves it: discovery and request resolution.
+
+    The manifest describes this server, so everything it declares must be servable: each input and parameter maps
+    to a kwarg of the pipeline call, and each capability is one this server provides. Anything else is an error at
+    startup rather than a request that fails later.
+    """
+
+    def __init__(
+        self,
+        raw: bytes,
+        data: dict[str, Any],
+        pipeline_cls: type,
+        signature: inspect.Signature,
+        supported_capabilities: list[str],
+        source: str | None = None,
+        revision: str | None = None,
+    ):
+        # The bytes are kept as published: discovery serves them unchanged, and `hash` is computed over them.
+        self.raw = raw
+        self.data = data
+        self.source = source
+        self.id = data["id"]
+        self.revision = revision
+        self.tasks: dict[str, dict[str, Any]] = data["tasks"]
+        self.capabilities: list[str] = data.get("capabilities", [])
+        self.adapters = data.get("adapters", {})
+        self._kwarg_names = set(signature.parameters) - {"self"}
+        self._pipeline_name = pipeline_cls.__name__
+
+        for capability in self.capabilities:
+            if capability not in supported_capabilities:
+                raise SystemExit(self._unsupported_capability(capability))
+        if "adapters" in self.capabilities and not self.adapters:
+            raise SystemExit(
+                f"The GMS manifest for {self.id!r} declares the `adapters` capability but no top-level `adapters` "
+                'section naming the adapter types, e.g. {"lora": {"targets": ["transformer"]}}.'
+            )
+
+        # Per task: GMS input or parameter name -> the pipeline kwarg it sets.
+        self._input_kwargs: dict[str, dict[str, str]] = {}
+        self._parameter_kwargs: dict[str, dict[str, str]] = {}
+        for name, task in self.tasks.items():
+            declared = task.get(EXTENSION_KEY, {})
+            self._input_kwargs[name] = {
+                key: self._require_kwarg(name, "input", key, _INPUT_KWARGS, declared.get("inputs", {}))
+                for key in task["inputs"]
+            }
+            self._parameter_kwargs[name] = {
+                key: self._require_kwarg(name, "parameter", key, _PARAMETER_KWARGS, declared.get("parameters", {}))
+                for key in task.get("parameters", {})
+            }
+            self._check_task(name, task)
+
+    def _pipeline_kwarg(self, name: str, aliases: dict[str, tuple[str, ...]], declared: dict[str, str]) -> str | None:
+        candidates = (declared[name],) if name in declared else (*aliases.get(name, ()), name)
+        return next((kwarg for kwarg in candidates if kwarg in self._kwarg_names), None)
+
+    def _require_kwarg(
+        self, task: str, kind: str, name: str, aliases: dict[str, tuple[str, ...]], declared: dict[str, str]
+    ) -> str:
+        kwarg = self._pipeline_kwarg(name, aliases, declared)
+        if kwarg is None:
+            raise SystemExit(
+                f"The GMS manifest for {self.id!r} declares {kind} {name!r} on task {task!r}, which "
+                f"{self._pipeline_name} does not take. Remove it from the manifest, or map it to a pipeline kwarg "
+                f'under `{EXTENSION_KEY}`, e.g. "{EXTENSION_KEY}": {{"{kind}s": {{"{name}": "<kwarg>"}}}}.'
+            )
+        return kwarg
+
+    def _check_task(self, name: str, task: dict[str, Any]) -> None:
+        unsupported = [spec["type"] for spec in task["outputs"].values() if spec["type"] not in OUTPUT_FORMATS]
+        if unsupported:
+            raise SystemExit(
+                f"The GMS manifest for {self.id!r} declares {unsupported} outputs on task {name!r}; this server "
+                f"produces {list(OUTPUT_FORMATS)} outputs."
+            )
+        parameters = task.get("parameters", {})
+        if "duration" in parameters and _frame_lattice(parameters["duration"]) is None:
+            raise SystemExit(
+                f"The GMS manifest for {self.id!r} declares `duration` on task {name!r} without a frame lattice, so "
+                'seconds cannot be converted to frames. Add one, e.g. "lattice": {"frames": "8k+1", "fps": 24}.'
+            )
+        for preset, body in task.get("presets", {}).items():
+            for key in body.get("parameters", {}):
+                if key not in parameters:
+                    raise SystemExit(
+                        f"The GMS manifest for {self.id!r} sets parameter {key!r} in preset {preset!r} of task "
+                        f"{name!r}, which the task does not declare."
+                    )
+
+    def _unsupported_capability(self, capability: str) -> str:
+        message = f"The GMS manifest for {self.id!r} declares the {capability!r} capability, "
+        if capability == "adapters":
+            return message + (
+                f"but request adapters are off: {self._pipeline_name} cannot load LoRAs, or the server was started "
+                "with --compile, --lora or --context-parallel."
+            )
+        return message + f"which this server does not provide. It provides: {list(SUPPORTED_CAPABILITIES)}."
+
+    @property
+    def hash(self) -> str:
+        return f"sha256:{hashlib.sha256(self.raw).hexdigest()}"
+
+    def summary(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "modalities": self.data.get("modalities", {}),
+            "tasks": list(self.tasks),
+        }
+
+    def discovery_document(self) -> bytes:
+        # The manifest bytes are spliced in untouched: the spec defines verification as a hash of the served bytes.
+        head: dict[str, Any] = {"spec": SPEC_VERSION}
+        if self.source is not None:
+            head["source"] = self.source
+            head["hash"] = self.hash
+        return json.dumps(head)[:-1].encode() + b', "manifest": ' + self.raw + b"}"
+
+    def seeded(self, task: str) -> bool:
+        return "seed" in self._parameter_kwargs[task]
+
+    def resolve(self, body: Any) -> ResolvedRequest:
+        """Validate a create-generation request body and map it to the pipeline call."""
+        inputs = self._check_body(body)
+        task = self._select_task(body.get("task"), inputs)
+        values, explicit = self._parameter_values(task, body)
+        input_kwargs, media = self._resolve_inputs(task, inputs, values)
+        parameter_kwargs, seed = self._resolve_parameters(task, values, explicit)
+        output_formats = self._resolve_output_formats(task, body.get("output_format"))
+
+        response_format = body.get("response_format", "url")
+        if response_format not in ("url", "b64_json"):
+            raise GMSError(
+                "invalid_request",
+                f"response_format must be 'url' or 'b64_json', got {response_format!r}",
+                "/response_format",
+            )
+
+        return ResolvedRequest(
+            task=task,
+            kwargs={**input_kwargs, **parameter_kwargs},
+            media=media,
+            seed=seed,
+            output_formats=output_formats,
+            response_format=response_format,
+            adapters=self._resolve_adapters(body.get("adapters")),
+        )
+
+    def _check_body(self, body: Any) -> dict[str, Any]:
+        if not isinstance(body, dict):
+            raise GMSError("invalid_request", "request body must be a JSON object")
+        for key in body:
+            if key not in _REQUEST_FIELDS:
+                raise GMSError("invalid_request", f"unknown request field {key!r}", f"/{key}")
+        if not isinstance(body.get("model"), str):
+            raise GMSError("invalid_request", "model is required and must be a string", "/model")
+        if body["model"] != self.id:
+            raise GMSError("not_found", f"model {body['model']!r} is not served here; this server hosts {self.id!r}")
+        if not isinstance(body.get("inputs"), dict):
+            raise GMSError("invalid_request", "inputs is required and must be an object", "/inputs")
+        return body["inputs"]
+
+    def _select_task(self, requested: Any, inputs: dict[str, Any]) -> str:
+        if requested is not None:
+            if not isinstance(requested, str) or requested not in self.tasks:
+                raise GMSError(
+                    "invalid_request",
+                    f"task {requested!r} is not hosted for {self.id!r}; hosted tasks: {list(self.tasks)}",
+                    "/task",
+                )
+            return requested
+
+        supplied = set(inputs)
+        candidates = []
+        for name, task in self.tasks.items():
+            required = {key for key, spec in task["inputs"].items() if spec.get("required")}
+            if required <= supplied <= set(task["inputs"]):
+                candidates.append(name)
+        if len(candidates) == 1:
+            return candidates[0]
+        if len(self.tasks) == 1:
+            return next(iter(self.tasks))
+        raise GMSError(
+            "invalid_request",
+            f"could not infer the task from inputs {sorted(supplied)}; set `task` to one of {list(self.tasks)}",
+            "/task",
+        )
+
+    def _parameter_values(self, task: str, body: dict[str, Any]) -> tuple[dict[str, Any], set[str]]:
+        """The parameter values a request runs with: declared defaults, then the preset, then the request's own.
+
+        Also returns the names the request set itself, which are held to stricter rules than defaults.
+        """
+        declared = self.tasks[task].get("parameters", {})
+        explicit = body.get("parameters", {})
+        if not isinstance(explicit, dict):
+            raise GMSError("invalid_request", "parameters must be an object", "/parameters")
+        for key, value in explicit.items():
+            if key not in declared:
+                raise GMSError("invalid_request", f"task {task!r} declares no parameter {key!r}", f"/parameters/{key}")
+            _check_value(key, value, declared[key], f"/parameters/{key}")
+
+        values = {key: spec["default"] for key, spec in declared.items() if "default" in spec}
+        preset = body.get("preset")
+        if preset is not None:
+            presets = self.tasks[task].get("presets", {})
+            if preset not in presets:
+                raise GMSError(
+                    "invalid_request",
+                    f"preset {preset!r} is not declared for task {task!r}; declared presets: {list(presets)}",
+                    "/preset",
+                )
+            values.update(self.tasks[task]["presets"][preset].get("parameters", {}))
+        values.update(explicit)
+        return values, set(explicit)
+
+    def _resolve_inputs(
+        self, task: str, inputs: dict[str, Any], values: dict[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, tuple[str, Any]]]:
+        """Map the request inputs to pipeline kwargs. Text is passed as is; media is checked and left to load."""
+        declared = self.tasks[task]["inputs"]
+        kwargs: dict[str, Any] = {}
+        media: dict[str, tuple[str, Any]] = {}
+        for key, value in inputs.items():
+            pointer = f"/inputs/{key}"
+            spec = declared.get(key)
+            if spec is None:
+                raise GMSError("invalid_request", f"task {task!r} declares no input {key!r}", pointer)
+            kwarg = self._input_kwargs[task][key]
+            if "active_when" in spec and not _is_active(spec["active_when"], values):
+                raise GMSError(
+                    "invalid_request", f"input {key!r} is inactive unless {json.dumps(spec['active_when'])}", pointer
+                )
+            if spec["type"] == "text":
+                if not isinstance(value, str):
+                    raise GMSError("invalid_request", f"{key} must be a string, got {value!r}", pointer)
+                kwargs[kwarg] = value
+                continue
+            if isinstance(value, list):
+                if "multiple" not in spec:
+                    raise GMSError("invalid_request", f"{key} accepts a single media value, not a list", pointer)
+                limit = spec["multiple"].get("max")
+                if limit is not None and len(value) > limit:
+                    raise GMSError(
+                        "invalid_request", f"{key} accepts at most {limit} items, got {len(value)}", pointer
+                    )
+                for index, item in enumerate(value):
+                    _check_media(key, item, spec, f"{pointer}/{index}")
+            else:
+                _check_media(key, value, spec, pointer)
+            media[kwarg] = (key, value)
+
+        for key, spec in declared.items():
+            if spec.get("required") and key not in inputs:
+                raise GMSError("invalid_request", f"task {task!r} requires input {key!r}", f"/inputs/{key}")
+        return kwargs, media
+
+    def _resolve_parameters(
+        self, task: str, values: dict[str, Any], explicit: set[str]
+    ) -> tuple[dict[str, Any], int | None]:
+        """Map the parameter values to pipeline kwargs, and pull out the seed, which seeds a generator instead."""
+        kwargs: dict[str, Any] = {}
+        seed = None
+        for key, value in values.items():
+            spec = self.tasks[task]["parameters"][key]
+            kwarg = self._parameter_kwargs[task][key]
+            pointer = f"/parameters/{key}"
+            if "active_when" in spec and not _is_active(spec["active_when"], values):
+                if key in explicit:
+                    raise GMSError(
+                        "invalid_request",
+                        f"parameter {key!r} is inactive unless {json.dumps(spec['active_when'])}",
+                        pointer,
+                    )
+                continue
+            if key == "seed":
+                if not 0 <= value < 2**63:
+                    raise GMSError("invalid_request", f"seed must be between 0 and 2**63 - 1, got {value}", pointer)
+                seed = value
+                continue
+            if key == "duration":
+                lattice_fps = spec["lattice"]["fps"]
+                if values.get("fps", lattice_fps) != lattice_fps:
+                    raise GMSError(
+                        "invalid_request",
+                        f"duration is declared on a {lattice_fps} fps frame lattice; fps must be {lattice_fps} "
+                        f"when duration is set, got {values['fps']}",
+                        "/parameters/fps",
+                    )
+                kwargs[kwarg] = _duration_to_frames(value, spec, pointer)
+                fps_kwarg = self._pipeline_kwarg("fps", _PARAMETER_KWARGS, {})
+                if fps_kwarg is not None:
+                    kwargs[fps_kwarg] = lattice_fps
+                continue
+            kwargs[kwarg] = value
+        return kwargs, seed
+
+    def _resolve_output_formats(self, task: str, output_format: Any) -> dict[str, str]:
+        output_formats = {kind: formats[0] for kind, formats in OUTPUT_FORMATS.items()}
+        if output_format is None:
+            return output_formats
+        kind = output_format.split("/")[0] if isinstance(output_format, str) else None
+        produced = {spec["type"] for spec in self.tasks[task]["outputs"].values()}
+        if kind not in produced or output_format not in OUTPUT_FORMATS.get(kind, ()):
+            supported = sorted(f for k in produced for f in OUTPUT_FORMATS.get(k, ()))
+            raise GMSError(
+                "invalid_request",
+                f"output_format must be one of {supported} for task {task!r}, got {output_format!r}",
+                "/output_format",
+            )
+        output_formats[kind] = output_format
+        return output_formats
+
+    def _resolve_adapters(self, adapters: Any) -> list[dict[str, Any]]:
+        if adapters is None:
+            return []
+        if "adapters" not in self.capabilities:
+            raise GMSError("not_implemented", "this server does not apply adapters", "/adapters")
+        if not isinstance(adapters, list):
+            raise GMSError("invalid_request", "adapters must be an array", "/adapters")
+        if len(adapters) > MAX_ADAPTERS:
+            raise GMSError(
+                "invalid_request", f"at most {MAX_ADAPTERS} adapters per request, got {len(adapters)}", "/adapters"
+            )
+        for index, adapter in enumerate(adapters):
+            pointer = f"/adapters/{index}"
+            if not isinstance(adapter, dict):
+                raise GMSError("invalid_request", "an adapter must be an object", pointer)
+            for key in adapter:
+                if key not in _ADAPTER_FIELDS:
+                    raise GMSError("invalid_request", f"unknown adapter field {key!r}", f"{pointer}/{key}")
+            if not isinstance(adapter.get("type"), str) or adapter["type"] not in self.adapters:
+                raise GMSError(
+                    "invalid_request",
+                    f"adapter type must be one of {list(self.adapters)}, got {adapter.get('type')!r}",
+                    f"{pointer}/type",
+                )
+            path = adapter.get("path")
+            # Anything but a repo id would reach `load_lora_weights` as a path on the server's own disk.
+            if not isinstance(path, str) or not _HF_ADAPTER_PATH.fullmatch(path):
+                raise GMSError(
+                    "invalid_request",
+                    f"adapter path must be a Hub repo id of the form 'hf:<namespace>/<name>', got {path!r}",
+                    f"{pointer}/path",
+                )
+            scale = adapter.get("scale", 1.0)
+            if isinstance(scale, bool) or not isinstance(scale, (int, float)):
+                raise GMSError("invalid_request", f"adapter scale must be a number, got {scale!r}", f"{pointer}/scale")
+            valid_targets = self.adapters[adapter["type"]].get("targets", [])
+            targets = adapter.get("targets", {})
+            if not isinstance(targets, dict):
+                raise GMSError("invalid_request", "adapter targets must be an object", f"{pointer}/targets")
+            for target, target_scale in targets.items():
+                if target not in valid_targets:
+                    raise GMSError(
+                        "invalid_request",
+                        f"adapter target must be one of {valid_targets}, got {target!r}",
+                        f"{pointer}/targets/{target}",
+                    )
+                if isinstance(target_scale, bool) or not isinstance(target_scale, (int, float)):
+                    raise GMSError(
+                        "invalid_request",
+                        f"adapter target scale must be a number, got {target_scale!r}",
+                        f"{pointer}/targets/{target}",
+                    )
+        return adapters
+
+
+# ---------------------------------------------------------------------------
+# Value checks
+# ---------------------------------------------------------------------------
 
 
 def _check_value(label: str, value: Any, spec: dict[str, Any], pointer: str) -> None:
+    """Check a parameter value against its declared schema: type, enum, range and `multiple_of`."""
     kind = spec.get("type")
     if kind == "array":
         if not isinstance(value, list):
@@ -443,333 +824,39 @@ def _check_media(name: str, value: Any, spec: dict[str, Any], pointer: str) -> N
         raise GMSError("invalid_request", f"{name} url must be an http(s) URL", f"{pointer}/url")
 
 
-class ServedModel:
-    """One manifest bound to the kwargs the pipeline accepts: the discovery document and request resolution."""
+def _is_active(condition: dict[str, Any], values: dict[str, Any]) -> bool:
+    """Evaluate an `active_when` condition against the parameter values."""
+    if "all" in condition:
+        return all(_is_active(item, values) for item in condition["all"])
+    actual = values.get(condition["parameter"])
+    for name, compare in _COMPARISONS.items():
+        if name not in condition:
+            continue
+        if actual is None or isinstance(actual, str) != isinstance(condition[name], str):
+            return False
+        if not compare(actual, condition[name]):
+            return False
+    return True
 
-    def __init__(
-        self,
-        manifest: Manifest,
-        kwarg_names: set[str],
-        capabilities: list[str],
-        revision: str | None = None,
-    ):
-        self.manifest = manifest
-        self.id = manifest.data["id"]
-        self.capabilities = capabilities
-        self.revision = revision
-        self.adapters = manifest.data.get("adapters", {})
-        self._kwarg_names = kwarg_names
 
-        self.tasks: dict[str, dict[str, Any]] = {}
-        self._inputs: dict[str, dict[str, str | None]] = {}
-        self._parameters: dict[str, dict[str, str | None]] = {}
-        self._presets: dict[str, list[str]] = {}
-        for name, task in manifest.data["tasks"].items():
-            declared = task.get(EXTENSION_KEY, {})
-            inputs = {
-                key: _bind(key, _INPUT_KWARGS, declared.get("inputs", {}), kwarg_names) for key in task["inputs"]
-            }
-            parameters = {
-                key: _bind(key, _PARAMETER_KWARGS, declared.get("parameters", {}), kwarg_names)
-                for key in task.get("parameters", {})
-            }
-            if "duration" in parameters and _frame_lattice(task["parameters"]["duration"]) is None:
-                parameters["duration"] = None
-            if any(inputs[key] is None for key, spec in task["inputs"].items() if spec.get("required")):
-                continue
-            if not any(spec["type"] in OUTPUT_FORMATS for spec in task["outputs"].values()):
-                continue
-            self.tasks[name] = task
-            self._inputs[name] = inputs
-            self._parameters[name] = parameters
-            self._presets[name] = [
-                preset
-                for preset, body in task.get("presets", {}).items()
-                if all(parameters.get(key) is not None for key in body.get("parameters", {}))
-            ]
+def _frame_lattice(spec: dict[str, Any]) -> tuple[int, int, float] | None:
+    """Parse a `duration` parameter's frame lattice, e.g. `8k+1` at 24 fps, into `(8, 1, 24)`."""
+    lattice = spec.get("lattice") or {}
+    match = _FRAME_LATTICE.fullmatch(str(lattice.get("frames", "")).replace(" ", ""))
+    if match is None or not isinstance(lattice.get("fps"), (int, float)):
+        return None
+    return int(match.group(1)), int(match.group(2)), lattice["fps"]
 
-    def summary(self) -> dict[str, Any]:
-        return {
-            "id": self.id,
-            "modalities": self.manifest.data.get("modalities", {}),
-            "tasks": list(self.tasks),
-        }
 
-    def overlay(self) -> dict[str, Any]:
-        tasks = {}
-        limits = {}
-        for name, task in self.tasks.items():
-            tasks[name] = {"presets": self._presets[name]} if "presets" in task else {}
-            disabled = {key: False for key, kwarg in self._inputs[name].items() if kwarg is None}
-            if disabled:
-                limits[name] = {"inputs": disabled}
-        overlay: dict[str, Any] = {"tasks": tasks, "capabilities": self.capabilities}
-        if limits:
-            overlay["limits"] = limits
-        if "adapters" in self.capabilities:
-            overlay["adapters"] = {"max": MAX_ADAPTERS, "sources": list(ADAPTER_SOURCES)}
-        return overlay
-
-    def discovery_document(self) -> bytes:
-        # The manifest bytes are spliced in untouched: the spec defines verification as a hash of the served bytes.
-        head: dict[str, Any] = {"spec": SPEC_VERSION}
-        if self.manifest.source is not None:
-            head["source"] = self.manifest.source
-            head["hash"] = self.manifest.hash
-        prefix = json.dumps(head)[:-1].encode()
-        return (
-            prefix
-            + b', "manifest": '
-            + self.manifest.raw
-            + b', "server": '
-            + json.dumps(self.overlay()).encode()
-            + b"}"
-        )
-
-    def resolve(self, body: Any) -> ResolvedRequest:
-        if not isinstance(body, dict):
-            raise GMSError("invalid_request", "request body must be a JSON object")
-        for key in body:
-            if key not in _REQUEST_FIELDS:
-                raise GMSError("invalid_request", f"unknown request field {key!r}", f"/{key}")
-        if not isinstance(body.get("model"), str):
-            raise GMSError("invalid_request", "model is required and must be a string", "/model")
-        if body["model"] != self.id:
-            raise GMSError("not_found", f"model {body['model']!r} is not served here; this server hosts {self.id!r}")
-        inputs = body.get("inputs")
-        if not isinstance(inputs, dict):
-            raise GMSError("invalid_request", "inputs is required and must be an object", "/inputs")
-
-        name = self._select_task(body.get("task"), inputs)
-        task = self.tasks[name]
-        values, explicit = self._resolve_parameters(name, task, body)
-
-        kwargs: dict[str, Any] = {}
-        media: dict[str, tuple[str, Any]] = {}
-        for key, value in inputs.items():
-            pointer = f"/inputs/{key}"
-            spec = task["inputs"].get(key)
-            if spec is None:
-                raise GMSError("invalid_request", f"task {name!r} declares no input {key!r}", pointer)
-            kwarg = self._inputs[name][key]
-            if kwarg is None:
-                raise GMSError("invalid_request", f"input {key!r} is disabled on this server", pointer)
-            if "active_when" in spec and not _is_active(spec["active_when"], values):
-                raise GMSError(
-                    "invalid_request", f"input {key!r} is inactive unless {json.dumps(spec['active_when'])}", pointer
-                )
-            if spec["type"] == "text":
-                if not isinstance(value, str):
-                    raise GMSError("invalid_request", f"{key} must be a string, got {value!r}", pointer)
-                kwargs[kwarg] = value
-                continue
-            if isinstance(value, list):
-                if "multiple" not in spec:
-                    raise GMSError("invalid_request", f"{key} accepts a single media value, not a list", pointer)
-                limit = spec["multiple"].get("max")
-                if limit is not None and len(value) > limit:
-                    raise GMSError(
-                        "invalid_request", f"{key} accepts at most {limit} items, got {len(value)}", pointer
-                    )
-                for index, item in enumerate(value):
-                    _check_media(key, item, spec, f"{pointer}/{index}")
-            else:
-                _check_media(key, value, spec, pointer)
-            media[kwarg] = (key, value)
-        for key, spec in task["inputs"].items():
-            if spec.get("required") and key not in inputs:
-                raise GMSError("invalid_request", f"task {name!r} requires input {key!r}", f"/inputs/{key}")
-
-        seed = None
-        for key, value in values.items():
-            spec = task["parameters"][key]
-            kwarg = self._parameters[name][key]
-            pointer = f"/parameters/{key}"
-            if "active_when" in spec and not _is_active(spec["active_when"], values):
-                if key in explicit:
-                    raise GMSError(
-                        "invalid_request",
-                        f"parameter {key!r} is inactive unless {json.dumps(spec['active_when'])}",
-                        pointer,
-                    )
-                continue
-            if kwarg is None:
-                # Clients that render every control resend defaults, so a default on a parameter this
-                # backend cannot set is the one supplied value that changes nothing by being skipped.
-                if key in explicit and value != spec.get("default"):
-                    raise GMSError(
-                        "not_implemented", f"parameter {key!r} is not supported by this server's backend", pointer
-                    )
-                continue
-            if key == "seed":
-                if not 0 <= value < 2**63:
-                    raise GMSError("invalid_request", f"seed must be between 0 and 2**63 - 1, got {value}", pointer)
-                seed = value
-                continue
-            if key == "duration":
-                lattice_fps = spec["lattice"]["fps"]
-                if values.get("fps", lattice_fps) != lattice_fps:
-                    raise GMSError(
-                        "invalid_request",
-                        f"duration is declared on a {lattice_fps} fps frame lattice; fps must be {lattice_fps} "
-                        f"when duration is set, got {values['fps']}",
-                        "/parameters/fps",
-                    )
-                kwargs[kwarg] = self._duration_to_frames(value, spec, pointer)
-                fps_kwarg = _bind("fps", _PARAMETER_KWARGS, {}, self._kwarg_names)
-                if fps_kwarg is not None:
-                    kwargs[fps_kwarg] = lattice_fps
-                continue
-            kwargs[kwarg] = value
-
-        output_formats = {kind: formats[0] for kind, formats in OUTPUT_FORMATS.items()}
-        output_format = body.get("output_format")
-        if output_format is not None:
-            kind = output_format.split("/")[0] if isinstance(output_format, str) else None
-            produced = {spec["type"] for spec in task["outputs"].values()}
-            if kind not in produced or output_format not in OUTPUT_FORMATS.get(kind, ()):
-                supported = sorted(f for k in produced for f in OUTPUT_FORMATS.get(k, ()))
-                raise GMSError(
-                    "invalid_request",
-                    f"output_format must be one of {supported} for task {name!r}, got {output_format!r}",
-                    "/output_format",
-                )
-            output_formats[kind] = output_format
-
-        response_format = body.get("response_format", "url")
-        if response_format not in ("url", "b64_json"):
-            raise GMSError(
-                "invalid_request",
-                f"response_format must be 'url' or 'b64_json', got {response_format!r}",
-                "/response_format",
-            )
-
-        return ResolvedRequest(
-            task=name,
-            kwargs=kwargs,
-            media=media,
-            seed=seed,
-            output_formats=output_formats,
-            response_format=response_format,
-            adapters=self._resolve_adapters(body.get("adapters")),
-        )
-
-    def seeded(self, task: str) -> bool:
-        return self._parameters[task].get("seed") is not None
-
-    def _select_task(self, requested: Any, inputs: dict[str, Any]) -> str:
-        if requested is not None:
-            if not isinstance(requested, str) or requested not in self.tasks:
-                raise GMSError(
-                    "invalid_request",
-                    f"task {requested!r} is not hosted for {self.id!r}; hosted tasks: {list(self.tasks)}",
-                    "/task",
-                )
-            return requested
-
-        supplied = set(inputs)
-        candidates = []
-        for name, task in self.tasks.items():
-            accepted = {key for key, kwarg in self._inputs[name].items() if kwarg is not None}
-            required = {key for key, spec in task["inputs"].items() if spec.get("required")}
-            if required <= supplied <= accepted:
-                candidates.append(name)
-        if len(candidates) == 1:
-            return candidates[0]
-        if len(self.tasks) == 1:
-            return next(iter(self.tasks))
+def _duration_to_frames(seconds: float, spec: dict[str, Any], pointer: str) -> int:
+    step, offset, fps = _frame_lattice(spec)
+    position = (seconds * fps - offset) / step
+    snap = spec["lattice"].get("snap", "nearest")
+    if snap == "reject" and not math.isclose(position, round(position), abs_tol=1e-9):
         raise GMSError(
             "invalid_request",
-            f"could not infer the task from inputs {sorted(supplied)}; set `task` to one of {list(self.tasks)}",
-            "/task",
+            f"duration {seconds} is off the {spec['lattice']['frames']} frame lattice at {fps} fps",
+            pointer,
         )
-
-    def _resolve_parameters(self, name: str, task: dict[str, Any], body: dict[str, Any]):
-        declared = task.get("parameters", {})
-        explicit = body.get("parameters", {})
-        if not isinstance(explicit, dict):
-            raise GMSError("invalid_request", "parameters must be an object", "/parameters")
-        for key, value in explicit.items():
-            if key not in declared:
-                raise GMSError("invalid_request", f"task {name!r} declares no parameter {key!r}", f"/parameters/{key}")
-            _check_value(key, value, declared[key], f"/parameters/{key}")
-
-        values = {key: spec["default"] for key, spec in declared.items() if "default" in spec}
-        preset = body.get("preset")
-        if preset is not None:
-            if preset not in self._presets[name]:
-                raise GMSError(
-                    "invalid_request",
-                    f"preset {preset!r} is not supported for task {name!r}; supported presets: {self._presets[name]}",
-                    "/preset",
-                )
-            values.update(task["presets"][preset].get("parameters", {}))
-        values.update(explicit)
-        return values, set(explicit)
-
-    def _duration_to_frames(self, seconds: float, spec: dict[str, Any], pointer: str) -> int:
-        step, offset, fps = _frame_lattice(spec)
-        position = (seconds * fps - offset) / step
-        snap = spec["lattice"].get("snap", "nearest")
-        if snap == "reject" and not math.isclose(position, round(position), abs_tol=1e-9):
-            raise GMSError(
-                "invalid_request",
-                f"duration {seconds} is off the {spec['lattice']['frames']} frame lattice at {fps} fps",
-                pointer,
-            )
-        index = math.ceil(position - 1e-9) if snap == "up" else round(position)
-        return step * max(index, 0) + offset
-
-    def _resolve_adapters(self, adapters: Any) -> list[dict[str, Any]]:
-        if adapters is None:
-            return []
-        if "adapters" not in self.capabilities:
-            raise GMSError("not_implemented", "this server does not apply adapters", "/adapters")
-        if not isinstance(adapters, list):
-            raise GMSError("invalid_request", "adapters must be an array", "/adapters")
-        if len(adapters) > MAX_ADAPTERS:
-            raise GMSError(
-                "invalid_request", f"at most {MAX_ADAPTERS} adapters per request, got {len(adapters)}", "/adapters"
-            )
-        for index, adapter in enumerate(adapters):
-            pointer = f"/adapters/{index}"
-            if not isinstance(adapter, dict):
-                raise GMSError("invalid_request", "an adapter must be an object", pointer)
-            for key in adapter:
-                if key not in ("type", "path", "scale", "targets"):
-                    raise GMSError("invalid_request", f"unknown adapter field {key!r}", f"{pointer}/{key}")
-            if not isinstance(adapter.get("type"), str) or adapter["type"] not in self.adapters:
-                raise GMSError(
-                    "invalid_request",
-                    f"adapter type must be one of {list(self.adapters)}, got {adapter.get('type')!r}",
-                    f"{pointer}/type",
-                )
-            path = adapter.get("path")
-            # Anything but a repo id would reach `load_lora_weights` as a path on the server's own disk.
-            if not isinstance(path, str) or not _HF_ADAPTER_PATH.fullmatch(path):
-                raise GMSError(
-                    "invalid_request",
-                    f"adapter path must be a Hub repo id of the form 'hf:<namespace>/<name>', got {path!r}",
-                    f"{pointer}/path",
-                )
-            scale = adapter.get("scale", 1.0)
-            if isinstance(scale, bool) or not isinstance(scale, (int, float)):
-                raise GMSError("invalid_request", f"adapter scale must be a number, got {scale!r}", f"{pointer}/scale")
-            valid_targets = self.adapters[adapter["type"]].get("targets", [])
-            targets = adapter.get("targets", {})
-            if not isinstance(targets, dict):
-                raise GMSError("invalid_request", "adapter targets must be an object", f"{pointer}/targets")
-            for target, target_scale in targets.items():
-                if target not in valid_targets:
-                    raise GMSError(
-                        "invalid_request",
-                        f"adapter target must be one of {valid_targets}, got {target!r}",
-                        f"{pointer}/targets/{target}",
-                    )
-                if isinstance(target_scale, bool) or not isinstance(target_scale, (int, float)):
-                    raise GMSError(
-                        "invalid_request",
-                        f"adapter target scale must be a number, got {target_scale!r}",
-                        f"{pointer}/targets/{target}",
-                    )
-        return adapters
+    index = math.ceil(position - 1e-9) if snap == "up" else round(position)
+    return step * max(index, 0) + offset

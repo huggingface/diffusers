@@ -96,8 +96,9 @@ curl localhost:8000/v1/generations -d '{
 }'
 ```
 
-Request adapters are turned off when the server starts with `--compile` or `--lora`. Such requests fail with
-`not_implemented`.
+Adapters are a capability the manifest declares (see below). They are unavailable when the server starts with
+`--compile`, `--lora` or `--context-parallel`: a derived manifest leaves them out, and a published manifest that
+declares them is refused at startup.
 
 ## Discovery and manifests
 
@@ -125,8 +126,18 @@ When a manifest uses a name that differs from the pipeline argument, map it per 
 "x-diffusers": {"inputs": {"caption": "prompt"}, "parameters": {"cfg": "guidance_scale"}}
 ```
 
-A task is only hosted when every input it requires maps to a pipeline argument. A parameter the pipeline cannot
-set is rejected with `not_implemented` unless the request sends its default value.
+The manifest describes the server, so `serve` checks it at startup and refuses to start when it declares
+something the server can't honor: an input or parameter that maps to no pipeline argument, a `duration` without a
+frame lattice, an output type other than image, video or audio, or a capability the server doesn't provide.
+
+The server's capabilities are listed in the manifest under `capabilities`, from `sse` (event streams), `wait`
+(`Prefer: wait`) and `adapters` (per-request LoRAs). A capability the manifest leaves out is off: event streams
+return `not_implemented` and `Prefer: wait` is ignored. A derived manifest declares every capability the server
+can provide.
+
+```json
+"capabilities": ["sse", "wait", "adapters"]
+```
 
 ## Multiple GPUs
 

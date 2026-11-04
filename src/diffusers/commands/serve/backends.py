@@ -44,8 +44,8 @@ from ..run import (
     _load_pipeline,
     _save_audio_arrays,
 )
-from .generations import Generation
-from .manifest import GMSError, ServedModel, blocks_signature
+from .manifest import GMSError, Manifest, blocks_signature
+from .scheduler import GenerationJob
 
 
 logger = logging.get_logger("diffusers-cli/serve")
@@ -162,7 +162,7 @@ def _save_audio(audios: Any, directory: Path, name: str, media_type: str, rate: 
 _SAVERS = {"image": _save_images, "video": _save_videos, "audio": _save_audio}
 
 
-def load_request_media(served: ServedModel, request: Any) -> dict[str, Any]:
+def load_request_media(manifest: Manifest, request: Any) -> dict[str, Any]:
     """The pipeline kwargs of a request, with its media inputs fetched and decoded."""
     kwargs = dict(request.kwargs)
     for kwarg, (name, value) in request.media.items():
@@ -170,7 +170,7 @@ def load_request_media(served: ServedModel, request: Any) -> dict[str, Any]:
             loaded = [_load_media(name, item, f"/inputs/{name}/{index}") for index, item in enumerate(value)]
         else:
             loaded = [_load_media(name, value, f"/inputs/{name}")]
-        if served.tasks[request.task]["inputs"][name]["type"] == "audio":
+        if manifest.tasks[request.task]["inputs"][name]["type"] == "audio":
             if kwarg == "initial_audio_waveforms":
                 kwargs.setdefault("initial_audio_sampling_rate", loaded[0][1])
             loaded = [waveform for waveform, _ in loaded]
@@ -179,9 +179,9 @@ def load_request_media(served: ServedModel, request: Any) -> dict[str, Any]:
 
 
 class DiffusersBackend:
-    def __init__(self, args: Namespace, served: ServedModel, save_outputs: bool = True):
+    def __init__(self, args: Namespace, manifest: Manifest, save_outputs: bool = True):
         self._args = args
-        self._served = served
+        self._manifest = manifest
         # Under context parallelism every rank runs the call, and only rank 0 writes the files.
         self._save_outputs = save_outputs
         self.pipeline = _load_pipeline(args)
@@ -203,8 +203,8 @@ class DiffusersBackend:
     def failure(self) -> str | None:
         return None
 
-    def generate(self, generation: Generation) -> dict[str, list[dict[str, Any]]]:
-        return self.run(load_request_media(self._served, generation.request), generation)
+    def generate(self, generation: GenerationJob) -> dict[str, list[dict[str, Any]]]:
+        return self.run(load_request_media(self._manifest, generation.request), generation)
 
     def run(self, kwargs: dict[str, Any], generation: Any) -> dict[str, list[dict[str, Any]]]:
         """Call the pipeline with the request's kwargs, media already loaded, and save its outputs."""
@@ -236,7 +236,7 @@ class DiffusersBackend:
             return {}
 
         outputs = {}
-        for name, spec in self._served.tasks[request.task]["outputs"].items():
+        for name, spec in self._manifest.tasks[request.task]["outputs"].items():
             kind = spec["type"]
             # A modular pipeline returns its `PipelineState`; a standard one returns an output object.
             if self._modular:
@@ -249,7 +249,7 @@ class DiffusersBackend:
             rate = self._fps(kwargs) if kind == "video" else (self._args.sampling_rate or 16000)
             outputs[name] = _SAVERS[kind](value, generation.directory, name, request.output_formats[kind], rate)
         if not outputs:
-            declared = list(self._served.tasks[request.task]["outputs"])
+            declared = list(self._manifest.tasks[request.task]["outputs"])
             raise GMSError(
                 "internal",
                 f"{type(self.pipeline).__name__} returned none of the outputs {declared} declared for task "
@@ -282,7 +282,7 @@ class DiffusersBackend:
             scale = adapter.get("scale", 1.0)
             targets = adapter.get("targets")
             if targets:
-                valid_targets = self._served.adapters[adapter["type"]].get("targets", [])
+                valid_targets = self._manifest.adapters[adapter["type"]].get("targets", [])
                 weights.append({target: targets.get(target, scale) for target in valid_targets})
             else:
                 weights.append(scale)

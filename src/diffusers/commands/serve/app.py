@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""The Generative Media Spec HTTP surface, as a FastAPI app over one served model and one generation queue."""
+"""The Generative Media Spec HTTP surface, as a FastAPI app over one model's manifest and its scheduler."""
 
 from __future__ import annotations
 
@@ -31,8 +31,8 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from starlette.exceptions import HTTPException
 
 from ...utils import logging
-from .generations import Generation, GenerationQueue
-from .manifest import GMSError, ServedModel
+from .manifest import GMSError, Manifest
+from .scheduler import GenerationJob, Scheduler
 
 
 logger = logging.get_logger("diffusers-cli/serve")
@@ -40,6 +40,7 @@ logger = logging.get_logger("diffusers-cli/serve")
 MAX_WAIT_SECONDS = 300.0
 REQUEST_ID_HEADER = "x-request-id"
 _KEEP_ALIVE_SECONDS = 15.0
+_FILE_ROUTE = "/v1/generations/{generation_id}/files/{filename}"
 
 
 def _timestamp(value: Any) -> str | None:
@@ -48,43 +49,44 @@ def _timestamp(value: Any) -> str | None:
     return value.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _render(generation: Generation, request: Request, public_url: str | None) -> dict[str, Any]:
+def _job_response(job: GenerationJob, base_url: str) -> dict[str, Any]:
+    """The response body for a generation: outputs are linked under `base_url`, or inlined as base64.
+
+    Raises the generation's error once it failed, which the error handler turns into the error envelope.
+    """
+    if job.error is not None:
+        raise job.error
+
     outputs = None
-    if generation.status == "complete":
+    if job.status == "complete":
         outputs = {}
-        for name, artifacts in generation.outputs.items():
+        for name, artifacts in job.outputs.items():
             outputs[name] = []
             for artifact in artifacts:
-                rendered = {key: value for key, value in artifact.items() if key != "file"}
-                if generation.request.response_format == "b64_json":
-                    content = (generation.directory / artifact["file"]).read_bytes()
-                    rendered["base64"] = base64.b64encode(content).decode()
+                entry = {key: value for key, value in artifact.items() if key != "file"}
+                if job.request.response_format == "b64_json":
+                    entry["base64"] = base64.b64encode((job.directory / artifact["file"]).read_bytes()).decode()
                 else:
-                    route = {"generation_id": generation.id, "filename": artifact["file"]}
-                    if public_url is None:
-                        rendered["url"] = str(request.url_for("get_generation_file", **route))
-                    else:
-                        path = request.app.url_path_for("get_generation_file", **route)
-                        rendered["url"] = public_url.rstrip("/") + path
-                outputs[name].append(rendered)
+                    entry["url"] = base_url + _FILE_ROUTE.format(generation_id=job.id, filename=artifact["file"])
+                outputs[name].append(entry)
 
     return {
-        "id": generation.id,
-        "model": generation.model,
-        "revision": generation.revision,
-        "status": generation.status,
-        "created_at": _timestamp(generation.created_at),
-        "progress": generation.progress if generation.status == "generating" else None,
+        "id": job.id,
+        "model": job.model,
+        "revision": job.revision,
+        "status": job.status,
+        "created_at": _timestamp(job.created_at),
+        "progress": job.progress if job.status == "generating" else None,
         "outputs": outputs,
-        "expires_at": _timestamp(generation.expires_at),
-        "seed": generation.seed if generation.status == "complete" else None,
-        "usage": generation.usage,
+        "expires_at": _timestamp(job.expires_at),
+        "seed": job.seed if job.status == "complete" else None,
+        "usage": job.usage,
     }
 
 
 def create_app(
-    served: ServedModel,
-    generations: GenerationQueue,
+    manifest: Manifest,
+    scheduler: Scheduler,
     default_seed: int | None = None,
     enable_cors: bool = False,
     public_url: str | None = None,
@@ -95,15 +97,23 @@ def create_app(
     app = FastAPI(title="diffusers-cli serve", docs_url=None, redoc_url=None, openapi_url=None, root_path=root_path)
     app.state.last_request = time.monotonic()
 
+    def base_url(request: Request) -> str:
+        # Output links must work for the client, so they are built on the address it reached the server at.
+        return (public_url or str(request.base_url)).rstrip("/")
+
     @app.middleware("http")
     async def request_id(request: Request, call_next) -> Response:
         request.state.request_id = request.headers.get(REQUEST_ID_HEADER) or str(uuid.uuid4())
-        # Health checks come from monitors rather than users, and must not keep an idle server alive.
-        if not request.url.path.rstrip("/").endswith("/health"):
-            app.state.last_request = time.monotonic()
         response = await call_next(request)
         response.headers[REQUEST_ID_HEADER] = request.state.request_id
         return response
+
+    @app.middleware("http")
+    async def track_activity(request: Request, call_next) -> Response:
+        # Health checks come from monitors rather than users, and must not keep an idle server alive.
+        if not request.url.path.rstrip("/").endswith("/health"):
+            app.state.last_request = time.monotonic()
+        return await call_next(request)
 
     if enable_cors:
         app.add_middleware(
@@ -138,20 +148,20 @@ def create_app(
 
     @app.get("/health")
     async def health() -> JSONResponse:
-        failure = generations.failure()
+        failure = scheduler.failure()
         if failure is not None:
             return JSONResponse({"status": "unhealthy", "reason": failure}, status_code=503)
         return JSONResponse({"status": "ok"})
 
     @app.get("/v1/models")
     async def list_models() -> dict[str, Any]:
-        return {"data": [served.summary()]}
+        return {"data": [manifest.summary()]}
 
     @app.get("/v1/models/{model_id:path}")
     async def get_model(model_id: str) -> Response:
-        if model_id != served.id:
-            raise GMSError("not_found", f"model {model_id!r} is not served here; this server hosts {served.id!r}")
-        return Response(served.discovery_document(), media_type="application/json")
+        if model_id != manifest.id:
+            raise GMSError("not_found", f"model {model_id!r} is not served here; this server hosts {manifest.id!r}")
+        return Response(manifest.discovery_document(), media_type="application/json")
 
     @app.post("/v1/generations", status_code=201)
     async def create_generation(request: Request) -> dict[str, Any]:
@@ -159,40 +169,37 @@ def create_app(
             body = await request.json()
         except json.JSONDecodeError as e:
             raise GMSError("invalid_request", f"request body is not valid JSON: {e}") from e
-        resolved = served.resolve(body)
-        seeded = served.seeded(resolved.task)
-        generation = Generation(served.id, served.revision, resolved, seeded=seeded, default_seed=default_seed)
-        generations.submit(generation)
+        resolved = manifest.resolve(body)
+        seeded = manifest.seeded(resolved.task)
+        generation = GenerationJob(manifest.id, manifest.revision, resolved, seeded=seeded, default_seed=default_seed)
+        scheduler.submit(generation)
 
         wait = re.fullmatch(r"\s*wait=(\d+)\s*", request.headers.get("prefer", ""))
-        if wait is not None:
+        # `Prefer` is a hint, so a server without the `wait` capability answers right away instead of failing.
+        if wait is not None and "wait" in manifest.capabilities:
             await asyncio.to_thread(generation.wait, min(float(wait.group(1)), MAX_WAIT_SECONDS))
-        if generation.error is not None:
-            raise generation.error
-        return _render(generation, request, public_url)
+        return _job_response(generation, base_url(request))
 
     @app.get("/v1/generations/{generation_id}")
     async def get_generation(generation_id: str, request: Request) -> dict[str, Any]:
-        generation = generations.get(generation_id)
-        if generation.error is not None:
-            raise generation.error
-        return _render(generation, request, public_url)
+        generation = scheduler.get(generation_id)
+        return _job_response(generation, base_url(request))
 
     @app.delete("/v1/generations/{generation_id}", status_code=204)
     async def delete_generation(generation_id: str) -> Response:
-        generations.delete(generation_id)
+        scheduler.delete(generation_id)
         return Response(status_code=204)
 
     @app.post("/v1/generations/{generation_id}/cancel")
     async def cancel_generation(generation_id: str, request: Request) -> dict[str, Any]:
-        generation = generations.cancel(generation_id)
-        if generation.error is not None:
-            raise generation.error
-        return _render(generation, request, public_url)
+        generation = scheduler.cancel(generation_id)
+        return _job_response(generation, base_url(request))
 
     @app.get("/v1/generations/{generation_id}/events")
     async def get_generation_events(generation_id: str, request: Request) -> StreamingResponse:
-        generation = generations.get(generation_id)
+        if "sse" not in manifest.capabilities:
+            raise GMSError("not_implemented", "this server does not advertise the `sse` capability")
+        generation = scheduler.get(generation_id)
         last_event_id = request.headers.get("last-event-id", "")
         start = int(last_event_id) if last_event_id.isdigit() and len(last_event_id) < 10 else 0
 
@@ -202,7 +209,7 @@ def create_app(
                 events, done = await asyncio.to_thread(generation.wait_for_events, index, _KEEP_ALIVE_SECONDS)
                 for event, data in events:
                     index += 1
-                    payload = _render(generation, request, public_url) if event == "complete" else data
+                    payload = _job_response(generation, base_url(request)) if event == "complete" else data
                     yield f"id: {index}\nevent: {event}\ndata: {json.dumps(payload)}\n\n"
                 if done:
                     return
@@ -211,9 +218,9 @@ def create_app(
 
         return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
-    @app.get("/v1/generations/{generation_id}/files/{filename}")
+    @app.get(_FILE_ROUTE)
     async def get_generation_file(generation_id: str, filename: str) -> FileResponse:
-        generation = generations.get(generation_id)
+        generation = scheduler.get(generation_id)
         artifacts = [a for group in (generation.outputs or {}).values() for a in group if a["file"] == filename]
         if not artifacts:
             raise GMSError("not_found", f"generation {generation_id!r} has no file {filename!r}")
