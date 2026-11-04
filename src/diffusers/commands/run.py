@@ -485,11 +485,8 @@ def _apply_optimizations(pipeline: Any, args: Namespace) -> None:
     if args.context_parallel:
         _enable_context_parallel(pipeline)
     if args.compile is not None:
-        if args.context_parallel:
-            logger.warning("--compile is currently not supported with --context-parallel; skipping compile.")
-        else:
-            _compile_denoiser(pipeline, args.compile, args.compile_mode)
-            _compile_vae_decoder(pipeline, args.compile)
+        _compile_denoiser(pipeline, args.compile, args.compile_mode)
+        _compile_vae_decoder(pipeline, args.compile)
 
 
 def _parse_compile_spec(compile_spec: str) -> dict[str, Any]:

@@ -136,7 +136,7 @@ Configure how the CLI loads model weights and custom pipeline code.
   [torch.compile](../optimization/fp16#torchcompile). The CLI prefers
   [regional compilation](../optimization/fp16#regional-compilation) for denoisers with repeated blocks; the VAE
   decoder is always compiled whole. Bare `--compile` uses `fullgraph=true`. A JSON object is forwarded to
-  `torch.compile`. Not supported with `--context-parallel`.
+  `torch.compile`.
 - `--compile-mode {regional,full}` — what `--compile` compiles. `regional` (default) compiles only the repeated
   blocks, which keeps the first step fast. `full` compiles the whole denoiser. `torch.compile` modes that use CUDA
   graphs (`max-autotune`, `reduce-overhead`) need `--compile-mode full`: repeated blocks share one compiled graph,

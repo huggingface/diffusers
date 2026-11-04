@@ -21,10 +21,12 @@ import base64
 import inspect
 import io
 import json
+import os
 import shlex
 import subprocess
 import sys
 import threading
+import time
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from types import SimpleNamespace
@@ -154,7 +156,14 @@ class FakeImageBlock(ModularPipelineBlocks):
 
 
 def _args(**overrides):
-    values = {"backend": "diffusers", "compile": None, "lora": None, "fps": 8, "sampling_rate": None}
+    values = {
+        "backend": "diffusers",
+        "compile": None,
+        "lora": None,
+        "context_parallel": False,
+        "fps": 8,
+        "sampling_rate": None,
+    }
     return Namespace(**{**values, **overrides})
 
 
@@ -950,7 +959,182 @@ class TestServeCommand:
         with pytest.raises(SystemExit, match="Pass the model to serve"):
             ServeCommand(self._parse([])).run()
 
-    def test_context_parallel_is_rejected(self):
-        pytest.importorskip("fastapi", reason="`diffusers-cli serve` needs the `diffusers[serve]` extra")
-        with pytest.raises(SystemExit, match="--context-parallel is not supported"):
-            ServeCommand(self._parse(["-m", "org/model", "--context-parallel"])).run()
+    def test_context_parallel_rejects_device_map(self):
+        with pytest.raises(SystemExit, match="--device-map does not apply with --context-parallel"):
+            ServeCommand(self._parse(["-m", "org/model", "--context-parallel", "--device-map", "cuda:0"])).run()
+
+
+def _fake_worker_main(rank, world_size, port, args, served, conn, cancel_flag):
+    """Stands in for `_worker_main` in forked children: no pipeline, no process group."""
+    if args.fail_at_startup:
+        os._exit(3)
+    conn.send(("ready",))
+    while True:
+        job = conn.recv()
+        if job is None:
+            return
+        if job["seed"] == -1:
+            os._exit(4)
+        if rank != 0:
+            continue
+        conn.send(("progress", 1, 2))
+        # Give the server time to raise the cancel flag between the two steps.
+        time.sleep(0.3)
+        if cancel_flag.value:
+            conn.send(("complete", {}))
+        elif job["kwargs"]["prompt"] == "bad":
+            conn.send(("failed", "invalid_request", "bad prompt", "/inputs/prompt"))
+        else:
+            conn.send(("complete", {"image": [{"file": "image-0.png", "world_size": world_size}]}))
+
+
+class FakeGeneration:
+    def __init__(self, prompt="a cat", seed=0):
+        self.request = SimpleNamespace(kwargs={"prompt": prompt}, media={}, task="text_to_image")
+        self.seed = seed
+        self.directory = Path("/tmp/unused")
+        self.cancel_requested = False
+        self.progress = []
+
+    def report_progress(self, step, total_steps):
+        self.progress.append((step, total_steps))
+
+
+class TestParallelBackend:
+    @pytest.fixture
+    def backend(self, monkeypatch):
+        import multiprocessing
+
+        from diffusers.commands.serve import parallel
+
+        if "fork" not in multiprocessing.get_all_start_methods():
+            pytest.skip("the fake workers are forked so they can use a test-local target")
+        fork = multiprocessing.get_context("fork")
+        monkeypatch.setattr(parallel.multiprocessing, "get_context", lambda method: fork)
+        monkeypatch.setattr(parallel, "_worker_main", _fake_worker_main)
+        monkeypatch.setattr(torch.cuda, "device_count", lambda: 2)
+        backends = []
+
+        def _build(**arg_overrides):
+            args = Namespace(**{"fail_at_startup": False, **arg_overrides})
+            backends.append(parallel.ParallelBackend(args, _served()))
+            return backends[-1]
+
+        yield _build
+        for backend in backends:
+            backend.close()
+
+    def test_generation_runs_on_every_rank_and_rank_0_answers(self, backend):
+        generation = FakeGeneration()
+        outputs = backend().generate(generation)
+        assert outputs == {"image": [{"file": "image-0.png", "world_size": 2}]}, outputs
+        assert generation.progress == [(1, 2)], "rank 0's progress should reach the generation"
+
+    def test_worker_error_becomes_a_request_error(self, backend):
+        with pytest.raises(GMSError, match="bad prompt") as error:
+            backend().generate(FakeGeneration(prompt="bad"))
+        assert (error.value.code, error.value.pointer) == ("invalid_request", "/inputs/prompt")
+
+    def test_cancel_reaches_the_workers(self, backend):
+        generation = FakeGeneration()
+        threading.Timer(0.1, lambda: setattr(generation, "cancel_requested", True)).start()
+        assert backend().generate(generation) == {}, "a cancelled generation returns no outputs"
+
+    def test_dead_worker_fails_the_server(self, backend):
+        server = backend()
+        with pytest.raises(GMSError, match="exited"):
+            server.generate(FakeGeneration(seed=-1))
+        assert "exited with code 4" in server.failure(), server.failure()
+        with pytest.raises(GMSError, match="exited with code 4"):
+            server.generate(FakeGeneration())
+
+    def test_worker_dying_at_startup_stops_the_server(self, backend):
+        with pytest.raises(SystemExit, match="exited with code 3 while loading the pipeline"):
+            backend(fail_at_startup=True)
+
+    def test_worker_arguments_survive_spawn(self):
+        import pickle
+
+        parser = ArgumentParser()
+        ServeCommand.register_subcommand(parser.add_subparsers())
+        args = parser.parse_args(["serve", "org/model", "--context-parallel"])
+        # Spawned workers receive the parsed flags and the served model pickled.
+        restored_args, restored_served = pickle.loads(pickle.dumps((args, _served())))
+        assert restored_args.context_parallel and restored_served.tasks
+
+    def test_too_few_gpus_is_rejected(self, monkeypatch):
+        from diffusers.commands.serve.parallel import ParallelBackend
+
+        monkeypatch.setattr(torch.cuda, "device_count", lambda: 1)
+        with pytest.raises(SystemExit, match="needs at least 2 visible GPUs, found 1"):
+            ParallelBackend(Namespace(), _served())
+
+
+class TestParallelWorker:
+    def _jobs(self, backend, rank, *jobs):
+        from multiprocessing import Pipe, Value
+
+        from diffusers.commands.serve.parallel import _serve_jobs
+
+        server, worker = Pipe()
+        for job in (*jobs, None):
+            server.send(job)
+        _serve_jobs(backend, rank, worker, Value("b", 0))
+        replies = []
+        while server.poll():
+            replies.append(server.recv())
+        return replies
+
+    def _job(self, prompt):
+        return {"request": None, "kwargs": {"prompt": prompt}, "seed": 0, "directory": "/tmp/unused"}
+
+    def test_rank_0_reports_progress_and_results(self):
+        def run(kwargs, generation):
+            generation.report_progress(1, 1)
+            if kwargs["prompt"] == "bad":
+                raise GMSError("invalid_request", "bad prompt", "/inputs/prompt")
+            if kwargs["prompt"] == "crash":
+                raise SystemExit("unsupported")
+            return {"image": []}
+
+        replies = self._jobs(SimpleNamespace(run=run), 0, self._job("ok"), self._job("bad"), self._job("crash"))
+        assert replies == [
+            ("progress", 1, 1),
+            ("complete", {"image": []}),
+            ("progress", 1, 1),
+            ("failed", "invalid_request", "bad prompt", "/inputs/prompt"),
+            ("progress", 1, 1),
+            ("failed", "internal", "SystemExit: unsupported", None),
+        ], "a failed generation must not end the worker"
+
+    def test_other_ranks_stay_silent(self):
+        def run(kwargs, generation):
+            generation.report_progress(1, 1)
+            return {"image": []}
+
+        assert self._jobs(SimpleNamespace(run=run), 1, self._job("ok")) == []
+
+    def test_cancel_is_broadcast_from_rank_0(self, monkeypatch):
+        from multiprocessing import Value
+
+        from diffusers.commands.serve.parallel import _WorkerGeneration
+
+        monkeypatch.setenv("MASTER_ADDR", "127.0.0.1")
+        monkeypatch.setenv("MASTER_PORT", str(_free_port()))
+        torch.distributed.init_process_group("gloo", rank=0, world_size=1)
+        try:
+            flag = Value("b", 0)
+            generation = _WorkerGeneration(self._job("ok"), 0, None, flag)
+            assert not generation.cancel_requested
+            flag.value = 1
+            assert generation.cancel_requested, "rank 0 should broadcast the flag the server raised"
+        finally:
+            torch.distributed.destroy_process_group()
+
+
+def _free_port():
+    import socket
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]

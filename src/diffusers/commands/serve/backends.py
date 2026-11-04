@@ -99,8 +99,14 @@ def backend_capabilities(args: Namespace, pipeline_cls: type) -> list[str]:
     if args.backend != "diffusers":
         return capabilities
     # Swapping adapter weights retraces a compiled denoiser on every request, and LoRAs passed at
-    # startup are part of the deployment rather than something a request may replace.
-    if hasattr(pipeline_cls, "load_lora_weights") and args.compile is None and not args.lora:
+    # startup are part of the deployment rather than something a request may replace. Under context
+    # parallelism every rank would have to swap them in lockstep, which is untested.
+    if (
+        hasattr(pipeline_cls, "load_lora_weights")
+        and args.compile is None
+        and not args.lora
+        and not args.context_parallel
+    ):
         capabilities.append("adapters")
     return capabilities
 
@@ -203,10 +209,28 @@ def _save_audio(audios: Any, directory: Path, name: str, media_type: str, rate: 
 _SAVERS = {"image": _save_images, "video": _save_videos, "audio": _save_audio}
 
 
+def load_request_media(served: ServedModel, request: Any) -> dict[str, Any]:
+    """The pipeline kwargs of a request, with its media inputs fetched and decoded."""
+    kwargs = dict(request.kwargs)
+    for kwarg, (name, value) in request.media.items():
+        if isinstance(value, list):
+            loaded = [_load_media(name, item, f"/inputs/{name}/{index}") for index, item in enumerate(value)]
+        else:
+            loaded = [_load_media(name, value, f"/inputs/{name}")]
+        if served.tasks[request.task]["inputs"][name]["type"] == "audio":
+            if kwarg == "initial_audio_waveforms":
+                kwargs.setdefault("initial_audio_sampling_rate", loaded[0][1])
+            loaded = [waveform for waveform, _ in loaded]
+        kwargs[kwarg] = loaded if isinstance(value, list) else loaded[0]
+    return kwargs
+
+
 class DiffusersBackend:
-    def __init__(self, args: Namespace, served: ServedModel):
+    def __init__(self, args: Namespace, served: ServedModel, save_outputs: bool = True):
         self._args = args
         self._served = served
+        # Under context parallelism every rank runs the call, and only rank 0 writes the files.
+        self._save_outputs = save_outputs
         self.pipeline = _load_pipeline(args)
         self._modular = isinstance(self.pipeline, ModularPipeline)
         if self._modular:
@@ -227,19 +251,11 @@ class DiffusersBackend:
         return None
 
     def generate(self, generation: Generation) -> dict[str, list[dict[str, Any]]]:
-        request = generation.request
-        kwargs = dict(request.kwargs)
-        for kwarg, (name, value) in request.media.items():
-            if isinstance(value, list):
-                loaded = [_load_media(name, item, f"/inputs/{name}/{index}") for index, item in enumerate(value)]
-            else:
-                loaded = [_load_media(name, value, f"/inputs/{name}")]
-            if self._served.tasks[request.task]["inputs"][name]["type"] == "audio":
-                if kwarg == "initial_audio_waveforms":
-                    kwargs.setdefault("initial_audio_sampling_rate", loaded[0][1])
-                loaded = [waveform for waveform, _ in loaded]
-            kwargs[kwarg] = loaded if isinstance(value, list) else loaded[0]
+        return self.run(load_request_media(self._served, generation.request), generation)
 
+    def run(self, kwargs: dict[str, Any], generation: Any) -> dict[str, list[dict[str, Any]]]:
+        """Call the pipeline with the request's kwargs, media already loaded, and save its outputs."""
+        request = generation.request
         if generation.seed is not None:
             device = self.pipeline.device.type if hasattr(self.pipeline, "device") else "cpu"
             kwargs["generator"] = _get_generator(generation.seed, device)
@@ -262,7 +278,8 @@ class DiffusersBackend:
         finally:
             if request.adapters:
                 self.pipeline.unload_lora_weights()
-        if generation.cancel_requested:
+        # Read first: under context parallelism `cancel_requested` is a collective every rank must join.
+        if generation.cancel_requested or not self._save_outputs:
             return {}
 
         outputs = {}

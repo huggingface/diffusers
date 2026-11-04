@@ -53,6 +53,7 @@ _DIFFUSERS_ONLY_FLAGS = {
     "vae_slicing": False,
     "compile": None,
     "compile_mode": "regional",
+    "context_parallel": False,
 }
 
 
@@ -251,10 +252,9 @@ class ServeCommand(BaseDiffusersCLICommand):
         if args.log_level is not None:
             logging.set_verbosity(logging.get_log_levels_dict()[args.log_level])
 
-        if args.context_parallel:
+        if args.context_parallel and args.device_map is not None:
             raise SystemExit(
-                "--context-parallel is not supported by `diffusers-cli serve`: under torchrun every rank would "
-                "start its own server on the same port."
+                "--device-map does not apply with --context-parallel: each worker loads the pipeline on its own GPU."
             )
         if args.backend == "diffusers" and args.backend_args is not None:
             raise SystemExit("--backend-args only applies to --backend sglang or vllm.")
@@ -292,6 +292,7 @@ class ServeCommand(BaseDiffusersCLICommand):
         )
         from .generations import GenerationQueue
         from .manifest import ServedModel, load_manifest
+        from .parallel import ParallelBackend
 
         pipeline_cls, signature, commit_hash = _resolve_pipeline(args)
         kwarg_names = backend_kwargs(args.backend, signature)
@@ -317,7 +318,9 @@ class ServeCommand(BaseDiffusersCLICommand):
                 f"served by {pipeline_cls.__name__} with --backend {args.backend}."
             )
 
-        if args.backend == "diffusers":
+        if args.backend == "diffusers" and args.context_parallel:
+            backend = ParallelBackend(args, served)
+        elif args.backend == "diffusers":
             backend = DiffusersBackend(args, served)
         else:
             backend = EngineBackend.launch(args, served)

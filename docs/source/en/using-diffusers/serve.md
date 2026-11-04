@@ -128,6 +128,20 @@ When a manifest uses a name that differs from the pipeline argument, map it per 
 A task is only hosted when every input it requires maps to a pipeline argument. A parameter the pipeline cannot
 set is rejected with `not_implemented` unless the request sends its default value.
 
+## Multiple GPUs
+
+`--context-parallel` splits each generation across every visible GPU with
+[context parallelism](../training/distributed_inference#context-parallelism). It needs a DiT-based pipeline and at
+least two GPUs. `serve` starts one worker process per GPU itself, so don't launch it with `torchrun`:
+
+```bash
+diffusers serve black-forest-labs/FLUX.1-dev --context-parallel
+```
+
+Every worker runs every generation, and rank 0 saves the outputs. If a worker process exits, `GET /health` returns
+`503` and the server stops generating. `--device-map` and request adapters are not available with
+`--context-parallel`.
+
 ## Remote serving
 
 `--remote` starts the server in a [Hugging Face Job](https://huggingface.co/docs/huggingface_hub/guides/jobs)
@@ -148,7 +162,8 @@ curl <url>/v1/generations -H 'Prefer: wait=120' -H "Authorization: Bearer $HF_TO
 
 The Job ends when the server shuts down. `--idle-timeout` defaults to `30m`, and `--timeout` (default `24h`) caps
 how long the Job runs even while it is busy. `--flavor`, `--image`, `--dependencies` and `--namespace` work as they
-do for [`run --remote`](./cli#remote-execution---remote). The model must be a Hub repo id. `--manifest` is not
+do for [`run --remote`](./cli#remote-execution---remote). With `--context-parallel`, pick a flavor with
+several GPUs. The model must be a Hub repo id. `--manifest` is not
 supported with `--remote`: publish the manifest as `gms.json` in the model repo instead.
 
 ## SGLang and vLLM-Omni backends

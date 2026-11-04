@@ -251,10 +251,6 @@ paid on every run — `--compile` only breaks even on very long generations. On 
 sandbox the compile cache persists on disk, so the cost is paid once and reused: keep a warm sandbox and
 `--compile` pays off across runs.
 
-`--compile` is **currently not supported with `--context-parallel`** — CP shards attention across ranks while
-regional compile assumes a stable single-device graph. If both are set, the CLI logs a warning and skips the
-compile step; CP still runs.
-
 ## Context parallel
 
 `--context-parallel` enables Ulysses CP on a DiT-based pipeline. **Locally** the user must launch via torchrun:
