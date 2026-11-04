@@ -140,7 +140,7 @@ diffusers serve black-forest-labs/FLUX.1-dev --context-parallel
 
 Every worker runs every generation, and rank 0 saves the outputs. If a worker process exits, `GET /health` returns
 `503` and the server stops generating. `--device-map` and request adapters are not available with
-`--context-parallel`.
+`--context-parallel`, and `--compile` is skipped.
 
 ## Remote serving
 
