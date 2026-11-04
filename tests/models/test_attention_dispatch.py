@@ -231,6 +231,35 @@ class TestAttentionModuleSetAttentionBackend:
 
 
 @is_attention
+@pytest.mark.parametrize("return_lse", [False, True])
+def test_flash_attention_4_hub_return_lse(monkeypatch, return_lse):
+    query = torch.zeros(1, 2, 1, 4)
+    expected_out = torch.ones_like(query)
+    expected_lse = torch.tensor([[[2.0, 3.0]]])
+
+    def flash_attn_func(*, q, k, v, softmax_scale, causal, return_lse=False):
+        return expected_out, expected_lse if return_lse else None
+
+    config = _HUB_KERNELS_REGISTRY[AttentionBackendName.FLASH_4_HUB]
+    monkeypatch.setattr(config, "kernel_fn", flash_attn_func)
+    monkeypatch.setattr(_AttentionBackendRegistry, "_checks_enabled", False)
+    result = dispatch_attention_fn(
+        query,
+        query,
+        query,
+        backend=AttentionBackendName.FLASH_4_HUB,
+        attention_kwargs={"return_lse": return_lse},
+    )
+
+    if return_lse:
+        out, lse = result
+        assert out is expected_out
+        assert lse is expected_lse
+    else:
+        assert result is expected_out
+
+
+@is_attention
 class TestVarlenAttentionCompile:
     """Op-level tests for the varlen backends under `torch.compile` with dynamic shapes, model independent."""
 
