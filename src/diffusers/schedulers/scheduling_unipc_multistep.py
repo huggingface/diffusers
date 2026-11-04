@@ -432,7 +432,9 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                 sigmas = self.time_shift(mu, 1.0, sigmas)
             else:
                 sigmas = self.config.flow_shift * sigmas / (1 + (self.config.flow_shift - 1) * sigmas)
-            if self.config.shift_terminal:
+            # With a single step, the lone sigma is both the first and last point of the schedule, so
+            # `stretch_shift_to_terminal` divides 0 by 0 and produces nan. Skip stretching in that case.
+            if self.config.shift_terminal and len(sigmas) > 1:
                 sigmas = self.stretch_shift_to_terminal(sigmas)
             eps = 1e-6
             if np.fabs(sigmas[0] - 1) < eps:
