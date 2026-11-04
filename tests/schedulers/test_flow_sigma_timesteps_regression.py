@@ -3,8 +3,8 @@ import pytest
 import torch
 
 from diffusers import (
-    UniPCMultistepScheduler,
     DPMSolverMultistepScheduler,
+    UniPCMultistepScheduler,
 )
 
 
