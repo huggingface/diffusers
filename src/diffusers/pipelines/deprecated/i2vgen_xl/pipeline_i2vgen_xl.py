@@ -245,7 +245,11 @@ class I2VGenXLPipeline(
                 # representations. The `last_hidden_states` that we typically use for
                 # obtaining the final prompt representations passes through the LayerNorm
                 # layer.
-                prompt_embeds = self.text_encoder.text_model.final_layer_norm(prompt_embeds)
+                # CLIPTextModel was flattened in transformers>=5.6 (no longer wrapped in .text_model).
+                text_model = (
+                    self.text_encoder.text_model if hasattr(self.text_encoder, "text_model") else self.text_encoder
+                )
+                prompt_embeds = text_model.final_layer_norm(prompt_embeds)
 
         if self.text_encoder is not None:
             prompt_embeds_dtype = self.text_encoder.dtype
@@ -315,7 +319,11 @@ class I2VGenXLPipeline(
                 # representations. The `last_hidden_states` that we typically use for
                 # obtaining the final prompt representations passes through the LayerNorm
                 # layer.
-                negative_prompt_embeds = self.text_encoder.text_model.final_layer_norm(negative_prompt_embeds)
+                # CLIPTextModel was flattened in transformers>=5.6 (no longer wrapped in .text_model).
+                text_model = (
+                    self.text_encoder.text_model if hasattr(self.text_encoder, "text_model") else self.text_encoder
+                )
+                negative_prompt_embeds = text_model.final_layer_norm(negative_prompt_embeds)
 
         if self.do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
