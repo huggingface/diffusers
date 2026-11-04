@@ -25,7 +25,13 @@ import torch
 from huggingface_hub import ModelCard, delete_repo, snapshot_download, try_to_load_from_cache
 from huggingface_hub.utils import HfHubHTTPError, is_jinja_available
 
-from diffusers.models import FluxTransformer2DModel, SD3Transformer2DModel, UNet2DConditionModel
+from diffusers.models import (
+    FluxTransformer2DModel,
+    SD3Transformer2DModel,
+    UNet2DConditionModel,
+    UNet2DModel,
+    modeling_utils,
+)
 
 from ..others.test_utils import TOKEN, USER, is_staging_test
 from ..testing_utils import (
@@ -36,6 +42,89 @@ from ..testing_utils import (
 
 
 class TestModelUtils:
+    @pytest.mark.parametrize("max_shard_size", ["10KB", "10GB"], ids=["sharded", "unsharded"])
+    @pytest.mark.parametrize("parallel_loading", [False, True], ids=["serial", "parallel"])
+    @pytest.mark.parametrize("placement", ["default", "cpu", "cpu_device", "disk"])
+    def test_offload_state_dict_restores_weights(
+        self, tmp_path, monkeypatch, max_shard_size, parallel_loading, placement
+    ):
+        torch.manual_seed(0)
+        model = UNet2DModel(
+            sample_size=8,
+            in_channels=3,
+            out_channels=3,
+            layers_per_block=1,
+            block_out_channels=(4, 8),
+            down_block_types=("DownBlock2D", "DownBlock2D"),
+            up_block_types=("UpBlock2D", "UpBlock2D"),
+            norm_num_groups=2,
+        ).eval()
+        sample = torch.randn(1, 3, 8, 8)
+        with torch.no_grad():
+            expected = model(sample, 1).sample
+
+        checkpoint_dir = tmp_path / "checkpoint"
+        model.save_pretrained(checkpoint_dir, max_shard_size=max_shard_size)
+        temporary_dir = tmp_path / "temporary"
+        temporary_dir.mkdir()
+        monkeypatch.setattr(tempfile, "tempdir", str(temporary_dir))
+        monkeypatch.setattr(modeling_utils, "HF_ENABLE_PARALLEL_LOADING", parallel_loading)
+
+        device_map = None
+        if placement == "cpu":
+            device_map = {"": "cpu"}
+        elif placement == "cpu_device":
+            device_map = {"": torch.device("cpu")}
+        elif placement == "disk":
+            device_map = {name: "disk" if name == "conv_in" else "cpu" for name, _ in model.named_children()}
+
+        offload_dir = tmp_path / "offload"
+        restored = UNet2DModel.from_pretrained(
+            checkpoint_dir,
+            device_map=device_map,
+            offload_state_dict=True,
+            offload_folder=offload_dir,
+        )
+        with torch.no_grad():
+            actual = restored(sample, 1).sample
+        torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+        assert not list(temporary_dir.iterdir())
+
+        if placement == "disk":
+            assert (offload_dir / "index.json").is_file()
+            assert (offload_dir / "conv_in.weight.dat").is_file()
+        else:
+            for name, param in restored.state_dict().items():
+                torch.testing.assert_close(param, model.state_dict()[name], rtol=0, atol=0)
+
+    def test_offload_state_dict_without_accelerate(self, tmp_path, monkeypatch):
+        torch.manual_seed(0)
+        model = UNet2DModel(
+            sample_size=8,
+            layers_per_block=1,
+            block_out_channels=(4,),
+            down_block_types=("DownBlock2D",),
+            up_block_types=("UpBlock2D",),
+            attention_head_dim=2,
+            norm_num_groups=2,
+        ).eval()
+        sample = torch.randn(1, 3, 8, 8)
+        with torch.no_grad():
+            expected = model(sample, 1).sample
+        checkpoint_dir = tmp_path / "checkpoint"
+        model.save_pretrained(checkpoint_dir)
+        temporary_dir = tmp_path / "temporary"
+        temporary_dir.mkdir()
+        monkeypatch.setattr(tempfile, "tempdir", str(temporary_dir))
+        monkeypatch.setattr(modeling_utils, "is_accelerate_available", lambda: False)
+        monkeypatch.delattr(modeling_utils, "load_offloaded_weights", raising=False)
+        monkeypatch.setattr(modeling_utils, "HF_ENABLE_PARALLEL_LOADING", False)
+
+        restored = UNet2DModel.from_pretrained(checkpoint_dir, offload_state_dict=True)
+        with torch.no_grad():
+            torch.testing.assert_close(restored(sample, 1).sample, expected, rtol=0, atol=0)
+        assert not list(temporary_dir.iterdir())
+
     def test_missing_key_loading_warning_message(self):
         logger = logging.getLogger("diffusers.models.modeling_utils")
         with CaptureLogger(logger) as cap_logger:
