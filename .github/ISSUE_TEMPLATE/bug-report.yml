@@ -32,7 +32,7 @@ body:
     id: reproduction
     attributes:
       label: Reproduction
-      description: Please provide a minimal reproducible code which we can copy/paste and reproduce the issue. Keep it the real failing call, trimmed, not a script that tests your theory about the cause (see the [reporting guide](https://github.com/huggingface/diffusers/blob/main/.ai/references/reporting.md#bug-reports)).
+      description: Please provide a minimal reproducible code which we can copy/paste and reproduce the issue. 
       placeholder: Reproduction
     validations:
       required: true
