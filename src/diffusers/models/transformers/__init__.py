@@ -49,6 +49,7 @@ if is_torch_available():
     from .transformer_kandinsky import Kandinsky5Transformer3DModel
     from .transformer_kandinsky6 import Kandinsky6Transformer3DModel
     from .transformer_kandinsky6_sr import Kandinsky6SRTransformer3DModel
+    from .transformer_kandinsky_s2v import KandinskyS2VTransformer3DModel
     from .transformer_krea2 import Krea2Transformer2DModel
     from .transformer_longcat_audio_dit import LongCatAudioDiTTransformer
     from .transformer_longcat_image import LongCatImageTransformer2DModel
