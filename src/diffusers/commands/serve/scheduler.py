@@ -48,6 +48,8 @@ class GenerationJob:
         self.usage: dict[str, Any] | None = None
         self.error: GMSError | None = None
         self.cancel_requested = False
+        self.timed_out = False
+        self.started_at: float | None = None
         self.directory: Path | None = None
         self.events: list[tuple[str, dict[str, Any] | None]] = []
         self.done = False
@@ -88,9 +90,10 @@ class Scheduler:
     It also keeps every job until it expires, so the API can look jobs up, cancel them and delete them.
     """
 
-    def __init__(self, backends: list[Any], output_dir: str):
+    def __init__(self, backends: list[Any], output_dir: str, timeout: float | None = None):
         self._backends = backends
         self._output_dir = Path(output_dir)
+        self._timeout = timeout
         self._generations: dict[str, GenerationJob] = {}
         self._lock = threading.Lock()
         self._pending: queue.Queue[GenerationJob] = queue.Queue()
@@ -102,7 +105,20 @@ class Scheduler:
             ).start()
 
     def failure(self) -> str | None:
-        return next(filter(None, (backend.failure() for backend in self._backends)), None)
+        failure = next(filter(None, (backend.failure() for backend in self._backends)), None)
+        if failure is not None or self._timeout is None:
+            return failure
+        # A timed out generation stops at its next step. One still running long after that is stuck inside a step,
+        # or in a pipeline without step callbacks, and its worker takes no more jobs.
+        now = time.monotonic()
+        with self._lock:
+            for generation in self._generations.values():
+                if generation.status == "generating" and now - generation.started_at > 2 * self._timeout:
+                    return (
+                        f"generation {generation.id} has run for over twice the --generation-timeout of "
+                        f"{self._timeout:g}s and did not stop when interrupted"
+                    )
+        return None
 
     def busy(self) -> bool:
         return self._running > 0 or not self._pending.empty()
@@ -159,8 +175,14 @@ class Scheduler:
                 if generation.done:
                     continue
                 generation.status = "generating"
+                generation.started_at = time.monotonic()
                 self._running += 1
             generation.directory = self._output_dir / generation.id
+            timer = None
+            if self._timeout is not None:
+                timer = threading.Timer(self._timeout, self._time_out, args=(generation,))
+                timer.daemon = True
+                timer.start()
 
             started = time.perf_counter()
             error = None
@@ -174,6 +196,8 @@ class Scheduler:
             except BaseException as e:
                 logger.error(f"generation {generation.id} failed", exc_info=True)
                 error = GMSError("internal", f"{type(e).__name__}: {e}")
+            if timer is not None:
+                timer.cancel()
 
             with self._lock:
                 deleted = generation.id not in self._generations
@@ -181,6 +205,9 @@ class Scheduler:
                 self._running -= 1
                 if error is not None:
                     generation.finish("failed", error)
+                elif generation.timed_out:
+                    message = f"generation exceeded the --generation-timeout of {self._timeout:g}s"
+                    generation.finish("failed", GMSError("internal", message))
                 elif generation.cancel_requested:
                     generation.finish("canceled")
                 else:
@@ -189,3 +216,9 @@ class Scheduler:
                     generation.finish("complete")
             if deleted or generation.status != "complete":
                 self._remove_files(generation)
+
+    def _time_out(self, generation: GenerationJob) -> None:
+        # Interrupts the pipeline at its next step, the same way a cancel does.
+        with self._lock:
+            generation.timed_out = True
+            generation.cancel_requested = True

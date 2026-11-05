@@ -34,6 +34,7 @@ import pytest
 import torch
 from PIL import Image
 
+from diffusers.commands.run import _DEFAULT_REMOTE_IMAGE
 from diffusers.commands.serve import ServeCommand, _shut_down_when_idle
 from diffusers.commands.serve.backends import DiffusersBackend, backend_capabilities
 from diffusers.commands.serve.manifest import GMSError, Manifest, blocks_signature, derive_manifest
@@ -294,12 +295,26 @@ class TestManifest:
             bound.resolve(body)
         assert error.value.pointer == "/inputs/image/url", error.value.message
 
-    @pytest.mark.parametrize("path", ["hf:/etc/passwd", "hf:../loras/x", "/etc/passwd", "https://x/y.safetensors"])
+    @pytest.mark.parametrize(
+        "path",
+        ["hf:/etc/passwd", "hf:../loras/x", "hf:../outputs", "hf:detail", "/etc/passwd", "https://x/y.safetensors"],
+    )
     def test_resolve_rejects_adapter_paths_that_are_not_repo_ids(self, path):
         body = {"model": MODEL_ID, "inputs": {"prompt": "a cat"}, "adapters": [{"type": "lora", "path": path}]}
         with pytest.raises(GMSError) as error:
             _manifest().resolve(body)
         assert (error.value.code, error.value.pointer) == ("invalid_request", "/adapters/0/path"), error.value.message
+
+    def test_resolve_rejects_adapter_repo_ids_that_name_a_local_path(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "someone" / "detail").mkdir(parents=True)
+        body = {
+            "model": MODEL_ID,
+            "inputs": {"prompt": "a cat"},
+            "adapters": [{"type": "lora", "path": "hf:someone/detail"}],
+        }
+        with pytest.raises(GMSError, match="adapter path"):
+            _manifest().resolve(body)
 
     def test_resolve_maps_request_to_pipeline_kwargs(self):
         bound = _manifest(manifest=LATTICE_MANIFEST, pipeline_cls=FakeVideoPipeline)
@@ -653,7 +668,7 @@ class TestServeRemote:
         self._run(monkeypatch, api, [*argv, "--dependencies", "extra-package"])
 
         job = api.run_kwargs
-        assert (job["flavor"], job["image"]) == ("a10g-large", "diffusers/diffusers-cli-cuda:latest"), job
+        assert (job["flavor"], job["image"]) == ("a10g-large", _DEFAULT_REMOTE_IMAGE), job
         assert job["expose"] == [8000] and job["timeout"] == "24h", job
         assert job["secrets"] == {"HF_TOKEN": "hf_x"}, "gated models need the HF token inside the Job"
 
@@ -670,7 +685,7 @@ class TestServeRemote:
         assert (options["--host"], options["--port"]) == ("0.0.0.0", "8000"), options
         assert options["--public-url"] == "https://${JOB_ID}--8000.hf.jobs", options
         assert options["--idle-timeout"] == "30m", "a remote server should shut itself down when idle by default"
-        assert not {"--remote", "--flavor", "--timeout", "--dependencies"} & set(serve_argv), serve_argv
+        assert not {"--remote", "--flavor", "--dependencies"} & set(serve_argv), serve_argv
         assert not api.cancelled, "a Job that completed on its own needs no cancel"
 
     def test_local_manifest_is_rejected(self, tmp_path, monkeypatch):
@@ -725,6 +740,38 @@ class TestScheduler:
             job.wait(timeout=30)
         assert [job.status for job in jobs] == ["complete", "complete"]
         assert not scheduler.busy(), "the scheduler should be idle once every backend has finished"
+
+    def test_generation_past_the_timeout_fails(self, tmp_path):
+        class SteppingBackend:
+            """Stops at the next step once interrupted, like a pipeline's step callback."""
+
+            def failure(self):
+                return None
+
+            def generate(self, generation):
+                while not generation.cancel_requested:
+                    time.sleep(0.01)
+                return {}
+
+        scheduler = Scheduler([SteppingBackend()], str(tmp_path), timeout=0.1)
+        job = GenerationJob(_manifest().resolve({"model": MODEL_ID, "inputs": {"prompt": "a cat"}}))
+        scheduler.submit(job)
+        job.wait(timeout=30)
+        assert job.status == "failed", job.status
+        assert "--generation-timeout" in job.error.message, job.error.message
+
+    def test_generation_stuck_past_the_timeout_fails_health(self, tmp_path):
+        backend = BlockingBackend()
+        scheduler = Scheduler([backend], str(tmp_path), timeout=60)
+        job = GenerationJob(_manifest().resolve({"model": MODEL_ID, "inputs": {"prompt": "a cat"}}))
+        scheduler.submit(job)
+        assert backend.started.wait(timeout=30), "the worker never picked up the generation"
+        assert scheduler.failure() is None, "a generation within its time limit is healthy"
+
+        # As if it had run for over twice the limit without reaching a step that could stop it.
+        job.started_at -= 121
+        assert "did not stop when interrupted" in (scheduler.failure() or ""), scheduler.failure()
+        backend.release.set()
 
 
 class FakeClock:

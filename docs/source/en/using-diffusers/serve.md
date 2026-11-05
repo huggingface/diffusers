@@ -34,7 +34,12 @@ curl localhost:8000/v1/generations -H 'Prefer: wait=120' -d '{
 
 `serve` takes the same loading and optimization flags as [`diffusers-cli run`](./cli#run), and loads weights in
 bf16 unless `--dtype` says otherwise. The server listens on `127.0.0.1:8000` by default and has no authentication,
-so keep it on a trusted network. Run `diffusers serve --help` for every option.
+so keep it on a trusted network. It also downloads any http(s) URL a request passes as a media input, so a client
+can make it fetch addresses on its own network. Run `diffusers serve --help` for every option.
+
+`--generation-timeout <duration>` (for example `10m`) fails a generation that runs longer than that. The pipeline
+is interrupted at its next step. A generation that is still running at twice the limit is stuck, for example in a
+modular pipeline that has no step callbacks, and `GET /health` then returns `503`.
 
 `--idle-timeout <duration>` (for example `30m`) shuts the server down once it has received no requests for that
 long and no generation is queued or running. Health checks don't count as requests. By default a local server
@@ -149,6 +154,8 @@ its current one.
 diffusers serve black-forest-labs/FLUX.1-dev --data-parallel 4
 ```
 
+`--compile` and `--device-map` are not available with `--data-parallel`.
+
 `--context-parallel` splits each generation across every visible GPU with
 [context parallelism](../training/distributed_inference#context-parallelism). It needs a DiT-based pipeline and at
 least two GPUs. `serve` starts one worker process per GPU itself, so don't launch it with `torchrun`:
@@ -179,8 +186,8 @@ curl <url>/v1/generations -H 'Prefer: wait=120' -H "Authorization: Bearer $HF_TO
   -d '{"model": "black-forest-labs/FLUX.1-dev", "inputs": {"prompt": "a cat on the moon"}}'
 ```
 
-The Job ends when the server shuts down. `--idle-timeout` defaults to `30m`, and `--timeout` (default `24h`) caps
-how long the Job runs even while it is busy. `--flavor`, `--image`, `--dependencies` and `--namespace` work as they
+The Job ends when the server shuts down, after `--idle-timeout` (default `30m`) without requests. A Job that never
+goes idle is stopped after 24 hours. `--flavor`, `--image`, `--dependencies` and `--namespace` work as they
 do for [`run --remote`](./cli#remote-execution---remote). With `--context-parallel`, pick a flavor with
 several GPUs. The model must be a Hub repo id. `--manifest` is not
 supported with `--remote`: publish the manifest as `gms.json` in the model repo instead.

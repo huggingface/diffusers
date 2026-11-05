@@ -23,6 +23,7 @@ wait on their pipe rather than inside a collective, so the process group cannot 
 from __future__ import annotations
 
 import base64
+import contextlib
 import inspect
 import io
 import mimetypes
@@ -53,7 +54,7 @@ from ..run import (
     _as_pil_list,
     _get_generator,
     _load_pipeline,
-    _save_audio_arrays,
+    _write_wav,
 )
 from .manifest import GMSError, Manifest, ResolvedRequest, blocks_signature
 from .scheduler import GenerationJob
@@ -165,16 +166,13 @@ def _save_audio(audios: Any, directory: Path, name: str, media_type: str, rate: 
     if arrays is None:
         raise GMSError("internal", f"cannot encode output {name!r} as {media_type}: not an audio array")
 
-    staging = directory / f"{name}-staging"
-    paths = _save_audio_arrays(arrays, int(rate), Namespace(output=str(staging) + os.sep))
     artifacts = []
-    for index, path in enumerate(paths):
+    for index, audio in enumerate(arrays):
         filename = f"{name}-{index}.wav"
-        Path(path).rename(directory / filename)
+        _write_wav(audio, int(rate), directory / filename)
         with wave.open(str(directory / filename), "rb") as file:
             duration = round(file.getnframes() / file.getframerate(), 2)
         artifacts.append({"file": filename, "media_type": media_type, "duration": duration, "sample_rate": int(rate)})
-    staging.rmdir()
     return artifacts
 
 
@@ -236,8 +234,8 @@ class DiffusersBackend:
     def run(self, kwargs: dict[str, Any], generation: Any) -> dict[str, list[dict[str, Any]]]:
         """Call the pipeline with the request's kwargs, media already loaded, and save its outputs."""
         request = generation.request
+        device = self.pipeline.device if hasattr(self.pipeline, "device") else torch.device("cpu")
         if request.seed is not None:
-            device = self.pipeline.device if hasattr(self.pipeline, "device") else torch.device("cpu")
             # A CUDA generator must sit on the pipeline's own GPU, which is `cuda:1` and up with --data-parallel.
             kwargs["generator"] = _get_generator(request.seed, str(device) if device.type == "cuda" else device.type)
 
@@ -255,7 +253,9 @@ class DiffusersBackend:
 
         try:
             self._load_adapters(request.adapters)
-            result = self.pipeline(**kwargs)
+            # Worker threads start on GPU 0, and with --data-parallel this pipeline may sit on another one.
+            with torch.cuda.device(device) if device.type == "cuda" else contextlib.nullcontext():
+                result = self.pipeline(**kwargs)
         finally:
             if request.adapters:
                 self.pipeline.unload_lora_weights()

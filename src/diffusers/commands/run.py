@@ -63,14 +63,9 @@ CPU_OFFLOAD_CHOICES = ("model", "group", "auto")
 
 
 ATTENTION_BACKEND_CHOICES = ("default", *sorted(b.value for b in _HUB_KERNELS_REGISTRY))
-COMPILE_MODE_CHOICES = ("regional", "full")
 # zlib level for PNG outputs. Pillow's default of 6 takes close to four times as long to encode a
 # 1024x1024 image for a file about 7% smaller; the output is lossless either way.
 PNG_COMPRESS_LEVEL = 1
-
-# `torch.compile` modes that replay CUDA graphs. Repeated blocks share one compiled graph, so each
-# block's output is overwritten when the next block replays it.
-_CUDA_GRAPH_COMPILE_MODES = ("max-autotune", "reduce-overhead")
 
 # Kwarg keys whose string value gets auto-loaded before being passed to the pipeline call.
 # Images resolve via `diffusers.utils.load_image` → PIL.Image.Image; videos resolve via
@@ -227,21 +222,11 @@ def _add_optimization_arguments(parser: ArgumentParser) -> None:
         default=None,
         metavar="JSON",
         help=(
-            "torch.compile every denoiser submodule on the pipeline, and the VAE decoder. Accepts an optional JSON "
+            "torch.compile every denoiser submodule on the pipeline. Accepts an optional JSON "
             'object of kwargs forwarded to `torch.compile`, e.g. \'{"mode": "max-autotune", '
             '"fullgraph": true}\'. Bare `--compile` uses `fullgraph=true`. Adds a one-time '
             "compilation cost on the first step but speeds up every subsequent step — worth it "
             "for multi-step generation (50+ steps)."
-        ),
-    )
-    parser.add_argument(
-        "--compile-mode",
-        choices=COMPILE_MODE_CHOICES,
-        default="regional",
-        help=(
-            "What --compile compiles. 'regional' (default) compiles only the repeated blocks of a denoiser "
-            "that declares them, which keeps the first step fast. 'full' compiles the whole denoiser, which "
-            "`torch.compile` modes that use CUDA graphs (max-autotune, reduce-overhead) require."
         ),
     )
 
@@ -488,44 +473,26 @@ def _apply_optimizations(pipeline: Any, args: Namespace) -> None:
         if args.context_parallel:
             logger.warning("--compile is currently not supported with --context-parallel; skipping compile.")
         else:
-            _compile_denoiser(pipeline, args.compile, args.compile_mode)
-            _compile_vae_decoder(pipeline, args.compile)
+            _compile_denoiser(pipeline, args.compile)
 
 
-def _parse_compile_spec(compile_spec: str) -> dict[str, Any]:
+def _compile_denoiser(pipeline: Any, compile_spec: str) -> None:
+    """Compile every `transformer*` and `unet*` submodule on the pipeline.
+
+    `compile_spec` is the raw JSON string from `--compile` (`"{}"` for bare flag). Decoded into kwargs and forwarded
+    verbatim to the compile call.
+
+    Prefers regional compilation via `module.compile_repeated_blocks(**kwargs)` — only compiles the repeated inner
+    blocks (the bulk of the compute), much faster first-step latency than compiling the whole module. Falls back to
+    full `torch.compile` if the model doesn't expose `_repeated_blocks`.
+    """
+
     try:
         compile_kwargs = json.loads(compile_spec)
     except json.JSONDecodeError as e:
         raise SystemExit(f"--compile must be valid JSON: {e}") from e
     if not isinstance(compile_kwargs, dict):
         raise SystemExit("--compile must decode to a JSON object.")
-    return compile_kwargs
-
-
-def _compile_vae_decoder(pipeline: Any, compile_spec: str) -> None:
-    """Compile the decoder of the pipeline's VAE with the `--compile` kwargs.
-
-    The decoder runs once per call, so it has no repeated blocks to compile regionally and is always compiled whole.
-    """
-    decoder = getattr(getattr(pipeline, "vae", None), "decoder", None)
-    if not isinstance(decoder, torch.nn.Module):
-        return
-    pipeline.vae.decoder = torch.compile(decoder, **_parse_compile_spec(compile_spec))
-
-
-def _compile_denoiser(pipeline: Any, compile_spec: str, compile_mode: str = "regional") -> None:
-    """Compile every `transformer*` and `unet*` submodule on the pipeline.
-
-    `compile_spec` is the raw JSON string from `--compile` (`"{}"` for bare flag). Decoded into kwargs and forwarded
-    verbatim to the compile call.
-
-    With `compile_mode="regional"`, prefers regional compilation via `module.compile_repeated_blocks(**kwargs)` — only
-    compiles the repeated inner blocks (the bulk of the compute), much faster first-step latency than compiling the
-    whole module. Falls back to full `torch.compile` if the model doesn't expose `_repeated_blocks`. With
-    `compile_mode="full"`, always compiles the whole module.
-    """
-
-    compile_kwargs = _parse_compile_spec(compile_spec)
 
     for attr in dir(pipeline):
         if not any(attr.startswith(key) for key in _DENOISER_COMPONENT_KEYS):
@@ -534,17 +501,11 @@ def _compile_denoiser(pipeline: Any, compile_spec: str, compile_mode: str = "reg
         if not isinstance(module, torch.nn.Module):
             continue
 
-        if compile_mode == "regional" and getattr(module, "_repeated_blocks", None):
-            if compile_kwargs.get("mode") in _CUDA_GRAPH_COMPILE_MODES:
-                raise SystemExit(
-                    f"--compile mode {compile_kwargs['mode']!r} uses CUDA graphs, which fail when the repeated "
-                    f"blocks of {type(module).__name__} are compiled separately. Add `--compile-mode full`, or "
-                    "use mode 'max-autotune-no-cudagraphs'."
-                )
+        if getattr(module, "_repeated_blocks", None):
             # Regional compile — only the repeated blocks. Mutates `module` in place.
             module.compile_repeated_blocks(**compile_kwargs)
         else:
-            # Full compile was asked for, or no regional metadata is declared.
+            # No regional metadata declared; fall back to compiling the whole module.
             setattr(pipeline, attr, torch.compile(module, **compile_kwargs))
 
 
@@ -586,9 +547,6 @@ def _load_lora(pipeline: Any, args: Namespace) -> None:
 
 
 def _load_pipeline(args: Namespace) -> Any:
-    if args.compile is None and args.compile_mode != "regional":
-        raise SystemExit(f"--compile-mode {args.compile_mode} only applies together with --compile.")
-
     # Detect modular repos by trying the standard config; `ModularPipeline` repos ship
     # `modular_model_index.json` instead of `model_index.json`, so `load_config` OSErrors.
     # A repo can also ship a `model_index.json` whose `_class_name` is a modular pipeline
@@ -803,6 +761,28 @@ def _as_audio_arrays(value: Any):
     return None
 
 
+def _write_wav(audio: Any, sampling_rate: int, path: str | Path) -> None:
+    """Write one numpy audio array to a 16-bit PCM WAV at `sampling_rate` Hz."""
+    data = np.asarray(audio)
+    if data.dtype.kind == "f":
+        data = (np.clip(data, -1.0, 1.0) * 32767).astype(np.int16)
+    else:
+        data = data.astype(np.int16)
+    if data.ndim == 1:
+        n_channels = 1
+    else:
+        # Heuristic: shorter axis is channels (interleaved layout for `wave` is
+        # samples × channels, so transpose if needed).
+        if data.shape[0] < data.shape[-1]:
+            data = data.T
+        n_channels = data.shape[1]
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(n_channels)
+        w.setsampwidth(2)  # 16-bit PCM
+        w.setframerate(sampling_rate)
+        w.writeframes(data.tobytes())
+
+
 def _save_audio_arrays(audios, sampling_rate: int, args: Namespace) -> list[str]:
     """Write each numpy audio array to a 16-bit PCM WAV at `sampling_rate` Hz.
 
@@ -812,24 +792,7 @@ def _save_audio_arrays(audios, sampling_rate: int, args: Namespace) -> list[str]
     paths = _resolve_output_paths(len(audios), args.output, ext="wav")
     saved: list[str] = []
     for audio, path in zip(audios, paths):
-        data = np.asarray(audio)
-        if data.dtype.kind == "f":
-            data = (np.clip(data, -1.0, 1.0) * 32767).astype(np.int16)
-        else:
-            data = data.astype(np.int16)
-        if data.ndim == 1:
-            n_channels = 1
-        else:
-            # Heuristic: shorter axis is channels (interleaved layout for `wave` is
-            # samples × channels, so transpose if needed).
-            if data.shape[0] < data.shape[-1]:
-                data = data.T
-            n_channels = data.shape[1]
-        with wave.open(str(path), "wb") as w:
-            w.setnchannels(n_channels)
-            w.setsampwidth(2)  # 16-bit PCM
-            w.setframerate(sampling_rate)
-            w.writeframes(data.tobytes())
+        _write_wav(audio, sampling_rate, path)
         saved.append(str(path))
     return saved
 

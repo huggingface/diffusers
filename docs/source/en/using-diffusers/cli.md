@@ -132,15 +132,10 @@ Configure how the CLI loads model weights and custom pipeline code.
 - `--attention-backend` — Hub-hosted attention kernels, auto-downloaded on first use. Choices are `default` plus the Hub backends registered in Diffusers (for example `flash_hub`, `flash_varlen_hub`, `flash_4_hub`, `sage_hub`, `sage_blackwell_hub`). Run `diffusers-cli run --help` for the current list. It only supports Transformer-based pipelines only, and is ignored with a warning on legacy UNet pipelines. See [Attention backends](../optimization/attention_backends).
 - `--vae-tiling` / `--vae-slicing` — lower VAE decode VRAM. See
   [VAE tiling](../optimization/memory#vae-tiling) and [VAE slicing](../optimization/memory#vae-slicing).
-- `--compile [JSON]` — compile denoiser modules and the VAE decoder with
-  [torch.compile](../optimization/fp16#torchcompile). The CLI prefers
-  [regional compilation](../optimization/fp16#regional-compilation) for denoisers with repeated blocks; the VAE
-  decoder is always compiled whole. Bare `--compile` uses `fullgraph=true`. A JSON object is forwarded to
-  `torch.compile`. Not supported with `--context-parallel`.
-- `--compile-mode {regional,full}` — what `--compile` compiles. `regional` (default) compiles only the repeated
-  blocks, which keeps the first step fast. `full` compiles the whole denoiser. `torch.compile` modes that use CUDA
-  graphs (`max-autotune`, `reduce-overhead`) need `--compile-mode full`: repeated blocks share one compiled graph,
-  so with CUDA graphs each block's output is overwritten by the next block's run.
+- `--compile [JSON]` — compile denoiser modules with [torch.compile](../optimization/fp16#torchcompile). The
+  CLI prefers [regional compilation](../optimization/fp16#regional-compilation) for modules with repeated
+  blocks. Bare `--compile` uses `fullgraph=true`. A JSON object is forwarded to `torch.compile`. Not supported
+  with `--context-parallel`.
 - `--context-parallel` — Ulysses-style context parallelism on a DiT-based pipeline. Locally requires torchrun, but
   under `--remote` the CLI wraps `torchrun --nproc-per-node=gpu` for you. See
   [Context parallelism](../training/distributed_inference#context-parallelism).

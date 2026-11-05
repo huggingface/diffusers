@@ -26,6 +26,7 @@ import inspect
 import json
 import math
 import operator
+import os
 import random
 import re
 from dataclasses import dataclass, field
@@ -34,6 +35,7 @@ from typing import Any
 
 from huggingface_hub import hf_hub_download
 from huggingface_hub.errors import EntryNotFoundError
+from huggingface_hub.utils import HFValidationError, validate_repo_id
 
 from ...pipelines.auto_pipeline import (
     AUTO_IMAGE2IMAGE_PIPELINES_MAPPING,
@@ -115,7 +117,6 @@ _COMPARISONS = {
     "lte": operator.le,
 }
 _FRAME_LATTICE = re.compile(r"(\d+)k\+(\d+)")
-_HF_ADAPTER_PATH = re.compile(r"hf:[\w.-]+/[\w.-]+")
 
 
 # ---------------------------------------------------------------------------
@@ -750,8 +751,15 @@ class Manifest:
                     f"{pointer}/type",
                 )
             path = adapter.get("path")
-            # Anything but a repo id would reach `load_lora_weights` as a path on the server's own disk.
-            if not isinstance(path, str) or not _HF_ADAPTER_PATH.fullmatch(path):
+            repo_id = path.removeprefix("hf:") if isinstance(path, str) and path.startswith("hf:") else None
+            if repo_id is not None:
+                try:
+                    validate_repo_id(repo_id)
+                except HFValidationError:
+                    repo_id = None
+            # `load_lora_weights` prefers a local path over a Hub repo of the same name, so a repo id that also
+            # names a path on the server's disk is refused as well.
+            if repo_id is None or "/" not in repo_id or os.path.exists(repo_id):
                 raise GMSError(
                     "invalid_request",
                     f"adapter path must be a Hub repo id of the form 'hf:<namespace>/<name>', got {path!r}",

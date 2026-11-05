@@ -181,6 +181,14 @@ class ServeCommand(BaseDiffusersCLICommand):
             help="Logging level for diffusers and the HTTP server. Defaults to the current diffusers verbosity.",
         )
         parser.add_argument(
+            "--generation-timeout",
+            default=None,
+            help=(
+                "Fail a generation that runs longer than this (e.g. 10m). It is interrupted at its next step; "
+                "/health reports a generation still running at twice the limit. Defaults to no limit."
+            ),
+        )
+        parser.add_argument(
             "--idle-timeout",
             default=None,
             help=(
@@ -205,11 +213,13 @@ class ServeCommand(BaseDiffusersCLICommand):
         args.model_id = None
         if args.model is None:
             raise SystemExit("Pass the model to serve, e.g. `diffusers-cli serve black-forest-labs/FLUX.1-dev`.")
-        if args.idle_timeout is not None:
+        for flag, value in (("--idle-timeout", args.idle_timeout), ("--generation-timeout", args.generation_timeout)):
+            if value is None:
+                continue
             try:
-                _duration_to_seconds(args.idle_timeout)
+                _duration_to_seconds(value)
             except ValueError:
-                raise SystemExit(f"--idle-timeout {args.idle_timeout!r} is not a duration such as 30m or 2h.")
+                raise SystemExit(f"{flag} {value!r} is not a duration such as 30m or 2h.")
         if args.log_level is not None:
             logging.set_verbosity(logging.get_log_levels_dict()[args.log_level])
 
@@ -223,6 +233,11 @@ class ServeCommand(BaseDiffusersCLICommand):
             raise SystemExit(
                 "--data-parallel and --context-parallel cannot be combined: --context-parallel already uses "
                 "every visible GPU for each generation."
+            )
+        if args.data_parallel > 1 and args.compile is not None:
+            raise SystemExit(
+                "--compile is not supported with --data-parallel yet: the copies of the pipeline would compile "
+                "concurrently on separate threads, which torch.compile does not support."
             )
         if args.data_parallel > 1 and args.device_map is not None:
             raise SystemExit(
@@ -278,7 +293,8 @@ class ServeCommand(BaseDiffusersCLICommand):
             seed = args.seed if args.seed is not None else secrets.randbelow(2**32)
             # Seeds the generator `Manifest.resolve` draws request seeds from, like vLLM's `--seed`.
             random.seed(seed)
-            scheduler = Scheduler(backends, args.output_dir)
+            timeout = None if args.generation_timeout is None else _duration_to_seconds(args.generation_timeout)
+            scheduler = Scheduler(backends, args.output_dir, timeout=timeout)
             app = create_app(
                 manifest,
                 scheduler,

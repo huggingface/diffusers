@@ -38,6 +38,9 @@ logger = logging.get_logger("diffusers-cli/serve")
 JOB_PORT = 8000
 _SERVE_DEPS = ("fastapi", "uvicorn")
 _DEFAULT_REMOTE_IDLE_TIMEOUT = "30m"
+# The Job ends when the server shuts down after --idle-timeout. This cap only stops a server that never goes idle,
+# so it can't run, and bill, without end.
+_JOB_TIMEOUT = "24h"
 _READY_POLL_SECONDS = 5.0
 
 # Flags the Job command sets itself. `_build_task_kwargs` already drops the flags that say how the Job is set up.
@@ -70,14 +73,6 @@ def add_remote_arguments(parser: ArgumentParser) -> None:
         "--image",
         default=None,
         help=f"Job image for --remote. Defaults to {_DEFAULT_REMOTE_IMAGE!r}.",
-    )
-    parser.add_argument(
-        "--timeout",
-        default="24h",
-        help=(
-            "Hard limit on how long the Job runs with --remote, busy or not (e.g. 2h, 1d). A backstop for "
-            "--idle-timeout. Defaults to 24h."
-        ),
     )
 
 
@@ -153,7 +148,7 @@ def serve_remote(args: Namespace, task: str) -> None:
         env=env,
         secrets={"HF_TOKEN": hf_token} if hf_token else None,
         flavor=args.flavor,
-        timeout=args.timeout,
+        timeout=_JOB_TIMEOUT,
         expose=[JOB_PORT],
         namespace=args.namespace,
     )
