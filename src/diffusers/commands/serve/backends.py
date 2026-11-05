@@ -53,7 +53,6 @@ from ..run import (
     _as_pil_list,
     _get_generator,
     _load_pipeline,
-    _write_wav,
 )
 from .manifest import GMSError, Manifest, ResolvedRequest, blocks_signature
 from .scheduler import GenerationJob
@@ -120,67 +119,6 @@ def _load_media(name: str, value: dict[str, Any], pointer: str) -> Any:
         raise GMSError("invalid_request", f"could not decode input {name!r}: {e}", pointer) from e
 
 
-def _save_images(images: Any, directory: Path, name: str, media_type: str, rate: float) -> list[dict[str, Any]]:
-    if isinstance(images, np.ndarray):
-        images = numpy_to_pil(images)
-    images = _as_pil_list(images)
-    if images is None:
-        raise GMSError("internal", f"cannot encode output {name!r} as {media_type}: not a list of images")
-
-    artifacts = []
-    for index, image in enumerate(images):
-        filename = f"{name}-{index}.{media_type.split('/')[1]}"
-        if media_type == "image/jpeg":
-            image = image.convert("RGB")
-        if media_type == "image/png":
-            image.save(directory / filename, compress_level=PNG_COMPRESS_LEVEL)
-        else:
-            image.save(directory / filename)
-        artifacts.append({"file": filename, "media_type": media_type, "width": image.width, "height": image.height})
-    return artifacts
-
-
-def _save_videos(videos: Any, directory: Path, name: str, media_type: str, rate: float) -> list[dict[str, Any]]:
-    artifacts = []
-    for index, frames in enumerate(videos):
-        frames = list(frames)
-        filename = f"{name}-{index}.mp4"
-        export_to_video(frames, str(directory / filename), fps=rate)
-        first = frames[0]
-        width, height = first.size if isinstance(first, Image.Image) else (first.shape[1], first.shape[0])
-        artifacts.append(
-            {
-                "file": filename,
-                "media_type": media_type,
-                "width": width,
-                "height": height,
-                "duration": round(len(frames) / rate, 2),
-                "fps": rate,
-            }
-        )
-    return artifacts
-
-
-def _save_audio(audios: Any, directory: Path, name: str, media_type: str, rate: float) -> list[dict[str, Any]]:
-    if isinstance(audios, torch.Tensor):
-        audios = audios.detach().to(torch.float32).cpu().numpy()
-    arrays = _as_audio_arrays(audios)
-    if arrays is None:
-        raise GMSError("internal", f"cannot encode output {name!r} as {media_type}: not an audio array")
-
-    artifacts = []
-    for index, audio in enumerate(arrays):
-        filename = f"{name}-{index}.wav"
-        _write_wav(audio, int(rate), directory / filename)
-        with wave.open(str(directory / filename), "rb") as file:
-            duration = round(file.getnframes() / file.getframerate(), 2)
-        artifacts.append({"file": filename, "media_type": media_type, "duration": duration, "sample_rate": int(rate)})
-    return artifacts
-
-
-_SAVERS = {"image": _save_images, "video": _save_videos, "audio": _save_audio}
-
-
 def _sample_rate(pipeline: Any) -> int:
     for path in _SAMPLE_RATE_ATTRIBUTES:
         value = pipeline
@@ -221,8 +159,11 @@ class DiffusersBackend:
         else:
             parameters = inspect.signature(type(self.pipeline).__call__).parameters
         self._reports_steps = "callback_on_step_end" in parameters
-        outputs = (spec["type"] for task in manifest.tasks.values() for spec in task["outputs"].values())
-        self._sample_rate = _sample_rate(self.pipeline) if "audio" in outputs else None
+        self._sample_rate = None
+        for task in manifest.tasks.values():
+            for spec in task["outputs"].values():
+                if spec["type"] == "audio":
+                    self._sample_rate = _sample_rate(self.pipeline)
 
     def close(self) -> None:
         pass
@@ -253,8 +194,19 @@ class DiffusersBackend:
 
             kwargs["callback_on_step_end"] = on_step_end
 
+        names = [f"request_{index}" for index in range(len(request.adapters))]
         try:
-            self._load_adapters(request.adapters)
+            for index, adapter in enumerate(request.adapters):
+                try:
+                    self.pipeline.load_lora_weights(adapter["path"].removeprefix("hf:"), adapter_name=names[index])
+                except Exception as e:
+                    raise GMSError(
+                        "invalid_request",
+                        f"could not load adapter {adapter['path']!r}: {type(e).__name__}: {e}",
+                        f"/adapters/{index}/path",
+                    ) from e
+            if names:
+                self.pipeline.set_adapters(names, adapter_weights=[adapter["weight"] for adapter in request.adapters])
             # Worker threads start on GPU 0, and with --data-parallel this pipeline may sit on another one.
             with torch.cuda.device(device) if device.type == "cuda" else contextlib.nullcontext():
                 result = self.pipeline(**kwargs)
@@ -267,16 +219,81 @@ class DiffusersBackend:
 
         outputs = {}
         for name, (kind, media_type) in request.outputs.items():
-            # A modular pipeline returns its `PipelineState`; a standard one returns an output object.
-            if self._modular:
-                fields = (result.get(field) for field in _OUTPUT_FIELDS.get(kind, ()))
-            else:
-                fields = (getattr(result, field, None) for field in _OUTPUT_FIELDS.get(kind, ()))
-            value = next((field for field in fields if field is not None), None)
+            value = None
+            for field in _OUTPUT_FIELDS[kind]:
+                # A modular pipeline returns its `PipelineState`; a standard one returns an output object.
+                value = result.get(field) if self._modular else getattr(result, field, None)
+                if value is not None:
+                    break
             if value is None:
                 continue
-            rate = request.fps if kind == "video" else self._sample_rate
-            outputs[name] = _SAVERS[kind](value, generation.directory, name, media_type, rate)
+
+            artifacts = []
+            if kind == "image":
+                images = _as_pil_list(numpy_to_pil(value) if isinstance(value, np.ndarray) else value)
+                if images is None:
+                    raise GMSError("internal", f"cannot encode output {name!r} as {media_type}: not a list of images")
+                for index, image in enumerate(images):
+                    filename = f"{name}-{index}.{media_type.split('/')[1]}"
+                    if media_type == "image/jpeg":
+                        image = image.convert("RGB")
+                    if media_type == "image/png":
+                        image.save(generation.directory / filename, compress_level=PNG_COMPRESS_LEVEL)
+                    else:
+                        image.save(generation.directory / filename)
+                    artifacts.append(
+                        {"file": filename, "media_type": media_type, "width": image.width, "height": image.height}
+                    )
+            elif kind == "video":
+                for index, frames in enumerate(value):
+                    frames = list(frames)
+                    filename = f"{name}-{index}.mp4"
+                    export_to_video(frames, str(generation.directory / filename), fps=request.fps)
+                    first = frames[0]
+                    width, height = first.size if isinstance(first, Image.Image) else (first.shape[1], first.shape[0])
+                    artifacts.append(
+                        {
+                            "file": filename,
+                            "media_type": media_type,
+                            "width": width,
+                            "height": height,
+                            "duration": round(len(frames) / request.fps, 2),
+                            "fps": request.fps,
+                        }
+                    )
+            else:
+                if isinstance(value, torch.Tensor):
+                    value = value.detach().to(torch.float32).cpu().numpy()
+                arrays = _as_audio_arrays(value)
+                if arrays is None:
+                    raise GMSError("internal", f"cannot encode output {name!r} as {media_type}: not an audio array")
+                # TODO(DN6): write the files with `export_to_wav` once it is added to `diffusers.utils`.
+                for index, audio in enumerate(arrays):
+                    data = np.asarray(audio)
+                    if data.dtype.kind == "f":
+                        data = (np.clip(data, -1.0, 1.0) * 32767).astype(np.int16)
+                    else:
+                        data = data.astype(np.int16)
+                    # `wave` takes interleaved samples x channels; the shorter axis is taken to be the channels.
+                    if data.ndim == 1:
+                        data = data[:, None]
+                    elif data.shape[0] < data.shape[1]:
+                        data = data.T
+                    filename = f"{name}-{index}.wav"
+                    with wave.open(str(generation.directory / filename), "wb") as file:
+                        file.setnchannels(data.shape[1])
+                        file.setsampwidth(2)
+                        file.setframerate(self._sample_rate)
+                        file.writeframes(data.tobytes())
+                    artifacts.append(
+                        {
+                            "file": filename,
+                            "media_type": media_type,
+                            "duration": round(data.shape[0] / self._sample_rate, 2),
+                            "sample_rate": self._sample_rate,
+                        }
+                    )
+            outputs[name] = artifacts
         if not outputs:
             raise GMSError(
                 "internal",
@@ -284,25 +301,6 @@ class DiffusersBackend:
                 f"task {request.task!r}",
             )
         return outputs
-
-    def _load_adapters(self, adapters: list[dict[str, Any]]) -> None:
-        if not adapters:
-            return
-        names = []
-        weights = []
-        for index, adapter in enumerate(adapters):
-            name = f"request_{index}"
-            try:
-                self.pipeline.load_lora_weights(adapter["path"].removeprefix("hf:"), adapter_name=name)
-            except Exception as e:
-                raise GMSError(
-                    "invalid_request",
-                    f"could not load adapter {adapter['path']!r}: {type(e).__name__}: {e}",
-                    f"/adapters/{index}/path",
-                ) from e
-            weights.append(adapter["weight"])
-            names.append(name)
-        self.pipeline.set_adapters(names, adapter_weights=weights)
 
 
 _POLL_SECONDS = 0.1
@@ -407,25 +405,27 @@ class ParallelBackend:
             self._processes.append(process)
 
         logger.info(f"loading the pipeline on {world_size} GPUs...")
-        self._wait_until_ready()
-        threading.Thread(target=self._monitor, name="diffusers-serve-workers", daemon=True).start()
-
-    def _wait_until_ready(self) -> None:
-        waiting = dict(zip(self._conns, self._processes))
-        while waiting:
-            sentinels = {process.sentinel: process for process in waiting.values()}
-            for ready in wait([*waiting, *sentinels]):
-                process = waiting.pop(ready, None) if isinstance(ready, Connection) else sentinels[ready]
-                try:
-                    if isinstance(ready, Connection) and ready.recv() == ("ready",):
-                        continue
-                except EOFError:
-                    pass
+        # Every rank is watched at once: a rank that dies while loading leaves the others stuck in the process
+        # group setup, so waiting on one rank at a time could hang forever.
+        loading = dict(zip(self._conns, self._processes))
+        while loading:
+            sentinels = {process.sentinel: process for process in loading.values()}
+            for ready in wait([*loading, *sentinels]):
+                if ready in sentinels:
+                    process = sentinels[ready]
+                else:
+                    process = loading.pop(ready)
+                    try:
+                        if ready.recv() == ("ready",):
+                            continue
+                    except EOFError:
+                        pass
                 self.close()
                 raise SystemExit(
                     f"Context-parallel worker {process.name} exited with code {process.exitcode} while loading "
                     "the pipeline. Its error is in the log above."
                 )
+        threading.Thread(target=self._monitor, name="diffusers-serve-workers", daemon=True).start()
 
     def _monitor(self) -> None:
         sentinels = {process.sentinel: process for process in self._processes}

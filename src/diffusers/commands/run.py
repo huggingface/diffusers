@@ -758,28 +758,6 @@ def _as_audio_arrays(value: Any):
     return None
 
 
-def _write_wav(audio: Any, sampling_rate: int, path: str | Path) -> None:
-    """Write one numpy audio array to a 16-bit PCM WAV at `sampling_rate` Hz."""
-    data = np.asarray(audio)
-    if data.dtype.kind == "f":
-        data = (np.clip(data, -1.0, 1.0) * 32767).astype(np.int16)
-    else:
-        data = data.astype(np.int16)
-    if data.ndim == 1:
-        n_channels = 1
-    else:
-        # Heuristic: shorter axis is channels (interleaved layout for `wave` is
-        # samples × channels, so transpose if needed).
-        if data.shape[0] < data.shape[-1]:
-            data = data.T
-        n_channels = data.shape[1]
-    with wave.open(str(path), "wb") as w:
-        w.setnchannels(n_channels)
-        w.setsampwidth(2)  # 16-bit PCM
-        w.setframerate(sampling_rate)
-        w.writeframes(data.tobytes())
-
-
 def _save_audio_arrays(audios, sampling_rate: int, args: Namespace) -> list[str]:
     """Write each numpy audio array to a 16-bit PCM WAV at `sampling_rate` Hz.
 
@@ -789,7 +767,24 @@ def _save_audio_arrays(audios, sampling_rate: int, args: Namespace) -> list[str]
     paths = _resolve_output_paths(len(audios), args.output, ext="wav")
     saved: list[str] = []
     for audio, path in zip(audios, paths):
-        _write_wav(audio, sampling_rate, path)
+        data = np.asarray(audio)
+        if data.dtype.kind == "f":
+            data = (np.clip(data, -1.0, 1.0) * 32767).astype(np.int16)
+        else:
+            data = data.astype(np.int16)
+        if data.ndim == 1:
+            n_channels = 1
+        else:
+            # Heuristic: shorter axis is channels (interleaved layout for `wave` is
+            # samples × channels, so transpose if needed).
+            if data.shape[0] < data.shape[-1]:
+                data = data.T
+            n_channels = data.shape[1]
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(n_channels)
+            w.setsampwidth(2)  # 16-bit PCM
+            w.setframerate(sampling_rate)
+            w.writeframes(data.tobytes())
         saved.append(str(path))
     return saved
 

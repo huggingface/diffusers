@@ -98,28 +98,6 @@ def _announce_when_ready(api: HfApi, job: Any, args: Namespace, stopped: threadi
         return
 
 
-def _job_script(args: Namespace, task: str) -> str:
-    """The shell command the Job runs: install the dependencies, then start the server in the foreground."""
-    task_kwargs = _build_task_kwargs(args)
-    for key in _JOB_SET_KEYS:
-        task_kwargs.pop(key, None)
-    task_kwargs["host"] = "0.0.0.0"
-    task_kwargs["port"] = JOB_PORT
-    task_kwargs["idle_timeout"] = args.idle_timeout
-
-    dependencies = [*_DEFAULT_REMOTE_DEPS, *_SERVE_DEPS, *(args.dependencies or [])]
-    install = shlex.join(["uv", "pip", "install", "--system", "--break-system-packages", *dependencies])
-    # An `--image` can put another environment first on PATH, with its own older `diffusers-cli`, so the server
-    # is started with the interpreter the install went into. The Job id is only known
-    # inside the Job, and output links must be built on the public address.
-    start = (
-        'exec "$(uv python find --system)" -m diffusers.commands.diffusers_cli --format quiet '
-        f"{shlex.join(_kwargs_to_argv(task, task_kwargs))} "
-        f'--public-url "https://${{JOB_ID}}--{JOB_PORT}.hf.jobs"'
-    )
-    return f"{install} && {start}"
-
-
 def serve_remote(args: Namespace, task: str) -> None:
     if Path(args.model).exists():
         raise SystemExit(
@@ -135,6 +113,24 @@ def serve_remote(args: Namespace, task: str) -> None:
 
     if args.idle_timeout is None:
         args.idle_timeout = _DEFAULT_REMOTE_IDLE_TIMEOUT
+
+    # The Job installs the dependencies, then starts the server in the foreground.
+    task_kwargs = _build_task_kwargs(args)
+    for key in _JOB_SET_KEYS:
+        task_kwargs.pop(key, None)
+    task_kwargs["host"] = "0.0.0.0"
+    task_kwargs["port"] = JOB_PORT
+    task_kwargs["idle_timeout"] = args.idle_timeout
+    dependencies = [*_DEFAULT_REMOTE_DEPS, *_SERVE_DEPS, *(args.dependencies or [])]
+    install = shlex.join(["uv", "pip", "install", "--system", "--break-system-packages", *dependencies])
+    # An `--image` can put another environment first on PATH, with its own older `diffusers-cli`, so the server
+    # is started with the interpreter the install went into. The Job id is only known
+    # inside the Job, and output links must be built on the public address.
+    start = (
+        'exec "$(uv python find --system)" -m diffusers.commands.diffusers_cli --format quiet '
+        f"{shlex.join(_kwargs_to_argv(task, task_kwargs))} "
+        f'--public-url "https://${{JOB_ID}}--{JOB_PORT}.hf.jobs"'
+    )
     hf_token = args.token or get_token()
     env = {"HF_ENABLE_PARALLEL_LOADING": "1"}
     if DIFFUSERS_TRUST_REMOTE_KERNELS:
@@ -144,7 +140,7 @@ def serve_remote(args: Namespace, task: str) -> None:
     logger.info(f"starting a Job on flavor={args.flavor!r}...")
     job = api.run_job(
         image=args.image or _DEFAULT_REMOTE_IMAGE,
-        command=["sh", "-c", _job_script(args, task)],
+        command=["sh", "-c", f"{install} && {start}"],
         env=env,
         secrets={"HF_TOKEN": hf_token} if hf_token else None,
         flavor=args.flavor,

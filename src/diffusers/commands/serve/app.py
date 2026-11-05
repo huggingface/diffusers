@@ -48,16 +48,6 @@ def _timestamp(value: Any) -> str | None:
     return value.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _format_output(job: GenerationJob, artifact: dict[str, Any], base_url: str) -> dict[str, Any]:
-    """One output file as the response lists it: its metadata, plus a download link or its bytes inline."""
-    entry = {key: value for key, value in artifact.items() if key != "file"}
-    if job.request.response_format == "b64_json":
-        entry["base64"] = base64.b64encode((job.directory / artifact["file"]).read_bytes()).decode()
-        return entry
-    entry["url"] = base_url + _FILE_ROUTE.format(generation_id=job.id, filename=artifact["file"])
-    return entry
-
-
 def create_app(
     manifest: Manifest,
     scheduler: Scheduler,
@@ -78,14 +68,21 @@ def create_app(
         if job.error is not None:
             raise job.error
 
+        # Each output file is listed with its metadata, plus a download link or its bytes inline.
         outputs = None
         if job.status == "complete":
             # Output links must work for the client, so they are built on the address it reached the server at.
             base_url = (public_url or str(request.base_url)).rstrip("/")
-            outputs = {
-                name: [_format_output(job, artifact, base_url) for artifact in artifacts]
-                for name, artifacts in job.outputs.items()
-            }
+            outputs = {}
+            for name, artifacts in job.outputs.items():
+                outputs[name] = []
+                for artifact in artifacts:
+                    entry = {key: value for key, value in artifact.items() if key != "file"}
+                    if job.request.response_format == "b64_json":
+                        entry["base64"] = base64.b64encode((job.directory / artifact["file"]).read_bytes()).decode()
+                    else:
+                        entry["url"] = base_url + _FILE_ROUTE.format(generation_id=job.id, filename=artifact["file"])
+                    outputs[name].append(entry)
 
         return {
             "id": job.id,
@@ -154,7 +151,7 @@ def create_app(
 
     @app.get("/v1/models")
     async def list_models() -> dict[str, Any]:
-        return {"data": [manifest.summary()]}
+        return {"data": [{"id": manifest.id, "modalities": manifest.modalities, "tasks": list(manifest.tasks)}]}
 
     @app.get("/v1/models/{model_id:path}")
     async def get_model(model_id: str) -> Response:
@@ -198,7 +195,7 @@ def create_app(
             raise GMSError("not_implemented", "this server does not advertise the `sse` capability")
         generation = scheduler.get(generation_id)
         last_event_id = request.headers.get("last-event-id", "")
-        start = int(last_event_id) if last_event_id.isdigit() and len(last_event_id) < 10 else 0
+        start = int(last_event_id) if last_event_id.isdigit() else 0
 
         async def stream():
             index = start
@@ -218,17 +215,11 @@ def create_app(
     @app.get(_FILE_ROUTE)
     async def get_generation_file(generation_id: str, filename: str) -> FileResponse:
         generation = scheduler.get(generation_id)
-        artifacts = [a for group in (generation.outputs or {}).values() for a in group if a["file"] == filename]
-        if not artifacts:
-            raise GMSError("not_found", f"generation {generation_id!r} has no file {filename!r}")
-        return FileResponse(generation.directory / filename, media_type=artifacts[0]["media_type"])
-
-    @app.get("/v1/generations/{generation_id}/outputs/{name}/stream")
-    async def stream_generation_output(generation_id: str, name: str) -> Response:
-        raise GMSError("not_implemented", "this server does not advertise the `stream` capability")
-
-    @app.post("/v1/uploads")
-    async def create_upload() -> Response:
-        raise GMSError("not_implemented", "this server does not advertise the `presigned_upload` capability")
+        # Only files the backend saved are served, so a filename can't reach anything else on disk.
+        for artifacts in (generation.outputs or {}).values():
+            for artifact in artifacts:
+                if artifact["file"] == filename:
+                    return FileResponse(generation.directory / filename, media_type=artifact["media_type"])
+        raise GMSError("not_found", f"generation {generation_id!r} has no file {filename!r}")
 
     return app

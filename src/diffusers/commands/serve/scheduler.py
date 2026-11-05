@@ -24,7 +24,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from ...utils import logging
 from .manifest import GMSError, ResolvedRequest
@@ -55,7 +55,7 @@ class GenerationJob:
         self.events: list[tuple[str, dict[str, Any] | None]] = []
         self.done = False
         self._lock = threading.Lock()
-        # Handlers waiting on the event loop for the next event. The worker thread wakes them through their loop.
+        # Requests waiting on the event loop for the job to change. The worker thread wakes them through their loop.
         self._waiters: list[tuple[asyncio.AbstractEventLoop, asyncio.Event]] = []
 
     @property
@@ -93,8 +93,8 @@ class GenerationJob:
             self.done = True
             self._notify_waiting_requests()
 
-    async def _wait_until(self, condition: Any, timeout: float) -> None:
-        # Waiting on the event loop, not a pool thread, so any number of clients can wait at once.
+    async def _wait_until(self, condition: Callable[[], bool], timeout: float) -> None:
+        # Waiting on the event loop, not a pool thread, so any number of requests can wait at once.
         loop = asyncio.get_running_loop()
         give_up_at = loop.time() + timeout
         while True:
@@ -113,7 +113,7 @@ class GenerationJob:
 
     def _notify_waiting_requests(self) -> None:
         for loop, event in self._waiters:
-            # A loop closed at shutdown has no handler left to wake, and raising here would end the worker.
+            # A loop closed at shutdown has no request left to wake, and raising here would end the worker.
             if not loop.is_closed():
                 loop.call_soon_threadsafe(event.set)
 
@@ -140,9 +140,12 @@ class Scheduler:
             ).start()
 
     def failure(self) -> str | None:
-        failure = next(filter(None, (backend.failure() for backend in self._backends)), None)
-        if failure is not None or self._timeout is None:
-            return failure
+        for backend in self._backends:
+            failure = backend.failure()
+            if failure is not None:
+                return failure
+        if self._timeout is None:
+            return None
         # A timed out generation stops at its next step. One still running long after that is stuck inside a step,
         # or in a pipeline without step callbacks, and its worker takes no more jobs.
         now = time.monotonic()

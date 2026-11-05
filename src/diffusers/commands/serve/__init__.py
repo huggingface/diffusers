@@ -20,6 +20,7 @@ clients poll or follow over server-sent events.
 
 from __future__ import annotations
 
+import copy
 import inspect
 import random
 import secrets
@@ -284,10 +285,11 @@ class ServeCommand(BaseDiffusersCLICommand):
         if args.context_parallel:
             backends = [ParallelBackend(args, manifest)]
         elif args.data_parallel > 1:
-            backends = [
-                DiffusersBackend(Namespace(**{**vars(args), "device_map": f"cuda:{index}"}), manifest)
-                for index in range(args.data_parallel)
-            ]
+            backends = []
+            for index in range(args.data_parallel):
+                replica_args = copy.copy(args)
+                replica_args.device_map = f"cuda:{index}"
+                backends.append(DiffusersBackend(replica_args, manifest))
         else:
             backends = [DiffusersBackend(args, manifest)]
 
