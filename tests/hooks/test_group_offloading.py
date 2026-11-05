@@ -45,6 +45,7 @@ from ..testing_utils import (  # noqa: E402
     backend_max_memory_allocated,
     backend_reset_peak_memory_stats,
     require_torch_accelerator,
+    require_torchao_version_greater_or_equal,
     torch_device,
 )
 
@@ -373,11 +374,9 @@ class TestGroupOffload:
         with pytest.raises(ValueError, match="Cannot apply group offloading"):
             pipe.model.enable_group_offload(torch_device, offload_type="block_level", num_blocks_per_group=3)
 
+    @require_torchao_version_greater_or_equal("0.16.0")
     def test_torchao_cpu_cache_does_not_alias_live_parameter(self):
-        try:
-            from torchao.quantization import Int8WeightOnlyConfig, quantize_
-        except ImportError:
-            pytest.skip("test requires torchao")
+        from torchao.quantization import Int8WeightOnlyConfig, quantize_
 
         linear = torch.nn.Linear(16, 16, bias=False, dtype=torch.bfloat16)
         quantize_(linear, Int8WeightOnlyConfig(version=2))
@@ -389,8 +388,11 @@ class TestGroupOffload:
         moved = weight.to("meta")
         _swap_torchao_tensor(weight, moved)
 
-        tensor_data_names = getattr(cpu_copy.__class__, "tensor_data_names")
+        tensor_data_names = cpu_copy.tensor_data_names
+        assert len(tensor_data_names) > 0
+        assert "qdata" in tensor_data_names
         for attr_name in tensor_data_names:
+            assert getattr(cpu_copy, attr_name) is not getattr(weight, attr_name)
             assert getattr(cpu_copy, attr_name).device.type == "cpu"
 
         _restore_torchao_tensor(weight, cpu_copy)
