@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ...models.heads.duration_head_ltx2 import LTX2DurationHead as _LTX2DurationHead
+from ...models.others.duration_head_ltx2 import LTX2DurationHead as _LTX2DurationHead
 from ...utils import deprecate
 
 

@@ -23,7 +23,7 @@ from transformers import PreTrainedModel, PreTrainedTokenizerBase, ProcessorMixi
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKLLTX2Video, LTX2VideoTransformer3DModel
 from ...models.condition_embedders import LTX2TextConnectors
-from ...models.heads import LTX2DurationHead
+from ...models.others import LTX2DurationHead
 
 # NOTE (modular.md gotcha #1): `LTX2VideoCondition`, `LTX2ReferenceCondition`, the prompt-enhancement config/helpers,
 # and the system prompts live under `diffusers.pipelines.ltx2.*`, and modular blocks must not import from

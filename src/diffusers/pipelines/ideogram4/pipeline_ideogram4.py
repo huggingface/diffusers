@@ -22,7 +22,7 @@ from transformers.masking_utils import create_causal_mask
 from ...image_processor import VaeImageProcessor
 from ...loaders import Ideogram4LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLFlux2
-from ...models.heads import Ideogram4PromptEnhancerHead
+from ...models.others import Ideogram4PromptEnhancerHead
 from ...models.transformers.transformer_ideogram4 import (
     IMAGE_POSITION_OFFSET,
     LLM_TOKEN_INDICATOR,

@@ -33,7 +33,7 @@ from ...image_processor import PipelineImageInput
 from ...loaders import FromSingleFileMixin, LTX2LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video, LTX2Vocoder, LTX2VocoderWithBWE
 from ...models.condition_embedders import LTX2TextConnectors
-from ...models.heads import LTX2DurationHead
+from ...models.others import LTX2DurationHead
 from ...models.transformers import LTX2VideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler, LTXEulerAncestralRFScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring

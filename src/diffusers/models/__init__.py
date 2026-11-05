@@ -105,13 +105,13 @@ if is_torch_available():
     _import_structure["controlnets.multicontrolnet"] = ["MultiControlNetModel"]
     _import_structure["controlnets.multicontrolnet_union"] = ["MultiControlNetUnionModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
-    _import_structure["heads.duration_head_ltx2"] = ["LTX2DurationHead"]
-    _import_structure["heads.prompt_enhancer_head_ideogram4"] = ["Ideogram4PromptEnhancerHead"]
     _import_structure["latent_upscaler.latent_upscaler_kandinsky6_sr"] = ["Kandinsky6SRLatentUpscalerBank"]
     _import_structure["latent_upscaler.latent_upscaler_ltx"] = ["LTXLatentUpsamplerModel"]
     _import_structure["latent_upscaler.latent_upscaler_ltx2"] = ["LTX2LatentUpsamplerModel"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
+    _import_structure["others.duration_head_ltx2"] = ["LTX2DurationHead"]
     _import_structure["others.image_normalizer_stable_unclip"] = ["StableUnCLIPImageNormalizer"]
+    _import_structure["others.prompt_enhancer_head_ideogram4"] = ["Ideogram4PromptEnhancerHead"]
     _import_structure["others.renderer_shap_e"] = ["ShapERenderer"]
     _import_structure["others.watermarker_if"] = ["IFWatermarker"]
     _import_structure["transformers.ace_step_transformer"] = ["AceStepTransformer1DModel"]
@@ -292,10 +292,15 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageControlNetModel,
         )
         from .embeddings import ImageProjection
-        from .heads import Ideogram4PromptEnhancerHead, LTX2DurationHead
         from .latent_upscaler import Kandinsky6SRLatentUpscalerBank, LTX2LatentUpsamplerModel, LTXLatentUpsamplerModel
         from .modeling_utils import ModelMixin
-        from .others import IFWatermarker, ShapERenderer, StableUnCLIPImageNormalizer
+        from .others import (
+            Ideogram4PromptEnhancerHead,
+            IFWatermarker,
+            LTX2DurationHead,
+            ShapERenderer,
+            StableUnCLIPImageNormalizer,
+        )
         from .transformers import (
             AceStepTransformer1DModel,
             AllegroTransformer3DModel,

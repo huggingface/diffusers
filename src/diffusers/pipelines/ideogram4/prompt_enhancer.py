@@ -28,7 +28,7 @@ import math
 
 import torch
 
-from ...models.heads.prompt_enhancer_head_ideogram4 import Ideogram4PromptEnhancerHead as _Ideogram4PromptEnhancerHead
+from ...models.others.prompt_enhancer_head_ideogram4 import Ideogram4PromptEnhancerHead as _Ideogram4PromptEnhancerHead
 from ...utils import deprecate, logging
 
 
