@@ -981,10 +981,11 @@ def main():
             batch_time_m.update(time.time() - end)
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
-                global_step += 1
-                progress_bar.update(1)
-                if args.use_ema:
-                    ema_model.step(model.parameters())
+                if not accelerator.optimizer_step_was_skipped:
+                    global_step += 1
+                    progress_bar.update(1)
+                    if args.use_ema:
+                        ema_model.step(model.parameters())
             if accelerator.sync_gradients and not generator_step and accelerator.is_main_process:
                 # wait for both generator and discriminator to settle
                 # Log metrics

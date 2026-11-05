@@ -632,7 +632,7 @@ def main(args):
                 optimizer.zero_grad()
 
             # Checks if the accelerator has performed an optimization step behind the scenes
-            if accelerator.sync_gradients:
+            if accelerator.sync_gradients and not accelerator.optimizer_step_was_skipped:
                 if args.use_ema:
                     ema_model.step(model.parameters())
                 progress_bar.update(1)
