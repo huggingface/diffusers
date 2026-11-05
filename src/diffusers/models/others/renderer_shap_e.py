@@ -678,7 +678,8 @@ class MLPNeRSTFModel(ModelMixin, ConfigMixin):
             nerf_level (`str`, *optional*, defaults to `"coarse"`):
                 Which density/color head to read, `"coarse"` or `"fine"`.
             rendering_mode (`str`, *optional*, defaults to `"nerf"`):
-                `"nerf"` reads the NeRF color head, `"stf"` reads the signed distance and texture field (STF) color head.
+                `"nerf"` reads the NeRF color head, `"stf"` reads the signed distance and texture field (STF) color
+                head.
 
         Returns:
             [`MLPNeRFModelOutput`]:
