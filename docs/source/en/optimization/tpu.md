@@ -10,16 +10,18 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# TorchTPU
+# Google TPU
 
-[TorchTPU](https://github.com/google-pytorch/torch_tpu/) is a PyTorch backend for Google's Tensor Processing Units
-(TPUs), which lets you run Diffusers pipelines on Cloud TPUs (v6e, v7x) with minimal code changes.
+Tensor Processing Units (TPUs) are Google's machine learning accelerators, available as Cloud TPUs (v6e, v7x).
+Diffusers runs on them through [TorchTPU](https://github.com/google-pytorch/torch_tpu/), the PyTorch backend for TPUs,
+with minimal code changes.
 
-Two execution modes are available:
+Three execution modes are available:
 
 | Mode | Constant | How to activate | Notes |
 |---|---|---|---|
 | Strict eager (default) | `EagerMode.DEFER_NEVER` | `pipe.to("tpu")` | Operations dispatched one at a time, asynchronous |
+| Optimized eager | `EagerMode.DEFER_AND_FUSE` | `TORCH_TPU_DEFER_AND_FUSE=1` | Operations deferred and fused into larger graphs; faster than strict eager, longer compile |
 | Compile | — | `torch.compile(module, backend="tpu")` | AOT compilation with `TpuBackend` |
 
 Follow the [TorchTPU installation guide](https://github.com/google-pytorch/torch_tpu/). Once installed, `import torch`
