@@ -178,22 +178,38 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
         scheduler.set_begin_index(5)
 
         sample = self.dummy_sample_deter
-        model_output = self.dummy_noise_deter
+        model_output_1 = self.dummy_noise_deter
+        model_output_2 = self.dummy_noise_deter * 1.5 + 0.1
+        model_output_3 = self.dummy_noise_deter * 0.8 - 0.2
 
-        # On the first step starting at begin_index, only 1 derivative is available
-        # so the update must match first-order Euler step (order=1)
-        sigma_curr = scheduler.sigmas[5]
-        sigma_next = scheduler.sigmas[6]
-        derivative = (sample - (sample - sigma_curr * model_output)) / sigma_curr
-        expected_prev = sample + (sigma_next - sigma_curr) * derivative
+        # Step 1: Only 1 derivative is available, update must match first-order Euler step (order=1)
+        sigma_5 = scheduler.sigmas[5]
+        sigma_6 = scheduler.sigmas[6]
+        d1 = (sample - (sample - sigma_5 * model_output_1)) / sigma_5
+        expected_prev_1 = sample + (sigma_6 - sigma_5) * d1
 
-        output = scheduler.step(model_output, scheduler.timesteps[5], sample)
-        assert torch.allclose(output.prev_sample, expected_prev, atol=1e-5)
+        output_1 = scheduler.step(model_output_1, scheduler.timesteps[5], sample)
+        assert torch.allclose(output_1.prev_sample, expected_prev_1, atol=1e-5)
         assert len(scheduler.derivatives) == 1
 
-        # Second step accumulates a second derivative
-        scheduler.step(model_output, scheduler.timesteps[6], output.prev_sample)
+        # Step 2: 2 derivatives available, update must match second-order Adams-Bashforth (order=2)
+        d2 = (output_1.prev_sample - (output_1.prev_sample - sigma_6 * model_output_2)) / sigma_6
+        coeffs_2 = [scheduler.get_lms_coefficient(2, 6, c) for c in range(2)]
+        expected_prev_2 = output_1.prev_sample + coeffs_2[0] * d2 + coeffs_2[1] * d1
+
+        output_2 = scheduler.step(model_output_2, scheduler.timesteps[6], output_1.prev_sample)
+        assert torch.allclose(output_2.prev_sample, expected_prev_2, atol=1e-5)
         assert len(scheduler.derivatives) == 2
+
+        # Step 3: 3 derivatives available, update must match third-order Adams-Bashforth (order=3)
+        sigma_7 = scheduler.sigmas[7]
+        d3 = (output_2.prev_sample - (output_2.prev_sample - sigma_7 * model_output_3)) / sigma_7
+        coeffs_3 = [scheduler.get_lms_coefficient(3, 7, c) for c in range(3)]
+        expected_prev_3 = output_2.prev_sample + coeffs_3[0] * d3 + coeffs_3[1] * d2 + coeffs_3[2] * d1
+
+        output_3 = scheduler.step(model_output_3, scheduler.timesteps[7], output_2.prev_sample)
+        assert torch.allclose(output_3.prev_sample, expected_prev_3, atol=1e-5)
+        assert len(scheduler.derivatives) == 3
 
     def test_beta_sigmas(self):
         self.check_over_configs(use_beta_sigmas=True)
