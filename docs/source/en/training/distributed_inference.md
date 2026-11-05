@@ -29,7 +29,7 @@ Each strategy solves a different problem, so choose one based on the resource th
 
 Some practical guidance:
 
-- If the model already fits and you have many prompts, use data parallelism. It scales throughput with the number of GPUs without touching the model, and it leaves single-prompt latency alone.
+- If the model already fits and you have many prompts, use data parallelism. It scales throughput with the number of GPUs without touching the model, and it leaves single-prompt latency alone. Set it up with [Accelerate](../optimization/data_parallelism#accelerate) or [PyTorch Distributed](../optimization/data_parallelism#pytorch-distributed).
 - If a single component's weights don't fit, try tensor parallelism first, since it lowers both memory and latency. Tensor parallelism communicates at every block boundary, so it needs a fast interconnect like NVLink. On PCIe, the per-layer traffic can outweigh the compute it saves, and `device_map` becomes the better choice. `device_map` also handles the case where the components are individually fine but collectively too large.
 - If activations, not weights, are the problem, use context parallelism. This helps with long sequences, like large images and videos with many frames. Pick a backend from the benchmarks in the [Context parallelism](../optimization/context_parallelism) guide.
 - If both the weights and the sequence are too large, Diffusers can't apply tensor and context parallelism to the same model. `ParallelConfig` raises an error if you pass both configs, and `enable_parallelism` can't be called a second time on a model that's already parallelized.

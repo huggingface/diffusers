@@ -82,8 +82,6 @@
       title: Context parallelism
     - local: optimization/tensor_parallelism
       title: Tensor parallelism
-    - local: optimization/tensor_parallel_plan
-      title: Add tensor parallelism to a model
     title: Distributed inference
   - isExpanded: false
     sections:

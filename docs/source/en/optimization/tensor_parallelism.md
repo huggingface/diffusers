@@ -18,7 +18,7 @@ specific language governing permissions and limitations under the License.
 
 Pass a [`TensorParallelConfig`] to the `parallel_config` argument of the model's [`~ModelMixin.from_pretrained`]. `tp_degree` is the number of devices to shard across and must divide the model's number of attention heads. The model's class must define a `_tp_plan`, which maps module names to a sharding style. To check whether a model supports tensor parallelism, look for this attribute on its class, such as [`Flux2Transformer2DModel`].
 
-To add a plan to another model, refer to [Add tensor parallelism to a model](./tensor_parallel_plan).
+To add a plan to another model, see [Add tensor parallelism to a model](#add-tensor-parallelism-to-a-model).
 
 Loading this way shards the checkpoint as it's read. Each rank reads only its own slice of each weight and places it directly on its GPU, so no rank ever holds a full-size weight. Memory per rank drops as `tp_degree` increases.
 
@@ -82,11 +82,76 @@ Loading with `parallel_config` is faster and uses less CPU memory per rank than 
 
 Tensor parallelism doesn't work with some loading options and features, and you can't save a sharded model.
 
-> [!CAUTION]
-> Loading with a tensor-parallel `parallel_config` doesn't work with `device_map`, `quantization_config`, `low_cpu_mem_usage=False`, `use_flashpack=True`, or non-safetensors weights. Each one raises an error instead of quietly loading the full checkpoint.
->
-> Combining tensor parallelism with quantization, offloading, or LoRA adapters also raises an error, no matter how the model is sharded.
->
-> To shard a model that is already in memory, call [`~ModelMixin.enable_parallelism`] with the same config instead. It loads the full model first and then shards it, so every rank needs memory for the full checkpoint.
+- Loading with a tensor-parallel `parallel_config` doesn't work with `device_map`, `quantization_config`, `low_cpu_mem_usage=False`, `use_flashpack=True`, or non-safetensors weights. Each one raises an error instead of quietly loading the full checkpoint.
+- Combining tensor parallelism with quantization, offloading, or LoRA adapters also raises an error, no matter how the model is sharded.
+- To shard a model that's already in memory, call [`~ModelMixin.enable_parallelism`] with the same config. It loads the full model first and then shards it, so every rank needs memory for the full checkpoint. Loading with `parallel_config` avoids that cost.
+- Saving a tensor-parallel model raises an error in [`~ModelMixin.save_pretrained`]. Save the model before sharding it.
 
-Saving a tensor-parallel model raises an error in [`~ModelMixin.save_pretrained`]. Save the model before sharding it.
+## Add tensor parallelism to a model
+
+This section is for contributors who want to add tensor parallelism support to a Diffusers model.
+
+Tensor parallelism works only on models that define a `_tp_plan`, a class attribute that maps module names to a sharding style. Writing one mostly means pairing each projection that *expands* the hidden dimension with the projection that *contracts* it back.
+
+Each key can contain at most one `*`, and the part before the `*` must resolve to an [`nn.ModuleList`](https://pytorch.org/docs/stable/generated/torch.nn.ModuleList.html), so one entry covers every block. A key without a `*` applies to the model itself. Paths are relative to the model.
+
+### Colwise and rowwise
+
+| Style | Shards | Each rank | Use for |
+|---|---|---|---|
+| `"colwise"` | output features (`weight` dim 0) | computes a slice of the output | `to_q`, `to_k`, `to_v`, FFN in-projection |
+| `"rowwise"` | input features (`weight` dim 1) | computes a partial sum | `to_out.0`, FFN out-projection |
+| `"rowwise_split_input"` | input features (`weight` dim 1) | computes a partial sum from its slice of the replicated input | a standalone projection whose input is replicated, like an AdaLN modulation projection that reads the timestep embedding |
+
+Always pair `"colwise"` and `"rowwise"` in that order. A `"colwise"` projection leaves its output sharded, the following `"rowwise"` projection consumes that shard directly, and a single `AllReduce` at the block boundary reconstructs the result. Sharding the pair any other way forces a gather in the middle and communicates far more.
+
+In attention, the column-wise Q, K and V projections give each rank a subset of heads, so `tp_degree` must divide the head count. Encoder-stream duplicates (`add_q_proj`, `to_add_out`, `ff_context`) follow the same pattern as their image-stream counterparts.
+
+### Fused projections
+
+When one `Linear` packs several logical tensors along the dimension being sharded, plain `"colwise"`/`"rowwise"` slices straight across the concatenation and misaligns the pieces. Use `PackedColwiseParallel`/`PackedRowwiseParallel` instead, which shard each packed block independently.
+
+```py
+# in src/diffusers/models/transformers/your_model.py
+from ...hooks.tensor_parallel import PackedColwiseParallel, PackedRowwiseParallel
+```
+
+Pass `blocks`, a list of proportional integers whose sum divides the packed dimension. For example, use `[1, 1]` for a SwiGLU gate and up projection of equal halves, or `[1, 1, 1, 3, 3]` for a fused Q, K, V, gate and up projection with `mlp_ratio=3`.
+
+```py
+"transformer_blocks.*.ff.linear_in": PackedColwiseParallel([1, 1]),
+```
+
+When the block sizes are only known from the config, omit `blocks` and store the absolute sizes on the `Linear` during `__init__` instead, as `_tp_packed_col_blocks` or `_tp_packed_row_blocks`.
+
+```py
+# in the attention module's __init__
+self.to_out._tp_packed_row_blocks = [self.inner_dim, self.mlp_hidden_dim]
+```
+
+```py
+# in the model's _tp_plan
+"single_transformer_blocks.*.attn.to_out": PackedRowwiseParallel(),
+```
+
+The plan in [`transformer_flux2.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux2.py) uses both forms. The double-stream SwiGLU pair passes `blocks` directly. The fused single-stream QKV and MLP projection stores its sizes on the `Linear` in `Flux2ParallelSelfAttention.__init__`, because they depend on `mlp_ratio` and `mlp_mult_factor`.
+
+### What to leave out
+
+Modules left out of the plan are replicated on every rank. Leave out normalization layers, patch and text embeddings, and the final `norm_out` and `proj_out`. They're small, so sharding them saves little memory and adds communication. AdaLN modulation (`img_mod` and `txt_mod`) is usually small enough to leave out too. When it's large, like MiniMax-H3's `adaln_proj.linear`, shard it with `"rowwise_split_input"`.
+
+### Constraints and verification
+
+- `tp_degree` must divide `config.num_attention_heads`.
+- Every packed block must *individually* be divisible by `tp_degree`, not just their sum.
+
+[`~ModelMixin.from_pretrained`] and [`~ModelMixin.enable_parallelism`] check both before loading or sharding any weight.
+
+Validate a new plan numerically rather than by eye: generate with a fixed seed on a single device, then again under tensor parallelism, and compare the outputs. A misplaced `"colwise"`/`"rowwise"` usually still runs and produces a plausible but wrong image.
+
+> [!TIP]
+> Start from an existing plan for a similar architecture.
+>
+> - [`transformer_qwenimage.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_qwenimage.py) has no fused projections, so every entry is plain `"colwise"` or `"rowwise"`.
+> - [`transformer_flux.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux.py) adds one packed row-wise projection.
+> - [`transformer_flux2.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux2.py) uses both packed styles.
