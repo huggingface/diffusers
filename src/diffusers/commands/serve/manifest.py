@@ -142,10 +142,13 @@ class GMSError(Exception):
 class ResolvedRequest:
     task: str
     kwargs: dict[str, Any]
-    # pipeline kwarg -> (request input name, media value or list of media values)
-    media: dict[str, tuple[str, Any]]
+    # pipeline kwarg -> (request input name, media type, media value or list of media values)
+    media: dict[str, tuple[str, str, Any]]
     seed: int | None
-    output_formats: dict[str, str]
+    # output name -> (output type, media type to encode it as)
+    outputs: dict[str, tuple[str, str]]
+    # The frame rate video outputs are encoded at, or None when the task produces no video.
+    fps: float | None
     response_format: str
     adapters: list[dict[str, Any]] = field(default_factory=list)
 
@@ -417,15 +420,22 @@ class Manifest:
         self.adapters = data.get("adapters", {})
         self._kwarg_names = set(signature.parameters) - {"self"}
         self._pipeline_name = pipeline_cls.__name__
-        self._has_default_fps = any(
-            signature.parameters[kwarg].default not in (None, inspect.Parameter.empty)
-            for kwarg in _PARAMETER_KWARGS["fps"]
-            if kwarg in signature.parameters
-        )
+        fps_kwarg = self._pipeline_kwarg("fps", _PARAMETER_KWARGS, {})
+        default_fps = signature.parameters[fps_kwarg].default if fps_kwarg is not None else None
+        self._default_fps = None if default_fps is inspect.Parameter.empty else default_fps
 
         for capability in self.capabilities:
-            if capability not in supported_capabilities:
-                raise SystemExit(self._unsupported_capability(capability))
+            if capability in supported_capabilities:
+                continue
+            message = f"The GMS manifest for {self.id!r} declares the {capability!r} capability, "
+            if capability == "adapters":
+                raise SystemExit(
+                    message + f"but request adapters are off: {self._pipeline_name} cannot load LoRAs, or the server "
+                    "was started with --compile, --lora or --context-parallel."
+                )
+            raise SystemExit(
+                message + f"which this server does not provide. It provides: {list(SUPPORTED_CAPABILITIES)}."
+            )
         if "adapters" in self.capabilities and not self.adapters:
             raise SystemExit(
                 f"The GMS manifest for {self.id!r} declares the `adapters` capability but no top-level `adapters` "
@@ -435,6 +445,8 @@ class Manifest:
         # Per task: GMS input or parameter name -> the pipeline kwarg it sets.
         self._input_kwargs: dict[str, dict[str, str]] = {}
         self._parameter_kwargs: dict[str, dict[str, str]] = {}
+        # Per task: the pipeline kwarg that sets the frame rate, if the pipeline takes one.
+        self._fps_kwargs: dict[str, str | None] = {}
         for name, task in self.tasks.items():
             declared = task.get(EXTENSION_KEY, {})
             self._input_kwargs[name] = {
@@ -445,6 +457,7 @@ class Manifest:
                 key: self._require_kwarg(name, "parameter", key, _PARAMETER_KWARGS, declared.get("parameters", {}))
                 for key in task.get("parameters", {})
             }
+            self._fps_kwargs[name] = self._parameter_kwargs[name].get("fps", fps_kwarg)
             self._check_task(name, task)
 
     def _pipeline_kwarg(self, name: str, aliases: dict[str, tuple[str, ...]], declared: dict[str, str]) -> str | None:
@@ -477,7 +490,7 @@ class Manifest:
                 'seconds cannot be converted to frames. Add one, e.g. "lattice": {"frames": "8k+1", "fps": 24}.'
             )
         produces_video = any(spec["type"] == "video" for spec in task["outputs"].values())
-        if produces_video and not self._has_default_fps and "duration" not in parameters:
+        if produces_video and self._default_fps is None and "duration" not in parameters:
             raise SystemExit(
                 f"The GMS manifest for {self.id!r} declares a video output on task {name!r}, but "
                 f"{self._pipeline_name} has no default `fps` or `frame_rate` argument, so the frame rate to encode "
@@ -493,19 +506,6 @@ class Manifest:
                         f"{name!r}, which the task does not declare."
                     )
 
-    def _unsupported_capability(self, capability: str) -> str:
-        message = f"The GMS manifest for {self.id!r} declares the {capability!r} capability, "
-        if capability == "adapters":
-            return message + (
-                f"but request adapters are off: {self._pipeline_name} cannot load LoRAs, or the server was started "
-                "with --compile, --lora or --context-parallel."
-            )
-        return message + f"which this server does not provide. It provides: {list(SUPPORTED_CAPABILITIES)}."
-
-    @property
-    def hash(self) -> str:
-        return f"sha256:{hashlib.sha256(self.raw).hexdigest()}"
-
     def summary(self) -> dict[str, Any]:
         return {
             "id": self.id,
@@ -518,7 +518,7 @@ class Manifest:
         head: dict[str, Any] = {"spec": SPEC_VERSION}
         if self.source is not None:
             head["source"] = self.source
-            head["hash"] = self.hash
+            head["hash"] = f"sha256:{hashlib.sha256(self.raw).hexdigest()}"
         return json.dumps(head)[:-1].encode() + b', "manifest": ' + self.raw + b"}"
 
     def resolve(self, body: Any) -> ResolvedRequest:
@@ -531,7 +531,13 @@ class Manifest:
         # The spec has the server pick the seed when the request omits it, so the result is reproducible.
         if seed is None and "seed" in self._parameter_kwargs[task]:
             seed = random.randrange(2**32)
-        output_formats = self._resolve_output_formats(task, body.get("output_format"))
+        kwargs = {**input_kwargs, **parameter_kwargs}
+        outputs = self._resolve_outputs(task, body.get("output_format"))
+        fps = None
+        if any(kind == "video" for kind, _ in outputs.values()):
+            # The startup check guarantees a frame lattice when the pipeline has no default frame rate.
+            duration = self.tasks[task].get("parameters", {}).get("duration")
+            fps = kwargs.get(self._fps_kwargs[task]) or self._default_fps or _frame_lattice(duration)[2]
 
         response_format = body.get("response_format", "url")
         if response_format not in ("url", "b64_json"):
@@ -543,10 +549,11 @@ class Manifest:
 
         return ResolvedRequest(
             task=task,
-            kwargs={**input_kwargs, **parameter_kwargs},
+            kwargs=kwargs,
             media=media,
             seed=seed,
-            output_formats=output_formats,
+            outputs=outputs,
+            fps=fps,
             response_format=response_format,
             adapters=self._resolve_adapters(body.get("adapters")),
         )
@@ -615,17 +622,17 @@ class Manifest:
                     f"preset {preset!r} is not declared for task {task!r}; declared presets: {list(presets)}",
                     "/preset",
                 )
-            values.update(self.tasks[task]["presets"][preset].get("parameters", {}))
+            values.update(presets[preset].get("parameters", {}))
         values.update(explicit)
         return values, set(explicit)
 
     def _resolve_inputs(
         self, task: str, inputs: dict[str, Any], values: dict[str, Any]
-    ) -> tuple[dict[str, Any], dict[str, tuple[str, Any]]]:
+    ) -> tuple[dict[str, Any], dict[str, tuple[str, str, Any]]]:
         """Map the request inputs to pipeline kwargs. Text is passed as is; media is checked and left to load."""
         declared = self.tasks[task]["inputs"]
         kwargs: dict[str, Any] = {}
-        media: dict[str, tuple[str, Any]] = {}
+        media: dict[str, tuple[str, str, Any]] = {}
         for key, value in inputs.items():
             pointer = f"/inputs/{key}"
             spec = declared.get(key)
@@ -653,7 +660,7 @@ class Manifest:
                     _check_media(key, item, spec, f"{pointer}/{index}")
             else:
                 _check_media(key, value, spec, pointer)
-            media[kwarg] = (key, value)
+            media[kwarg] = (key, spec["type"], value)
 
         for key, spec in declared.items():
             if spec.get("required") and key not in inputs:
@@ -693,30 +700,31 @@ class Manifest:
                         "/parameters/fps",
                     )
                 kwargs[kwarg] = _duration_to_frames(value, spec, pointer)
-                fps_kwarg = self._pipeline_kwarg("fps", _PARAMETER_KWARGS, {})
-                if fps_kwarg is not None:
-                    kwargs[fps_kwarg] = lattice_fps
+                if self._fps_kwargs[task] is not None:
+                    kwargs[self._fps_kwargs[task]] = lattice_fps
                 continue
             kwargs[kwarg] = value
         return kwargs, seed
 
-    def _resolve_output_formats(self, task: str, output_format: Any) -> dict[str, str]:
+    def _resolve_outputs(self, task: str, output_format: Any) -> dict[str, tuple[str, str]]:
         output_formats = {kind: formats[0] for kind, formats in OUTPUT_FORMATS.items()}
-        if output_format is None:
-            return output_formats
-        kind = output_format.split("/")[0] if isinstance(output_format, str) else None
-        produced = {spec["type"] for spec in self.tasks[task]["outputs"].values()}
-        if kind not in produced or output_format not in OUTPUT_FORMATS.get(kind, ()):
-            supported = sorted(f for k in produced for f in OUTPUT_FORMATS.get(k, ()))
-            raise GMSError(
-                "invalid_request",
-                f"output_format must be one of {supported} for task {task!r}, got {output_format!r}",
-                "/output_format",
-            )
-        output_formats[kind] = output_format
-        return output_formats
+        if output_format is not None:
+            kind = output_format.split("/")[0] if isinstance(output_format, str) else None
+            produced = {spec["type"] for spec in self.tasks[task]["outputs"].values()}
+            if kind not in produced or output_format not in OUTPUT_FORMATS.get(kind, ()):
+                supported = sorted(f for k in produced for f in OUTPUT_FORMATS.get(k, ()))
+                raise GMSError(
+                    "invalid_request",
+                    f"output_format must be one of {supported} for task {task!r}, got {output_format!r}",
+                    "/output_format",
+                )
+            output_formats[kind] = output_format
+        return {
+            name: (spec["type"], output_formats[spec["type"]]) for name, spec in self.tasks[task]["outputs"].items()
+        }
 
     def _resolve_adapters(self, adapters: Any) -> list[dict[str, Any]]:
+        """Validate the request adapters, and resolve each to its path and the weight `set_adapters` takes."""
         if adapters is None:
             return []
         if "adapters" not in self.capabilities:
@@ -727,6 +735,7 @@ class Manifest:
             raise GMSError(
                 "invalid_request", f"at most {MAX_ADAPTERS} adapters per request, got {len(adapters)}", "/adapters"
             )
+        resolved = []
         for index, adapter in enumerate(adapters):
             pointer = f"/adapters/{index}"
             if not isinstance(adapter, dict):
@@ -768,7 +777,9 @@ class Manifest:
                         f"adapter target scale must be a number, got {target_scale!r}",
                         f"{pointer}/targets/{target}",
                     )
-        return adapters
+            weight = {target: targets.get(target, scale) for target in valid_targets} if targets else scale
+            resolved.append({"path": path, "weight": weight})
+        return resolved
 
 
 # ---------------------------------------------------------------------------

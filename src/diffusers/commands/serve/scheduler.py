@@ -54,8 +54,10 @@ class GenerationJob:
         self._condition = threading.Condition()
 
     def report_progress(self, step: int, total_steps: int) -> None:
-        self.progress = {"step": step, "total_steps": total_steps, "fraction": round(step / total_steps, 4)}
-        self._emit("progress", self.progress)
+        with self._condition:
+            self.progress = {"step": step, "total_steps": total_steps, "fraction": round(step / total_steps, 4)}
+            self.events.append(("progress", self.progress))
+            self._condition.notify_all()
 
     def wait_for_events(self, index: int, timeout: float) -> tuple[list[tuple[str, dict[str, Any] | None]], bool]:
         with self._condition:
@@ -77,11 +79,6 @@ class GenerationJob:
             elif status == "complete":
                 self.events.append(("complete", None))
             self.done = True
-            self._condition.notify_all()
-
-    def _emit(self, event: str, data: dict[str, Any] | None) -> None:
-        with self._condition:
-            self.events.append((event, data))
             self._condition.notify_all()
 
 

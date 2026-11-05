@@ -55,7 +55,7 @@ from ..run import (
     _load_pipeline,
     _save_audio_arrays,
 )
-from .manifest import _PARAMETER_KWARGS, GMSError, Manifest, _frame_lattice, blocks_signature
+from .manifest import GMSError, Manifest, ResolvedRequest, blocks_signature
 from .scheduler import GenerationJob
 
 
@@ -194,15 +194,15 @@ def _sample_rate(pipeline: Any) -> int:
     )
 
 
-def load_request_media(manifest: Manifest, request: Any) -> dict[str, Any]:
+def load_request_media(request: ResolvedRequest) -> dict[str, Any]:
     """The pipeline kwargs of a request, with its media inputs fetched and decoded."""
     kwargs = dict(request.kwargs)
-    for kwarg, (name, value) in request.media.items():
+    for kwarg, (name, kind, value) in request.media.items():
         if isinstance(value, list):
             loaded = [_load_media(name, item, f"/inputs/{name}/{index}") for index, item in enumerate(value)]
         else:
             loaded = [_load_media(name, value, f"/inputs/{name}")]
-        if manifest.tasks[request.task]["inputs"][name]["type"] == "audio":
+        if kind == "audio":
             if kwarg == "initial_audio_waveforms":
                 kwargs.setdefault("initial_audio_sampling_rate", loaded[0][1])
             loaded = [waveform for waveform, _ in loaded]
@@ -212,7 +212,6 @@ def load_request_media(manifest: Manifest, request: Any) -> dict[str, Any]:
 
 class DiffusersBackend:
     def __init__(self, args: Namespace, manifest: Manifest, save_outputs: bool = True):
-        self._manifest = manifest
         # Under context parallelism every rank runs the call, and only rank 0 writes the files.
         self._save_outputs = save_outputs
         self.pipeline = _load_pipeline(args)
@@ -221,11 +220,6 @@ class DiffusersBackend:
             parameters = blocks_signature(self.pipeline.blocks).parameters
         else:
             parameters = inspect.signature(type(self.pipeline).__call__).parameters
-        self._defaults = {
-            name: parameter.default
-            for name, parameter in parameters.items()
-            if parameter.default is not inspect.Parameter.empty
-        }
         self._reports_steps = "callback_on_step_end" in parameters
         outputs = (spec["type"] for task in manifest.tasks.values() for spec in task["outputs"].values())
         self._sample_rate = _sample_rate(self.pipeline) if "audio" in outputs else None
@@ -237,7 +231,7 @@ class DiffusersBackend:
         return None
 
     def generate(self, generation: GenerationJob) -> dict[str, list[dict[str, Any]]]:
-        return self.run(load_request_media(self._manifest, generation.request), generation)
+        return self.run(load_request_media(generation.request), generation)
 
     def run(self, kwargs: dict[str, Any], generation: Any) -> dict[str, list[dict[str, Any]]]:
         """Call the pipeline with the request's kwargs, media already loaded, and save its outputs."""
@@ -270,8 +264,7 @@ class DiffusersBackend:
             return {}
 
         outputs = {}
-        for name, spec in self._manifest.tasks[request.task]["outputs"].items():
-            kind = spec["type"]
+        for name, (kind, media_type) in request.outputs.items():
             # A modular pipeline returns its `PipelineState`; a standard one returns an output object.
             if self._modular:
                 fields = (result.get(field) for field in _OUTPUT_FIELDS.get(kind, ()))
@@ -280,24 +273,15 @@ class DiffusersBackend:
             value = next((field for field in fields if field is not None), None)
             if value is None:
                 continue
-            rate = self._fps(request.task, kwargs) if kind == "video" else self._sample_rate
-            outputs[name] = _SAVERS[kind](value, generation.directory, name, request.output_formats[kind], rate)
+            rate = request.fps if kind == "video" else self._sample_rate
+            outputs[name] = _SAVERS[kind](value, generation.directory, name, media_type, rate)
         if not outputs:
-            declared = list(self._manifest.tasks[request.task]["outputs"])
             raise GMSError(
                 "internal",
-                f"{type(self.pipeline).__name__} returned none of the outputs {declared} declared for task "
-                f"{request.task!r}",
+                f"{type(self.pipeline).__name__} returned none of the outputs {list(request.outputs)} declared for "
+                f"task {request.task!r}",
             )
         return outputs
-
-    def _fps(self, task: str, kwargs: dict[str, Any]) -> float:
-        for kwarg in _PARAMETER_KWARGS["fps"]:
-            rate = kwargs.get(kwarg) or self._defaults.get(kwarg)
-            if rate:
-                return rate
-        # The manifest check at startup guarantees a frame lattice when the pipeline has no default fps.
-        return _frame_lattice(self._manifest.tasks[task]["parameters"]["duration"])[2]
 
     def _load_adapters(self, adapters: list[dict[str, Any]]) -> None:
         if not adapters:
@@ -314,13 +298,7 @@ class DiffusersBackend:
                     f"could not load adapter {adapter['path']!r}: {type(e).__name__}: {e}",
                     f"/adapters/{index}/path",
                 ) from e
-            scale = adapter.get("scale", 1.0)
-            targets = adapter.get("targets")
-            if targets:
-                valid_targets = self._manifest.adapters[adapter["type"]].get("targets", [])
-                weights.append({target: targets.get(target, scale) for target in valid_targets})
-            else:
-                weights.append(scale)
+            weights.append(adapter["weight"])
             names.append(name)
         self.pipeline.set_adapters(names, adapter_weights=weights)
 
@@ -404,7 +382,6 @@ class ParallelBackend:
             probe.bind(("127.0.0.1", 0))
             port = probe.getsockname()[1]
 
-        self._manifest = manifest
         self._failure: str | None = None
         self._failed = threading.Event()
         self._closing = False
@@ -469,7 +446,7 @@ class ParallelBackend:
             raise GMSError("internal", self._failure)
         job = {
             "request": generation.request,
-            "kwargs": load_request_media(self._manifest, generation.request),
+            "kwargs": load_request_media(generation.request),
             "directory": str(generation.directory),
         }
         self._cancel_flag.value = 0
