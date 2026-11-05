@@ -22,12 +22,13 @@ from transformers import PreTrainedModel, PreTrainedTokenizerFast
 from ...guiders.adaptive_projected_guidance import MomentumBuffer, normalized_guidance
 from ...loaders import AceStepLoraLoaderMixin
 from ...models import AutoencoderOobleck
+from ...models.condition_embedders import AceStepConditionEncoder
 from ...models.transformers.ace_step_transformer import AceStepTransformer1DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
-from .modeling_ace_step import AceStepAudioTokenDetokenizer, AceStepAudioTokenizer, AceStepConditionEncoder
+from .modeling_ace_step import AceStepAudioTokenDetokenizer, AceStepAudioTokenizer
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

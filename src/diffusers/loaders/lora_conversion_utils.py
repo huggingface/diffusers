@@ -2323,19 +2323,22 @@ def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
     has_non_diffusers_lora_id = any(down_key in k or up_key in k for k in all_keys)
     has_diffusers_lora_id = any(a_key in k or b_key in k for k in all_keys)
 
+    def get_alpha_scales(down_weight, alpha_key):
+        rank = down_weight.shape[0]
+        alpha = state_dict.pop(alpha_key, None)
+        if alpha is None:
+            return 1.0, 1.0
+        scale = (
+            alpha.item() / rank
+        )  # LoRA is scaled by 'alpha / rank' in forward pass, so we need to scale it back here
+        scale_down = scale
+        scale_up = 1.0
+        while scale_down * 2 < scale_up:
+            scale_down *= 2
+            scale_up /= 2
+        return scale_down, scale_up
+
     if has_non_diffusers_lora_id:
-
-        def get_alpha_scales(down_weight, alpha_key):
-            rank = down_weight.shape[0]
-            alpha = state_dict.pop(alpha_key).item()
-            scale = alpha / rank  # LoRA is scaled by 'alpha / rank' in forward pass, so we need to scale it back here
-            scale_down = scale
-            scale_up = 1.0
-            while scale_down * 2 < scale_up:
-                scale_down *= 2
-                scale_up /= 2
-            return scale_down, scale_up
-
         for k in all_keys:
             if k.endswith(down_key):
                 diffusers_down_key = k.replace(down_key, ".lora_A.weight")
@@ -2348,13 +2351,32 @@ def _convert_non_diffusers_qwen_lora_to_diffusers(state_dict):
                 converted_state_dict[diffusers_down_key] = down_weight * scale_down
                 converted_state_dict[diffusers_up_key] = up_weight * scale_up
 
-    # Already in diffusers format (lora_A/lora_B), just pop
+    # Already in diffusers format (lora_A/lora_B), apply alpha scaling and pop.
     elif has_diffusers_lora_id:
         for k in all_keys:
-            if a_key in k or b_key in k:
-                converted_state_dict[k] = state_dict.pop(k)
-            elif ".alpha" in k:
-                state_dict.pop(k)
+            if not k.endswith(a_key):
+                continue
+
+            diffusers_up_key = k.replace(a_key, b_key)
+            if diffusers_up_key not in state_dict:
+                raise ValueError(f"Missing lora_B weight for {k.removesuffix(a_key)}")
+
+            alpha_key = k.replace(a_key, ".alpha")
+            down_weight = state_dict.pop(k)
+            up_weight = state_dict.pop(diffusers_up_key)
+            scale_down, scale_up = get_alpha_scales(down_weight, alpha_key)
+            converted_state_dict[k] = down_weight * scale_down
+            converted_state_dict[diffusers_up_key] = up_weight * scale_up
+
+        for k in all_keys:
+            if k.endswith(b_key) and k in state_dict:
+                raise ValueError(f"Missing lora_A weight for {k.removesuffix(b_key)}")
+            if ".alpha" in k:
+                state_dict.pop(k, None)
+
+    for k in all_keys:
+        if ".alpha" in k:
+            state_dict.pop(k, None)
 
     if len(state_dict) > 0:
         raise ValueError(f"`state_dict` should be empty at this point but has {state_dict.keys()=}")
@@ -2548,6 +2570,26 @@ def _convert_non_diffusers_flux2_lora_to_diffusers(state_dict):
     for key in list(converted_state_dict.keys()):
         converted_state_dict[f"transformer.{key}"] = converted_state_dict.pop(key)
 
+    return converted_state_dict
+
+
+def _convert_non_diffusers_flux3_lora_to_diffusers(state_dict):
+    block_mapping = {
+        ".q_proj.": ".attn.to_q.",
+        ".k_proj.": ".attn.to_k.",
+        ".v_proj.": ".attn.to_v.",
+        ".attn_out.": ".attn.to_out.0.",
+        ".mlp_in.": ".ff.linear_in.",
+        ".mlp_out.": ".ff.linear_out.",
+    }
+    converted_state_dict = {}
+    for key, value in state_dict.items():
+        key = key.removeprefix("diffusion_model.")
+        key = key.replace("content_mode_blocks.", "mode_blocks.")
+        key = key.replace("single_blocks.", "single_transformer_blocks.")
+        for original_name, diffusers_name in block_mapping.items():
+            key = key.replace(original_name, diffusers_name)
+        converted_state_dict[f"transformer.{key}"] = value
     return converted_state_dict
 
 

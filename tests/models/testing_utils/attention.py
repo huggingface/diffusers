@@ -41,6 +41,12 @@ _CUDA_AVAILABLE = torch.cuda.is_available()
 # kernel only loads on SM120 (consumer/workstation Blackwell). `a` targets are architecture
 # specific, so neither SM100 nor SM121 is covered.
 _IS_SM120 = _CUDA_AVAILABLE and torch.cuda.get_device_capability() == (12, 0)
+# `kernels-community/aiter-sage-attention` is built for gfx1201 (RDNA4) only.
+_IS_GFX1201 = (
+    _CUDA_AVAILABLE
+    and torch.version.hip is not None
+    and torch.cuda.get_device_properties(0).gcnArchName.split(":")[0] == "gfx1201"
+)
 
 _PARAM_NATIVE_CUDNN = pytest.param(
     AttentionBackendName._NATIVE_CUDNN,
@@ -125,6 +131,18 @@ _PARAM_SAGE_BLACKWELL_HUB = pytest.param(
     ],
 )
 
+_PARAM_AITER_SAGE_HUB = pytest.param(
+    AttentionBackendName.AITER_SAGE_HUB,
+    id="aiter_sage_hub",
+    marks=[
+        pytest.mark.skipif(not _IS_GFX1201, reason="A gfx1201 GPU is required for the aiter_sage_hub backend."),
+        pytest.mark.skipif(
+            not is_kernels_available(),
+            reason="`kernels` package is required for aiter_sage_hub backend. Install with `pip install kernels`.",
+        ),
+    ],
+)
+
 # All backends under test.
 _ALL_BACKEND_PARAMS = [
     _PARAM_NATIVE_CUDNN,
@@ -134,6 +152,7 @@ _ALL_BACKEND_PARAMS = [
     _PARAM_FLASH_3_VARLEN_HUB,
     _PARAM_SAGE_HUB,
     _PARAM_SAGE_BLACKWELL_HUB,
+    _PARAM_AITER_SAGE_HUB,
 ]
 
 # Backends that perform non-deterministic operations and therefore cannot run when
@@ -433,6 +452,23 @@ class AttentionBackendTesterMixin:
     def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
+
+    def test_set_attention_backend_does_not_change_registry(self):
+        model = self.model_class(**self.get_init_dict())
+        initial_backend, _ = _AttentionBackendRegistry.get_active_backend()
+        model_backend = (
+            AttentionBackendName.NATIVE
+            if initial_backend != AttentionBackendName.NATIVE
+            else AttentionBackendName._NATIVE_MATH
+        )
+
+        try:
+            model.set_attention_backend(model_backend.value)
+            active_backend, _ = _AttentionBackendRegistry.get_active_backend()
+            assert active_backend == initial_backend
+        finally:
+            model.reset_attention_backend()
+            _AttentionBackendRegistry.set_active_backend(initial_backend)
 
     @torch.no_grad()
     @pytest.mark.parametrize("backend", _ALL_BACKEND_PARAMS)

@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 Modular Diffusers is a framework for quickly building flexible and customizable pipelines. These pipelines can go beyond what standard `DiffusionPipeline`s can do. At the core of Modular Diffusers are [`ModularPipelineBlocks`] that can be combined with other blocks to adapt to new workflows. The blocks are converted into a [`ModularPipeline`], a friendly user-facing interface for running generation tasks.
 
-This guide shows you how to run a modular pipeline, understand its structure, and customize it by modifying the blocks that compose it.
+This guide shows you how to run a modular pipeline, understand its structure, and customize it by modifying the blocks that compose it. If you are familiar with [`DiffusionPipeline`], read [Coming from DiffusionPipeline](./coming_from_diffusion_pipeline) first for what works differently.
 
 ## Run a pipeline
 
