@@ -33,6 +33,7 @@ Configure every variant below with [`ContextParallelConfig`].
 Set `ring_degree` to the number of GPUs, and pass the config to the transformer's [`~ModelMixin.enable_parallelism`] method.
 
 ```py
+import os
 import torch
 from torch import distributed as dist
 from diffusers import DiffusionPipeline, ContextParallelConfig
@@ -40,8 +41,9 @@ from diffusers import DiffusionPipeline, ContextParallelConfig
 def setup_distributed():
     if not dist.is_initialized():
         dist.init_process_group(backend="nccl")
-    rank = dist.get_rank()
-    device = torch.device(f"cuda:{rank}")
+    # torchrun sets LOCAL_RANK to this process's GPU index on its node
+    local_rank = int(os.environ["LOCAL_RANK"])
+    device = torch.device(f"cuda:{local_rank}")
     torch.cuda.set_device(device)
     return device
 
@@ -191,6 +193,7 @@ Ring Anything Attention runs at 1008x1008 and performs about the same as standar
 Instead of calling `enable_parallelism` after loading, pass the [`ContextParallelConfig`] to the `parallel_config` argument of [`~ModelMixin.from_pretrained`]. Initialize the process group first, because `from_pretrained` raises an error if `torch.distributed` isn't initialized. Launch the script with `torchrun`, as in the [Ring Attention](#ring-attention) example.
 
 ```py
+import os
 import torch
 from torch import distributed as dist
 from diffusers import AutoModel, ContextParallelConfig, DiffusionPipeline
@@ -198,8 +201,8 @@ from diffusers import AutoModel, ContextParallelConfig, DiffusionPipeline
 CKPT_ID = "black-forest-labs/FLUX.1-dev"
 
 dist.init_process_group(backend="nccl")
-rank = dist.get_rank()
-device = torch.device(f"cuda:{rank}")
+local_rank = int(os.environ["LOCAL_RANK"])
+device = torch.device(f"cuda:{local_rank}")
 torch.cuda.set_device(device)
 
 cp_config = ContextParallelConfig(ring_degree=dist.get_world_size())

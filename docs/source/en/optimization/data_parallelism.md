@@ -63,9 +63,10 @@ You can also set up data parallelism with `torch.distributed` directly, without 
 
 Call [init_process_group](https://pytorch.org/docs/stable/distributed.html#torch.distributed.init_process_group) to create the distributed environment. `torchrun` sets the rank of each process and the total number of processes (the world size) through environment variables, so you don't pass them yourself.
 
-Use `get_rank` to move the pipeline to a different GPU in each process and to give each process a different prompt.
+Each process needs its own GPU and its own prompt. `torchrun` sets the `LOCAL_RANK` environment variable to the process's GPU index on its node, so use it to pick the GPU. Use `get_rank`, which counts processes across all nodes, to pick the prompt.
 
 ```py
+import os
 import torch
 import torch.distributed as dist
 from diffusers import DiffusionPipeline
@@ -73,7 +74,8 @@ from diffusers import DiffusionPipeline
 def main():
     dist.init_process_group("nccl")
     rank = dist.get_rank()
-    device = torch.device(f"cuda:{rank}")
+    local_rank = int(os.environ["LOCAL_RANK"])
+    device = torch.device(f"cuda:{local_rank}")
 
     pipeline = DiffusionPipeline.from_pretrained(
         "Qwen/Qwen-Image", dtype=torch.bfloat16,

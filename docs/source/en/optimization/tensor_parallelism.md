@@ -23,6 +23,7 @@ To add a plan to another model, see [Add tensor parallelism to a model](#add-ten
 Loading this way shards the checkpoint as it's read. Each rank reads only its own slice of each weight and places it directly on its GPU, so no rank ever holds a full-size weight. Memory per rank drops as `tp_degree` increases.
 
 ```py
+import os
 import torch
 from torch import distributed as dist
 from diffusers import DiffusionPipeline, Flux2Transformer2DModel, TensorParallelConfig
@@ -30,10 +31,12 @@ from diffusers import DiffusionPipeline, Flux2Transformer2DModel, TensorParallel
 def main():
     dist.init_process_group(backend="nccl")
     rank, world_size = dist.get_rank(), dist.get_world_size()
-    device = torch.device(f"cuda:{rank}")
+    # torchrun sets LOCAL_RANK to this process's GPU index on its node
+    local_rank = int(os.environ["LOCAL_RANK"])
+    device = torch.device(f"cuda:{local_rank}")
     torch.cuda.set_device(device)
 
-    # Each rank reads only its own shard of every planned weight, straight onto `cuda:rank`.
+    # Each rank reads only its own shard of every planned weight, straight onto its own GPU.
     transformer = Flux2Transformer2DModel.from_pretrained(
         "black-forest-labs/FLUX.2-dev",
         subfolder="transformer",
