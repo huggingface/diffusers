@@ -336,6 +336,7 @@ class SDXLModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = StableDiffusionXLModularPipeline
     pipeline_blocks_class = StableDiffusionXLAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-sdxl-modular"
+    expected_latents_shape = (1, 4, 32, 32)
     params = frozenset(
         [
             "prompt",
@@ -464,6 +465,7 @@ class SDXLImg2ImgModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = StableDiffusionXLModularPipeline
     pipeline_blocks_class = StableDiffusionXLAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-sdxl-modular"
+    expected_latents_shape = (1, 4, 32, 32)
     params = frozenset(
         [
             "prompt",
@@ -608,6 +610,7 @@ class SDXLInpaintingModularPipelineFastTests(
     pipeline_class = StableDiffusionXLModularPipeline
     pipeline_blocks_class = StableDiffusionXLAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-sdxl-modular"
+    expected_latents_shape = (1, 4, 32, 32)
     params = frozenset(
         [
             "prompt",

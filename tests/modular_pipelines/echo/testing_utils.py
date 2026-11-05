@@ -24,6 +24,7 @@ class EchoModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = EchoModularPipeline
     pipeline_blocks_class = EchoBlocks
     pretrained_model_name_or_path = "Echo-Team/tiny-echo-modular-pipe"
+    expected_latents_shape = (1, 4, 3, 16, 16)
     params = frozenset(
         [
             "prompt",

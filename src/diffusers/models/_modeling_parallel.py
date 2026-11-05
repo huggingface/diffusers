@@ -161,7 +161,7 @@ class TensorParallelConfig:
     Tensor parallelism shards weight matrices (column-wise and row-wise) across devices. Each device computes a partial
     result; an AllReduce/AllGather at layer boundaries reconstructs the full output. Uses
     `torch.distributed.tensor.parallelize_module` with `ColwiseParallel` / `RowwiseParallel` sharding styles. Supported
-    device types are `"cuda"` and `"neuron"`.
+    device types are `"cuda"`, `"neuron"` and `"tpu"`.
 
     Args:
         tp_degree (`int`, defaults to `1`):
