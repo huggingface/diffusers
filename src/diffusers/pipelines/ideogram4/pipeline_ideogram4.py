@@ -22,6 +22,7 @@ from transformers.masking_utils import create_causal_mask
 from ...image_processor import VaeImageProcessor
 from ...loaders import Ideogram4LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLFlux2
+from ...models.heads import Ideogram4PromptEnhancerHead
 from ...models.transformers.transformer_ideogram4 import (
     IMAGE_POSITION_OFFSET,
     LLM_TOKEN_INDICATOR,
@@ -36,7 +37,6 @@ from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import Ideogram4PipelineOutput
 from .prompt_enhancer import (
     PROMPT_UPSAMPLE_TEMPERATURE,
-    Ideogram4PromptEnhancerHead,
     build_caption_logits_processor,
     build_prompt_enhancer,
     generate_captions,

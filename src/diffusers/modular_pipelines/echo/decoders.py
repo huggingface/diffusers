@@ -18,7 +18,7 @@ import torch
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
-from ...pipelines.ltx2.vocoder import LTX2Vocoder
+from ...models.autoencoders import LTX2Vocoder
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState

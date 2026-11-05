@@ -28,6 +28,10 @@ if is_torch_available():
     _import_structure["adapter"] = ["MultiAdapter", "T2IAdapter"]
     _import_structure["attention_dispatch"] = ["AttentionBackendName", "attention_backend"]
     _import_structure["auto_model"] = ["AutoModel"]
+    _import_structure["autoencoders.audio_tokenizer_ace_step"] = [
+        "AceStepAudioTokenDetokenizer",
+        "AceStepAudioTokenizer",
+    ]
     _import_structure["autoencoders.autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
     _import_structure["autoencoders.autoencoder_cosmos3_audio"] = ["Cosmos3AVAEAudioTokenizer"]
     _import_structure["autoencoders.autoencoder_dc"] = ["AutoencoderDC"]
@@ -67,6 +71,7 @@ if is_torch_available():
     _import_structure["autoencoders.ltx2_diffusion_decoder"] = ["LTX2VideoDiffusionDecoderModel"]
     _import_structure["autoencoders.minimax_music3_vocoder"] = ["MiniMaxMusic3Vocoder"]
     _import_structure["autoencoders.mmaudio_vocoder"] = ["MMAudioVocoder"]
+    _import_structure["autoencoders.vocoder_ltx2"] = ["LTX2Vocoder", "LTX2VocoderWithBWE"]
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
     _import_structure["cache_utils"] = ["CacheMixin"]
     _import_structure["condition_embedders.condition_embedder_ace_step"] = ["AceStepConditionEncoder"]
@@ -98,10 +103,15 @@ if is_torch_available():
     _import_structure["controlnets.multicontrolnet"] = ["MultiControlNetModel"]
     _import_structure["controlnets.multicontrolnet_union"] = ["MultiControlNetUnionModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
+    _import_structure["heads.duration_head_ltx2"] = ["LTX2DurationHead"]
+    _import_structure["heads.prompt_enhancer_head_ideogram4"] = ["Ideogram4PromptEnhancerHead"]
     _import_structure["latent_upscaler.latent_upscaler_kandinsky6_sr"] = ["Kandinsky6SRLatentUpscalerBank"]
     _import_structure["latent_upscaler.latent_upscaler_ltx"] = ["LTXLatentUpsamplerModel"]
     _import_structure["latent_upscaler.latent_upscaler_ltx2"] = ["LTX2LatentUpsamplerModel"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
+    _import_structure["others.image_normalizer_stable_unclip"] = ["StableUnCLIPImageNormalizer"]
+    _import_structure["others.renderer_shap_e"] = ["ShapERenderer"]
+    _import_structure["others.watermarker_if"] = ["IFWatermarker"]
     _import_structure["transformers.ace_step_transformer"] = ["AceStepTransformer1DModel"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
     _import_structure["transformers.cogvideox_transformer_3d"] = ["CogVideoXTransformer3DModel"]
@@ -181,6 +191,7 @@ if is_torch_available():
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
     _import_structure["unets.unet_2d"] = ["UNet2DModel"]
     _import_structure["unets.unet_2d_condition"] = ["UNet2DConditionModel"]
+    _import_structure["unets.unet_2d_condition_audioldm2"] = ["AudioLDM2UNet2DConditionModel"]
     _import_structure["unets.unet_3d_condition"] = ["UNet3DConditionModel"]
     _import_structure["unets.unet_dreamlite"] = ["DreamLiteUNetModel"]
     _import_structure["unets.unet_i2vgen_xl"] = ["I2VGenXLUNet"]
@@ -198,6 +209,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .attention_dispatch import AttentionBackendName, attention_backend
         from .auto_model import AutoModel
         from .autoencoders import (
+            AceStepAudioTokenDetokenizer,
+            AceStepAudioTokenizer,
             AsymmetricAutoencoderKL,
             AutoencoderDC,
             AutoencoderKL,
@@ -233,6 +246,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky6SRVAE,
             LongCatAudioDiTVae,
             LTX2VideoDiffusionDecoderModel,
+            LTX2Vocoder,
+            LTX2VocoderWithBWE,
             MiniMaxMusic3Vocoder,
             MMAudioVAE,
             MMAudioVocoder,
@@ -272,8 +287,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageControlNetModel,
         )
         from .embeddings import ImageProjection
+        from .heads import Ideogram4PromptEnhancerHead, LTX2DurationHead
         from .latent_upscaler import Kandinsky6SRLatentUpscalerBank, LTX2LatentUpsamplerModel, LTXLatentUpsamplerModel
         from .modeling_utils import ModelMixin
+        from .others import IFWatermarker, ShapERenderer, StableUnCLIPImageNormalizer
         from .transformers import (
             AceStepTransformer1DModel,
             AllegroTransformer3DModel,
@@ -353,6 +370,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageTransformer2DModel,
         )
         from .unets import (
+            AudioLDM2UNet2DConditionModel,
             DreamLiteUNetModel,
             I2VGenXLUNet,
             Kandinsky3UNet,

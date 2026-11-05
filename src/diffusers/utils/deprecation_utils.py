@@ -72,15 +72,25 @@ def _maybe_remap_transformers_class(class_name: str) -> str | None:
 # reference them as `[<pipeline folder>, <class name>]`, so they are resolved to the top-level `diffusers` export
 # instead of the deprecated alias left in the pipeline folder.
 _RELOCATED_PIPELINE_CLASSES = {
+    ("ace_step", "AceStepAudioTokenDetokenizer"),
+    ("ace_step", "AceStepAudioTokenizer"),
     ("ace_step", "AceStepConditionEncoder"),
     ("audioldm2", "AudioLDM2ProjectionModel"),
+    ("audioldm2", "AudioLDM2UNet2DConditionModel"),
+    ("deepfloyd_if", "IFWatermarker"),
     ("flux", "ReduxImageEncoder"),
+    ("ideogram4", "Ideogram4PromptEnhancerHead"),
     ("ltx", "LTXLatentUpsamplerModel"),
+    ("ltx2", "LTX2DurationHead"),
     ("ltx2", "LTX2LatentUpsamplerModel"),
     ("ltx2", "LTX2TextConnectors"),
+    ("ltx2", "LTX2Vocoder"),
+    ("ltx2", "LTX2VocoderWithBWE"),
+    ("shap_e", "ShapERenderer"),
     ("stable_audio", "StableAudioProjectionModel"),
     ("stable_audio_3", "StableAudio3DurationEmbedder"),
     ("stable_diffusion", "CLIPImageProjection"),
+    ("stable_diffusion", "StableUnCLIPImageNormalizer"),
 }
 
 

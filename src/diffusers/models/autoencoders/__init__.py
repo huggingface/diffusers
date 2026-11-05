@@ -1,3 +1,4 @@
+from .audio_tokenizer_ace_step import AceStepAudioTokenDetokenizer, AceStepAudioTokenizer
 from .autoencoder_asym_kl import AsymmetricAutoencoderKL
 from .autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer
 from .autoencoder_dc import AutoencoderDC
@@ -37,4 +38,5 @@ from .consistency_decoder_vae import ConsistencyDecoderVAE
 from .ltx2_diffusion_decoder import LTX2VideoDiffusionDecoderModel
 from .minimax_music3_vocoder import MiniMaxMusic3Vocoder
 from .mmaudio_vocoder import MMAudioVocoder
+from .vocoder_ltx2 import LTX2Vocoder, LTX2VocoderWithBWE
 from .vq_model import VQModel

@@ -1376,7 +1376,7 @@ video = decode_pipe(latents=out3.frames, denormalize=False, output_type="np", re
 
 ## LTX2DurationHead
 
-[[autodoc]] pipelines.ltx2.duration_head.LTX2DurationHead
+[[autodoc]] LTX2DurationHead
     - forward
     - predict_num_frames
 
