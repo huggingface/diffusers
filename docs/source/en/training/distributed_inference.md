@@ -498,7 +498,7 @@ For a TP group within a larger distributed job, pass its one-dimensional `Device
 >
 > Combining tensor parallelism with quantization, offloading, or LoRA adapters isn't supported yet either, so those raise however the model is sharded.
 >
-> To shard a model that is already in memory, call [`~ModelMixin.enable_parallelism`] with the same config instead — that loads everything first and reshards it, so it costs full checkpoint memory on every rank.
+> We recommend loading tensor-parallel models this way. You can also shard a model that is already in memory by calling [`~ModelMixin.enable_parallelism`] with the same config, but that loads everything first and reshards it, so it costs full checkpoint memory on every rank.
 
 Saving a tensor-parallel model isn't supported yet, and [`~ModelMixin.save_pretrained`] raises on one. Save the model before sharding it.
 
@@ -514,6 +514,7 @@ Each key may contain **at most one `*`**, and the prefix before it must resolve 
 |---|---|---|---|
 | `"colwise"` | output features (`weight` dim 0) | computes a slice of the output | `to_q`, `to_k`, `to_v`, FFN in-projection |
 | `"rowwise"` | input features (`weight` dim 1) | computes a partial sum | `to_out.0`, FFN out-projection |
+| `"rowwise_split_input"` | input features (`weight` dim 1) | computes a partial result using its slice of the input and weights; `AllReduce` adds these results so every rank gets all output features | a standalone projection that reads a replicated activation, e.g. an AdaLN modulation projection off the timestep embedding |
 
 Always pair them in that order. A `"colwise"` projection leaves its output sharded, the following `"rowwise"` projection consumes that shard directly, and a single `AllReduce` at the block boundary reconstructs the result. Sharding the pair any other way forces a gather in the middle and communicates far more.
 
