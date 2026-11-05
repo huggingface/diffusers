@@ -521,11 +521,8 @@ class Manifest:
             head["hash"] = self.hash
         return json.dumps(head)[:-1].encode() + b', "manifest": ' + self.raw + b"}"
 
-    def resolve(self, body: Any, seeds: random.Random | None = None) -> ResolvedRequest:
-        """Validate a create-generation request body and map it to the pipeline call.
-
-        A request that omits the seed gets one drawn from `seeds`.
-        """
+    def resolve(self, body: Any) -> ResolvedRequest:
+        """Validate a create-generation request body and map it to the pipeline call."""
         inputs = self._check_body(body)
         task = self._select_task(body.get("task"), inputs)
         values, explicit = self._parameter_values(task, body)
@@ -533,7 +530,7 @@ class Manifest:
         parameter_kwargs, seed = self._resolve_parameters(task, values, explicit)
         # The spec has the server pick the seed when the request omits it, so the result is reproducible.
         if seed is None and "seed" in self._parameter_kwargs[task]:
-            seed = (seeds or random.Random()).randrange(2**32)
+            seed = random.randrange(2**32)
         output_formats = self._resolve_output_formats(task, body.get("output_format"))
 
         response_format = body.get("response_format", "url")

@@ -19,7 +19,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-import random
 import re
 import time
 import uuid
@@ -60,39 +59,9 @@ def _format_output(job: GenerationJob, artifact: dict[str, Any], base_url: str) 
     return entry
 
 
-def _format_job_response(job: GenerationJob, base_url: str) -> dict[str, Any]:
-    """The response body for a generation: outputs are linked under `base_url`, or inlined as base64.
-
-    Raises the generation's error once it failed, which the error handler turns into the error envelope.
-    """
-    if job.error is not None:
-        raise job.error
-
-    outputs = None
-    if job.status == "complete":
-        outputs = {
-            name: [_format_output(job, artifact, base_url) for artifact in artifacts]
-            for name, artifacts in job.outputs.items()
-        }
-
-    return {
-        "id": job.id,
-        "model": job.model,
-        "revision": job.revision,
-        "status": job.status,
-        "created_at": _timestamp(job.created_at),
-        "progress": job.progress if job.status == "generating" else None,
-        "outputs": outputs,
-        "expires_at": _timestamp(job.expires_at),
-        "seed": job.request.seed if job.status == "complete" else None,
-        "usage": job.usage,
-    }
-
-
 def create_app(
     manifest: Manifest,
     scheduler: Scheduler,
-    seed: int | None = None,
     enable_cors: bool = False,
     public_url: str | None = None,
 ) -> FastAPI:
@@ -101,11 +70,36 @@ def create_app(
     root_path = urlparse(public_url).path.rstrip("/") if public_url is not None else ""
     app = FastAPI(title="diffusers-cli serve", docs_url=None, redoc_url=None, openapi_url=None, root_path=root_path)
     app.state.last_request = time.monotonic()
-    seeds = random.Random(seed)
 
-    def base_url(request: Request) -> str:
-        # Output links must work for the client, so they are built on the address it reached the server at.
-        return (public_url or str(request.base_url)).rstrip("/")
+    def format_job_response(job: GenerationJob, request: Request) -> dict[str, Any]:
+        """The response body for a generation: outputs are linked under the server address, or inlined as base64.
+
+        Raises the generation's error once it failed, which the error handler turns into the error envelope.
+        """
+        if job.error is not None:
+            raise job.error
+
+        outputs = None
+        if job.status == "complete":
+            # Output links must work for the client, so they are built on the address it reached the server at.
+            base_url = (public_url or str(request.base_url)).rstrip("/")
+            outputs = {
+                name: [_format_output(job, artifact, base_url) for artifact in artifacts]
+                for name, artifacts in job.outputs.items()
+            }
+
+        return {
+            "id": job.id,
+            "model": manifest.id,
+            "revision": manifest.revision,
+            "status": job.status,
+            "created_at": _timestamp(job.created_at),
+            "progress": job.progress if job.status == "generating" else None,
+            "outputs": outputs,
+            "expires_at": _timestamp(job.expires_at),
+            "seed": job.request.seed if job.status == "complete" else None,
+            "usage": job.usage,
+        }
 
     @app.middleware("http")
     async def request_id(request: Request, call_next) -> Response:
@@ -175,19 +169,19 @@ def create_app(
             body = await request.json()
         except json.JSONDecodeError as e:
             raise GMSError("invalid_request", f"request body is not valid JSON: {e}") from e
-        generation = GenerationJob(manifest.id, manifest.revision, manifest.resolve(body, seeds))
+        generation = GenerationJob(manifest.resolve(body))
         scheduler.submit(generation)
 
         wait = re.fullmatch(r"\s*wait=(\d+)\s*", request.headers.get("prefer", ""))
         # `Prefer` is a hint, so a server without the `wait` capability answers right away instead of failing.
         if wait is not None and "wait" in manifest.capabilities:
             await asyncio.to_thread(generation.wait, min(float(wait.group(1)), MAX_WAIT_SECONDS))
-        return _format_job_response(generation, base_url(request))
+        return format_job_response(generation, request)
 
     @app.get("/v1/generations/{generation_id}")
     async def get_generation(generation_id: str, request: Request) -> dict[str, Any]:
         generation = scheduler.get(generation_id)
-        return _format_job_response(generation, base_url(request))
+        return format_job_response(generation, request)
 
     @app.delete("/v1/generations/{generation_id}", status_code=204)
     async def delete_generation(generation_id: str) -> Response:
@@ -197,7 +191,7 @@ def create_app(
     @app.post("/v1/generations/{generation_id}/cancel")
     async def cancel_generation(generation_id: str, request: Request) -> dict[str, Any]:
         generation = scheduler.cancel(generation_id)
-        return _format_job_response(generation, base_url(request))
+        return format_job_response(generation, request)
 
     @app.get("/v1/generations/{generation_id}/events")
     async def get_generation_events(generation_id: str, request: Request) -> StreamingResponse:
@@ -213,7 +207,7 @@ def create_app(
                 events, done = await asyncio.to_thread(generation.wait_for_events, index, _KEEP_ALIVE_SECONDS)
                 for event, data in events:
                     index += 1
-                    payload = _format_job_response(generation, base_url(request)) if event == "complete" else data
+                    payload = format_job_response(generation, request) if event == "complete" else data
                     yield f"id: {index}\nevent: {event}\ndata: {json.dumps(payload)}\n\n"
                 if done:
                     return

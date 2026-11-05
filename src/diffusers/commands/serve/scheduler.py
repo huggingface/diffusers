@@ -37,10 +37,8 @@ EXPIRY_SECONDS = 3600
 class GenerationJob:
     """One generation, from the request that created it to its outputs: the resource `/v1/generations/{id}` returns."""
 
-    def __init__(self, model: str, revision: str | None, request: ResolvedRequest):
+    def __init__(self, request: ResolvedRequest):
         self.id = f"gen_{uuid.uuid4().hex[:12]}"
-        self.model = model
-        self.revision = revision
         self.request = request
         self.status = "queued"
         self.created_at = datetime.now(timezone.utc)

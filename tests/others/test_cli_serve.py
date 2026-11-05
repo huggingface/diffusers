@@ -711,7 +711,7 @@ class TestScheduler:
         backends = [BlockingBackend(), BlockingBackend()]
         scheduler = Scheduler(backends, str(tmp_path))
         request = _manifest().resolve({"model": MODEL_ID, "inputs": {"prompt": "a cat"}})
-        jobs = [GenerationJob(MODEL_ID, None, request) for _ in backends]
+        jobs = [GenerationJob(request) for _ in backends]
         for job in jobs:
             scheduler.submit(job)
 

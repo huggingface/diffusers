@@ -21,6 +21,7 @@ clients poll or follow over server-sent events.
 from __future__ import annotations
 
 import inspect
+import random
 import secrets
 import threading
 import time
@@ -275,11 +276,12 @@ class ServeCommand(BaseDiffusersCLICommand):
 
         try:
             seed = args.seed if args.seed is not None else secrets.randbelow(2**32)
+            # Seeds the generator `Manifest.resolve` draws request seeds from, like vLLM's `--seed`.
+            random.seed(seed)
             scheduler = Scheduler(backends, args.output_dir)
             app = create_app(
                 manifest,
                 scheduler,
-                seed=seed,
                 enable_cors=args.enable_cors,
                 public_url=args.public_url,
             )
