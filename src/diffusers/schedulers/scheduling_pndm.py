@@ -353,7 +353,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
             )
 
-        if not self.config.skip_prk_steps and len(self.ets) < 3:
+        if len(self.prk_timesteps) > 0 and len(self.ets) < 3:
             raise ValueError(
                 f"{self.__class__} can only be run AFTER scheduler has been run "
                 "in 'prk' mode for at least 12 iterations "

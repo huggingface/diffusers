@@ -234,12 +234,27 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         assert abs(result_sum.item() - 230.0399) < 1e-2
         assert abs(result_mean.item() - 0.2995) < 1e-3
 
-    def test_set_timesteps_fewer_than_prk_order(self):
-        # pndm_order is 4. 1, 2, or 3 steps used to crash in the PRK tile.
-        scheduler = self.scheduler_classes[0](**self.get_scheduler_config())
-        for steps in (1, 2, 3, 4):
-            scheduler.set_timesteps(steps)
-            self.assertGreater(len(scheduler.timesteps), 0)
+    def test_full_loop_fewer_than_prk_order(self):
+        for spacing in ("leading", "linspace", "trailing"):
+            scheduler = self.scheduler_classes[0](**self.get_scheduler_config(timestep_spacing=spacing))
+            reference = self.scheduler_classes[0](
+                **self.get_scheduler_config(timestep_spacing=spacing, skip_prk_steps=True)
+            )
+            for steps in (1, 2, 3):
+                with self.subTest(spacing=spacing, steps=steps):
+                    scheduler.set_timesteps(steps)
+                    reference.set_timesteps(steps)
+                    self.assertEqual(len(scheduler.prk_timesteps), 0)
+                    torch.testing.assert_close(scheduler.timesteps, reference.timesteps)
+                    sample = self.dummy_sample_deter
+                    expected = sample.clone()
+                    model = self.dummy_model()
+                    for timestep in scheduler.timesteps:
+                        sample = scheduler.step(model(sample, timestep), timestep, sample).prev_sample
+                        expected = reference.step(model(expected, timestep), timestep, expected).prev_sample
+                        self.assertTrue(torch.isfinite(sample).all())
+                        torch.testing.assert_close(sample, expected)
+                    self.assertEqual(scheduler.counter, len(scheduler.timesteps))
 
     def test_full_loop_with_no_set_alpha_to_one(self):
         # We specify different beta, so that the first alpha is 0.99
