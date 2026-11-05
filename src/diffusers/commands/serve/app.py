@@ -16,7 +16,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import json
 import re
@@ -175,7 +174,7 @@ def create_app(
         wait = re.fullmatch(r"\s*wait=(\d+)\s*", request.headers.get("prefer", ""))
         # `Prefer` is a hint, so a server without the `wait` capability answers right away instead of failing.
         if wait is not None and "wait" in manifest.capabilities:
-            await asyncio.to_thread(generation.wait, min(float(wait.group(1)), MAX_WAIT_SECONDS))
+            await generation.wait(min(float(wait.group(1)), MAX_WAIT_SECONDS))
         return format_job_response(generation, request)
 
     @app.get("/v1/generations/{generation_id}")
@@ -204,7 +203,7 @@ def create_app(
         async def stream():
             index = start
             while True:
-                events, done = await asyncio.to_thread(generation.wait_for_events, index, _KEEP_ALIVE_SECONDS)
+                events, done = await generation.wait_for_events(index, _KEEP_ALIVE_SECONDS)
                 for event, data in events:
                     index += 1
                     payload = format_job_response(generation, request) if event == "complete" else data

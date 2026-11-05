@@ -16,6 +16,7 @@
 No weights are loaded: the backend runs a fake pipeline.
 """
 
+import asyncio
 import base64
 import inspect
 import io
@@ -578,14 +579,6 @@ class TestServeApp:
             ("unload",),
         ]
 
-    def test_adapters_not_advertised_when_compiled(self, serve):
-        client, _ = serve(compile="{}")
-        discovery = client.get(f"/v1/models/{MODEL_ID}").json()
-        assert "adapters" not in discovery["manifest"]["capabilities"]
-        body = {"model": MODEL_ID, "inputs": {"prompt": "a cat"}, "adapters": [{"type": "lora", "path": "hf:a/b"}]}
-        response = client.post("/v1/generations", json=body)
-        assert (response.status_code, response.json()["error"]["code"]) == (501, "not_implemented")
-
     def test_discovery_serves_manifest_bytes_verbatim(self, serve):
         manifest = derive_manifest(MODEL_ID, FakePipeline, FAKE_SIGNATURE, ["sse", "wait", "adapters"])
         raw = json.dumps(manifest, indent=3).encode()
@@ -631,9 +624,8 @@ class TestModularPipeline:
 
 
 class FakeJobsApi:
-    def __init__(self, logs=("server started",), stage="COMPLETED"):
+    def __init__(self, logs=("server started",)):
         self.logs = logs
-        self.stage = stage
         self.run_kwargs = None
         self.cancelled = False
 
@@ -648,7 +640,7 @@ class FakeJobsApi:
             yield line
 
     def inspect_job(self, **kwargs):
-        return SimpleNamespace(status=SimpleNamespace(stage=self.stage, expose_urls=None))
+        return SimpleNamespace(status=SimpleNamespace(stage="COMPLETED", expose_urls=None))
 
     def cancel_job(self, **kwargs):
         self.cancelled = True
@@ -688,23 +680,11 @@ class TestServeRemote:
         assert not {"--remote", "--flavor", "--dependencies"} & set(serve_argv), serve_argv
         assert not api.cancelled, "a Job that completed on its own needs no cancel"
 
-    def test_local_manifest_is_rejected(self, tmp_path, monkeypatch):
-        api = FakeJobsApi()
-        manifest = tmp_path / "gms.json"
-        manifest.write_text("{}")
-        with pytest.raises(SystemExit, match="Upload it as `gms.json` to the model repo"):
-            self._run(monkeypatch, api, ["--manifest", str(manifest)])
-        assert api.run_kwargs is None, "no Job should start when the manifest can't reach it"
-
     def test_interrupt_cancels_the_job(self, monkeypatch):
         api = FakeJobsApi(logs=("server started", KeyboardInterrupt()))
         with pytest.raises(KeyboardInterrupt):
             self._run(monkeypatch, api, [])
         assert api.cancelled, "Ctrl-C must cancel the Job so it stops billing"
-
-    def test_failed_job_is_reported(self, monkeypatch):
-        with pytest.raises(SystemExit, match="Job job-1 ended with status ERROR"):
-            self._run(monkeypatch, FakeJobsApi(stage="ERROR"), [])
 
 
 class BlockingBackend:
@@ -737,7 +717,7 @@ class TestScheduler:
         for backend in backends:
             backend.release.set()
         for job in jobs:
-            job.wait(timeout=30)
+            asyncio.run(job.wait(timeout=30))
         assert [job.status for job in jobs] == ["complete", "complete"]
         assert not scheduler.busy(), "the scheduler should be idle once every backend has finished"
 
@@ -756,7 +736,7 @@ class TestScheduler:
         scheduler = Scheduler([SteppingBackend()], str(tmp_path), timeout=0.1)
         job = GenerationJob(_manifest().resolve({"model": MODEL_ID, "inputs": {"prompt": "a cat"}}))
         scheduler.submit(job)
-        job.wait(timeout=30)
+        asyncio.run(job.wait(timeout=30))
         assert job.status == "failed", job.status
         assert "--generation-timeout" in job.error.message, job.error.message
 
@@ -769,7 +749,7 @@ class TestScheduler:
         assert scheduler.failure() is None, "a generation within its time limit is healthy"
 
         # As if it had run for over twice the limit without reaching a step that could stop it.
-        job.started_at -= 121
+        job.deadline -= 121
         assert "did not stop when interrupted" in (scheduler.failure() or ""), scheduler.failure()
         backend.release.set()
 

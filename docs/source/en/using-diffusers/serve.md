@@ -38,8 +38,8 @@ so keep it on a trusted network. It also downloads any http(s) URL a request pas
 can make it fetch addresses on its own network. Run `diffusers serve --help` for every option.
 
 `--generation-timeout <duration>` (for example `10m`) fails a generation that runs longer than that. The pipeline
-is interrupted at its next step. A generation that is still running at twice the limit is stuck, for example in a
-modular pipeline that has no step callbacks, and `GET /health` then returns `503`.
+is interrupted at its next step. Modular pipelines have no step callbacks, so they run to the end and their result
+is discarded. A generation that is still running at twice the limit is stuck, and `GET /health` then returns `503`.
 
 `--idle-timeout <duration>` (for example `30m`) shuts the server down once it has received no requests for that
 long and no generation is queued or running. Health checks don't count as requests. By default a local server

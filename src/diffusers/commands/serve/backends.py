@@ -49,7 +49,6 @@ from ...modular_pipelines import ModularPipeline
 from ...utils import export_to_video, load_image, load_video, logging, numpy_to_pil
 from ...utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 from ..run import (
-    PNG_COMPRESS_LEVEL,
     _as_audio_arrays,
     _as_pil_list,
     _get_generator,
@@ -62,6 +61,9 @@ from .scheduler import GenerationJob
 
 logger = logging.get_logger("diffusers-cli/serve")
 
+# zlib level for PNG outputs. Pillow's default of 6 takes close to four times as long to encode a
+# 1024x1024 image for a file about 7% smaller; the output is lossless either way.
+PNG_COMPRESS_LEVEL = 1
 _OUTPUT_FIELDS = {"image": ("images",), "video": ("frames", "videos"), "audio": ("audios", "audio")}
 _SAMPLE_RATE_ATTRIBUTES = (
     "sample_rate",

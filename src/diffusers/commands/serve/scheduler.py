@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import queue
 import shutil
 import threading
@@ -47,31 +48,40 @@ class GenerationJob:
         self.outputs: dict[str, list[dict[str, Any]]] | None = None
         self.usage: dict[str, Any] | None = None
         self.error: GMSError | None = None
-        self.cancel_requested = False
-        self.timed_out = False
-        self.started_at: float | None = None
+        self.canceled = False
+        # When a running generation must stop, from `--generation-timeout`; None when it has no limit.
+        self.deadline: float | None = None
         self.directory: Path | None = None
         self.events: list[tuple[str, dict[str, Any] | None]] = []
         self.done = False
-        self._condition = threading.Condition()
+        self._lock = threading.Lock()
+        # Handlers waiting on the event loop for the next event. The worker thread wakes them through their loop.
+        self._waiters: list[tuple[asyncio.AbstractEventLoop, asyncio.Event]] = []
+
+    @property
+    def cancel_requested(self) -> bool:
+        """Whether the pipeline should stop at its next step: a client canceled it, or it ran past its deadline."""
+        return self.canceled or (self.deadline is not None and time.monotonic() > self.deadline)
 
     def report_progress(self, step: int, total_steps: int) -> None:
-        with self._condition:
+        with self._lock:
             self.progress = {"step": step, "total_steps": total_steps, "fraction": round(step / total_steps, 4)}
             self.events.append(("progress", self.progress))
-            self._condition.notify_all()
+            self._notify_waiting_requests()
 
-    def wait_for_events(self, index: int, timeout: float) -> tuple[list[tuple[str, dict[str, Any] | None]], bool]:
-        with self._condition:
-            self._condition.wait_for(lambda: len(self.events) > index or self.done, timeout)
+    async def wait_for_events(
+        self, index: int, timeout: float
+    ) -> tuple[list[tuple[str, dict[str, Any] | None]], bool]:
+        await self._wait_until(lambda: len(self.events) > index or self.done, timeout)
+        # Read together, so a stream never sees `done` without the final event that came with it.
+        with self._lock:
             return self.events[index:], self.done
 
-    def wait(self, timeout: float) -> None:
-        with self._condition:
-            self._condition.wait_for(lambda: self.done, timeout)
+    async def wait(self, timeout: float) -> None:
+        await self._wait_until(lambda: self.done, timeout)
 
     def finish(self, status: str, error: GMSError | None = None) -> None:
-        with self._condition:
+        with self._lock:
             self.status = status
             self.error = error
             self.progress = None
@@ -81,7 +91,31 @@ class GenerationJob:
             elif status == "complete":
                 self.events.append(("complete", None))
             self.done = True
-            self._condition.notify_all()
+            self._notify_waiting_requests()
+
+    async def _wait_until(self, condition: Any, timeout: float) -> None:
+        # Waiting on the event loop, not a pool thread, so any number of clients can wait at once.
+        loop = asyncio.get_running_loop()
+        give_up_at = loop.time() + timeout
+        while True:
+            event = asyncio.Event()
+            with self._lock:
+                if condition():
+                    return
+                self._waiters.append((loop, event))
+            try:
+                await asyncio.wait_for(event.wait(), give_up_at - loop.time())
+            except asyncio.TimeoutError:
+                return
+            finally:
+                with self._lock:
+                    self._waiters.remove((loop, event))
+
+    def _notify_waiting_requests(self) -> None:
+        for loop, event in self._waiters:
+            # A loop closed at shutdown has no handler left to wake, and raising here would end the worker.
+            if not loop.is_closed():
+                loop.call_soon_threadsafe(event.set)
 
 
 class Scheduler:
@@ -97,7 +131,8 @@ class Scheduler:
         self._generations: dict[str, GenerationJob] = {}
         self._lock = threading.Lock()
         self._pending: queue.Queue[GenerationJob] = queue.Queue()
-        self._running = 0
+        # The generations a worker is running now.
+        self._running: set[GenerationJob] = set()
         # Every worker takes the next job from the same queue, so no job waits behind a long one on a busy backend.
         for index, backend in enumerate(backends):
             threading.Thread(
@@ -112,8 +147,8 @@ class Scheduler:
         # or in a pipeline without step callbacks, and its worker takes no more jobs.
         now = time.monotonic()
         with self._lock:
-            for generation in self._generations.values():
-                if generation.status == "generating" and now - generation.started_at > 2 * self._timeout:
+            for generation in self._running:
+                if now > generation.deadline + self._timeout:
                     return (
                         f"generation {generation.id} has run for over twice the --generation-timeout of "
                         f"{self._timeout:g}s and did not stop when interrupted"
@@ -121,7 +156,7 @@ class Scheduler:
         return None
 
     def busy(self) -> bool:
-        return self._running > 0 or not self._pending.empty()
+        return bool(self._running) or not self._pending.empty()
 
     def submit(self, generation: GenerationJob) -> None:
         self._prune()
@@ -142,7 +177,7 @@ class Scheduler:
         with self._lock:
             if generation.done:
                 return generation
-            generation.cancel_requested = True
+            generation.canceled = True
             if generation.status == "queued":
                 generation.finish("canceled")
         return generation
@@ -175,14 +210,10 @@ class Scheduler:
                 if generation.done:
                     continue
                 generation.status = "generating"
-                generation.started_at = time.monotonic()
-                self._running += 1
+                if self._timeout is not None:
+                    generation.deadline = time.monotonic() + self._timeout
+                self._running.add(generation)
             generation.directory = self._output_dir / generation.id
-            timer = None
-            if self._timeout is not None:
-                timer = threading.Timer(self._timeout, self._time_out, args=(generation,))
-                timer.daemon = True
-                timer.start()
 
             started = time.perf_counter()
             error = None
@@ -196,19 +227,18 @@ class Scheduler:
             except BaseException as e:
                 logger.error(f"generation {generation.id} failed", exc_info=True)
                 error = GMSError("internal", f"{type(e).__name__}: {e}")
-            if timer is not None:
-                timer.cancel()
+            returned_at = time.monotonic()
 
             with self._lock:
                 deleted = generation.id not in self._generations
                 # Before `finish` wakes any waiter, so a finished job is never reported while the server looks busy.
-                self._running -= 1
+                self._running.discard(generation)
                 if error is not None:
                     generation.finish("failed", error)
-                elif generation.timed_out:
+                elif generation.deadline is not None and returned_at > generation.deadline:
                     message = f"generation exceeded the --generation-timeout of {self._timeout:g}s"
                     generation.finish("failed", GMSError("internal", message))
-                elif generation.cancel_requested:
+                elif generation.canceled:
                     generation.finish("canceled")
                 else:
                     generation.outputs = outputs
@@ -216,9 +246,3 @@ class Scheduler:
                     generation.finish("complete")
             if deleted or generation.status != "complete":
                 self._remove_files(generation)
-
-    def _time_out(self, generation: GenerationJob) -> None:
-        # Interrupts the pipeline at its next step, the same way a cancel does.
-        with self._lock:
-            generation.timed_out = True
-            generation.cancel_requested = True

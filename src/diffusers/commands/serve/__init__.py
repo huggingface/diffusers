@@ -217,9 +217,11 @@ class ServeCommand(BaseDiffusersCLICommand):
             if value is None:
                 continue
             try:
-                _duration_to_seconds(value)
+                seconds = _duration_to_seconds(value)
             except ValueError:
                 raise SystemExit(f"{flag} {value!r} is not a duration such as 30m or 2h.")
+            if seconds <= 0:
+                raise SystemExit(f"{flag} must be a positive duration such as 30m or 2h, got {value!r}.")
         if args.log_level is not None:
             logging.set_verbosity(logging.get_log_levels_dict()[args.log_level])
 
