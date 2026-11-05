@@ -9,5 +9,6 @@ if is_torch_available():
     from .condition_embedder_gligen import CLIPImageProjection
     from .condition_embedder_ltx2 import LTX2TextConnectors
     from .condition_embedder_minimax_music3 import MiniMaxMusic3ConditionEncoder
+    from .condition_embedder_p_h3_image import PH3ImageTextConnector
     from .condition_embedder_stable_audio import StableAudioProjectionModel
     from .condition_embedder_stable_audio_3 import StableAudio3DurationEmbedder
