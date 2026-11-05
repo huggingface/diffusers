@@ -21,12 +21,14 @@ clients poll or follow over server-sent events.
 from __future__ import annotations
 
 import inspect
+import secrets
 import threading
 import time
 from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter, _SubParsersAction
 from pathlib import Path
 from typing import Any
 
+import torch
 from huggingface_hub.cli._output import out
 
 from ...utils import logging
@@ -148,22 +150,23 @@ class ServeCommand(BaseDiffusersCLICommand):
             help=f"Directory generated files are stored in until they expire. Defaults to {DEFAULT_OUTPUT_DIR}.",
         )
         parser.add_argument(
-            "--fps",
+            "--data-parallel",
             type=int,
-            default=8,
-            help="FPS used to encode video outputs when the pipeline call takes no fps argument.",
+            default=1,
+            metavar="N",
+            help=(
+                "Load a copy of the pipeline on each of the first N GPUs and run up to N generations at once. "
+                "Defaults to 1."
+            ),
         )
         parser.add_argument(
-            "--sampling-rate",
+            "--seed",
             type=int,
             default=None,
-            help="Sample rate used to encode audio outputs. Defaults to 16000.",
-        )
-        parser.add_argument(
-            "--default-seed",
-            type=int,
-            default=None,
-            help="Seed used for requests that do not set one. Defaults to a random seed per request.",
+            help=(
+                "Seed for the generator that picks the seed of each request that does not set one. "
+                "Defaults to a random seed chosen at startup."
+            ),
         )
         parser.add_argument(
             "--enable-cors",
@@ -213,6 +216,22 @@ class ServeCommand(BaseDiffusersCLICommand):
             raise SystemExit(
                 "--device-map does not apply with --context-parallel: each worker loads the pipeline on its own GPU."
             )
+        if args.data_parallel < 1:
+            raise SystemExit(f"--data-parallel must be at least 1, got {args.data_parallel}.")
+        if args.data_parallel > 1 and args.context_parallel:
+            raise SystemExit(
+                "--data-parallel and --context-parallel cannot be combined: --context-parallel already uses "
+                "every visible GPU for each generation."
+            )
+        if args.data_parallel > 1 and args.device_map is not None:
+            raise SystemExit(
+                "--device-map does not apply with --data-parallel: each copy of the pipeline is loaded on its own GPU."
+            )
+        if args.data_parallel > 1 and not args.remote and torch.cuda.device_count() < args.data_parallel:
+            raise SystemExit(
+                f"--data-parallel {args.data_parallel} needs {args.data_parallel} GPUs, but "
+                f"{torch.cuda.device_count()} are visible."
+            )
 
         if args.remote:
             serve_remote(args, self.task)
@@ -227,9 +246,8 @@ class ServeCommand(BaseDiffusersCLICommand):
             ) from e
 
         from .app import create_app
-        from .backends import DiffusersBackend, backend_capabilities
+        from .backends import DiffusersBackend, ParallelBackend, backend_capabilities
         from .manifest import load_manifest
-        from .parallel import ParallelBackend
         from .scheduler import Scheduler
 
         pipeline_cls, signature, commit_hash = _resolve_pipeline(args)
@@ -246,16 +264,22 @@ class ServeCommand(BaseDiffusersCLICommand):
         )
 
         if args.context_parallel:
-            backend = ParallelBackend(args, manifest)
+            backends = [ParallelBackend(args, manifest)]
+        elif args.data_parallel > 1:
+            backends = [
+                DiffusersBackend(Namespace(**{**vars(args), "device_map": f"cuda:{index}"}), manifest)
+                for index in range(args.data_parallel)
+            ]
         else:
-            backend = DiffusersBackend(args, manifest)
+            backends = [DiffusersBackend(args, manifest)]
 
         try:
-            scheduler = Scheduler(backend, args.output_dir)
+            seed = args.seed if args.seed is not None else secrets.randbelow(2**32)
+            scheduler = Scheduler(backends, args.output_dir)
             app = create_app(
                 manifest,
                 scheduler,
-                default_seed=args.default_seed,
+                seed=seed,
                 enable_cors=args.enable_cors,
                 public_url=args.public_url,
             )
@@ -266,6 +290,7 @@ class ServeCommand(BaseDiffusersCLICommand):
                 pipeline_class=pipeline_cls.__name__,
                 tasks=list(manifest.tasks),
                 capabilities=manifest.capabilities,
+                seed=seed,
             )
             server = uvicorn.Server(
                 uvicorn.Config(app, host=args.host, port=args.port, log_level=args.log_level or "info")
@@ -279,4 +304,5 @@ class ServeCommand(BaseDiffusersCLICommand):
                 ).start()
             server.run()
         finally:
-            backend.close()
+            for backend in backends:
+                backend.close()

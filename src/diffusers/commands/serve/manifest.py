@@ -26,6 +26,7 @@ import inspect
 import json
 import math
 import operator
+import random
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -416,6 +417,11 @@ class Manifest:
         self.adapters = data.get("adapters", {})
         self._kwarg_names = set(signature.parameters) - {"self"}
         self._pipeline_name = pipeline_cls.__name__
+        self._has_default_fps = any(
+            signature.parameters[kwarg].default not in (None, inspect.Parameter.empty)
+            for kwarg in _PARAMETER_KWARGS["fps"]
+            if kwarg in signature.parameters
+        )
 
         for capability in self.capabilities:
             if capability not in supported_capabilities:
@@ -470,6 +476,15 @@ class Manifest:
                 f"The GMS manifest for {self.id!r} declares `duration` on task {name!r} without a frame lattice, so "
                 'seconds cannot be converted to frames. Add one, e.g. "lattice": {"frames": "8k+1", "fps": 24}.'
             )
+        produces_video = any(spec["type"] == "video" for spec in task["outputs"].values())
+        if produces_video and not self._has_default_fps and "duration" not in parameters:
+            raise SystemExit(
+                f"The GMS manifest for {self.id!r} declares a video output on task {name!r}, but "
+                f"{self._pipeline_name} has no default `fps` or `frame_rate` argument, so the frame rate to encode "
+                "at is unknown. Declare `duration` with a frame lattice at the model's native fps, e.g. "
+                '"duration": {"type": "number", "lattice": {"frames": "4k+1", "fps": 16}}, and pass the manifest '
+                "with --manifest."
+            )
         for preset, body in task.get("presets", {}).items():
             for key in body.get("parameters", {}):
                 if key not in parameters:
@@ -506,16 +521,19 @@ class Manifest:
             head["hash"] = self.hash
         return json.dumps(head)[:-1].encode() + b', "manifest": ' + self.raw + b"}"
 
-    def seeded(self, task: str) -> bool:
-        return "seed" in self._parameter_kwargs[task]
+    def resolve(self, body: Any, seeds: random.Random | None = None) -> ResolvedRequest:
+        """Validate a create-generation request body and map it to the pipeline call.
 
-    def resolve(self, body: Any) -> ResolvedRequest:
-        """Validate a create-generation request body and map it to the pipeline call."""
+        A request that omits the seed gets one drawn from `seeds`.
+        """
         inputs = self._check_body(body)
         task = self._select_task(body.get("task"), inputs)
         values, explicit = self._parameter_values(task, body)
         input_kwargs, media = self._resolve_inputs(task, inputs, values)
         parameter_kwargs, seed = self._resolve_parameters(task, values, explicit)
+        # The spec has the server pick the seed when the request omits it, so the result is reproducible.
+        if seed is None and "seed" in self._parameter_kwargs[task]:
+            seed = (seeds or random.Random()).randrange(2**32)
         output_formats = self._resolve_output_formats(task, body.get("output_format"))
 
         response_format = body.get("response_format", "url")

@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import random
 import re
 import time
 import uuid
@@ -83,7 +84,7 @@ def _format_job_response(job: GenerationJob, base_url: str) -> dict[str, Any]:
         "progress": job.progress if job.status == "generating" else None,
         "outputs": outputs,
         "expires_at": _timestamp(job.expires_at),
-        "seed": job.seed if job.status == "complete" else None,
+        "seed": job.request.seed if job.status == "complete" else None,
         "usage": job.usage,
     }
 
@@ -91,7 +92,7 @@ def _format_job_response(job: GenerationJob, base_url: str) -> dict[str, Any]:
 def create_app(
     manifest: Manifest,
     scheduler: Scheduler,
-    default_seed: int | None = None,
+    seed: int | None = None,
     enable_cors: bool = False,
     public_url: str | None = None,
 ) -> FastAPI:
@@ -100,6 +101,7 @@ def create_app(
     root_path = urlparse(public_url).path.rstrip("/") if public_url is not None else ""
     app = FastAPI(title="diffusers-cli serve", docs_url=None, redoc_url=None, openapi_url=None, root_path=root_path)
     app.state.last_request = time.monotonic()
+    seeds = random.Random(seed)
 
     def base_url(request: Request) -> str:
         # Output links must work for the client, so they are built on the address it reached the server at.
@@ -173,9 +175,7 @@ def create_app(
             body = await request.json()
         except json.JSONDecodeError as e:
             raise GMSError("invalid_request", f"request body is not valid JSON: {e}") from e
-        resolved = manifest.resolve(body)
-        seeded = manifest.seeded(resolved.task)
-        generation = GenerationJob(manifest.id, manifest.revision, resolved, seeded=seeded, default_seed=default_seed)
+        generation = GenerationJob(manifest.id, manifest.revision, manifest.resolve(body, seeds))
         scheduler.submit(generation)
 
         wait = re.fullmatch(r"\s*wait=(\d+)\s*", request.headers.get("prefer", ""))

@@ -45,7 +45,7 @@ progress, and a cancel request only takes effect once the pipeline call returns.
 
 ## Generations
 
-Generations run one at a time. `POST /v1/generations` returns immediately with a `queued` generation. Poll it,
+Generations run one at a time, or one per GPU with [`--data-parallel`](#multiple-gpus). `POST /v1/generations` returns immediately with a `queued` generation. Poll it,
 subscribe to its events, or ask the server to hold the connection with `Prefer: wait=<seconds>`:
 
 ```bash
@@ -141,6 +141,14 @@ can provide.
 
 ## Multiple GPUs
 
+`--data-parallel N` loads a copy of the pipeline on each of the first N GPUs and runs up to N generations at
+once. Generations still start in the order they arrive: each GPU takes the next queued generation when it finishes
+its current one.
+
+```bash
+diffusers serve black-forest-labs/FLUX.1-dev --data-parallel 4
+```
+
 `--context-parallel` splits each generation across every visible GPU with
 [context parallelism](../training/distributed_inference#context-parallelism). It needs a DiT-based pipeline and at
 least two GPUs. `serve` starts one worker process per GPU itself, so don't launch it with `torchrun`:
@@ -151,7 +159,7 @@ diffusers serve black-forest-labs/FLUX.1-dev --context-parallel
 
 Every worker runs every generation, and rank 0 saves the outputs. If a worker process exits, `GET /health` returns
 `503` and the server stops generating. `--device-map` and request adapters are not available with
-`--context-parallel`, and `--compile` is skipped.
+`--context-parallel`, and `--compile` is skipped. `--context-parallel` and `--data-parallel` can't be combined.
 
 ## Remote serving
 

@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Generation jobs, and the scheduler that runs them through the backend in arrival order, one at a time."""
+"""Generation jobs, and the scheduler that runs them in arrival order, one at a time on each backend."""
 
 from __future__ import annotations
 
 import queue
-import secrets
 import shutil
 import threading
 import time
@@ -38,26 +37,11 @@ EXPIRY_SECONDS = 3600
 class GenerationJob:
     """One generation, from the request that created it to its outputs: the resource `/v1/generations/{id}` returns."""
 
-    def __init__(
-        self,
-        model: str,
-        revision: str | None,
-        request: ResolvedRequest,
-        seeded: bool,
-        default_seed: int | None = None,
-    ):
+    def __init__(self, model: str, revision: str | None, request: ResolvedRequest):
         self.id = f"gen_{uuid.uuid4().hex[:12]}"
         self.model = model
         self.revision = revision
         self.request = request
-        # The spec has the server pick the seed when the request omits it, so the result is reproducible.
-        self.seed = None
-        if seeded and request.seed is not None:
-            self.seed = request.seed
-        elif seeded and default_seed is not None:
-            self.seed = default_seed
-        elif seeded:
-            self.seed = secrets.randbelow(2**32)
         self.status = "queued"
         self.created_at = datetime.now(timezone.utc)
         self.expires_at: datetime | None = None
@@ -104,25 +88,29 @@ class GenerationJob:
 
 
 class Scheduler:
-    """Runs generation jobs through the backend on a single worker thread, first in, first out.
+    """Runs generation jobs first in, first out, on one worker thread per backend.
 
     It also keeps every job until it expires, so the API can look jobs up, cancel them and delete them.
     """
 
-    def __init__(self, backend: Any, output_dir: str):
-        self._backend = backend
+    def __init__(self, backends: list[Any], output_dir: str):
+        self._backends = backends
         self._output_dir = Path(output_dir)
         self._generations: dict[str, GenerationJob] = {}
         self._lock = threading.Lock()
         self._pending: queue.Queue[GenerationJob] = queue.Queue()
-        self._running = False
-        threading.Thread(target=self._work, name="diffusers-serve-worker", daemon=True).start()
+        self._running = 0
+        # Every worker takes the next job from the same queue, so no job waits behind a long one on a busy backend.
+        for index, backend in enumerate(backends):
+            threading.Thread(
+                target=self._work, args=(backend,), name=f"diffusers-serve-worker-{index}", daemon=True
+            ).start()
 
     def failure(self) -> str | None:
-        return self._backend.failure()
+        return next(filter(None, (backend.failure() for backend in self._backends)), None)
 
     def busy(self) -> bool:
-        return self._running or not self._pending.empty()
+        return self._running > 0 or not self._pending.empty()
 
     def submit(self, generation: GenerationJob) -> None:
         self._prune()
@@ -169,31 +157,33 @@ class Scheduler:
         if generation.directory is not None:
             shutil.rmtree(generation.directory, ignore_errors=True)
 
-    def _work(self) -> None:
+    def _work(self, backend: Any) -> None:
         while True:
             generation = self._pending.get()
             with self._lock:
                 if generation.done:
                     continue
                 generation.status = "generating"
-                self._running = True
+                self._running += 1
             generation.directory = self._output_dir / generation.id
 
             started = time.perf_counter()
             error = None
             try:
                 generation.directory.mkdir(parents=True, exist_ok=True)
-                outputs = self._backend.generate(generation)
+                outputs = backend.generate(generation)
             except GMSError as e:
                 error = e
-            # The helpers shared with `run` raise SystemExit, and anything escaping here would end the
-            # only worker and leave every later generation queued.
+            # The helpers shared with `run` raise SystemExit, and anything escaping here would end this
+            # worker and leave its backend idle for good.
             except BaseException as e:
                 logger.error(f"generation {generation.id} failed", exc_info=True)
                 error = GMSError("internal", f"{type(e).__name__}: {e}")
 
             with self._lock:
                 deleted = generation.id not in self._generations
+                # Before `finish` wakes any waiter, so a finished job is never reported while the server looks busy.
+                self._running -= 1
                 if error is not None:
                     generation.finish("failed", error)
                 elif generation.cancel_requested:
@@ -202,6 +192,5 @@ class Scheduler:
                     generation.outputs = outputs
                     generation.usage = {"compute_seconds": round(time.perf_counter() - started, 2)}
                     generation.finish("complete")
-                self._running = False
             if deleted or generation.status != "complete":
                 self._remove_files(generation)

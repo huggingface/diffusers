@@ -37,7 +37,7 @@ from PIL import Image
 from diffusers.commands.serve import ServeCommand, _shut_down_when_idle
 from diffusers.commands.serve.backends import DiffusersBackend, backend_capabilities
 from diffusers.commands.serve.manifest import GMSError, Manifest, blocks_signature, derive_manifest
-from diffusers.commands.serve.scheduler import Scheduler
+from diffusers.commands.serve.scheduler import GenerationJob, Scheduler
 from diffusers.modular_pipelines import InputParam, ModularPipelineBlocks, OutputParam
 
 
@@ -149,8 +149,6 @@ def _args(**overrides):
         "compile": None,
         "lora": None,
         "context_parallel": False,
-        "fps": 8,
-        "sampling_rate": None,
     }
     return Namespace(**{**values, **overrides})
 
@@ -180,7 +178,7 @@ def serve(tmp_path, monkeypatch):
         args = _args(**arg_overrides)
         bound = _manifest(manifest=manifest, pipeline_cls=type(pipeline), signature=signature, args=args)
         backend = backend or DiffusersBackend(args, bound)
-        app = create_app(bound, Scheduler(backend, str(tmp_path)), **(app_options or {}))
+        app = create_app(bound, Scheduler([backend], str(tmp_path)), **(app_options or {}))
         return TestClient(app), pipeline
 
     return _build
@@ -227,6 +225,13 @@ class FakeVideoPipeline:
         generator: torch.Generator | None = None,
     ):
         pass
+
+
+class FakeAudioVideoPipeline(FakePipeline):
+    vocoder = SimpleNamespace(config=SimpleNamespace(sampling_rate=24000))
+
+    def __call__(self, prompt: str = None, frame_rate: float = 24.0):
+        return self.result
 
 
 class TestManifest:
@@ -426,7 +431,7 @@ class TestServeApp:
             },
             "capabilities": ["wait"],
         }
-        client, pipeline = serve(manifest=manifest)
+        client, pipeline = serve(manifest=manifest, pipeline=FakeAudioVideoPipeline())
         pipeline.result = SimpleNamespace(
             frames=[[Image.new("RGB", (32, 24)) for _ in range(16)]],
             audio=np.zeros((1, 2, 8000), dtype=np.float32),
@@ -435,20 +440,20 @@ class TestServeApp:
         generation = client.post("/v1/generations", json=body, headers=WAIT).json()
         assert generation["status"] == "complete", generation
 
-        # The fake pipeline takes no fps argument, so the video is encoded at the `--fps` default.
+        # Video is encoded at the pipeline's default `frame_rate`, audio at its vocoder's sample rate.
         (video,) = generation["outputs"]["video"]
         (audio,) = generation["outputs"]["audio"]
         assert {k: v for k, v in video.items() if k != "url"} == {
             "media_type": "video/mp4",
             "width": 32,
             "height": 24,
-            "duration": 2.0,
-            "fps": 8,
+            "duration": 0.67,
+            "fps": 24.0,
         }
         assert {k: v for k, v in audio.items() if k != "url"} == {
             "media_type": "audio/wav",
-            "duration": 0.5,
-            "sample_rate": 16000,
+            "duration": 0.33,
+            "sample_rate": 24000,
         }
         assert client.get(audio["url"]).content[:4] == b"RIFF"
 
@@ -687,6 +692,41 @@ class TestServeRemote:
             self._run(monkeypatch, FakeJobsApi(stage="ERROR"), [])
 
 
+class BlockingBackend:
+    def __init__(self):
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def failure(self):
+        return None
+
+    def generate(self, generation):
+        self.started.set()
+        self.release.wait(timeout=30)
+        return {}
+
+
+class TestScheduler:
+    def test_each_backend_runs_its_own_generation(self, tmp_path):
+        backends = [BlockingBackend(), BlockingBackend()]
+        scheduler = Scheduler(backends, str(tmp_path))
+        request = _manifest().resolve({"model": MODEL_ID, "inputs": {"prompt": "a cat"}})
+        jobs = [GenerationJob(MODEL_ID, None, request) for _ in backends]
+        for job in jobs:
+            scheduler.submit(job)
+
+        for index, backend in enumerate(backends):
+            assert backend.started.wait(timeout=30), f"backend {index} never picked up a generation"
+        assert [job.status for job in jobs] == ["generating", "generating"], "both generations should run at once"
+
+        for backend in backends:
+            backend.release.set()
+        for job in jobs:
+            job.wait(timeout=30)
+        assert [job.status for job in jobs] == ["complete", "complete"]
+        assert not scheduler.busy(), "the scheduler should be idle once every backend has finished"
+
+
 class FakeClock:
     """Stands in for the `time` module: `sleep` advances the clock instead of waiting."""
 
@@ -752,7 +792,7 @@ def _fake_worker_main(rank, world_size, port, args, manifest, conn, cancel_flag)
         job = conn.recv()
         if job is None:
             return
-        if job["seed"] == -1:
+        if job["request"].seed == -1:
             os._exit(4)
         if rank != 0:
             continue
@@ -772,8 +812,7 @@ def _fake_worker_main(rank, world_size, port, args, manifest, conn, cancel_flag)
 
 class FakeGeneration:
     def __init__(self, prompt="a cat", seed=0):
-        self.request = SimpleNamespace(kwargs={"prompt": prompt}, media={}, task="text_to_image")
-        self.seed = seed
+        self.request = SimpleNamespace(kwargs={"prompt": prompt}, media={}, task="text_to_image", seed=seed)
         self.directory = Path("/tmp/unused")
         self.cancel_requested = False
         self.progress = []
@@ -789,23 +828,23 @@ class TestParallelBackend:
     def backend(self, monkeypatch):
         import multiprocessing
 
-        from diffusers.commands.serve import parallel
+        from diffusers.commands.serve import backends
 
         if "fork" not in multiprocessing.get_all_start_methods():
             pytest.skip("the fake workers are forked so they can use a test-local target")
         fork = multiprocessing.get_context("fork")
-        monkeypatch.setattr(parallel.multiprocessing, "get_context", lambda method: fork)
-        monkeypatch.setattr(parallel, "_worker_main", _fake_worker_main)
+        monkeypatch.setattr(backends.multiprocessing, "get_context", lambda method: fork)
+        monkeypatch.setattr(backends, "_worker_main", _fake_worker_main)
         monkeypatch.setattr(torch.cuda, "device_count", lambda: 2)
-        backends = []
+        built = []
 
         def _build(**arg_overrides):
             args = Namespace(**{"fail_at_startup": False, **arg_overrides})
-            backends.append(parallel.ParallelBackend(args, _manifest()))
-            return backends[-1]
+            built.append(backends.ParallelBackend(args, _manifest()))
+            return built[-1]
 
         yield _build
-        for backend in backends:
+        for backend in built:
             backend.close()
 
     def test_generation_runs_on_every_rank_and_rank_0_answers(self, backend):
@@ -850,7 +889,7 @@ class TestParallelWorker:
     def _jobs(self, backend, rank, *jobs):
         from multiprocessing import Pipe, Value
 
-        from diffusers.commands.serve.parallel import _serve_jobs
+        from diffusers.commands.serve.backends import _serve_jobs
 
         server, worker = Pipe()
         for job in (*jobs, None):
@@ -862,7 +901,7 @@ class TestParallelWorker:
         return replies
 
     def _job(self, prompt):
-        return {"request": None, "kwargs": {"prompt": prompt}, "seed": 0, "directory": "/tmp/unused"}
+        return {"request": None, "kwargs": {"prompt": prompt}, "directory": "/tmp/unused"}
 
     def test_only_rank_0_reports_progress_and_results(self):
         def run(kwargs, generation):
@@ -888,7 +927,7 @@ class TestParallelWorker:
     def test_cancel_is_broadcast_from_rank_0(self, monkeypatch):
         from multiprocessing import Value
 
-        from diffusers.commands.serve.parallel import _WorkerJob
+        from diffusers.commands.serve.backends import _WorkerJob
 
         monkeypatch.setenv("MASTER_ADDR", "127.0.0.1")
         monkeypatch.setenv("MASTER_PORT", str(_free_port()))
