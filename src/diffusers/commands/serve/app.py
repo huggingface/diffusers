@@ -49,7 +49,17 @@ def _timestamp(value: Any) -> str | None:
     return value.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _job_response(job: GenerationJob, base_url: str) -> dict[str, Any]:
+def _format_output(job: GenerationJob, artifact: dict[str, Any], base_url: str) -> dict[str, Any]:
+    """One output file as the response lists it: its metadata, plus a download link or its bytes inline."""
+    entry = {key: value for key, value in artifact.items() if key != "file"}
+    if job.request.response_format == "b64_json":
+        entry["base64"] = base64.b64encode((job.directory / artifact["file"]).read_bytes()).decode()
+        return entry
+    entry["url"] = base_url + _FILE_ROUTE.format(generation_id=job.id, filename=artifact["file"])
+    return entry
+
+
+def _format_job_response(job: GenerationJob, base_url: str) -> dict[str, Any]:
     """The response body for a generation: outputs are linked under `base_url`, or inlined as base64.
 
     Raises the generation's error once it failed, which the error handler turns into the error envelope.
@@ -59,16 +69,10 @@ def _job_response(job: GenerationJob, base_url: str) -> dict[str, Any]:
 
     outputs = None
     if job.status == "complete":
-        outputs = {}
-        for name, artifacts in job.outputs.items():
-            outputs[name] = []
-            for artifact in artifacts:
-                entry = {key: value for key, value in artifact.items() if key != "file"}
-                if job.request.response_format == "b64_json":
-                    entry["base64"] = base64.b64encode((job.directory / artifact["file"]).read_bytes()).decode()
-                else:
-                    entry["url"] = base_url + _FILE_ROUTE.format(generation_id=job.id, filename=artifact["file"])
-                outputs[name].append(entry)
+        outputs = {
+            name: [_format_output(job, artifact, base_url) for artifact in artifacts]
+            for name, artifacts in job.outputs.items()
+        }
 
     return {
         "id": job.id,
@@ -178,12 +182,12 @@ def create_app(
         # `Prefer` is a hint, so a server without the `wait` capability answers right away instead of failing.
         if wait is not None and "wait" in manifest.capabilities:
             await asyncio.to_thread(generation.wait, min(float(wait.group(1)), MAX_WAIT_SECONDS))
-        return _job_response(generation, base_url(request))
+        return _format_job_response(generation, base_url(request))
 
     @app.get("/v1/generations/{generation_id}")
     async def get_generation(generation_id: str, request: Request) -> dict[str, Any]:
         generation = scheduler.get(generation_id)
-        return _job_response(generation, base_url(request))
+        return _format_job_response(generation, base_url(request))
 
     @app.delete("/v1/generations/{generation_id}", status_code=204)
     async def delete_generation(generation_id: str) -> Response:
@@ -193,7 +197,7 @@ def create_app(
     @app.post("/v1/generations/{generation_id}/cancel")
     async def cancel_generation(generation_id: str, request: Request) -> dict[str, Any]:
         generation = scheduler.cancel(generation_id)
-        return _job_response(generation, base_url(request))
+        return _format_job_response(generation, base_url(request))
 
     @app.get("/v1/generations/{generation_id}/events")
     async def get_generation_events(generation_id: str, request: Request) -> StreamingResponse:
@@ -209,7 +213,7 @@ def create_app(
                 events, done = await asyncio.to_thread(generation.wait_for_events, index, _KEEP_ALIVE_SECONDS)
                 for event, data in events:
                     index += 1
-                    payload = _job_response(generation, base_url(request)) if event == "complete" else data
+                    payload = _format_job_response(generation, base_url(request)) if event == "complete" else data
                     yield f"id: {index}\nevent: {event}\ndata: {json.dumps(payload)}\n\n"
                 if done:
                     return
