@@ -725,21 +725,6 @@ pipe.transformer.compile_repeated_blocks(fullgraph=True)
 SeaCache also supports the Cosmos 3 Ulysses context-parallel and DTensor-based tensor-parallel helpers documented
 below. Cache decisions are synchronized across ranks. Full-model compilation and other model-sharding strategies are not claimed.
 
-## Native tensor parallelism
-
-Follow the [tensor parallelism guide](../../training/distributed_inference#tensor-parallelism) for distributed setup,
-launching, seeding, and rank-zero output handling. For Cosmos, adapt the
-[existing modular workflow](#modular-examples-for-all-existing-workflows) as follows:
-
-- Use `nvidia/Cosmos3-Super` or `nvidia/Cosmos3-Nano` with `Cosmos3OmniTransformer.from_pretrained`,
-  `subfolder="transformer"`, `dtype=torch.bfloat16`, and `parallel_config=TensorParallelConfig(tp_degree=4)`.
-- Create `Cosmos3OmniModularPipeline` from the same checkpoint, then call
-  `update_components(transformer=transformer)` before `load_components`. Place the remaining components
-  on each rank's local device and reuse the workflow's prompts, scheduler, and generation settings.
-
-Nano and Super support TP degrees 1, 2, 4, and 8; the degree must divide the query and KV head counts
-and the MLP intermediate size. For Cosmos CP or combined TP+CP, use the [existing example helpers](#context-parallelism).
-
 ## Context parallelism
 
 For long videos or high resolutions, a single forward pass can exceed the memory and latency budget of one GPU. Cosmos 3 supports **context parallelism (CP)** to shard the sequence dimension across multiple GPUs, splitting the attention computation so each device holds only a slice of the tokens.
@@ -780,7 +765,23 @@ torchrun --nproc_per_node=4 examples/cosmos3/inference_cosmos3.py \
 
 ### Fitting large models with tensor parallelism
 
-CP shards *activations* but replicates every weight on every rank, so it does not reduce a model's weight footprint — a model that doesn't fit on one GPU still won't fit under CP alone. To shard the **weights**, `enable_cosmos3_tensor_parallel(transformer, tp_mesh)` applies Megatron-style tensor parallelism on a second, orthogonal mesh axis:
+CP shards *activations* but replicates every weight on every rank, so it does not reduce a model's weight footprint — a model that doesn't fit on one GPU still won't fit under CP alone.
+
+For TP-only inference, follow the [tensor parallelism guide](../../training/distributed_inference#tensor-parallelism)
+for distributed setup, launching, seeding, and rank-zero output handling. Adapt the
+[existing modular workflow](#modular-examples-for-all-existing-workflows) as follows:
+
+- Use `nvidia/Cosmos3-Super` or `nvidia/Cosmos3-Nano` with `Cosmos3OmniTransformer.from_pretrained`,
+  `subfolder="transformer"`, `dtype=torch.bfloat16`, and `parallel_config=TensorParallelConfig(tp_degree=4)`.
+- Create `Cosmos3OmniModularPipeline` from the same checkpoint, then call
+  `update_components(transformer=transformer)` before `load_components`. Place the remaining components
+  on each rank's local device and reuse the workflow's prompts, scheduler, and generation settings.
+
+Nano and Super support TP degrees 1, 2, 4, and 8; the degree must divide the query and KV head counts
+and the MLP intermediate size.
+
+To combine TP with CP, the existing example helper
+`enable_cosmos3_tensor_parallel(transformer, tp_mesh)` shards the weights on a second, orthogonal mesh axis:
 
 - The attention and MLP projections are column/row sharded across the TP group (`to_q/to_k/to_v` + `add_q/k/v` and the MLPs' `gate/up` are column-parallel; `to_out/to_add_out` and the MLPs' `down` are row-parallel with an all-reduce). Each rank ends up owning `query_heads / tp` query heads and `kv_heads / tp` KV heads.
 - TP composes with CP on a 2-D `(tp, cp)` device mesh: TP splits heads/weights persistently, CP shards the sequence on top. The constraints are `tp` divides the KV heads (8), and `tp * cp` divides the query heads (32 for `Nano`, 64 for `Super`).
