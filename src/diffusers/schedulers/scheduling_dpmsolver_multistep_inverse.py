@@ -358,7 +358,8 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         _, unique_indices = np.unique(timesteps, return_index=True)
         timesteps = timesteps[np.sort(unique_indices)]
 
-        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.int64)
+        timestep_dtype = torch.float32 if self.config.use_flow_sigmas else torch.int64
+        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=timestep_dtype)
 
         self.num_inference_steps = len(timesteps)
 

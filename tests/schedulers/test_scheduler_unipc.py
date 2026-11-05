@@ -424,7 +424,28 @@ class UniPCMultistepScheduler1DTest(UniPCMultistepSchedulerTest):
             0.0,  # 0 appended as default
         ]
         expected_sigmas = torch.tensor(expected_sigmas)
-        expected_timesteps = (expected_sigmas * num_train_timesteps).to(torch.int64)
-        expected_timesteps = expected_timesteps[0:-1]
+        expected_timesteps = (expected_sigmas * num_train_timesteps)[0:-1]
         self.assertTrue(torch.allclose(scheduler.sigmas, expected_sigmas))
-        self.assertTrue(torch.all(expected_timesteps == scheduler.timesteps))
+        self.assertTrue(torch.allclose(expected_timesteps, scheduler.timesteps))
+        self.assertEqual(scheduler.timesteps.dtype, torch.float32)
+
+    def test_flow_sigmas_continuous_timesteps(self):
+        scheduler = UniPCMultistepScheduler(
+            prediction_type="flow_prediction",
+            use_flow_sigmas=True,
+            flow_shift=3.0,
+        )
+        scheduler.set_timesteps(8)
+        self.assertEqual(scheduler.timesteps.dtype, torch.float32)
+        expected_timesteps = (scheduler.sigmas[:-1] * scheduler.config.num_train_timesteps).to(torch.float32)
+        self.assertTrue(torch.allclose(scheduler.timesteps, expected_timesteps))
+
+        sample = torch.randn(1, 4, 16, 16)
+        for t in scheduler.timesteps:
+            model_output = torch.randn_like(sample)
+            sample = scheduler.step(model_output, t, sample).prev_sample
+        self.assertEqual(sample.shape, (1, 4, 16, 16))
+
+        scheduler_discrete = UniPCMultistepScheduler()
+        scheduler_discrete.set_timesteps(8)
+        self.assertEqual(scheduler_discrete.timesteps.dtype, torch.int64)

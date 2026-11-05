@@ -271,3 +271,24 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
     def test_exponential_sigmas(self):
         self.check_over_configs(use_exponential_sigmas=True)
+
+    def test_flow_sigmas_continuous_timesteps(self):
+        scheduler = DPMSolverMultistepInverseScheduler(
+            prediction_type="flow_prediction",
+            use_flow_sigmas=True,
+            flow_shift=3.0,
+        )
+        scheduler.set_timesteps(8)
+        assert scheduler.timesteps.dtype == torch.float32
+        expected_timesteps = (scheduler.sigmas[:-1] * scheduler.config.num_train_timesteps).to(torch.float32)
+        assert torch.allclose(scheduler.timesteps, expected_timesteps)
+
+        sample = torch.randn(1, 4, 16, 16)
+        for t in scheduler.timesteps:
+            model_output = torch.randn_like(sample)
+            sample = scheduler.step(model_output, t, sample).prev_sample
+        assert sample.shape == (1, 4, 16, 16)
+
+        scheduler_discrete = DPMSolverMultistepInverseScheduler()
+        scheduler_discrete.set_timesteps(8)
+        assert scheduler_discrete.timesteps.dtype == torch.int64
