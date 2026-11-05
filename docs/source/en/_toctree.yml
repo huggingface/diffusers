@@ -381,6 +381,8 @@
         title: JoyImageEditTransformer3DModel
       - local: api/models/kandinsky6_transformer
         title: Kandinsky 6 Transformers
+      - local: api/models/kandinsky_s2v_transformer
+        title: KandinskyS2VTransformer3DModel
       - local: api/models/krea2_transformer2d
         title: Krea2Transformer2DModel
       - local: api/models/latte_transformer3d
@@ -505,6 +507,8 @@
         title: AutoencoderKLMiniMaxH3Audio
       - local: api/models/autoencoderkl_mochi
         title: AutoencoderKLMochi
+      - local: api/models/autoencoderkl_p_h3_image
+        title: AutoencoderKLPH3Image
       - local: api/models/autoencoderkl_qwenimage
         title: AutoencoderKLQwenImage
       - local: api/models/autoencoderkl_qwenimage21
@@ -655,6 +659,8 @@
         title: OmniGen
       - local: api/pipelines/ovis_image
         title: Ovis-Image
+      - local: api/pipelines/p_h3_image
+        title: P-H3-Image
       - local: api/pipelines/pag
         title: PAG
       - local: api/pipelines/pika_h3_flex
@@ -757,6 +763,8 @@
         title: Kandinsky 5.0 Video
       - local: api/pipelines/kandinsky6
         title: Kandinsky 6
+      - local: api/pipelines/kandinsky_s2v
+        title: Kandinsky S2V 1.0
       - local: api/pipelines/latte
         title: Latte
       - local: api/pipelines/ltx2
