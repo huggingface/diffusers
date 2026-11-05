@@ -217,6 +217,45 @@ class TestDreamLitePipeline(DreamLitePipelineTesterConfig, PipelineTesterMixin):
         assert all(b == 3 for b in seen_batches), f"expected all 3-way, got {seen_batches}"
 
 
+class TestDreamLiteAttentionSlicing:
+    """Disabling attention slicing must not replace DreamLite's GQA-aware processor."""
+
+    @staticmethod
+    def _unet():
+        torch.manual_seed(0)
+        return DreamLiteUNetModel(
+            sample_size=8,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DreamLiteCrossAttnNoSelfAttnDownBlock2D", "DreamLiteCrossAttnDownBlock2D"),
+            up_block_types=("DreamLiteCrossAttnUpBlock2D", "DreamLiteUpBlock2D"),
+            block_out_channels=(32, 64),
+            cross_attention_dim=CROSS_ATTN_DIM,
+            attention_head_dim=8,
+            num_kv_heads=1,
+            layers_per_block=1,
+            norm_num_groups=8,
+            transformer_layers_per_block=1,
+        ).eval()
+
+    def test_disable_attention_slicing_keeps_output(self):
+        unet = self._unet()
+        sample = torch.randn(1, 4, 8, 8)
+        encoder_hidden_states = torch.randn(1, 5, CROSS_ATTN_DIM)
+
+        with torch.no_grad():
+            expected = unet(sample, 500, encoder_hidden_states=encoder_hidden_states).sample
+            unet.set_attention_slice(None)
+            actual = unet(sample, 500, encoder_hidden_states=encoder_hidden_states).sample
+
+        assert torch.equal(expected, actual)
+
+    def test_enable_attention_slicing_raises(self):
+        unet = self._unet()
+        with pytest.raises(ValueError, match="does not support attention slicing"):
+            unet.set_attention_slice("auto")
+
+
 class TestDreamLitePipelineMemory(DreamLitePipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the DreamLite pipeline."""
 

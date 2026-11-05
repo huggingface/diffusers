@@ -1925,6 +1925,22 @@ class DreamLiteUNetModel(UNet2DConditionModel):
         """
         self.set_attn_processor(DreamLiteAttnProcessor2_0())
 
+    def set_attention_slice(self, slice_size: str | int | list[int] | None = "auto"):  # type: ignore[override]
+        """Disable attention slicing without replacing the GQA-aware processor.
+
+        The inherited implementation installs :class:`AttnProcessor2_0` when `slice_size=None`, which silently breaks
+        the grouped-query attention layout on the next forward pass (and also swaps in the stock processor when slicing
+        was never enabled). Sliced attention itself is not supported because :class:`SlicedAttnProcessor` has no GQA
+        path, so request it explicitly rather than failing later inside attention.
+        """
+        if slice_size is not None:
+            raise ValueError(
+                "DreamLite does not support attention slicing because its grouped-query attention layout is not "
+                "handled by `SlicedAttnProcessor`. Call `disable_attention_slicing()` / `set_attention_slice(None)` "
+                "to restore the default GQA-aware processor."
+            )
+        self.set_default_attn_processor()
+
     # ----- DreamLite extension: support `text_proj_rms` encoder_hid_proj -----
     def _set_encoder_hid_proj(  # type: ignore[override]
         self,
