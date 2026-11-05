@@ -15,6 +15,7 @@
 import math
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -617,6 +618,7 @@ class AutoencoderKLMiniMaxH3(ModelMixin, ConfigMixin, AttentionMixin, Autoencode
         # into smaller tiles, running the encoder/decoder per tile and blending the overlaps, the memory requirement
         # can be lowered. MiniMax-H3 ships with tiling enabled.
         self.use_tiling = True
+        self._tiling_process_group = None
 
         # The tile size in pixel space, and the minimum overlap between two neighbouring tiles. The actual overlaps are
         # widened (in multiples of `spatial_compression_ratio`) so that the tiles cover the frame exactly.
@@ -631,6 +633,7 @@ class AutoencoderKLMiniMaxH3(ModelMixin, ConfigMixin, AttentionMixin, Autoencode
         tile_sample_min_width: int | None = None,
         tile_sample_min_overlap_height: int | None = None,
         tile_sample_min_overlap_width: int | None = None,
+        process_group: dist.ProcessGroup | None = None,
     ) -> None:
         r"""
         Enable tiled VAE encoding/decoding. When this option is enabled, the VAE splits the frames into tiles, encodes
@@ -646,8 +649,20 @@ class AutoencoderKLMiniMaxH3(ModelMixin, ConfigMixin, AttentionMixin, Autoencode
                 The minimum overlap, in pixels, between two consecutive vertical tiles.
             tile_sample_min_overlap_width (`int`, *optional*):
                 The minimum overlap, in pixels, between two consecutive horizontal tiles.
+            process_group (`torch.distributed.ProcessGroup`, *optional*):
+                Distribute decoding tiles across this initialized process group. Every member must have the same model,
+                latents, and tile settings and call `decode` together under `torch.no_grad()` or
+                `torch.inference_mode()`. The model and latents must be on each rank's local device. Encoding remains
+                local. Defaults to local decoding when unset.
         """
+        if process_group is not None:
+            if not dist.is_available() or not dist.is_initialized():
+                raise ValueError("Initialize torch.distributed before enabling parallel tiled decoding.")
+            if dist.get_rank(process_group) < 0:
+                raise ValueError("The current rank must belong to the tiled decoding process group.")
+
         self.use_tiling = True
+        self._tiling_process_group = process_group
         self.tile_sample_min_height = tile_sample_min_height or self.tile_sample_min_height
         self.tile_sample_min_width = tile_sample_min_width or self.tile_sample_min_width
         self.tile_sample_min_overlap_height = tile_sample_min_overlap_height or self.tile_sample_min_overlap_height
@@ -759,16 +774,46 @@ class AutoencoderKLMiniMaxH3(ModelMixin, ConfigMixin, AttentionMixin, Autoencode
         )
 
         ratio = self.spatial_compression_ratio
-        rows = []
-        for i_pos, i_len in zip(y_indices, y_lengths):
-            row = []
-            for j_pos, j_len in zip(x_indices, x_lengths):
+        group = self._tiling_process_group
+        world_size = dist.get_world_size(group) if group is not None else 1
+        rank = dist.get_rank(group) if group is not None else 0
+        if world_size > 1 and torch.is_grad_enabled():
+            raise RuntimeError("Parallel tiled decoding requires torch.no_grad() or torch.inference_mode().")
+
+        tile_layout = [
+            (i_pos, i_len, j_pos, j_len)
+            for i_pos, i_len in zip(y_indices, y_lengths)
+            for j_pos, j_len in zip(x_indices, x_lengths)
+        ]
+        decoded_tiles = {}
+        for tile_index, (i_pos, i_len, j_pos, j_len) in enumerate(tile_layout):
+            if tile_index % world_size == rank:
                 tile = z[
                     ...,
                     i_pos // ratio : i_pos // ratio + i_len // ratio,
                     j_pos // ratio : j_pos // ratio + j_len // ratio,
                 ]
-                row.append(self.decoder(self.post_quant_conv(tile)))
+                decoded = self.decoder(self.post_quant_conv(tile))
+                decoded_tiles[tile_index] = decoded.contiguous() if world_size > 1 else decoded
+
+        if world_size > 1:
+            # The splitter uses equal tile extents; autocast can change the decoder's output dtype.
+            metadata = [(decoded_tiles[0].shape, decoded_tiles[0].dtype) if rank == 0 else None]
+            dist.broadcast_object_list(metadata, src=dist.get_global_rank(group, 0), group=group, device=z.device)
+            tile_shape, tile_dtype = metadata[0]
+
+        rows = []
+        for i in range(len(y_indices)):
+            row = []
+            for j in range(len(x_indices)):
+                tile_index = i * len(x_indices) + j
+                if tile_index in decoded_tiles:
+                    tile = decoded_tiles.pop(tile_index)
+                else:
+                    tile = torch.empty(tile_shape, dtype=tile_dtype, device=z.device)
+                if world_size > 1:
+                    dist.broadcast(tile, src=dist.get_global_rank(group, tile_index % world_size), group=group)
+                row.append(tile)
             rows.append(row)
 
         return self._stitch_tiles(rows, y_overlaps, x_overlaps)
