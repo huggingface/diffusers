@@ -215,7 +215,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
         callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
         return_dict: bool = True,
-    ):
+    ) -> ImagePipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 

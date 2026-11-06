@@ -19,9 +19,9 @@ Make sure Pytorch 2.5+ and torchao are installed with the command below.
 uv pip install -U torch torchao
 ```
 
-Each quantization dtype is available as a separate instance of a [AOBaseConfig](https://docs.pytorch.org/ao/main/api_ref_quantization.html#inference-apis-for-quantize) class. This provides more flexible configuration options by exposing more available arguments.
+Each quantization dtype is available as a separate instance of a [AOBaseConfig](https://docs.pytorch.org/ao/main/api_reference/generated/torchao.core.config.AOBaseConfig.html) class. This provides more flexible configuration options by exposing more available arguments.
 
-Pass the `AOBaseConfig` of a quantization dtype, like [Int4WeightOnlyConfig](https://docs.pytorch.org/ao/main/generated/torchao.quantization.Int4WeightOnlyConfig) to [`TorchAoConfig`] in [`~ModelMixin.from_pretrained`].
+Pass the `AOBaseConfig` of a quantization dtype, like [Int4WeightOnlyConfig](https://docs.pytorch.org/ao/main/api_reference/generated/torchao.quantization.Int4WeightOnlyConfig.html) to [`TorchAoConfig`] in [`~ModelMixin.from_pretrained`].
 
 ```py
 import torch
@@ -35,7 +35,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-    device_map="cuda"
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 ```
 
@@ -47,7 +47,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     quantization_config=pipeline_quant_config,
     torch_dtype=torch.bfloat16,
 )
-pipeline.to("cuda")
+pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 Without `device_map`, Diffusers quantizes the layers on the CPU. This is slower, but avoids the temporary GPU-memory spike during quantization. To reduce GPU memory usage further, use [`~DiffusionPipeline.enable_model_cpu_offload`] instead. You can also quantize additional components, such as the text encoder.
@@ -68,7 +68,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     quantization_config=pipeline_quant_config,
     dtype=torch.bfloat16,
-    device_map="cuda"
+    device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 pipeline.transformer.compile(transformer, mode="max-autotune", fullgraph=True)
@@ -124,7 +124,7 @@ from diffusers import FluxPipeline, AutoModel
 
 transformer = AutoModel.from_pretrained("/path/to/flux_int8wo", dtype=torch.bfloat16, use_safetensors=False)
 pipe = FluxPipeline.from_pretrained("black-forest-labs/Flux.1-Dev", transformer=transformer, dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "A cat holding a sign that says hello world"
 image = pipe(prompt, num_inference_steps=30, guidance_scale=7.0).images[0]

@@ -181,7 +181,7 @@ class QwenTimestepProjEmbeddings(nn.Module):
         if use_additional_t_cond:
             self.addition_t_embedding = nn.Embedding(2, embedding_dim)
 
-    def forward(self, timestep, hidden_states, addition_t_cond=None):
+    def forward(self, timestep, hidden_states, addition_t_cond=None) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_states.dtype))  # (N, D)
 
@@ -521,14 +521,17 @@ class QwenDoubleStreamAttnProcessor2_0:
         txt_key = attn.add_k_proj(encoder_hidden_states)
         txt_value = attn.add_v_proj(encoder_hidden_states)
 
-        # Reshape for multi-head attention
-        img_query = img_query.unflatten(-1, (attn.heads, -1))
-        img_key = img_key.unflatten(-1, (attn.heads, -1))
-        img_value = img_value.unflatten(-1, (attn.heads, -1))
+        # Reshape by a fixed `head_dim` and let `-1` absorb the head count. Under tensor parallelism each rank
+        # holds a column-sharded slice (`attn.heads // tp_degree` heads); this keeps the processor TP-agnostic.
+        # The shared Attention has no `head_dim` attribute; derive it from the unsharded `inner_dim`/`heads`.
+        head_dim = attn.inner_dim // attn.heads
+        img_query = img_query.unflatten(-1, (-1, head_dim))
+        img_key = img_key.unflatten(-1, (-1, head_dim))
+        img_value = img_value.unflatten(-1, (-1, head_dim))
 
-        txt_query = txt_query.unflatten(-1, (attn.heads, -1))
-        txt_key = txt_key.unflatten(-1, (attn.heads, -1))
-        txt_value = txt_value.unflatten(-1, (attn.heads, -1))
+        txt_query = txt_query.unflatten(-1, (-1, head_dim))
+        txt_key = txt_key.unflatten(-1, (-1, head_dim))
+        txt_value = txt_value.unflatten(-1, (-1, head_dim))
 
         # Apply QK normalization
         if attn.norm_q is not None:
@@ -789,6 +792,25 @@ class QwenImageTransformer2DModel(
             1: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True),
         },
         "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+    }
+    # Tensor-parallel plan: how each block's fused/unfused Linears shard across the TP mesh. Qwen-Image is fully
+    # unfused (separate Q/K/V and separate img/txt MLPs), so every entry is plain "colwise"/"rowwise" (torch's
+    # ColwiseParallel / RowwiseParallel) and no packed sharding is needed. AdaLN modulation (img_mod/txt_mod) and
+    # norm_out stay replicated (intentionally absent here).
+    _tp_plan = {
+        # double-stream (MMDiT) blocks
+        "transformer_blocks.*.attn.to_q": "colwise",
+        "transformer_blocks.*.attn.to_k": "colwise",
+        "transformer_blocks.*.attn.to_v": "colwise",
+        "transformer_blocks.*.attn.to_out.0": "rowwise",
+        "transformer_blocks.*.attn.add_q_proj": "colwise",
+        "transformer_blocks.*.attn.add_k_proj": "colwise",
+        "transformer_blocks.*.attn.add_v_proj": "colwise",
+        "transformer_blocks.*.attn.to_add_out": "rowwise",
+        "transformer_blocks.*.img_mlp.net.0.proj": "colwise",
+        "transformer_blocks.*.img_mlp.net.2": "rowwise",
+        "transformer_blocks.*.txt_mlp.net.0.proj": "colwise",
+        "transformer_blocks.*.txt_mlp.net.2": "rowwise",
     }
 
     @register_to_config

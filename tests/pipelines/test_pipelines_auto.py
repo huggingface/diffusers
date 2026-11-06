@@ -112,9 +112,10 @@ class AutoPipelineFastTest(unittest.TestCase):
         tmpdirname = DiffusionPipeline.download(repo)
         tmpdirname = Path(tmpdirname)
 
-        # edit commit_id to so that it's not the latest commit
+        # edit commit_id to so that it's not the latest commit. It has to stay a syntactically valid commit hash:
+        # `refs/main` is read back by `resolve_revision` and passed around as a commit hash.
         commit_id = tmpdirname.name
-        new_commit_id = commit_id + "hug"
+        new_commit_id = "0" * len(commit_id)
 
         ref_dir = tmpdirname.parent.parent / "refs/main"
         with open(ref_dir, "w") as f:

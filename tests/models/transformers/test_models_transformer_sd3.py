@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import SD3Transformer2DModel
@@ -20,9 +21,12 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
+    AttentionTesterMixin,
     BaseModelTesterConfig,
     BitsAndBytesTesterMixin,
+    LoraTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
@@ -113,6 +117,10 @@ class TestSD3TransformerTraining(SD3TransformerTesterConfig, TrainingTesterMixin
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"SD3Transformer2DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+class TestSD3TransformerAttention(SD3TransformerTesterConfig, AttentionTesterMixin):
+    """Attention processor tests for SD3 Transformer."""
 
 
 class TestSD3TransformerCompile(SD3TransformerTesterConfig, TorchCompileTesterMixin):
@@ -214,13 +222,91 @@ class TestSD35TransformerTraining(SD35TransformerTesterConfig, TrainingTesterMix
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
 
 
+class TestSD35TransformerAttention(SD35TransformerTesterConfig, AttentionTesterMixin):
+    """Attention processor tests for SD3.5 Transformer."""
+
+    @pytest.mark.xfail(
+        reason=(
+            "fuse_qkv_projections() sets FusedJointAttnProcessor2_0 on every attention module, including the "
+            "self-attention-only `attn2` of the dual-attention layers, which is then called without "
+            "`encoder_hidden_states` and raises."
+        ),
+        raises=AttributeError,
+        strict=True,
+    )
+    def test_fuse_unfuse_qkv_projections(self, request, atol=1e-3, rtol=0):
+        super().test_fuse_unfuse_qkv_projections(request, atol=atol, rtol=rtol)
+
+
 class TestSD35TransformerCompile(SD35TransformerTesterConfig, TorchCompileTesterMixin):
     pass
 
 
-class TestSD35TransformerBitsAndBytes(SD35TransformerTesterConfig, BitsAndBytesTesterMixin):
+class SD35TransformerQuantTesterConfig(SD35TransformerTesterConfig):
+    """Shared config for quantized SD3.5 Transformer tests (matches the tiny Hub checkpoint)."""
+
+    def get_dummy_inputs(self, batch_size: int = 2) -> dict[str, torch.Tensor]:
+        """Override to match the tiny Hub checkpoint (in_channels=8) and the quantizer compute dtype."""
+        num_channels = 8
+        height = width = embedding_dim = 32
+        pooled_embedding_dim = embedding_dim * 2
+        sequence_length = 154
+
+        return {
+            "hidden_states": randn_tensor(
+                (batch_size, num_channels, height, width),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
+            ),
+            "encoder_hidden_states": randn_tensor(
+                (batch_size, sequence_length, embedding_dim),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
+            ),
+            "pooled_projections": randn_tensor(
+                (batch_size, pooled_embedding_dim),
+                generator=self.generator,
+                device=torch_device,
+                dtype=self.torch_dtype,
+            ),
+            "timestep": torch.randint(0, 1000, size=(batch_size,), generator=self.generator).to(torch_device),
+        }
+
+
+class TestSD35TransformerBitsAndBytes(SD35TransformerQuantTesterConfig, BitsAndBytesTesterMixin):
     """BitsAndBytes quantization tests for SD3.5 Transformer."""
 
+    # The tiny SD3.5 transformer has a smaller linear fraction than the 4-bit default expectation of 3.0x.
+    BNB_EXPECTED_MEMORY_REDUCTIONS = {"4bit_nf4": 2.5, "4bit_fp4": 2.5, "8bit": 1.5}
 
-class TestSD35TransformerTorchAo(SD35TransformerTesterConfig, TorchAoTesterMixin):
+    @property
+    def torch_dtype(self):
+        return torch.float16
+
+
+class TestSD35TransformerTorchAo(SD35TransformerQuantTesterConfig, TorchAoTesterMixin):
     """TorchAO quantization tests for SD3.5 Transformer."""
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
+
+class TestSD3TransformerLoRA(SD3TransformerTesterConfig, LoraTesterMixin):
+    pass
+
+
+class TestSD3Transformer2DSingleFile(SD3TransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/sd3_medium.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "stabilityai/stable-diffusion-3-medium-diffusers"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}

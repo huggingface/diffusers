@@ -45,7 +45,7 @@ from diffusers import ErnieImagePipeline
 from diffusers.utils import load_image
 
 pipe = ErnieImagePipeline.from_pretrained("baidu/ERNIE-Image", dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 # If you are running low on GPU VRAM, you can enable offloading
 pipe.enable_model_cpu_offload()
 
@@ -68,7 +68,7 @@ from diffusers import ErnieImagePipeline
 from diffusers.utils import load_image
 
 pipe = ErnieImagePipeline.from_pretrained("baidu/ERNIE-Image-Turbo", dtype=torch.bfloat16)
-pipe.to("cuda")
+pipe.to("cuda")  # or "mps", "xpu", "cpu"
 # If you are running low on GPU VRAM, you can enable offloading
 pipe.enable_model_cpu_offload()
 

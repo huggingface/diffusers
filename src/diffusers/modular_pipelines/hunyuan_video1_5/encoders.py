@@ -259,7 +259,9 @@ class HunyuanVideo15TextEncoderStep(ModularPipelineBlocks):
         return prompt_embeds, prompt_embeds_mask, prompt_embeds_2, prompt_embeds_mask_2
 
     @torch.no_grad()
-    def __call__(self, components: HunyuanVideo15ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HunyuanVideo15ModularPipeline, state: PipelineState
+    ) -> tuple[HunyuanVideo15ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         dtype = components.transformer.dtype
@@ -363,7 +365,9 @@ class HunyuanVideo15VaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HunyuanVideo15ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HunyuanVideo15ModularPipeline, state: PipelineState
+    ) -> tuple[HunyuanVideo15ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -424,7 +428,9 @@ class HunyuanVideo15ImageEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HunyuanVideo15ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HunyuanVideo15ModularPipeline, state: PipelineState
+    ) -> tuple[HunyuanVideo15ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 

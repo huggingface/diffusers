@@ -112,7 +112,9 @@ class HunyuanVideo15TextInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HunyuanVideo15ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HunyuanVideo15ModularPipeline, state: PipelineState
+    ) -> tuple[HunyuanVideo15ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         block_state.batch_size = getattr(block_state, "batch_size", None) or block_state.prompt_embeds.shape[0]
         self.set_block_state(state, block_state)
@@ -145,7 +147,9 @@ class HunyuanVideo15SetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HunyuanVideo15ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HunyuanVideo15ModularPipeline, state: PipelineState
+    ) -> tuple[HunyuanVideo15ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -202,7 +206,9 @@ class HunyuanVideo15PrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HunyuanVideo15ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HunyuanVideo15ModularPipeline, state: PipelineState
+    ) -> tuple[HunyuanVideo15ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         dtype = components.transformer.dtype
@@ -297,7 +303,9 @@ class HunyuanVideo15Image2VideoPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HunyuanVideo15ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HunyuanVideo15ModularPipeline, state: PipelineState
+    ) -> tuple[HunyuanVideo15ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         dtype = components.transformer.dtype

@@ -271,7 +271,7 @@ class LLaDA2Pipeline(DiffusionPipeline):
         | MultiPipelineCallbacks
         | None = None,
         callback_on_step_end_tensor_inputs: list[str] | None = None,
-    ) -> LLaDA2PipelineOutput | tuple[torch.LongTensor, list[str] | None]:
+    ) -> LLaDA2PipelineOutput | tuple:
         """
         Generate text with block-wise refinement.
 

@@ -25,17 +25,15 @@ from diffusers.utils import load_image
 from ...testing_utils import (
     assert_tensors_close,
     backend_empty_cache,
+    nightly,
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
-    slow,
     torch_device,
 )
 from ..testing_utils import (
     BasePipelineTesterConfig,
     MemoryTesterMixin,
     PipelineTesterMixin,
-    check_qkv_fusion_matches_attn_procs_length,
-    check_qkv_fusion_processors_exist,
 )
 
 
@@ -204,60 +202,14 @@ class TestCogVideoXImageToVideoPipeline(CogVideoXImageToVideoPipelineTesterConfi
             "VAE tiling should not affect the inference results"
         )
 
-    def test_fused_qkv_projections(self):
-        pipe = self.get_pipeline()
-
-        inputs = self.get_dummy_inputs()
-        frames = pipe(**inputs).frames  # [B, F, C, H, W]
-        original_image_slice = frames[0, -2:, -1, -3:, -3:]
-
-        pipe.fuse_qkv_projections()
-        assert check_qkv_fusion_processors_exist(pipe.transformer), (
-            "Something wrong with the fused attention processors. Expected all the attention processors to be fused."
-        )
-        assert check_qkv_fusion_matches_attn_procs_length(
-            pipe.transformer, pipe.transformer.original_attn_processors
-        ), "Something wrong with the attention processors concerning the fused QKV projections."
-
-        inputs = self.get_dummy_inputs()
-        frames = pipe(**inputs).frames
-        image_slice_fused = frames[0, -2:, -1, -3:, -3:]
-
-        pipe.transformer.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs()
-        frames = pipe(**inputs).frames
-        image_slice_disabled = frames[0, -2:, -1, -3:, -3:]
-
-        assert_tensors_close(
-            original_image_slice,
-            image_slice_fused,
-            atol=1e-3,
-            rtol=1e-3,
-            msg="Fusion of QKV projections shouldn't affect the outputs.",
-        )
-        assert_tensors_close(
-            image_slice_fused,
-            image_slice_disabled,
-            atol=1e-3,
-            rtol=1e-3,
-            msg="Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled.",
-        )
-        assert_tensors_close(
-            original_image_slice,
-            image_slice_disabled,
-            atol=1e-2,
-            rtol=1e-2,
-            msg="Original outputs should match when fused QKV projections are disabled.",
-        )
-
 
 class TestCogVideoXImageToVideoPipelineMemory(CogVideoXImageToVideoPipelineTesterConfig, MemoryTesterMixin):
     pass
 
 
-@slow
+@nightly
 @require_torch_accelerator
-class TestCogVideoXImageToVideoPipelineSlow:
+class TestCogVideoXImageToVideoPipelineIntegration:
     prompt = "A painting of a squirrel eating a burger."
 
     @pytest.fixture(autouse=True)

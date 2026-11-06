@@ -1,4 +1,9 @@
+import math
+
+import numpy as np
 import torch
+import torch.nn.functional as F
+from PIL import Image
 from transformers import AutoTokenizer
 
 from ...configuration_utils import FrozenDict
@@ -15,6 +20,49 @@ from .modular_pipeline import Cosmos3OmniModularPipeline
 
 
 logger = logging.get_logger(__name__)
+
+
+# Copied from diffusers.pipelines.cosmos.pipeline_cosmos3_omni._preprocess_conditioning_image
+def _preprocess_conditioning_image(
+    image: Image.Image | np.ndarray | torch.Tensor, height: int, width: int
+) -> torch.Tensor:
+    """Preprocess one Cosmos3 conditioning image to ``[1, 3, H, W]`` in ``[-1, 1]``."""
+    if isinstance(image, Image.Image):
+        image = torch.from_numpy(np.array(image.convert("RGB"), copy=True)).permute(2, 0, 1).unsqueeze(0)
+    elif isinstance(image, np.ndarray):
+        image = torch.from_numpy(image)
+        image = image.unsqueeze(0) if image.ndim == 3 else image
+        image = image.permute(0, 3, 1, 2)
+    else:
+        image = image.unsqueeze(0) if image.ndim == 3 else image
+
+    if image.ndim != 4 or image.shape[0] != 1 or image.shape[1] != 3:
+        raise ValueError(f"`image` must describe one RGB image, got shape {tuple(image.shape)}.")
+
+    is_integer_input = not image.is_floating_point()
+    image = image.to(dtype=torch.float32)
+    if not is_integer_input:
+        if image.min() < 0:
+            image = (image + 1.0) * 127.5
+        elif image.max() <= 1.0:
+            image = image * 255.0
+
+    source_height, source_width = image.shape[-2:]
+    scale = max(width / source_width, height / source_height)
+    resized_height = math.ceil(scale * source_height)
+    resized_width = math.ceil(scale * source_width)
+    image = F.interpolate(
+        image,
+        size=(resized_height, resized_width),
+        mode="bilinear",
+        align_corners=False,
+        antialias=True,
+    )
+    crop_top = round((resized_height - height) / 2)
+    crop_left = round((resized_width - width) / 2)
+    image = image[:, :, crop_top : crop_top + height, crop_left : crop_left + width]
+    image = image.round().clamp(0, 255) / 127.5 - 1.0
+    return image
 
 
 # Transfer conditions on control signals (edge/blur/depth/seg/wsm), so it uses its own system prompt instead of the
@@ -114,7 +162,9 @@ class Cosmos3TextEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         if block_state.num_frames is None:
             block_state.num_frames = 189
@@ -225,7 +275,9 @@ class Cosmos3TransferTextStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self._check_inputs(block_state)
 
@@ -331,8 +383,8 @@ class Cosmos3DistilledTextEncoderStep(ModularPipelineBlocks):
             InputParam(name="fps", type_hint=float, default=24.0, description="Frame rate of the generated video."),
             InputParam(
                 name="use_system_prompt",
-                type_hint=bool,
-                default=True,
+                type_hint=bool | None,
+                default=None,
                 description="Whether to prepend the Cosmos3 system prompt.",
             ),
             InputParam(
@@ -364,7 +416,9 @@ class Cosmos3DistilledTextEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         if block_state.num_frames is None:
             block_state.num_frames = 189
@@ -372,6 +426,8 @@ class Cosmos3DistilledTextEncoderStep(ModularPipelineBlocks):
             block_state.height = 720
         if block_state.width is None:
             block_state.width = 1280
+        if block_state.use_system_prompt is None:
+            block_state.use_system_prompt = components.config.default_use_system_prompt
 
         self._check_inputs(block_state)
         if components.requires_safety_checker:
@@ -524,7 +580,9 @@ class Cosmos3ActionTextStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self._check_inputs(block_state)
         if block_state.use_system_prompt is None:
@@ -587,12 +645,6 @@ class Cosmos3ImageVaeEncoderStep(ModularPipelineBlocks):
     def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("vae", AutoencoderKLWan),
-            ComponentSpec(
-                "video_processor",
-                VideoProcessor,
-                config=FrozenDict({"vae_scale_factor": 16, "resample": "bilinear"}),
-                default_creation_method="from_config",
-            ),
         ]
 
     @property
@@ -624,7 +676,9 @@ class Cosmos3ImageVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -645,7 +699,7 @@ class Cosmos3ImageVaeEncoderStep(ModularPipelineBlocks):
                 f"`height` and `width` must be multiples of {sf}, got ({block_state.height}, {block_state.width})."
             )
 
-        conditioning_frame_2d = components.video_processor.preprocess(
+        conditioning_frame_2d = _preprocess_conditioning_image(
             block_state.image, height=block_state.height, width=block_state.width
         ).to(device=device, dtype=dtype)
 
@@ -728,7 +782,9 @@ class Cosmos3VideoVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -897,7 +953,9 @@ class Cosmos3TransferChunkVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         dtype = components.vae.dtype
@@ -1012,7 +1070,9 @@ class Cosmos3ActionVisionVaeEncoderStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device

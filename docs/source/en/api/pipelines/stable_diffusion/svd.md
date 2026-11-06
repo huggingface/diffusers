@@ -70,7 +70,7 @@ You can gain a 20-25% speedup at the expense of slightly increased memory by [co
 
 ```diff
 - pipe.enable_model_cpu_offload()
-+ pipe.to("cuda")
++ pipe.to("cuda")  # or "mps", "xpu", "cpu"
 + pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 ```
 

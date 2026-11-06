@@ -131,7 +131,9 @@ class LTXTextInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: LTXModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: LTXModularPipeline, state: PipelineState
+    ) -> tuple[LTXModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.batch_size = block_state.prompt_embeds.shape[0]
@@ -196,7 +198,9 @@ class LTXSetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: LTXModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: LTXModularPipeline, state: PipelineState
+    ) -> tuple[LTXModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -278,7 +282,7 @@ class LTXPrepareLatentsStep(ModularPipelineBlocks):
             InputParam.template("latents"),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
             InputParam.template("generator"),
-            InputParam.template("batch_size", required=True),
+            InputParam.template("batch_size", required=True, default=None),
         ]
 
     @property
@@ -288,7 +292,9 @@ class LTXPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: LTXModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: LTXModularPipeline, state: PipelineState
+    ) -> tuple[LTXModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -342,7 +348,7 @@ class LTXImage2VideoPrepareLatentsStep(ModularPipelineBlocks):
             InputParam.template("width", default=704),
             InputParam("num_frames", type_hint=int, default=161),
             InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
-            InputParam.template("batch_size", required=True),
+            InputParam.template("batch_size", required=True, default=None),
         ]
 
     @property
@@ -353,7 +359,9 @@ class LTXImage2VideoPrepareLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: LTXModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: LTXModularPipeline, state: PipelineState
+    ) -> tuple[LTXModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 

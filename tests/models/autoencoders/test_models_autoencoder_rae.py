@@ -124,10 +124,6 @@ class AutoencoderRAETesterConfig(BaseModelTesterConfig):
     def get_dummy_inputs(self):
         return {"sample": torch.randn(2, 3, 32, 32, generator=self.generator, device="cpu").to(torch_device)}
 
-    # Bridge for AutoencoderTesterMixin which still uses the old interface
-    def prepare_init_args_and_inputs_for_common(self):
-        return self.get_init_dict(), self.get_dummy_inputs()
-
     def _make_model(self, **overrides) -> AutoencoderRAE:
         config = self.get_init_dict()
         config.update(overrides)

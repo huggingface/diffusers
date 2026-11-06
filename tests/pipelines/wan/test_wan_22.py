@@ -47,7 +47,9 @@ class Wan22PipelineTesterConfig(BasePipelineTesterConfig):
         torch.manual_seed(0)
         scheduler = UniPCMultistepScheduler(prediction_type="flow_prediction", use_flow_sigmas=True, flow_shift=3.0)
         config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
-        text_encoder = T5EncoderModel(config)
+        # `eval()` because a directly constructed model stays in training mode, which leaves T5's
+        # dropout active and makes the pipeline outputs non-deterministic across calls.
+        text_encoder = T5EncoderModel(config).eval()
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)
@@ -191,7 +193,9 @@ class Wan225BPipelineTesterConfig(BasePipelineTesterConfig):
         torch.manual_seed(0)
         scheduler = UniPCMultistepScheduler(prediction_type="flow_prediction", use_flow_sigmas=True, flow_shift=3.0)
         config = AutoConfig.from_pretrained("hf-internal-testing/tiny-random-t5")
-        text_encoder = T5EncoderModel(config)
+        # `eval()` because a directly constructed model stays in training mode, which leaves T5's
+        # dropout active and makes the pipeline outputs non-deterministic across calls.
+        text_encoder = T5EncoderModel(config).eval()
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
         torch.manual_seed(0)

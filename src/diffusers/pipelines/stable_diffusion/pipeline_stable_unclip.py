@@ -670,7 +670,7 @@ class StableUnCLIPPipeline(
         prior_guidance_scale: float = 4.0,
         prior_latents: torch.Tensor | None = None,
         clip_skip: int | None = None,
-    ):
+    ) -> ImagePipelineOutput | tuple:
         """
         The call function to the pipeline for generation.
 

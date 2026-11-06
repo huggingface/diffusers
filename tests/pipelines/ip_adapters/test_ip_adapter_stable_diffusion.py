@@ -14,10 +14,10 @@
 # limitations under the License.
 
 import gc
-import unittest
 from unittest import mock
 
 import numpy as np
+import pytest
 import torch
 from transformers import (
     CLIPImageProcessor,
@@ -51,7 +51,7 @@ from ...testing_utils import (
 enable_full_determinism()
 
 
-class IPAdapterNightlyTestsMixin(unittest.TestCase):
+class IPAdapterNightlyTestsMixin:
     dtype = torch.float16
 
     _SD_PIPELINE_RANDN_TENSOR_TARGETS = {
@@ -63,15 +63,12 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
         StableDiffusionXLInpaintPipeline: "diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_inpaint.randn_tensor",
     }
 
-    def setUp(self):
-        # clean up the VRAM before each test
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        # clean up the VRAM before and after each test
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
+        yield
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -82,14 +79,14 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
         fixed_noise = self.get_fixed_noise(shape=shape, seed=seed)
 
         def fake_randn_tensor(requested_shape, generator=None, device=None, dtype=None, layout=None):
-            self.assertEqual(tuple(requested_shape), tuple(fixed_noise.shape))
+            assert tuple(requested_shape) == tuple(fixed_noise.shape)
             return fixed_noise.to(device=device, dtype=dtype)
 
         for pipeline_cls, target in self._SD_PIPELINE_RANDN_TENSOR_TARGETS.items():
             if isinstance(pipeline, pipeline_cls):
                 return mock.patch(target, side_effect=fake_randn_tensor)
 
-        self.fail(f"No fixed randn_tensor patch target configured for pipeline type {type(pipeline)}")
+        raise AssertionError(f"No fixed randn_tensor patch target configured for pipeline type {type(pipeline)}")
 
     def get_image_encoder(self, repo_id, subfolder):
         image_encoder = CLIPVisionModelWithProjection.from_pretrained(
@@ -195,7 +192,7 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
 
 @slow
 @require_torch_accelerator
-class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
+class TestIPAdapterSDIntegration(IPAdapterNightlyTestsMixin):
     def test_text_to_image(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         pipeline = StableDiffusionPipeline.from_pretrained(
@@ -223,13 +220,10 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         with self.get_fixed_randn_tensor_patch(pipeline):
             images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-
         expected_slice = Expectations(
             {
                 ("cuda", None): np.array([0.1238, 0.0579, 0.0312, 0.0493, 0.0010, 0.0, 0.0188, 0.0, 0.0]),
-                ("xpu", None): np.array(
-                    [0.11938477, 0.05249023, 0.02490234, 0.04370117, 0.0, 0.0, 0.01342773, 0.0, 0.0]
-                ),
+                ("xpu", 5): np.array([0.1228, 0.0566, 0.0286, 0.0479, 0.0, 0.0, 0.0173, 0.0, 0.0]),
                 (None, None): np.array([0.1238, 0.0579, 0.0312, 0.0493, 0.0010, 0.0, 0.0188, 0.0, 0.0]),
             }
         ).get_expectation()
@@ -328,16 +322,15 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         with self.get_fixed_randn_tensor_patch(pipeline):
             output_with_offload = pipeline(**inputs).images
         max_diff = np.abs(output_with_offload - output_without_offload).max()
-        self.assertLess(max_diff, 1e-3, "CPU offloading should not affect the inference results")
+        assert max_diff < 1e-3, "CPU offloading should not affect the inference results"
 
         offloaded_modules = [
             v
             for k, v in pipeline.components.items()
             if isinstance(v, torch.nn.Module) and k not in pipeline._exclude_from_cpu_offload
         ]
-        (
-            self.assertTrue(all(v.device.type == "cpu" for v in offloaded_modules)),
-            f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'cpu']}",
+        assert all(v.device.type == "cpu" for v in offloaded_modules), (
+            f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'cpu']}"
         )
 
     def test_text_to_image_full_face(self):
@@ -439,7 +432,7 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
 
 @slow
 @require_torch_accelerator
-class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
+class TestIPAdapterSDXLIntegration(IPAdapterNightlyTestsMixin):
     def test_text_to_image_sdxl(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="sdxl_models/image_encoder")
         feature_extractor = self.get_image_processor("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")

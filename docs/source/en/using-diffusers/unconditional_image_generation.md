@@ -21,7 +21,7 @@ To get started, use the [`DiffusionPipeline`] to load the [anton-l/ddpm-butterfl
 ```py
 from diffusers import DiffusionPipeline
 
-generator = DiffusionPipeline.from_pretrained("anton-l/ddpm-butterflies-128").to("cuda")
+generator = DiffusionPipeline.from_pretrained("anton-l/ddpm-butterflies-128").to("cuda")  # or "mps", "xpu", "cpu"
 image = generator().images[0]
 image
 ```

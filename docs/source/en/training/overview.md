@@ -34,7 +34,6 @@ Our current collection of training scripts include:
 | [Custom Diffusion](https://github.com/huggingface/diffusers/tree/main/examples/custom_diffusion) |  |  |
 | [T2I-Adapters](https://github.com/huggingface/diffusers/tree/main/examples/t2i_adapter) | 👍 |  |
 | [Kandinsky 2.2](https://github.com/huggingface/diffusers/tree/main/examples/kandinsky2_2/text_to_image) |  | 👍 |
-| [Wuerstchen](https://github.com/huggingface/diffusers/tree/main/examples/wuerstchen/text_to_image) |  | 👍 |
 
 These examples are **actively** maintained, so please feel free to open an issue if they aren't working as expected. If you feel like another training example should be included, you're more than welcome to start a [Feature Request](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feature_request.md&title=) to discuss your feature idea with us and whether it meets our criteria of being self-contained, easy-to-tweak, beginner-friendly, and single-purpose.
 
@@ -60,4 +59,4 @@ pip install -r requirements_sdxl.txt
 To speedup training and reduce memory-usage, we recommend:
 
 - using PyTorch 2.0 or higher to automatically use [scaled dot product attention](../optimization/fp16#scaled-dot-product-attention) during training (you don't need to make any changes to the training code)
-- installing [xFormers](../optimization/xformers) to enable memory-efficient attention
+- installing [xFormers](../optimization/attention_backends) to enable memory-efficient attention

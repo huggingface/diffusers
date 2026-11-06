@@ -171,7 +171,7 @@ class LatteTransformer3DModel(ModelMixin, ConfigMixin, CacheMixin):
         encoder_attention_mask: torch.Tensor | None = None,
         enable_temporal_attentions: bool = True,
         return_dict: bool = True,
-    ):
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`LatteTransformer3DModel`] forward method.
 

@@ -1,0 +1,352 @@
+# coding=utf-8
+# Copyright 2026 HuggingFace Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import contextlib
+import os
+import types
+
+import pytest
+import torch
+import torch.distributed as dist
+import torch.multiprocessing as mp
+import torch.nn.functional as F
+
+from diffusers.models import attention_dispatch
+from diffusers.models._modeling_parallel import ContextParallelConfig, ParallelConfig
+from diffusers.models.attention_dispatch import (
+    _HUB_KERNELS_REGISTRY,
+    AttentionBackendName,
+    _AttentionBackendRegistry,
+    dispatch_attention_fn,
+)
+from diffusers.models.attention_dispatch import attention_backend as attention_backend_ctx
+from diffusers.models.transformers.transformer_flux import FluxAttention
+
+from ..testing_utils import (
+    is_attention,
+    is_context_parallel,
+    is_kernels_available,
+    is_torch_compile,
+    require_torch_accelerator,
+    require_torch_multi_accelerator,
+    torch_device,
+)
+from .testing_utils.attention import _IS_GFX1201
+from .testing_utils.parallelism import DEVICE_CONFIG, _find_free_port
+
+
+# Max allowed relative error between the context parallel gradients and the single-process reference.
+GRAD_RTOL = 2e-2
+
+
+def _attention_backward_parity_worker(rank, world_size, master_port, cp_dict, attention_backend, return_dict):
+    """Op-level worker: check `dispatch_attention_fn` gradients against a single-process reference.
+
+    This guards the ring-attention backward pass, which historically produced silently wrong
+    gradients (see https://github.com/huggingface/diffusers/issues/14265) because it recomputed
+    every ring iteration against the iteration-0 KV chunk.
+    """
+    try:
+        os.environ["MASTER_ADDR"] = "localhost"
+        os.environ["MASTER_PORT"] = str(master_port)
+        os.environ["RANK"] = str(rank)
+        os.environ["WORLD_SIZE"] = str(world_size)
+
+        device_config = DEVICE_CONFIG.get(torch_device, DEVICE_CONFIG["cuda"])
+        device_type = torch_device.split(":")[0]
+        device_module = device_config["module"]
+
+        dist.init_process_group(backend=device_config["backend"], rank=rank, world_size=world_size)
+        device_module.set_device(rank)
+        device = torch.device(f"{device_type}:{rank}")
+
+        # Identical inputs on every rank so each rank can compute the same full-sequence reference.
+        B, S, H, D = 1, 128, 4, 64
+        torch.manual_seed(777)
+        q = torch.randn(B, S, H, D, device=device, dtype=torch.bfloat16)
+        k = torch.randn(B, S, H, D, device=device, dtype=torch.bfloat16)
+        v = torch.randn(B, S, H, D, device=device, dtype=torch.bfloat16)
+        grad_out = torch.randn(B, S, H, D, device=device, dtype=torch.bfloat16)
+
+        # Reference: full-sequence fp32 SDPA gradients on a single process.
+        q_ref, k_ref, v_ref = (t.float().requires_grad_(True) for t in (q, k, v))
+        ref_out = F.scaled_dot_product_attention(
+            q_ref.transpose(1, 2), k_ref.transpose(1, 2), v_ref.transpose(1, 2)
+        ).transpose(1, 2)
+        ref_dq, ref_dk, ref_dv = torch.autograd.grad(ref_out, (q_ref, k_ref, v_ref), grad_out.float())
+
+        mesh = dist.device_mesh.init_device_mesh(
+            device_type,
+            (cp_dict.get("ring_degree", 1), cp_dict.get("ulysses_degree", 1)),
+            mesh_dim_names=("ring", "ulysses"),
+        )
+        cp_config = ContextParallelConfig(**cp_dict)
+        cp_config.setup(rank, world_size, device, mesh)
+        parallel_config = ParallelConfig(context_parallel_config=cp_config)
+
+        # Each rank runs its sequence shard through the templated CP attention path.
+        shard = slice(rank * S // world_size, (rank + 1) * S // world_size)
+        qs, ks, vs = (t.detach()[:, shard].clone().requires_grad_(True) for t in (q, k, v))
+        with attention_backend_ctx(attention_backend):
+            out = dispatch_attention_fn(qs, ks, vs, parallel_config=parallel_config)
+        out.backward(grad_out[:, shard])
+
+        rel_errs = {}
+        for name, got, ref in (("dq", qs.grad, ref_dq), ("dk", ks.grad, ref_dk), ("dv", vs.grad, ref_dv)):
+            ref_shard = ref[:, shard].to(got.dtype)
+            rel_errs[name] = ((got - ref_shard).norm() / ref_shard.norm()).item()
+
+        if rank == 0:
+            return_dict["status"] = "success"
+            return_dict["rel_errs"] = dict(rel_errs)
+
+    except Exception as e:
+        if rank == 0:
+            return_dict["status"] = "error"
+            return_dict["error"] = repr(e)
+    finally:
+        if dist.is_initialized():
+            dist.destroy_process_group()
+
+
+@is_attention
+@is_context_parallel
+@require_torch_multi_accelerator
+class TestContextParallelAttentionBackward:
+    """Op-level tests for the context parallel backward of `dispatch_attention_fn`, model independent."""
+
+    @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"])
+    @pytest.mark.parametrize(
+        "attention_backend",
+        [
+            "_native_flash",
+            pytest.param(
+                "_native_cudnn",
+                marks=pytest.mark.skipif(torch_device != "cuda", reason="CUDA is required for _native_cudnn backend."),
+            ),
+            pytest.param(
+                "flash_hub",
+                marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+            ),
+            pytest.param(
+                "flash_varlen_hub",
+                marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+            ),
+            pytest.param(
+                "_flash_3_hub",
+                marks=[
+                    pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+                    pytest.mark.skipif(torch_device != "cuda", reason="CUDA is required for _flash_3_hub backend."),
+                ],
+            ),
+            pytest.param(
+                "_flash_3_varlen_hub",
+                marks=[
+                    pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+                    pytest.mark.skipif(
+                        torch_device != "cuda", reason="CUDA is required for _flash_3_varlen_hub backend."
+                    ),
+                ],
+            ),
+        ],
+    )
+    def test_attn_backend_backward_parity(self, cp_type, attention_backend):
+        """Ring and Ulysses attention gradients must match a single-GPU reference.
+
+        Regression test for https://github.com/huggingface/diffusers/issues/14265, where the ring
+        backward silently used the iteration-0 KV chunk for every ring iteration.
+        """
+        if not torch.distributed.is_available():
+            pytest.skip("torch.distributed is not available.")
+
+        world_size = 2
+        cp_dict = {cp_type: world_size}
+        master_port = _find_free_port()
+
+        manager = mp.Manager()
+        return_dict = manager.dict()
+        mp.spawn(
+            _attention_backward_parity_worker,
+            args=(world_size, master_port, cp_dict, attention_backend, return_dict),
+            nprocs=world_size,
+            join=True,
+        )
+
+        assert return_dict.get("status") == "success", (
+            f"Context parallel backward parity run failed: {return_dict.get('error', 'Unknown error')}"
+        )
+        rel_errs = return_dict["rel_errs"]
+        for name, rel in rel_errs.items():
+            assert rel < GRAD_RTOL, (
+                f"{attention_backend} {cp_type} gradient `{name}` rel_err={rel:.3e} "
+                f"exceeds tol={GRAD_RTOL:.1e}: {rel_errs}"
+            )
+
+
+@is_attention
+class TestAttentionModuleSetAttentionBackend:
+    @pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available.")
+    def test_hub_kernel_is_loaded(self, monkeypatch):
+        import kernels
+
+        def fake_sageattn(*args, **kwargs):
+            raise NotImplementedError
+
+        fake_kernel = types.SimpleNamespace(__name__="fake_sage_attention", sageattn=fake_sageattn)
+        monkeypatch.setattr(kernels, "get_kernel", lambda *args, **kwargs: fake_kernel)
+        monkeypatch.setattr(attention_dispatch, "DIFFUSERS_TRUST_REMOTE_KERNELS", True)
+        config = attention_dispatch._HUB_KERNELS_REGISTRY[AttentionBackendName.SAGE_HUB]
+        monkeypatch.setattr(config, "kernel_fn", None)
+
+        attn = FluxAttention(query_dim=8, heads=2, dim_head=4)
+        attn.set_attention_backend("sage_hub")
+
+        assert attn.processor._attention_backend == AttentionBackendName.SAGE_HUB
+        assert config.kernel_fn is fake_sageattn
+
+    def test_backend_requirements_are_checked(self, monkeypatch):
+        attn = FluxAttention(query_dim=8, heads=2, dim_head=4)
+
+        monkeypatch.setattr(attention_dispatch, "_CAN_USE_FLASH_ATTN", False)
+        with pytest.raises(RuntimeError, match="Flash Attention backend 'flash' is not usable"):
+            attn.set_attention_backend("flash")
+
+        monkeypatch.setattr(attention_dispatch, "is_kernels_available", lambda: False)
+        with pytest.raises(RuntimeError, match="Backend 'sage_hub' is not usable because the `kernels` package"):
+            attn.set_attention_backend("sage_hub")
+
+        assert attn.processor._attention_backend is None
+
+
+@is_attention
+class TestVarlenAttentionCompile:
+    """Op-level tests for the varlen backends under `torch.compile` with dynamic shapes, model independent."""
+
+    @pytest.mark.parametrize(
+        "attention_backend",
+        [
+            pytest.param(
+                "flash_varlen_hub",
+                marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+            ),
+            pytest.param(
+                "_flash_3_varlen_hub",
+                marks=pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available."),
+            ),
+        ],
+    )
+    @is_torch_compile
+    @require_torch_accelerator
+    def test_dynamic_shapes(self, attention_backend):
+        def make_qkv(seq_len):
+            torch.manual_seed(0)
+            return tuple(torch.randn(2, seq_len, 4, 64, device=torch_device, dtype=torch.bfloat16) for _ in range(3))
+
+        with contextlib.ExitStack() as stack, torch.no_grad():
+            try:
+                stack.enter_context(attention_backend_ctx(attention_backend))
+                dispatch_attention_fn(*make_qkv(128))
+            except Exception as e:
+                pytest.skip(f"Skipping test for backend '{attention_backend}': {e}")
+
+            torch.compiler.reset()
+            compiled_attention = torch.compile(dispatch_attention_fn, dynamic=True, fullgraph=True)
+            try:
+                with (
+                    torch._inductor.utils.fresh_inductor_cache(),
+                    torch._dynamo.config.patch(error_on_recompile=True),
+                ):
+                    for seq_len in (128, 256, 256):
+                        q, k, v = make_qkv(seq_len)
+                        torch.testing.assert_close(
+                            compiled_attention(q, k, v), dispatch_attention_fn(q, k, v), atol=1e-3, rtol=1e-3
+                        )
+            finally:
+                torch.compiler.reset()
+
+
+@is_attention
+class TestAiterSageHubFallback:
+    """`aiter_sage_hub` runs the gfx1201 kernel only on inputs it supports and falls back to native SDPA otherwise.
+
+    The kernel is replaced by a stub, so this runs without a gfx1201 GPU or the Hub kernel.
+    """
+
+    @pytest.fixture
+    def kernel_calls(self, monkeypatch):
+        calls = []
+
+        def fake_sageattn(q, k, v, tensor_layout, is_causal, sm_scale):
+            calls.append(tensor_layout)
+            return torch.zeros_like(q)
+
+        config = _HUB_KERNELS_REGISTRY[AttentionBackendName.AITER_SAGE_HUB]
+        monkeypatch.setattr(config, "kernel_fn", fake_sageattn)
+        return calls
+
+    @staticmethod
+    def _run(query, key, value, **kwargs):
+        backend_fn = _AttentionBackendRegistry._backends[AttentionBackendName.AITER_SAGE_HUB]
+        return backend_fn(query, key, value, **kwargs)
+
+    @staticmethod
+    def _qkv(seq_q=16, seq_kv=16, head_dim=128, dtype=torch.bfloat16):
+        q = torch.randn(1, seq_q, 2, head_dim, dtype=dtype)
+        k = torch.randn(1, seq_kv, 2, head_dim, dtype=dtype)
+        v = torch.randn(1, seq_kv, 2, head_dim, dtype=dtype)
+        return q, k, v
+
+    def test_supported_inputs_use_kernel(self, kernel_calls):
+        self._run(*self._qkv())
+        assert len(kernel_calls) == 1
+
+    @pytest.mark.parametrize(
+        "qkv_kwargs, call_kwargs",
+        [
+            ({"head_dim": 64}, {}),
+            ({"dtype": torch.float32}, {}),
+            ({"seq_kv": 8}, {}),
+            ({}, {"is_causal": True}),
+            ({}, {"attn_mask": torch.ones(16, 16, dtype=torch.bool)}),
+        ],
+        ids=["head_dim_64", "fp32", "cross_attention", "causal", "mask"],
+    )
+    def test_unsupported_inputs_fall_back_to_native(self, kernel_calls, qkv_kwargs, call_kwargs):
+        query, key, value = self._qkv(**qkv_kwargs)
+        out = self._run(query, key, value, **call_kwargs)
+        ref = _AttentionBackendRegistry._backends[AttentionBackendName.NATIVE](query, key, value, **call_kwargs)
+        assert kernel_calls == []
+        assert torch.equal(out, ref)
+
+    def test_ring_attention_raises(self, kernel_calls):
+        config = ParallelConfig(context_parallel_config=ContextParallelConfig(ring_degree=2))
+        with pytest.raises(NotImplementedError, match="ring_degree"):
+            self._run(*self._qkv(), _parallel_config=config)
+
+
+@is_attention
+@pytest.mark.skipif(not _IS_GFX1201, reason="A gfx1201 GPU is required for the aiter_sage_hub kernel.")
+@pytest.mark.skipif(not is_kernels_available(), reason="`kernels` is not available.")
+class TestAiterSageHubKernel:
+    def test_output_close_to_native(self):
+        torch.manual_seed(0)
+        query, key, value = (torch.randn(1, 1024, 4, 128, device=torch_device, dtype=torch.bfloat16) for _ in range(3))
+        ref = dispatch_attention_fn(query, key, value, backend=AttentionBackendName.NATIVE)
+        with attention_backend_ctx(AttentionBackendName.AITER_SAGE_HUB):
+            out = dispatch_attention_fn(query, key, value)
+        # The quantized kernel never matches SDPA exactly, so equality would mean the fallback ran.
+        assert not torch.equal(out, ref)
+        cos = F.cosine_similarity(out.float().flatten(), ref.float().flatten(), dim=0)
+        assert cos > 0.99

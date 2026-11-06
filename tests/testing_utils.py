@@ -28,7 +28,7 @@ import requests
 from numpy.linalg import norm
 from packaging import version
 
-from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT
+from diffusers.utils.constants import DIFFUSERS_REQUEST_TIMEOUT, USE_PEFT_BACKEND
 from diffusers.utils.import_utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
@@ -40,20 +40,20 @@ from diffusers.utils.import_utils import (
     is_kernels_available,
     is_note_seq_available,
     is_nvidia_modelopt_version,
-    is_onnx_available,
     is_opencv_available,
-    is_optimum_quanto_available,
     is_peft_available,
     is_sdnq_available,
     is_timm_available,
     is_torch_available,
     is_torch_neuronx_available,
+    is_torch_tpu_available,
     is_torch_version,
     is_torchao_available,
     is_torchsde_available,
     is_transformers_available,
 )
 from diffusers.utils.logging import get_logger
+from diffusers.utils.torch_utils import TorchDeviceBackend
 
 
 if is_torch_available():
@@ -73,14 +73,6 @@ global_rng = random.Random()
 
 logger = get_logger(__name__)
 
-_required_peft_version = is_peft_available() and version.parse(
-    version.parse(importlib.metadata.version("peft")).base_version
-) > version.parse("0.5")
-_required_transformers_version = is_transformers_available() and version.parse(
-    version.parse(importlib.metadata.version("transformers")).base_version
-) > version.parse("4.33")
-
-USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
 BIG_GPU_MEMORY = int(os.getenv("BIG_GPU_MEMORY", 40))
 
 if is_torch_available():
@@ -437,14 +429,6 @@ def is_bitsandbytes(test_case):
     return pytest.mark.bitsandbytes(test_case)
 
 
-def is_quanto(test_case):
-    """
-    Decorator marking a test as a Quanto quantization test. These tests can be filtered using:
-        pytest -m "not quanto" to skip pytest -m quanto to run only these tests
-    """
-    return pytest.mark.quanto(test_case)
-
-
 def is_torchao(test_case):
     """
     Decorator marking a test as a TorchAO quantization test. These tests can be filtered using:
@@ -486,12 +470,28 @@ def is_sdnq(test_case):
     return pytest.mark.sdnq(test_case)
 
 
+def is_bfl(test_case):
+    """
+    Decorator marking a test as a BFL (fp8r / nvfp4) quantization test. These tests can be filtered using:
+        pytest -m "not bfl" to skip pytest -m bfl to run only these tests
+    """
+    return pytest.mark.bfl(test_case)
+
+
 def is_context_parallel(test_case):
     """
     Decorator marking a test as a context parallel inference test. These tests can be filtered using:
         pytest -m "not context_parallel" to skip pytest -m context_parallel to run only these tests
     """
     return pytest.mark.context_parallel(test_case)
+
+
+def is_tensor_parallel(test_case):
+    """
+    Decorator marking a test as a tensor parallel inference test. These tests can be filtered using:
+        pytest -m "not tensor_parallel" to skip pytest -m tensor_parallel to run only these tests
+    """
+    return pytest.mark.tensor_parallel(test_case)
 
 
 def is_cache(test_case):
@@ -572,6 +572,14 @@ def require_torch_neuron(test_case):
     return pytest.mark.skipif(
         not (is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available()),
         reason="test requires Neuron device",
+    )(test_case)
+
+
+def require_torch_tpu(test_case):
+    """Decorator marking a test that requires a TPU device (torch_tpu)."""
+    return pytest.mark.skipif(
+        not is_torch_tpu_available(),
+        reason="test requires TPU device (torch_tpu)",
     )(test_case)
 
 
@@ -668,6 +676,28 @@ def require_big_accelerator(test_case):
     )(test_case)
 
 
+def require_accelerator_memory(min_memory_gb: int):
+    """
+    Decorator marking a test that needs at least `min_memory_gb` GB of memory on the accelerator it runs on. Tests
+    running on CPU are not affected.
+    """
+
+    def decorator(test_case):
+        if torch_device == "cuda" and torch.cuda.is_available():
+            total_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        elif torch_device == "xpu" and torch.xpu.is_available():
+            total_memory = torch.xpu.get_device_properties(0).total_memory / (1024**3)
+        else:
+            return test_case
+
+        return pytest.mark.skipif(
+            total_memory < min_memory_gb,
+            reason=f"test requires an accelerator with at least {min_memory_gb} GB memory",
+        )(test_case)
+
+    return decorator
+
+
 def require_torch_accelerator_with_training(test_case):
     """Decorator marking a test that requires an accelerator with support for training."""
     return pytest.mark.skipif(
@@ -687,13 +717,6 @@ def require_compel(test_case):
     the library is not installed.
     """
     return pytest.mark.skipif(not is_compel_available(), reason="test requires compel")(test_case)
-
-
-def require_onnxruntime(test_case):
-    """
-    Decorator marking a test that requires onnxruntime. These tests are skipped when onnxruntime isn't installed.
-    """
-    return pytest.mark.skipif(not is_onnx_available(), reason="test requires onnxruntime")(test_case)
 
 
 def require_note_seq(test_case):
@@ -738,13 +761,6 @@ def require_bitsandbytes(test_case):
     Decorator marking a test that requires bitsandbytes. These tests are skipped when bitsandbytes isn't installed.
     """
     return pytest.mark.skipif(not is_bitsandbytes_available(), reason="test requires bitsandbytes")(test_case)
-
-
-def require_quanto(test_case):
-    """
-    Decorator marking a test that requires quanto. These tests are skipped when quanto isn't installed.
-    """
-    return pytest.mark.skipif(not is_optimum_quanto_available(), reason="test requires quanto")(test_case)
 
 
 def require_sdnq(test_case):
@@ -826,6 +842,16 @@ def require_bitsandbytes_version_greater(bnb_version):
         )(test_case)
 
     return decorator
+
+
+def require_hf_token(test_case):
+    """
+    Decorator marking a test that requires a Hugging Face auth token (e.g. to access gated repos). The test is
+    skipped when no token is available.
+    """
+    from huggingface_hub import get_token
+
+    return pytest.mark.skipif(get_token() is None, reason="test requires a Hugging Face auth token")(test_case)
 
 
 def require_hf_hub_version_greater(hf_hub_version):
@@ -1000,6 +1026,25 @@ def export_to_gif(image: list[PIL.Image.Image], output_gif_path: str = None) -> 
         loop=0,
     )
     return output_gif_path
+
+
+@contextmanager
+def skip_if_no_cudnn_engine():
+    """
+    Skip the enclosing test when cuDNN has no kernel for an op the pipeline runs.
+
+    cuDNN does not ship an engine for every (op, dtype, layout) combination, and the set it covers differs between
+    cuDNN builds and GPU architectures. When none applies it raises `RuntimeError: GET was unable to find an engine
+    to execute this computation` — for instance for Sana's depthwise `Conv2d` in bfloat16. That is a property of the
+    runner, not of the code under test, so tests that can hit it are skipped there rather than failed. Any other
+    `RuntimeError` propagates untouched.
+    """
+    try:
+        yield
+    except RuntimeError as e:
+        if "unable to find an engine" not in str(e):
+            raise
+        pytest.skip(f"cuDNN has no engine for this computation on {torch_device}: {e}")
 
 
 @contextmanager
@@ -1310,13 +1355,11 @@ def is_flaky(max_attempts: int = 5, wait_before_retry: float | None = None, desc
 
 
 # Taken from: https://github.com/huggingface/transformers/blob/3658488ff77ff8d45101293e749263acf437f4d5/src/transformers..testing_utils.py#L1787
-def run_test_in_subprocess(test_case, target_func, inputs=None, timeout=None):
+def run_test_in_subprocess(target_func, inputs=None, timeout=None):
     """
     To run a test in a subprocess. In particular, this can avoid (GPU) memory issue.
 
     Args:
-        test_case:
-            The test case object that will run `target_func`.
         target_func (`Callable`):
             The function implementing the actual testing logic.
         inputs (`dict`, *optional*, defaults to `None`):
@@ -1346,11 +1389,11 @@ def run_test_in_subprocess(test_case, target_func, inputs=None, timeout=None):
         output_queue.task_done()
     except Exception as e:
         process.terminate()
-        test_case.fail(e)
+        pytest.fail(str(e))
     process.join(timeout=timeout)
 
     if results["error"] is not None:
-        test_case.fail(f"{results['error']}")
+        pytest.fail(f"{results['error']}")
 
 
 class CaptureLogger:
@@ -1480,107 +1523,38 @@ if is_torch_available():
         else None
     )
 
-    # Function definitions
-    BACKEND_EMPTY_CACHE = {
-        "cuda": torch.cuda.empty_cache,
-        "xpu": torch.xpu.empty_cache,
-        "cpu": None,
-        "mps": torch.mps.empty_cache,
-        "default": None,
-    }
-    BACKEND_DEVICE_COUNT = {
-        "cuda": torch.cuda.device_count,
-        "xpu": torch.xpu.device_count,
-        "cpu": lambda: 0,
-        "mps": lambda: 0,
-        "default": 0,
-    }
-    BACKEND_MANUAL_SEED = {
-        "cuda": torch.cuda.manual_seed,
-        "xpu": torch.xpu.manual_seed,
-        "cpu": torch.manual_seed,
-        "mps": torch.mps.manual_seed,
-        "default": torch.manual_seed,
-    }
-    BACKEND_RESET_PEAK_MEMORY_STATS = {
-        "cuda": torch.cuda.reset_peak_memory_stats,
-        "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
-        "cpu": None,
-        "mps": None,
-        "default": None,
-    }
-    BACKEND_RESET_MAX_MEMORY_ALLOCATED = {
-        "cuda": torch.cuda.reset_max_memory_allocated,
-        "xpu": getattr(torch.xpu, "reset_peak_memory_stats", None),
-        "cpu": None,
-        "mps": None,
-        "default": None,
-    }
-    BACKEND_MAX_MEMORY_ALLOCATED = {
-        "cuda": torch.cuda.max_memory_allocated,
-        "xpu": getattr(torch.xpu, "max_memory_allocated", None),
-        "cpu": 0,
-        "mps": 0,
-        "default": 0,
-    }
-    BACKEND_SYNCHRONIZE = {
-        "cuda": torch.cuda.synchronize,
-        "xpu": getattr(torch.xpu, "synchronize", None),
-        "cpu": None,
-        "mps": None,
-        "default": None,
-    }
-
     if _neuron_device is not None:
-        BACKEND_EMPTY_CACHE[_neuron_device] = None
-        BACKEND_DEVICE_COUNT[_neuron_device] = torch.neuron.device_count
-        BACKEND_MANUAL_SEED[_neuron_device] = torch.manual_seed
-        BACKEND_RESET_PEAK_MEMORY_STATS[_neuron_device] = None
-        BACKEND_RESET_MAX_MEMORY_ALLOCATED[_neuron_device] = None
-        BACKEND_MAX_MEMORY_ALLOCATED[_neuron_device] = 0
-        BACKEND_SYNCHRONIZE[_neuron_device] = torch.neuron.synchronize
         BACKEND_SUPPORTS_TRAINING[_neuron_device] = False
 
 
-# This dispatches a defined function according to the accelerator from the function definitions.
-def _device_agnostic_dispatch(device: str, dispatch_table: dict[str, Callable], *args, **kwargs):
-    fn = dispatch_table[device] if device in dispatch_table else dispatch_table["default"]
-
-    # Some device agnostic functions return values. Need to guard against 'None' instead at
-    # user level
-    if not callable(fn):
-        return fn
-
-    return fn(*args, **kwargs)
-
-
-# These are callables which automatically dispatch the function specific to the accelerator
+# Device operations go through `TorchDeviceBackend`.
 def backend_manual_seed(device: str, seed: int):
-    return _device_agnostic_dispatch(device, BACKEND_MANUAL_SEED, seed)
+    TorchDeviceBackend(device).manual_seed(seed)
 
 
 def backend_synchronize(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_SYNCHRONIZE)
+    TorchDeviceBackend(device).synchronize()
 
 
 def backend_empty_cache(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_EMPTY_CACHE)
+    TorchDeviceBackend(device).empty_cache()
 
 
 def backend_device_count(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_DEVICE_COUNT)
+    return TorchDeviceBackend(device).device_count()
 
 
 def backend_reset_peak_memory_stats(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_RESET_PEAK_MEMORY_STATS)
+    TorchDeviceBackend(device).reset_peak_memory_stats()
 
 
 def backend_reset_max_memory_allocated(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_RESET_MAX_MEMORY_ALLOCATED)
+    # `reset_max_memory_allocated` is CUDA's deprecated alias of `reset_peak_memory_stats`.
+    TorchDeviceBackend(device).reset_peak_memory_stats()
 
 
 def backend_max_memory_allocated(device: str):
-    return _device_agnostic_dispatch(device, BACKEND_MAX_MEMORY_ALLOCATED)
+    return TorchDeviceBackend(device).max_memory_allocated()
 
 
 # These are callables which return boolean behaviour flags and can be used to specify some
@@ -1634,14 +1608,9 @@ if is_torch_available():
 
         torch_device = device_name
 
-        # Add one entry here for each `BACKEND_*` dictionary.
-        update_mapping_from_spec(BACKEND_MANUAL_SEED, "MANUAL_SEED_FN")
-        update_mapping_from_spec(BACKEND_EMPTY_CACHE, "EMPTY_CACHE_FN")
-        update_mapping_from_spec(BACKEND_DEVICE_COUNT, "DEVICE_COUNT_FN")
+        # `SUPPORTS_TRAINING` is the only per-device table left. Device operations come from the backend's own
+        # `torch.<backend>` module through `TorchDeviceBackend`, so a spec file no longer supplies them.
         update_mapping_from_spec(BACKEND_SUPPORTS_TRAINING, "SUPPORTS_TRAINING")
-        update_mapping_from_spec(BACKEND_RESET_PEAK_MEMORY_STATS, "RESET_PEAK_MEMORY_STATS_FN")
-        update_mapping_from_spec(BACKEND_RESET_MAX_MEMORY_ALLOCATED, "RESET_MAX_MEMORY_ALLOCATED_FN")
-        update_mapping_from_spec(BACKEND_MAX_MEMORY_ALLOCATED, "MAX_MEMORY_ALLOCATED_FN")
 
 
 # Modified from https://github.com/huggingface/transformers/blob/cdfb018d0300fef3b07d9220f3efe9c2a9974662/src/transformers..testing_utils.py#L3090

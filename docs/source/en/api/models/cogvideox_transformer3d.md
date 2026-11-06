@@ -11,14 +11,14 @@ specific language governing permissions and limitations under the License. -->
 
 # CogVideoXTransformer3DModel
 
-A Diffusion Transformer model for 3D data from [CogVideoX](https://github.com/THUDM/CogVideo) was introduced in [CogVideoX: Text-to-Video Diffusion Models with An Expert Transformer](https://github.com/THUDM/CogVideo/blob/main/resources/CogVideoX.pdf) by Tsinghua University & ZhipuAI.
+A Diffusion Transformer model for 3D data from [CogVideoX](https://github.com/THUDM/CogVideo) was introduced in [CogVideoX: Text-to-Video Diffusion Models with An Expert Transformer](https://huggingface.co/papers/2408.06072) by Tsinghua University & ZhipuAI.
 
 The model can be loaded with the following code snippet.
 
 ```python
 from diffusers import CogVideoXTransformer3DModel
 
-transformer = CogVideoXTransformer3DModel.from_pretrained("THUDM/CogVideoX-2b", subfolder="transformer", dtype=torch.float16).to("cuda")
+transformer = CogVideoXTransformer3DModel.from_pretrained("THUDM/CogVideoX-2b", subfolder="transformer", dtype=torch.float16).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 ## CogVideoXTransformer3DModel

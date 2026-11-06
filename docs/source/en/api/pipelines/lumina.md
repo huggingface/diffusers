@@ -13,7 +13,7 @@ specific language governing permissions and limitations under the License.
 # Lumina-T2X
 ![concepts](https://github.com/Alpha-VLLM/Lumina-T2X/assets/54879512/9f52eabb-07dc-4881-8257-6d8a5f2a0a5a)
 
-[Lumina-Next : Making Lumina-T2X Stronger and Faster with Next-DiT](https://github.com/Alpha-VLLM/Lumina-T2X/blob/main/assets/lumina-next.pdf) from Alpha-VLLM, OpenGVLab, Shanghai AI Laboratory.
+[Lumina-Next : Making Lumina-T2X Stronger and Faster with Next-DiT](https://huggingface.co/papers/2406.18583) from Alpha-VLLM, OpenGVLab, Shanghai AI Laboratory.
 
 The abstract from the paper is:
 
@@ -46,7 +46,7 @@ Lumina-T2X has the following components:
 This pipeline was contributed by [PommesPeter](https://github.com/PommesPeter). The original codebase can be found [here](https://github.com/Alpha-VLLM/Lumina-T2X). The original weights can be found under [hf.co/Alpha-VLLM](https://huggingface.co/Alpha-VLLM).
 
 > [!TIP]
-> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-a-pipeline) section to learn how to efficiently load the same components into multiple pipelines.
+> Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reusing-models-in-multiple-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
 ### Inference (Text-to-Image)
 
@@ -60,7 +60,7 @@ import torch
 
 pipeline = LuminaPipeline.from_pretrained(
 	"Alpha-VLLM/Lumina-Next-SFT-diffusers", dtype=torch.bfloat16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 Then change the memory layout of the pipelines `transformer` and `vae` components to `torch.channels-last`:

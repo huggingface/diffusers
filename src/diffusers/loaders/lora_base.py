@@ -37,7 +37,6 @@ from ..utils import (
     get_adapter_name,
     is_accelerate_available,
     is_peft_available,
-    is_peft_version,
     is_transformers_available,
     is_transformers_version,
     logging,
@@ -47,7 +46,7 @@ from ..utils import (
     set_weights_and_activate_adapters,
 )
 from ..utils.peft_utils import _create_lora_config
-from ..utils.state_dict_utils import _load_sft_state_dict_metadata
+from ..utils.state_dict_utils import _load_sft_file_metadata, _load_sft_state_dict_metadata
 
 
 if is_transformers_available():
@@ -209,7 +208,15 @@ def _fetch_state_dict(
     user_agent,
     allow_pickle,
     metadata=None,
+    return_file_metadata=False,
 ):
+    """
+    `metadata` is diffusers' own LoRA adapter metadata, parsed out of the file's `__metadata__`. With
+    `return_file_metadata`, that `__metadata__` is returned in full as a third element. It is `None` whenever the
+    weights did not come from a safetensors file — a state dict passed in memory, or a pickled checkpoint — since there
+    is nowhere else for a header to live.
+    """
+    file_metadata = None
     model_file = None
     if not isinstance(pretrained_model_name_or_path_or_dict, dict):
         # Let's first try to load .safetensors weights
@@ -240,6 +247,8 @@ def _fetch_state_dict(
                 )
                 state_dict = safetensors.torch.load_file(model_file, device="cpu")
                 metadata = _load_sft_state_dict_metadata(model_file)
+                if return_file_metadata:
+                    file_metadata = _load_sft_file_metadata(model_file)
 
             except (IOError, safetensors.SafetensorError) as e:
                 if not allow_pickle:
@@ -247,6 +256,7 @@ def _fetch_state_dict(
                 # try loading non-safetensors weights
                 model_file = None
                 metadata = None
+                file_metadata = None
                 pass
 
         if model_file is None:
@@ -271,6 +281,8 @@ def _fetch_state_dict(
     else:
         state_dict = pretrained_model_name_or_path_or_dict
 
+    if return_file_metadata:
+        return state_dict, metadata, file_metadata
     return state_dict, metadata
 
 
@@ -340,10 +352,6 @@ def _load_lora_into_text_encoder(
 
     peft_kwargs = {}
     if low_cpu_mem_usage:
-        if not is_peft_version(">=", "0.13.1"):
-            raise ValueError(
-                "`low_cpu_mem_usage=True` is not compatible with this `peft` version. Please update it with `pip install -U peft`."
-            )
         if not is_transformers_version(">", "4.45.2"):
             # Note from sayakpaul: It's not in `transformers` stable yet.
             # https://github.com/huggingface/transformers/pull/33725/
@@ -374,6 +382,11 @@ def _load_lora_into_text_encoder(
 
         # convert state dict
         state_dict = convert_state_dict_to_peft(state_dict)
+
+        # CLIPTextModel is flattened in recent transformers versions, while older
+        # LoRA checkpoints can still contain the 'text_model.' prefix.
+        if not hasattr(text_encoder, "text_model"):
+            state_dict = {k.removeprefix("text_model."): v for k, v in state_dict.items()}
 
         for name, _ in text_encoder.named_modules():
             if name.endswith((".q_proj", ".k_proj", ".v_proj", ".out_proj", ".fc1", ".fc2")):
@@ -685,7 +698,9 @@ class LoraBaseMixin:
     def set_adapters(
         self,
         adapter_names: list[str] | str,
-        adapter_weights: float | dict | list[float] | list[dict] | None = None,
+        adapter_weights: (
+            float | dict[str, float | dict | None] | list[float | dict[str, float | dict | None] | None] | None
+        ) = None,
     ):
         """
         Set the currently active adapters for use in the pipeline.
@@ -693,9 +708,13 @@ class LoraBaseMixin:
         Args:
             adapter_names (`list[str]` or `str`):
                 The names of the adapters to use.
-            adapter_weights (`list[float, float]`, *optional*):
-                The adapter(s) weights to use with the UNet. If `None`, the weights are set to `1.0` for all the
-                adapters.
+            adapter_weights (`float`, `dict` or `list`, *optional*):
+                Weights for the adapters. A scalar scales all LoRA-compatible components. A dictionary maps component
+                names (e.g. `"unet"`, `"transformer"` or `"text_encoder"`) to weights; a UNet component's weight can
+                also be a nested dictionary of block scales. A single scalar or dictionary is applied to every adapter.
+                A list must contain one scalar, dictionary or `None` per adapter, in the order of `adapter_names`.
+                `None` defaults to `1.0`, including list entries and component weights. Unspecified components and UNet
+                blocks also default to `1.0`.
 
         Example:
 
@@ -709,8 +728,14 @@ class LoraBaseMixin:
         pipeline.load_lora_weights(
             "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
         )
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.set_adapters(["cinematic", "pixel"], adapter_weights=[0.5, 0.5])
+        pipeline.load_lora_weights(
+            "troveski/sdxl-lora", weight_name="pytorch_lora_weights.safetensors", adapter_name="illustration"
+        )
+        pipeline.set_adapters(["cinematic", "illustration"], adapter_weights=[0.5, 0.5])
+        pipeline.set_adapters(
+            ["cinematic", "illustration"],
+            adapter_weights=[{"unet": 0.5}, {"unet": 0.8, "text_encoder": 0.6}],
+        )
         ```
         """
         if isinstance(adapter_weights, dict):
@@ -764,7 +789,7 @@ class LoraBaseMixin:
 
             for adapter_name, weights in zip(adapter_names, adapter_weights):
                 if isinstance(weights, dict):
-                    component_adapter_weights = weights.pop(component, None)
+                    component_adapter_weights = weights.get(component, None)
                     if component_adapter_weights is not None and component not in invert_list_adapters[adapter_name]:
                         logger.warning(
                             (
@@ -908,7 +933,7 @@ class LoraBaseMixin:
 
         for component in self._lora_loadable_modules:
             model = getattr(self, component, None)
-            if model is not None and issubclass(model.__class__, ModelMixin):
+            if model is not None and issubclass(model.__class__, (ModelMixin, PreTrainedModel)):
                 for module in model.modules():
                     if isinstance(module, BaseTunerLayer):
                         active_adapters = module.active_adapters

@@ -11,14 +11,14 @@ specific language governing permissions and limitations under the License. -->
 
 # AutoencoderKLCogVideoX
 
-The 3D variational autoencoder (VAE) model with KL loss used in [CogVideoX](https://github.com/THUDM/CogVideo) was introduced in [CogVideoX: Text-to-Video Diffusion Models with An Expert Transformer](https://github.com/THUDM/CogVideo/blob/main/resources/CogVideoX.pdf) by Tsinghua University & ZhipuAI.
+The 3D variational autoencoder (VAE) model with KL loss used in [CogVideoX](https://github.com/THUDM/CogVideo) was introduced in [CogVideoX: Text-to-Video Diffusion Models with An Expert Transformer](https://huggingface.co/papers/2408.06072) by Tsinghua University & ZhipuAI.
 
 The model can be loaded with the following code snippet.
 
 ```python
 from diffusers import AutoencoderKLCogVideoX
 
-vae = AutoencoderKLCogVideoX.from_pretrained("THUDM/CogVideoX-2b", subfolder="vae", dtype=torch.float16).to("cuda")
+vae = AutoencoderKLCogVideoX.from_pretrained("THUDM/CogVideoX-2b", subfolder="vae", dtype=torch.float16).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 ## AutoencoderKLCogVideoX

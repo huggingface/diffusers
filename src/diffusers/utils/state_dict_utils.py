@@ -529,15 +529,21 @@ def state_dict_all_zero(state_dict, filter_str=None):
     return all(torch.all(param == 0).item() for param in state_dict.values())
 
 
-def _load_sft_state_dict_metadata(model_file: str):
+def _load_sft_file_metadata(model_file: str):
+    """A safetensors file's own `__metadata__`, minus safetensors' `format` entry."""
     import safetensors.torch
-
-    from ..loaders.lora_base import LORA_ADAPTER_METADATA_KEY
 
     with safetensors.torch.safe_open(model_file, framework="pt", device="cpu") as f:
         metadata = f.metadata() or {}
 
     metadata.pop("format", None)
+    return metadata
+
+
+def _load_sft_state_dict_metadata(model_file: str):
+    from ..loaders.lora_base import LORA_ADAPTER_METADATA_KEY
+
+    metadata = _load_sft_file_metadata(model_file)
     if metadata:
         raw = metadata.get(LORA_ADAPTER_METADATA_KEY)
         return json.loads(raw) if raw else None

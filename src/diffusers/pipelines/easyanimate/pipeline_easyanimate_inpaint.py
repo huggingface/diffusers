@@ -815,7 +815,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
         strength: float = 1.0,
         noise_aug_strength: float = 0.0563,
         timesteps: list[int] | None = None,
-    ):
+    ) -> EasyAnimatePipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation with HunyuanDiT.
 

@@ -22,8 +22,10 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SingleFileTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -154,3 +156,25 @@ class TestKrea2TransformerTraining(Krea2TransformerTesterConfig, TrainingTesterM
 
 class TestKrea2TransformerAttention(Krea2TransformerTesterConfig, AttentionTesterMixin):
     """Attention processor tests for the Krea 2 Transformer."""
+
+
+class TestKrea2TransformerLoRA(Krea2TransformerTesterConfig, LoraTesterMixin):
+    pass
+
+
+class TestKrea2TransformerSingleFile(Krea2TransformerTesterConfig, SingleFileTesterMixin):
+    @property
+    def ckpt_path(self):
+        return "https://huggingface.co/krea/Krea-2-Raw/blob/main/raw.safetensors"
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "krea/Krea-2-Raw"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16

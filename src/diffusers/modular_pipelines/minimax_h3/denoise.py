@@ -108,7 +108,9 @@ class MiniMaxH3LoopDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[MiniMaxH3ModularPipeline, BlockState]:
         transformer = getattr(components, self.transformer_name)
         unique_timesteps, timestep_indices = block_state.row_timestep_plan[i]
         # The layout tags its outputs `denoiser_input_fields`, and their names are the transformer's own parameter
@@ -218,7 +220,9 @@ class MiniMaxH3LoopSchedulerStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[MiniMaxH3ModularPipeline, BlockState]:
         num_condition_video_rows = block_state.num_condition_video_rows
         num_condition_audio_rows = block_state.num_condition_audio_rows
 
@@ -258,7 +262,9 @@ class MiniMaxH3DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         with self.progress_bar(total=len(block_state.timesteps)) as progress_bar:
             for i, t in enumerate(block_state.timesteps):

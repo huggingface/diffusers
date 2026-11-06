@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Reproducibility
 
-Diffusion is a random process that generates a different output every time. For certain situations like testing and replicating results, you want to generate the same result each time, across releases and platforms within a certain tolerance range.
+Diffusion is a random process that generates a different output every time. For use cases like testing and replicating results, you want to generate the same result each time, across releases and platforms within a certain tolerance range.
 
 This guide will show you how to control sources of randomness and enable deterministic algorithms.
 
@@ -21,75 +21,88 @@ This guide will show you how to control sources of randomness and enable determi
 Pipelines rely on [torch.randn](https://pytorch.org/docs/stable/generated/torch.randn.html), which uses a different random seed each time, to create the initial noisy tensors. To generate the same output on a CPU or GPU, use a [Generator](https://docs.pytorch.org/docs/stable/generated/torch.Generator.html) to manage how random values are generated.
 
 > [!TIP]
-> If reproducibility is important to your use case, we recommend always using a CPU `Generator`. The performance loss is often negligible and you'll generate more similar values.
+> If reproducibility is important, you should use a CPU `Generator`. The performance loss is often negligible and you'll generate more similar values.
 
 <hfoptions id="generator">
 <hfoption id="GPU">
 
-The GPU uses a different random number generator than the CPU. Diffusers solves this issue with the [`~utils.torch_utils.randn_tensor`] function to create the random tensor on a CPU and then moving it to the GPU. This function is used everywhere inside the pipeline and you don't need to explicitly call it.
+Use a CPU `Generator` when you care about reproducibility. CPU RNG is more stable across machines.
 
-Use [manual_seed](https://docs.pytorch.org/docs/stable/generated/torch.manual_seed.html) as shown below to set a seed.
+When you pass a CPU `Generator`, Diffusers’ [`~utils.torch_utils.randn_tensor`] samples on the CPU and moves the tensor to the GPU inside the pipeline. You do not call `randn_tensor` or `.to("cuda")` yourself. A GPU `Generator` samples on-device instead and can diverge from CPU results.
+
+Use [manual_seed](https://docs.pytorch.org/docs/stable/generated/torch.manual_seed.html) to set a seed.
 
 ```py
 import torch
-import numpy as np
-from diffusers import DDIMPipeline
+from diffusers import DiffusionPipeline
 
-ddim = DDIMPipeline.from_pretrained("google/ddpm-cifar10-32", device_map="cuda")
+pipeline = DiffusionPipeline.from_pretrained(
+    "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cuda"  # or "mps", "xpu", "cpu"
+)
 generator = torch.manual_seed(0)
-image = ddim(num_inference_steps=2, output_type="np", generator=generator).images
-print(np.abs(image).sum())
+image = pipeline(
+    prompt="a red apple on a wooden table",
+    generator=generator,
+    num_inference_steps=4,
+).images[0]
 ```
 
 </hfoption>
 <hfoption id="CPU">
 
-Set `device="cpu"` in the `Generator` and use [manual_seed](https://docs.pytorch.org/docs/stable/generated/torch.manual_seed.html) to set a seed for generating random numbers.
+Create a CPU `Generator` and set a seed with [Generator.manual_seed](https://docs.pytorch.org/docs/stable/generated/torch.Generator.html#torch.Generator.manual_seed).
 
 ```py
 import torch
-import numpy as np
-from diffusers import DDIMPipeline
+from diffusers import DiffusionPipeline
 
-ddim = DDIMPipeline.from_pretrained("google/ddpm-cifar10-32")
+pipeline = DiffusionPipeline.from_pretrained(
+    "Qwen/Qwen-Image", dtype=torch.bfloat16, device_map="cpu"
+)
 generator = torch.Generator(device="cpu").manual_seed(0)
-image = ddim(num_inference_steps=2, output_type="np", generator=generator).images
-print(np.abs(image).sum())
+image = pipeline(
+    prompt="a red apple on a wooden table",
+    generator=generator,
+    num_inference_steps=4,
+).images[0]
 ```
 
 </hfoption>
 </hfoptions>
 
-The `Generator` object should be passed to the pipeline instead of an integer seed. `Generator` maintains a *random state* that is consumed and modified when used. Once consumed, the same `Generator` object produces different results in subsequent calls, even across different pipelines, because its *state* has changed.
+Pass a `Generator` object to the pipeline instead of an integer seed. A `Generator` keeps a random state that is consumed and updated when you use it. After that, the same object produces different results on later calls, even across pipelines, because its state has changed. Reseed it or create a new `Generator` before each call when you need the same seed again.
 
 ```py
-generator = torch.manual_seed(0)
+import torch
+
+prompt = "a red apple on a wooden table"
 
 for _ in range(5):
--    image = pipeline(prompt, generator=generator)
-+    image = pipeline(prompt, generator=torch.manual_seed(0))
+    generator = torch.manual_seed(0)
+    image = pipeline(prompt, generator=generator, num_inference_steps=4).images[0]
 ```
 
 ## Deterministic algorithms
 
-PyTorch supports [deterministic algorithms](https://docs.pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms) - where available - for certain operations so they produce the same results. Deterministic algorithms may be slower and decrease performance.
+PyTorch supports [deterministic algorithms](https://docs.pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms) (where available) for certain operations so they produce the same results. Deterministic algorithms may be slower and decrease performance.
 
-Use Diffusers' [enable_full_determinism](https://github.com/huggingface/diffusers/blob/142f353e1c638ff1d20bd798402b68f72c1ebbdd/src/diffusers/utils/testing_utils.py#L861) function to enable deterministic algorithms.
+Use Diffusers' [`~utils.torch_utils.enable_full_determinism`] to enable deterministic algorithms.
 
 ```py
-import torch
-from diffusers_utils import enable_full_determinism
+from diffusers.utils.torch_utils import enable_full_determinism
 
 enable_full_determinism()
 ```
 
-Under the hood, `enable_full_determinism` works by:
+`enable_full_determinism` works by:
 
-- Setting the environment variable [CUBLAS_WORKSPACE_CONFIG](https://docs.nvidia.com/cuda/cublas/index.html#results-reproducibility) to `:16:8` to only use one buffer size during rntime. Non-deterministic behavior occurs when operations are used in more than one CUDA stream.
-- Disabling benchmarking to find the fastest convolution operation by setting `torch.backends.cudnn.benchmark=False`. Non-deterministic behavior occurs because the benchmark may select different algorithms each time depending on hardware or benchmarking noise.
-- Disabling TensorFloat32 (TF32) operations in favor of more precise and consistent full-precision operations.
+- Setting the environment variable `CUDA_LAUNCH_BLOCKING` to `1`
+- Setting the environment variable [CUBLAS_WORKSPACE_CONFIG](https://docs.nvidia.com/cuda/cublas/index.html#results-reproducibility) to `:16:8` so cuBLAS uses a fixed workspace layout at runtime
+- Calling `torch.use_deterministic_algorithms(True)`
+- Setting `torch.backends.cudnn.deterministic = True`
+- Setting `torch.backends.cudnn.benchmark = False` so cuDNN does not pick a different convolution algorithm each run
+- Disabling TensorFloat32 (TF32) with `torch.backends.cuda.matmul.allow_tf32 = False` in favor of more precise full-precision matmul
 
+## Next steps
 
-## Resources
-
-We strongly recommend reading PyTorch's developer notes about [Reproducibility](https://docs.pytorch.org/docs/stable/notes/randomness.html). You can try to limit randomness, but it is not *guaranteed* even with an identical seed.
+You should read PyTorch's developer notes about [Reproducibility](https://docs.pytorch.org/docs/stable/notes/randomness.html). You can try to limit randomness, but it is not *guaranteed* even with an identical seed.

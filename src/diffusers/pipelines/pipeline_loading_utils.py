@@ -15,15 +15,14 @@
 import importlib
 import os
 import re
+import sys
 import warnings
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-import httpx
-import requests
 import torch
-from huggingface_hub import DDUFEntry, ModelCard, model_info, snapshot_download
-from huggingface_hub.utils import HfHubHTTPError, OfflineModeIsEnabled, validate_hf_hub_args
+from huggingface_hub import ModelCard, model_info
+from huggingface_hub.utils import validate_hf_hub_args
 from packaging import version
 
 from .. import __version__
@@ -33,6 +32,7 @@ from ..utils import (
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
+    _maybe_remap_relocated_pipeline_class,
     _maybe_remap_transformers_class,
     deprecate,
     get_class_from_dynamic_module,
@@ -45,12 +45,11 @@ from ..utils import (
 )
 from ..utils.constants import DIFFUSERS_SDNQ_TRANSFORMERS
 from ..utils.torch_utils import is_compiled_module
-from .transformers_loading_utils import _load_tokenizer_from_dduf, _load_transformers_model_from_dduf
 
 
 if is_transformers_available():
     import transformers
-    from transformers import PreTrainedModel, PreTrainedTokenizerBase
+    from transformers import PreTrainedModel
     from transformers.utils import SAFE_WEIGHTS_NAME as TRANSFORMERS_SAFE_WEIGHTS_NAME
     from transformers.utils import WEIGHTS_NAME as TRANSFORMERS_WEIGHTS_NAME
 
@@ -67,19 +66,6 @@ CUSTOM_PIPELINE_FILE_NAME = "pipeline.py"
 DUMMY_MODULES_FOLDER = "diffusers.utils"
 TRANSFORMERS_DUMMY_MODULES_FOLDER = "transformers.utils"
 CONNECTED_PIPES_KEYS = ["prior"]
-
-# Auxiliary (non-weight) files a transformers component saves next to its weights. Repos with a flat,
-# transformers-style layout host a component's files at the repo root instead of in a subfolder, where the
-# folder-based allow patterns of `DiffusionPipeline.download` would miss them. Root-hosted weights and
-# `config.json` are matched by their own patterns, so only these auxiliary filenames need listing.
-# Currently the set needed by DiffusionGemma — extend as new flat-layout pipelines require it.
-TRANSFORMERS_COMPONENT_AUX_FILES = [
-    "chat_template.jinja",
-    "generation_config.json",
-    "processor_config.json",
-    "tokenizer.json",
-    "tokenizer_config.json",
-]
 
 logger = logging.get_logger(__name__)
 
@@ -359,12 +345,48 @@ def _unwrap_model(model):
     return model
 
 
+def _get_library_or_raise(library_name):
+    """
+    Resolves the library a component is declared to come from.
+
+    `library_name` is read from `model_index.json`/`modular_model_index.json`, which ships with the repository being
+    loaded, and importing a module runs it. So only the libraries Diffusers loads components from are imported here;
+    any other name is resolved from `sys.modules`, which means the calling process has already imported it itself.
+    `save_pretrained` records a component defined outside those libraries under its full module path, and that is the
+    case this covers: the module is importable because the caller imported it, not because the repository named it.
+    """
+    from diffusers import pipelines
+
+    if library_name in LOADABLE_CLASSES:
+        return importlib.import_module(library_name)
+
+    if hasattr(pipelines, library_name):
+        return getattr(pipelines, library_name)
+
+    library = sys.modules.get(library_name)
+    if library is None:
+        raise ValueError(
+            f"{library_name} is not one of the libraries Diffusers can load components from"
+            f" ({', '.join(LOADABLE_CLASSES)}) and has not been imported. Diffusers does not import a module just"
+            " because the repository names one, because importing it would run its code. If it is custom code that"
+            " ships with the repository, put it in the component's own folder and load with `trust_remote_code=True`."
+            f" If it is your own module, import {library_name} before calling `from_pretrained`."
+        )
+
+    return library
+
+
 def maybe_raise_or_warn(
     library_name, library, class_name, importable_classes, passed_class_obj, name, is_pipeline_module
 ):
     """Simple helper method to raise or warn in case incorrect module has been passed"""
+    relocated_library_name = _maybe_remap_relocated_pipeline_class(library_name, class_name)
+    if relocated_library_name is not None:
+        library_name = relocated_library_name
+        is_pipeline_module = False
+
     if not is_pipeline_module:
-        library = importlib.import_module(library_name)
+        library = _get_library_or_raise(library_name)
 
         # Handle deprecated Transformers classes
         if library_name == "transformers":
@@ -397,13 +419,15 @@ def maybe_raise_or_warn(
 def simple_get_class_obj(library_name, class_name):
     from diffusers import pipelines
 
+    library_name = _maybe_remap_relocated_pipeline_class(library_name, class_name) or library_name
+
     is_pipeline_module = hasattr(pipelines, library_name)
 
     if is_pipeline_module:
         pipeline_module = getattr(pipelines, library_name)
         class_obj = getattr(pipeline_module, class_name)
     else:
-        library = importlib.import_module(library_name)
+        library = _get_library_or_raise(library_name)
 
         # Handle deprecated Transformers classes
         if library_name == "transformers":
@@ -430,6 +454,11 @@ def get_class_obj_and_candidates(
     if class_name.startswith("FlashPack"):
         class_name = class_name.removeprefix("FlashPack")
 
+    relocated_library_name = _maybe_remap_relocated_pipeline_class(library_name, class_name)
+    if relocated_library_name is not None:
+        library_name = relocated_library_name
+        is_pipeline_module = False
+
     if is_pipeline_module:
         pipeline_module = getattr(pipelines, library_name)
 
@@ -446,13 +475,20 @@ def get_class_obj_and_candidates(
         class_candidates = dict.fromkeys(importable_classes.keys(), class_obj)
     else:
         # else we just import it from the library.
-        library = importlib.import_module(library_name)
+        library = _get_library_or_raise(library_name)
 
         # Handle deprecated Transformers classes
         if library_name == "transformers":
             class_name = _maybe_remap_transformers_class(class_name) or class_name
 
-        class_obj = getattr(library, class_name)
+        class_obj = getattr(library, class_name, None)
+        if class_obj is None:
+            raise ValueError(
+                f"`{library.__name__}` has no class `{class_name}`. The component was declared as"
+                f' ["{library_name}", "{class_name}"] in `model_index.json`, which resolves to `{library.__name__}`.'
+                f" Check that the library name in the repository is correct, or pass the component to"
+                " `from_pretrained` directly."
+            )
         class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
 
     return class_obj, class_candidates
@@ -770,7 +806,6 @@ def load_sub_model(
     low_cpu_mem_usage: bool,
     cached_folder: str | os.PathLike,
     use_safetensors: bool,
-    dduf_entries: dict[str, DDUFEntry] | None,
     provider_options: Any,
     disable_mmap: bool,
     quantization_config: Any | None = None,
@@ -814,7 +849,7 @@ def load_sub_model(
             f" any of the loading methods defined in {ALL_IMPORTABLE_CLASSES}."
         )
 
-    load_method = _get_load_method(class_obj, load_method_name, is_dduf=dduf_entries is not None)
+    load_method = getattr(class_obj, load_method_name)
 
     # add kwargs to loading method
     diffusers_module = importlib.import_module(__name__.split(".")[0])
@@ -897,10 +932,7 @@ def load_sub_model(
         _ensure_sdnq_registered()
 
     # check if the module is in a subdirectory
-    if dduf_entries:
-        loading_kwargs["dduf_entries"] = dduf_entries
-        loaded_sub_model = load_method(name, **loading_kwargs)
-    elif os.path.isdir(os.path.join(cached_folder, name)):
+    if os.path.isdir(os.path.join(cached_folder, name)):
         loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
     else:
         # else load from the root directory
@@ -927,22 +959,6 @@ def load_sub_model(
             dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True, skip_keys=skip_keys)
 
     return loaded_sub_model
-
-
-def _get_load_method(class_obj: object, load_method_name: str, is_dduf: bool) -> Callable:
-    """
-    Return the method to load the sub model.
-
-    In practice, this method will return the `"from_pretrained"` (or `load_method_name`) method of the class object
-    except if loading from a DDUF checkpoint. In that case, transformers models and tokenizers have a specific loading
-    method that we need to use.
-    """
-    if is_dduf:
-        if issubclass(class_obj, PreTrainedTokenizerBase):
-            return lambda *args, **kwargs: _load_tokenizer_from_dduf(class_obj, *args, **kwargs)
-        if issubclass(class_obj, PreTrainedModel):
-            return lambda *args, **kwargs: _load_transformers_model_from_dduf(class_obj, *args, **kwargs)
-    return getattr(class_obj, load_method_name)
 
 
 def _fetch_class_library_tuple(module):
@@ -1145,73 +1161,6 @@ def _get_ignore_patterns(
             ignore_patterns += ["*.onnx", "*.pb"]
 
     return ignore_patterns
-
-
-def _download_dduf_file(
-    pretrained_model_name: str,
-    dduf_file: str,
-    pipeline_class_name: str,
-    cache_dir: str,
-    proxies: str,
-    local_files_only: bool,
-    token: str,
-    revision: str,
-):
-    model_info_call_error = None
-    if not local_files_only:
-        try:
-            info = model_info(pretrained_model_name, token=token, revision=revision)
-        except (HfHubHTTPError, OfflineModeIsEnabled, requests.ConnectionError, httpx.NetworkError) as e:
-            logger.warning(f"Couldn't connect to the Hub: {e}.\nWill try to load from local cache.")
-            local_files_only = True
-            model_info_call_error = e  # save error to reraise it if model is not cached locally
-
-    if (
-        not local_files_only
-        and dduf_file is not None
-        and dduf_file not in (sibling.rfilename for sibling in info.siblings)
-    ):
-        raise ValueError(f"Requested {dduf_file} file is not available in {pretrained_model_name}.")
-
-    try:
-        user_agent = {"pipeline_class": pipeline_class_name, "dduf": True}
-        cached_folder = snapshot_download(
-            pretrained_model_name,
-            cache_dir=cache_dir,
-            proxies=proxies,
-            local_files_only=local_files_only,
-            token=token,
-            revision=revision,
-            allow_patterns=[dduf_file],
-            user_agent=user_agent,
-        )
-        return cached_folder
-    except FileNotFoundError:
-        # Means we tried to load pipeline with `local_files_only=True` but the files have not been found in local cache.
-        # This can happen in two cases:
-        # 1. If the user passed `local_files_only=True`                    => we raise the error directly
-        # 2. If we forced `local_files_only=True` when `model_info` failed => we raise the initial error
-        if model_info_call_error is None:
-            # 1. user passed `local_files_only=True`
-            raise
-        else:
-            # 2. we forced `local_files_only=True` when `model_info` failed
-            raise EnvironmentError(
-                f"Cannot load model {pretrained_model_name}: model is not cached locally and an error occurred"
-                " while trying to fetch metadata from the Hub. Please check out the root cause in the stacktrace"
-                " above."
-            ) from model_info_call_error
-
-
-def _maybe_raise_error_for_incorrect_transformers(config_dict):
-    has_transformers_component = False
-    for k in config_dict:
-        if isinstance(config_dict[k], list):
-            has_transformers_component = config_dict[k][0] == "transformers"
-            if has_transformers_component:
-                break
-    if has_transformers_component and not is_transformers_version(">", "4.47.1"):
-        raise ValueError("Please upgrade your `transformers` installation to the latest version to use DDUF.")
 
 
 def _maybe_warn_for_wrong_component_in_quant_config(pipe_init_dict, quant_config):

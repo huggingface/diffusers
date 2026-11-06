@@ -59,7 +59,7 @@ from pruna import PrunaModel, SmashConfig, smash
 pipe = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-dev",
     dtype=torch.bfloat16
-).to("cuda")
+).to("cuda")  # or "mps", "xpu", "cpu"
 
 # define the configuration
 smash_config = SmashConfig()
@@ -180,7 +180,7 @@ Now that you have seen how to optimize and evaluate your models, you can start u
 
 ## Reference
 
-- [Pruna](https://github.com/pruna-ai/pruna)
+- [Pruna](https://github.com/PrunaAI/pruna)
 - [Pruna optimization](https://docs.pruna.ai/en/stable/docs_pruna/user_manual/configure.html#configure-algorithms)
 - [Pruna evaluation](https://docs.pruna.ai/en/stable/docs_pruna/user_manual/evaluate.html)
 - [Pruna tutorials](https://docs.pruna.ai/en/stable/docs_pruna/tutorials/index.html)
