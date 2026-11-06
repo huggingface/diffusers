@@ -3696,7 +3696,7 @@ class DiscreteDDIMScheduler(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class DiscreteDDIMSchedulerOutput(metaclass=DummyObject):
+class DiscreteSchedulerOutput(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -3787,21 +3787,6 @@ class EDMEulerScheduler(metaclass=DummyObject):
 
 
 class EntropyBoundScheduler(metaclass=DummyObject):
-    _backends = ["torch"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["torch"])
-
-    @classmethod
-    def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["torch"])
-
-    @classmethod
-    def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["torch"])
-
-
-class EntropyBoundSchedulerOutput(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
@@ -4192,6 +4177,21 @@ class TCDScheduler(metaclass=DummyObject):
 
 
 class UnCLIPScheduler(metaclass=DummyObject):
+    _backends = ["torch"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch"])
+
+
+class UniformRefinementScheduler(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
