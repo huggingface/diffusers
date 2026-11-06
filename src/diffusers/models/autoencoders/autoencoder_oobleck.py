@@ -440,7 +440,7 @@ class AutoencoderOobleck(ModelMixin, AutoencoderMixin, ConfigMixin):
 
         return torch.cat(tiles, dim=-1)
 
-    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> OobleckDecoderOutput | torch.Tensor:
+    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> OobleckDecoderOutput | tuple[torch.Tensor]:
         if self.use_tiling and z.shape[-1] > self.tile_latent_min_length:
             dec = self._tiled_decode(z)
         else:
@@ -488,7 +488,7 @@ class AutoencoderOobleck(ModelMixin, AutoencoderMixin, ConfigMixin):
     @apply_forward_hook
     def decode(
         self, z: torch.FloatTensor, return_dict: bool = True, generator=None
-    ) -> OobleckDecoderOutput | torch.FloatTensor:
+    ) -> OobleckDecoderOutput | tuple[torch.Tensor]:
         """
         Decode a batch of images.
 
@@ -520,7 +520,7 @@ class AutoencoderOobleck(ModelMixin, AutoencoderMixin, ConfigMixin):
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: torch.Generator | None = None,
-    ) -> OobleckDecoderOutput | torch.Tensor:
+    ) -> OobleckDecoderOutput | tuple[torch.Tensor]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

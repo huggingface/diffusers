@@ -872,7 +872,7 @@ class QwenImage21Transformer2DModel(
         kv_cache: QwenImage21KVCache | None = None,
         kv_cache_mode: str | None = None,
         return_dict: bool = True,
-    ) -> torch.Tensor | Transformer2DModelOutput:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         r"""
         Args:
             hidden_states (`torch.Tensor` of shape `(batch_size, image_sequence_length, in_channels)`):

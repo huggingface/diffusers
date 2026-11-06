@@ -505,7 +505,7 @@ class LTXVideoTransformer3DModel(
         video_coords: torch.Tensor | None = None,
         attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> torch.Tensor:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`LTXVideoTransformer3DModel`] forward method.
 
