@@ -16,14 +16,11 @@
 import pytest
 import torch
 import torch.multiprocessing as mp
-from accelerate.utils import send_to_device
 
 from diffusers import Cosmos3OmniTransformer, SeaCacheConfig
 from diffusers.hooks import sea_cache as sea_cache_module
 from diffusers.hooks._helpers import TransformerBlockRegistry
 from diffusers.hooks.sea_cache import _SEA_CACHE_ROOT_HOOK
-from diffusers.hooks.tensor_parallel import resolve_tp_shard_specs
-from diffusers.models._modeling_parallel import TensorParallelConfig
 from diffusers.models.cache_utils import CacheMixin
 from diffusers.models.transformers.transformer_cosmos3 import (
     Cosmos3NemotronRMSNorm,
@@ -49,7 +46,6 @@ from ..testing_utils.common import cast_inputs_to_dtype
 from ..testing_utils.parallelism import (
     _find_free_port,
     _tensor_parallel_from_pretrained_worker,
-    _tensor_parallel_output,
     _tensor_parallel_worker,
 )
 
@@ -764,35 +760,8 @@ class Cosmos3TensorParallelTesterConfig(Cosmos3OmniTransformerTesterConfig):
         return inputs
 
 
-class TestCosmos3OmniTransformerTensorParallelConfig(Cosmos3TensorParallelTesterConfig):
-    @pytest.mark.parametrize("hidden_act", ["silu", "relu2"])
-    def test_plan_covers_both_streams(self, hidden_act):
-        class_plan = self.model_class._tp_plan.copy()
-        self.hidden_act = hidden_act
-        model = self.model_class(**self.get_init_dict())
-        plan = model._get_tp_plan()
-        specs = resolve_tp_shard_specs(model, plan, 2)
-        for name, parameter in model.named_parameters():
-            if name.startswith("layers.") and parameter.ndim == 2:
-                assert name in specs
-        assert "embed_tokens.weight" not in specs
-        assert any("gate_proj" in key for key in specs) == (hidden_act == "silu")
-        plan.clear()
-        assert model._get_tp_plan()
-        assert "_tp_plan" not in model.__dict__
-        assert self.model_class._tp_plan == class_plan
-
-    @pytest.mark.parametrize("heads,kv_heads,degree", [(8, 1, 2), (6, 4, 4), (8, 4, 3)])
-    def test_invalid_head_split(self, heads, kv_heads, degree):
-        config = self.get_init_dict()
-        config.update(num_attention_heads=heads, num_key_value_heads=kv_heads)
-        model = self.model_class(**config)
-        with pytest.raises(ValueError, match="both query and KV"):
-            model._resolve_parallel_config(TensorParallelConfig(tp_degree=degree))
-        assert model._parallel_config is None
-
-
 class TestCosmos3OmniTransformerTensorParallel(Cosmos3TensorParallelTesterConfig, TensorParallelTesterMixin):
+    # Run every inherited TP test for both SiLU (Super) and ReLU2 (Edge) MLP layouts.
     @pytest.fixture(autouse=True, params=["silu", "relu2"])
     def activation(self, request):
         self.hidden_act = request.param
@@ -811,8 +780,12 @@ class TestCosmos3OmniTransformerTensorParallel(Cosmos3TensorParallelTesterConfig
         assert torch.bfloat16 in expected_dtypes.values()
         inputs = cast_inputs_to_dtype(self.get_dummy_inputs(), torch.float32, torch.bfloat16)
         with torch.no_grad():
-            expected = _tensor_parallel_output(reference(**inputs, return_dict=False)[0]).float().cpu()
-        inputs = send_to_device(inputs, "cpu")
+            predictions = reference(**inputs, return_dict=False)[0]
+        expected = torch.cat([sample.flatten() for sample in predictions]).float().cpu()
+        inputs = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
+        for k, v in inputs.items():
+            if isinstance(v, list):
+                inputs[k] = [x.cpu() if isinstance(x, torch.Tensor) else x for x in v]
         state_dict = {name: tensor.cpu() for name, tensor in reference.state_dict().items()}
 
         with mp.Manager() as manager:

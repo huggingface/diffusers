@@ -20,7 +20,6 @@ import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from accelerate.utils import send_to_device
 
 from diffusers.models._modeling_parallel import ContextParallelConfig, TensorParallelConfig
 from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
@@ -249,14 +248,6 @@ def _custom_mesh_worker(
             dist.destroy_process_group()
 
 
-def _tensor_parallel_output(output):
-    from torch.distributed.tensor import DTensor
-
-    if isinstance(output, (list, tuple)):
-        output = torch.cat([sample.flatten() for sample in output])
-    return output.full_tensor() if isinstance(output, DTensor) else output
-
-
 def _tensor_parallel_worker(
     rank,
     world_size,
@@ -276,6 +267,8 @@ def _tensor_parallel_worker(
     to the unsharded model up to floating-point reduction order).
     """
     try:
+        from torch.distributed.tensor import DTensor
+
         os.environ["MASTER_ADDR"] = "localhost"
         os.environ["MASTER_PORT"] = str(master_port)
         os.environ["RANK"] = str(rank)
@@ -294,17 +287,26 @@ def _tensor_parallel_worker(
             device = torch.device(f"{device_type}:{rank}")
 
         model = model_class(**init_dict)
+        # Preserve the reference weights' dtypes instead of casting them to the new model's dtypes.
         model.load_state_dict(state_dict, assign=True)
         model.to(device)
         model.eval()
 
-        inputs_on_device = send_to_device(inputs_dict, device)
+        inputs_on_device = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
+        for k, v in inputs_on_device.items():
+            if isinstance(v, list):
+                inputs_on_device[k] = [x.to(device) if isinstance(x, torch.Tensor) else x for x in v]
 
         # Shard the model across all ranks; the device mesh is built from `tp_degree` on the active accelerator.
         model.enable_parallelism(config=TensorParallelConfig(tp_degree=world_size))
 
         with torch.no_grad():
-            output = _tensor_parallel_output(model(**inputs_on_device, return_dict=False)[0])
+            output = model(**inputs_on_device, return_dict=False)[0]
+        if isinstance(output, (list, tuple)):
+            # Flatten list outputs to compare predictions with different shapes.
+            output = torch.cat([sample.flatten() for sample in output])
+        if isinstance(output, DTensor):
+            output = output.full_tensor()
 
         if rank == 0:
             return_dict["status"] = "success"
@@ -349,9 +351,16 @@ def _tensor_parallel_from_pretrained_worker(
         ).eval()
 
         device = torch.device(f"{torch_device}:{rank}")
-        inputs_on_device = send_to_device(inputs_dict, device)
+        inputs_on_device = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
+        for k, v in inputs_on_device.items():
+            if isinstance(v, list):
+                inputs_on_device[k] = [x.to(device) if isinstance(x, torch.Tensor) else x for x in v]
         with torch.no_grad():
-            output = _tensor_parallel_output(model(**inputs_on_device, return_dict=False)[0])
+            output = model(**inputs_on_device, return_dict=False)[0]
+        if isinstance(output, (list, tuple)):
+            output = torch.cat([sample.flatten() for sample in output])
+        if isinstance(output, DTensor):
+            output = output.full_tensor()
 
         if rank == 0:
             specs = resolve_tp_shard_specs(model, model._get_tp_plan(), world_size)
@@ -412,10 +421,16 @@ class TensorParallelTesterMixin:
         model = self.model_class(**init_dict).eval().to(torch_device)
         state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
         with torch.no_grad():
-            ref_output = _tensor_parallel_output(model(**inputs_dict, return_dict=False)[0]).float().cpu()
+            ref_output = model(**inputs_dict, return_dict=False)[0]
+        if isinstance(ref_output, (list, tuple)):
+            ref_output = torch.cat([sample.flatten() for sample in ref_output])
+        ref_output = ref_output.float().cpu()
 
         # Move all tensors to CPU for multiprocessing
-        inputs_dict = send_to_device(inputs_dict, "cpu")
+        inputs_dict = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
+        for k, v in inputs_dict.items():
+            if isinstance(v, list):
+                inputs_dict[k] = [x.cpu() if isinstance(x, torch.Tensor) else x for x in v]
 
         master_port = _find_free_port()
         manager = mp.Manager()
@@ -458,7 +473,10 @@ class TensorParallelTesterMixin:
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**init_dict).eval().to(torch_device)
         with torch.no_grad():
-            reference = _tensor_parallel_output(model(**inputs_dict, return_dict=False)[0]).float().cpu()
+            reference = model(**inputs_dict, return_dict=False)[0]
+        if isinstance(reference, (list, tuple)):
+            reference = torch.cat([sample.flatten() for sample in reference])
+        reference = reference.float().cpu()
 
         checkpoint_dir = str(tmp_path / "checkpoint")
         max_shard_size = int(compute_module_persistent_sizes(model)[""] * 0.75) if sharded else "5GB"
@@ -471,7 +489,10 @@ class TensorParallelTesterMixin:
             actual_num_shards = len([file for file in os.listdir(checkpoint_dir) if file.endswith(".safetensors")])
             assert actual_num_shards == expected_num_shards > 1
 
-        inputs_dict = send_to_device(inputs_dict, "cpu")
+        inputs_dict = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
+        for k, v in inputs_dict.items():
+            if isinstance(v, list):
+                inputs_dict[k] = [x.cpu() if isinstance(x, torch.Tensor) else x for x in v]
         return checkpoint_dir, inputs_dict, reference
 
     @pytest.mark.parametrize("sharded", [False, True], ids=["unsharded", "sharded"])
