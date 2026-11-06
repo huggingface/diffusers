@@ -624,7 +624,9 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
             if input_param.name and hasattr(block_state, input_param.name):
                 param = getattr(block_state, input_param.name)
                 # Only add if the value is different from what's in the state, or the state did not hold it yet (the
-                # default this block filled in, see `get_block_state`)
+                # default this block filled in, see `get_block_state`).
+                # e.g. `num_inference_steps` is not passed. `set_timesteps` reads its default, 50, and records it here.
+                # `denoise` then reads 50 from the state.
                 current_value = state.get(input_param.name)
                 if input_param.name not in state.values or current_value is not param:  # identity: object modified?
                     state.set(input_param.name, param, input_param.kwargs_type)
