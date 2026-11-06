@@ -768,14 +768,30 @@ torchrun --nproc_per_node=4 examples/cosmos3/inference_cosmos3.py \
 CP shards *activations* but replicates every weight on every rank, so it does not reduce a model's weight footprint — a model that doesn't fit on one GPU still won't fit under CP alone.
 
 For TP-only inference, follow the [tensor parallelism guide](../../training/distributed_inference#tensor-parallelism)
-for distributed setup, launching, seeding, and rank-zero output handling. Adapt the
-[existing modular workflow](#modular-examples-for-all-existing-workflows) as follows:
+for distributed setup, launching, seeding, and rank-zero output handling. After initializing the process group
+and selecting each rank's CUDA device, load the modular pipeline as follows:
 
-- Use `nvidia/Cosmos3-Super` or `nvidia/Cosmos3-Nano` with `Cosmos3OmniTransformer.from_pretrained`,
-  `subfolder="transformer"`, `dtype=torch.bfloat16`, and `parallel_config=TensorParallelConfig(tp_degree=4)`.
-- Create `Cosmos3OmniModularPipeline` from the same checkpoint, then call
-  `update_components(transformer=transformer)` before `load_components`. Place the remaining components
-  on each rank's local device and reuse the workflow's prompts, scheduler, and generation settings.
+```python
+import torch
+from diffusers import Cosmos3OmniModularPipeline, Cosmos3OmniTransformer, TensorParallelConfig
+
+model_id = "nvidia/Cosmos3-Super"
+device = torch.device("cuda", torch.cuda.current_device())
+transformer = Cosmos3OmniTransformer.from_pretrained(
+    model_id,
+    subfolder="transformer",
+    dtype=torch.bfloat16,
+    parallel_config=TensorParallelConfig(tp_degree=4),
+)
+pipe = Cosmos3OmniModularPipeline.from_pretrained(model_id)
+pipe.update_components(transformer=transformer)
+pipe.load_components(dtype=torch.bfloat16)
+pipe.enable_safety_checker()
+pipe.to(device)
+```
+
+Continue with the [existing modular workflow](#modular-examples-for-all-existing-workflows)'s scheduler,
+prompts, and generation settings. To use Nano, set `model_id = "nvidia/Cosmos3-Nano"`.
 
 Nano and Super support TP degrees 1, 2, 4, and 8; the degree must divide the query and KV head counts
 and the MLP intermediate size.
