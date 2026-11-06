@@ -1114,13 +1114,22 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         D1_0, D1_1 = (1.0 / r0) * (m0 - m1), (1.0 / r1) * (m1 - m2)
         D1 = D1_0 + (r0 / (r0 + r1)) * (D1_0 - D1_1)
         D2 = (1.0 / (r0 + r1)) * (D1_0 - D1_1)
+        if self.config.algorithm_type in ["dpmsolver++", "sde-dpmsolver++"]:
+            z = h if self.config.algorithm_type == "dpmsolver++" else 2.0 * h
+            # D2 is the quadratic coefficient, with multiplier 1 - 2/z + 2*(1-exp(-z))/z**2.
+            # Use its Taylor expansion near zero to avoid cancellation.
+            quadratic_coefficient = torch.where(
+                z.abs() < 0.1,
+                z * (1 / 3 - z / 12 + z**2 / 60 - z**3 / 360 + z**4 / 2520 - z**5 / 20160),
+                1.0 - 2.0 * (torch.expm1(-z) + z) / z**2,
+            )
         if self.config.algorithm_type == "dpmsolver++":
             # See https://huggingface.co/papers/2206.00927 for detailed derivations
             x_t = (
                 (sigma_t / sigma_s0) * sample
                 - (alpha_t * (torch.exp(-h) - 1.0)) * D0
                 + (alpha_t * ((torch.exp(-h) - 1.0) / h + 1.0)) * D1
-                - (alpha_t * ((torch.exp(-h) - 1.0 + h) / h**2 - 0.5)) * D2
+                + (alpha_t * quadratic_coefficient) * D2
             )
         elif self.config.algorithm_type == "dpmsolver":
             # See https://huggingface.co/papers/2206.00927 for detailed derivations
@@ -1136,7 +1145,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 (sigma_t / sigma_s0 * torch.exp(-h)) * sample
                 + (alpha_t * (1.0 - torch.exp(-2.0 * h))) * D0
                 + (alpha_t * ((1.0 - torch.exp(-2.0 * h)) / (-2.0 * h) + 1.0)) * D1
-                + (alpha_t * ((1.0 - torch.exp(-2.0 * h) - 2.0 * h) / (2.0 * h) ** 2 - 0.5)) * D2
+                + (alpha_t * quadratic_coefficient) * D2
                 + sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h)) * noise
             )
         return x_t
