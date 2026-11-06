@@ -210,6 +210,8 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("cosmos3-omni", _create_default_map_fn("Cosmos3OmniModularPipeline")),
         ("helios", _create_default_map_fn("HeliosModularPipeline")),
         ("helios-pyramid", _helios_pyramid_map_fn),
+        ("kandinsky-s2v", _create_default_map_fn("KandinskyS2VModularPipeline")),
+        ("kandinsky-s2v-distilled", _create_default_map_fn("KandinskyS2VDistilledModularPipeline")),
         ("hunyuan-video-1.5", _create_default_map_fn("HunyuanVideo15ModularPipeline")),
         ("echo", _create_default_map_fn("EchoModularPipeline")),
         ("ltx", _create_default_map_fn("LTXModularPipeline")),
@@ -219,6 +221,7 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("minimax-music3", _create_default_map_fn("MiniMaxMusic3ModularPipeline")),
         ("pan2", _create_default_map_fn("PAN2ModularPipeline")),
         ("pika-h3-flex", _create_default_map_fn("PikaH3FlexModularPipeline")),
+        ("p-h3-image", _create_default_map_fn("PH3ImageModularPipeline")),
         ("ernie-image", _create_default_map_fn("ErnieImageModularPipeline")),
     ]
 )

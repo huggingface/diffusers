@@ -411,7 +411,7 @@ export_to_video(output, "output.mp4", fps=16)
 
 ## Inference speed
 
-[torch.compile](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial_.html) can speedup inference by using optimized kernels. Compilation takes longer the first time, but once compiled, it is much faster. It is best to compile the pipeline once, and then use the pipeline multiple times without changing anything. A change, such as in the image size, triggers recompilation.
+[torch.compile](https://docs.pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) can speedup inference by using optimized kernels. Compilation takes longer the first time, but once compiled, it is much faster. It is best to compile the pipeline once, and then use the pipeline multiple times without changing anything. A change, such as in the image size, triggers recompilation.
 
 The example below compiles the transformer in the pipeline and uses the `"max-autotune"` mode to maximize performance.
 

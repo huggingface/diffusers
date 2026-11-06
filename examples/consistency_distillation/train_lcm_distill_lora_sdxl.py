@@ -964,7 +964,7 @@ def main(args):
         optimizer_class = torch.optim.AdamW
 
     # 12. Optimizer creation
-    params_to_optimize = filter(lambda p: p.requires_grad, unet.parameters())
+    params_to_optimize = list(filter(lambda p: p.requires_grad, unet.parameters()))
     optimizer = optimizer_class(
         params_to_optimize,
         lr=args.learning_rate,
