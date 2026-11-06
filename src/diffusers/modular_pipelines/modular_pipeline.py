@@ -210,6 +210,8 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("cosmos3-omni", _create_default_map_fn("Cosmos3OmniModularPipeline")),
         ("helios", _create_default_map_fn("HeliosModularPipeline")),
         ("helios-pyramid", _helios_pyramid_map_fn),
+        ("kandinsky-s2v", _create_default_map_fn("KandinskyS2VModularPipeline")),
+        ("kandinsky-s2v-distilled", _create_default_map_fn("KandinskyS2VDistilledModularPipeline")),
         ("hunyuan-video-1.5", _create_default_map_fn("HunyuanVideo15ModularPipeline")),
         ("echo", _create_default_map_fn("EchoModularPipeline")),
         ("ltx", _create_default_map_fn("LTXModularPipeline")),
@@ -217,6 +219,8 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("ltx2.5", _create_default_map_fn("LTX25ModularPipeline")),
         ("minimax-h3", _create_default_map_fn("MiniMaxH3ModularPipeline")),
         ("minimax-music3", _create_default_map_fn("MiniMaxMusic3ModularPipeline")),
+        ("pika-h3-flex", _create_default_map_fn("PikaH3FlexModularPipeline")),
+        ("p-h3-image", _create_default_map_fn("PH3ImageModularPipeline")),
         ("ernie-image", _create_default_map_fn("ErnieImageModularPipeline")),
     ]
 )
@@ -514,11 +518,13 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         trust_remote_code = resolve_trust_remote_code(
             trust_remote_code, pretrained_model_name_or_path, has_remote_code
         )
-        if not has_remote_code and trust_remote_code:
+        if not has_remote_code:
             raise ValueError(
-                "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
+                f"Selected model repository does not appear to have any custom code for {cls.__name__} or does not"
+                " have a valid `modular_config.json` file."
             )
 
+        # Only once the repository is trusted do we act on anything else it declares.
         if "requirements" in config and config["requirements"] is not None:
             _ = _validate_requirements(config["requirements"])
 

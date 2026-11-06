@@ -157,6 +157,7 @@ Refer to the table below for a complete list of available attention backends and
 | `flash_varlen` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | Variable length FlashAttention |
 | `flash_varlen_hub` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | Variable length FlashAttention from kernels |
 | `aiter_fa2_hub` | [AI Tensor Engine for ROCm](https://github.com/ROCm/aiter) | FlashAttention-2 for AMD ROCm from kernels |
+| `aiter_sage_hub` | [AI Tensor Engine for ROCm](https://github.com/ROCm/aiter) | Quantized attention (INT8 QK, FP8 PV) for AMD RDNA4 (gfx1201) from kernels |
 | `flash_4_hub` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | FlashAttention-4 |
 | `_flash_3` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | FlashAttention-3 |
 | `_flash_varlen_3` | [FlashAttention](https://github.com/Dao-AILab/flash-attention) | Variable length FlashAttention-3 |
