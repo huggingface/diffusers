@@ -356,7 +356,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(
                 f"{self.__class__} can only be run AFTER scheduler has been run "
                 "in 'prk' mode for at least 12 iterations "
-                "See: https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/pipeline_pndm.py "
+                "See: https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/deprecated/pndm/pipeline_pndm.py "
                 "for more information."
             )
 
