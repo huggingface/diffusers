@@ -258,6 +258,7 @@ def _tensor_parallel_worker(
     return_dict,
     state_dict,
     device_type=torch_device,
+    assign=False,
 ):
     """Worker function for tensor parallel inference testing.
 
@@ -287,8 +288,7 @@ def _tensor_parallel_worker(
             device = torch.device(f"{device_type}:{rank}")
 
         model = model_class(**init_dict)
-        # Preserve the reference weights' dtypes instead of casting them to the new model's dtypes.
-        model.load_state_dict(state_dict, assign=True)
+        model.load_state_dict(state_dict, assign=assign)
         model.to(device)
         model.eval()
 

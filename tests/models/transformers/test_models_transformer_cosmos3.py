@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from functools import partial
+
 import pytest
 import torch
 import torch.multiprocessing as mp
@@ -796,7 +798,8 @@ class TestCosmos3OmniTransformerTensorParallel(Cosmos3TensorParallelTesterConfig
                     worker = _tensor_parallel_from_pretrained_worker
                     args += (str(tmp_path), inputs, result, torch.bfloat16)
                 else:
-                    worker = _tensor_parallel_worker
+                    # Preserve the reference's mixed BF16/FP32 dtypes when rebuilding the in-memory model.
+                    worker = partial(_tensor_parallel_worker, assign=True)
                     args += (init_dict, inputs, result, state_dict)
                 mp.spawn(worker, args=args, nprocs=2, join=True)
                 assert result.get("status") == "success", result.get("error", "Unknown error")
