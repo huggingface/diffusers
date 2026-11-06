@@ -35,8 +35,8 @@ from tqdm.auto import tqdm
 import diffusers
 from diffusers import RFD4ProteinaAutoencoder, RFD4ProteinaPipeline, RFD4ProteinaScheduler, RFD4ProteinaTransformer
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import cast_training_params
-from diffusers.utils import convert_state_dict_to_diffusers, convert_unet_state_dict_to_peft
+from diffusers.training_utils import _collate_lora_metadata, cast_training_params
+from diffusers.utils import convert_unet_state_dict_to_peft
 
 
 logger = get_logger(__name__)
@@ -327,13 +327,17 @@ def main():
     def save_model_hook(models, weights, output_dir):
         if not accelerator.is_main_process:
             return
+        modules_to_save = {}
         for model in models:
             if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
-                layers = convert_state_dict_to_diffusers(get_peft_model_state_dict(unwrap_model(model)))
+                modules_to_save["transformer"] = unwrap_model(model)
+                layers = get_peft_model_state_dict(unwrap_model(model))
             else:
                 raise ValueError(f"Unexpected model to save: {model.__class__}")
             weights.pop()
-        RFD4ProteinaPipeline.save_lora_weights(output_dir, transformer_lora_layers=layers)
+        RFD4ProteinaPipeline.save_lora_weights(
+            output_dir, transformer_lora_layers=layers, **_collate_lora_metadata(modules_to_save)
+        )
 
     def load_model_hook(models, input_dir):
         transformer_ = None
@@ -400,18 +404,21 @@ def main():
 
     global_step = 0
     if args.resume_from_checkpoint:
-        path = args.resume_from_checkpoint
-        if path == "latest":
+        if args.resume_from_checkpoint == "latest":
             checkpoints = sorted(
                 (entry for entry in os.listdir(args.output_dir) if entry.startswith("checkpoint")),
                 key=lambda entry: int(entry.split("-")[1]),
             )
-            path = os.path.join(args.output_dir, checkpoints[-1]) if checkpoints else None
-        if path is None:
+            name = checkpoints[-1] if checkpoints else None
+        else:
+            # A checkpoint is named by its directory under `--output_dir`, whether or not a path was passed.
+            name = os.path.basename(args.resume_from_checkpoint)
+        if name is None:
             logger.info("No checkpoint found; starting a new run.")
         else:
+            path = os.path.join(args.output_dir, name)
             accelerator.load_state(path)
-            global_step = int(Path(path).name.split("-")[1])
+            global_step = int(name.split("-")[1])
             logger.info(f"Resuming from {path} at step {global_step}.")
 
     progress_bar = tqdm(
@@ -508,8 +515,12 @@ def main():
 
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        layers = convert_state_dict_to_diffusers(get_peft_model_state_dict(unwrap_model(transformer)))
-        RFD4ProteinaPipeline.save_lora_weights(args.output_dir, transformer_lora_layers=layers)
+        trained = unwrap_model(transformer)
+        RFD4ProteinaPipeline.save_lora_weights(
+            save_directory=args.output_dir,
+            transformer_lora_layers=get_peft_model_state_dict(trained),
+            **_collate_lora_metadata({"transformer": trained}),
+        )
         logger.info(f"Saved the adapter to {args.output_dir}.")
     accelerator.end_training()
 

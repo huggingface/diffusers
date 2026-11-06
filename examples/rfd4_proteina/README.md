@@ -133,5 +133,12 @@ output = pipe(
 write_cif(output, features, atom_array, "design.cif")
 ```
 
-Adapters trained with the model's own trainer convert to this format with
-`scripts/convert_rfd4_proteina_to_diffusers.py`.
+An adapter trained with the model's own trainer loads too, once converted — the native recipe adapts a fused
+`to_qkv`, which the conversion splits into the `to_q`, `to_k` and `to_v` this transformer exposes:
+
+```bash
+python scripts/convert_rfd4_proteina_to_diffusers.py \
+  --adapter \
+  --source native-adapter \
+  --destination rfd4-proteina-lora-converted
+```
