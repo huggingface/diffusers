@@ -1742,7 +1742,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         self._parallel_config = config
 
         if mesh is not None:
-            sync_default_rng_seed(device=config._device)
+            # Only the ranks of this mesh must draw the same numbers; replicas outside it keep their own seeds.
+            group = (mesh._flatten() if mesh.ndim > 1 else mesh).get_group()
+            sync_default_rng_seed(group=group, device=config._device)
         return config
 
     def enable_parallelism(
