@@ -59,6 +59,47 @@ PAN2_WORKFLOWS = {
     ],
 }
 
+_PAN2_COMPONENTS = {
+    "text_encoder": "Qwen3_5TextModel",
+    "tokenizer": "Qwen2Tokenizer",
+    "scheduler": "FlowMatchEulerDiscreteScheduler",
+    "transformer": "PAN2Transformer3DModel",
+    "guider": "ClassifierFreeGuidance",
+    "vae": "AutoencoderKLWan",
+    "video_processor": "VideoProcessor",
+}
+_PAN2_INPUTS = {
+    "negative_prompt": None,
+    "max_sequence_length": 1536,
+    "num_frames": 313,
+    "fps": 24.0,
+    "num_videos_per_prompt": 1,
+    "num_inference_steps": 50,
+    "sigmas": None,
+    "height": None,
+    "width": None,
+    "latents": None,
+    "generator": None,
+    "attention_kwargs": None,
+    "output_type": "np",
+}
+PAN2_WORKFLOW_DEFAULTS = {
+    "t2v": {
+        "components": _PAN2_COMPONENTS,
+        "configs": {"enable_safety_checker": True},
+        "required_inputs": ["prompt"],
+        "inputs": _PAN2_INPUTS,
+        "component_configs": {"guider": {"guidance_scale": 2.5}},
+    },
+    "i2v": {
+        "components": _PAN2_COMPONENTS,
+        "configs": {"enable_safety_checker": True},
+        "required_inputs": ["prompt", "image"],
+        "inputs": _PAN2_INPUTS,
+        "component_configs": {"guider": {"guidance_scale": 2.5}},
+    },
+}
+
 
 class PAN2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = PAN2ModularPipeline
@@ -69,6 +110,7 @@ class PAN2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     batch_params = frozenset()
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
     expected_workflow_blocks = PAN2_WORKFLOWS
+    expected_workflow_defaults = PAN2_WORKFLOW_DEFAULTS
     output_name = "videos"
 
     def get_pipeline(self, components_manager=None, dtype=torch.float32):
