@@ -61,7 +61,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.41.0.dev0")
+check_min_version("0.42.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -560,7 +560,7 @@ def main():
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
-    lora_layers = filter(lambda p: p.requires_grad, unet.parameters())
+    lora_layers = list(filter(lambda p: p.requires_grad, unet.parameters()))
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()

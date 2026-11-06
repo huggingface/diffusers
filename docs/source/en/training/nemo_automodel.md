@@ -118,7 +118,7 @@ Preprocessing produces a cache directory organized by resolution bucket. NeMo Au
 ```
 
 > [!TIP]
-> See the [Diffusion Dataset Preparation](https://docs.nvidia.com/nemo/automodel/latest/guides/diffusion/dataset.html) guide for caption formats, input data requirements, and all available preprocessing arguments.
+> See the [Diffusion Dataset Preparation](https://docs.nvidia.com/nemo/automodel/latest/datasets/diffusion-dataset) guide for caption formats, input data requirements, and all available preprocessing arguments.
 
 ## Training configuration
 
@@ -372,7 +372,7 @@ This integration provides several benefits for Diffusers users:
 ## Resources
 
 - [NeMo Automodel GitHub](https://github.com/NVIDIA-NeMo/Automodel)
-- [Diffusion Fine-Tuning Guide](https://docs.nvidia.com/nemo/automodel/latest/guides/diffusion/finetune.html)
-- [Diffusion Dataset Preparation](https://docs.nvidia.com/nemo/automodel/latest/guides/diffusion/dataset.html)
+- [Diffusion Fine-Tuning Guide](https://docs.nvidia.com/nemo/automodel/latest/recipes-e2e-examples/diffusion-fine-tuning)
+- [Diffusion Dataset Preparation](https://docs.nvidia.com/nemo/automodel/latest/datasets/diffusion-dataset)
 - [Diffusion Model Coverage](https://docs.nvidia.com/nemo/automodel/latest/model-coverage/diffusion.html)
 - [NeMo Automodel for Transformers (LLM/VLM fine-tuning)](https://huggingface.co/docs/transformers/en/community_integrations/nemo_automodel_finetuning)

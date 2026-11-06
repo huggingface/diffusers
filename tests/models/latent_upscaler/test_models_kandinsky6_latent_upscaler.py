@@ -13,21 +13,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import Kandinsky6SRLatentUpscalerBank
+from diffusers.utils import is_torch_version
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..testing_utils import (
-    BaseModelTesterConfig,
-    MemoryTesterMixin,
-    ModelTesterMixin,
-    TorchCompileTesterMixin,
-)
+from ..testing_utils import BaseModelTesterConfig, MemoryTesterMixin, ModelTesterMixin, TorchCompileTesterMixin
 
 
 enable_full_determinism()
+
+
+UNSPLITTABLE_UPSCALER = pytest.mark.xfail(
+    reason=(
+        "`_no_split_modules` keeps each Kandinsky6SRLatentUpscaler intact, "
+        "preventing the test's required GPU/CPU split."
+    ),
+    raises=AssertionError,
+    strict=True,
+)
+DISK_OFFLOAD_NUMERICS = pytest.mark.xfail(
+    reason=(
+        "`_no_split_modules` keeps each upscaler intact, forcing all-disk dispatch and CPU execution under the test's "
+        "budgets; numerical differences from the GPU reference can exceed the output tolerance."
+    ),
+    raises=AssertionError,
+    strict=False,
+)
 
 
 class Kandinsky6SRLatentUpscalerBankTesterConfig(BaseModelTesterConfig):
@@ -87,10 +102,30 @@ class TestKandinsky6SRLatentUpscalerBankModel(Kandinsky6SRLatentUpscalerBankTest
 
 
 class TestKandinsky6SRLatentUpscalerBankMemory(Kandinsky6SRLatentUpscalerBankTesterConfig, MemoryTesterMixin):
-    pass
+    @UNSPLITTABLE_UPSCALER
+    def test_cpu_offload(self, base_model_output, tmp_path):
+        super().test_cpu_offload(base_model_output, tmp_path)
+
+    @DISK_OFFLOAD_NUMERICS
+    def test_disk_offload_without_safetensors(self, base_model_output, tmp_path):
+        super().test_disk_offload_without_safetensors(base_model_output, tmp_path)
+
+    @DISK_OFFLOAD_NUMERICS
+    def test_disk_offload_with_safetensors(self, base_model_output, tmp_path):
+        super().test_disk_offload_with_safetensors(base_model_output, tmp_path)
 
 
 class TestKandinsky6SRLatentUpscalerBankTorchCompile(
     Kandinsky6SRLatentUpscalerBankTesterConfig, TorchCompileTesterMixin
 ):
-    pass
+    @pytest.mark.xfail(
+        condition=is_torch_version("<", "2.12"),
+        reason=(
+            'With deterministic algorithms on, torch < 2.12 routes `F.pad(mode="replicate")` through `importlib`, '
+            "which Dynamo cannot trace in a full graph."
+        ),
+        raises=torch._dynamo.exc.Unsupported,
+        strict=True,
+    )
+    def test_torch_compile_recompilation_and_graph_break(self):
+        super().test_torch_compile_recompilation_and_graph_break()

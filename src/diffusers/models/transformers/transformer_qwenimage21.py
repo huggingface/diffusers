@@ -337,9 +337,12 @@ def _qwenimage21_prepare_qkv(
     key = attn.to_k(hidden_states)
     value = attn.to_v(hidden_states)
 
-    query = query.unflatten(-1, (attn.heads, -1))
-    key = key.unflatten(-1, (attn.heads, -1))
-    value = value.unflatten(-1, (attn.heads, -1))
+    # Split by `head_dim` rather than by `attn.heads`: under tensor parallelism each rank holds only its share of the
+    # heads, while `attn.heads` and `attn.inner_dim` keep their full values.
+    head_dim = attn.inner_dim // attn.heads
+    query = query.unflatten(-1, (-1, head_dim))
+    key = key.unflatten(-1, (-1, head_dim))
+    value = value.unflatten(-1, (-1, head_dim))
 
     query = attn.norm_q(query).to(value.dtype)
     key = attn.norm_k(key).to(value.dtype)
@@ -758,6 +761,18 @@ class QwenImage21Transformer2DModel(
     _skip_layerwise_casting_patterns = ["pos_embed", "norm"]
     _repeated_blocks = ["QwenImage21TransformerBlock"]
     _skip_keys = ["kv_cache"]
+    # Tensor-parallel plan: every block's attention and SwiGLU projections are separate, bias-free Linears, so each
+    # entry is a plain "colwise"/"rowwise" pair and no packed sharding is needed. The shared `modulation`, the input
+    # projections (`img_in`, `txt_in`), `norm_out` and `proj_out` stay replicated (intentionally absent here).
+    _tp_plan = {
+        "transformer_blocks.*.attn.to_q": "colwise",
+        "transformer_blocks.*.attn.to_k": "colwise",
+        "transformer_blocks.*.attn.to_v": "colwise",
+        "transformer_blocks.*.attn.to_out.0": "rowwise",
+        "transformer_blocks.*.img_mlp.proj": "colwise",
+        "transformer_blocks.*.img_mlp.gate_layer": "colwise",
+        "transformer_blocks.*.img_mlp.out": "rowwise",
+    }
 
     @register_to_config
     def __init__(
@@ -833,9 +848,10 @@ class QwenImage21Transformer2DModel(
             )
 
         image_ids = torch.full_like(image_pad_mask, -1, dtype=torch.long)
-        block_ids = torch.repeat_interleave(
-            torch.arange(len(block_lengths), device=image_pad_mask.device),
-            torch.tensor(block_lengths, device=image_pad_mask.device),
+        # Neuron cannot lower a tensor-repeats repeat_interleave, so build the ids from the Python block lengths.
+        block_ids = torch.tensor(
+            [block for block, length in enumerate(block_lengths) for _ in range(length)],
+            device=image_pad_mask.device,
         )
         image_ids[image_positions] = block_ids
 

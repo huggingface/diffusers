@@ -29,6 +29,8 @@ from ..testing_utils import (
     ModelTesterMixin,
     SingleFileTesterMixin,
     TaylorSeerCacheTesterMixin,
+    TensorParallelNeuronTesterMixin,
+    TensorParallelTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -380,3 +382,13 @@ class TestQwenImage21TransformerSingleFile(QwenImage21TransformerTesterConfig, S
     @property
     def torch_dtype(self):
         return torch.bfloat16
+
+
+class TestQwenImage21TransformerTensorParallel(QwenImage21TransformerTesterConfig, TensorParallelTesterMixin):
+    """Tensor Parallel inference tests for QwenImage 2.1 Transformer (CUDA/XPU multi-accelerator)."""
+
+
+class TestQwenImage21TransformerTensorParallelNeuron(
+    QwenImage21TransformerTesterConfig, TensorParallelNeuronTesterMixin
+):
+    """Tensor Parallel inference test for QwenImage 2.1 Transformer on AWS Neuron."""

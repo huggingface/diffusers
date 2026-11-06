@@ -149,7 +149,7 @@ If you want to learn more about how the training loop works, check out the [Unde
 
 Now you’re ready to launch the training script! 🚀
 
-For this example training, you'll use the [fusing/fill50k](https://huggingface.co/datasets/fusing/fill50k) dataset. You can also create and use your own dataset if you want (see the [Create a dataset for training](https://moon-ci-docs.huggingface.co/docs/diffusers/pr_5512/en/training/create_dataset) guide).
+For this example training, you'll use the [fusing/fill50k](https://huggingface.co/datasets/fusing/fill50k) dataset. You can also create and use your own dataset if you want (see the [Create a dataset for training](create_dataset) guide).
 
 Set the environment variable `MODEL_DIR` to a model id on the Hub or a path to a local model and `OUTPUT_DIR` to where you want to save the model.
 

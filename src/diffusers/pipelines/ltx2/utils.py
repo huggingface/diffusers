@@ -303,6 +303,26 @@ AESTHETIC QUALITY (in addition to the above, without breaking the objective capt
 # ruff: enable[E501]
 
 
+def conditioning_frame_rate(frame_rate: float, motion_speed: float) -> float:
+    """
+    Frame rate the transformer's positional embeddings are conditioned on: the playback `frame_rate` divided by
+    `motion_speed`. A `motion_speed` below 1 conditions on a higher frame rate, so motion plays back slower (e.g. `0.2`
+    for the Slow-Motion-Control LoRA's 5x slow motion).
+
+    Args:
+        frame_rate (`float`):
+            Playback frame rate of the generated video.
+        motion_speed (`float`):
+            Speed of the motion relative to real time. Must be positive.
+
+    Returns:
+        `float`: The frame rate the positional embeddings use.
+    """
+    if motion_speed <= 0:
+        raise ValueError(f"`motion_speed` must be positive, but got {motion_speed}.")
+    return frame_rate / motion_speed
+
+
 def resolve_default_image_crf(text_encoder: Any) -> int:
     """Return the image-conditioning H.264 CRF that matches the loaded text-encoder generation.
 
