@@ -82,7 +82,7 @@ class Flux3AutoVaeEncoderStep(AutoPipelineBlocks):
           image_processor (`Flux3ImageProcessor`) vae (`AutoencoderKLFlux2`)
 
       Inputs:
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, required, depending on the workflow):
               The reference image or images to condition the generation on. One reference is kept whole (padded to the
               16-pixel grid, up to 4 megapixels); several are fitted under 1 megapixel each and cropped to the grid
 
@@ -277,7 +277,7 @@ class Flux3AutoCoreDenoiseStep(AutoPipelineBlocks):
               Pre-generated text embeddings. Can be generated from text_encoder step.
           negative_prompt_embeds (`Tensor`, *optional*):
               Pre-generated negative text embeddings. Can be generated from text_encoder step.
-          image_cond_latents (`list`, *optional*):
+          image_cond_latents (`list`, *optional*, required, depending on the workflow):
               Normalized packed latents of the reference images, one tensor of shape (B, C, height_i//16, width_i//16)
               per image
           height (`int`, *optional*, defaults to None or 1024, depending on the workflow):
@@ -286,13 +286,13 @@ class Flux3AutoCoreDenoiseStep(AutoPipelineBlocks):
               The width in pixels of the generated image; defaults to the first reference image's own width
           reference_crop (`list | NoneType`, *optional*):
               Per reference, the box of the reference inside its padded canvas or None, from the preprocess step
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          timesteps (`Tensor`):
+          timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process. (overrides `num_inference_steps` when provided)
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process. (overrides `num_inference_steps` when provided)
@@ -354,7 +354,7 @@ class Flux3AutoBlocks(SequentialPipelineBlocks):
       Inputs:
           prompt (`str`):
               The edit instruction to expand into the full caption (one per call).
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, required, depending on the workflow):
               The reference image(s) of the edit, at most 10; the same ones the pipeline receives.
           boxes (`list`, *optional*):
               Layout boxes, each {'id', 'desc', 'from', 'src_bbox', 'tgt_bbox'} with the boxes as [y_min, x_min, y_max,
@@ -370,7 +370,7 @@ class Flux3AutoBlocks(SequentialPipelineBlocks):
               Indices of the text-encoder hidden layers whose states are stacked to form the text embeddings
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          image_cond_latents (`list`, *optional*):
+          image_cond_latents (`list`, *optional*, required, depending on the workflow):
               Normalized packed latents of the reference images, one tensor of shape (B, C, height_i//16, width_i//16)
               per image
           height (`int`, *optional*, defaults to None or 1024, depending on the workflow):
@@ -379,13 +379,13 @@ class Flux3AutoBlocks(SequentialPipelineBlocks):
               The width in pixels of the generated image; defaults to the first reference image's own width
           reference_crop (`list | NoneType`, *optional*):
               Per reference, the box of the reference inside its padded canvas or None, from the preprocess step
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          timesteps (`Tensor`):
+          timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process. (overrides `num_inference_steps` when provided)
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process. (overrides `num_inference_steps` when provided)

@@ -14,7 +14,7 @@
 
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import OutputParam
+from ..modular_pipeline_utils import InputParam, OutputParam
 from .before_denoise import (
     WanAdditionalInputsStep,
     WanPrepareLatentsStep,
@@ -65,6 +65,10 @@ class WanImage2VideoImageEncoderStep(SequentialPipelineBlocks):
       Outputs:
           resized_image (`Image`):
               TODO: Add description.
+          height (`int`):
+              The height in pixels of the resized image.
+          width (`int`):
+              The width in pixels of the resized image.
           image_embeds (`Tensor`):
               The image embeddings
     """
@@ -101,6 +105,10 @@ class WanFLF2VImageEncoderStep(SequentialPipelineBlocks):
       Outputs:
           resized_image (`Image`):
               TODO: Add description.
+          height (`int`):
+              The height in pixels of the resized image.
+          width (`int`):
+              The width in pixels of the resized image.
           resized_last_image (`Image`):
               TODO: Add description.
           image_embeds (`Tensor`):
@@ -129,18 +137,22 @@ class WanAutoImageEncoderStep(AutoPipelineBlocks):
           image_processor (`CLIPImageProcessor`) image_encoder (`CLIPVisionModel`)
 
       Inputs:
-          image (`Image`, *optional*):
+          image (`Image`, *optional*, required, depending on the workflow):
               TODO: Add description.
           height (`int`, *optional*, defaults to 480):
               TODO: Add description.
           width (`int`, *optional*, defaults to 832):
               TODO: Add description.
-          last_image (`Image`, *optional*):
+          last_image (`Image`, *optional*, required, depending on the workflow):
               The last frameimage
 
       Outputs:
           resized_image (`Image`):
               TODO: Add description.
+          height (`int`):
+              The height in pixels of the resized image.
+          width (`int`):
+              The width in pixels of the resized image.
           resized_last_image (`Image`):
               TODO: Add description.
           image_embeds (`Tensor`):
@@ -193,6 +205,10 @@ class WanImage2VideoVaeEncoderStep(SequentialPipelineBlocks):
       Outputs:
           resized_image (`Image`):
               TODO: Add description.
+          height (`int`):
+              The height in pixels of the resized image.
+          width (`int`):
+              The width in pixels of the resized image.
           first_frame_latents (`Tensor`):
               video latent representation with the first frame image condition
           image_condition_latents (`Tensor | NoneType`):
@@ -235,6 +251,10 @@ class WanFLF2VVaeEncoderStep(SequentialPipelineBlocks):
       Outputs:
           resized_image (`Image`):
               TODO: Add description.
+          height (`int`):
+              The height in pixels of the resized image.
+          width (`int`):
+              The width in pixels of the resized image.
           resized_last_image (`Image`):
               TODO: Add description.
           first_last_frame_latents (`Tensor`):
@@ -270,13 +290,13 @@ class WanAutoVaeEncoderStep(AutoPipelineBlocks):
           vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
 
       Inputs:
-          image (`Image`, *optional*):
+          image (`Image`, *optional*, required, depending on the workflow):
               TODO: Add description.
           height (`int`, *optional*, defaults to 480):
               TODO: Add description.
           width (`int`, *optional*, defaults to 832):
               TODO: Add description.
-          last_image (`Image`, *optional*):
+          last_image (`Image`, *optional*, required, depending on the workflow):
               The last frameimage
           num_frames (`int`, *optional*, defaults to 81):
               TODO: Add description.
@@ -286,6 +306,10 @@ class WanAutoVaeEncoderStep(AutoPipelineBlocks):
       Outputs:
           resized_image (`Image`):
               TODO: Add description.
+          height (`int`):
+              The height in pixels of the resized image.
+          width (`int`):
+              The width in pixels of the resized image.
           resized_last_image (`Image`):
               TODO: Add description.
           first_last_frame_latents (`Tensor`):
@@ -340,7 +364,7 @@ class WanImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               TODO: Add description.
           num_frames (`None`, *optional*):
               TODO: Add description.
-          image_condition_latents (`None`, *optional*):
+          image_condition_latents (`None`):
               TODO: Add description.
           num_inference_steps (`None`, *optional*, defaults to 50):
               TODO: Add description.
@@ -362,6 +386,14 @@ class WanImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               Number of prompts, the final batch size of model inputs should be batch_size * num_videos_per_prompt
           dtype (`dtype`):
               Data type of model tensor inputs (determined by `transformer.dtype`)
+          prompt_embeds (`Tensor`):
+              Text embeddings expanded to batch_size * num_videos_per_prompt
+          negative_prompt_embeds (`Tensor`):
+              Negative text embeddings expanded to batch_size * num_videos_per_prompt
+          timesteps (`Tensor`):
+              The timesteps to use for the denoising process
+          num_inference_steps (`int`):
+              The number of denoising steps
           latents (`Tensor`):
               The initial latents to use for the denoising process
     """
@@ -415,16 +447,16 @@ class WanImage2VideoAutoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           max_sequence_length (`None`, *optional*, defaults to 512):
               TODO: Add description.
-          image (`Image`, *optional*):
+          image (`Image`, *optional*, required, depending on the workflow):
               TODO: Add description.
           height (`int`, *optional*, defaults to 480):
-              TODO: Add description.
+              The target height of the video.
           width (`int`, *optional*, defaults to 832):
-              TODO: Add description.
-          last_image (`Image`, *optional*):
+              The target width of the video.
+          last_image (`Image`, *optional*, required, depending on the workflow):
               The last frameimage
           num_frames (`int`, *optional*, defaults to 81):
-              TODO: Add description.
+              The number of frames in the generated video.
           generator (`None`, *optional*):
               TODO: Add description.
           num_videos_per_prompt (`None`, *optional*, defaults to 1):
@@ -441,7 +473,7 @@ class WanImage2VideoAutoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           attention_kwargs (`None`, *optional*):
               TODO: Add description.
-          image_embeds (`Tensor`):
+          image_embeds (`Tensor`, *optional*):
               TODO: Add description.
           output_type (`str`, *optional*, defaults to np):
               The output type of the decoded videos
@@ -466,6 +498,17 @@ class WanImage2VideoAutoBlocks(SequentialPipelineBlocks):
         "denoise",
         "decode",
     ]
+    # `image_encoder` and `vae_encoder` default `height`/`width` to 480/832 (the target area, the image sets the
+    # aspect ratio) and `num_frames` to 81, while the denoise step declares them without a default (it fills them in
+    # from the latents or the components). Both encoders are auto blocks the walk cannot count on, so the pipeline
+    # declares the three itself
+    input_overrides = {
+        "height": InputParam("height", type_hint=int, default=480, description="The target height of the video."),
+        "width": InputParam("width", type_hint=int, default=832, description="The target width of the video."),
+        "num_frames": InputParam(
+            "num_frames", type_hint=int, default=81, description="The number of frames in the generated video."
+        ),
+    }
 
     _workflow_map = {
         "image2video": {"image": True, "prompt": True},

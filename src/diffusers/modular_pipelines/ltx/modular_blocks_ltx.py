@@ -242,7 +242,7 @@ class LTXAutoVaeEncoderStep(AutoPipelineBlocks):
           vae (`AutoencoderKLLTXVideo`) video_processor (`VideoProcessor`)
 
       Inputs:
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, required, depending on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
           height (`int`, *optional*, defaults to 512):
               The height in pixels of the generated image.
@@ -289,29 +289,29 @@ class LTXAutoCoreDenoiseStep(AutoPipelineBlocks):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
           prompt_attention_mask (`Tensor`):
               mask for the text embeddings. Can be generated from text_encoder step.
-          negative_prompt_embeds (`Tensor`):
+          negative_prompt_embeds (`Tensor`, *optional*):
               negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          negative_prompt_attention_mask (`Tensor`):
+          negative_prompt_attention_mask (`Tensor`, *optional*):
               mask for the negative text embeddings. Can be generated from text_encoder step.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          timesteps (`Tensor`):
+          timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          height (`int`):
+          height (`int`, *optional*, defaults to 512):
               The height in pixels of the generated image.
-          width (`int`):
+          width (`int`, *optional*, defaults to 704):
               The width in pixels of the generated image.
-          num_frames (`int`):
+          num_frames (`int`, *optional*, defaults to 161):
               TODO: Add description.
           frame_rate (`int`, *optional*, defaults to 25):
               TODO: Add description.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`, *optional*, required, depending on the workflow):
               TODO: Add description.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
@@ -356,7 +356,7 @@ class LTXAutoBlocks(SequentialPipelineBlocks):
               The prompt or prompts not to guide the image generation.
           max_sequence_length (`int`, *optional*, defaults to 128):
               Maximum sequence length for prompt encoding.
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, required, depending on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
           height (`int`, *optional*, defaults to 512):
               The height in pixels of the generated image.
@@ -366,19 +366,19 @@ class LTXAutoBlocks(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
-          timesteps (`Tensor`):
+          timesteps (`Tensor`, *optional*):
               Timesteps for the denoising process.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          num_frames (`int`):
+          num_frames (`int`, *optional*, defaults to 161):
               TODO: Add description.
           frame_rate (`int`, *optional*, defaults to 25):
               TODO: Add description.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`, *optional*, required, depending on the workflow):
               TODO: Add description.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
@@ -433,7 +433,7 @@ class LTXImage2VideoBlocks(SequentialPipelineBlocks):
               The prompt or prompts not to guide the image generation.
           max_sequence_length (`int`, *optional*, defaults to 128):
               Maximum sequence length for prompt encoding.
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, required, depending on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
           height (`int`, *optional*, defaults to 512):
               The height in pixels of the generated image.
@@ -455,7 +455,7 @@ class LTXImage2VideoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
-          image_latents (`Tensor`):
+          image_latents (`Tensor`, *optional*):
               TODO: Add description.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.

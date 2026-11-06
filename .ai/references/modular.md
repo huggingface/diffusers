@@ -282,19 +282,59 @@ if block_state.num_frames is None:
     block_state.num_frames = 189
 ```
 
-A declared default is part of the block's contract, so the assembled pipeline is aware of it: the generated docstring shows it and `default_call_parameters` reports it. Resolved inside the body instead, the input renders as `*optional*` with no default, and nothing at the pipeline level can report what the block will actually do. Don't worry about branches of a conditional blockset declaring different defaults for the same input — each branch resolves its own at runtime. Resolve inside `__call__` only when the default is *computed* — derived from other inputs or component config (`height = components.default_sample_size * components.vae_scale_factor`). And when several blocks in a sequence share an input, declare the same default on each (or only on the first block that reads it): in a sequence the input is one shared value, so disagreeing declarations are silently resolved first-block-wins.
+A declared default is part of the block's contract, so the assembled pipeline is aware of it. The generated docstring shows it:
 
-**A composed `SequentialPipelineBlocks` can override `inputs` / `outputs`.** Two uses: narrow `outputs` to what downstream actually consumes, so the docstring shows the step's product instead of every internal intermediate (Wan-Animate-2's core denoise exposes only `segment_frames`); and change one input default per preset by mapping over `super().inputs` (the distilled core denoise turns `num_inference_steps` into `default=10`):
+```
+num_frames (`int`, *optional*, defaults to 189):
+    Number of frames to generate.
+```
+
+and `default_call_parameters` reports it. If you resolve it inside the body instead, the input renders as `*optional*` with no default, and nothing at the pipeline level can report what the block will actually do. Resolve inside `__call__` only when the default is *computed*, derived from other inputs or component config:
 
 ```python
-@property
-def inputs(self):
-    # The distilled checkpoint samples in few steps.
-    return [
-        InputParam.template("num_inference_steps", default=10) if param.name == "num_inference_steps" else param
-        for param in super().inputs
-    ]
+if block_state.height is None:
+    block_state.height = components.default_sample_size * components.vae_scale_factor
 ```
+
+The other two ways to declare an input: 
+(1) `required=True` when the block cannot work without the value, so the caller has to pass it; the block raises `ValueError("Required input 'x' is missing")` when it is not passed or `None`. 
+(2) Optional with no default when the block works with `None`. Most often that is the computed case above, and the block should then also declare the value as an output. Sometimes the block only uses the value to decide something else: e.g. in the text encoder blocks, `negative_prompt` defaults to `None` instead of `""`, so the encoder can tell "none given" from an empty string. It encodes an empty string in its place only when guidance needs one, and ignores a given negative prompt when guidance is disabled (some encoders log a warning).
+
+Inputs are declared on leaf blocks. When blocks are assembled, the composite derives its inputs from them, and the same input is sometimes declared by more than one sub-block.
+
+In a conditional block, the sub-blocks may declare different defaults for the same input, and each is respected: e.g. for `strength`, the img2img branch may defaults to 0.3 and the inpaint branch to 0.9999, the docstring of the conditional block says "defaults to 0.3 or 0.9999, depending on the workflow", and at runtime the branch that runs fills in its own.
+
+In a sequential block, the first sub-block that declares a default sets it for every sub-block after it. When a later sub-block declares a different default, the sequence keeps the first one and warns that the default is ambiguous. We recommend to state it explicitly for such case: declare the input in `input_overrides` on the composite, see below.
+
+**Redefine what the composite derives with `*_overrides`.** When you assemble blocks, the composite derives its inputs, outputs, components and configs from its sub-blocks. You cannot add or remove any of them there, they are part of the blocks' logic, but you can redefine how one is declared: e.g. you can change the default and description of an input, the description of an output, the repo and loading info of a component, the value of a config. Set `input_overrides`, `intermediate_output_overrides`, `component_overrides` or `config_overrides` as a class attribute on the composite (`ConditionalPipelineBlocks`, `SequentialPipelineBlocks`, `LoopSequentialPipelineBlocks`), or pass them to `from_blocks_dict`:
+
+```python
+# as a class attribute
+class MyBlocks(SequentialPipelineBlocks):
+    block_classes = [TextEncoderStep, DenoiseStep]
+    block_names = ["text_encoder", "denoise"]
+    input_overrides = {"num_inference_steps": InputParam.template("num_inference_steps", default=10)}
+
+# or when assembling from a dict
+blocks = SequentialPipelineBlocks.from_blocks_dict(
+    {"text_encoder": TextEncoderStep(), "denoise": DenoiseStep()},
+    input_overrides={"num_inference_steps": InputParam.template("num_inference_steps", default=10)},
+)
+```
+
+Each is a dict of name to declaration. The name must be one the composite already derives, and the declaration, an `InputParam` / `OutputParam` / `ComponentSpec` / `ConfigSpec`, replaces the derived one whole, so it states everything: default, `required`, description. Typical uses: settle a default two sub-blocks disagree on, set a preset's default as in the distilled example below, or reword a description from the composite's point of view. The per-branch defaults of a conditional block cannot be changed one branch at a time from the composite; for that, change the sub-block. An override on the conditional block replaces them with one default for every branch. `InputParam.template(...)` keeps a common input to one line.
+
+```python
+class DistilledCoreDenoiseStep(SequentialPipelineBlocks):
+    block_classes = [...]
+    block_names = [...]
+    # The distilled checkpoint samples in few steps.
+    input_overrides = {"num_inference_steps": InputParam.template("num_inference_steps", default=10)}
+```
+
+A composite reads its sub-blocks' declarations and never writes to them: the `required` flag it reports is its own view ("the caller has to pass this"), the leaf's flag is the runtime check in `get_block_state`, and the two legitimately differ. Copy an `InputParam` before changing it.
+
+Overriding the `outputs` property by hand is still the way to narrow `outputs` to what downstream actually consumes, so the docstring shows the step's product instead of every internal intermediate (Wan-Animate-2's core denoise exposes only `segment_frames`).
 
 ## ComponentSpec patterns
 

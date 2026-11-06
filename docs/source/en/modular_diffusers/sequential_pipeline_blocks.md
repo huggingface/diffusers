@@ -121,6 +121,26 @@ There are a few properties you should set:
 
 These properties, together with the aggregated `inputs`, `intermediate_outputs`, and `expected_components`, are used to automatically generate the `doc` property.
 
+The aggregated declarations come from the sub-blocks, and the sequence cannot add or remove any of them. It can redefine how one is declared, though, with `input_overrides`, `intermediate_output_overrides`, `component_overrides` and `config_overrides`. You can reuse the same sub-blocks with another default for an input, another type hint or description, or other repo info for a component. Each is a `{name: declaration}` dict. The name must already be in the aggregated list, and the declaration replaces the aggregated entry whole.
+
+```py
+class ImageProcessingStep(SequentialPipelineBlocks):
+    """
+    # auto_docstring
+    """
+    model_name = "my_model"
+    block_classes = [InputBlock(), ImageEncoderBlock()]
+    block_names = ["input", "image_encoder"]
+    # `InputBlock` declares `num_images_per_prompt` without a default; this step defaults it to 1
+    input_overrides = {
+        "num_images_per_prompt": InputParam(
+            name="num_images_per_prompt", type_hint=int, default=1, description="number of images per prompt"
+        )
+    }
+```
+
+When two sub-blocks declare different defaults for the same input, the sequence keeps the first one and warns; an `input_overrides` entry explicitly states the default the whole sequence uses. When the input belongs to a conditional sub-block whose branches declare different defaults, the override gives the sequence one value for every workflow instead of the per-branch ones.
+
 
 Print the `ImageProcessingStep` block to inspect its sub-blocks, and use `doc` for a full summary of the block's inputs, outputs, and components.
 

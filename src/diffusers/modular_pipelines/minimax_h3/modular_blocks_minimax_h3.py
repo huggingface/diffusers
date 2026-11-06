@@ -15,7 +15,7 @@
 import torch
 
 from ..modular_pipeline import ConditionalPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import OutputParam
+from ..modular_pipeline_utils import InputParam, OutputParam
 from .before_denoise import (
     MiniMaxH3FL2VAPrepareLatentsStep,
     MiniMaxH3NoKeyframeAnchorsStep,
@@ -56,7 +56,7 @@ class MiniMaxH3AutoBeforeEncodeStep(ConditionalPipelineBlocks):
           2048)
 
       Inputs:
-          references (`list`, *optional*):
+          references (`list`, *optional*, required, depending on the workflow):
               The references to condition on, **in the order the model should read them**: the order labels them in the
               prompt presentation and lays them out on the shared rotary clock, so a different order is a different
               request. One dataclass per modality, all holding in-memory media — a [`MiniMaxH3ImageReference`] (at most
@@ -68,7 +68,7 @@ class MiniMaxH3AutoBeforeEncodeStep(ConditionalPipelineBlocks):
               Height of the generated video in pixels, a multiple of 32.
           width (`int`, *optional*):
               Width of the generated video in pixels, a multiple of 32.
-          num_frames (`int`, *optional*):
+          num_frames (`int`, *optional*, required, depending on the workflow):
               Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video VAE can
               decode; the resulting duration must stay between 5 and 15 seconds. To generate a video as long as a
               reference soundtrack, pass `round(samples / sample_rate * 24)`.
@@ -140,7 +140,7 @@ class MiniMaxH3AutoTextEncoderStep(ConditionalPipelineBlocks):
       Inputs:
           prompt (`str`):
               The prompt to guide generation, a single string.
-          normalized_references (`list`, *optional*):
+          normalized_references (`list`, *optional*, required, depending on the workflow):
               The references normalized by the setup step, in packed order.
           keyframes (`list`, *optional*):
               The keyframes put onto the target canvas, in packed order.
@@ -191,9 +191,9 @@ class MiniMaxH3AutoVaeEncoderStep(ConditionalPipelineBlocks):
           vae (`AutoencoderKLMiniMaxH3`) audio_vae (`AutoencoderKLMiniMaxH3Audio`)
 
       Inputs:
-          normalized_references (`list`, *optional*):
+          normalized_references (`list`, *optional*, required, depending on the workflow):
               The references normalized by the setup step, in packed order.
-          keyframes (`list`, *optional*):
+          keyframes (`list`, *optional*, required, depending on the workflow):
               The keyframes put onto the target canvas, in packed order.
 
       Outputs:
@@ -543,26 +543,26 @@ class MiniMaxH3AutoDenoiseStep(ConditionalPipelineBlocks):
       Inputs:
           text_token_tags (`Tensor`):
               The per-row modality tag of every row of `prompt_embeds`.
-          normalized_references (`list`, *optional*):
+          normalized_references (`list`, *optional*, required, depending on the workflow):
               The references normalized by the setup step, in packed order.
-          condition_latents (`list`, *optional*):
+          condition_latents (`list`, *optional*, required, depending on the workflow):
               The encoded video conditioning latents, one per image and video reference in packed order. Their shape is
               where every reference block's geometry comes from.
-          audio_condition_latents (`list`, *optional*):
+          audio_condition_latents (`list`, *optional*, required, depending on the workflow):
               The encoded audio conditioning rows, one per audio-bearing reference in packed order.
-          height (`int`, *optional*):
+          height (`int`, *optional*, required or defaults to None, depending on the workflow):
               Height of the generated video in pixels.
-          width (`int`, *optional*):
+          width (`int`, *optional*, required or defaults to None, depending on the workflow):
               Width of the generated video in pixels.
-          num_frames (`int`, *optional*, defaults to None or 124, depending on the workflow):
+          num_frames (`int`, *optional*, required or defaults to 124, depending on the workflow):
               Resolved number of frames, of the form 17 * n + 5.
           generator (`Generator`, *optional*):
               The generator of the request. The conditioning noise is drawn from it first, one draw per condition,
               before the noise of the generated rows.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated video noise of shape `(1, 24, num_latent_frames, latent_height, latent_width)`, used
               instead of the draw.
-          audio_latents (`Tensor`):
+          audio_latents (`Tensor`, *optional*):
               Pre-generated audio noise of shape `(2, 32, num_audio_latents)`.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
@@ -680,7 +680,7 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
           2048)
 
       Inputs:
-          references (`list`, *optional*):
+          references (`list`, *optional*, required, depending on the workflow):
               The references to condition on, **in the order the model should read them**: the order labels them in the
               prompt presentation and lays them out on the shared rotary clock, so a different order is a different
               request. One dataclass per modality, all holding in-memory media — a [`MiniMaxH3ImageReference`] (at most
@@ -704,22 +704,22 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
               it is the follower of the two and is cover-cropped onto the canvas.
           prompt (`str`):
               The prompt to guide generation, a single string.
-          normalized_references (`list`, *optional*):
+          normalized_references (`list`, *optional*, required, depending on the workflow):
               The references normalized by the setup step, in packed order.
           keyframes (`list`, *optional*):
               The keyframes put onto the target canvas, in packed order.
-          condition_latents (`list`, *optional*):
+          condition_latents (`list`, *optional*, required, depending on the workflow):
               The encoded video conditioning latents, one per image and video reference in packed order. Their shape is
               where every reference block's geometry comes from.
-          audio_condition_latents (`list`, *optional*):
+          audio_condition_latents (`list`, *optional*, required, depending on the workflow):
               The encoded audio conditioning rows, one per audio-bearing reference in packed order.
           generator (`Generator`, *optional*):
               The generator of the request. The conditioning noise is drawn from it first, one draw per condition,
               before the noise of the generated rows.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated video noise of shape `(1, 24, num_latent_frames, latent_height, latent_width)`, used
               instead of the draw.
-          audio_latents (`Tensor`):
+          audio_latents (`Tensor`, *optional*):
               Pre-generated audio noise of shape `(2, 32, num_audio_latents)`.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
@@ -757,6 +757,19 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
         "denoise",
         "decode",
     ]
+    # `ref2va` requires `num_frames` (the references are truncated to it) while `t2va` and `fl2va` default it to 124,
+    # so the pipeline declares it itself: optional, no default, each workflow keeps its own
+    input_overrides = {
+        "num_frames": InputParam(
+            name="num_frames",
+            type_hint=int,
+            description=(
+                "Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video "
+                "VAE can decode; the resulting duration must stay between 5 and 15 seconds. To generate a video "
+                "as long as a reference soundtrack, pass `round(samples / sample_rate * 24)`."
+            ),
+        )
+    }
     # One repository holds both checkpoint partitions (`transformer/` for `t2va`/`fl2va`, `transformer_ref/` for
     # `ref2va`), so the tasks are workflows over one shared `modular_model_index.json`, each declaring only the
     # components its own half loads. The keys below are the task names a `workflow=` argument to

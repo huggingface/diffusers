@@ -172,7 +172,7 @@ class StableDiffusion3I2ICoreDenoiseStep(SequentialPipelineBlocks):
               The height in pixels of the generated image.
           width (`None`, *optional*):
               The width in pixels of the generated image.
-          image_latents (`None`, *optional*):
+          image_latents (`None`):
               Latent input image_latents to be processed.
           latents (`Tensor | NoneType`, *optional*):
               Pre-generated noisy latents to be used as inputs for image generation.
@@ -241,15 +241,15 @@ class StableDiffusion3AutoCoreDenoiseStep(AutoPipelineBlocks):
               The height in pixels of the generated image.
           width (`None`, *optional*):
               The width in pixels of the generated image.
-          image_latents (`None`, *optional*):
+          image_latents (`None`, *optional*, required, depending on the workflow):
               Latent input image_latents to be processed.
-          latents (`Tensor | NoneType`):
+          latents (`Tensor | NoneType`, *optional*):
               Pre-generated noisy latents to be used as inputs for image generation.
           generator (`None`, *optional*):
               One or a list of torch generator(s) to make generation deterministic.
-          num_inference_steps (`None`):
+          num_inference_steps (`None`, *optional*, defaults to 50):
               The number of denoising steps.
-          timesteps (`None`):
+          timesteps (`None`, *optional*):
               Custom timesteps to use for the denoising process.
           sigmas (`None`, *optional*):
               Custom sigmas to use for the denoising process.
@@ -330,13 +330,13 @@ class StableDiffusion3AutoBlocks(SequentialPipelineBlocks):
               One or a list of torch generator(s) to make generation deterministic.
           num_images_per_prompt (`None`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          image_latents (`None`, *optional*):
+          image_latents (`None`, *optional*, required, depending on the workflow):
               Latent input image_latents to be processed.
-          latents (`Tensor | NoneType`):
+          latents (`Tensor | NoneType`, *optional*):
               Pre-generated noisy latents to be used as inputs for image generation.
-          num_inference_steps (`None`):
+          num_inference_steps (`None`, *optional*, defaults to 50):
               The number of denoising steps.
-          timesteps (`None`):
+          timesteps (`None`, *optional*):
               Custom timesteps to use for the denoising process.
           sigmas (`None`, *optional*):
               Custom sigmas to use for the denoising process.
