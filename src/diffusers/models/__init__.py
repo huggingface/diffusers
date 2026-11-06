@@ -51,6 +51,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_minimax_h3"] = ["AutoencoderKLMiniMaxH3"]
     _import_structure["autoencoders.autoencoder_kl_minimax_h3_audio"] = ["AutoencoderKLMiniMaxH3Audio"]
     _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
+    _import_structure["autoencoders.autoencoder_kl_p_h3_image"] = ["AutoencoderKLPH3Image"]
     _import_structure["autoencoders.autoencoder_kl_qwenimage"] = ["AutoencoderKLQwenImage"]
     _import_structure["autoencoders.autoencoder_kl_qwenimage21"] = ["AutoencoderKLQwenImage21"]
     _import_structure["autoencoders.autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
@@ -69,8 +70,16 @@ if is_torch_available():
     _import_structure["autoencoders.mmaudio_vocoder"] = ["MMAudioVocoder"]
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
     _import_structure["cache_utils"] = ["CacheMixin"]
+    _import_structure["condition_embedders.condition_embedder_ace_step"] = ["AceStepConditionEncoder"]
     _import_structure["condition_embedders.condition_embedder_anima"] = ["AnimaTextConditioner"]
+    _import_structure["condition_embedders.condition_embedder_audioldm2"] = ["AudioLDM2ProjectionModel"]
+    _import_structure["condition_embedders.condition_embedder_flux_redux"] = ["ReduxImageEncoder"]
+    _import_structure["condition_embedders.condition_embedder_gligen"] = ["CLIPImageProjection"]
+    _import_structure["condition_embedders.condition_embedder_ltx2"] = ["LTX2TextConnectors"]
     _import_structure["condition_embedders.condition_embedder_minimax_music3"] = ["MiniMaxMusic3ConditionEncoder"]
+    _import_structure["condition_embedders.condition_embedder_p_h3_image"] = ["PH3ImageTextConnector"]
+    _import_structure["condition_embedders.condition_embedder_stable_audio"] = ["StableAudioProjectionModel"]
+    _import_structure["condition_embedders.condition_embedder_stable_audio_3"] = ["StableAudio3DurationEmbedder"]
     _import_structure["controlnets.controlnet"] = ["ControlNetModel"]
     _import_structure["controlnets.controlnet_cosmos"] = ["CosmosControlNetModel"]
     _import_structure["controlnets.controlnet_flux"] = ["FluxControlNetModel", "FluxMultiControlNetModel"]
@@ -92,6 +101,8 @@ if is_torch_available():
     _import_structure["controlnets.multicontrolnet_union"] = ["MultiControlNetUnionModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["latent_upscaler.latent_upscaler_kandinsky6_sr"] = ["Kandinsky6SRLatentUpscalerBank"]
+    _import_structure["latent_upscaler.latent_upscaler_ltx"] = ["LTXLatentUpsamplerModel"]
+    _import_structure["latent_upscaler.latent_upscaler_ltx2"] = ["LTX2LatentUpsamplerModel"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["transformers.ace_step_transformer"] = ["AceStepTransformer1DModel"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
@@ -140,6 +151,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_kandinsky"] = ["Kandinsky5Transformer3DModel"]
     _import_structure["transformers.transformer_kandinsky6"] = ["Kandinsky6Transformer3DModel"]
     _import_structure["transformers.transformer_kandinsky6_sr"] = ["Kandinsky6SRTransformer3DModel"]
+    _import_structure["transformers.transformer_kandinsky_s2v"] = ["KandinskyS2VTransformer3DModel"]
     _import_structure["transformers.transformer_krea2"] = ["Krea2Transformer2DModel"]
     _import_structure["transformers.transformer_longcat_audio_dit"] = ["LongCatAudioDiTTransformer"]
     _import_structure["transformers.transformer_longcat_image"] = ["LongCatImageTransformer2DModel"]
@@ -210,6 +222,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLMiniMaxH3,
             AutoencoderKLMiniMaxH3Audio,
             AutoencoderKLMochi,
+            AutoencoderKLPH3Image,
             AutoencoderKLQwenImage,
             AutoencoderKLQwenImage21,
             AutoencoderKLTemporalDecoder,
@@ -231,7 +244,18 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VQModel,
         )
         from .cache_utils import CacheMixin
-        from .condition_embedders import AnimaTextConditioner, MiniMaxMusic3ConditionEncoder
+        from .condition_embedders import (
+            AceStepConditionEncoder,
+            AnimaTextConditioner,
+            AudioLDM2ProjectionModel,
+            CLIPImageProjection,
+            LTX2TextConnectors,
+            MiniMaxMusic3ConditionEncoder,
+            PH3ImageTextConnector,
+            ReduxImageEncoder,
+            StableAudio3DurationEmbedder,
+            StableAudioProjectionModel,
+        )
         from .controlnets import (
             ControlNetModel,
             ControlNetUnionModel,
@@ -253,7 +277,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageControlNetModel,
         )
         from .embeddings import ImageProjection
-        from .latent_upscaler import Kandinsky6SRLatentUpscalerBank
+        from .latent_upscaler import Kandinsky6SRLatentUpscalerBank, LTX2LatentUpsamplerModel, LTXLatentUpsamplerModel
         from .modeling_utils import ModelMixin
         from .transformers import (
             AceStepTransformer1DModel,
@@ -294,6 +318,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky5Transformer3DModel,
             Kandinsky6SRTransformer3DModel,
             Kandinsky6Transformer3DModel,
+            KandinskyS2VTransformer3DModel,
             Krea2Transformer2DModel,
             LatteTransformer3DModel,
             LongCatAudioDiTTransformer,
