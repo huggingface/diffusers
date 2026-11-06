@@ -71,9 +71,9 @@ if __name__ == "__main__":
             ]
 
         elif args.type == "lora":
-            from tests.lora.utils import PeftLoraLoaderMixinTests
+            from tests.pipelines.testing_utils import LoraMemoryTesterMixin, LoraTesterMixin, UNetLoraTesterMixin
 
-            mixin_classes = [PeftLoraLoaderMixinTests]
+            mixin_classes = [LoraTesterMixin, LoraMemoryTesterMixin, UNetLoraTesterMixin]
 
         pattern = generate_pattern_for_mixins(mixin_classes)
     print(pattern)

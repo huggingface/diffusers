@@ -27,12 +27,15 @@ from ...testing_utils import (
     numpy_cosine_similarity_distance,
     require_big_accelerator,
     require_torch_accelerator,
+    skip_mps,
     torch_device,
 )
 from ..testing_utils import (
     BasePipelineTesterConfig,
     FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
 )
@@ -141,6 +144,16 @@ class TestMochiPipeline(MochiPipelineTesterConfig, PipelineTesterMixin):
         assert (output_without_tiling - output_with_tiling).abs().max() < expected_diff_max, (
             "VAE tiling should not affect the inference results."
         )
+
+
+@skip_mps
+class TestMochiPipelineLoRA(MochiPipelineTesterConfig, LoraTesterMixin):
+    pass
+
+
+@skip_mps
+class TestMochiPipelineLoRAMemory(MochiPipelineTesterConfig, LoraMemoryTesterMixin):
+    pass
 
 
 class TestMochiPipelineMemory(MochiPipelineTesterConfig, MemoryTesterMixin):
