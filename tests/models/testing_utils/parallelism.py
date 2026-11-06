@@ -20,7 +20,10 @@ import pytest
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
+from torch.distributed.device_mesh import init_device_mesh
 
+from diffusers.configuration_utils import ConfigMixin, register_to_config
+from diffusers.models import ModelMixin
 from diffusers.models._modeling_parallel import ContextParallelConfig, TensorParallelConfig
 from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
 from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME
@@ -31,6 +34,7 @@ from ...testing_utils import (
     is_context_parallel,
     is_kernels_available,
     is_tensor_parallel,
+    is_torch_neuronx_available,
     require_torch_multi_accelerator,
     require_torch_neuron,
     require_torch_tpu,
@@ -109,15 +113,7 @@ def _context_parallel_worker(
 
         # Enable context parallelism
         cp_config = ContextParallelConfig(**cp_dict)
-        randn_tensor((rank + 1,), device=device)
         model.enable_parallelism(config=cp_config)
-
-        latents = randn_tensor((1, 4, 8, 8), device=device)
-        gathered_latents = [torch.empty_like(latents) for _ in range(world_size)]
-        dist.all_gather(gathered_latents, latents)
-        assert all(torch.equal(latents, other) for other in gathered_latents), (
-            "Unseeded latents differ across context-parallel ranks."
-        )
 
         # Run forward pass
         with torch.no_grad():
@@ -301,15 +297,7 @@ def _tensor_parallel_worker(
         inputs_on_device = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
 
         # Shard the model across all ranks; the device mesh is built from `tp_degree` on the active accelerator.
-        randn_tensor((rank + 1,), device=device)
         model.enable_parallelism(config=TensorParallelConfig(tp_degree=world_size))
-
-        latents = randn_tensor((1, 4, 8, 8), device=device)
-        gathered_latents = [torch.empty_like(latents) for _ in range(world_size)]
-        dist.all_gather(gathered_latents, latents)
-        assert all(torch.equal(latents, other) for other in gathered_latents), (
-            "Unseeded latents differ across tensor-parallel ranks."
-        )
 
         with torch.no_grad():
             output = model(**inputs_on_device, return_dict=False)[0]
@@ -895,3 +883,89 @@ class ContextParallelAttentionBackendsTesterMixin:
 
         cp_output = torch.tensor(return_dict["output"], dtype=ref_output.dtype)
         torch.testing.assert_close(ref_output, cp_output, atol=1e-2, rtol=1e-2)
+
+
+def _parallel_device_type():
+    """The accelerator type to run two-rank parallelism tests on, or `None` when there are fewer than two."""
+    if torch.cuda.device_count() > 1:
+        return "cuda"
+    if torch.xpu.device_count() > 1:
+        return "xpu"
+    if is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available():
+        return "neuron"
+    return None
+
+
+class _ParallelRNGDummyModel(ModelMixin, ConfigMixin):
+    """The smallest model `enable_parallelism` accepts: one shardable `Linear` and an empty context-parallel plan."""
+
+    _tp_plan = {"proj": "colwise"}
+    _cp_plan = {}
+
+    @register_to_config
+    def __init__(self):
+        super().__init__()
+        self.proj = torch.nn.Linear(4, 4)
+
+
+def _parallel_rng_sync_worker(rank, world_size, master_port, device_type, parallelism, return_dict):
+    """Seed every rank differently, enable `parallelism`, and report whether all ranks then draw the same latents."""
+    try:
+        os.environ["MASTER_ADDR"] = "localhost"
+        os.environ["MASTER_PORT"] = str(master_port)
+
+        device_config = DEVICE_CONFIG[device_type]
+        dist.init_process_group(backend=device_config["backend"], rank=rank, world_size=world_size)
+        device_config["module"].set_device(rank)
+        device = torch.device(f"{device_type}:{rank}")
+        model = _ParallelRNGDummyModel().to(device)
+
+        if parallelism == "tp":
+            config = TensorParallelConfig(tp_degree=world_size)
+        elif parallelism == "cp":
+            config = ContextParallelConfig(ulysses_degree=world_size)
+        else:
+            # Every rank is its own one-rank TP group, i.e. an independent replica.
+            mesh = init_device_mesh(device_type, mesh_shape=(world_size, 1), mesh_dim_names=("dp", "tp"))
+            config = TensorParallelConfig(mesh=mesh["tp"])
+
+        torch.manual_seed(rank)
+        model.enable_parallelism(config=config)
+
+        latents = randn_tensor((1, 4, 8, 8), device=device)
+        gathered_latents = [torch.empty_like(latents) for _ in range(world_size)]
+        dist.all_gather(gathered_latents, latents)
+        if rank == 0:
+            return_dict["same_latents"] = all(torch.equal(latents, other) for other in gathered_latents)
+
+    except Exception as e:
+        if rank == 0:
+            return_dict["error"] = str(e)
+    finally:
+        if dist.is_initialized():
+            dist.destroy_process_group()
+
+
+@is_tensor_parallel
+@is_context_parallel
+@pytest.mark.skipif(_parallel_device_type() is None, reason="test requires two accelerators")
+class TestParallelRNGSync:
+    """`enable_parallelism` gives every rank of the parallel mesh the same default RNG, and only those ranks."""
+
+    @pytest.mark.parametrize(
+        "parallelism,expect_same",
+        [("tp", True), ("cp", True), ("tp_submesh", False)],
+        ids=["tensor_parallel", "context_parallel", "tensor_parallel_submesh"],
+    )
+    def test_enable_parallelism_syncs_rng_within_mesh(self, parallelism, expect_same):
+        world_size = 2
+        return_dict = mp.Manager().dict()
+        mp.spawn(
+            _parallel_rng_sync_worker,
+            args=(world_size, _find_free_port(), _parallel_device_type(), parallelism, return_dict),
+            nprocs=world_size,
+            join=True,
+        )
+
+        assert "error" not in return_dict, f"RNG sync worker failed: {return_dict.get('error')}"
+        assert return_dict["same_latents"] == expect_same
