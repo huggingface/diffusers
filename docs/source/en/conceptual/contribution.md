@@ -171,7 +171,7 @@ more precise, provide the link to a duplicated issue or redirect them to [GitHub
 If you have verified that the issued bug report is correct and requires a correction in the source code,
 please have a look at the next sections.
 
-For all of the following contributions, you will need to open a PR. It is explained in detail how to do so in the [Opening a pull request](#how-to-open-a-pr) section.
+For all contributions, except [6](#6-publish-a-pipeline-or-model-on-the-hub), you need to open a PR. The [Opening a pull request](https://github.com/huggingface/diffusers/pull/15179/changes#how-to-open-a-pr) section explains how.
 
 ### 4. Fixing a "Good first issue"
 
