@@ -19,7 +19,7 @@ import sys
 import traceback
 import warnings
 from collections import OrderedDict
-from copy import deepcopy
+from copy import copy, deepcopy
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -53,13 +53,13 @@ from ..utils.torch_utils import empty_device_cache, is_compiled_module
 from .components_manager import ComponentsManager
 from .modular_pipeline_utils import (
     MODULAR_MODEL_CARD_TEMPLATE,
+    REQUIRED,
     ComponentSpec,
     ConfigSpec,
     InputParam,
     InsertableDict,
     OutputParam,
     _validate_requirements,
-    combine_inputs,
     combine_outputs,
     format_components,
     format_configs,
@@ -762,34 +762,82 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
                     expected_configs.append(config)
         return override_attribute(expected_configs, self.config_overrides, "config_overrides", self.__class__.__name__)
 
-    @property
-    def required_inputs(self) -> list[str]:
-        # no default block means this conditional block can be skipped entirely
-        if self.default_block_name is None:
-            return []
+    def _get_inputs(self):
+        # Merge the sub-blocks' inputs into one. Each sub-block is a branch and only one of them runs, so an input declared by
+        # several sub-blocks under the same name (for kwargs inputs, the same `kwargs_type`) is combined into one input:
+        # - its `type_hint` and `description` are defined by the first declaration.
+        # - `required` and `default` are only meaningful when the branches agree on them. they agree when:
+        #   - (1) every sub-block requires the input, and the block cannot be skipped: the merged input is required
+        #   - (2) every sub-block that declares it does so as optional, with the exact same default: the merged input is
+        #     optional with that default
+        # - otherwise (some require it and others do not, the defaults differ, or all of them require it but the block
+        # itself can be skipped): the merged input is optional with default `None`, and `defaults_by_block` records
+        # what each declaring sub-block says. At runtime the sub-block that runs fills in its own default, or raises when
+        # it requires the input and it is missing (see `ModularPipelineBlocks.get_block_state`);
+        # the docstrings render the defaults, e.g. "defaults to 0.3 or 0.9999, depending on the workflow"
 
-        first_block = next(iter(self.sub_blocks.values()))
-        required_by_all = set(getattr(first_block, "required_inputs", set()))
+        declarations = {}
+        # declarations: input_name -> {block_name: InputParam}, `None` when the sub-block does not declare the input
+        # e.g. {"strength": {"inpaint": InputParam("strength", default=0.9999), "img2img": InputParam(...),
+        #                     "text2img": None}}
+        for block_name, block in self.sub_blocks.items():
+            for input_param in block.inputs:
+                # kwargs inputs have no name, key them by "*_<kwargs_type>"
+                if input_param.name is None and input_param.kwargs_type is not None:
+                    input_name = "*_" + input_param.kwargs_type
+                else:
+                    input_name = input_param.name
+                # every sub-block gets a slot, in order, so a silent sub-block shows up as None
+                by_block = declarations.setdefault(input_name, dict.fromkeys(self.sub_blocks))
+                if by_block[block_name] is None:
+                    by_block[block_name] = input_param
 
-        # Intersect with required inputs from all other blocks
-        for block in list(self.sub_blocks.values())[1:]:
-            block_required = set(getattr(block, "required_inputs", set()))
-            required_by_all.intersection_update(block_required)
+        # assemble the final merged input param list
+        inputs = []
+        for input_name, by_block in declarations.items():
+            # keep the first `InputParam` for type hint and description
+            input_param = next(p for p in by_block.values() if p is not None)
 
-        return list(required_by_all)
+            # required only when every sub-block requires it and the user cannot skip the whole block
+            required = (
+                all(p is not None and p.required for p in by_block.values()) and self.default_block_name is not None
+            )
+            # same default when every declaring sub-block says optional with the same default. A silent sub-block does not
+            # declare the input, so it agrees with whatever its siblings say. A required sub-block and a nested conditional
+            # block carrying a record of its own both have `default=None`, so they are ruled out explicitly, otherwise
+            # they would match a sibling that is optional with no default
+            same_default = all(
+                p is None or (not p.required and not p.defaults_by_block and p.default == input_param.default)
+                for p in by_block.values()
+            )
+            if required or same_default:
+                inputs.append(input_param)
+                continue
+
+            # the branches disagree: record what each declaring sub-block says, its default or `REQUIRED` when it
+            # requires the input, e.g. {"img2img": 0.3, "inpaint": 0.9999} for `strength`, or
+            # {"t2va": 124, "ref2va": REQUIRED} for `num_frames`. A silent sub-block has no entry
+            defaults_by_block = {}
+            for block_name, inp in by_block.items():
+                if inp is None:
+                    continue
+                if inp.defaults_by_block:
+                    # nested conditional block: prefix its block names with the sub-block name, e.g. from sub-block
+                    # "image", {"img2img": 0.3, "inpaint": 0.9999} -> {"image.img2img": 0.3, "image.inpaint": 0.9999}
+                    defaults_by_block.update({f"{block_name}.{k}": v for k, v in inp.defaults_by_block.items()})
+                else:
+                    # one entry for a leaf sub-block: e.g. {"img2img": 0.3}
+                    defaults_by_block[block_name] = REQUIRED if inp.required else inp.default
+            # a merged input with a record always has `default=None` and `required=False`: the sub-block that runs fills
+            # in its own default at runtime, or raises when it requires the input and it is missing. `replace` creates
+            # a fresh copy so the sub-blocks' own params are never mutated
+            inputs.append(replace(input_param, default=None, required=False, defaults_by_block=defaults_by_block))
+
+        return override_attribute(inputs, self.input_overrides, "input_overrides", self.__class__.__name__)
 
     @property
     def inputs(self) -> list[tuple[str, Any]]:
-        named_inputs = [(name, block.inputs) for name, block in self.sub_blocks.items()]
-        combined_inputs = combine_inputs(*named_inputs)
-        # required only if every sub-block requires it;
-        for position, input_param in enumerate(combined_inputs):
-            if input_param.name in self.required_inputs:
-                # `replace` copies so the sub-blocks' declarations stay untouched
-                combined_inputs[position] = replace(input_param, required=True)
-            else:
-                combined_inputs[position] = replace(input_param, required=False)
-        return override_attribute(combined_inputs, self.input_overrides, "input_overrides", self.__class__.__name__)
+        return self._get_inputs()
 
     @property
     def intermediate_outputs(self) -> list[str]:
@@ -1222,96 +1270,74 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
     def _get_inputs(self):
         # Walk the sub-blocks in order to derive the pipeline inputs. An input is listed unless an earlier block
         # produces it. The first declaration is kept; a later declaration of the same input can only make it required
-        # or disagree on its default.
+        # or warn about a conflict in the defaults.
         #
-        # The comments below follow one img2img pipeline:
+        # The comments below follow one img2img pipeline as example:
         # `text_encoder -> image_encoder -> set_timesteps -> prepare_latents -> denoise`, where `image_encoder` is a
-        # ConditionalPipelineBlocks without a default block: it runs when `image` is passed and produces
-        # `image_latents`.
-        inputs = {}  # pipeline inputs
+        # ConditionalPipelineBlocks which runs only when `image` is passed and produces `image_latents`.
+        inputs = {}  # input_name -> InputParam, e.g. {"num_inference_steps": InputParam("num_inference_steps", default=50)}
         outputs = set()  # produced by an earlier block
-        maybe_outputs = set()  # produced by an earlier ConditionalPipelineBlocks, if it runs
+        # maybe produced by an earlier block: a ConditionalPipelineBlocks that can be skipped, or whose branches do not
+        # all produce the output
+        maybe_outputs = set()
         for block_name, block in self.sub_blocks.items():
             for inp in block.inputs:
-                # kwargs inputs have no name, key them by "*_<kwargs_type>" like `combine_inputs` does
+                # kwargs inputs have no name, key them by "*_<kwargs_type>"
                 key = inp.name if inp.name is not None else f"*_{inp.kwargs_type}"
                 if key in outputs:
-                    # produced by an earlier block, so not a pipeline input:
-                    # e.g. `denoise` needs `prompt_embeds`, but `text_encoder` produces it
+                    # not a pipeline input if it'sproduced by an earlier block
+                    # e.g. `prompt` -> `text_encoder` -> `prompt_embeds` -> `denoise`
+                    # here `prompt_embeds` is an input for `denoise` but not an input for pipeline because `text_encoder` outputs it
                     continue
-                # first declaration, listed as declared:
-                # e.g. `set_timesteps` declares `num_inference_steps` and no earlier block declared or produced it, so
-                # it becomes a pipeline input with the default `set_timesteps` gave it
                 if key not in inputs:
-                    # `replace` copies: the flags below are the composite's view and must not reach the sub-block
-                    inputs[key] = replace(inp)
+                    # otherwise, declare it as an input if not already declared
+                    inputs[key] = copy(inp)
                     if inp.required and key in maybe_outputs:
-                        # the block requires it, but an earlier conditional block can produce it, so the pipeline lists
-                        # it optional:
-                        # e.g. `prepare_latents` requires `image_latents`, but `image_encoder` produces it when `image`
-                        # is passed, so `image_latents` is optional for the pipeline: the user can pass `image` instead
+                        # the block requires it, but an earlier conditional block can produce it, so change it to optional
+                        # e.g. `prepare_latents` lists `image_latents` as a required input, but `image_encoder` (an conditional block) produces it when `image`
+                        # is passed, so `image_latents` is an optional input for the pipeline, i.e. user can skip it if they pass `image` and run the image_encoder block.
                         inputs[key].required = False
                     continue
-                if inp.required:
-                    if inputs[key].default is None and not inputs[key].defaults_by_block and key not in maybe_outputs:
-                        # already listed as optional with no default, nothing earlier can produce it, and now a block
-                        # requires it, so the user has to pass it:
-                        # e.g. `prepare_latents` declares `height` optional, `denoise` requires it, so `height` is a
-                        # required pipeline input. Had `prepare_latents` given `height` a default, or had the branches
-                        # of an earlier conditional block each given it theirs, it would stay optional
-                        inputs[key].required = True
-                elif not inputs[key].required:
-                    if inputs[key].default is None and not inputs[key].defaults_by_block and inp.defaults_by_block:
-                        # the entry has no default and this conditional block's branches each have their own: carry
-                        # them up, prefixed like `combine_inputs` does, so the pipeline docstring shows them. Not a
-                        # conflict: the branch that runs fills in its own default when it reads the state
-                        # (`get_block_state`):
-                        # e.g. `before_encode` lists `num_frames` with no default and the `denoise` branches default
-                        # it to 124 or require it, so the pipeline says "None or 124, depending on the workflow"
-                        inputs[key].defaults_by_block = {
-                            f"{block_name}.{k}": v for k, v in inp.defaults_by_block.items()
-                        }
-                    elif key not in self.input_overrides:
-                        # the defaults each side has an opinion on: its own, or the per-branch ones a conditional block
-                        # recorded. `None` means no default, not an opinion, so it is left out on both sides
-                        existing, declared = inputs[key], inp
-                        existing_defaults = (
-                            [existing.default]
-                            if existing.default is not None
-                            else [d for d in (existing.defaults_by_block or {}).values() if d is not None]
+                # if the input is already declared: a later declaration can only make it required, or warn on a conflict in the defaults
+                existing = inputs[key]
+                if inp.required and not existing.required:
+                    # a later block requires an input currently listed as optional.
+                    # we only change it to required if:
+                    # (1) it is not possible for an earlier conditional block to produce it
+                    # (2) no earlier default fills it in: the existing default is `None`, and if it comes from a
+                    #     conditional block with per-branch defaults, no branch declares a non-None one
+                    # e.g. `prepare_latents` declares `height` optional with `None` default, `denoise` requires it, so
+                    # `height` is a required pipeline input. Had `prepare_latents` defaults `height` to 512, it would
+                    # stay optional with the default
+                    has_default = existing.default is not None or any(
+                        d is not None and d is not REQUIRED for d in (existing.defaults_by_block or {}).values()
+                    )
+                    if key not in maybe_outputs and not has_default:
+                        existing.required = True
+                elif not inp.required and not existing.required and key not in self.input_overrides:
+                    # if two blocks both declare the same input as optional, with different non-None defaults,
+                    # use the first one, but warn and ask user to set the `input_overrides` on the composite to explicitly set the default.
+                    # e.g. `strength` is 0.3 on `set_timesteps` and 0.9999 on `prepare_latents`: the pipeline uses
+                    # 0.3, and `input_overrides` on the composite picks another value
+                    if inp.default is not None and inp.default != existing.default:
+                        existing_text = f"default {existing.default!r}"
+                        if existing.defaults_by_block:
+                            existing_text = f"per-branch defaults {existing.defaults_by_block!r}"
+                        logger.warning(
+                            f"{self.__class__.__name__}: sub-block '{block_name}' declares default {inp.default!r} for "
+                            f"input '{key}', but an earlier sub-block declares {existing_text}. The sequence keeps the "
+                            f"earlier declaration. Declare '{key}' in `input_overrides` on {self.__class__.__name__} "
+                            f"if that is not intended."
                         )
-                        declared_defaults = (
-                            [declared.default]
-                            if declared.default is not None
-                            else [d for d in (declared.defaults_by_block or {}).values() if d is not None]
-                        )
-                        # (`in` compares with `==`, so list defaults such as `[2, 2, 2]` work too)
-                        if (existing_defaults and any(d not in existing_defaults for d in declared_defaults)) or (
-                            declared_defaults and any(d not in declared_defaults for d in existing_defaults)
-                        ):
-                            # two optional declarations disagree on the default. In a sequence the input is one shared
-                            # value, so the composite has to pick it with `input_overrides`; until 1.0.0 the first
-                            # declaration wins:
-                            # e.g. `strength` is 0.3 on `set_timesteps` and 0.9999 on `prepare_latents`, so the
-                            # pipeline uses 0.3 and warns until it declares `strength` in `input_overrides`
-                            existing_text = f"default {existing.default!r}"
-                            if existing.defaults_by_block:
-                                existing_text = f"per-branch defaults {existing.defaults_by_block!r}"
-                            declared_text = f"default {declared.default!r}"
-                            if declared.defaults_by_block:
-                                declared_text = f"per-branch defaults {declared.defaults_by_block!r}"
-                            deprecate(
-                                "sub-block default conflict",
-                                "1.0.0",
-                                f"{self.__class__.__name__}: sub-block '{block_name}' declares {declared_text} for "
-                                f"input '{key}' but an earlier sub-block declares {existing_text}. The first "
-                                f"declaration currently wins; this will become an error. Declare the input in "
-                                f"`input_overrides` on {self.__class__.__name__} to pick the default explicitly.",
-                                standard_warn=False,
-                            )
-            if isinstance(block, ConditionalPipelineBlocks) and block.default_block_name is None:
-                # e.g. `image_encoder` may be skipped, so `image_latents` is only produced if it runs: a "maybe" output
-                maybe_outputs.update(out.name for out in block.intermediate_outputs)
+            if isinstance(block, ConditionalPipelineBlocks):
+                # for conditional blocks,
+                # if the output is produced by every branch and the block itself cannot be skipped, add it to the `outputs`
+                # otherwise, add it to the `maybe_outputs`
+                # e.g. `image_encoder` may be skipped, so `image_latents` is only produced if it runs, a maybe_outputs
+                per_branch = [{out.name for out in sub.intermediate_outputs} for sub in block.sub_blocks.values()]
+                produced = set.intersection(*per_branch) if block.default_block_name is not None else set()
+                outputs.update(produced)
+                maybe_outputs.update(set().union(*per_branch) - produced)
             else:
                 outputs.update(out.name for out in block.intermediate_outputs)
 
@@ -1618,42 +1644,36 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         inputs = {}
         outputs = set()  # produced by an earlier block
         for inp in self.loop_inputs:
-            # kwargs inputs have no name, key them by "*_<kwargs_type>" like `combine_inputs` does
+            # kwargs inputs have no name, key them by "*_<kwargs_type>" like `ConditionalPipelineBlocks` does
             key = inp.name if inp.name is not None else f"*_{inp.kwargs_type}"
-            inputs[key] = replace(inp)
+            inputs[key] = copy(inp)
         for block_name, block in self.sub_blocks.items():
             for inp in block.inputs:
                 key = inp.name if inp.name is not None else f"*_{inp.kwargs_type}"
                 if key in outputs:
                     continue
                 if key not in inputs:
-                    # `replace` copies: the flags below are the composite's view and must not reach the sub-block
-                    inputs[key] = replace(inp)
+                    # `copy`: the flags below are the composite's view and must not reach the sub-block
+                    inputs[key] = copy(inp)
                     continue
                 if inp.required:
                     if inputs[key].default is None:
                         # nothing earlier defaults or produces it: the caller has to pass it
                         inputs[key].required = True
                 elif (
-                    inp.default is not None
-                    and inputs[key].default is not None
-                    and not inputs[key].required
+                    not inputs[key].required
+                    and inp.default is not None
                     and inp.default != inputs[key].default
                     and key not in self.input_overrides
                 ):
-                    # two optional declarations disagree on the default. In a sequence the input is one shared value,
-                    # so the composite has to pick it with `input_overrides`; until 1.0.0 the first declaration wins.
-                    # `None` means no default, not an opinion. Loop sub-blocks are leaves, so there are no per-branch
-                    # defaults to consider here
-                    deprecate(
-                        "sub-block default conflict",
-                        "1.0.0",
+                    # two optional declarations: the earlier one wins, a later block that declares an actual default
+                    # which is not the one in use gets a warning (a later `None` takes whatever is set). Loop
+                    # sub-blocks are leaves, so there are no per-branch defaults to consider
+                    logger.warning(
                         f"{self.__class__.__name__}: sub-block '{block_name}' declares default {inp.default!r} for "
-                        f"input '{key}' but an earlier declaration (a loop input or an earlier sub-block) has "
-                        f"{inputs[key].default!r}. The first declaration currently wins; this will become an error. "
-                        f"Declare the input in `input_overrides` on {self.__class__.__name__} to pick the default "
-                        f"explicitly.",
-                        standard_warn=False,
+                        f"input '{key}', but an earlier declaration (a loop input or an earlier sub-block) has "
+                        f"{inputs[key].default!r}. The loop keeps the earlier declaration. Declare '{key}' in "
+                        f"`input_overrides` on {self.__class__.__name__} if that is not intended."
                     )
             outputs.update(out.name for out in block.intermediate_outputs)
 

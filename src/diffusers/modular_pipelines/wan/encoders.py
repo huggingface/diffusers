@@ -319,6 +319,9 @@ class WanImageResizeStep(ModularPipelineBlocks):
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
             OutputParam("resized_image", type_hint=PIL.Image.Image),
+            # the target area is kept, the aspect ratio comes from the image: the actual size is set here
+            OutputParam("height", type_hint=int, description="The height in pixels of the resized image."),
+            OutputParam("width", type_hint=int, description="The width in pixels of the resized image."),
         ]
 
     def __call__(

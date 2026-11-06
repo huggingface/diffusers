@@ -484,6 +484,10 @@ class FluxKontextCoreDenoiseStep(SequentialPipelineBlocks):
               TODO: Add description.
           guidance_scale (`None`, *optional*, defaults to 3.5):
               TODO: Add description.
+          image_height (`None`, *optional*):
+              TODO: Add description.
+          image_width (`None`, *optional*):
+              TODO: Add description.
           joint_attention_kwargs (`None`, *optional*):
               TODO: Add description.
 
@@ -575,6 +579,10 @@ class FluxKontextAutoBlocks(SequentialPipelineBlocks):
           sigmas (`None`, *optional*):
               TODO: Add description.
           guidance_scale (`None`, *optional*, defaults to 3.5):
+              TODO: Add description.
+          image_height (`None`, *optional*):
+              TODO: Add description.
+          image_width (`None`, *optional*):
               TODO: Add description.
           output_type (`None`, *optional*, defaults to pil):
               TODO: Add description.
