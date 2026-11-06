@@ -32,6 +32,7 @@ from ..testing_utils import (
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
+    UlyssesAnythingBackwardTesterMixin,
 )
 
 
@@ -115,6 +116,15 @@ class TestWanTransformer3DSeaCache(WanTransformer3DTesterConfig, SeaCacheTesterM
 
 class TestWanTransformer3DMemory(WanTransformer3DTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for Wan Transformer 3D."""
+
+
+class TestWanTransformerUlyssesAnythingBackward(WanTransformer3DTesterConfig, UlyssesAnythingBackwardTesterMixin):
+    def get_ulysses_anything_inputs(self):
+        inputs = self.get_dummy_inputs()
+        uneven = dict(inputs)
+        uneven["hidden_states"] = inputs["hidden_states"][:, :, :1, :6, :6]
+        uneven["encoder_hidden_states"] = inputs["encoder_hidden_states"][:, :-1]
+        return [inputs, uneven]
 
 
 class TestWanTransformer3DTraining(WanTransformer3DTesterConfig, TrainingTesterMixin):
