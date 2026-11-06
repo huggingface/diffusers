@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   build:
-    uses: huggingface/doc-builder/.github/workflows/build_main_documentation.yml@145b9d4f6ab65ad3af87c66773b2c43294e52446  # main
+    uses: huggingface/doc-builder/.github/workflows/build_main_documentation.yml@1d2fd4ce6230951d654b5ec9b5cdb2b8175dbe8c  # main
     with:
       commit_sha: ${{ github.sha }}
       install_libgl1: true
