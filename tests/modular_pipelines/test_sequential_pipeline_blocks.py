@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import warnings
+import contextlib
+import re
 
 import pytest
 
@@ -27,6 +28,28 @@ from diffusers.modular_pipelines import (
     OutputParam,
     SequentialPipelineBlocks,
 )
+from diffusers.modular_pipelines.modular_pipeline_utils import REQUIRED
+from diffusers.utils import logging
+from diffusers.utils.testing_utils import CaptureLogger
+
+
+logger = logging.get_logger("diffusers.modular_pipelines.modular_pipeline")
+
+
+@contextlib.contextmanager
+def warns(pattern):
+    """The body must log a warning matching `pattern`."""
+    with CaptureLogger(logger) as logs:
+        yield
+    assert re.search(pattern, logs.out), logs.out
+
+
+@contextlib.contextmanager
+def quiet():
+    """The body must log nothing."""
+    with CaptureLogger(logger) as logs:
+        yield
+    assert logs.out == "", logs.out
 
 
 class EncodeImageBlock(ModularPipelineBlocks):
@@ -89,14 +112,24 @@ class SkippableEncodeBlocks(ConditionalPipelineBlocks):
 
 
 def strength_auto_blocks(img2img_default, inpaint_default):
-    """An auto block whose two branches declare `strength` with their own default (`None` for no default)."""
+    """
+    An auto block whose two branches declare `strength` with their own default: `None` for no default, `REQUIRED` for
+    a branch that requires it, `...` for a branch that does not declare it.
+    """
+
+    def strength(default):
+        if default is ...:
+            return []
+        if default is REQUIRED:
+            return [InputParam("strength", required=True)]
+        return [InputParam("strength", default=default)]
 
     class Img2ImgBlock(ModularPipelineBlocks):
         model_name = "test"
 
         @property
         def inputs(self):
-            return [InputParam("image", required=True), InputParam("strength", default=img2img_default)]
+            return [InputParam("image", required=True), *strength(img2img_default)]
 
         def __call__(self, components, state):
             return components, state
@@ -106,7 +139,7 @@ def strength_auto_blocks(img2img_default, inpaint_default):
 
         @property
         def inputs(self):
-            return [InputParam("mask", required=True), InputParam("strength", default=inpaint_default)]
+            return [InputParam("mask", required=True), *strength(inpaint_default)]
 
         def __call__(self, components, state):
             return components, state
@@ -117,6 +150,17 @@ def strength_auto_blocks(img2img_default, inpaint_default):
         block_trigger_inputs = ["mask", "image"]
 
     return Auto
+
+
+class RequiresStrengthBlock(ModularPipelineBlocks):
+    model_name = "test"
+
+    @property
+    def inputs(self):
+        return [InputParam("strength", required=True)]
+
+    def __call__(self, components, state):
+        return components, state
 
 
 def required_flags(blocks, *names):
@@ -264,6 +308,52 @@ class TestSequentialPipelineBlocksRequiredInputs:
 
         # the caller can pass `image` and let the encoder produce `image_latents`, or pass `image_latents` directly,
         # so neither is required on its own and both stay listed
+        assert required_flags(blocks, "image", "image_latents") == {"image": False, "image_latents": False}
+        assert blocks.required_inputs == []
+
+    def test_output_of_some_branches_only_keeps_required_input_listed_but_optional(self):
+        class EncodeImageAndCountBlock(EncodeImageBlock):
+            @property
+            def intermediate_outputs(self):
+                return [OutputParam("image_latents"), OutputParam("batch_size")]
+
+        class CountBlock(ModularPipelineBlocks):
+            model_name = "test"
+
+            @property
+            def intermediate_outputs(self):
+                return [OutputParam("batch_size")]
+
+            def __call__(self, components, state):
+                return components, state
+
+        class EncodeOrCountBlocks(ConditionalPipelineBlocks):
+            block_classes = [EncodeImageAndCountBlock, CountBlock]
+            block_names = ["encode", "count"]
+            block_trigger_inputs = ["image"]
+            default_block_name = "count"
+
+            def select_block(self, image=None):
+                return "encode" if image is not None else "count"
+
+        class NeedsBothBlock(ModularPipelineBlocks):
+            model_name = "test"
+
+            @property
+            def inputs(self):
+                return [InputParam("image_latents", required=True), InputParam("batch_size", required=True)]
+
+            def __call__(self, components, state):
+                return components, state
+
+        blocks = SequentialPipelineBlocks.from_blocks_dict(
+            {"encode": EncodeOrCountBlocks(), "consume": NeedsBothBlock()}
+        )
+
+        # the block always runs: `batch_size` comes out of every branch, so it is produced whatever runs and is not a
+        # pipeline input. `image_latents` only comes out of `encode`, so it stays listed, optional: pass `image` or
+        # pass `image_latents`
+        assert [inp.name for inp in blocks.inputs] == ["image", "image_latents"]
         assert required_flags(blocks, "image", "image_latents") == {"image": False, "image_latents": False}
         assert blocks.required_inputs == []
 
@@ -424,27 +514,37 @@ class TestDefaultConflicts:
 
         return FirstBlock, SecondBlock
 
-    def test_conflicting_defaults_are_deprecated_first_wins(self):
+    def test_two_explicit_values_first_wins(self):
+        # two explicit values for one shared input: the sequence keeps the first and says so
         FirstBlock, SecondBlock = self._blocks(0.3, 0.9999)
 
         class Blocks(SequentialPipelineBlocks):
             block_classes = [FirstBlock, SecondBlock]
             block_names = ["first", "second"]
 
-        with pytest.warns(FutureWarning, match="'second' declares default 0.9999 for input 'strength'"):
+        with warns("'second' declares default 0.9999 for input 'strength'.*keeps the earlier declaration"):
             inputs = Blocks().inputs
-        # the first declaration wins until the deprecation turns into an error
         assert [inp.default for inp in inputs if inp.name == "strength"] == [0.3]
 
-    def test_later_none_default_is_not_a_conflict(self):
+    def test_none_after_a_value_is_not_a_conflict_a_value_after_none_is(self):
+        # a later block with no default takes whatever is set, nothing to say; a later block with a default that is not
+        # the one in use is told
         FirstBlock, SecondBlock = self._blocks(0.3, None)
 
         class Blocks(SequentialPipelineBlocks):
             block_classes = [FirstBlock, SecondBlock]
             block_names = ["first", "second"]
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", FutureWarning)
+        with quiet():
+            Blocks().inputs
+
+        FirstBlock, SecondBlock = self._blocks(None, 0.3)
+
+        class Blocks(SequentialPipelineBlocks):
+            block_classes = [FirstBlock, SecondBlock]
+            block_names = ["first", "second"]
+
+        with warns("'second' declares default 0.3 for input 'strength'"):
             Blocks().inputs
 
     def test_default_override_settles_the_conflict(self):
@@ -455,12 +555,11 @@ class TestDefaultConflicts:
             block_names = ["first", "second"]
             input_overrides = {"strength": InputParam("strength", default=0.9999)}
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", FutureWarning)
+        with quiet():
             inputs = Blocks().inputs
         assert [inp.default for inp in inputs if inp.name == "strength"] == [0.9999]
 
-    def test_loop_input_without_default_is_not_a_conflict(self):
+    def test_loop_input_without_default_is_a_conflict(self):
         FirstBlock, _ = self._blocks(0.9999, None)
 
         class Loop(LoopSequentialPipelineBlocks):
@@ -472,13 +571,12 @@ class TestDefaultConflicts:
             def loop_inputs(self):
                 return [InputParam("timesteps", required=True), InputParam("strength")]
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", FutureWarning)
+        with warns("'first' declares default 0.9999 for input 'strength'"):
             inputs = Loop().inputs
-        # the loop declaration has no opinion, so the step's default is the one the loop reports
+        # the loop declaration comes first and wins
         assert [inp.default for inp in inputs if inp.name == "strength"] == [None]
 
-    def test_loop_blocks_deprecate_and_accept_the_override(self):
+    def test_loop_blocks_log_and_accept_the_override(self):
         FirstBlock, SecondBlock = self._blocks(0.3, 0.9999)
 
         class Loop(LoopSequentialPipelineBlocks):
@@ -490,75 +588,95 @@ class TestDefaultConflicts:
             def loop_inputs(self):
                 return [InputParam("timesteps", required=True)]
 
-        with pytest.warns(FutureWarning, match="'strength'"):
+        with warns("'second' declares default 0.9999 for input 'strength'.*The loop keeps the earlier declaration"):
             Loop().inputs
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", FutureWarning)
+        with quiet():
             inputs = Loop.from_blocks_dict(
                 {"first": FirstBlock(), "second": SecondBlock()},
                 input_overrides={"strength": InputParam("strength", default=0.9999)},
             ).inputs
         assert [inp.default for inp in inputs if inp.name == "strength"] == [0.9999]
 
-    def test_branch_defaults_against_a_value_are_a_conflict(self):
+    def test_value_after_branch_defaults_is_a_conflict_the_reverse_is_not(self):
+        # the running branch fills in its default first, so a later leaf default is never the one in use: the composite
+        # is told. A conditional block after a value declares fallbacks for when the input is still unset, nothing to say
         FirstBlock, _ = self._blocks(0.5, None)
         Auto = strength_auto_blocks(0.3, 0.9999)
-
-        class ValueThenAuto(SequentialPipelineBlocks):
-            block_classes = [FirstBlock, Auto]
-            block_names = ["first", "auto"]
-
-        with pytest.warns(FutureWarning, match="'auto' declares per-branch defaults .* declares default 0.5"):
-            inputs = ValueThenAuto().inputs
-        assert [(inp.default, inp.defaults_by_block) for inp in inputs if inp.name == "strength"] == [(0.5, None)]
 
         class AutoThenValue(SequentialPipelineBlocks):
             block_classes = [Auto, FirstBlock]
             block_names = ["auto", "first"]
 
-        with pytest.warns(FutureWarning, match="'first' declares default 0.5 .* declares per-branch defaults"):
+        with warns("'first' declares default 0.5 .* declares per-branch defaults"):
             AutoThenValue().inputs
 
-    def test_branch_without_default_has_no_opinion(self):
-        # one branch agrees with the earlier value and the other declares no default: nothing to settle
-        FirstBlock, _ = self._blocks(0.3, None)
-
-        class Blocks(SequentialPipelineBlocks):
-            block_classes = [FirstBlock, strength_auto_blocks(0.3, None)]
+        class ValueThenAuto(SequentialPipelineBlocks):
+            block_classes = [FirstBlock, Auto]
             block_names = ["first", "auto"]
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", FutureWarning)
-            Blocks().inputs
+        with quiet():
+            inputs = ValueThenAuto().inputs
+        assert [(inp.default, inp.defaults_by_block) for inp in inputs if inp.name == "strength"] == [(0.5, None)]
 
-    def test_branch_defaults_are_carried_onto_an_entry_without_default(self):
-        FirstBlock, _ = self._blocks(None, None)
+    def test_declarations_without_a_value_never_conflict(self):
+        # `None` and per-branch defaults both carry `default=None`: nothing to pre-fill, nothing to disagree about
+        Auto = strength_auto_blocks(0.3, 0.9999)
+        NoneBlock, _ = self._blocks(None, None)
 
-        class Blocks(SequentialPipelineBlocks):
-            block_classes = [FirstBlock, strength_auto_blocks(0.3, 0.9999)]
+        class NoneThenAuto(SequentialPipelineBlocks):
+            block_classes = [NoneBlock, Auto]
             block_names = ["first", "auto"]
 
-        blocks = Blocks()
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", FutureWarning)
-            (strength,) = [inp for inp in blocks.inputs if inp.name == "strength"]
-        assert strength.default is None
-        assert strength.defaults_by_block == {"auto.inpaint": 0.9999, "auto.img2img": 0.3}
-        (first,) = [inp for inp in blocks.sub_blocks["first"].inputs if inp.name == "strength"]
-        assert first.defaults_by_block is None
+        with quiet():
+            (strength,) = [inp for inp in NoneThenAuto().inputs if inp.name == "strength"]
+        assert (strength.default, strength.defaults_by_block) == (None, None)
+
+        class AutoThenNone(SequentialPipelineBlocks):
+            block_classes = [Auto, NoneBlock]
+            block_names = ["auto", "first"]
+
+        with quiet():
+            AutoThenNone().inputs
+
+        class AutoThenAuto(SequentialPipelineBlocks):
+            block_classes = [Auto, strength_auto_blocks(0.9999, 0.3)]
+            block_names = ["a", "b"]
+
+        with quiet():
+            AutoThenAuto().inputs
+
+    def test_value_after_a_required_branch_is_a_conflict(self):
+        # one branch requires the input and the other does not declare it, so the auto block records
+        # {"img2img": REQUIRED} with default `None`; the rule compares defaults only, so a later 0.5 is told it is not
+        # the one in use (it is, in the branch that does not declare the input: a known imprecision of the rule)
+        FirstBlock, _ = self._blocks(0.5, None)
+        Auto = strength_auto_blocks(REQUIRED, ...)
+
+        class Blocks(SequentialPipelineBlocks):
+            block_classes = [Auto, FirstBlock]
+            block_names = ["auto", "first"]
+
+        with warns("'first' declares default 0.5 .* per-branch defaults {'img2img': required}"):
+            (strength,) = [inp for inp in Blocks().inputs if inp.name == "strength"]
+        assert (strength.required, strength.default, strength.defaults_by_block) == (
+            False,
+            None,
+            {"img2img": REQUIRED},
+        )
+
+    def test_required_branch_does_not_satisfy_a_later_requirement(self):
+        # the auto block's map holds only a requirement and a `None`, so a later block requiring the input makes it
+        # a required pipeline input
+        Auto = strength_auto_blocks(REQUIRED, ...)
+
+        class Blocks(SequentialPipelineBlocks):
+            block_classes = [Auto, RequiresStrengthBlock]
+            block_names = ["auto", "requires"]
+
+        assert required_flags(Blocks(), "strength") == {"strength": True}
 
     def test_branch_defaults_satisfy_a_later_requirement(self):
-        class RequiresStrengthBlock(ModularPipelineBlocks):
-            model_name = "test"
-
-            @property
-            def inputs(self):
-                return [InputParam("strength", required=True)]
-
-            def __call__(self, components, state):
-                return components, state
-
         class Blocks(SequentialPipelineBlocks):
             block_classes = [strength_auto_blocks(0.3, 0.9999), RequiresStrengthBlock]
             block_names = ["auto", "requires"]

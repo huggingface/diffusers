@@ -332,15 +332,15 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           clip_skip (`None`, *optional*):
               TODO: Add description.
-          ip_adapter_image (`Image | ndarray | Tensor | list | list | list`, *optional*):
+          ip_adapter_image (`Image | ndarray | Tensor | list | list | list`, *optional*, required, depending on the workflow):
               The image(s) to be used as ip adapter
           height (`None`, *optional*):
               TODO: Add description.
           width (`None`, *optional*):
               TODO: Add description.
-          image (`None`, *optional*):
+          image (`None`, *optional*, required, depending on the workflow):
               TODO: Add description.
-          mask_image (`None`, *optional*):
+          mask_image (`None`, *optional*, required, depending on the workflow):
               TODO: Add description.
           padding_mask_crop (`None`, *optional*):
               TODO: Add description.
@@ -371,10 +371,10 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           latents (`None`, *optional*):
               TODO: Add description.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`, *optional*, required, depending on the workflow):
               The latents representing the reference image for image-to-image/inpainting generation. Can be generated
               in vae_encode step.
-          mask (`Tensor`, *optional*):
+          mask (`Tensor`, *optional*, required, depending on the workflow):
               The mask for the inpainting generation. Can be generated in vae_encode step.
           masked_image_latents (`Tensor`, *optional*):
               The masked image latents for the inpainting generation (only for inpainting-specific unet). Can be
@@ -395,9 +395,9 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           negative_aesthetic_score (`None`, *optional*, defaults to 2.0):
               TODO: Add description.
-          control_image (`None`, *optional*):
+          control_image (`None`, *optional*, required, depending on the workflow):
               TODO: Add description.
-          control_mode (`None`, *optional*):
+          control_mode (`None`, *optional*, required, depending on the workflow):
               TODO: Add description.
           control_guidance_start (`None`, *optional*, defaults to 0.0):
               TODO: Add description.
@@ -410,12 +410,12 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
           crops_coords (`tuple | NoneType`, *optional*):
               The crop coordinates to use for preprocess/postprocess the image and mask, for inpainting task only. Can
               be generated in vae_encode step.
-          controlnet_cond (`Tensor`, *optional*):
+          controlnet_cond (`Tensor`, *optional*, required, depending on the workflow):
               The control image to use for the denoising process. Can be generated in prepare_controlnet_inputs step.
           conditioning_scale (`float`, *optional*):
               The controlnet conditioning scale value to use for the denoising process. Can be generated in
               prepare_controlnet_inputs step.
-          controlnet_keep (`list`, *optional*):
+          controlnet_keep (`list`, *optional*, required, depending on the workflow):
               The controlnet keep values to use for the denoising process. Can be generated in
               prepare_controlnet_inputs step.
           **denoiser_input_fields (`None`, *optional*):
@@ -430,6 +430,8 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
               created and added to the pipeline state
           eta (`None`, *optional*, defaults to 0.0):
               TODO: Add description.
+          noise (`Tensor | NoneType`, *optional*):
+              The noise added to the image latents, for inpainting task only. Can be generated in prepare_latent step.
           output_type (`None`, *optional*, defaults to pil):
               TODO: Add description.
 
