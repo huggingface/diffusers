@@ -736,7 +736,7 @@ class QwenImageEditAutoBlocks(SequentialPipelineBlocks):
               The prompt or prompts to guide image generation.
           negative_prompt (`str`, *optional*):
               The prompt or prompts not to guide the image generation.
-          mask_image (`Image`, *optional*):
+          mask_image (`Image`, *optional*, required, depending on the workflow):
               Mask image for inpainting.
           padding_mask_crop (`int`, *optional*):
               Padding for mask cropping in inpainting.

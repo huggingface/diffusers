@@ -34,11 +34,11 @@ class Cosmos3DistilledAutoVaeEncoderStep(ConditionalPipelineBlocks):
               Latent-frame indexes to preserve from the conditioning video.
           condition_video_keep (`str`, *optional*, defaults to first):
               Which end of a longer conditioning video to use: `first` or `last`.
-          num_frames (`int`, *optional*):
+          num_frames (`int`, *optional*, required, depending on the workflow):
               Number of frames to generate.
-          height (`int`, *optional*):
+          height (`int`, *optional*, required, depending on the workflow):
               Height of the generated video in pixels.
-          width (`int`, *optional*):
+          width (`int`, *optional*, required, depending on the workflow):
               Width of the generated video in pixels.
           image (`None`, *optional*):
               Reference image for image-to-video conditioning.

@@ -301,7 +301,7 @@ class FluxAutoBeforeDenoiseStep(AutoPipelineBlocks):
               TODO: Add description.
           guidance_scale (`None`, *optional*, defaults to 3.5):
               TODO: Add description.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`, *optional*, required, depending on the workflow):
               The image latents to use for the denoising process. Can be generated in vae encoder and packed in input
               step.
           prompt_embeds (`None`, *optional*):

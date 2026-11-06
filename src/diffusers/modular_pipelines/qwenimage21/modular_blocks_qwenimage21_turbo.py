@@ -100,7 +100,7 @@ class QwenImage21TurboAutoTextEncoderStep(AutoPipelineBlocks):
           (`Qwen3VLProcessor`)
 
       Inputs:
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, required, depending on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
           output_resolution (`int`, *optional*, defaults to 1024):
               Target side length used to derive the output size and to resize condition images.
@@ -192,7 +192,7 @@ class QwenImage21TurboAutoVaeEncoderStep(AutoPipelineBlocks):
           image_processor (`VaeImageProcessor`) vae (`AutoencoderKLQwenImage21`)
 
       Inputs:
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, required, depending on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
           output_resolution (`int`, *optional*, defaults to 1024):
               Target side length used to derive the output size and to resize condition images.
@@ -407,7 +407,7 @@ class QwenImage21TurboAutoCoreDenoiseStep(AutoPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
-          image_latents (`list`, *optional*):
+          image_latents (`list`, *optional*, required, depending on the workflow):
               Normalized latents of each condition image. Can be generated from vae_encoder step.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
@@ -483,7 +483,7 @@ class QwenImage21TurboAutoBlocks(SequentialPipelineBlocks):
           sample_sigmas (default: None): Sampling grid the checkpoint ships with, used when `sigmas` is not passed.
 
       Inputs:
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, required, depending on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
           output_resolution (`int`, *optional*, defaults to 1024):
               Target side length used to derive the output size and to resize condition images.
@@ -497,7 +497,7 @@ class QwenImage21TurboAutoBlocks(SequentialPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
-          image_latents (`list`, *optional*):
+          image_latents (`list`, *optional*, required, depending on the workflow):
               Normalized latents of each condition image. Can be generated from vae_encoder step.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
