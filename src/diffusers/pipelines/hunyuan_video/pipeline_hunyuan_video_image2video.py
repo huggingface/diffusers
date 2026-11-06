@@ -651,7 +651,7 @@ class HunyuanVideoImageToVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoader
         prompt_template: dict[str, Any] = DEFAULT_PROMPT_TEMPLATE,
         max_sequence_length: int = 256,
         image_embed_interleave: int | None = None,
-    ):
+    ) -> HunyuanVideoPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

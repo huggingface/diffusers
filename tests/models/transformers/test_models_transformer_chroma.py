@@ -20,6 +20,7 @@ from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
+    AttentionTesterMixin,
     BaseModelTesterConfig,
     LoraHotSwappingForModelTesterMixin,
     LoraTesterMixin,
@@ -125,6 +126,10 @@ class TestChromaTransformer(ChromaTransformerTesterConfig, ModelTesterMixin):
             "output with deprecated inputs (img_ids and txt_ids as 3d torch tensors) "
             "are not equal as them as 2d inputs"
         )
+
+
+class TestChromaTransformerAttention(ChromaTransformerTesterConfig, AttentionTesterMixin):
+    """Attention processor tests for Chroma Transformer."""
 
 
 class TestChromaTransformerTraining(ChromaTransformerTesterConfig, TrainingTesterMixin):

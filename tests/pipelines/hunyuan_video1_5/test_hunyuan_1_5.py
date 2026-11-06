@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
+import pytest
 import torch
 from transformers import (
     AutoConfig,
@@ -32,16 +31,16 @@ from diffusers import (
 )
 from diffusers.guiders import ClassifierFreeGuidance
 
-from ...testing_utils import enable_full_determinism
-from ..test_pipelines_common import PipelineTesterMixin
+from ...testing_utils import assert_tensors_close, enable_full_determinism
+from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class HunyuanVideo15PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class HunyuanVideo15PipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = HunyuanVideo15Pipeline
-    params = frozenset(
+    required_input_params_in_call_signature = frozenset(
         [
             "prompt",
             "negative_prompt",
@@ -57,12 +56,12 @@ class HunyuanVideo15PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "negative_prompt_embeds_mask_2",
         ]
     )
-    batch_params = ["prompt", "negative_prompt"]
-    required_optional_params = frozenset(["num_inference_steps", "generator", "latents", "return_dict"])
-    test_attention_slicing = False
-    test_xformers_attention = False
-    test_layerwise_casting = True
-    test_group_offloading = False
+    batch_input_params = frozenset(["prompt", "negative_prompt"])
+    output_shape = (9, 3, 16, 16)
+    # HunyuanVideo 1.5 is a video pipeline: it exposes `num_videos_per_prompt`, not `num_images_per_prompt`.
+    optional_input_params = frozenset(
+        ["num_inference_steps", "num_videos_per_prompt", "generator", "latents", "output_type", "return_dict"]
+    )
 
     def get_dummy_components(self, num_layers: int = 1):
         torch.manual_seed(0)
@@ -126,7 +125,7 @@ class HunyuanVideo15PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         guider = ClassifierFreeGuidance(guidance_scale=1.0)
 
-        components = {
+        return {
             "transformer": transformer.eval(),
             "vae": vae.eval(),
             "scheduler": scheduler,
@@ -136,59 +135,49 @@ class HunyuanVideo15PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "tokenizer_2": tokenizer_2,
             "guider": guider,
         }
-        return components
 
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-
-        inputs = {
+    def get_dummy_inputs(self):
+        return {
             "prompt": "monkey",
-            "generator": generator,
+            "generator": self.get_generator(0),
             "num_inference_steps": 2,
             "height": 16,
             "width": 16,
             "num_frames": 9,
+            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
-        return inputs
 
+
+class TestHunyuanVideo15Pipeline(HunyuanVideo15PipelineTesterConfig, PipelineTesterMixin):
     def test_inference(self):
-        device = "cpu"
+        # Run on CPU: the expected slice below is CPU-specific.
+        pipe = self.get_pipeline()
 
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        result = pipe(**inputs)
-        video = result.frames
-
+        video = pipe(**self.get_dummy_inputs()).frames
         generated_video = video[0]
-        self.assertEqual(generated_video.shape, (9, 3, 16, 16))
-        generated_slice = generated_video.flatten()
-        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+        assert generated_video.shape == self.output_shape
 
         # fmt: off
         expected_slice = torch.tensor([0.4296, 0.5549, 0.3088, 0.9115, 0.5049, 0.7926, 0.5549, 0.8618, 0.5091, 0.5075, 0.7117, 0.5292, 0.7053, 0.4864, 0.5206, 0.3878])
         # fmt: on
 
-        self.assertTrue(
-            torch.abs(generated_slice - expected_slice).max() < 1e-3,
-            f"output_slice: {generated_slice}, expected_slice: {expected_slice}",
-        )
+        generated_slice = generated_video.flatten()
+        generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
+        assert_tensors_close(generated_slice, expected_slice, atol=1e-3)
 
-    @unittest.skip("TODO: Test not supported for now because needs to be adjusted to work with guiders.")
+    @pytest.mark.skip("TODO: Test not supported for now because needs to be adjusted to work with guiders.")
     def test_encode_prompt_works_in_isolation(self):
         pass
 
-    @unittest.skip("Needs to be revisited.")
+    @pytest.mark.skip("Needs to be revisited.")
     def test_inference_batch_consistent(self):
-        super().test_inference_batch_consistent()
+        pass
 
-    @unittest.skip("Needs to be revisited.")
+    @pytest.mark.skip("Needs to be revisited.")
     def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical()
+        pass
+
+
+class TestHunyuanVideo15PipelineMemory(HunyuanVideo15PipelineTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests (CPU offload, group offload, layerwise casting) for the HunyuanVideo 1.5 pipeline."""

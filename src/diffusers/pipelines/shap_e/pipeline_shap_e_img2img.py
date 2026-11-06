@@ -182,7 +182,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         frame_size: int = 64,
         output_type: str | None = "pil",  # pil, np, latent, mesh
         return_dict: bool = True,
-    ):
+    ) -> ShapEPipelineOutput | tuple:
         """
         The call function to the pipeline for generation.
 

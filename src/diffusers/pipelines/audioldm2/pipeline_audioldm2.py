@@ -32,6 +32,7 @@ from transformers import (
 )
 
 from ...models import AutoencoderKL
+from ...models.condition_embedders import AudioLDM2ProjectionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     is_accelerate_available,
@@ -43,7 +44,7 @@ from ...utils import (
 from ...utils.import_utils import is_transformers_version
 from ...utils.torch_utils import empty_device_cache, randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
-from .modeling_audioldm2 import AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
+from .modeling_audioldm2 import AudioLDM2UNet2DConditionModel
 
 
 if is_librosa_available():
@@ -864,7 +865,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         callback_steps: int | None = 1,
         cross_attention_kwargs: dict[str, Any] | None = None,
         output_type: str | None = "np",
-    ):
+    ) -> AudioPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

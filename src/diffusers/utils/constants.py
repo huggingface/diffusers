@@ -37,6 +37,17 @@ FLASHPACK_WEIGHTS_NAME = "model.flashpack"
 FLASHPACK_FILE_EXTENSION = "flashpack"
 GGUF_FILE_EXTENSION = "gguf"
 ONNX_EXTERNAL_WEIGHTS_NAME = "weights.pb"
+# Auxiliary (non-weight) files a transformers component saves next to its weights, or as its only files for tokenizers
+# and processors. `DiffusionPipeline.download` uses them to fetch components hosted at the root of a flat,
+# transformers-style repo, and `ModularPipeline` to tell that such a component is present in a local directory.
+TRANSFORMERS_COMPONENT_AUX_FILES = [
+    "chat_template.jinja",
+    "generation_config.json",
+    "preprocessor_config.json",
+    "processor_config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+]
 HUGGINGFACE_CO_RESOLVE_ENDPOINT = os.environ.get("HF_ENDPOINT", "https://huggingface.co")
 DIFFUSERS_DYNAMIC_MODULE_NAME = "diffusers_modules"
 HF_MODULES_CACHE = os.getenv("HF_MODULES_CACHE", os.path.join(HF_HOME, "modules"))

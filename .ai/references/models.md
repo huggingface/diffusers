@@ -8,12 +8,14 @@ Shared reference for model-related conventions, patterns, and gotchas.
 - Prefer descriptive variable names over short ones. For example, prefer spelling out `query` over `q`.
 - Avoid graph breaks for `torch.compile` compatibility — do not insert NumPy operations in forward implementations and any other patterns that can break `torch.compile` compatibility with `fullgraph=True`.
 - No new mandatory dependency without discussion (e.g. `einops`). Optional deps guarded with `is_X_available()` and a dummy in `utils/dummy_*.py`.
+- Pass `forward` inputs by name and return a dataclass with named fields rather than a dict of tensors, and keep `__init__` arguments flat (plain values, not nested dicts) — a dict hides what a signature takes and makes you validate the keys by hand. There are a few standard exceptions, such as `attention_kwargs` and `RFD4ProteinaPipeline`'s `conditioning_features`; use your judgment and bring it up in review if your case needs one.
 
 ## Common model conventions
 
 * Models use `ModelMixin` with `register_to_config` for config serialization. 
 * When adding a new transformer (or reviewing one), skim `src/diffusers/models/transformers/transformer_flux.py`, `src/diffusers/models/transformers/transformer_flux2.py`, `src/diffusers/models/transformers/transformer_qwenimage.py`, and `src/diffusers/models/transformers/transformer_wan.py` first to establish the pattern. Most conventions (mixin set, file structure, naming, gradient-checkpointing implementation, `_no_split_modules` settings, etc.) are easiest to internalize by comparison rather than from a fixed list.
 * **Loading goes through `from_pretrained` / `from_single_file`.** Weights and configs load through the standard paths — never fetched or imported out-of-band at runtime. Don't override or add a custom `from_pretrained`, and don't load weights manually (`load_file(...)`, `hf_hub_download(...)`, or `sys.path.insert(...)` to import a reference repo). For an original-format single checkpoint, add `from_single_file` support (mixin + weight-mapping).
+* **Support only what released checkpoints use.** Ship only the config options, branches, and classes that published checkpoints need. Every config argument must appear in a real released config. Don’t add options for a checkpoint you plan to release later. Add them in the PR that ships that checkpoint. Same bar for runtime arguments, if nothing in the official pipeline/examples/recipes passes a `forward` or `__call__` parameter, don’t add it. Trim those surfaces, then delete the unreachable paths. Smaller surface area is easier to review.
 
 ## Single-file model layout
 
@@ -87,13 +89,18 @@ if num_key_value_groups > 1:
 
 `dim=2` because tensors are `(batch_size, seq_len, num_heads, head_dim)` here. Must be `repeat_interleave`, not `repeat` — the groups are contiguous, and `repeat` gives a silently wrong pairing no shape check catches.
 
-Both compute the same thing, so weigh the two on compatibility and performance and recommend whichever fits the model better.
+Both compute the same thing. What differs is which kernel runs. Under the default backend (`native`, a plain `F.scaled_dot_product_attention`), torch has four kernels:
 
-- **Compatibility.** Most backends do not implement `enable_gqa` yet — flash, FA3, sage, cuDNN and the hub kernels raise on it, as does the context-parallel path. Grep `enable_gqa` in `attention_dispatch.py` for the current list rather than trusting this one; it changes as support lands. The flag limits the model to whichever backends still accept it, while repeating works on all of them.
+| kernel | mask | mismatched q/kv heads (`enable_gqa`) |
+|---|---|---|
+| flash | ✗ | ✓ |
+| efficient | ✓ | ✗ |
+| math | ✓ | ✓ — materializes the full `[batch_size, num_heads, seq_len_q, seq_len_kv]` score matrix |
+| cuDNN | ✓ | ✓ |
 
-- **Performance.** Depends on whether the model passes a mask. With a mask, no fused kernel takes a mask *and* mismatched head counts, so SDPA falls back to math and materializes the full `[batch_size, num_heads, seq_len_q, seq_len_kv]` score matrix — no error, no warning, only memory. Without a mask, flash broadcasts inside the kernel and the flag saves the key/value copy. Both effects scale with sequence length and head count, so measure at the model's real shape; `torch.backends.cuda.can_use_flash_attention(params, debug=True)` and `can_use_efficient_attention` print why a kernel was rejected, which is the fastest way to see which one you actually got.
+It tries them in a priority order and takes the first that accepts the call; the order changes across torch versions and GPUs.
 
-- **Recommendation.** Repeat by default — it is portable and never pathological. Reach for `enable_gqa=True` only when the model never passes a mask *and* the measured saving justifies the narrower backend support. For scale: on Krea 2 at 1024×1024, masked, the flag cost 9.02 GiB and 26.7 ms per call against 0.16 GiB and 4.1 ms repeated; unmasked at the same shape it saved 0.11 GiB and 0.1 ms. `transformer_cosmos3.py` is the in-repo case where it is defensible — causal, never masked.
+If the model passes a mask, repeat the key/value heads: (1) `enable_gqa` is rejected by the context-parallel path, and (2) with a mask it can only land on math or cuDNN — if math comes first, it silently materializes the full score matrix.
 
 ## Model class attributes
 
@@ -190,6 +197,22 @@ _cp_plan = {
 ```
 
 If `None` (default), `enable_parallelism()` with `context_parallel_config` raises `ValueError` unless a `cp_plan` is passed explicitly as an argument. To derive a plan for a new model, study the mechanism in `hooks/context_parallel.py` and `_modeling_parallel.py`, compare existing plans in `transformer_flux.py` and `transformer_wan.py`, then test and adjust — correct plans depend on the model's data flow and require validation.
+
+### `_tp_plan`
+
+**API:** Prefer `Model.from_pretrained(..., parallel_config=TensorParallelConfig(tp_degree=...))`: it shards weights while loading, so each rank reads only its own slice of planned parameters. `model.enable_parallelism(config=TensorParallelConfig(tp_degree=...))` shards a model already in memory, which requires full checkpoint memory on every rank first. Both also accept a `ParallelConfig` containing `tensor_parallel_config`.
+
+The `_tp_plan` maps module paths to sharding styles that determine how each layer's weights and activations are split across ranks:
+
+- **`"colwise"`** shards output features (`weight` dim 0), leaving each rank with a slice of the activation. Use for Q/K/V and unfused FFN input projections.
+- **`"rowwise"`** shards input features (`weight` dim 1), consumes the preceding column-sharded activation, and reduces partial results to a replicated output. Use for attention and FFN output projections.
+- **`"rowwise_split_input"`** uses the same weight split but accepts a replicated input, slicing it on each rank. Use for standalone projections whose inputs are not already sharded.
+
+For fused projections, use `PackedColwiseParallel` / `PackedRowwiseParallel` from `hooks.tensor_parallel` so each logical block is sharded independently. For example, `PackedColwiseParallel([1, 1])` handles an equal-sized SwiGLU gate/up pair. The `blocks` argument gives proportional sizes; when sizes depend on the config, omit it and set `_tp_packed_col_blocks` / `_tp_packed_row_blocks` to the absolute sizes on the `Linear` in `__init__`. Plain sharding across a packed dimension can misalign the pieces.
+
+If `None` (default), both APIs raise `ValueError` when tensor parallelism is requested. `tp_degree` must divide the attention head count and every sharded dimension, including each packed block individually. Attention reshapes and fused splits must use the local activation dimensions — for example, infer the local head count with `query.unflatten(-1, (-1, attn.head_dim))` instead of using the full head count from the config.
+
+To derive a plan, study `hooks/tensor_parallel.py` and the plans in `transformer_flux.py` and `transformer_flux2.py`. Leave layers that need the full hidden dimension replicated unless their data flow supports sharding. Compare outputs numerically against an unsharded model with the same weights and inputs; a plan that runs without shape errors can still produce incorrect results. See [Writing a tensor parallelism plan](https://huggingface.co/docs/diffusers/main/en/training/distributed_inference#writing-a-tensor-parallelism-plan) for more examples.
 
 ### `_supports_gradient_checkpointing`
 

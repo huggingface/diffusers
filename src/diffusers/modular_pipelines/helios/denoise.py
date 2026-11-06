@@ -132,7 +132,9 @@ class HeliosChunkHistorySliceStep(ModularPipelineBlocks):
         return []
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, block_state: BlockState, k: int):
+    def __call__(
+        self, components: HeliosModularPipeline, block_state: BlockState, k: int
+    ) -> tuple[HeliosModularPipeline, BlockState]:
         keep_first_frame = block_state.keep_first_frame
         history_sizes = block_state.history_sizes
         image_latents = block_state.image_latents
@@ -218,7 +220,9 @@ class HeliosI2VChunkHistorySliceStep(ModularPipelineBlocks):
         return []
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, block_state: BlockState, k: int):
+    def __call__(
+        self, components: HeliosModularPipeline, block_state: BlockState, k: int
+    ) -> tuple[HeliosModularPipeline, BlockState]:
         keep_first_frame = block_state.keep_first_frame
         history_sizes = block_state.history_sizes
         image_latents = block_state.image_latents
@@ -257,7 +261,9 @@ class HeliosChunkNoiseGenStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, block_state: BlockState, k: int):
+    def __call__(
+        self, components: HeliosModularPipeline, block_state: BlockState, k: int
+    ) -> tuple[HeliosModularPipeline, BlockState]:
         device = components._execution_device
         block_state.latents = randn_tensor(
             block_state.latent_shape, generator=block_state.generator, device=device, dtype=torch.float32
@@ -291,7 +297,9 @@ class HeliosPyramidChunkNoiseGenStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, block_state: BlockState, k: int):
+    def __call__(
+        self, components: HeliosModularPipeline, block_state: BlockState, k: int
+    ) -> tuple[HeliosModularPipeline, BlockState]:
         device = components._execution_device
         batch_size, num_channels_latents, num_latent_frames, h_latent, w_latent = block_state.latent_shape
 
@@ -337,7 +345,9 @@ class HeliosChunkSchedulerResetStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, block_state: BlockState, k: int):
+    def __call__(
+        self, components: HeliosModularPipeline, block_state: BlockState, k: int
+    ) -> tuple[HeliosModularPipeline, BlockState]:
         device = components._execution_device
         components.scheduler.set_timesteps(
             block_state.num_inference_steps, device=device, sigmas=block_state.sigmas, mu=block_state.mu
@@ -392,7 +402,9 @@ class HeliosChunkDenoiseInner(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, block_state: BlockState, k: int):
+    def __call__(
+        self, components: HeliosModularPipeline, block_state: BlockState, k: int
+    ) -> tuple[HeliosModularPipeline, BlockState]:
         latents = block_state.latents
         timesteps = block_state.timesteps
         num_inference_steps = block_state.num_inference_steps
@@ -511,7 +523,9 @@ class HeliosPyramidChunkDenoiseInner(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, block_state: BlockState, k: int):
+    def __call__(
+        self, components: HeliosModularPipeline, block_state: BlockState, k: int
+    ) -> tuple[HeliosModularPipeline, BlockState]:
         device = components._execution_device
         transformer_dtype = components.transformer.dtype
         latents = block_state.latents
@@ -685,7 +699,9 @@ class HeliosChunkUpdateStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, block_state: BlockState, k: int):
+    def __call__(
+        self, components: HeliosModularPipeline, block_state: BlockState, k: int
+    ) -> tuple[HeliosModularPipeline, BlockState]:
         # e. Collect denoised latents for this chunk
         block_state.latent_chunks.append(block_state.latents)
 
@@ -733,7 +749,9 @@ class HeliosChunkLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: HeliosModularPipeline, state: PipelineState
+    ) -> tuple[HeliosModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         block_state.latent_chunks = []
 
@@ -848,7 +866,9 @@ class HeliosPyramidDistilledChunkDenoiseInner(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: HeliosModularPipeline, block_state: BlockState, k: int):
+    def __call__(
+        self, components: HeliosModularPipeline, block_state: BlockState, k: int
+    ) -> tuple[HeliosModularPipeline, BlockState]:
         device = components._execution_device
         transformer_dtype = components.transformer.dtype
         latents = block_state.latents

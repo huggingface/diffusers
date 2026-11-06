@@ -10,8 +10,6 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-[[open-in-colab]]
-
 # Community pipelines and components
 
 Community pipelines are [`DiffusionPipeline`] classes that are different from the original paper implementation. They provide additional functionality or extend the original pipeline implementation.
@@ -19,17 +17,17 @@ Community pipelines are [`DiffusionPipeline`] classes that are different from th
 > [!TIP]
 > Check out the community pipelines in [diffusers/examples/community](https://github.com/huggingface/diffusers/tree/main/examples/community) with inference and training examples for how to use them.
 
-Community pipelines are either stored on the Hub or the Diffusers' GitHub repository. Hub pipelines are completely customizable (scheduler, models, pipeline code, etc.) while GitHub pipelines are limited to only the custom pipeline code. Further compare the two community pipeline types in the table below.
+Community pipelines are either stored on the Hub or the Diffusers' GitHub repository. Hub pipelines are completely customizable (scheduler, models, pipeline code, etc.) while GitHub pipelines are limited to only the custom pipeline code. Compare the two pipeline types in the table below.
 
 |  | GitHub | Hub |
 |---|---|---|
-| Usage | Same. | Same. |
+| Usage | `custom_pipeline="<filename_without_.py>"` | Hub repo id or `trust_remote_code=True` when `_class_name` points at custom code |
 | Review process | Open a Pull Request on GitHub and undergo a review process from the Diffusers team before merging. This option is slower. | Upload directly to a Hub repository without a review. This is the fastest option. |
 | Visibility | Included in the official Diffusers repository and docs. | Included on your Hub profile and relies on your own usage and promotion to gain visibility. |
 
-## custom_pipeline
+## Loading a community pipeline
 
-Load either community pipeline types by passing the `custom_pipeline` argument to [`~DiffusionPipeline.from_pretrained`].
+Load either type of community pipeline by passing `custom_pipeline` to [`~DiffusionPipeline.from_pretrained`].
 
 ```py
 import torch
@@ -52,7 +50,7 @@ from diffusers import DiffusionPipeline
 pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-3-medium-diffusers",
     custom_pipeline="pipeline_stable_diffusion_3_instruct_pix2pix",
-    custom_revision="main"
+    custom_revision="main",
     dtype=torch.float16,
     device_map="cuda"  # or "mps", "xpu", "cpu"
 )
@@ -72,6 +70,7 @@ There are a few ways to load a community pipeline.
   pipeline = DiffusionPipeline.from_pretrained(
       "stabilityai/stable-diffusion-3-medium-diffusers",
       custom_pipeline="path/to/pipeline_directory",
+      trust_remote_code=True,
       dtype=torch.float16,
       device_map="cuda"  # or "mps", "xpu", "cpu"
   )
@@ -83,9 +82,11 @@ There are a few ways to load a community pipeline.
   import torch
   from diffusers import DiffusionPipeline
 
-  pipeline_sd = DiffusionPipeline.from_pretrained("emilianJR/CyberRealistic_V3", dtype=torch.float16, device_map="cuda")  # or "mps", "xpu", "cpu"
+  pipeline_sd = DiffusionPipeline.from_pretrained(
+      "emilianJR/CyberRealistic_V3", dtype=torch.float16, device_map="cuda"  # or "mps", "xpu", "cpu"
+  )
   pipeline_lpw = DiffusionPipeline.from_pipe(
-      pipeline_sd, custom_pipeline="lpw_stable_diffusion", device_map="cuda"
+      pipeline_sd, custom_pipeline="lpw_stable_diffusion"
   )
   ```
 
@@ -93,7 +94,8 @@ There are a few ways to load a community pipeline.
 
 ## Community components
 
-Community components let users build pipelines with custom transformers, UNets, VAEs, and schedulers not supported by Diffusers. These components require Python module implementations. 
+Community components let you build pipelines with custom transformers, UNets, VAEs, and schedulers not supported by Diffusers. These components need their own Python modules.
+
 
 This section shows how users can use community components to build a community pipeline using [showlab/show-1-base](https://huggingface.co/showlab/show-1-base) as an example.
 
@@ -106,8 +108,8 @@ from diffusers import DPMSolverMultistepScheduler
 pipeline_id = "showlab/show-1-base"
 tokenizer = T5Tokenizer.from_pretrained(pipeline_id, subfolder="tokenizer")
 text_encoder = T5EncoderModel.from_pretrained(pipeline_id, subfolder="text_encoder")
-scheduler = DPMSolverMultistepScheduler.from_pretrained(pipe_id, subfolder="scheduler")
-feature_extractor = CLIPImageProcessor.from_pretrained(pipe_id, subfolder="feature_extractor")
+scheduler = DPMSolverMultistepScheduler.from_pretrained(pipeline_id, subfolder="scheduler")
+feature_extractor = CLIPImageProcessor.from_pretrained(pipeline_id, subfolder="feature_extractor")
 ```
 
 > [!WARNING]
@@ -121,7 +123,7 @@ from showone_unet_3d_condition import ShowOneUNet3DConditionModel
 unet = ShowOneUNet3DConditionModel.from_pretrained(pipeline_id, subfolder="unet")
 ```
 
-3. Load the custom pipeline code (already implemented in [pipeline_t2v_base_pixel.py](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/pipeline_t2v_base_pixel.py)). This script contains a custom `TextToVideoIFPipeline` class for generating videos from text. Like the custom UNet, any code required for `TextToVideIFPipeline` should be placed in `pipeline_t2v_base_pixel.py`.
+3. Load the custom pipeline code (already implemented in [pipeline_t2v_base_pixel.py](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/pipeline_t2v_base_pixel.py)). This script contains a custom `TextToVideoIFPipeline` class for generating videos from text. Like the custom UNet, any code required for `TextToVideoIFPipeline` should be placed in `pipeline_t2v_base_pixel.py`.
 
 Initialize `TextToVideoIFPipeline` with `ShowOneUNet3DConditionModel`.
 
@@ -135,9 +137,8 @@ pipeline = TextToVideoIFPipeline(
     tokenizer=tokenizer,
     scheduler=scheduler,
     feature_extractor=feature_extractor,
-    device_map="cuda",  # or "mps", "xpu", "cpu"
-    dtype=torch.float16
 )
+pipeline = pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 ```
 
 4. Push the pipeline to the Hub to share with the community.
@@ -148,7 +149,7 @@ pipeline.push_to_hub("custom-t2v-pipeline")
 
 After the pipeline is successfully pushed, make the following changes.
 
-- Change the `_class_name` attribute in [model_index.json](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/model_index.json#L2) to `"pipeline_t2v_base_pixel"` and `"TextToVideoIFPipeline"`.
+- Change the `_class_name` attribute in [model_index.json](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/model_index.json#L2) to `["pipeline_t2v_base_pixel", "TextToVideoIFPipeline"]`.
 - Upload `showone_unet_3d_condition.py` to the [unet](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/unet/showone_unet_3d_condition.py) subfolder.
 - Upload `pipeline_t2v_base_pixel.py` to the pipeline [repository](https://huggingface.co/sayakpaul/show-1-base-with-code/tree/main).
 
@@ -164,9 +165,9 @@ pipeline = DiffusionPipeline.from_pretrained(
 ```
 
 > [!WARNING]
-> As an additional precaution with `trust_remote_code=True`, we strongly encourage passing a commit hash to the `revision` argument in [`~DiffusionPipeline.from_pretrained`] to make sure the code hasn't been updated with new malicious code (unless you fully trust the model owners).
+> As an additional precaution with `trust_remote_code=True`, pass a commit hash to the `revision` argument in [`~DiffusionPipeline.from_pretrained`] to make sure the code hasn't been updated with new malicious code (unless you fully trust the model owners).
 
-## Resources
+## Next steps
 
 - Take a look at Issue [#841](https://github.com/huggingface/diffusers/issues/841) for more context about why we're adding community pipelines to help everyone easily share their work without being slowed down.
 - Check out the [stabilityai/japanese-stable-diffusion-xl](https://huggingface.co/stabilityai/japanese-stable-diffusion-xl/) repository for an additional example of a community pipeline that also uses the `trust_remote_code` feature.

@@ -96,7 +96,9 @@ class MiniMaxH3AfterDenoiseStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         patch_t, patch_h, patch_w = components.patch_size
         channels = components.vae_latent_channels
@@ -134,9 +136,8 @@ class MiniMaxH3VideoDecodeStep(ModularPipelineBlocks):
     def description(self) -> str:
         return (
             "Denormalizes the generated video latents and decodes them into video. The spatial tiling of the video "
-            "VAE covers the canvas exactly, so the decoded frames need no crop back, but the decode itself runs under "
-            "float16 autocast even though the VAE weights are float32, and the VAE produces ImageNet-normalized RGB "
-            "that is reverted here."
+            "VAE covers the canvas exactly, so the decoded frames need no crop back, and the VAE produces "
+            "ImageNet-normalized RGB that is reverted here."
         )
 
     @property
@@ -170,7 +171,9 @@ class MiniMaxH3VideoDecodeStep(ModularPipelineBlocks):
         return [OutputParam.template("videos", description="The generated video.")]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -184,8 +187,7 @@ class MiniMaxH3VideoDecodeStep(ModularPipelineBlocks):
         latents_std = torch.tensor(components.vae.config.latents_std, device=device).view(1, -1, 1, 1, 1)
         latents = block_state.latents * latents_std + latents_mean
 
-        with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=device.type == "cuda"):
-            video = components.vae.decode(latents, return_dict=False)[0]
+        video = components.vae.decode(latents, return_dict=False)[0]
         pixel_mean = torch.tensor(components.pixel_mean, device=device).view(1, -1, 1, 1, 1)
         pixel_std = torch.tensor(components.pixel_std, device=device).view(1, -1, 1, 1, 1)
         video = (video.float() * pixel_std + pixel_mean).clamp(0, 1)
@@ -236,7 +238,9 @@ class MiniMaxH3AudioDecodeStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxH3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxH3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxH3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 

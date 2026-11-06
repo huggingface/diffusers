@@ -468,7 +468,7 @@ class AnyFlowDualTimestepTextImageEmbeddingCausal(nn.Module):
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
         far_cfg=None,
         clean_timestep=None,
-    ):
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
         if self.deltatime_type == "r":
             delta_timestep = r_timestep
         elif self.deltatime_type == "t-r":
@@ -749,7 +749,7 @@ class AnyFlowCausalRotaryPosEmbed(nn.Module):
         freqs = torch.cat([freqs_f, freqs_h, freqs_w], dim=-1)
         return freqs
 
-    def forward(self, far_cfg, device, clean_hidden_states=None):
+    def forward(self, far_cfg, device, clean_hidden_states=None) -> dict[str, torch.Tensor]:
         full_frame_freqs = self._forward_full_frame(
             num_frames=far_cfg["total_frames"],
             height=far_cfg["full_frame_shape"][0],

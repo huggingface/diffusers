@@ -121,7 +121,9 @@ class ErnieImagePromptEnhancerStep(ModularPipelineBlocks):
         return pe_tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
 
     @torch.no_grad()
-    def __call__(self, components: ErnieImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: ErnieImageModularPipeline, state: PipelineState
+    ) -> tuple[ErnieImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -223,7 +225,9 @@ class ErnieImageTextEncoderStep(ModularPipelineBlocks):
         return text_hiddens
 
     @torch.no_grad()
-    def __call__(self, components: ErnieImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: ErnieImageModularPipeline, state: PipelineState
+    ) -> tuple[ErnieImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 

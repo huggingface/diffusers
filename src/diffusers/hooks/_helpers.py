@@ -27,6 +27,7 @@ class TransformerBlockMetadata:
     return_hidden_states_index: int = None
     return_encoder_hidden_states_index: int = None
     hidden_states_argument_name: str = "hidden_states"
+    encoder_hidden_states_argument_name: str = "encoder_hidden_states"
 
     _cls: Type = None
     _cached_parameter_indices: dict[str, int] = None
@@ -174,7 +175,9 @@ def _register_transformer_blocks_metadata():
     from ..models.transformers.cogvideox_transformer_3d import CogVideoXBlock
     from ..models.transformers.transformer_bria import BriaTransformerBlock
     from ..models.transformers.transformer_cogview4 import CogView4TransformerBlock
+    from ..models.transformers.transformer_cosmos3 import Cosmos3VLTextMoTDecoderLayer
     from ..models.transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
+    from ..models.transformers.transformer_flux2 import Flux2SingleTransformerBlock, Flux2TransformerBlock
     from ..models.transformers.transformer_hunyuan_video import (
         HunyuanVideoSingleTransformerBlock,
         HunyuanVideoTokenReplaceSingleTransformerBlock,
@@ -230,6 +233,17 @@ def _register_transformer_blocks_metadata():
         ),
     )
 
+    # Cosmos 3
+    TransformerBlockRegistry.register(
+        model_class=Cosmos3VLTextMoTDecoderLayer,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=1,
+            return_encoder_hidden_states_index=0,
+            hidden_states_argument_name="gen_seq",
+            encoder_hidden_states_argument_name="und_seq",
+        ),
+    )
+
     # Flux
     TransformerBlockRegistry.register(
         model_class=FluxTransformerBlock,
@@ -243,6 +257,22 @@ def _register_transformer_blocks_metadata():
         metadata=TransformerBlockMetadata(
             return_hidden_states_index=1,
             return_encoder_hidden_states_index=0,
+        ),
+    )
+
+    # Flux2
+    TransformerBlockRegistry.register(
+        model_class=Flux2TransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=1,
+            return_encoder_hidden_states_index=0,
+        ),
+    )
+    TransformerBlockRegistry.register(
+        model_class=Flux2SingleTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=None,
         ),
     )
 

@@ -383,6 +383,11 @@ def _load_lora_into_text_encoder(
         # convert state dict
         state_dict = convert_state_dict_to_peft(state_dict)
 
+        # CLIPTextModel is flattened in recent transformers versions, while older
+        # LoRA checkpoints can still contain the 'text_model.' prefix.
+        if not hasattr(text_encoder, "text_model"):
+            state_dict = {k.removeprefix("text_model."): v for k, v in state_dict.items()}
+
         for name, _ in text_encoder.named_modules():
             if name.endswith((".q_proj", ".k_proj", ".v_proj", ".out_proj", ".fc1", ".fc2")):
                 rank_key = f"{name}.lora_B.weight"
@@ -693,7 +698,9 @@ class LoraBaseMixin:
     def set_adapters(
         self,
         adapter_names: list[str] | str,
-        adapter_weights: float | dict | list[float] | list[dict] | None = None,
+        adapter_weights: (
+            float | dict[str, float | dict | None] | list[float | dict[str, float | dict | None] | None] | None
+        ) = None,
     ):
         """
         Set the currently active adapters for use in the pipeline.
@@ -701,9 +708,13 @@ class LoraBaseMixin:
         Args:
             adapter_names (`list[str]` or `str`):
                 The names of the adapters to use.
-            adapter_weights (`list[float, float]`, *optional*):
-                The adapter(s) weights to use with the UNet. If `None`, the weights are set to `1.0` for all the
-                adapters.
+            adapter_weights (`float`, `dict` or `list`, *optional*):
+                Weights for the adapters. A scalar scales all LoRA-compatible components. A dictionary maps component
+                names (e.g. `"unet"`, `"transformer"` or `"text_encoder"`) to weights; a UNet component's weight can
+                also be a nested dictionary of block scales. A single scalar or dictionary is applied to every adapter.
+                A list must contain one scalar, dictionary or `None` per adapter, in the order of `adapter_names`.
+                `None` defaults to `1.0`, including list entries and component weights. Unspecified components and UNet
+                blocks also default to `1.0`.
 
         Example:
 
@@ -717,8 +728,14 @@ class LoraBaseMixin:
         pipeline.load_lora_weights(
             "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
         )
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.set_adapters(["cinematic", "pixel"], adapter_weights=[0.5, 0.5])
+        pipeline.load_lora_weights(
+            "troveski/sdxl-lora", weight_name="pytorch_lora_weights.safetensors", adapter_name="illustration"
+        )
+        pipeline.set_adapters(["cinematic", "illustration"], adapter_weights=[0.5, 0.5])
+        pipeline.set_adapters(
+            ["cinematic", "illustration"],
+            adapter_weights=[{"unet": 0.5}, {"unet": 0.8, "text_encoder": 0.6}],
+        )
         ```
         """
         if isinstance(adapter_weights, dict):
@@ -772,7 +789,7 @@ class LoraBaseMixin:
 
             for adapter_name, weights in zip(adapter_names, adapter_weights):
                 if isinstance(weights, dict):
-                    component_adapter_weights = weights.pop(component, None)
+                    component_adapter_weights = weights.get(component, None)
                     if component_adapter_weights is not None and component not in invert_list_adapters[adapter_name]:
                         logger.warning(
                             (
@@ -916,7 +933,7 @@ class LoraBaseMixin:
 
         for component in self._lora_loadable_modules:
             model = getattr(self, component, None)
-            if model is not None and issubclass(model.__class__, ModelMixin):
+            if model is not None and issubclass(model.__class__, (ModelMixin, PreTrainedModel)):
                 for module in model.modules():
                     if isinstance(module, BaseTunerLayer):
                         active_adapters = module.active_adapters

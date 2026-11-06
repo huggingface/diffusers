@@ -466,7 +466,7 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 256,
-    ):
+    ) -> MochiPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
@@ -633,6 +633,9 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         self._num_timesteps = len(timesteps)
 
         # 6. Denoising loop
+        # We set the index here to remove DtoH sync, helpful especially during compilation.
+        # Check out more details here: https://github.com/huggingface/diffusers/pull/11696
+        self.scheduler.set_begin_index(0)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:

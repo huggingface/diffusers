@@ -50,6 +50,10 @@ Utility and helper functions for working with 🤗 Diffusers.
 
 [[autodoc]] utils.torch_utils.randn_tensor
 
+## TorchDeviceBackend
+
+[[autodoc]] utils.torch_utils.TorchDeviceBackend
+
 ## apply_layerwise_casting
 
 [[autodoc]] hooks.layerwise_casting.apply_layerwise_casting

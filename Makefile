@@ -37,6 +37,7 @@ repo-consistency:
 	python utils/check_repo.py
 	python utils/check_inits.py
 	python utils/check_forward_call_docstrings.py
+	python utils/check_return_annotations.py
 
 # this target runs checks on all files
 
@@ -79,6 +80,10 @@ modular-autodoctrings:
 # Verify forward() / __call__() arguments are documented in their docstrings
 check-forward-call-docstrings:
 	python utils/check_forward_call_docstrings.py
+
+# Verify forward() / __call__() have return type annotations
+check-return-annotations:
+	python utils/check_return_annotations.py
 
 # Run tests for the library
 
