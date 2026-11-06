@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import importlib
+import math
 import os
 import warnings
 
@@ -240,6 +241,43 @@ class TestFourierFilter:
             out = fourier_filter(x, threshold=1, scale=0.5)
             assert out.dtype == dtype
             assert out.shape == x.shape
+
+
+class TestResampleAudio:
+    """Tests for :func:`diffusers.utils.torch_utils.resample_audio`."""
+
+    @pytest.mark.parametrize("orig_freq, new_freq", [(48000, 32000), (44100, 32000), (16000, 48000), (22050, 44100)])
+    def test_matches_torchaudio(self, orig_freq, new_freq):
+        torchaudio = pytest.importorskip("torchaudio")
+
+        waveform = torch.randn(2, 4801, generator=torch.Generator("cpu").manual_seed(0))
+
+        expected = torchaudio.transforms.Resample(orig_freq, new_freq)(waveform)
+        resampled = torch_utils.resample_audio(waveform, orig_freq, new_freq)
+
+        # torchaudio's transform and functional forms already differ by ~3e-5 at 44.1 kHz from float32 rounding.
+        assert resampled.shape == expected.shape
+        assert torch.allclose(resampled, expected, atol=1e-4)
+
+    def test_preserves_a_tone_below_the_new_nyquist(self):
+        # A 1 kHz tone resampled from 48 kHz to 32 kHz is the same tone at the new rate, away from the padded edges.
+        orig_freq, new_freq, tone = 48000, 32000, 1000.0
+        waveform = torch.sin(2 * math.pi * tone * torch.arange(orig_freq, dtype=torch.float64) / orig_freq)[None]
+
+        resampled = torch_utils.resample_audio(waveform.float(), orig_freq, new_freq)
+
+        expected = torch.sin(2 * math.pi * tone * torch.arange(new_freq, dtype=torch.float64) / new_freq)
+        assert resampled.shape == (1, new_freq)
+        assert torch.allclose(resampled[0, 100:-100].double(), expected[100:-100], atol=1e-3)
+
+    def test_shape_dtype_and_identity(self):
+        waveform = torch.randn(3, 2, 1000, dtype=torch.float64)
+
+        assert torch_utils.resample_audio(waveform, 48000, 32000).shape == (3, 2, 667)
+        assert torch_utils.resample_audio(waveform, 48000, 32000).dtype == torch.float64
+        assert torch_utils.resample_audio(waveform, 32000, 32000) is waveform
+        with pytest.raises(TypeError, match="floating-point"):
+            torch_utils.resample_audio(torch.zeros(1, 10, dtype=torch.int16), 48000, 32000)
 
 
 class TestRandnTensor:
