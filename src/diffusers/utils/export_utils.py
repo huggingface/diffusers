@@ -303,7 +303,7 @@ def _write_audio(
 
 def encode_video(
     video: list[PIL.Image.Image] | np.ndarray | "torch.Tensor" | Iterator["torch.Tensor"],
-    fps: int,
+    fps: int | float,
     output_path: str,
     audio: "torch.Tensor" | None = None,
     audio_sample_rate: int | None = None,
@@ -318,7 +318,7 @@ def encode_video(
             A video tensor of shape [frames, height, width, channels] with integer pixel values in [0, 255]. If the
             input is a `np.ndarray`, it is expected to be a float array with values in [0, 1] (which is what pipelines
             usually return with `output_type="np"`).
-        fps (`int`)
+        fps (`int` or `float`):
             The frames per second (FPS) of the encoded video.
         output_path (`str`):
             The path to save the encoded video to.
@@ -361,7 +361,7 @@ def encode_video(
     _, height, width, _ = first_chunk.shape
 
     container = av.open(output_path, mode="w")
-    stream = container.add_stream("libx264", rate=int(fps))
+    stream = container.add_stream("libx264", rate=Fraction(fps).limit_denominator(1000))
     stream.width = width
     stream.height = height
     stream.pix_fmt = "yuv420p"
