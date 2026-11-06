@@ -70,7 +70,7 @@ class QwenImageAutoTextEncoderStep(AutoPipelineBlocks):
           The tokenizer to use guider (`ClassifierFreeGuidance`)
 
       Inputs:
-          prompt (`str`, *optional*):
+          prompt (`str`, *optional*, required, depending on the workflow):
               The prompt or prompts to guide image generation.
           negative_prompt (`str`, *optional*):
               The prompt or prompts not to guide the image generation.
@@ -220,7 +220,7 @@ class QwenImageOptionalControlNetVaeEncoderStep(AutoPipelineBlocks):
           (`VaeImageProcessor`)
 
       Inputs:
-          control_image (`Image`, *optional*):
+          control_image (`Image`, *optional*, required, depending on the workflow):
               Control image for ControlNet conditioning.
           height (`int`, *optional*):
               The height in pixels of the generated image.
@@ -1130,15 +1130,15 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
           (`FlowMatchEulerDiscreteScheduler`) transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
-          prompt (`str`, *optional*):
+          prompt (`str`, *optional*, required, depending on the workflow):
               The prompt or prompts to guide image generation.
           negative_prompt (`str`, *optional*):
               The prompt or prompts not to guide the image generation.
           max_sequence_length (`int`, *optional*, defaults to 1024):
               Maximum sequence length for prompt encoding.
-          mask_image (`Image`, *optional*):
+          mask_image (`Image`, *optional*, required, depending on the workflow):
               Mask image for inpainting.
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, required, depending on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
           height (`int`, *optional*):
               The height in pixels of the generated image.
@@ -1148,7 +1148,7 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
               Padding for mask cropping in inpainting.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          control_image (`Image`, *optional*):
+          control_image (`Image`, *optional*, required, depending on the workflow):
               Control image for ControlNet conditioning.
           num_images_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
@@ -1170,13 +1170,13 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
               Additional kwargs for attention processors.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`, *optional*, required, depending on the workflow):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
           processed_mask_image (`Tensor`, *optional*):
               The processed mask image
           strength (`float`, *optional*, defaults to 0.9):
               Strength for img2img/inpainting.
-          control_image_latents (`Tensor`, *optional*):
+          control_image_latents (`Tensor`, *optional*, required, depending on the workflow):
               The control image latents to use for the denoising process. Can be generated in controlnet vae encoder
               step.
           control_guidance_start (`float`, *optional*, defaults to 0.0):

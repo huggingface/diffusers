@@ -252,7 +252,7 @@ class HunyuanVideo15AutoVaeEncoderStep(AutoPipelineBlocks):
           vae (`AutoencoderKLHunyuanVideo15`) video_processor (`HunyuanVideo15ImageProcessor`)
 
       Inputs:
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, required, depending on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
           height (`int`, *optional*):
               The height in pixels of the generated image.
@@ -295,7 +295,7 @@ class HunyuanVideo15AutoImageEncoderStep(AutoPipelineBlocks):
           image_encoder (`SiglipVisionModel`) feature_extractor (`SiglipImageProcessor`)
 
       Inputs:
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, required, depending on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
 
       Outputs:
@@ -351,7 +351,7 @@ class HunyuanVideo15AutoCoreDenoiseStep(AutoPipelineBlocks):
               The number of images to generate per prompt.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`, *optional*, required, depending on the workflow):
               Pre-encoded image latents from the VAE encoder step, used as conditioning for I2V.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
@@ -412,7 +412,7 @@ class HunyuanVideo15AutoBlocks(SequentialPipelineBlocks):
               The prompt or prompts not to guide the image generation.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, required, depending on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
           height (`int`, *optional*):
               The height in pixels of the generated image.
@@ -431,7 +431,7 @@ class HunyuanVideo15AutoBlocks(SequentialPipelineBlocks):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`, *optional*, required, depending on the workflow):
               Pre-encoded image latents from the VAE encoder step, used as conditioning for I2V.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
@@ -485,7 +485,7 @@ class HunyuanVideo15Image2VideoBlocks(SequentialPipelineBlocks):
               The prompt or prompts not to guide the image generation.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, required, depending on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
           height (`int`, *optional*):
               The height in pixels of the generated image.

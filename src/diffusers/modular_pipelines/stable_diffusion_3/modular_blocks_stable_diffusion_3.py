@@ -241,7 +241,7 @@ class StableDiffusion3AutoCoreDenoiseStep(AutoPipelineBlocks):
               The height in pixels of the generated image.
           width (`None`, *optional*):
               The width in pixels of the generated image.
-          image_latents (`None`, *optional*):
+          image_latents (`None`, *optional*, required, depending on the workflow):
               Latent input image_latents to be processed.
           latents (`Tensor | NoneType`, *optional*):
               Pre-generated noisy latents to be used as inputs for image generation.
@@ -330,7 +330,7 @@ class StableDiffusion3AutoBlocks(SequentialPipelineBlocks):
               One or a list of torch generator(s) to make generation deterministic.
           num_images_per_prompt (`None`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          image_latents (`None`, *optional*):
+          image_latents (`None`, *optional*, required, depending on the workflow):
               Latent input image_latents to be processed.
           latents (`Tensor | NoneType`, *optional*):
               Pre-generated noisy latents to be used as inputs for image generation.
