@@ -22,6 +22,7 @@ from .env import EnvironmentCommand
 from .fp16_safetensors import FP16SafetensorsCommand
 from .run import RunCommand
 from .schema import SchemaCommand
+from .serve import ServeCommand
 from .skills import SkillsCommand
 
 
@@ -49,6 +50,7 @@ def main():
     CustomBlocksCommand.register_subcommand(commands_parser)
     RunCommand.register_subcommand(commands_parser)
     SchemaCommand.register_subcommand(commands_parser)
+    ServeCommand.register_subcommand(commands_parser)
     SkillsCommand.register_subcommand(commands_parser)
 
     # Let's go

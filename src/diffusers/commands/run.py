@@ -148,8 +148,10 @@ REMOTE_KEYS = frozenset(
 # ---------------------------------------------------------------------------
 
 
-def _add_loading_arguments(parser: ArgumentParser) -> None:
-    parser.add_argument("--model", "-m", required=True, help="Model id on the Hugging Face Hub or local path.")
+def _add_loading_arguments(parser: ArgumentParser, require_model: bool = True) -> None:
+    parser.add_argument(
+        "--model", "-m", required=require_model, help="Model id on the Hugging Face Hub or local path."
+    )
     parser.add_argument(
         "--device-map",
         default=None,
