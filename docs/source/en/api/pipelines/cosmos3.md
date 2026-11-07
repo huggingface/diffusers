@@ -765,7 +765,39 @@ torchrun --nproc_per_node=4 examples/cosmos3/inference_cosmos3.py \
 
 ### Fitting large models with tensor parallelism
 
-CP shards *activations* but replicates every weight on every rank, so it does not reduce a model's weight footprint — a model that doesn't fit on one GPU still won't fit under CP alone. To shard the **weights**, `enable_cosmos3_tensor_parallel(transformer, tp_mesh)` applies Megatron-style tensor parallelism on a second, orthogonal mesh axis:
+CP shards *activations* but replicates every weight on every rank, so it does not reduce a model's weight footprint — a model that doesn't fit on one GPU still won't fit under CP alone.
+
+For TP-only inference, follow the [tensor parallelism guide](../../training/distributed_inference#tensor-parallelism)
+for distributed setup, launching, seeding, and rank-zero output handling. After initializing the process group
+and selecting each rank's CUDA device, load the modular pipeline as follows:
+
+```python
+import torch
+from diffusers import Cosmos3OmniModularPipeline, Cosmos3OmniTransformer, TensorParallelConfig
+
+model_id = "nvidia/Cosmos3-Super"
+device = torch.device("cuda", torch.cuda.current_device())
+transformer = Cosmos3OmniTransformer.from_pretrained(
+    model_id,
+    subfolder="transformer",
+    dtype=torch.bfloat16,
+    parallel_config=TensorParallelConfig(tp_degree=4),
+)
+pipe = Cosmos3OmniModularPipeline.from_pretrained(model_id)
+pipe.update_components(transformer=transformer)
+pipe.load_components(dtype=torch.bfloat16)
+pipe.enable_safety_checker()
+pipe.to(device)
+```
+
+Continue with the [existing modular workflow](#modular-examples-for-all-existing-workflows)'s scheduler,
+prompts, and generation settings. To use Nano, set `model_id = "nvidia/Cosmos3-Nano"`.
+
+Nano and Super support TP degrees 1, 2, 4, and 8; the degree must divide the query and KV head counts
+and the MLP intermediate size.
+
+To combine TP with CP, the existing example helper
+`enable_cosmos3_tensor_parallel(transformer, tp_mesh)` shards the weights on a second, orthogonal mesh axis:
 
 - The attention and MLP projections are column/row sharded across the TP group (`to_q/to_k/to_v` + `add_q/k/v` and the MLPs' `gate/up` are column-parallel; `to_out/to_add_out` and the MLPs' `down` are row-parallel with an all-reduce). Each rank ends up owning `query_heads / tp` query heads and `kv_heads / tp` KV heads.
 - TP composes with CP on a 2-D `(tp, cp)` device mesh: TP splits heads/weights persistently, CP shards the sequence on top. The constraints are `tp` divides the KV heads (8), and `tp * cp` divides the query heads (32 for `Nano`, 64 for `Super`).

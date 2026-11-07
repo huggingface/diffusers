@@ -13,8 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from functools import partial
+
 import pytest
 import torch
+import torch.multiprocessing as mp
 
 from diffusers import Cosmos3OmniTransformer, SeaCacheConfig
 from diffusers.hooks import sea_cache as sea_cache_module
@@ -27,6 +30,7 @@ from diffusers.models.transformers.transformer_cosmos3 import (
     Cosmos3PackedMoTAttention,
     Cosmos3VLTextMoTDecoderLayer,
 )
+from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -36,8 +40,15 @@ from ..testing_utils import (
     MemoryTesterMixin,
     ModelTesterMixin,
     SeaCacheTesterMixin,
+    TensorParallelTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
+)
+from ..testing_utils.common import cast_inputs_to_dtype
+from ..testing_utils.parallelism import (
+    _find_free_port,
+    _tensor_parallel_from_pretrained_worker,
+    _tensor_parallel_worker,
 )
 
 
@@ -710,3 +721,88 @@ class TestCosmos3OmniTransformerTraining(Cosmos3OmniTransformerTesterConfig, Tra
 
 class TestCosmos3OmniTransformerAttention(Cosmos3OmniTransformerTesterConfig, AttentionTesterMixin):
     pass
+
+
+class Cosmos3TensorParallelTesterConfig(Cosmos3OmniTransformerTesterConfig):
+    hidden_act = "relu2"
+
+    def get_init_dict(self):
+        return {
+            **super().get_init_dict(),
+            "head_dim": 8,
+            "hidden_size": 64,
+            "intermediate_size": 128,
+            "num_attention_heads": 8,
+            "num_key_value_heads": 4,
+            "rope_axes_dim": [2, 1, 1],
+            "attention_bias": True,
+            "hidden_act": self.hidden_act,
+            "qk_norm_for_text": self.hidden_act == "silu",
+            "use_und_k_norm_for_gen": self.hidden_act == "relu2",
+        }
+
+    def get_dummy_inputs(self, batch_size=1):
+        inputs = super().get_dummy_inputs(width=7)
+        device = inputs["input_ids"].device
+        und_len, gen_len = 5 * batch_size, 7 * batch_size
+        indexes = torch.arange(und_len, und_len + gen_len, device=device)
+        inputs.update(
+            input_ids=torch.arange(und_len, device=device) % self.get_init_dict()["vocab_size"],
+            text_indexes=torch.arange(und_len, device=device),
+            position_ids=torch.arange(und_len + gen_len, device=device).expand(3, -1),
+            und_len=und_len,
+            sequence_length=und_len + gen_len,
+            vision_tokens=[inputs["vision_tokens"][0] + index for index in range(batch_size)],
+            vision_token_shapes=inputs["vision_token_shapes"] * batch_size,
+            vision_sequence_indexes=indexes,
+            vision_mse_loss_indexes=indexes,
+            vision_timesteps=torch.ones(gen_len, device=device),
+            vision_noisy_frame_indexes=inputs["vision_noisy_frame_indexes"] * batch_size,
+        )
+        return inputs
+
+
+class TestCosmos3OmniTransformerTensorParallel(Cosmos3TensorParallelTesterConfig, TensorParallelTesterMixin):
+    # Run every inherited TP test for both SiLU (Super) and ReLU2 (Edge) MLP layouts.
+    @pytest.fixture(autouse=True, params=["silu", "relu2"])
+    def activation(self, request):
+        self.hidden_act = request.param
+
+    @pytest.mark.parametrize("sharded", [False, True], ids=["unsharded", "sharded"])
+    def test_tensor_parallel_bfloat16(self, tmp_path, sharded):
+        init_dict = self.get_init_dict()
+        model = self.model_class(**init_dict).eval()
+        model.save_pretrained(tmp_path, max_shard_size="100KB" if sharded else "5GB")
+        assert (tmp_path / SAFE_WEIGHTS_INDEX_NAME).is_file() == sharded
+        reference = self.model_class.from_pretrained(tmp_path, dtype=torch.bfloat16).to(torch_device).eval()
+        expected_dtypes = {name: parameter.dtype for name, parameter in reference.named_parameters()}
+        assert {dtype for name, dtype in expected_dtypes.items() if name.startswith("time_embedder.")} == {
+            torch.float32
+        }
+        assert torch.bfloat16 in expected_dtypes.values()
+        inputs = cast_inputs_to_dtype(self.get_dummy_inputs(), torch.float32, torch.bfloat16)
+        with torch.no_grad():
+            predictions = reference(**inputs, return_dict=False)[0]
+        expected = torch.cat([sample.flatten() for sample in predictions]).float().cpu()
+        inputs = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
+        for k, v in inputs.items():
+            if isinstance(v, list):
+                inputs[k] = [x.cpu() if isinstance(x, torch.Tensor) else x for x in v]
+        state_dict = {name: tensor.cpu() for name, tensor in reference.state_dict().items()}
+
+        with mp.Manager() as manager:
+            for loading in (False, True):
+                result = manager.dict()
+                args = (2, _find_free_port(), self.model_class)
+                if loading:
+                    worker = _tensor_parallel_from_pretrained_worker
+                    args += (str(tmp_path), inputs, result, torch.bfloat16)
+                else:
+                    # Preserve the reference's mixed BF16/FP32 dtypes when rebuilding the in-memory model.
+                    worker = partial(_tensor_parallel_worker, assign=True)
+                    args += (init_dict, inputs, result, state_dict)
+                mp.spawn(worker, args=args, nprocs=2, join=True)
+                assert result.get("status") == "success", result.get("error", "Unknown error")
+                torch.testing.assert_close(expected, torch.tensor(result["output"]), atol=0.025, rtol=0.025)
+                if loading:
+                    assert result["parameter_dtypes"] == expected_dtypes
