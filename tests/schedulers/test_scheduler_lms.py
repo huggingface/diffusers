@@ -174,3 +174,35 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
 
     def test_exponential_sigmas(self):
         self.check_over_configs(use_exponential_sigmas=True)
+    def test_order_ramps_from_one_after_set_begin_index(self):
+        """Regression test for #15108: when inference starts part-way through the schedule
+        (img2img/inpainting via ``set_begin_index``), the LMS multistep order must ramp
+        from 1 based on steps taken *in this run*, not on the full-schedule ``step_index``."""
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        scheduler.set_timesteps(self.num_inference_steps)
+        begin_index = 5
+        scheduler.set_begin_index(begin_index)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+
+        captured_orders = []
+        real_coefficient = scheduler.get_lms_coefficient
+
+        def spy(order, t, current_order):
+            captured_orders.append(order)
+            return real_coefficient(order, t, current_order)
+
+        scheduler.get_lms_coefficient = spy
+
+        t = scheduler.timesteps[begin_index]
+        sample = scheduler.scale_model_input(sample, t)
+        model_output = model(sample, t)
+        output = scheduler.step(model_output, t, sample)
+        sample = output.prev_sample
+
+        # First step of this run: order must be 1 (Euler), not min(step_index + 1, 4) == 4.
+        self.assertEqual(captured_orders, [1])
