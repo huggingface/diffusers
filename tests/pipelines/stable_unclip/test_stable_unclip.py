@@ -9,10 +9,10 @@ from diffusers import (
     DDIMScheduler,
     DDPMScheduler,
     PriorTransformer,
+    StableUnCLIPImageNormalizer,
     StableUnCLIPPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
 from ...testing_utils import (
     backend_empty_cache,

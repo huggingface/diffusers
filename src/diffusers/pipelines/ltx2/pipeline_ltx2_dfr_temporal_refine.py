@@ -28,7 +28,7 @@ from transformers import (
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import FromSingleFileMixin, LTX2LoraLoaderMixin
-from ...models.autoencoders import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
+from ...models.autoencoders import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video, LTX2Vocoder, LTX2VocoderWithBWE
 from ...models.condition_embedders import LTX2TextConnectors
 from ...models.latent_upscaler import LTX2LatentUpsamplerModel
 from ...models.transformers import LTX2VideoTransformer3DModel
@@ -49,7 +49,6 @@ from .utils import (
     apply_image_conditioning_crf,
     resolve_default_image_crf,
 )
-from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
 
 
 if is_torch_xla_available():

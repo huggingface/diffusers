@@ -20,9 +20,8 @@ import pytest
 import torch
 from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
-from diffusers import DDPMScheduler, IFImg2ImgPipeline, UNet2DConditionModel
+from diffusers import DDPMScheduler, IFImg2ImgPipeline, IFWatermarker, UNet2DConditionModel
 from diffusers.models.attention_processor import AttnAddedKVProcessor
-from diffusers.pipelines.deepfloyd_if import IFWatermarker
 
 from ...testing_utils import (
     assert_tensors_close,

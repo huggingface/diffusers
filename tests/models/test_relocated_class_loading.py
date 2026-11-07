@@ -29,6 +29,8 @@ from diffusers.pipelines.pipeline_loading_utils import (
 
 # (pipeline folder, deprecated module path, class name, init kwargs)
 RELOCATED_CLASSES = [
+    ("ace_step", "diffusers.pipelines.ace_step.modeling_ace_step", "AceStepAudioTokenDetokenizer", {}),
+    ("ace_step", "diffusers.pipelines.ace_step.modeling_ace_step", "AceStepAudioTokenizer", {}),
     ("ace_step", "diffusers.pipelines.ace_step.modeling_ace_step", "AceStepConditionEncoder", {}),
     (
         "audioldm2",
@@ -36,10 +38,30 @@ RELOCATED_CLASSES = [
         "AudioLDM2ProjectionModel",
         {"text_encoder_dim": 8, "text_encoder_1_dim": 8, "langauge_model_dim": 16},
     ),
+    (
+        "audioldm2",
+        "diffusers.pipelines.audioldm2.modeling_audioldm2",
+        "AudioLDM2UNet2DConditionModel",
+        {
+            "block_out_channels": (8, 16),
+            "layers_per_block": 1,
+            "norm_num_groups": 8,
+            "down_block_types": ("DownBlock2D", "CrossAttnDownBlock2D"),
+            "up_block_types": ("CrossAttnUpBlock2D", "UpBlock2D"),
+            "cross_attention_dim": ([None, 8], [None, 8]),
+            "attention_head_dim": 2,
+        },
+    ),
+    ("deepfloyd_if", "diffusers.pipelines.deepfloyd_if.watermark", "IFWatermarker", {}),
     ("flux", "diffusers.pipelines.flux.modeling_flux", "ReduxImageEncoder", {}),
+    ("ideogram4", "diffusers.pipelines.ideogram4.prompt_enhancer", "Ideogram4PromptEnhancerHead", {}),
     ("ltx", "diffusers.pipelines.ltx.modeling_latent_upsampler", "LTXLatentUpsamplerModel", {}),
+    ("ltx2", "diffusers.pipelines.ltx2.duration_head", "LTX2DurationHead", {}),
     ("ltx2", "diffusers.pipelines.ltx2.latent_upsampler", "LTX2LatentUpsamplerModel", {}),
     ("ltx2", "diffusers.pipelines.ltx2.connectors", "LTX2TextConnectors", {}),
+    ("ltx2", "diffusers.pipelines.ltx2.vocoder", "LTX2Vocoder", {}),
+    ("ltx2", "diffusers.pipelines.ltx2.vocoder", "LTX2VocoderWithBWE", {}),
+    ("shap_e", "diffusers.pipelines.shap_e.renderer", "ShapERenderer", {}),
     (
         "stable_audio",
         "diffusers.pipelines.stable_audio.modeling_stable_audio",
@@ -53,6 +75,12 @@ RELOCATED_CLASSES = [
         {},
     ),
     ("stable_diffusion", "diffusers.pipelines.stable_diffusion.clip_image_project_model", "CLIPImageProjection", {}),
+    (
+        "stable_diffusion",
+        "diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer",
+        "StableUnCLIPImageNormalizer",
+        {},
+    ),
 ]
 IDS = [name for _, _, name, _ in RELOCATED_CLASSES]
 

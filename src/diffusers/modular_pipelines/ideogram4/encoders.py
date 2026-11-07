@@ -17,9 +17,9 @@ import torch
 from transformers import Qwen2Tokenizer, Qwen3VLModel
 from transformers.masking_utils import create_causal_mask
 
+from ...models.others import Ideogram4PromptEnhancerHead
 from ...pipelines.ideogram4.prompt_enhancer import (
     PROMPT_UPSAMPLE_TEMPERATURE,
-    Ideogram4PromptEnhancerHead,
     build_caption_logits_processor,
     build_prompt_enhancer,
     generate_captions,
