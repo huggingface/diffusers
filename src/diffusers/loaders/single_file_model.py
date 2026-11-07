@@ -31,6 +31,7 @@ from ..utils import deprecate, is_accelerate_available, is_torch_version, loggin
 from ..utils.torch_utils import empty_device_cache
 from .single_file_utils import (
     SingleFileComponentError,
+    convert_anima_text_conditioner_to_diffusers,
     convert_animatediff_checkpoint_to_diffusers,
     convert_auraflow_transformer_checkpoint_to_diffusers,
     convert_autoencoder_dc_checkpoint_to_diffusers,
@@ -192,6 +193,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     "CosmosTransformer3DModel": {
         "checkpoint_mapping_fn": convert_cosmos_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
+    },
+    "AnimaTextConditioner": {
+        "checkpoint_mapping_fn": convert_anima_text_conditioner_to_diffusers,
+        "default_subfolder": "text_conditioner",
     },
     "QwenImageTransformer2DModel": {
         "checkpoint_mapping_fn": lambda checkpoint, **kwargs: checkpoint,
