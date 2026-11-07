@@ -6,6 +6,7 @@ name: Diffusers Bot
 #   /diffusers-bot review          request a Serge AI review (also works from an inline review comment)
 #   /diffusers-bot pytest <args>   run `pytest <args>` on a GPU runner, e.g.
 #                                  `/diffusers-bot pytest tests/models/test_modeling_common.py -k "some_test"`
+#   /diffusers-bot pytest --flavor a100x4 <args>   run pytest on a multi-GPU HF Job
 #
 # Auth is checked once in the `authorize` job. Each subcommand lives in its
 # own reusable workflow file under .github/workflows/bot_*.yml.
@@ -43,6 +44,7 @@ jobs:
       is_authorized: ${{ steps.check.outputs.is_authorized }}
       subcommand: ${{ steps.check.outputs.subcommand }}
       pytest_args: ${{ steps.check.outputs.pytest_args }}
+      pytest_flavor: ${{ steps.check.outputs.pytest_flavor }}
     steps:
       - name: Authorize and parse command
         id: check
@@ -64,10 +66,18 @@ jobs:
 
             let subcommand = 'unknown';
             let pytestArgs = '';
+            let pytestFlavor = '';
 
-            if (firstLine.startsWith('/diffusers-bot pytest')) {
+            if (/^\/diffusers-bot pytest(?:\s|$)/.test(firstLine)) {
               subcommand = 'pytest';
-              pytestArgs = firstLine.replace('/diffusers-bot pytest', '').trim();
+              pytestArgs = firstLine.slice('/diffusers-bot pytest'.length).trim();
+              const flavor = pytestArgs.match(/^--flavor(?:=|\s+)(\S+)(?:\s+|$)/);
+              if (flavor) {
+                pytestFlavor = flavor[1];
+                pytestArgs = pytestArgs.slice(flavor[0].length).trim();
+              } else if (pytestArgs.startsWith('--flavor')) {
+                pytestFlavor = 'invalid';
+              }
             } else if (body.includes('/diffusers-bot style')) {
               subcommand = 'style';
             } else if (body.includes('/diffusers-bot review')) {
@@ -77,6 +87,7 @@ jobs:
             console.log(`Subcommand: ${subcommand}, pytestArgs: ${pytestArgs}`);
             core.setOutput('subcommand', subcommand);
             core.setOutput('pytest_args', pytestArgs);
+            core.setOutput('pytest_flavor', pytestFlavor);
 
   # ── Dispatch to sub-workflows ────────────────────────────────────────────────
   style:
@@ -117,3 +128,6 @@ jobs:
     uses: ./.github/workflows/bot_pytest.yml
     with:
       pytest_args: ${{ needs.authorize.outputs.pytest_args }}
+      pytest_flavor: ${{ needs.authorize.outputs.pytest_flavor }}
+    secrets:
+      HF_JOBS_TOKEN: ${{ secrets.DIFFUSERS_HF_JOBS_TOKEN }}
