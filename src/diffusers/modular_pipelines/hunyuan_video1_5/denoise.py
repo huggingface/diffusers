@@ -157,7 +157,7 @@ class HunyuanVideo15LoopDenoiser(ModularPipelineBlocks):
             cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
 
             context_name = getattr(guider_state_batch, components.guider._identifier_key)
-            with components.transformer.cache_context(context_name):
+            with components.transformer.cache_context(context_name, timestep=t):
                 guider_state_batch.noise_pred = components.transformer(
                     hidden_states=block_state.latent_model_input,
                     image_embeds=block_state.image_embeds,
@@ -370,7 +370,7 @@ class HunyuanVideo15Image2VideoLoopDenoiser(ModularPipelineBlocks):
             cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
 
             context_name = getattr(guider_state_batch, components.guider._identifier_key)
-            with components.transformer.cache_context(context_name):
+            with components.transformer.cache_context(context_name, timestep=t):
                 guider_state_batch.noise_pred = components.transformer(
                     hidden_states=block_state.latent_model_input,
                     image_embeds=block_state.image_embeds,

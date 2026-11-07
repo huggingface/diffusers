@@ -20,7 +20,7 @@ import warnings
 import pytest
 import torch
 
-from diffusers import __version__
+from diffusers import FasterCacheConfig, PyramidAttentionBroadcastConfig, __version__
 from diffusers.utils import deprecate, torch_utils
 from diffusers.utils.torch_utils import TorchDeviceBackend, empty_device_cache, get_device
 
@@ -38,6 +38,14 @@ TOKEN = "hf_94wBhPGp6KrrTH3KDchhKpRxZwd6dmHWLL"
 class TestDeprecate:
     higher_version = ".".join([str(int(__version__.split(".")[0]) + 1)] + __version__.split(".")[1:])
     lower_version = "0.0.1"
+
+    @pytest.mark.parametrize("config_class", [FasterCacheConfig, PyramidAttentionBroadcastConfig])
+    def test_cache_current_timestep_callback_deprecation(self, config_class):
+        with pytest.warns(
+            FutureWarning,
+            match=r"`current_timestep_callback` is deprecated and will be removed in version 0\.45\.0\.",
+        ):
+            config_class(current_timestep_callback=lambda: 500)
 
     def test_deprecate_function_arg(self):
         kwargs = {"deprecated_arg": 4}

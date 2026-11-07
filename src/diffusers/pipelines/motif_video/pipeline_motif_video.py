@@ -731,7 +731,7 @@ class MotifVideoPipeline(DiffusionPipeline):
                     }
 
                     context_name = getattr(guider_state_batch, self.guider._identifier_key)
-                    with self.transformer.cache_context(context_name):
+                    with self.transformer.cache_context(context_name, timestep=t):
                         noise_pred = self.transformer(
                             hidden_states=hidden_states,
                             timestep=timestep,

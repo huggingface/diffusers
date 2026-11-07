@@ -14,6 +14,10 @@
 # limitations under the License.
 
 import gc
+from contextlib import nullcontext
+from dataclasses import replace
+from functools import wraps
+from unittest.mock import Mock
 
 import pytest
 import torch
@@ -46,6 +50,7 @@ from ...testing_utils import assert_tensors_close, backend_empty_cache, is_cache
 def require_cache_mixin(func):
     """Decorator to skip tests if model doesn't use CacheMixin."""
 
+    @wraps(func)
     def wrapper(self, *args, **kwargs):
         if not issubclass(self.model_class, CacheMixin):
             pytest.skip(f"{self.model_class.__name__} does not use CacheMixin.")
@@ -182,7 +187,8 @@ class CacheTesterMixin:
         model.enable_cache(config)
 
         # First pass populates the cache
-        _ = model(**inputs_dict, return_dict=False)[0]
+        with model.cache_context("test", timestep=1000):
+            _ = model(**inputs_dict, return_dict=False)[0]
 
         # Create modified inputs for second pass (vary input tensor to simulate denoising)
         inputs_dict_step2 = inputs_dict.copy()
@@ -192,7 +198,8 @@ class CacheTesterMixin:
             )
 
         # Second pass uses cached attention with different inputs (produces approximated output)
-        output_with_cache = model(**inputs_dict_step2, return_dict=False)[0]
+        with model.cache_context("test", timestep=500):
+            output_with_cache = model(**inputs_dict_step2, return_dict=False)[0]
 
         assert output_with_cache is not None, "Model output should not be None with cache enabled."
         assert not torch.isnan(output_with_cache).any(), "Model output contains NaN with cache enabled."
@@ -218,11 +225,11 @@ class CacheTesterMixin:
         model.enable_cache(config)
 
         # Run inference in first context
-        with model.cache_context("context_1"):
+        with model.cache_context("context_1", timestep=1000):
             output_ctx1 = model(**inputs_dict, return_dict=False)[0]
 
         # Run same inference in second context (cache should be reset)
-        with model.cache_context("context_2"):
+        with model.cache_context("context_2", timestep=1000):
             output_ctx2 = model(**inputs_dict, return_dict=False)[0]
 
         # Both contexts should produce the same output (first pass in each)
@@ -248,10 +255,72 @@ class CacheTesterMixin:
 
         model.enable_cache(config)
 
-        _ = model(**inputs_dict, return_dict=False)[0]
+        with model.cache_context("test", timestep=1000):
+            _ = model(**inputs_dict, return_dict=False)[0]
 
         model._reset_stateful_cache()
 
+        model.disable_cache()
+
+    @torch.no_grad()
+    def _test_deprecated_timestep_callback_matches_cache_context(self, context_name):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        inputs = []
+        for timestep in [900, 600, 500, 400, 200, 0]:
+            step_inputs = self.get_dummy_inputs()
+            step_inputs["timestep"] = torch.full_like(step_inputs["timestep"], timestep)
+            step_inputs[self.cache_input_key] = step_inputs[self.cache_input_key] + torch.randn_like(
+                step_inputs[self.cache_input_key]
+            )
+            inputs.append(step_inputs)
+
+        config = self._get_cache_config()
+        model.enable_cache(config)
+        expected = []
+        for step_inputs in inputs:
+            with model.cache_context("cond", timestep=step_inputs["timestep"].flatten()[0]):
+                expected.append(model(**step_inputs, return_dict=False)[0])
+        model.disable_cache()
+
+        timestep = None
+        with pytest.warns(FutureWarning, match="current_timestep_callback.*0.45.0"):
+            config = replace(config, current_timestep_callback=lambda: timestep)
+        model.enable_cache(config)
+
+        for _ in range(2):
+            for step_inputs, expected_output in zip(inputs, expected):
+                timestep = step_inputs["timestep"].flatten()[0]
+                context = model.cache_context(context_name) if context_name is not None else nullcontext()
+                with context:
+                    output = model(**step_inputs, return_dict=False)[0]
+                torch.testing.assert_close(output, expected_output)
+            model._reset_stateful_cache()
+        model.disable_cache()
+
+    @torch.no_grad()
+    def _test_context_timestep_takes_precedence_over_callback(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        config = self._get_cache_config()
+        callback = Mock(side_effect=AssertionError)
+        with pytest.warns(FutureWarning, match="current_timestep_callback"):
+            config = replace(config, current_timestep_callback=callback)
+        model.enable_cache(config)
+
+        for timestep in [900, 600, 500, 400, 200, 0]:
+            inputs = self.get_dummy_inputs()
+            inputs["timestep"] = torch.full_like(inputs["timestep"], timestep)
+            with model.cache_context("cond", timestep=timestep):
+                model(**inputs)
+        callback.assert_not_called()
+        model.disable_cache()
+
+    @torch.no_grad()
+    def _test_timestep_is_required_without_callback(self, context_name):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        model.enable_cache(self._get_cache_config())
+        context = model.cache_context(context_name) if context_name is not None else nullcontext()
+        with context, pytest.raises(ValueError, match="cache_context"):
+            model(**self.get_dummy_inputs())
         model.disable_cache()
 
 
@@ -269,13 +338,8 @@ class PyramidAttentionBroadcastConfigMixin:
         "spatial_attention_block_skip_range": 2,
     }
 
-    # Store timestep for callback (must be within default range (100, 800) for skipping to trigger)
-    _current_timestep = 500
-
     def _get_cache_config(self):
-        config_kwargs = self.PAB_CONFIG.copy()
-        config_kwargs["current_timestep_callback"] = lambda: self._current_timestep
-        return PyramidAttentionBroadcastConfig(**config_kwargs)
+        return PyramidAttentionBroadcastConfig(**self.PAB_CONFIG)
 
     def _get_hook_names(self):
         return [_PYRAMID_ATTENTION_BROADCAST_HOOK]
@@ -320,6 +384,20 @@ class PyramidAttentionBroadcastTesterMixin(PyramidAttentionBroadcastConfigMixin,
     @require_cache_mixin
     def test_pab_reset_stateful_cache(self):
         self._test_reset_stateful_cache()
+
+    @pytest.mark.parametrize("context_name", [None, "cond"])
+    @require_cache_mixin
+    def test_pab_deprecated_timestep_callback_matches_cache_context(self, context_name):
+        self._test_deprecated_timestep_callback_matches_cache_context(context_name)
+
+    @require_cache_mixin
+    def test_pab_context_timestep_takes_precedence_over_callback(self):
+        self._test_context_timestep_takes_precedence_over_callback()
+
+    @pytest.mark.parametrize("context_name", [None, "cond"])
+    @require_cache_mixin
+    def test_pab_timestep_is_required_without_callback(self, context_name):
+        self._test_timestep_is_required_without_callback(context_name)
 
 
 @is_cache
@@ -645,12 +723,8 @@ class FasterCacheConfigMixin:
         "tensor_format": "BCHW",
     }
 
-    def _get_cache_config(self, current_timestep_callback=None):
-        config_kwargs = self.FASTER_CACHE_CONFIG.copy()
-        if current_timestep_callback is None:
-            current_timestep_callback = lambda: 1000  # noqa: E731
-        config_kwargs["current_timestep_callback"] = current_timestep_callback
-        return FasterCacheConfig(**config_kwargs)
+    def _get_cache_config(self):
+        return FasterCacheConfig(**self.FASTER_CACHE_CONFIG)
 
     def _get_hook_names(self):
         return [_FASTER_CACHE_DENOISER_HOOK, _FASTER_CACHE_BLOCK_HOOK]
@@ -684,17 +758,13 @@ class FasterCacheTesterMixin(FasterCacheConfigMixin, CacheTesterMixin):
         model = self.model_class(**init_dict).to(torch_device)
         model.eval()
 
-        current_timestep = [1000]
-        config = self._get_cache_config(current_timestep_callback=lambda: current_timestep[0])
+        config = self._get_cache_config()
 
         model.enable_cache(config)
 
         # First pass with timestep outside skip range - computes and populates cache
-        current_timestep[0] = 1000
-        _ = model(**inputs_dict, return_dict=False)[0]
-
-        # Move timestep inside skip range so subsequent passes use cache
-        current_timestep[0] = 500
+        with model.cache_context("test", timestep=1000):
+            _ = model(**inputs_dict, return_dict=False)[0]
 
         # Create modified inputs for second pass
         inputs_dict_step2 = inputs_dict.copy()
@@ -704,7 +774,8 @@ class FasterCacheTesterMixin(FasterCacheConfigMixin, CacheTesterMixin):
             )
 
         # Second pass uses cached attention with different inputs
-        output_with_cache = model(**inputs_dict_step2, return_dict=False)[0]
+        with model.cache_context("test", timestep=500):
+            output_with_cache = model(**inputs_dict_step2, return_dict=False)[0]
 
         assert output_with_cache is not None, "Model output should not be None with cache enabled."
         assert not torch.isnan(output_with_cache).any(), "Model output contains NaN with cache enabled."
@@ -729,7 +800,8 @@ class FasterCacheTesterMixin(FasterCacheConfigMixin, CacheTesterMixin):
         config = self._get_cache_config()
         model.enable_cache(config)
 
-        _ = model(**inputs_dict, return_dict=False)[0]
+        with model.cache_context("test", timestep=1000):
+            _ = model(**inputs_dict, return_dict=False)[0]
 
         model._reset_stateful_cache()
 
@@ -758,6 +830,20 @@ class FasterCacheTesterMixin(FasterCacheConfigMixin, CacheTesterMixin):
     @require_cache_mixin
     def test_faster_cache_reset_stateful_cache(self):
         self._test_reset_stateful_cache()
+
+    @pytest.mark.parametrize("context_name", [None, "cond"])
+    @require_cache_mixin
+    def test_faster_cache_deprecated_timestep_callback_matches_cache_context(self, context_name):
+        self._test_deprecated_timestep_callback_matches_cache_context(context_name)
+
+    @require_cache_mixin
+    def test_faster_cache_context_timestep_takes_precedence_over_callback(self):
+        self._test_context_timestep_takes_precedence_over_callback()
+
+    @pytest.mark.parametrize("context_name", [None, "cond"])
+    @require_cache_mixin
+    def test_faster_cache_timestep_is_required_without_callback(self, context_name):
+        self._test_timestep_is_required_without_callback(context_name)
 
 
 @is_cache

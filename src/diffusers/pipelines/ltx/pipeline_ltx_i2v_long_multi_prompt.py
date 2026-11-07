@@ -1312,7 +1312,7 @@ class LTXI2VLongMultiPromptPipeline(DiffusionPipeline, FromSingleFileMixin, LTXV
                         rope_interpolation_scale=rope_interpolation_scale,
                         frame_rate=frame_rate,
                     )
-                    with self.transformer.cache_context("cond_uncond"):
+                    with self.transformer.cache_context("cond_uncond", timestep=t):
                         noise_pred = self.transformer(
                             hidden_states=latent_model_input.to(dtype=self.transformer.dtype),
                             encoder_hidden_states=prompt_embeds,
