@@ -292,7 +292,16 @@ class LTX25InContextModularPipelineTesterConfig(LTX25ModularPipelineTesterConfig
 class TestLTX25InContextModularPipelineFast(
     LTX25InContextModularPipelineTesterConfig, LTX25ModularPipelineFastTesterMixin
 ):
-    pass
+    def test_decode_audio_false_skips_the_audio_only(self):
+        # A video-only IC-LoRA (e.g. an alpha-matte LoRA) has no use for the soundtrack decoded alongside it.
+        pipe = self.get_pipeline().to("cpu")
+
+        with_audio = pipe(**self.get_dummy_inputs(), output=["videos", "audio"])
+        without_audio = pipe(**self.get_dummy_inputs(), decode_audio=False, output=["videos", "audio"])
+
+        assert with_audio["audio"] is not None
+        assert without_audio["audio"] is None
+        assert_tensors_close(without_audio["videos"], with_audio["videos"], atol=0, rtol=0)
 
 
 class TestLTX25InContextModularPipelineLoading(LTX25InContextModularPipelineTesterConfig, ModularLoadingTesterMixin):
