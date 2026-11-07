@@ -1,0 +1,136 @@
+# Copyright 2026 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from ...utils import is_pan2_guardrail_available, logging
+from ..modular_pipeline import ModularPipeline
+
+
+if is_pan2_guardrail_available():
+    from pan2_guardrail import PAN2SafetyChecker
+else:
+
+    class PAN2SafetyChecker:
+        def __init__(self, *args, **kwargs):
+            raise ImportError(
+                "`pan2_guardrail` is not installed. Please install it to use the safety checker for PAN 2: "
+                "`pip install git+https://github.com/ifm-ai/pan2-guardrail`."
+            )
+
+        @classmethod
+        def from_pretrained(cls, *args, **kwargs):
+            return cls()
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+class PAN2ModularPipeline(ModularPipeline):
+    """
+    A ModularPipeline for PAN 2: text-to-video, and image-to-video from a first frame.
+
+    ```py
+    import torch
+    from diffusers import ModularPipeline
+
+    pipe = ModularPipeline.from_pretrained("IFM/PAN2")
+    pipe.load_components(dtype=torch.bfloat16)
+    pipe.enable_safety_checker()
+    ```
+    """
+
+    default_blocks_name = "PAN2Blocks"
+
+    # Copied from diffusers.modular_pipelines.cosmos.modular_pipeline.Cosmos3OmniModularPipeline.__call__
+    def __call__(self, *args, **kwargs):
+        transformer = getattr(self, "transformer", None)
+        try:
+            return super().__call__(*args, **kwargs)
+        finally:
+            if hasattr(transformer, "_reset_stateful_cache"):
+                transformer._reset_stateful_cache()
+
+    @property
+    def default_height(self):
+        return self.default_sample_height * self.vae_scale_factor_spatial
+
+    @property
+    def default_width(self):
+        return self.default_sample_width * self.vae_scale_factor_spatial
+
+    @property
+    def default_sample_height(self):
+        return 44
+
+    @property
+    def default_sample_width(self):
+        return 78
+
+    @property
+    def vae_scale_factor_spatial(self):
+        if getattr(self, "vae", None) is not None:
+            return self.vae.config.scale_factor_spatial
+        return 16
+
+    @property
+    def vae_scale_factor_temporal(self):
+        if getattr(self, "vae", None) is not None:
+            return self.vae.config.scale_factor_temporal
+        return 4
+
+    @property
+    def num_channels_latents(self):
+        if getattr(self, "vae", None) is not None:
+            return self.vae.config.z_dim
+        return 48
+
+    @property
+    def requires_unconditional_embeds(self):
+        if getattr(self, "guider", None) is not None:
+            return self.guider._enabled and self.guider.num_conditions > 1
+        return False
+
+    def enable_safety_checker(self):
+        r"""Check the prompt and the generated videos with the PAN 2 guardrail."""
+        if getattr(self, "safety_checker", None) is None:
+            self.safety_checker = PAN2SafetyChecker.from_pretrained()
+        self._is_safety_checker_enabled = True
+
+    def load_safety_checker(self):
+        r"""Load the PAN 2 guardrail if it is not loaded yet, as the checks are on by default."""
+        if getattr(self, "safety_checker", None) is None:
+            if not is_pan2_guardrail_available():
+                raise ValueError(
+                    "PAN 2 requires a safety checker by default. Install it with "
+                    "`pip install git+https://github.com/ifm-ai/pan2-guardrail`, or disable the checks at your own "
+                    "risk with `pipe.disable_safety_checker()`."
+                )
+            self.safety_checker = PAN2SafetyChecker.from_pretrained()
+
+    def disable_safety_checker(self):
+        r"""Turn off the prompt and video checks, at your own risk."""
+        self._is_safety_checker_enabled = False
+
+    @property
+    def requires_safety_checker(self):
+        return getattr(self, "_is_safety_checker_enabled", self.config.enable_safety_checker)
+
+    @property
+    def system_message(self):
+        r"""The system message of the chat template the prompt is encoded with."""
+        return "You are a helpful assistant. Generate the video with the following instructions."
+
+    @property
+    def text_encoder_num_hidden_layers_to_skip(self):
+        r"""PAN 2 conditions on `hidden_states[-3]` of the text encoder, i.e. it skips the last two layers."""
+        return 2
