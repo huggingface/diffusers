@@ -26,6 +26,7 @@ import torch.nn.functional as F
 from diffusers.models import attention_dispatch
 from diffusers.models._modeling_parallel import ContextParallelConfig, ParallelConfig
 from diffusers.models.attention_dispatch import (
+    _CAN_USE_FLEX_ATTN,
     _HUB_KERNELS_REGISTRY,
     AttentionBackendName,
     _AttentionBackendRegistry,
@@ -350,3 +351,27 @@ class TestAiterSageHubKernel:
         assert not torch.equal(out, ref)
         cos = F.cosine_similarity(out.float().flatten(), ref.float().flatten(), dim=0)
         assert cos > 0.99
+
+
+@is_attention
+@pytest.mark.skipif(not _CAN_USE_FLEX_ATTN, reason="flex_attention requires torch>=2.5.")
+class TestFlexAttentionCausal:
+    """`is_causal=True` must produce causal attention when no mask is passed."""
+
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+    def test_is_causal_without_mask(self, dtype):
+        torch.manual_seed(0)
+        query, key, value = (torch.randn(1, 64, 4, 32, device=torch_device, dtype=dtype) for _ in range(3))
+        out = dispatch_attention_fn(query, key, value, is_causal=True, backend=AttentionBackendName.FLEX)
+        ref = F.scaled_dot_product_attention(
+            query.transpose(1, 2).float(), key.transpose(1, 2).float(), value.transpose(1, 2).float(), is_causal=True
+        ).transpose(1, 2)
+        torch.testing.assert_close(out.float(), ref, atol=2e-2, rtol=2e-2)
+
+    def test_is_causal_matches_explicit_block_mask(self):
+        torch.manual_seed(0)
+        query, key, value = (torch.randn(1, 64, 4, 32) for _ in range(3))
+        out = dispatch_attention_fn(query, key, value, is_causal=True, backend=AttentionBackendName.FLEX)
+        mask = torch.tril(torch.ones(1, 64, 64, dtype=torch.bool))
+        masked = dispatch_attention_fn(query, key, value, attn_mask=mask, backend=AttentionBackendName.FLEX)
+        torch.testing.assert_close(out, masked, atol=2e-2, rtol=2e-2)
