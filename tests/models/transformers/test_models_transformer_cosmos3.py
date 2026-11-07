@@ -15,6 +15,7 @@
 
 import pytest
 import torch
+from safetensors.torch import save_file
 
 from diffusers import Cosmos3OmniTransformer, SeaCacheConfig
 from diffusers.hooks import sea_cache as sea_cache_module
@@ -27,9 +28,10 @@ from diffusers.models.transformers.transformer_cosmos3 import (
     Cosmos3PackedMoTAttention,
     Cosmos3VLTextMoTDecoderLayer,
 )
+from diffusers.utils import logging
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, torch_device
+from ...testing_utils import CaptureLogger, enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
@@ -524,6 +526,34 @@ class TestCosmos3OmniTransformerSeaCache(Cosmos3OmniTransformerTesterConfig, Sea
 
 
 class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelTesterMixin):
+    @pytest.mark.parametrize("include_unexpected_weight", [False, True])
+    def test_load_ignores_export_scales(self, tmp_path, include_unexpected_weight):
+        model = self.model_class(**self.get_init_dict())
+        model.save_pretrained(tmp_path)
+        state_dict = model.state_dict()
+        scale_keys = ["layers.0.self_attn.to_q.input_scale", "layers.0.self_attn.to_q.weight_scale"]
+        for key in scale_keys:
+            state_dict[key] = torch.ones(1)
+        unexpected_key = "layers.0.self_attn.to_q.unexpected_weight"
+        if include_unexpected_weight:
+            state_dict[unexpected_key] = torch.ones(1)
+        save_file(state_dict, tmp_path / "diffusion_pytorch_model.safetensors", metadata={"format": "pt"})
+
+        logger = logging.get_logger("diffusers.models.modeling_utils")
+        with CaptureLogger(logger) as captured:
+            _, loading_info = self.model_class.from_pretrained(tmp_path, output_loading_info=True)
+
+        assert loading_info["unexpected_keys"] == ([unexpected_key] if include_unexpected_weight else [])
+        assert loading_info["missing_keys"] == []
+        assert loading_info["mismatched_keys"] == []
+        for key in scale_keys:
+            assert key not in captured.out
+        if include_unexpected_weight:
+            assert unexpected_key in captured.out
+            assert "were not used when initializing" in captured.out
+        else:
+            assert "were not used when initializing" not in captured.out
+
     def test_cosmos3_decoder_layer_cache_metadata_tracks_generation_stream(self):
         metadata = TransformerBlockRegistry.get(Cosmos3VLTextMoTDecoderLayer)
 
