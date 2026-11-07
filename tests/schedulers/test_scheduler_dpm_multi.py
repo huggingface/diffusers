@@ -1,6 +1,8 @@
 import tempfile
 import unittest
+import warnings
 
+import pytest
 import torch
 
 from diffusers import (
@@ -366,3 +368,21 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
     def test_exponential_sigmas(self):
         self.check_over_configs(use_exponential_sigmas=True)
+
+
+@pytest.mark.parametrize(
+    "scheduler_class",
+    [DPMSolverMultistepScheduler, DPMSolverSinglestepScheduler, UniPCMultistepScheduler, DEISMultistepScheduler],
+)
+def test_add_noise_before_set_timesteps_warns(scheduler_class):
+    scheduler = scheduler_class()
+    sample = torch.ones(1)
+    noise = torch.zeros(1)
+
+    with pytest.warns(UserWarning, match="`add_noise` was called before `set_timesteps`"):
+        scheduler.add_noise(sample, noise, torch.tensor([200]))
+
+    scheduler.set_timesteps(10)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        scheduler.add_noise(sample, noise, scheduler.timesteps[:1])
