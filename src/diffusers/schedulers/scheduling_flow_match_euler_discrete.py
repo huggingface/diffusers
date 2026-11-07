@@ -461,7 +461,8 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             generator (`torch.Generator`, *optional*):
                 A random number generator.
             per_token_timesteps (`torch.Tensor`, *optional*):
-                The timesteps for each token in the sample.
+                The timesteps for each token in the sample. `model_output` uses the same velocity sign as in the
+                scalar `timestep` path.
             return_dict (`bool`, defaults to `True`):
                 Whether or not to return a
                 [`~schedulers.scheduling_flow_match_euler_discrete.FlowMatchEulerDiscreteSchedulerOutput`] or tuple.
@@ -502,7 +503,7 @@ class FlowMatchEulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
             current_sigma = per_token_sigmas[..., None]
             next_sigma = lower_sigmas[..., None]
-            dt = current_sigma - next_sigma
+            dt = next_sigma - current_sigma
         else:
             sigma_idx = self.step_index
             sigma = self.sigmas[sigma_idx]
