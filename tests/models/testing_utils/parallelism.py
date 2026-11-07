@@ -347,7 +347,7 @@ def _tensor_parallel_from_pretrained_worker(
             output = output.full_tensor()
 
         if rank == 0:
-            specs = resolve_tp_shard_specs(model, model_class._tp_plan, world_size)
+            specs = resolve_tp_shard_specs(model, model._get_tp_plan(), world_size)
             state_dict = model.state_dict()
 
             # The numerics check alone wouldn't catch a planned parameter left unsharded.
