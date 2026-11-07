@@ -165,6 +165,11 @@ CHECKPOINT_KEY_NAMES = {
         "audio_vae.per_channel_statistics.mean-of-means",
     ],
     "qwen-image-2.1": ["model.diffusion_model.txt_in.text_norm.weight", "txt_in.text_norm.weight"],
+    "ideogram4": [
+        "diffusion_model.llm_cond_proj.weight",
+        "conditional_transformer.llm_cond_proj.weight",
+        "llm_cond_proj.weight",
+    ],
     "krea2": ["model.diffusion_model.txtfusion.projector.weight", "txtfusion.projector.weight"],
 }
 
@@ -253,6 +258,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "z-image-turbo-controlnet-2.1": {"pretrained_model_name_or_path": "hlky/Z-Image-Turbo-Fun-Controlnet-Union-2.1"},
     "ltx2-dev": {"pretrained_model_name_or_path": "Lightricks/LTX-2"},
     "qwen-image-2.1": {"pretrained_model_name_or_path": "Qwen/Qwen-Image-2.1"},
+    "ideogram4": {"pretrained_model_name_or_path": "ideogram-ai/ideogram-v4"},
     "krea2": {"pretrained_model_name_or_path": "krea/Krea-2-Raw"},
     "minimax-h3": {"pretrained_model_name_or_path": "MiniMaxAI/MiniMax-H3"},
 }
@@ -806,6 +812,9 @@ def infer_diffusers_model_type(checkpoint):
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["qwen-image-2.1"]):
         model_type = "qwen-image-2.1"
+
+    elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["ideogram4"]):
+        model_type = "ideogram4"
 
     elif any(key in checkpoint for key in CHECKPOINT_KEY_NAMES["krea2"]):
         model_type = "krea2"
@@ -4415,6 +4424,33 @@ def convert_qwen_image21_transformer_checkpoint_to_diffusers(checkpoint, **kwarg
             converted_state_dict[new_key.replace("gate_up", "proj")] = up
         else:
             converted_state_dict[new_key] = value
+
+    return converted_state_dict
+
+
+def convert_ideogram4_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
+    converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
+
+    for prefix in ("diffusion_model.", "conditional_transformer."):
+        if any(k.startswith(prefix) for k in converted_state_dict):
+            converted_state_dict = {k.removeprefix(prefix): v for k, v in converted_state_dict.items()}
+            break
+
+    # attention.o -> attention.to_out.0
+    for key in list(converted_state_dict.keys()):
+        if ".attention.o." in key:
+            new_key = key.replace(".attention.o.", ".attention.to_out.0.")
+            converted_state_dict[new_key] = converted_state_dict.pop(key)
+
+    # Split fused attention.qkv -> to_q / to_k / to_v
+    for key in list(converted_state_dict.keys()):
+        if ".attention.qkv.weight" in key:
+            fused = converted_state_dict.pop(key)
+            q, k, v = torch.chunk(fused, 3, dim=0)
+            base = key[: key.index(".attention.qkv.weight")]
+            converted_state_dict[f"{base}.attention.to_q.weight"] = q.contiguous()
+            converted_state_dict[f"{base}.attention.to_k.weight"] = k.contiguous()
+            converted_state_dict[f"{base}.attention.to_v.weight"] = v.contiguous()
 
     return converted_state_dict
 
