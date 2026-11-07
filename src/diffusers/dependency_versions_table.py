@@ -7,7 +7,7 @@ deps = {
     "datasets": "datasets",
     "filelock": "filelock",
     "ftfy": "ftfy",
-    "hf-doc-builder": "hf-doc-builder>=0.3.0",
+    "hf-doc-builder": "hf-doc-builder==0.6.0",
     "huggingface-hub": "huggingface-hub>=1.32.0,<3.0",
     "requests-mock": "requests-mock==1.10.0",
     "importlib_metadata": "importlib_metadata",

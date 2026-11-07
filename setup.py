@@ -99,7 +99,7 @@ _deps = [
     "datasets",
     "filelock",
     "ftfy",
-    "hf-doc-builder>=0.3.0",
+    "hf-doc-builder==0.6.0",
     "huggingface-hub>=1.32.0,<3.0",
     "requests-mock==1.10.0",
     "importlib_metadata",
