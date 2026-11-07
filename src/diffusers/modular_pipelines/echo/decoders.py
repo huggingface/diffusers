@@ -19,6 +19,7 @@ import torch
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
 from ...pipelines.ltx2.vocoder import LTX2Vocoder
+from ...utils import deprecate
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
@@ -90,19 +91,24 @@ class EchoVaeDecoderStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> PipelineState:
         block_state = self.get_block_state(state)
-        vae = components.vae
-
-        latents = block_state.latents
-
         if block_state.output_type == "latent":
+            deprecate(
+                "output_type='latent'",
+                "0.47.0",
+                "Passing `output_type='latent'` to the decode step is deprecated. To get the latents, use "
+                "`output='latents'` or run the pipeline without the decode step.",
+            )
             block_state.videos = _denormalize_latents(
-                latents,
+                block_state.latents,
                 components.latents_mean,
                 components.latents_std,
                 components.vae_scaling_factor,
             )
             self.set_block_state(state, block_state)
             return components, state
+        vae = components.vae
+
+        latents = block_state.latents
 
         if not vae.config.timestep_conditioning:
             timestep = None
@@ -184,6 +190,12 @@ class EchoAudioDecoderStep(ModularPipelineBlocks):
         )
 
         if block_state.output_type == "latent":
+            deprecate(
+                "output_type='latent'",
+                "0.47.0",
+                "Passing `output_type='latent'` to the decode step is deprecated. To get the latents, use "
+                "`output='latents'` or run the pipeline without the decode step.",
+            )
             block_state.audio = audio_latents
         else:
             audio_latents = audio_latents.to(audio_vae.dtype)
