@@ -140,6 +140,18 @@ class SkipLayerHook(ModelHook):
         return output
 
 
+class PassThroughHook(ModelHook):
+    """A `new_forward` hook that always continues down the chain through `original_forward`."""
+
+    def __init__(self):
+        super().__init__()
+        self.calls = 0
+
+    def new_forward(self, module, *args, **kwargs):
+        self.calls += 1
+        return self.fn_ref.original_forward(*args, **kwargs)
+
+
 class TestHooks:
     in_features = 4
     hidden_features = 8
@@ -258,6 +270,36 @@ class TestHooks:
         registry.register_hook(SkipLayerHook(skip_layer=False), "skip_layer_hook")
         output = self.model(input).mean().detach().cpu().item()
         assert output != 0.0
+
+    def test_remove_hook_keeps_next_hook_new_forward(self):
+        registry = HookRegistry.check_if_exists_or_initialize(self.model)
+        registry.register_hook(AddHook(1), "add_hook")
+        registry.register_hook(SkipLayerHook(skip_layer=True), "skip_layer_hook")
+
+        input = torch.zeros(1, 4, device=torch_device)
+        assert self.model(input).mean().detach().cpu().item() == 0.0
+
+        # Removing the inner hook must not bypass the outer hook's `new_forward`.
+        registry.remove_hook("add_hook")
+        assert registry._hook_order == ["skip_layer_hook"]
+        assert self.model(input).mean().detach().cpu().item() == 0.0
+
+    def test_remove_hook_rewires_next_hook_original_forward(self):
+        registry = HookRegistry.check_if_exists_or_initialize(self.model)
+        input = torch.ones(1, 4, device=torch_device)
+        expected = self.model(input)
+
+        pass_through = PassThroughHook()
+        registry.register_hook(AddHook(1), "add_hook")
+        registry.register_hook(pass_through, "pass_through_hook")
+        assert not torch.allclose(self.model(input), expected)
+
+        # The outer hook must keep running and must no longer reach the removed inner hook.
+        registry.remove_hook("add_hook")
+        calls = pass_through.calls
+        output = self.model(input)
+        assert pass_through.calls == calls + 1
+        assert torch.allclose(output, expected)
 
     def test_skip_layer_internal_block(self):
         registry = HookRegistry.check_if_exists_or_initialize(self.model.linear_1)
