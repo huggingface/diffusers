@@ -77,7 +77,7 @@ class PAN2VaeDecoderStep(ModularPipelineBlocks):
         block_state.videos = components.video_processor.postprocess_video(videos, output_type=block_state.output_type)
 
         if components.requires_safety_checker:
-            components.load_safety_checker()
+            components.check_safety_checker_loaded()
             # The checker takes the uint8 `[num_frames, height, width, 3]` frames of one video.
             if block_state.output_type == "pil":
                 frames = [np.stack([np.array(frame) for frame in video]) for video in block_state.videos]
@@ -87,13 +87,9 @@ class PAN2VaeDecoderStep(ModularPipelineBlocks):
                 frames = [
                     (video.permute(0, 2, 3, 1).cpu().numpy() * 255).astype(np.uint8) for video in block_state.videos
                 ]
-            components.safety_checker.to(components._execution_device)
-            try:
-                for video_frames in frames:
-                    if components.safety_checker.check_video_safety(video_frames) is None:
-                        raise ValueError("The PAN 2 guardrail detected unsafe content in the generated video.")
-            finally:
-                components.safety_checker.to("cpu")
+            for video_frames in frames:
+                if components.safety_checker.check_video_safety(video_frames) is None:
+                    raise ValueError("The PAN 2 guardrail detected unsafe content in the generated video.")
 
         self.set_block_state(state, block_state)
         return components, state

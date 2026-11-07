@@ -27,7 +27,6 @@ from diffusers.utils import export_to_video, load_image
 
 pipe = ModularPipeline.from_pretrained("IFM/PAN2")
 pipe.load_components(dtype=torch.bfloat16)
-pipe.enable_safety_checker()
 pipe.to("cuda")
 
 prompt = "A red fox trots through fresh snow in a pine forest at dawn."
@@ -56,7 +55,7 @@ pipe.transformer.set_attention_backend("flash_hub")  # FlashAttention-2
 
 ## Safety checker
 
-PAN 2 runs guardrails on the prompt before generation and on every generated video after it, and a blocked prompt or video raises a `ValueError`. The checks are on by default, so the pipeline raises until a checker is loaded with `enable_safety_checker()`, which needs the [PAN 2 guardrail](https://github.com/ifm-ai/pan2-guardrail) package:
+PAN 2 runs guardrails on the prompt before generation and on every generated video after it, and a blocked prompt or video raises a `ValueError`. The checks are on by default, and `load_components()` loads the guardrails, which need the [PAN 2 guardrail](https://github.com/ifm-ai/pan2-guardrail) package:
 
 ```bash
 pip install git+https://github.com/ifm-ai/pan2-guardrail
@@ -78,7 +77,6 @@ torch.cuda.set_device(rank)
 
 pipe = ModularPipeline.from_pretrained("IFM/PAN2")
 pipe.load_components(dtype=torch.bfloat16)
-pipe.enable_safety_checker()
 pipe.to(f"cuda:{rank}")
 pipe.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2, ulysses_anything=True))
 

@@ -114,9 +114,14 @@ class PAN2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     output_name = "videos"
 
     def get_pipeline(self, components_manager=None, dtype=torch.float32):
-        pipe = super().get_pipeline(components_manager, dtype)
-        # Disable the checks in the config, so that a pipeline saved and reloaded by the tests keeps them off.
+        pipe = self.pipeline_blocks_class().init_pipeline(
+            self.pretrained_model_name_or_path, components_manager=components_manager
+        )
+        # Disable the checks in the config before loading, so that the guardrail is not loaded and a pipeline saved
+        # and reloaded by the tests keeps them off.
         pipe.register_to_config(enable_safety_checker=False)
+        pipe.load_components(dtype=dtype)
+        pipe.set_progress_bar_config(disable=None)
         return pipe
 
     def get_dummy_inputs(self, seed=0):
@@ -204,7 +209,7 @@ class TestPAN2ModularPipelineFast(PAN2ModularPipelineTesterConfig, ModularPipeli
         assert not torch.equal(default, other)
 
     def test_safety_checker_required_by_default(self):
-        pipe = super(PAN2ModularPipelineTesterConfig, self).get_pipeline()
+        pipe = self.pipeline_blocks_class().init_pipeline(self.pretrained_model_name_or_path)
         assert pipe.config.enable_safety_checker
         assert pipe.requires_safety_checker
 

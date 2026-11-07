@@ -289,13 +289,9 @@ class PAN2TextEncoderStep(ModularPipelineBlocks):
         device = components._execution_device
 
         if components.requires_safety_checker:
-            components.load_safety_checker()
-            components.safety_checker.to(device)
-            try:
-                if not components.safety_checker.check_text_safety(block_state.prompt):
-                    raise ValueError("The PAN 2 guardrail detected unsafe content in the prompt.")
-            finally:
-                components.safety_checker.to("cpu")
+            components.check_safety_checker_loaded()
+            if not components.safety_checker.check_text_safety(block_state.prompt):
+                raise ValueError("The PAN 2 guardrail detected unsafe content in the prompt.")
 
         block_state.prompt_embeds = get_pan2_prompt_embeds(
             components.text_encoder,

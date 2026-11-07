@@ -45,7 +45,6 @@ class PAN2ModularPipeline(ModularPipeline):
 
     pipe = ModularPipeline.from_pretrained("IFM/PAN2")
     pipe.load_components(dtype=torch.bfloat16)
-    pipe.enable_safety_checker()
     ```
     """
 
@@ -100,22 +99,39 @@ class PAN2ModularPipeline(ModularPipeline):
             return self.guider._enabled and self.guider.num_conditions > 1
         return False
 
+    def load_components(self, names: list[str] | str | None = None, workflow: str | None = None, **kwargs):
+        r"""Load the components, and the PAN 2 guardrail too when the checks are on and it is installed."""
+        super().load_components(names=names, workflow=workflow, **kwargs)
+        if self.requires_safety_checker and is_pan2_guardrail_available():
+            self.enable_safety_checker()
+
+    def to(self, *args, **kwargs):
+        r"""Move the pipeline, and the PAN 2 guardrail with it."""
+        pipeline = super().to(*args, **kwargs)
+        if getattr(pipeline, "safety_checker", None) is not None:
+            pipeline.safety_checker.to(pipeline.device)
+        return pipeline
+
     def enable_safety_checker(self):
         r"""Check the prompt and the generated videos with the PAN 2 guardrail."""
         if getattr(self, "safety_checker", None) is None:
-            self.safety_checker = PAN2SafetyChecker.from_pretrained()
+            self.safety_checker = PAN2SafetyChecker.from_pretrained().to(self.device)
         self._is_safety_checker_enabled = True
 
-    def load_safety_checker(self):
-        r"""Load the PAN 2 guardrail if it is not loaded yet, as the checks are on by default."""
-        if getattr(self, "safety_checker", None) is None:
-            if not is_pan2_guardrail_available():
-                raise ValueError(
-                    "PAN 2 requires a safety checker by default. Install it with "
-                    "`pip install git+https://github.com/ifm-ai/pan2-guardrail`, or disable the checks at your own "
-                    "risk with `pipe.disable_safety_checker()`."
-                )
-            self.safety_checker = PAN2SafetyChecker.from_pretrained()
+    def check_safety_checker_loaded(self):
+        r"""Raise if the checks are on but the PAN 2 guardrail is not loaded."""
+        if getattr(self, "safety_checker", None) is not None:
+            return
+        if not is_pan2_guardrail_available():
+            raise ValueError(
+                "PAN 2 requires a safety checker by default. Install it with "
+                "`pip install git+https://github.com/ifm-ai/pan2-guardrail`, or disable the checks at your own "
+                "risk with `pipe.disable_safety_checker()`."
+            )
+        raise ValueError(
+            "PAN 2 requires a safety checker by default. Load it with `pipe.enable_safety_checker()`, or disable the "
+            "checks at your own risk with `pipe.disable_safety_checker()`."
+        )
 
     def disable_safety_checker(self):
         r"""Turn off the prompt and video checks, at your own risk."""
