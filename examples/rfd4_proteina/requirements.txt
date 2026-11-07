@@ -1,0 +1,5 @@
+accelerate>=1.0.0
+peft>=0.14.0
+safetensors>=0.4.5
+torch>=2.4.0
+tensorboard
