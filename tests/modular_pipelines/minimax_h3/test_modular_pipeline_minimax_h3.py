@@ -14,6 +14,7 @@
 
 
 import os
+import sys
 
 import numpy as np
 import pytest
@@ -1084,3 +1085,19 @@ class TestMiniMaxH3Reference:
             frames, fps=float(MINIMAX_H3_FPS), num_frames=124, **canvas
         )
         assert np.shares_memory(untouched, frames)
+
+    def test_audio_reference_resampled_without_torchaudio(self, monkeypatch):
+        r"""
+        A reference soundtrack at another rate than the audio VAE's is truncated to `max_duration` at its own rate,
+        upmixed to stereo and resampled onto the VAE's rate, with no dependency on `torchaudio`.
+        """
+        monkeypatch.setitem(sys.modules, "torchaudio", None)
+        waveform = torch.randn(1, 48000 * 3, generator=torch.Generator("cpu").manual_seed(0))
+
+        normalized = MiniMaxH3Ref2VASetupStep._normalize_audio_condition(
+            waveform, sample_rate=48000, target_sample_rate=32000, max_duration=2.0
+        )
+
+        assert normalized.shape == (2, 64000)
+        assert normalized.dtype == torch.float32
+        assert torch.equal(normalized[0], normalized[1])

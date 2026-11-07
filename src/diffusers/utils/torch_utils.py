@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import functools
 import itertools
+import math
 import os
 from typing import Callable, ParamSpec, TypeVar
 
@@ -186,6 +187,55 @@ def fourier_filter(x_in: "torch.Tensor", threshold: int, scale: int) -> "torch.T
     x_filtered = ifftn(x_freq, dim=(-2, -1)).real
 
     return x_filtered.to(dtype=x_in.dtype)
+
+
+def resample_audio(waveform: "torch.Tensor", orig_freq: int, new_freq: int) -> "torch.Tensor":
+    r"""
+    Resample a waveform along its last dimension with a windowed-sinc filter, in plain PyTorch.
+
+    This is the default band-limited interpolation of `torchaudio.functional.resample` (`sinc_interp_hann`,
+    `lowpass_filter_width=6`, `rolloff=0.99`) and matches it to float precision, so pipelines can resample a
+    conditioning soundtrack without depending on `torchaudio`.
+
+    Args:
+        waveform (`torch.Tensor` of shape `(..., num_samples)`): The floating-point waveform to resample.
+        orig_freq (`int`): The sample rate `waveform` carries its samples at.
+        new_freq (`int`): The sample rate to resample to.
+
+    Returns:
+        `torch.Tensor` of shape `(..., ceil(num_samples * new_freq / orig_freq))`: the resampled waveform, in the
+        dtype and on the device of `waveform`.
+    """
+    if orig_freq <= 0 or new_freq <= 0:
+        raise ValueError(f"Sample rates must be positive, got {orig_freq} and {new_freq}.")
+    if not torch.is_floating_point(waveform):
+        raise TypeError(f"`waveform` must be a floating-point tensor, got {waveform.dtype}.")
+    if orig_freq == new_freq:
+        return waveform
+
+    gcd = math.gcd(int(orig_freq), int(new_freq))
+    orig_freq, new_freq = int(orig_freq) // gcd, int(new_freq) // gcd
+    lowpass_filter_width, rolloff = 6, 0.99
+
+    # Hann-windowed sinc kernel, one row per output phase, low-passed below the lower of the two Nyquist rates.
+    base_freq = min(orig_freq, new_freq) * rolloff
+    width = math.ceil(lowpass_filter_width * orig_freq / base_freq)
+    idx = torch.arange(-width, width + orig_freq, dtype=torch.float64, device=waveform.device)[None, None] / orig_freq
+    t = torch.arange(0, -new_freq, -1, dtype=torch.float64, device=waveform.device)[:, None, None] / new_freq + idx
+    t = (t * base_freq).clamp(-lowpass_filter_width, lowpass_filter_width)
+    window = torch.cos(t * math.pi / lowpass_filter_width / 2) ** 2
+    t = t * math.pi
+    kernel = torch.where(t == 0, torch.ones_like(t), torch.sin(t) / t) * window * (base_freq / orig_freq)
+    kernel = kernel.to(waveform.dtype)
+
+    shape = waveform.shape
+    waveform = waveform.reshape(-1, shape[-1])
+    num_waveforms, length = waveform.shape
+    waveform = torch.nn.functional.pad(waveform, (width, width + orig_freq))
+    resampled = torch.nn.functional.conv1d(waveform[:, None], kernel, stride=orig_freq)
+    resampled = resampled.transpose(1, 2).reshape(num_waveforms, -1)
+    resampled = resampled[:, : math.ceil(new_freq * length / orig_freq)]
+    return resampled.reshape(shape[:-1] + resampled.shape[-1:])
 
 
 def apply_freeu(
