@@ -61,7 +61,7 @@ from ..utils import (
     is_torch_version,
     logging,
 )
-from ..utils.distributed_utils import is_torch_dist_rank_zero
+from ..utils.distributed_utils import is_torch_dist_rank_zero, sync_default_rng_seed
 from ..utils.hub_utils import PushToHubMixin, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import empty_device_cache
 from ._modeling_parallel import (
@@ -1751,6 +1751,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # `config.setup()` records the mesh resolved above onto the config; see `ParallelConfig.setup`.
         config.setup(rank, world_size, device, mesh=mesh)
         self._parallel_config = config
+
+        if mesh is not None:
+            # Only the ranks of this mesh must draw the same numbers; replicas outside it keep their own seeds.
+            group = (mesh._flatten() if mesh.ndim > 1 else mesh).get_group()
+            sync_default_rng_seed(group=group, device=config._device)
         return config
 
     def enable_parallelism(
