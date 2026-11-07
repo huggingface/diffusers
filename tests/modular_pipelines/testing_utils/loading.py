@@ -38,7 +38,7 @@ class ModularLoadingTesterMixin(BaseModularPipelineOutputMixin):
 
     def test_save_from_pretrained(self, tmp_path, base_pipe_output):
         base_pipe = self.get_pipeline().to(torch_device)
-        base_pipe.save_pretrained(str(tmp_path))
+        base_pipe.save_pretrained(str(tmp_path), overwrite_modular_index=True)
 
         pipe = ModularPipeline.from_pretrained(tmp_path)
         pipe.load_components(dtype=torch.float32)
@@ -67,7 +67,7 @@ class ModularLoadingTesterMixin(BaseModularPipelineOutputMixin):
     def test_load_expected_components_from_save_pretrained(self, tmp_path):
         pipe = self.get_pipeline()
         save_dir = str(tmp_path / "saved-pipeline")
-        pipe.save_pretrained(save_dir)
+        pipe.save_pretrained(save_dir, overwrite_modular_index=True)
 
         expected = get_specified_components(save_dir)
         loaded_pipe = ModularPipeline.from_pretrained(save_dir)

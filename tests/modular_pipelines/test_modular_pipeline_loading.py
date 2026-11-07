@@ -16,6 +16,7 @@
 import json
 import os
 import shutil
+import warnings
 
 import pytest
 import torch
@@ -156,7 +157,7 @@ class TestCustomModelSavePretrained:
         original_state_dict = pipe.unet.state_dict()
 
         save_dir = str(tmp_path / "my-pipeline")
-        pipe.save_pretrained(save_dir)
+        pipe.save_pretrained(save_dir, overwrite_modular_index=True)
 
         loaded_pipe = ModularPipeline.from_pretrained(save_dir)
         loaded_pipe.load_components(dtype=torch.float32)
@@ -204,7 +205,8 @@ class TestCustomModelSavePretrained:
         pipe.load_components(names=["unet"], dtype=torch.float32)
 
         save_dir = str(tmp_path / "my-pipeline")
-        pipe.save_pretrained(save_dir)
+        with pytest.warns(FutureWarning, match="overwrite_modular_index"):
+            pipe.save_pretrained(save_dir)
 
         with open(os.path.join(save_dir, "modular_model_index.json")) as f:
             index = json.load(f)
@@ -220,6 +222,15 @@ class TestCustomModelSavePretrained:
         loaded_pipe = ModularPipeline.from_pretrained(save_dir)
         loaded_pipe.load_components(names=["unet"], dtype=torch.float32, local_files_only=True)
         assert loaded_pipe.unet is not None
+
+    @pytest.mark.parametrize("overwrite_modular_index", [True, False])
+    def test_save_pretrained_explicit_overwrite_modular_index_does_not_warn(self, tmp_path, overwrite_modular_index):
+        pipe = ModularPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-xl-pipe")
+        pipe.load_components(names=["unet"], dtype=torch.float32)
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error", message=".*overwrite_modular_index", category=FutureWarning)
+            pipe.save_pretrained(str(tmp_path / "my-pipeline"), overwrite_modular_index=overwrite_modular_index)
 
     def test_save_pretrained_overwrite_modular_index(self, tmp_path):
         """With overwrite_modular_index=True, all component references should point to the save directory."""
@@ -266,7 +277,7 @@ class TestModularPipelineInitFallback:
 
         # 3. Save and reload — the saved config will have _blocks_class_name="SequentialPipelineBlocks"
         save_dir = str(tmp_path / "pipeline")
-        t2i_pipe.save_pretrained(save_dir)
+        t2i_pipe.save_pretrained(save_dir, overwrite_modular_index=True)
         loaded_pipe = ModularPipeline.from_pretrained(save_dir)
 
         # 4. Verify it fell back to default_blocks_name and has correct blocks
