@@ -22,6 +22,7 @@ from PIL import Image
 
 from diffusers import ClassifierFreeGuidance, StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
 from diffusers.loaders import ModularIPAdapterMixin
+from diffusers.models.attention_processor import IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0
 
 from ...models.unets.test_models_unet_2d_condition import create_ip_adapter_state_dict
 from ...testing_utils import enable_full_determinism, floats_tensor, is_ip_adapter, torch_device
@@ -190,6 +191,26 @@ class SDXLModularIPAdapterTesterMixin:
         assert max_diff_with_multi_adapter_scale > 1e-2, (
             "Output with multi-ip-adapter scale must be different from normal inference"
         )
+
+    def test_ip_adapter_single_scale_multi_adapter(self):
+        blocks = self.pipeline_blocks_class()
+        pipe = blocks.init_pipeline(self.pretrained_model_name_or_path)
+        pipe.load_components(dtype=torch.float32)
+        pipe = pipe.to(torch_device)
+        pipe.unet._load_ip_adapter_weights(
+            [create_ip_adapter_state_dict(pipe.unet), create_ip_adapter_state_dict(pipe.unet)]
+        )
+
+        pipe.set_ip_adapter_scale(0.5)
+
+        ip_adapter_processors = [
+            processor
+            for processor in pipe.unet.attn_processors.values()
+            if isinstance(processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0))
+        ]
+        assert len(ip_adapter_processors) > 0
+        for processor in ip_adapter_processors:
+            assert processor.scale == [0.5, 0.5]
 
 
 class SDXLModularControlNetTesterMixin(BaseModularPipelineOutputMixin):

@@ -19,6 +19,7 @@ import pytest
 import torch
 
 from diffusers.loaders import IPAdapterMixin
+from diffusers.models.attention_processor import IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0
 
 from ...testing_utils import assert_tensors_close, is_ip_adapter, torch_device
 from .common import BasePipelineOutputMixin
@@ -147,6 +148,21 @@ class IPAdapterTesterMixin(BasePipelineOutputMixin):
         assert max_diff_with_multi_adapter_scale > 1e-2, (
             "Output with multi-ip-adapter scale must be different from normal inference"
         )
+
+    def test_ip_adapter_single_scale_multi_adapter(self):
+        pipe = self.get_pipeline().to(torch_device)
+        self._load_ip_adapters(pipe, num_adapters=2)
+
+        pipe.set_ip_adapter_scale(0.5)
+
+        ip_adapter_processors = [
+            processor
+            for processor in pipe.unet.attn_processors.values()
+            if isinstance(processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0))
+        ]
+        assert len(ip_adapter_processors) > 0
+        for processor in ip_adapter_processors:
+            assert processor.scale == [0.5, 0.5]
 
     def test_ip_adapter_cfg(self):
         if "guidance_scale" not in inspect.signature(self.pipeline_class.__call__).parameters:
