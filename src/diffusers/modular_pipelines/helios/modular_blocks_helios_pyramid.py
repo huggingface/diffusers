@@ -51,7 +51,7 @@ class HeliosPyramidAutoVaeEncoderStep(AutoPipelineBlocks):
           vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
 
       Inputs:
-          video (`None`, *optional*, required, depending on the workflow):
+          video (`None`, *optional*, depends on the workflow):
               Input video for video-to-video generation
           height (`int`, *optional*, defaults to 384):
               The height in pixels of the generated image.
@@ -61,7 +61,7 @@ class HeliosPyramidAutoVaeEncoderStep(AutoPipelineBlocks):
               Number of latent frames per temporal chunk.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          image (`Image | list`, *optional*, required, depending on the workflow):
+          image (`Image | list`, *optional*, depends on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
 
       Outputs:
@@ -350,7 +350,7 @@ class HeliosPyramidAutoCoreDenoiseStep(ConditionalPipelineBlocks):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
           negative_prompt_embeds (`Tensor`, *optional*):
               negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          image_latents (`Tensor`, *optional*, required, depending on the workflow):
+          image_latents (`Tensor`, *optional*, depends on the workflow):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
           video_latents (`Tensor`, *optional*):
               Encoded video latents for V2V generation.
@@ -450,7 +450,7 @@ class HeliosPyramidAutoBlocks(SequentialPipelineBlocks):
               The prompt or prompts not to guide the image generation.
           max_sequence_length (`int`, *optional*, defaults to 512):
               Maximum sequence length for prompt encoding.
-          video (`None`, *optional*, required, depending on the workflow):
+          video (`None`, *optional*, depends on the workflow):
               Input video for video-to-video generation
           height (`int`, *optional*, defaults to 384):
               The height in pixels of the generated image.
@@ -460,11 +460,11 @@ class HeliosPyramidAutoBlocks(SequentialPipelineBlocks):
               Number of latent frames per temporal chunk.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          image (`Image | list`, *optional*, required, depending on the workflow):
+          image (`Image | list`, *optional*, depends on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               Number of videos to generate per prompt.
-          image_latents (`Tensor`, *optional*, required, depending on the workflow):
+          image_latents (`Tensor`, *optional*, depends on the workflow):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
           video_latents (`Tensor`, *optional*):
               Encoded video latents for V2V generation.

@@ -137,13 +137,13 @@ class WanAutoImageEncoderStep(AutoPipelineBlocks):
           image_processor (`CLIPImageProcessor`) image_encoder (`CLIPVisionModel`)
 
       Inputs:
-          image (`Image`, *optional*, required, depending on the workflow):
+          image (`Image`, *optional*, depends on the workflow):
               TODO: Add description.
           height (`int`, *optional*, defaults to 480):
               TODO: Add description.
           width (`int`, *optional*, defaults to 832):
               TODO: Add description.
-          last_image (`Image`, *optional*, required, depending on the workflow):
+          last_image (`Image`, *optional*, depends on the workflow):
               The last frameimage
 
       Outputs:
@@ -290,13 +290,13 @@ class WanAutoVaeEncoderStep(AutoPipelineBlocks):
           vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
 
       Inputs:
-          image (`Image`, *optional*, required, depending on the workflow):
+          image (`Image`, *optional*, depends on the workflow):
               TODO: Add description.
           height (`int`, *optional*, defaults to 480):
               TODO: Add description.
           width (`int`, *optional*, defaults to 832):
               TODO: Add description.
-          last_image (`Image`, *optional*, required, depending on the workflow):
+          last_image (`Image`, *optional*, depends on the workflow):
               The last frameimage
           num_frames (`int`, *optional*, defaults to 81):
               TODO: Add description.
@@ -447,13 +447,13 @@ class WanImage2VideoAutoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           max_sequence_length (`None`, *optional*, defaults to 512):
               TODO: Add description.
-          image (`Image`, *optional*, required, depending on the workflow):
+          image (`Image`, *optional*, depends on the workflow):
               TODO: Add description.
           height (`int`, *optional*, defaults to 480):
               The target height of the video.
           width (`int`, *optional*, defaults to 832):
               The target width of the video.
-          last_image (`Image`, *optional*, required, depending on the workflow):
+          last_image (`Image`, *optional*, depends on the workflow):
               The last frameimage
           num_frames (`int`, *optional*, defaults to 81):
               The number of frames in the generated video.

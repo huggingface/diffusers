@@ -188,7 +188,7 @@ class ZImageAutoDenoiseStep(AutoPipelineBlocks):
               TODO: Add description.
           width (`None`, *optional*):
               TODO: Add description.
-          image_latents (`None`, *optional*, required, depending on the workflow):
+          image_latents (`None`, *optional*, depends on the workflow):
               TODO: Add description.
           latents (`Tensor | NoneType`, *optional*):
               TODO: Add description.
@@ -236,7 +236,7 @@ class ZImageAutoVaeImageEncoderStep(AutoPipelineBlocks):
           vae (`AutoencoderKL`) image_processor (`VaeImageProcessor`)
 
       Inputs:
-          image (`Image`, *optional*, required, depending on the workflow):
+          image (`Image`, *optional*, depends on the workflow):
               TODO: Add description.
           height (`None`, *optional*):
               TODO: Add description.
@@ -283,7 +283,7 @@ class ZImageAutoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           max_sequence_length (`None`, *optional*, defaults to 512):
               TODO: Add description.
-          image (`Image`, *optional*, required, depending on the workflow):
+          image (`Image`, *optional*, depends on the workflow):
               TODO: Add description.
           height (`None`, *optional*):
               TODO: Add description.
@@ -293,7 +293,7 @@ class ZImageAutoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           num_images_per_prompt (`None`, *optional*, defaults to 1):
               TODO: Add description.
-          image_latents (`None`, *optional*, required, depending on the workflow):
+          image_latents (`None`, *optional*, depends on the workflow):
               TODO: Add description.
           latents (`Tensor | NoneType`, *optional*):
               TODO: Add description.
