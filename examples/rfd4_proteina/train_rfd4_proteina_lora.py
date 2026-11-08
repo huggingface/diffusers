@@ -44,7 +44,7 @@ from diffusers.utils import convert_unet_state_dict_to_peft
 
 logger = get_logger(__name__)
 
-# The pipeline takes the molecular tensors by name and the rest of the prepared features as conditioning.
+# Other prepared features are passed as conditioning.
 PIPELINE_INPUTS = (
     "padding_mask",
     "is_in_context_conditioning",
@@ -54,14 +54,14 @@ PIPELINE_INPUTS = (
     "coords_nm",
 )
 
-# Training times per modality, as the released recipe samples them: a Beta distribution mixed with a uniform one.
+# Match the released recipe: a mixture of Beta and uniform training times.
 # See `loss.t_distribution` in the RFD4-Proteina `configs/training_proteina.yaml`.
 TIME_DISTRIBUTION = {
     "bb_ca": {"concentration1": 1.9, "concentration0": 1.0, "uniform_fraction": 0.02},
     "local_latents": {"concentration1": 1.0, "concentration0": 1.5, "uniform_fraction": 0.2},
 }
 
-# The backbone is the modality the sampler draws with zero centre of mass and a per-molecule stochastic offset.
+# Backbone noise uses zero centre of mass and a per-molecule offset.
 BACKBONE = "bb_ca"
 
 
@@ -154,11 +154,7 @@ def parse_args():
 
 
 class PreparedStructureDataset(Dataset):
-    """The CIF files under a directory, prepared into the feature tensors the model consumes.
-
-    Preparation parses the file with AtomWorks and runs the model's own datapipe, which is slow enough to be worth
-    caching: each file is prepared once and reloaded from `cache_dir` afterwards.
-    """
+    """Prepare CIF features once, filter unusable structures, and cache the results."""
 
     def __init__(self, data_dir: str, seed: int, max_tokens: int, cache_dir: str | None = None):
         from rfd4_proteina_prep import prepare_cif
@@ -176,7 +172,7 @@ class PreparedStructureDataset(Dataset):
         self.paths = sorted(path for pattern in ("*.cif", "*.cif.gz", "*.cif.zst") for path in root.rglob(pattern))
         if not self.paths:
             raise ValueError(f"No CIF files found under {data_dir}.")
-        # Filter before Accelerate shards the loader: every rank must execute the same number of backwards.
+        # Filter before sharding so every rank runs the same number of backward passes.
         self.paths = [path for path in self.paths if self._is_trainable(path)]
         if not self.paths:
             raise ValueError(f"No trainable structures found under {data_dir}.")
@@ -189,7 +185,7 @@ class PreparedStructureDataset(Dataset):
             if path not in self._memory_cache:
                 self._memory_cache[path] = self._prepare_features(path)
             return self._memory_cache[path]
-        # Include the full source path and file version, so nested names and edited inputs cannot alias.
+        # Distinguish duplicate filenames and invalidate edited inputs.
         stat = path.stat()
         key = hashlib.sha256(f"{path.resolve()}:{stat.st_size}:{stat.st_mtime_ns}:{self.seed}".encode()).hexdigest()
         cached = self.cache_dir / f"{key}.pt"
@@ -197,7 +193,7 @@ class PreparedStructureDataset(Dataset):
             if cached.is_file():
                 return torch.load(cached, map_location="cpu", weights_only=True)
             features = self._prepare_features(path)
-            # Publish only complete files, including when different jobs share this cache.
+            # Readers must never see a partially written cache file.
             temporary = None
             try:
                 with tempfile.NamedTemporaryFile(dir=self.cache_dir, suffix=".pt", delete=False) as handle:
@@ -234,10 +230,7 @@ class PreparedStructureDataset(Dataset):
 
 
 def collate_fn(examples):
-    """Keep one structure per batch: token counts differ per structure, and the model has no padding-free path.
-
-    Raise the effective batch size with `--gradient_accumulation_steps` instead.
-    """
+    """Use one structure per batch because token counts vary."""
     return examples[0]
 
 
@@ -257,12 +250,7 @@ def sample_times(batch_size: int, device: torch.device) -> dict[str, torch.Tenso
 def draw_noise(
     name: str, shape: tuple[int, ...], emit_mask: torch.Tensor, conditioning: dict[str, torch.Tensor]
 ) -> torch.Tensor:
-    """Draw one modality's reference noise the way the sampler draws its starting state.
-
-    Training and sampling have to agree on what the noise end of the path looks like, so the draw reuses the
-    pipeline's own helpers: masked to the emitted tokens, and for the backbone with zero centre of mass and the
-    per-molecule stochastic offset the released recipe applies.
-    """
+    """Use the pipeline's noise distribution for training."""
     noise = RFD4ProteinaPipeline._sample_noise(shape, emit_mask, None, zero_com=name == BACKBONE)
     if name != BACKBONE:
         return noise
@@ -270,11 +258,7 @@ def draw_noise(
 
 
 def flow_matching_loss(prediction, state, times, clean, supervision_masks) -> torch.Tensor:
-    """Average the per-modality error of the predicted clean sample over the supervised tokens.
-
-    The model predicts a velocity; `state + (1 - t) * velocity` is its estimate of the clean sample, which is what the
-    released recipe scores. Each modality is normalised by its own token count and the two terms are summed.
-    """
+    """Score the clean estimate `state + (1 - t) * velocity`, normalized by supervised token count."""
     velocities = {"bb_ca": prediction.backbone.float(), "local_latents": prediction.local_latents.float()}
     loss = 0.0
     for name, velocity in velocities.items():
@@ -321,7 +305,7 @@ def main():
     vae = RFD4ProteinaAutoencoder.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="vae", torch_dtype=weight_dtype, **load_kwargs
     )
-    # One scheduler per modality, as the pipeline holds them; training only uses their shared `add_noise`.
+    # Each modality has its own scheduler, as in the pipeline.
     schedulers = {
         name: RFD4ProteinaScheduler.from_pretrained(
             args.pretrained_model_name_or_path,
@@ -332,7 +316,7 @@ def main():
         for name, subfolder in (("bb_ca", "bb_ca_scheduler"), ("local_latents", "local_latents_scheduler"))
     }
 
-    # The autoencoder is paired with the denoiser and stays frozen; only the adapters on the denoiser train.
+    # Freeze the base model and train only the denoiser adapters.
     vae.requires_grad_(False)
     transformer.requires_grad_(False)
     vae.to(accelerator.device)
@@ -456,7 +440,7 @@ def main():
     progress_bar = tqdm(
         range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process, desc="Steps"
     )
-    # All entries are trainable before sharding; cycle the data until the step count is met.
+    # Repeat the dataset until max_train_steps is reached.
     while global_step < args.max_train_steps:
         transformer.train()
         for batch in dataloader:
@@ -471,9 +455,7 @@ def main():
                     "bb_ca": emitted,
                     "local_latents": emitted & features["supports_local_latent"].bool(),
                 }
-                # An experimental structure is missing atoms the residue should have: their slots are marked present
-                # but hold no coordinate. Drop them from the mask and zero them, or the encoder returns NaN latents
-                # for the whole structure.
+                # Mask missing coordinates before encoding to avoid NaN latents.
                 resolved = torch.isfinite(features["coords_nm"]).all(dim=-1)
                 atom37_mask = features["atom37_mask"].bool() & resolved
                 coords_nm = torch.nan_to_num(features["coords_nm"])

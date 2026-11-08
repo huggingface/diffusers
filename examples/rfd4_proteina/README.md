@@ -1,12 +1,8 @@
 # LoRA fine-tuning for RFD4-Proteina
 
-[RFD4-Proteína](https://huggingface.co/docs/diffusers/main/en/api/pipelines/rfd4_proteina) generates protein backbones
-and sequences by flow matching in a product space of backbone coordinates and per-token local latents. This example
-trains LoRA adapters on the denoiser so it follows a set of structures you care about, and writes them in the format
-`RFD4ProteinaPipeline.load_lora_weights` reads.
-
-It follows the fine-tuning recipe the model was released with: the autoencoder stays frozen and paired with the
-denoiser, adapters go on the attention projections, and the loss scores the predicted clean sample of both modalities.
+This example fine-tunes [RFD4-Proteína](https://huggingface.co/docs/diffusers/main/en/api/pipelines/rfd4_proteina)
+with LoRA on a folder of annotated CIF files. The autoencoder stays frozen; only the denoiser adapters train.
+Saved adapters load with `RFD4ProteinaPipeline.load_lora_weights`.
 
 ## Setup
 
@@ -71,48 +67,22 @@ accelerate launch examples/rfd4_proteina/train_rfd4_proteina_lora.py \
   --seed 0
 ```
 
-Notes on the defaults:
+Training uses rank 32 / alpha 64 adapters on `to_q`, `to_k`, `to_v` and `to_out`, following the released recipe.
+The flow-matching loss scores the predicted clean backbone and local latents. It does not include the native
+trainer's auxiliary sequence and insertion losses.
 
-- **Rank, alpha and target modules** are the released fine-tune's: rank 32, alpha 64, adapters on the attention
-  projections (`to_q`, `to_k`, `to_v`, `to_out`, which are the native recipe's `to_qkv` and `to_out_node`).
-- **One structure per batch.** Token counts differ per structure and the model has no padding-free path, so the batch
-  size is fixed at one; raise the effective batch size with `--gradient_accumulation_steps`.
-- **`--max_tokens`** skips structures longer than 384 tokens, as the released fine-tune does. Memory and step time grow
-  quickly with token count.
-- **Preparation is cached.** Parsing and featurizing a CIF costs far more than a training step, so pass
-  `--features_cache_dir` to prepare each structure once and reuse it across epochs. Cache keys include the full source
-  path, file size, modification time and preparation seed. Writes are locked and published atomically so distributed
-  workers and concurrent runs can share the cache. Without a cache directory, prepared tensors stay in CPU memory.
-- **`--gradient_checkpointing`** trades compute for memory if a long structure does not fit.
-- **`--recycle_depth`** sets the trunk passes per training step, one by default. Sampling recycles more deeply, up to
-  six passes early in the schedule, so a deeper training step matches inference more closely and costs proportionally
-  more time and memory.
+- Each batch holds one structure. Use `--gradient_accumulation_steps` to increase the effective batch size.
+- Structures above `--max_tokens` (384 by default), rejected inputs, and structures without resolved target CA atoms
+  are filtered before training. Missing atoms are masked before encoding.
+- `--features_cache_dir` avoids preparing the CIFs again on later runs. Without it, features stay in CPU memory.
+- `--gradient_checkpointing` saves GPU memory. `--recycle_depth` controls trunk passes per training step (default 1).
 
-- **Structures preparation rejects are skipped** with a warning — an experimental file whose coordinates the model's
-  own input checks refuse, for instance. A run where nothing can be prepared fails rather than writing an untrained
-  adapter. Filtering happens before distributed sharding, including the token limit and structures without any resolved
-  emitted CA atoms, so all ranks execute the same number of training steps.
-- **Missing atoms are dropped from the mask.** A deposited structure does not always hold every atom its residues
-  should have; those slots are removed before encoding, and a token is supervised only where its CA is resolved.
+For two GPUs, add `--multi_gpu --num_processes 2` to `accelerate launch`.
+Resume with `--resume_from_checkpoint latest`, keeping the same output directory and LoRA configuration.
+Use `--checkpointing_steps` and `--checkpoints_total_limit` to control checkpoint frequency and retention.
 
-Pass `--validation_cif` to generate from one input every `--validation_steps`, with the sampler settings the
-checkpoint was released with, and write the result next to the adapter. Generation uses the checkpoint's own recycle
-schedule, which also fixes the number of integration steps. In distributed training, only the main process generates
-and writes validation output; the other ranks wait. Validation temporarily switches the transformer to evaluation
-mode, disabling LoRA dropout, then restores its previous mode.
-
-For multi-GPU training, add `--multi_gpu --num_processes 2` to `accelerate launch`. All ranks participate in
-checkpoint saving, including their RNG states; only the main process prunes old checkpoints and writes adapter
-weights. Resume with `--resume_from_checkpoint latest` and the same LoRA configuration. Both checkpoint and final
-adapter files include the PEFT metadata, preserving the rank and alpha when loaded for inference.
-
-The reference noise is drawn with the pipeline's own helpers, so the noise end of the training path is the same
-distribution the sampler starts from: masked to the emitted tokens, and for the backbone with zero centre of mass and
-the per-molecule stochastic offset.
-
-The loss is flow matching on the two modalities. The native recipe adds auxiliary sequence and insertion terms, which
-this example leaves out: adapters trained here move the structure distribution, and the sequence readout follows only
-indirectly.
+Pass `--validation_cif` to generate a structure every `--validation_steps`. Validation runs on the main process,
+with dropout disabled, and writes a CIF next to the adapter. It uses the checkpoint's full sampling schedule.
 
 ## Inference
 
@@ -143,8 +113,7 @@ output = pipe(
 write_cif(output, features, atom_array, "design.cif")
 ```
 
-An adapter trained with the model's own trainer loads too, once converted — the native recipe adapts a fused
-`to_qkv`, which the conversion splits into the `to_q`, `to_k` and `to_v` this transformer exposes:
+Convert native adapters before loading them. This splits the fused `to_qkv` weights into `to_q`, `to_k` and `to_v`:
 
 ```bash
 python scripts/convert_rfd4_proteina_to_diffusers.py \
