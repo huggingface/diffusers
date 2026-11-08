@@ -1231,6 +1231,10 @@ class MiniMaxH3SetTimestepsStep(ModularPipelineBlocks):
         Returns:
             `tuple[torch.Tensor, torch.Tensor]`: the distinct timesteps, sorted, and the index of every row into them.
         """
+        # The layout step puts the indices on the execution device, but this plan is built on CPU.
+        video_indices = video_indices.cpu()
+        audio_indices = audio_indices.cpu()
+
         sequence_length = int(video_indices.numel() + audio_indices.numel() + num_text_tokens)
         row_timesteps = torch.full((sequence_length,), video_timestep, dtype=torch.float32)
         row_timesteps[video_indices[:num_condition_video_rows]] = condition_video_timestep
