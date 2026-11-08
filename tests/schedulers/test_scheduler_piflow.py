@@ -17,7 +17,7 @@ import unittest
 import torch
 
 from diffusers import PiflowScheduler
-from diffusers.schedulers.scheduling_piflow import PiflowSchedulerOutput
+from diffusers.schedulers.scheduling_piflow import DXPolicy, PiflowSchedulerOutput, policy_rollout_fm
 
 
 class PiflowSchedulerTest(unittest.TestCase):
@@ -196,3 +196,38 @@ class PiflowSchedulerTest(unittest.TestCase):
             sample = scheduler.step(model_output, t, sample).prev_sample
 
         torch.testing.assert_close(sample, target, atol=1e-3, rtol=1e-3)
+
+    def test_final_step_policy_spans_the_nominal_segment(self):
+        """On the last step the policy's grid spans the nominal segment down to 0, while the rollout stops at
+        `eps`, as in the native samplers the distilled checkpoints were trained with."""
+        torch.manual_seed(0)
+        scheduler = self.scheduler_class(**self.get_default_config())
+        scheduler.set_timesteps(4)
+        sample = torch.randn(2, 3)
+        model_output = torch.randn(2, 3 * scheduler.n_grid)
+
+        for t in scheduler.timesteps[:-1]:
+            sample = scheduler.step(model_output, t, sample).prev_sample
+        out = scheduler.step(model_output, scheduler.timesteps[-1], sample).prev_sample
+
+        raw_src = scheduler._piflow_raw_timesteps[-1]
+        segment = 1.0 / (4 - 0.5) * 0.5
+        sigma = scheduler.sigmas[-2].expand(2).reshape(2, 1)
+        policy = DXPolicy(
+            scheduler._to_grid(model_output, sample),
+            sample,
+            sigma,
+            torch.full((2,), segment),
+            shift=scheduler.config.shift,
+            eps=scheduler.eps,
+        )
+        self.assertTrue(torch.all(policy.raw_t_dst == 0))
+        expected, _, _ = policy_rollout_fm(
+            sample,
+            sigma,
+            raw_src.expand(2),
+            (raw_src - segment).clamp(min=scheduler.eps).expand(2),
+            scheduler.num_policy_substeps,
+            policy,
+        )
+        torch.testing.assert_close(out, expected, atol=0, rtol=0)
