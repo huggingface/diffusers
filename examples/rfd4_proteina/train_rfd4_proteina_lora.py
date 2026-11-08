@@ -17,9 +17,11 @@
 """LoRA fine-tuning of the RFD4-Proteina denoiser on a folder of structures."""
 
 import argparse
+import hashlib
 import logging
 import os
 import shutil
+import tempfile
 from pathlib import Path
 
 import torch
@@ -27,6 +29,7 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
+from filelock import FileLock
 from peft import LoraConfig
 from peft.utils import get_peft_model_state_dict, set_peft_model_state_dict
 from torch.utils.data import DataLoader, Dataset
@@ -161,6 +164,7 @@ class PreparedStructureDataset(Dataset):
         from rfd4_proteina_prep import prepare_cif
 
         self._prepare_cif = prepare_cif
+        self._memory_cache = {}
         self.seed = seed
         self.max_tokens = max_tokens
         self.cache_dir = None if cache_dir is None else Path(cache_dir)
@@ -172,32 +176,61 @@ class PreparedStructureDataset(Dataset):
         self.paths = sorted(path for pattern in ("*.cif", "*.cif.gz", "*.cif.zst") for path in root.rglob(pattern))
         if not self.paths:
             raise ValueError(f"No CIF files found under {data_dir}.")
+        # Filter before Accelerate shards the loader: every rank must execute the same number of backwards.
+        self.paths = [path for path in self.paths if self._is_trainable(path)]
+        if not self.paths:
+            raise ValueError(f"No trainable structures found under {data_dir}.")
 
     def __len__(self) -> int:
         return len(self.paths)
 
     def _features(self, path: Path) -> dict[str, torch.Tensor]:
-        cached = None if self.cache_dir is None else self.cache_dir / f"{path.stem}-{self.seed}.pt"
-        if cached is not None and cached.is_file():
-            return torch.load(cached, map_location="cpu", weights_only=True)
-        features, _ = self._prepare_cif(path, seed=self.seed, device=torch.device("cpu"))
-        features = {name: value for name, value in features.items() if isinstance(value, torch.Tensor)}
-        if cached is not None:
-            torch.save(features, cached)
-        return features
+        if self.cache_dir is None:
+            if path not in self._memory_cache:
+                self._memory_cache[path] = self._prepare_features(path)
+            return self._memory_cache[path]
+        # Include the full source path and file version, so nested names and edited inputs cannot alias.
+        stat = path.stat()
+        key = hashlib.sha256(f"{path.resolve()}:{stat.st_size}:{stat.st_mtime_ns}:{self.seed}".encode()).hexdigest()
+        cached = self.cache_dir / f"{key}.pt"
+        with FileLock(str(cached) + ".lock"):
+            if cached.is_file():
+                return torch.load(cached, map_location="cpu", weights_only=True)
+            features = self._prepare_features(path)
+            # Publish only complete files, including when different jobs share this cache.
+            temporary = None
+            try:
+                with tempfile.NamedTemporaryFile(dir=self.cache_dir, suffix=".pt", delete=False) as handle:
+                    temporary = Path(handle.name)
+                    torch.save(features, handle)
+                os.replace(temporary, cached)
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
+            return features
 
-    def __getitem__(self, index: int) -> dict[str, torch.Tensor] | None:
-        path = self.paths[index]
+    def _prepare_features(self, path: Path) -> dict[str, torch.Tensor]:
+        features, _ = self._prepare_cif(path, seed=self.seed, device=torch.device("cpu"))
+        return {name: value for name, value in features.items() if isinstance(value, torch.Tensor)}
+
+    def _is_trainable(self, path: Path) -> bool:
         try:
             features = self._features(path)
         except ValueError as error:
-            # Preparation rejects a structure the model cannot be trained on, such as one with unusable coordinates.
-            logger.warning(f"Skipping {path.name}: {error}")
-            return None
-        # A structure that does not fit is dropped from its batch rather than truncated.
-        if features["padding_mask"].shape[1] > self.max_tokens:
-            return None
-        return features
+            logger.warning(f"Skipping {path}: {error}")
+            return False
+        emitted = features["padding_mask"].bool() & ~features["is_in_context_conditioning"].bool()
+        resolved_ca = features["atom37_mask"][..., 1].bool() & torch.isfinite(features["coords_nm"][..., 1, :]).all(
+            dim=-1
+        )
+        valid = features["padding_mask"].shape[1] <= self.max_tokens and bool((emitted & resolved_ca).any())
+        if not valid:
+            logger.warning(f"Skipping {path}: too many tokens or no resolved emitted CA atoms.")
+            self._memory_cache.pop(path, None)
+        return valid
+
+    def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
+        return self._features(self.paths[index])
 
 
 def collate_fn(examples):
@@ -205,8 +238,7 @@ def collate_fn(examples):
 
     Raise the effective batch size with `--gradient_accumulation_steps` instead.
     """
-    examples = [example for example in examples if example is not None]
-    return examples[0] if examples else None
+    return examples[0]
 
 
 def sample_times(batch_size: int, device: torch.device) -> dict[str, torch.Tensor]:
@@ -325,8 +357,6 @@ def main():
         return accelerator.unwrap_model(model)
 
     def save_model_hook(models, weights, output_dir):
-        if not accelerator.is_main_process:
-            return
         modules_to_save = {}
         for model in models:
             if isinstance(unwrap_model(model), type(unwrap_model(transformer))):
@@ -335,9 +365,10 @@ def main():
             else:
                 raise ValueError(f"Unexpected model to save: {model.__class__}")
             weights.pop()
-        RFD4ProteinaPipeline.save_lora_weights(
-            output_dir, transformer_lora_layers=layers, **_collate_lora_metadata(modules_to_save)
-        )
+        if accelerator.is_main_process:
+            RFD4ProteinaPipeline.save_lora_weights(
+                output_dir, transformer_lora_layers=layers, **_collate_lora_metadata(modules_to_save)
+            )
 
     def load_model_hook(models, input_dir):
         transformer_ = None
@@ -372,9 +403,10 @@ def main():
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
-    dataset = PreparedStructureDataset(
-        args.instance_data_dir, seed=args.prep_seed, max_tokens=args.max_tokens, cache_dir=args.features_cache_dir
-    )
+    with accelerator.main_process_first():
+        dataset = PreparedStructureDataset(
+            args.instance_data_dir, seed=args.prep_seed, max_tokens=args.max_tokens, cache_dir=args.features_cache_dir
+        )
     dataloader = DataLoader(
         dataset,
         batch_size=1,
@@ -424,12 +456,10 @@ def main():
     progress_bar = tqdm(
         range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process, desc="Steps"
     )
-    # Structures the preparation rejects drop out of their batch, so the data is cycled until the step count is met.
+    # All entries are trainable before sharding; cycle the data until the step count is met.
     while global_step < args.max_train_steps:
         transformer.train()
         for batch in dataloader:
-            if batch is None:  # Every structure in this batch was skipped.
-                continue
             with accelerator.accumulate(transformer):
                 features = {name: value.to(accelerator.device) for name, value in batch.items()}
                 padding_mask = features["padding_mask"].bool()
@@ -452,8 +482,6 @@ def main():
                     "bb_ca": emit_masks["bb_ca"] & atom37_mask[..., 1],
                     "local_latents": emit_masks["local_latents"] & atom37_mask[..., 1],
                 }
-                if not supervision_masks["bb_ca"].any():
-                    continue
 
                 with torch.no_grad():
                     encoded = vae.encode(
@@ -501,11 +529,13 @@ def main():
                 progress_bar.set_postfix(**logs)
                 accelerator.log(logs, step=global_step)
 
-                if accelerator.is_main_process and global_step % args.checkpointing_steps == 0:
+                if global_step % args.checkpointing_steps == 0:
                     save_checkpoint(accelerator, args, global_step)
                 if args.validation_cif is not None and global_step % args.validation_steps == 0:
-                    run_validation(accelerator, args, unwrap_model(transformer), vae, schedulers, global_step)
-                    transformer.train()
+                    accelerator.wait_for_everyone()
+                    if accelerator.is_main_process:
+                        run_validation(accelerator, args, unwrap_model(transformer), vae, schedulers, global_step)
+                    accelerator.wait_for_everyone()
             if global_step >= args.max_train_steps:
                 break
         if global_step == 0:
@@ -526,7 +556,7 @@ def main():
 
 
 def save_checkpoint(accelerator, args, global_step: int) -> None:
-    if args.checkpoints_total_limit is not None:
+    if accelerator.is_main_process and args.checkpoints_total_limit is not None:
         checkpoints = sorted(
             (entry for entry in os.listdir(args.output_dir) if entry.startswith("checkpoint")),
             key=lambda entry: int(entry.split("-")[1]),
@@ -534,7 +564,9 @@ def save_checkpoint(accelerator, args, global_step: int) -> None:
         for checkpoint in checkpoints[: max(len(checkpoints) - args.checkpoints_total_limit + 1, 0)]:
             shutil.rmtree(os.path.join(args.output_dir, checkpoint))
     path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+    accelerator.wait_for_everyone()
     accelerator.save_state(path)
+    accelerator.wait_for_everyone()
     logger.info(f"Saved state to {path}.")
 
 
@@ -553,12 +585,17 @@ def run_validation(accelerator, args, transformer, vae, schedulers, global_step:
     inputs = {name: features[name] for name in PIPELINE_INPUTS}
     conditioning = {name: value for name, value in features.items() if name not in PIPELINE_INPUTS}
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed or 0)
-    with torch.no_grad():
-        output = pipeline(
-            **inputs,
-            conditioning_features=conditioning,
-            generator=generator,
-        )
+    was_training = transformer.training
+    transformer.eval()
+    try:
+        with torch.no_grad():
+            output = pipeline(
+                **inputs,
+                conditioning_features=conditioning,
+                generator=generator,
+            )
+    finally:
+        transformer.train(was_training)
     path = os.path.join(args.output_dir, f"validation-{global_step}.cif")
     write_cif(output, features, atom_array, path)
     logger.info(f"Wrote {path}.")

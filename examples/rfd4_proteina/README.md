@@ -80,7 +80,9 @@ Notes on the defaults:
 - **`--max_tokens`** skips structures longer than 384 tokens, as the released fine-tune does. Memory and step time grow
   quickly with token count.
 - **Preparation is cached.** Parsing and featurizing a CIF costs far more than a training step, so pass
-  `--features_cache_dir` to prepare each structure once and reuse it across epochs.
+  `--features_cache_dir` to prepare each structure once and reuse it across epochs. Cache keys include the full source
+  path, file size, modification time and preparation seed. Writes are locked and published atomically so distributed
+  workers and concurrent runs can share the cache. Without a cache directory, prepared tensors stay in CPU memory.
 - **`--gradient_checkpointing`** trades compute for memory if a long structure does not fit.
 - **`--recycle_depth`** sets the trunk passes per training step, one by default. Sampling recycles more deeply, up to
   six passes early in the schedule, so a deeper training step matches inference more closely and costs proportionally
@@ -88,13 +90,21 @@ Notes on the defaults:
 
 - **Structures preparation rejects are skipped** with a warning — an experimental file whose coordinates the model's
   own input checks refuse, for instance. A run where nothing can be prepared fails rather than writing an untrained
-  adapter.
+  adapter. Filtering happens before distributed sharding, including the token limit and structures without any resolved
+  emitted CA atoms, so all ranks execute the same number of training steps.
 - **Missing atoms are dropped from the mask.** A deposited structure does not always hold every atom its residues
   should have; those slots are removed before encoding, and a token is supervised only where its CA is resolved.
 
 Pass `--validation_cif` to generate from one input every `--validation_steps`, with the sampler settings the
 checkpoint was released with, and write the result next to the adapter. Generation uses the checkpoint's own recycle
-schedule, which also fixes the number of integration steps.
+schedule, which also fixes the number of integration steps. In distributed training, only the main process generates
+and writes validation output; the other ranks wait. Validation temporarily switches the transformer to evaluation
+mode, disabling LoRA dropout, then restores its previous mode.
+
+For multi-GPU training, add `--multi_gpu --num_processes 2` to `accelerate launch`. All ranks participate in
+checkpoint saving, including their RNG states; only the main process prunes old checkpoints and writes adapter
+weights. Resume with `--resume_from_checkpoint latest` and the same LoRA configuration. Both checkpoint and final
+adapter files include the PEFT metadata, preserving the rank and alpha when loaded for inference.
 
 The reference noise is drawn with the pipeline's own helpers, so the noise end of the training path is the same
 distribution the sampler starts from: masked to the emitted tokens, and for the backbone with zero centre of mass and
