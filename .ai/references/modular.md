@@ -269,7 +269,7 @@ OutputParam(
 )
 ```
 
-If a template's predefined description doesn't fit (e.g. the `"latents"` output template means "Denoised latents", which is wrong for the noisy latents out of a prepare-latents step) — drop the template and declare the field directly with an accurate description. See gotcha #5.
+If a template's predefined description doesn't fit (e.g. the `"latents"` output template means "Denoised latents", which is wrong for the noisy latents out of a prepare-latents step) — keep the template for the name and type hint and pass your own `description=`, or declare the field directly. See gotcha #5.
 
 **Declare defaults in the `InputParam`, not inside `__call__`.**
 
@@ -297,32 +297,10 @@ if block_state.height is None:
 ```
 
 The other two ways to declare an input: 
-(1) `required=True` when the block cannot work without the value, so the caller has to pass it; the block raises `ValueError("Required input 'x' is missing")` when it is not passed or `None`. 
-(2) Optional with no default when the block works with `None`. Most often that is the computed case above, and the block should then also declare the value as an output. Sometimes the block only uses the value to decide something else: e.g. in the text encoder blocks, `negative_prompt` defaults to `None` instead of `""`, so the encoder can tell "none given" from an empty string. It encodes an empty string in its place only when guidance needs one, and ignores a given negative prompt when guidance is disabled (some encoders log a warning).
+(1) `required=True` when the block cannot work without the value, so the caller has to pass it; the block raises `ValueError("Required input 'x' is missing")` when it is not passed or `None`.
+(2) Optional with no default when the block works with `None`. Most often that is the computed case above, and the block should then also declare the value as an output.
 
-Inputs are declared on leaf blocks. When blocks are assembled, the composite derives its inputs from them, and the same input is sometimes declared by more than one sub-block.
-
-In a conditional block, the sub-blocks may declare different defaults for the same input, and each is respected: e.g. for `strength`, the img2img branch may defaults to 0.3 and the inpaint branch to 0.9999, the docstring of the conditional block says "defaults to 0.3 or 0.9999, depending on the workflow", and at runtime the branch that runs fills in its own.
-
-In a sequential block, the first sub-block that declares a default sets it for every sub-block after it. When a later sub-block declares a different default, the sequence keeps the first one and warns that the default is ambiguous. We recommend to state it explicitly for such case: declare the input in `input_overrides` on the composite, see below.
-
-**Redefine what the composite derives with `*_overrides`.** When you assemble blocks, the composite derives its inputs, outputs, components and configs from its sub-blocks. You cannot add or remove any of them there, they are part of the blocks' logic, but you can redefine how one is declared: e.g. you can change the default and description of an input, the description of an output, the repo and loading info of a component, the value of a config. Set `input_overrides`, `intermediate_output_overrides`, `component_overrides` or `config_overrides` as a class attribute on the composite (`ConditionalPipelineBlocks`, `SequentialPipelineBlocks`, `LoopSequentialPipelineBlocks`), or pass them to `from_blocks_dict`:
-
-```python
-# as a class attribute
-class MyBlocks(SequentialPipelineBlocks):
-    block_classes = [TextEncoderStep, DenoiseStep]
-    block_names = ["text_encoder", "denoise"]
-    input_overrides = {"num_inference_steps": InputParam.template("num_inference_steps", default=10)}
-
-# or when assembling from a dict
-blocks = SequentialPipelineBlocks.from_blocks_dict(
-    {"text_encoder": TextEncoderStep(), "denoise": DenoiseStep()},
-    input_overrides={"num_inference_steps": InputParam.template("num_inference_steps", default=10)},
-)
-```
-
-Each is a dict of name to declaration. The name must be one the composite already derives, and the declaration, an `InputParam` / `OutputParam` / `ComponentSpec` / `ConfigSpec`, replaces the derived one whole, so it states everything: default, `required`, description. Typical uses: settle a default two sub-blocks disagree on, set a preset's default as in the distilled example below, or reword a description from the composite's point of view. The per-branch defaults of a conditional block cannot be changed one branch at a time from the composite; for that, change the sub-block. An override on the conditional block replaces them with one default for every branch. `InputParam.template(...)` keeps a common input to one line.
+**An assembled block derives its declarations from its sub-blocks, and can redefine them with `*_overrides`.** Inputs, outputs, components and configs are declared on leaf blocks. A composite (`SequentialPipelineBlocks`, `ConditionalPipelineBlocks`, `LoopSequentialPipelineBlocks`) derives its own from its sub-blocks. It cannot add or remove any of them, they are part of the blocks' logic, but it can redefine how one is declared: the default or description of an input, the description of an output, the repo and loading info of a component, the value of a config. You set these as class attributes on the composite, or pass them to `from_blocks_dict`: `input_overrides`, `intermediate_output_overrides`, `component_overrides` and `config_overrides`, each a `{name: declaration}` dict. The name must be one the composite already derives, and the declaration takes the derived entry's place (gotcha #13).
 
 ```python
 class DistilledCoreDenoiseStep(SequentialPipelineBlocks):
@@ -332,9 +310,15 @@ class DistilledCoreDenoiseStep(SequentialPipelineBlocks):
     input_overrides = {"num_inference_steps": InputParam.template("num_inference_steps", default=10)}
 ```
 
-A composite reads its sub-blocks' declarations and never writes to them: the `required` flag it reports is its own view ("the caller has to pass this"), the leaf's flag is the runtime check in `get_block_state`, and the two legitimately differ. Copy an `InputParam` before changing it.
+`component_overrides` and `config_overrides` work the same way with a `ComponentSpec` / `ConfigSpec`, see the ComponentSpec section below. Typical uses: set a preset's default as above, settle a default two sub-blocks disagree on, or reword a description from the composite's point of view.
 
-Overriding the `outputs` property by hand is still the way to narrow `outputs` to what downstream actually consumes, so the docstring shows the step's product instead of every internal intermediate (Wan-Animate-2's core denoise exposes only `segment_frames`).
+How the composite derives a shared input, and when you need an override:
+
+- In a conditional block, the sub-blocks may declare different defaults for the same input, and each is respected: e.g. for `strength`, the img2img branch defaults to 0.3 and the inpaint branch to 0.9999, the docstring of the conditional block says "depends on the workflow", and at runtime the branch that runs fills in its own. An `input_overrides` entry on the conditional block will gives every branch the same default and cannot set one per branch. To change a single branch's default, override the input on that sub-block.
+- In a sequential block, the first sub-block that declares a default sets it for every sub-block after it. When a later sub-block declares a different default, the sequence keeps the first one and warns that the default is ambiguous. State it explicitly: declare the input in `input_overrides` on the composite.
+- The `required` flag the composite reports is its own view, whether the caller has to pass the value. A sub-block may require an input that an earlier sub-block defaults or may produce; the composite then lists it as optional. A conditional block lists an input as required only when every branch requires it and the block always runs. The sub-blocks' own declarations are untouched and still checked at runtime in `get_block_state`.
+
+**`outputs` is what the assembled block presents as its product.** By default it is every intermediate output. Override the property to list only what the step is for, so the docstring shows the product instead of every internal intermediate (Wan-Animate-2's core denoise lists only `segment_frames`). It changes the docstring and `output_names` only: everything stays in the pipeline state, and `pipe(..., output="latents")` still fetches any intermediate.
 
 ## ComponentSpec patterns
 
@@ -352,6 +336,19 @@ ComponentSpec(
 )
 ```
 
+A composite inherits its sub-blocks' `ComponentSpec`s and `ConfigSpec`s. To point one at another repo, loading method or config value for the assembled pipeline, redeclare it in `component_overrides` / `config_overrides` on the composite, the same way `input_overrides` redeclares an input (see InputParam / OutputParam above).
+
+```python
+class DistilledBlocks(SequentialPipelineBlocks):
+    block_classes = [TextEncoderStep, DenoiseStep, DecodeStep]
+    block_names = ["text_encoder", "denoise", "decode"]
+    # the distilled checkpoint has its own transformer weights and skips guidance
+    component_overrides = {
+        "transformer": ComponentSpec("transformer", YourTransformerModel, repo="org/model-distilled", subfolder="transformer"),
+    }
+    config_overrides = {"is_distilled": ConfigSpec("is_distilled", default=True)}
+```
+
 ## Gotchas
 
 1. **Importing from standard pipelines.** The modular and standard pipeline systems are parallel — modular blocks must not import from `diffusers.pipelines.*`. For shared utility methods (e.g. `_pack_latents`, `retrieve_timesteps`), either redefine as standalone functions or use `# Copied from diffusers.pipelines.<model>...` headers. See `wan/before_denoise.py` and `helios/before_denoise.py` for examples.
@@ -362,7 +359,7 @@ ComponentSpec(
 
 4. **Instantiating components inline.** If a class like `VideoProcessor` is needed, register it as a `ComponentSpec` and access via `components.video_processor`. Don't create new instances inside block `__call__`.
 
-5. **Using `InputParam.template()` / `OutputParam.template()` when semantics don't match.** Templates carry predefined descriptions — e.g. the `"latents"` output template means "Denoised latents". Don't use it for initial noisy latents from a prepare-latents step. Use a plain `InputParam(...)` / `OutputParam(...)` with an accurate description instead.
+5. **Using `InputParam.template()` / `OutputParam.template()` when semantics don't match.** Templates carry predefined descriptions — e.g. the `"latents"` output template means "Denoised latents". Don't use it as is for initial noisy latents from a prepare-latents step: keep the template for the name and type hint and pass `description=` (`OutputParam.template("latents", description="Initial noisy latents")`), or use a plain `InputParam(...)` / `OutputParam(...)`.
 
 6. **`required=True` on an input that carries a default.** An input cannot be both required and have a default. When that happens, `InputParam` keeps the default, treats the input as optional and logs a warning. This is likely to happen when you reuse a template for its type hint and description but make it required: `InputParam.template("num_inference_steps", required=True)` stays an optional input that defaults to 50, plus a warning. Decide which one you mean: drop `required=True` to keep the template default without the warning, or pass `default=None` explicitly to make the input required.
 
@@ -380,6 +377,8 @@ ComponentSpec(
 11. **Raw `torch.randn(device=...)` for noise.** Use `randn_tensor(...)` from `utils/torch_utils`: it draws on the generator's device and moves the result, so CPU generators (what the test mixins pass) work, and the CUDA-generator path is bit-identical to `torch.randn`.
 
 12. **Helpers taking `components`.** Prefer explicit args, for example, `get_xx_prompt_embeds(text_encoder, tokenizer, prompt)` instead of `get_xx_prompt_embeds(components, prompt)`. Helpers and block methods should take only what they use so dependencies are visible and they can run without an assembled pipeline. Leave the full `components` object to `__call__`, which unpacks what its helpers need. See `get_qwen_prompt_embeds` in `qwenimage/encoders.py`.
+
+13. **An override declaration that restates less than the derived entry.** `input_overrides = {"num_inference_steps": InputParam("num_inference_steps", default=10)}` replaces the derived entry whole, so the type hint and description the sub-block declared are gone. Build the override from the template, `InputParam.template("num_inference_steps", default=10)`, or restate everything.
 
 ## Conversion checklist
 
