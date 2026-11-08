@@ -749,14 +749,11 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
             if not param.required:
                 param_str += ", *optional*"
                 if param.defaults_by_block:
-                    # "required" first when a branch requires it, then one entry per distinct default:
-                    # e.g. {"a": None, "b": 189, "c": 189} -> ", defaults to None or 189, depending on the workflow"
-                    #      {"t2v": 124, "ref2v": REQUIRED} -> ", required or defaults to 124, depending on the workflow"
-                    distinct = list(dict.fromkeys(param.defaults_by_block.values()))
-                    parts = ["required"] if REQUIRED in distinct else []
-                    if any(v is not REQUIRED for v in distinct):
-                        parts.append(f"defaults to {' or '.join(str(v) for v in distinct if v is not REQUIRED)}")
-                    param_str += f", {' or '.join(parts)}, depending on the workflow"
+                    # the branches of a conditional sub-block declare it differently (a default each, or one requires
+                    # it). Which one applies, and whether an earlier block produces the value instead, depends on the
+                    # branch that runs, so the merged docstring says only that. `get_workflow(name).inputs` has the
+                    # exact signature of one workflow
+                    param_str += ", depends on the workflow"
                 elif param.default is not None:
                     param_str += f", defaults to {param.default}"
         param_str += "):"
@@ -832,12 +829,8 @@ def format_params_markdown(params, header="Inputs"):
         if hasattr(param, "required") and not param.required:
             param_str += ", *optional*"
             if param.defaults_by_block:
-                # e.g. {"t2v": 124, "ref2v": REQUIRED} -> ", required or defaults to `124`, depending on the workflow"
-                distinct = list(dict.fromkeys(param.defaults_by_block.values()))
-                parts = ["required"] if REQUIRED in distinct else []
-                if any(v is not REQUIRED for v in distinct):
-                    parts.append(f"defaults to {' or '.join(f'`{v}`' for v in distinct if v is not REQUIRED)}")
-                param_str += f", {' or '.join(parts)}, depending on the workflow"
+                # see `format_input_params`
+                param_str += ", depends on the workflow"
             elif param.default is not None:
                 param_str += f", defaults to `{param.default}`"
         param_str += ")"

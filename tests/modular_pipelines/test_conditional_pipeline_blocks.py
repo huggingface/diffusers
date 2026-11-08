@@ -423,9 +423,9 @@ class TestConditionalBlocksBranchDefaults:
         assert len(strength_params) == 1
         assert strength_params[0] == per_branch("strength", {"inpaint": 0.9999, "img2img": 0.3}, type_hint=float)
 
-        # the docstring renders the distinct per-block defaults instead of a single value
+        # the docstring does not pick one of the per-block defaults
         doc = " ".join(AutoImageBlocks().doc.split())
-        assert "strength (`float`, *optional*, defaults to 0.9999 or 0.3, depending on the workflow):" in doc
+        assert "strength (`float`, *optional*, depends on the workflow):" in doc
 
     def test_branch_resolves_own_default(self):
         pipe = AutoImageBlocks().init_pipeline()
@@ -456,9 +456,8 @@ class TestConditionalBlocksBranchDefaults:
             "strength", {"refine": 0.9999, "image.inpaint": 0.9999, "image.img2img": 0.3}, type_hint=float
         )
 
-        # the docstring renders distinct values only: refine and image.inpaint both use 0.9999, shown once
         doc = " ".join(NestedImageBlocks().doc.split())
-        assert "strength (`float`, *optional*, defaults to 0.9999 or 0.3, depending on the workflow):" in doc
+        assert "strength (`float`, *optional*, depends on the workflow):" in doc
 
     def test_explicit_none_reaches_every_branch(self):
         # a passed None is a value, not "use the default": the block keeps it instead of filling in its default

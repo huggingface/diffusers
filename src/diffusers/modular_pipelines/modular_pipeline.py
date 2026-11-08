@@ -782,7 +782,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         # itself can be skipped): the merged input is optional with default `None`, and `defaults_by_block` records
         # what each declaring sub-block says. At runtime the sub-block that runs fills in its own default, or raises when
         # it requires the input and it is missing (see `ModularPipelineBlocks.get_block_state`);
-        # the docstrings render the defaults, e.g. "defaults to 0.3 or 0.9999, depending on the workflow"
+        # the docstrings say "depends on the workflow"
 
         declarations = {}
         # declarations: input_name -> {block_name: InputParam}, `None` when the sub-block does not declare the input
@@ -1300,10 +1300,19 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
                 if key not in inputs:
                     # otherwise, declare it as an input if not already declared
                     inputs[key] = copy(inp)
-                    if inp.required and key in maybe_outputs:
-                        # the block requires it, but an earlier conditional block can produce it, so change it to optional
-                        # e.g. `prepare_latents` lists `image_latents` as a required input, but `image_encoder` (an conditional block) produces it when `image`
-                        # is passed, so `image_latents` is an optional input for the pipeline, i.e. user can skip it if they pass `image` and run the image_encoder block.
+                    if inp.defaults_by_block:
+                        # a conditional sub-block's record is keyed by its branches; prefix them with the sub-block's name
+                        # so the record says which block's branch each entry is, like a nested conditional block does
+                        # e.g. {"img2img": REQUIRED} on `denoise` -> {"denoise.img2img": REQUIRED}
+                        inputs[key].defaults_by_block = {
+                            f"{block_name}.{k}": v for k, v in inp.defaults_by_block.items()
+                        }
+                    if key in maybe_outputs:
+                        # an earlier conditional block can produce it, so the caller does not have to pass it even if
+                        # this block requires it.
+                        # e.g. `prepare_latents` lists `image_latents` as a required input, but `image_encoder` (a
+                        # conditional block) produces it when `image` is passed, so `image_latents` is an optional input
+                        # for the pipeline: the user can skip it if they pass `image` and run the image_encoder block.
                         inputs[key].required = False
                     continue
                 # if the input is already declared: a later declaration can only make it required, or warn on a conflict in the defaults

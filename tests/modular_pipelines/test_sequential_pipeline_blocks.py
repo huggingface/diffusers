@@ -357,6 +357,53 @@ class TestSequentialPipelineBlocksRequiredInputs:
         assert required_flags(blocks, "image", "image_latents") == {"image": False, "image_latents": False}
         assert blocks.required_inputs == []
 
+    def test_record_of_a_conditional_sub_block_is_prefixed_with_its_name(self):
+        # `denoise` is a conditional block whose img2img branch requires `image_latents`, recorded as
+        # {"img2img": REQUIRED}; the sequence keeps the record, keyed by `denoise.img2img`, and the input optional:
+        # `encode` may produce it, so whether the caller has to pass it depends on the workflow
+        class Img2ImgBlock(ModularPipelineBlocks):
+            model_name = "test"
+
+            @property
+            def inputs(self):
+                return [InputParam("image_latents", required=True), InputParam("strength", default=0.3)]
+
+            def __call__(self, components, state):
+                return components, state
+
+        class Text2ImgBlock(ModularPipelineBlocks):
+            model_name = "test"
+
+            @property
+            def inputs(self):
+                return [InputParam("strength", default=0.9999)]
+
+            def __call__(self, components, state):
+                return components, state
+
+        class DenoiseBlocks(ConditionalPipelineBlocks):
+            block_classes = [Img2ImgBlock, Text2ImgBlock]
+            block_names = ["img2img", "text2img"]
+            block_trigger_inputs = ["image_latents"]
+            default_block_name = "text2img"
+
+            def select_block(self, image_latents=None):
+                return "img2img" if image_latents is not None else "text2img"
+
+        class Blocks(SequentialPipelineBlocks):
+            block_classes = [SkippableEncodeBlocks, DenoiseBlocks]
+            block_names = ["encode", "denoise"]
+
+        inputs = {inp.name: inp for inp in Blocks().inputs}
+        assert (inputs["image_latents"].required, inputs["image_latents"].defaults_by_block) == (
+            False,
+            {"denoise.img2img": REQUIRED},
+        )
+        assert inputs["strength"].defaults_by_block == {"denoise.img2img": 0.3, "denoise.text2img": 0.9999}
+        # the conditional block on its own keeps the branch names
+        inputs = {inp.name: inp for inp in DenoiseBlocks().inputs}
+        assert inputs["image_latents"].defaults_by_block == {"img2img": REQUIRED}
+
 
 class TestSequentialPipelineBlocksKwargsInputs:
     def test_kwargs_type_inputs_are_kept_apart(self):
@@ -657,12 +704,12 @@ class TestDefaultConflicts:
             block_classes = [Auto, FirstBlock]
             block_names = ["auto", "first"]
 
-        with warns("'first' declares default 0.5 .* per-branch defaults {'img2img': required}"):
+        with warns("'first' declares default 0.5 .* per-branch defaults {'auto.img2img': required}"):
             (strength,) = [inp for inp in Blocks().inputs if inp.name == "strength"]
         assert (strength.required, strength.default, strength.defaults_by_block) == (
             False,
             None,
-            {"img2img": REQUIRED},
+            {"auto.img2img": REQUIRED},
         )
 
     def test_required_branch_does_not_satisfy_a_later_requirement(self):
