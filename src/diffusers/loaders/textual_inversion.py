@@ -538,6 +538,15 @@ class TextualInversionLoaderMixin:
         if tokens:
             if isinstance(tokens, str):
                 tokens = [tokens]
+            # Also remove the extra tokens of multi-vector embeddings (`<token>_1`, `<token>_2`, ...)
+            multi_vector_tokens = []
+            for token in tokens:
+                i = 1
+                while f"{token}_{i}" in tokenizer.added_tokens_encoder:
+                    if f"{token}_{i}" not in tokens:
+                        multi_vector_tokens.append(f"{token}_{i}")
+                    i += 1
+            tokens = tokens + multi_vector_tokens
             for added_token_id, added_token in tokenizer.added_tokens_decoder.items():
                 if not added_token.special:
                     if added_token.content in tokens:
