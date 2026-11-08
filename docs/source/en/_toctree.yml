@@ -87,6 +87,8 @@
       title: bitsandbytes
     - local: quantization/bfl
       title: BFL (fp8r / nvfp4)
+    - local: quantization/convrot
+      title: INT8 ConvRot
     - local: quantization/gguf
       title: gguf
     - local: quantization/nunchaku

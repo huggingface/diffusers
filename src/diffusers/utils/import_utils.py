@@ -224,6 +224,7 @@ _librosa_available, _librosa_version = _is_package_available("librosa")
 _accelerate_available, _accelerate_version = _is_package_available("accelerate")
 _xformers_available, _xformers_version = _is_package_available("xformers")
 _gguf_available, _gguf_version = _is_package_available("gguf")
+_comfy_kitchen_available, _comfy_kitchen_version = _is_package_available("comfy_kitchen")
 _torchao_available, _torchao_version = _is_package_available("torchao")
 _bitsandbytes_available, _bitsandbytes_version = _is_package_available("bitsandbytes")
 _optimum_quanto_available, _optimum_quanto_version = _is_package_available("optimum", get_dist_name=True)
@@ -377,6 +378,10 @@ def is_imageio_available():
 
 def is_gguf_available():
     return _gguf_available
+
+
+def is_comfy_kitchen_available():
+    return _comfy_kitchen_available
 
 
 def is_flashinfer_available():

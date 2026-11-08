@@ -34,6 +34,11 @@ The checkpoint is mixed precision: the two input patch projections, the timestep
 
 ## MiniMaxH3Transformer3DModel
 
+Pruned Comfy checkpoints replace the timestep MLP with an `adaln_t_table` and lower-rank modulation projections.
+`from_single_file` infers `adaln_curve_grid` and `time_embed_dim` from that table. Curve interpolation and projection
+run in FP32 without applying SiLU; the denoising stream retains its requested precision. Native INT8 ConvRot
+checkpoints load with [`ConvRotQuantizationConfig`](../../quantization/convrot).
+
 [[autodoc]] MiniMaxH3Transformer3DModel
 
 ## MiniMaxH3TransformerOutput

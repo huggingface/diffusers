@@ -38,6 +38,10 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 MINIMAX_H3_MODALITY_NUM = 3
 
 
+def _get_projection_dtype(module):
+    return getattr(module, "compute_dtype", None) or get_parameter_dtype(module)
+
+
 @dataclass
 class MiniMaxH3TransformerOutput(BaseOutput):
     r"""
@@ -115,19 +119,26 @@ class MiniMaxH3AdaLayerNormModulation(nn.Module):
     either norm the way [`~models.normalization.AdaLayerNormZero`] does. It is therefore a block-level module of its
     own, named after the checkpoint's `adaln_proj`, with the modulation projection under the `linear` name diffusers
     uses inside every AdaLN module.
+
+    Pruned checkpoints instead project interpolated curve coordinates through `curve_proj` in FP32, without SiLU.
     """
 
-    def __init__(self, time_embed_dim: int, hidden_size: int):
+    def __init__(self, time_embed_dim: int, hidden_size: int, apply_silu: bool = True):
         super().__init__()
         self.hidden_size = hidden_size
-        self.linear = nn.Linear(time_embed_dim, 6 * hidden_size * MINIMAX_H3_MODALITY_NUM, bias=True)
+        self.apply_silu = apply_silu
+        projection = nn.Linear(time_embed_dim, 6 * hidden_size * MINIMAX_H3_MODALITY_NUM, bias=True)
+        if apply_silu:
+            self.linear = projection
+        else:
+            self.curve_proj = projection
 
     def forward(self, temb: torch.Tensor) -> tuple[torch.Tensor, ...]:
-        # The activation runs at `temb`'s own precision — float32, since `time_embedder` is a float32 module in this
-        # mixed-precision checkpoint — and only its result is cast down to the bfloat16 projection. Every block reads
-        # the same `temb`, so a rounding applied before the activation biases every block's modulation parameters
-        # identically at every sampling step, which accumulates coherently over the denoising trajectory.
-        temb = self.linear(nn.functional.silu(temb).to(get_parameter_dtype(self.linear)))
+        # The unpruned path applies SiLU in FP32 before casting to the projection's compute dtype. Rounding `temb`
+        # before activation would bias every block's modulation at every denoising step.
+        projection = self.linear if self.apply_silu else self.curve_proj
+        temb = nn.functional.silu(temb) if self.apply_silu else temb
+        temb = projection(temb.to(_get_projection_dtype(projection)))
         temb = temb.view(-1, 6 * self.hidden_size)
         return temb.chunk(6, dim=-1)
 
@@ -143,15 +154,22 @@ class MiniMaxH3AdaLayerNormOut(nn.Module):
     `WanTransformer3DModel` also use in their output layers.
     """
 
-    def __init__(self, hidden_size: int, time_embed_dim: int, eps: float):
+    def __init__(self, hidden_size: int, time_embed_dim: int, eps: float, apply_silu: bool = True):
         super().__init__()
         self.norm = nn.RMSNorm(hidden_size, eps=eps)
-        self.linear = nn.Linear(time_embed_dim, 2 * hidden_size, bias=True)
+        self.apply_silu = apply_silu
+        projection = nn.Linear(time_embed_dim, 2 * hidden_size, bias=True)
+        if apply_silu:
+            self.linear = projection
+        else:
+            self.curve_proj = projection
 
     def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor, timestep_indices: torch.Tensor) -> torch.Tensor:
-        # As in `MiniMaxH3AdaLayerNormModulation`: activate at `temb`'s precision, cast to the projection's dtype after.
-        shift, scale = self.linear(nn.functional.silu(temb).to(get_parameter_dtype(self.linear))).chunk(2, dim=-1)
-        # The modulation itself stays at the block stack's precision; `forward` casts to the output heads' dtype.
+        # The unpruned path activates at `temb`'s precision before casting to the projection's compute dtype.
+        projection = self.linear if self.apply_silu else self.curve_proj
+        temb = nn.functional.silu(temb) if self.apply_silu else temb
+        shift, scale = projection(temb.to(_get_projection_dtype(projection))).chunk(2, dim=-1)
+        # Preserve the projection's precision for modulation; `forward` aligns the result with the output heads.
         hidden_states = self.norm(hidden_states)
         return hidden_states * (1.0 + scale.index_select(0, timestep_indices)) + shift.index_select(
             0, timestep_indices
@@ -334,6 +352,7 @@ class MiniMaxH3TransformerBlock(nn.Module):
         time_embed_dim: int,
         norm_eps: float,
         qk_norm_eps: float,
+        apply_silu: bool = True,
     ):
         super().__init__()
         self.norm1 = nn.RMSNorm(hidden_size, eps=norm_eps)
@@ -345,7 +364,9 @@ class MiniMaxH3TransformerBlock(nn.Module):
         )
         self.norm2 = nn.RMSNorm(hidden_size, eps=norm_eps)
         self.ff = FeedForward(hidden_size, inner_dim=ffn_dim, activation_fn="swiglu", bias=False)
-        self.adaln_proj = MiniMaxH3AdaLayerNormModulation(time_embed_dim=time_embed_dim, hidden_size=hidden_size)
+        self.adaln_proj = MiniMaxH3AdaLayerNormModulation(
+            time_embed_dim=time_embed_dim, hidden_size=hidden_size, apply_silu=apply_silu
+        )
 
     def forward(
         self,
@@ -355,7 +376,9 @@ class MiniMaxH3TransformerBlock(nn.Module):
         rotary_emb: tuple[torch.Tensor, torch.Tensor],
         attention_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaln_proj(temb)
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
+            value.to(hidden_states.dtype) for value in self.adaln_proj(temb)
+        )
 
         residual = hidden_states
         norm_hidden_states = self.norm1(hidden_states)
@@ -363,7 +386,10 @@ class MiniMaxH3TransformerBlock(nn.Module):
             1.0 + scale_msa.index_select(0, adaln_indices)
         ) + shift_msa.index_select(0, adaln_indices)
         attn_output = self.attn(norm_hidden_states, rotary_emb, attention_mask)
-        hidden_states = residual + gate_msa.index_select(0, adaln_indices) * attn_output
+        gate = gate_msa.index_select(0, adaln_indices)
+        hidden_states = (
+            residual + gate * attn_output if self.adaln_proj.apply_silu else torch.addcmul(residual, attn_output, gate)
+        )
 
         residual = hidden_states
         norm_hidden_states = self.norm2(hidden_states)
@@ -371,7 +397,10 @@ class MiniMaxH3TransformerBlock(nn.Module):
             1.0 + scale_mlp.index_select(0, adaln_indices)
         ) + shift_mlp.index_select(0, adaln_indices)
         ff_output = self.ff(norm_hidden_states)
-        hidden_states = residual + gate_mlp.index_select(0, adaln_indices) * ff_output
+        gate = gate_mlp.index_select(0, adaln_indices)
+        hidden_states = (
+            residual + gate * ff_output if self.adaln_proj.apply_silu else torch.addcmul(residual, ff_output, gate)
+        )
 
         return hidden_states
 
@@ -424,7 +453,7 @@ class MiniMaxH3Transformer3DModel(
         time_embed_hidden_dim (`int`, defaults to `5376`):
             The inner dimension of the timestep MLP.
         time_embed_dim (`int`, defaults to `2688`):
-            The output dimension of the timestep MLP, i.e. the input of every AdaLN projection.
+            The output dimension of the timestep MLP, or the curve rank for a pruned checkpoint.
         rope_freq_dim (`int`, defaults to `16`):
             The number of rotary frequencies per axis. The `(t, h, w)` axes share one `inv_freq` buffer of this length
             and `2 * 3 * rope_freq_dim` of the `attention_head_dim` channels are rotated.
@@ -436,6 +465,10 @@ class MiniMaxH3Transformer3DModel(
             Epsilon of the per-head query/key norms.
         final_norm_eps (`float`, defaults to `1e-5`):
             Epsilon of the token refiner output norm and of `norm_out`.
+        adaln_curve_grid (`int`, *optional*):
+            Number of rows in a pruned checkpoint's FP32 timestep curve table. When set, the table replaces the
+            timestep MLP and its interpolated coordinates feed FP32 AdaLN projections without SiLU. Inferred from
+            `adaln_t_table` by `from_single_file`.
     """
 
     _supports_gradient_checkpointing = True
@@ -453,6 +486,8 @@ class MiniMaxH3Transformer3DModel(
         "proj_out",
         "audio_proj_out",
         "rope",
+        "adaln_t_table",
+        "curve_proj",
     ]
     # Tensor-parallel plan: how each block's Linears shard across the TP mesh. Q/K/V and the attention output
     # are unfused, so they are plain "colwise"/"rowwise" (torch's ColwiseParallel / RowwiseParallel). The one
@@ -545,6 +580,7 @@ class MiniMaxH3Transformer3DModel(
         norm_eps: float = 1e-5,
         qk_norm_eps: float = 1e-5,
         final_norm_eps: float = 1e-5,
+        adaln_curve_grid: int | None = None,
     ) -> None:
         super().__init__()
 
@@ -556,10 +592,15 @@ class MiniMaxH3Transformer3DModel(
         self.context_embedder = nn.Linear(text_dim, hidden_size, bias=True)
 
         # 2. Timestep embedding, shared by every AdaLN projection
-        self.time_proj = Timesteps(num_channels=freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
-        self.time_embedder = TimestepEmbedding(
-            in_channels=freq_dim, time_embed_dim=time_embed_hidden_dim, out_dim=time_embed_dim
-        )
+        if adaln_curve_grid is None:
+            self.time_proj = Timesteps(num_channels=freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+            self.time_embedder = TimestepEmbedding(
+                in_channels=freq_dim, time_embed_dim=time_embed_hidden_dim, out_dim=time_embed_dim
+            )
+        else:
+            if adaln_curve_grid < 2:
+                raise ValueError("adaln_curve_grid must have at least two rows.")
+            self.register_buffer("adaln_t_table", torch.zeros(adaln_curve_grid, time_embed_dim, dtype=torch.float32))
 
         # 3. Rotary embedding over the packed (t, h, w) grid
         self.rope = MiniMaxH3RotaryPosEmbed(rope_freq_dim=rope_freq_dim, rope_theta=rope_theta)
@@ -587,6 +628,7 @@ class MiniMaxH3Transformer3DModel(
                     time_embed_dim=time_embed_dim,
                     norm_eps=norm_eps,
                     qk_norm_eps=qk_norm_eps,
+                    apply_silu=adaln_curve_grid is None,
                 )
                 for _ in range(num_layers)
             ]
@@ -595,7 +637,10 @@ class MiniMaxH3Transformer3DModel(
         # 6. Shared output norm and the two per-modality output heads. Both heads run over every row of the packed
         # sequence; the rows of each modality are selected afterwards.
         self.norm_out = MiniMaxH3AdaLayerNormOut(
-            hidden_size=hidden_size, time_embed_dim=time_embed_dim, eps=final_norm_eps
+            hidden_size=hidden_size,
+            time_embed_dim=time_embed_dim,
+            eps=final_norm_eps,
+            apply_silu=adaln_curve_grid is None,
         )
         self.proj_out = nn.Linear(hidden_size, video_patch_dim, bias=True)
         self.audio_proj_out = nn.Linear(hidden_size, audio_in_channels, bias=True)
@@ -667,11 +712,11 @@ class MiniMaxH3Transformer3DModel(
 
         # 1. Project each modality and scatter the rows into the packed sequence buffer. The checkpoint is
         # mixed-precision (the two patch projections are float32 while `context_embedder` and the block stack are
-        # bfloat16 — see `_keep_in_fp32_modules`), so every input is aligned with its projection's parameter dtype,
+        # bfloat16 — see `_keep_in_fp32_modules`), so every input is aligned with its projection's compute dtype,
         # mirroring the reference's explicit casts. The text stream sets the dtype of the packed sequence.
-        video_embeds = self.proj_in(hidden_states.to(get_parameter_dtype(self.proj_in)))
-        audio_embeds = self.audio_proj_in(audio_hidden_states.to(get_parameter_dtype(self.audio_proj_in)))
-        text_embeds = self.context_embedder(encoder_hidden_states.to(get_parameter_dtype(self.context_embedder)))
+        video_embeds = self.proj_in(hidden_states.to(_get_projection_dtype(self.proj_in)))
+        audio_embeds = self.audio_proj_in(audio_hidden_states.to(_get_projection_dtype(self.audio_proj_in)))
+        text_embeds = self.context_embedder(encoder_hidden_states.to(_get_projection_dtype(self.context_embedder)))
         text_embeds = self.token_refiner(text_embeds)
 
         hidden_states = text_embeds.new_zeros((text_embeds.shape[0], sequence_length, text_embeds.shape[-1]))
@@ -679,11 +724,17 @@ class MiniMaxH3Transformer3DModel(
         hidden_states = hidden_states.index_copy(1, video_indices, video_embeds.to(text_embeds.dtype))
         hidden_states = hidden_states.index_copy(1, audio_indices, audio_embeds.to(text_embeds.dtype))
 
-        # 2. One timestep embedding per distinct noise level. `temb` is shared by all AdaLN projections, which are
-        # bfloat16 in the checkpoint while `time_embedder` is float32, so it stays at the time embedder's precision:
-        # each AdaLN module applies its own activation to it and casts to its projection's dtype afterwards.
-        temb = self.time_proj(timestep)
-        temb = self.time_embedder(temb.to(get_parameter_dtype(self.time_embedder)))
+        # 2. One shared conditioning vector per distinct noise level. The unpruned timestep MLP and the pruned
+        # curve interpolation run in float32; each AdaLN module aligns it with its projection's compute dtype.
+        if self.config.adaln_curve_grid is None:
+            temb = self.time_proj(timestep)
+            temb = self.time_embedder(temb.to(_get_projection_dtype(self.time_embedder)))
+        else:
+            position = timestep.float().clamp(0, 1) * (self.adaln_t_table.shape[0] - 1)
+            lower = position.floor().long().clamp(max=self.adaln_t_table.shape[0] - 2)
+            temb = torch.lerp(
+                self.adaln_t_table[lower], self.adaln_t_table[lower + 1], (position - lower).unsqueeze(1)
+            )
 
         # 3. Row -> AdaLN table row.
         adaln_indices = timestep_indices * MINIMAX_H3_MODALITY_NUM + token_tags
@@ -699,7 +750,7 @@ class MiniMaxH3Transformer3DModel(
         # 5. Both heads run over every row, then the rows of each modality are selected. The heads are listed in
         # `_keep_in_fp32_modules`, so they stay float32 while the block stack runs in the requested `torch_dtype`;
         # align the activation with their parameter dtype.
-        hidden_states = self.norm_out(hidden_states, temb, timestep_indices).to(get_parameter_dtype(self.proj_out))
+        hidden_states = self.norm_out(hidden_states, temb, timestep_indices).to(_get_projection_dtype(self.proj_out))
         video_output = self.proj_out(hidden_states).index_select(1, video_indices)
         audio_output = self.audio_proj_out(hidden_states).index_select(1, audio_indices)
 

@@ -68,6 +68,7 @@ from .single_file_utils import (
     create_vae_diffusers_config_from_ldm,
     fetch_diffusers_config,
     fetch_original_config,
+    infer_minimax_h3_checkpoint_config,
     load_single_file_checkpoint,
 )
 
@@ -238,6 +239,7 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "MiniMaxH3Transformer3DModel": {
         "checkpoint_mapping_fn": convert_minimax_h3_transformer_checkpoint_to_diffusers,
+        "checkpoint_config_fn": infer_minimax_h3_checkpoint_config,
         "default_subfolder": "transformer",
     },
 }
@@ -494,6 +496,9 @@ class FromOriginalModelMixin:
             model_kwargs = {k: kwargs.get(k) for k in kwargs if k in expected_kwargs or k in optional_kwargs}
             diffusers_model_config.update(model_kwargs)
 
+        if "checkpoint_config_fn" in mapping_functions:
+            diffusers_model_config.update(mapping_functions["checkpoint_config_fn"](checkpoint))
+
         ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
         with ctx():
             model = cls.from_config(diffusers_model_config)
@@ -502,7 +507,7 @@ class FromOriginalModelMixin:
 
         # Check if `_keep_in_fp32_modules` is not None
         use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (
-            (torch_dtype == torch.float16) or hasattr(hf_quantizer, "use_keep_in_fp32_modules")
+            hf_quantizer is None or getattr(hf_quantizer, "use_keep_in_fp32_modules", False)
         )
         if use_keep_in_fp32_modules:
             keep_in_fp32_modules = cls._keep_in_fp32_modules
@@ -576,7 +581,7 @@ class FromOriginalModelMixin:
             hf_quantizer.postprocess_model(model)
             model.hf_quantizer = hf_quantizer
 
-        if torch_dtype is not None and hf_quantizer is None:
+        if torch_dtype is not None and hf_quantizer is None and not low_cpu_mem_usage:
             model.to(torch_dtype)
 
         model.eval()
