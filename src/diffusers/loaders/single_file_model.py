@@ -517,6 +517,9 @@ class FromOriginalModelMixin:
         else:
             keep_in_fp32_modules = []
 
+        if keep_in_fp32_modules and not low_cpu_mem_usage:
+            raise ValueError("`low_cpu_mem_usage` cannot be False when `keep_in_fp32_modules` is True.")
+
         # Now that the model is loaded, we can determine the `device_map`
         device_map = _determine_device_map(model, device_map, None, torch_dtype, keep_in_fp32_modules, hf_quantizer)
         if device_map is not None:

@@ -601,6 +601,10 @@ class MiniMaxH3Transformer3DModel(
             if adaln_curve_grid < 2:
                 raise ValueError("adaln_curve_grid must have at least two rows.")
             self.register_buffer("adaln_t_table", torch.zeros(adaln_curve_grid, time_embed_dim, dtype=torch.float32))
+            self._tp_plan = {
+                key.replace(".adaln_proj.linear", ".adaln_proj.curve_proj"): value
+                for key, value in self._tp_plan.items()
+            }
 
         # 3. Rotary embedding over the packed (t, h, w) grid
         self.rope = MiniMaxH3RotaryPosEmbed(rope_freq_dim=rope_freq_dim, rope_theta=rope_theta)

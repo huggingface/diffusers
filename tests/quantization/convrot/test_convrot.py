@@ -22,6 +22,7 @@ from packaging.version import Version
 from torch import nn
 
 from diffusers import ConvRotQuantizationConfig, MiniMaxH3Transformer3DModel, QwenImage21Transformer2DModel
+from diffusers.hooks.tensor_parallel import resolve_tp_shard_specs
 from diffusers.loaders.single_file_utils import (
     convert_minimax_h3_transformer_checkpoint_to_diffusers,
     convert_qwen_image21_transformer_checkpoint_to_diffusers,
@@ -405,9 +406,12 @@ def test_h3_curve_config_inference_and_validation():
         infer_minimax_h3_checkpoint_config({"adaln_t_table": torch.zeros(1, 8)})
 
 
-def test_h3_pruned_single_file_infers_architecture_and_fp32_precision(tmp_path):
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_h3_pruned_single_file_infers_architecture_and_fp32_precision(tmp_path, dtype):
     config = h3_config()
     model = MiniMaxH3Transformer3DModel(**config, adaln_curve_grid=5).eval()
+    with torch.no_grad():
+        model.adaln_t_table.normal_()
     state = model.state_dict()
     source = {
         key.replace("transformer_blocks.", "blocks.")
@@ -416,13 +420,41 @@ def test_h3_pruned_single_file_infers_architecture_and_fp32_precision(tmp_path):
         for key, value in state.items()
     }
     MiniMaxH3Transformer3DModel(**config).save_config(tmp_path)
-    loaded = MiniMaxH3Transformer3DModel.from_single_file(source, config=str(tmp_path), dtype=torch.float16)
+    loaded = MiniMaxH3Transformer3DModel.from_single_file(source, config=str(tmp_path), dtype=dtype)
     assert loaded.config.adaln_curve_grid == 5
     assert loaded.config.time_embed_dim == 8
     assert loaded.adaln_t_table.dtype == torch.float32
     assert loaded.transformer_blocks[0].adaln_proj.curve_proj.weight.dtype == torch.float32
     assert loaded.norm_out.curve_proj.weight.dtype == torch.float32
+    assert loaded.transformer_blocks[0].attn.to_q.weight.dtype == dtype
+    torch.testing.assert_close(loaded.adaln_t_table, model.adaln_t_table, rtol=0, atol=0)
     assert not any(value.is_meta for value in loaded.state_dict().values())
+    with torch.inference_mode():
+        output = loaded(**h3_inputs())
+    assert torch.isfinite(output.sample).all()
+    assert torch.isfinite(output.audio_sample).all()
+
+
+@pytest.mark.parametrize("adaln_curve_grid", [None, 5])
+def test_h3_single_file_rejects_disabling_low_cpu_mem_usage_with_fp32_modules(tmp_path, adaln_curve_grid):
+    model = MiniMaxH3Transformer3DModel(**h3_config(), adaln_curve_grid=adaln_curve_grid)
+    model.save_config(tmp_path)
+    with pytest.raises(ValueError, match="low_cpu_mem_usage.*keep_in_fp32_modules"):
+        MiniMaxH3Transformer3DModel.from_single_file(
+            model.state_dict(), config=str(tmp_path), dtype=torch.bfloat16, low_cpu_mem_usage=False
+        )
+
+
+@pytest.mark.parametrize("adaln_curve_grid", [None, 5])
+def test_h3_tensor_parallel_plan_resolves_modulation_projection(adaln_curve_grid):
+    model = MiniMaxH3Transformer3DModel(**h3_config(), adaln_curve_grid=adaln_curve_grid)
+    specs = resolve_tp_shard_specs(model, model._tp_plan, tp_degree=2)
+    projection = "linear" if adaln_curve_grid is None else "curve_proj"
+    prefix = f"transformer_blocks.0.adaln_proj.{projection}"
+    assert specs[f"{prefix}.weight"].dim == 1
+    assert specs[f"{prefix}.weight"].block_sizes == [model.config.time_embed_dim]
+    assert specs[f"{prefix}.bias"].dim is None
+    assert "transformer_blocks.*.adaln_proj.linear" in MiniMaxH3Transformer3DModel._tp_plan
 
 
 def test_h3_pruned_from_pretrained_round_trip(tmp_path):
