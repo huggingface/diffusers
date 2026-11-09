@@ -52,10 +52,12 @@ The transformer and the text encoder are about 62 GB each in bfloat16 and do not
 | Component | Class |
 |---|---|
 | `transformer` | [`MiniMaxH3ImageTransformer2DModel`] |
-| `text_encoder` | `Qwen3VLForConditionalGeneration`, loaded from the `text_encoder/` folder of [MiniMaxAI/MiniMax-H3](https://huggingface.co/MiniMaxAI/MiniMax-H3) |
+| `text_encoder` | `Qwen3VLForConditionalGeneration` |
 | `vae` | [`AutoencoderKLMiniMaxH3Image`] |
 | `tokenizer`, `processor` | The text encoder's tokenizer and a `Qwen3VLProcessor` |
 | `scheduler` | [`MiniMaxH3Scheduler`] |
+
+The text encoder is the same one [MiniMax-H3](./minimax_h3) uses. The checkpoint keeps its own copy so that the repository is self-contained; the Hub deduplicates identical files across repositories, so the copy takes no extra storage there.
 
 ## Workflows
 

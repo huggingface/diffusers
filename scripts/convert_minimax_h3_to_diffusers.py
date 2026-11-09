@@ -24,8 +24,9 @@ written.
 
 `--version image` converts a MiniMax-H3-Image release instead: the same transformer without the audio projections,
 with the per-step output heads of `pdd_fused_heads.safetensors` folded in as `pdd_proj_out.{i}` in place of the base
-head, the image VAE, a scheduler config and a `modular_model_index.json` whose `text_encoder` entry points at the
-MiniMax-H3 repository.
+head, the image VAE, a scheduler config and a `modular_model_index.json`. The release conditions on the MiniMax-H3
+text encoder without carrying it, so `--text_encoder_path` names a local copy that is copied in: the converted
+repository is self-contained.
 
 Usage:
 
@@ -42,7 +43,7 @@ python scripts/convert_minimax_h3_to_diffusers.py \
 # Convert a MiniMax-H3-Image release.
 python scripts/convert_minimax_h3_to_diffusers.py --version image \
     --checkpoint_path /path/to/MiniMax-H3-Image --output_path /tmp/h3-image-diffusers \
-    --modular_repo_id MiniMaxAI/MiniMax-H3-Image
+    --text_encoder_path /path/to/MiniMax-H3/text_encoder --modular_repo_id MiniMaxAI/MiniMax-H3-Image
 ```
 """
 
@@ -1038,8 +1039,8 @@ def write_model_index(output_path: str, repo_id: str, diffusers_version: str) ->
     print(f"modular_model_index.json: {len(MINIMAX_H3_COMPONENTS)} components load from {repo_id}.")
 
 
-# The components a MiniMax-H3-Image repository names. The release does not carry its text encoder: its
-# `model_index.json` points at `text_encoder/` of the MiniMax-H3 repository, and so does the index written here.
+# The components a MiniMax-H3-Image repository names. The release does not carry its text encoder (its
+# `model_index.json` points at `text_encoder/` of the MiniMax-H3 repository); the converted repository holds a copy.
 MINIMAX_H3_IMAGE_COMPONENTS = {
     "text_encoder": ["transformers", "Qwen3VLForConditionalGeneration"],
     "tokenizer": ["transformers", "Qwen2TokenizerFast"],
@@ -1072,9 +1073,7 @@ def write_image_scheduler_config(output_path: str, diffusers_version: str) -> No
     print("scheduler: explicit sigmas taken verbatim, Euler update in the velocity form.")
 
 
-def write_image_model_index(
-    checkpoint_path: str, output_path: str, repo_id: str, text_encoder_repo_id: str, diffusers_version: str
-) -> None:
+def write_image_model_index(checkpoint_path: str, output_path: str, repo_id: str, diffusers_version: str) -> None:
     """Emit the `modular_model_index.json` of a MiniMax-H3-Image repository.
 
     Besides the components it carries `sample_sigmas`, the grid of the release's `pdd_config.json` that the per-step
@@ -1098,7 +1097,7 @@ def write_image_model_index(
             class_name,
             {
                 "type_hint": [library, class_name],
-                "pretrained_model_name_or_path": text_encoder_repo_id if name == "text_encoder" else repo_id,
+                "pretrained_model_name_or_path": repo_id,
                 "subfolder": name,
                 "variant": None,
                 "revision": None,
@@ -1108,8 +1107,8 @@ def write_image_model_index(
     with open(os.path.join(output_path, "modular_model_index.json"), "w") as f:
         json.dump(modular_index, f, indent=2)
     print(
-        f"modular_model_index.json: {len(MINIMAX_H3_IMAGE_COMPONENTS)} components load from {repo_id}, the text "
-        f"encoder from {text_encoder_repo_id}; {len(sigmas) - 1} sampling steps."
+        f"modular_model_index.json: {len(MINIMAX_H3_IMAGE_COMPONENTS)} components load from {repo_id}; "
+        f"{len(sigmas) - 1} sampling steps."
     )
 
 
@@ -1133,12 +1132,12 @@ def get_args():
         ),
     )
     parser.add_argument(
-        "--text_encoder_repo_id",
+        "--text_encoder_path",
         type=str,
-        default="MiniMaxAI/MiniMax-H3",
+        default=None,
         help=(
-            "`--version image` only: the repository whose `text_encoder/` the image release conditions on, which its "
-            "index points at instead of carrying a copy."
+            "`--version image` only: local path to the `text_encoder/` folder of a MiniMax-H3 checkpoint, which the "
+            "image release conditions on without carrying it. It is copied into the output as is."
         ),
     )
     parser.add_argument(
@@ -1179,6 +1178,10 @@ def main(args):
         return
 
     if args.version == "image":
+        if args.text_encoder_path is None:
+            raise ValueError(
+                "`--version image` needs `--text_encoder_path`, the `text_encoder/` folder of MiniMax-H3."
+            )
         transformer_path = os.path.join(args.output_path, "transformer")
         convert_transformer(args.checkpoint_path, transformer_path, config, args.max_shard_size)
         write_transformer_config(transformer_path, config, diffusers_version, "MiniMaxH3ImageTransformer2DModel")
@@ -1190,13 +1193,11 @@ def main(args):
             shutil.copytree(
                 os.path.join(args.checkpoint_path, name), os.path.join(args.output_path, name), dirs_exist_ok=True
             )
+        # A plain copy keeps the files identical to MiniMax-H3's, which the Hub deduplicates.
+        shutil.copytree(args.text_encoder_path, os.path.join(args.output_path, "text_encoder"), dirs_exist_ok=True)
         write_image_scheduler_config(args.output_path, diffusers_version)
         write_image_model_index(
-            args.checkpoint_path,
-            args.output_path,
-            args.modular_repo_id or args.output_path,
-            args.text_encoder_repo_id,
-            diffusers_version,
+            args.checkpoint_path, args.output_path, args.modular_repo_id or args.output_path, diffusers_version
         )
         return
 
