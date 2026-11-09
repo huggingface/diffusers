@@ -50,15 +50,6 @@ class PAN2ModularPipeline(ModularPipeline):
 
     default_blocks_name = "PAN2Blocks"
 
-    # Copied from diffusers.modular_pipelines.cosmos.modular_pipeline.Cosmos3OmniModularPipeline.__call__
-    def __call__(self, *args, **kwargs):
-        transformer = getattr(self, "transformer", None)
-        try:
-            return super().__call__(*args, **kwargs)
-        finally:
-            if hasattr(transformer, "_reset_stateful_cache"):
-                transformer._reset_stateful_cache()
-
     @property
     def default_height(self):
         return self.default_sample_height * self.vae_scale_factor_spatial
