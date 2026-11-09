@@ -732,9 +732,8 @@ class MiniMaxH3Transformer3DModel(
         else:
             position = timestep.float().clamp(0, 1) * (self.adaln_t_table.shape[0] - 1)
             lower = position.floor().long().clamp(max=self.adaln_t_table.shape[0] - 2)
-            temb = torch.lerp(
-                self.adaln_t_table[lower], self.adaln_t_table[lower + 1], (position - lower).unsqueeze(1)
-            )
+            table = self.adaln_t_table.float()
+            temb = torch.lerp(table[lower], table[lower + 1], (position - lower).unsqueeze(1))
 
         # 3. Row -> AdaLN table row.
         adaln_indices = timestep_indices * MINIMAX_H3_MODALITY_NUM + token_tags

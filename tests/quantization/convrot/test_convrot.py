@@ -405,7 +405,8 @@ def test_h3_curve_config_inference_and_validation():
 
 
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_h3_pruned_single_file_infers_architecture_and_fp32_precision(tmp_path, dtype):
+@pytest.mark.parametrize("low_cpu_mem_usage", [True, False])
+def test_h3_pruned_single_file_infers_architecture_and_dtype(tmp_path, dtype, low_cpu_mem_usage):
     config = h3_config()
     model = MiniMaxH3Transformer3DModel(**config, adaln_curve_grid=5).eval()
     with torch.no_grad():
@@ -418,29 +419,21 @@ def test_h3_pruned_single_file_infers_architecture_and_fp32_precision(tmp_path, 
         for key, value in state.items()
     }
     MiniMaxH3Transformer3DModel(**config).save_config(tmp_path)
-    loaded = MiniMaxH3Transformer3DModel.from_single_file(source, config=str(tmp_path), dtype=dtype)
+    loaded = MiniMaxH3Transformer3DModel.from_single_file(
+        source, config=str(tmp_path), dtype=dtype, low_cpu_mem_usage=low_cpu_mem_usage
+    )
     assert loaded.config.adaln_curve_grid == 5
     assert loaded.config.time_embed_dim == 8
-    assert loaded.adaln_t_table.dtype == torch.float32
-    assert loaded.transformer_blocks[0].adaln_proj.curve_proj.weight.dtype == torch.float32
-    assert loaded.norm_out.curve_proj.weight.dtype == torch.float32
+    assert loaded.adaln_t_table.dtype == dtype
+    assert loaded.transformer_blocks[0].adaln_proj.curve_proj.weight.dtype == dtype
+    assert loaded.norm_out.curve_proj.weight.dtype == dtype
     assert loaded.transformer_blocks[0].attn.to_q.weight.dtype == dtype
-    torch.testing.assert_close(loaded.adaln_t_table, model.adaln_t_table, rtol=0, atol=0)
+    torch.testing.assert_close(loaded.adaln_t_table, model.adaln_t_table.to(dtype), rtol=0, atol=0)
     assert not any(value.is_meta for value in loaded.state_dict().values())
     with torch.inference_mode():
         output = loaded(**h3_inputs())
     assert torch.isfinite(output.sample).all()
     assert torch.isfinite(output.audio_sample).all()
-
-
-@pytest.mark.parametrize("adaln_curve_grid", [None, 5])
-def test_h3_single_file_rejects_disabling_low_cpu_mem_usage_with_fp32_modules(tmp_path, adaln_curve_grid):
-    model = MiniMaxH3Transformer3DModel(**h3_config(), adaln_curve_grid=adaln_curve_grid)
-    model.save_config(tmp_path)
-    with pytest.raises(ValueError, match="low_cpu_mem_usage.*keep_in_fp32_modules"):
-        MiniMaxH3Transformer3DModel.from_single_file(
-            model.state_dict(), config=str(tmp_path), dtype=torch.bfloat16, low_cpu_mem_usage=False
-        )
 
 
 @pytest.mark.parametrize(

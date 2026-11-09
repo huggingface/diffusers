@@ -507,7 +507,7 @@ class FromOriginalModelMixin:
 
         # Check if `_keep_in_fp32_modules` is not None
         use_keep_in_fp32_modules = (cls._keep_in_fp32_modules is not None) and (
-            hf_quantizer is None or getattr(hf_quantizer, "use_keep_in_fp32_modules", False)
+            (torch_dtype == torch.float16) or hasattr(hf_quantizer, "use_keep_in_fp32_modules")
         )
         if use_keep_in_fp32_modules:
             keep_in_fp32_modules = cls._keep_in_fp32_modules
@@ -516,9 +516,6 @@ class FromOriginalModelMixin:
 
         else:
             keep_in_fp32_modules = []
-
-        if keep_in_fp32_modules and not low_cpu_mem_usage:
-            raise ValueError("`low_cpu_mem_usage` cannot be False when `keep_in_fp32_modules` is True.")
 
         # Now that the model is loaded, we can determine the `device_map`
         device_map = _determine_device_map(model, device_map, None, torch_dtype, keep_in_fp32_modules, hf_quantizer)
@@ -584,7 +581,7 @@ class FromOriginalModelMixin:
             hf_quantizer.postprocess_model(model)
             model.hf_quantizer = hf_quantizer
 
-        if torch_dtype is not None and hf_quantizer is None and not low_cpu_mem_usage:
+        if torch_dtype is not None and hf_quantizer is None:
             model.to(torch_dtype)
 
         model.eval()
