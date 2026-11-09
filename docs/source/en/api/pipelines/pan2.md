@@ -39,8 +39,6 @@ video = pipe(prompt=prompt, image=image, generator=torch.Generator().manual_seed
 export_to_video(video, "pan2_i2v.mp4", fps=24)
 ```
 
-To load a specific revision of the checkpoint, pass `revision` to `load_components` as well, since `from_pretrained` only reads the pipeline index at that revision: `pipe.load_components(dtype=torch.bfloat16, revision="<commit>")`.
-
 Classifier-free guidance is configured on the guider (`guidance_scale=2.5` by default):
 
 ```py
