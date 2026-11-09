@@ -93,6 +93,9 @@ FEATURE_MARKERS = [m for markers in FEATURE_GROUPS.values() for m in markers]
 MAX_SUMMARY_ROWS = 10
 NAME_TESTS_UP_TO = 6
 NAME_FOLDERS_UP_TO = 5
+# A test that imports a module importing this many others depends on most of the library and will run on
+# nearly every PR. `auto_pipeline.py` imports 119 modules; the widest ordinary pipeline imports 28.
+WIDE_IMPORT_FANOUT = 50
 _unknown = sorted(set(FEATURE_MARKERS) - NON_CORE_MARKERS)
 if _unknown:
     raise ValueError(
@@ -494,7 +497,8 @@ def _selection_tree(
     Tests importing `changed` directly hang off the root; tests reached through another file hang off a
     `via <file>` branch. Up to `NAME_TESTS_UP_TO` tests are listed by name; more are summarised as suite
     coverage. Routes beyond the first `NAME_FOLDERS_UP_TO` collapse into one branch describing the modules
-    they pass through and what those modules import from `changed`, which for a hub is the whole explanation.
+    they pass through and what those modules import from `changed`, which for a widely imported module is the
+    whole explanation.
     """
     direct, via = _selection_routes(changed, tests, direct_deps)
 
@@ -574,6 +578,28 @@ def _write_summary(
             note = f", {inside} already counted above" if inside else ""
             lines.append(
                 f"| {len(self_only)} changed test files, each selecting only itself{note} | {len(self_only)} |"
+            )
+
+    # The one thing worth saying about a changed test file on the PR that changes it: a new import of a module
+    # that itself imports much of the library. The test still selects only itself here, but from now on it runs
+    # whenever any of that module's imports change. Package inits and the tester helpers import widely by
+    # design and are excluded.
+    wide_imports = [
+        (t, d, len(direct_deps[d]))
+        for t in test_files
+        if t in modified_files
+        for d in direct_deps.get(t, [])
+        if not d.endswith("__init__.py")
+        and "/testing_utils" not in d
+        and len(direct_deps.get(d, [])) >= WIDE_IMPORT_FANOUT
+    ]
+    if wide_imports:
+        lines += ["", "**Imports that make a test depend on most of the library**", ""]
+        for t, d, n in wide_imports:
+            lines.append(
+                f"- `{t}` imports `{d}`, which imports {n} other modules, so this test will run whenever any of "
+                f"them change. Import the specific class the test needs instead. If tests should never import "
+                f"`{d.rsplit('/', 1)[-1]}`, add it to the banned imports in `pyproject.toml`."
             )
 
     for f in rows[:MAX_SUMMARY_ROWS]:
