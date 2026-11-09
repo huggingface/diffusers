@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import torch
+FLUX2_SCRATCH = 1
 import torch.nn as nn
 import torch.nn.functional as F
 

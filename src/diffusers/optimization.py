@@ -366,3 +366,5 @@ def get_scheduler(
     return schedule_func(
         optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=num_training_steps, last_epoch=last_epoch
     )
+
+OPTIM_SCRATCH = 1
