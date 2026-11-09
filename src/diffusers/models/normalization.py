@@ -84,6 +84,13 @@ class AdaLayerNorm(nn.Module):
 class FP32LayerNorm(nn.LayerNorm):
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         origin_dtype = inputs.dtype
+        if (
+            inputs.is_cuda
+            and (self.weight is None or self.weight.dtype == origin_dtype)
+            and (self.bias is None or self.bias.dtype == origin_dtype)
+        ):
+            # The CUDA layer norm kernel already computes in float32 for half inputs; skip the float32 copies.
+            return F.layer_norm(inputs, self.normalized_shape, self.weight, self.bias, self.eps)
         return F.layer_norm(
             inputs.float(),
             self.normalized_shape,
