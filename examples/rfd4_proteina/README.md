@@ -84,23 +84,6 @@ Use `--checkpointing_steps` and `--checkpoints_total_limit` to control checkpoin
 Pass `--validation_cif` to generate a structure every `--validation_steps`. Validation runs on the main process,
 with dropout disabled, and writes a CIF next to the adapter. It uses the checkpoint's full sampling schedule.
 
-### Does the adapter learn anything?
-
-Splitting the fifty published structures into 40 for training and 10 held out, and training on the 40 with the
-settings above, held-out flow-matching loss drops on every held-out structure:
-
-| | mean held-out loss |
-| --- | --- |
-| base model | 19.41 |
-| after 500 LoRA steps | 17.28 |
-
-That is 11% lower, on 9 of 9 held-out structures — one of the ten is dropped by preparation for NaN coordinates.
-Both numbers come from the same loaded model with the adapter toggled on and off, scored over identical times and
-noise draws per structure (sixteen each), so the gap is the adapter rather than sampling spread.
-
-Training and held-out structures come from the same PLINDER subset, so this shows the adapter fits the distribution
-it was trained on. It is a check that the recipe trains, not a claim about protein families it has not seen.
-
 ## Inference
 
 The saved adapter loads into the pipeline:
