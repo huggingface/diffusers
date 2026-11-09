@@ -4349,8 +4349,8 @@ def convert_minimax_h3_transformer_checkpoint_to_diffusers(checkpoint, config, q
             "file merged from those shards by hand. The two cannot be told apart from the checkpoint itself."
         )
     checkpoint = {key.removeprefix("model.diffusion_model."): value for key, value in checkpoint.items()}
-    curve_config = infer_minimax_h3_checkpoint_config(checkpoint)
-    if curve_config and any(config.get(key) != value for key, value in curve_config.items()):
+    adaln_curve_config = infer_minimax_h3_checkpoint_config(checkpoint)
+    if adaln_curve_config and any(config.get(key) != value for key, value in adaln_curve_config.items()):
         raise ValueError("The MiniMax-H3 configuration does not match the checkpoint's AdaLN curve table.")
 
     MINIMAX_H3_KEYS_RENAME_DICT = {
@@ -4429,7 +4429,7 @@ def convert_minimax_h3_transformer_checkpoint_to_diffusers(checkpoint, config, q
             new_key = new_key.replace("blocks.", "transformer_blocks.", 1)
         for replace_key, rename_key in MINIMAX_H3_KEYS_RENAME_DICT.items():
             new_key = new_key.replace(replace_key, rename_key)
-        if curve_config:
+        if adaln_curve_config:
             new_key = new_key.replace(".adaln_proj.linear.", ".adaln_proj.curve_proj.")
             new_key = new_key.replace("norm_out.linear.", "norm_out.curve_proj.")
 
