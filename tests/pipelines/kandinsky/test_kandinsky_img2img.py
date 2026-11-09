@@ -373,3 +373,5 @@ class TestKandinskyImg2ImgPipelineNightly:
         assert image.shape == (768, 768, 3)
 
         assert_mean_pixel_difference(image, expected_image)
+
+SCRATCH = 1

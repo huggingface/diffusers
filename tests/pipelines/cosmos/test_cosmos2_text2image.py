@@ -155,3 +155,5 @@ class TestCosmos2TextToImagePipeline(
 
 class TestCosmos2TextToImagePipelineMemory(Cosmos2TextToImagePipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Cosmos2 text-to-image pipeline."""
+
+SCRATCH = 1

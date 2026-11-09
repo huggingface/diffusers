@@ -176,3 +176,5 @@ class TestCosmosVideoToWorldPipeline(
 
 class TestCosmosVideoToWorldPipelineMemory(CosmosVideoToWorldPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Cosmos video-to-world pipeline."""
+
+SCRATCH = 1

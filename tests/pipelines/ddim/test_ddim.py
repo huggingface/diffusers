@@ -140,3 +140,5 @@ class TestDDIMPipelineIntegration:
         expected_slice = np.array([0.0060, 0.0201, 0.0344, 0.0024, 0.0018, 0.0002, 0.0022, 0.0000, 0.0069])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+SCRATCH = 1

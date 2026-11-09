@@ -126,3 +126,5 @@ class TestCogView4PipelineLoRAMemory(CogView4PipelineTesterConfig, LoraMemoryTes
         # TODO: We don't run the (leaf_level, True) case that is enabled for other models.
         # The reason for this can be found here: https://github.com/huggingface/diffusers/pull/11804#issuecomment-3013325338
         super().test_group_offloading_inference_denoiser(tmp_path, offload_type, use_stream)
+
+SCRATCH = 1

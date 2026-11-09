@@ -126,3 +126,5 @@ class TestDDPMPipelineIntegration:
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.4200, 0.3588, 0.1939, 0.3847, 0.3382, 0.2647, 0.4155, 0.3582, 0.3385])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+SCRATCH = 1

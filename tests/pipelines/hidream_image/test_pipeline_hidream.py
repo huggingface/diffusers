@@ -163,3 +163,5 @@ class TestHiDreamImagePipelineLoRA(HiDreamImagePipelineTesterConfig, LoraTesterM
 
 class TestHiDreamImagePipelineLoRAMemory(HiDreamImagePipelineTesterConfig, LoraMemoryTesterMixin):
     """LoRA x memory-optimization tests (group offload, CPU offload) for the HiDream Image pipeline."""
+
+SCRATCH = 1

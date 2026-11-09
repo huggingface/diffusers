@@ -153,3 +153,5 @@ class TestKolorsImg2ImgPipeline(KolorsImg2ImgPipelineTesterConfig, PipelineTeste
 
 class TestKolorsImg2ImgPipelineMemory(KolorsImg2ImgPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Kolors img2img pipeline."""
+
+SCRATCH = 1

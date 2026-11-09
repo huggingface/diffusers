@@ -172,3 +172,5 @@ class TestCogVideoXVideoToVideoPipeline(CogVideoXVideoToVideoPipelineTesterConfi
 
 class TestCogVideoXVideoToVideoPipelineMemory(CogVideoXVideoToVideoPipelineTesterConfig, MemoryTesterMixin):
     pass
+
+SCRATCH = 1

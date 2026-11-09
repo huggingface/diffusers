@@ -317,3 +317,5 @@ class TestIdeogram4PipelineLoRA(Ideogram4PipelineTesterConfig, LoraTesterMixin):
 
 class TestIdeogram4PipelineLoRAMemory(Ideogram4PipelineTesterConfig, LoraMemoryTesterMixin):
     """LoRA offloading tests for the Ideogram4 pipeline."""
+
+SCRATCH = 1

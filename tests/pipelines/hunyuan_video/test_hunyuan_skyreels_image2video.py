@@ -240,3 +240,5 @@ class TestHunyuanSkyreelsImageToVideoPipelineLoRAMemory(
     HunyuanSkyreelsImageToVideoPipelineTesterConfig, LoraMemoryTesterMixin
 ):
     """LoRA x memory-optimization tests (group offload, CPU offload) for the Skyreels I2V pipeline."""
+
+SCRATCH = 1

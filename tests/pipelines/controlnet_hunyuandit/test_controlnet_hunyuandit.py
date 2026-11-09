@@ -352,3 +352,5 @@ class TestHunyuanDiTControlNetPipelineSlow:
         )
 
         assert np.abs(original_image.flatten() - expected_image).max() < 1e-2
+
+SCRATCH = 1

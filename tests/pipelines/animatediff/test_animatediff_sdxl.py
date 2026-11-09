@@ -167,3 +167,5 @@ class TestAnimateDiffSDXLPipelineUNetLoRA(AnimateDiffSDXLPipelineTesterConfig, U
 
 class TestAnimateDiffSDXLPipelineLoRAMemory(AnimateDiffSDXLPipelineTesterConfig, LoraMemoryTesterMixin):
     """LoRA x memory-optimization tests (group offload, CPU offload) for the pipeline."""
+
+SCRATCH = 1

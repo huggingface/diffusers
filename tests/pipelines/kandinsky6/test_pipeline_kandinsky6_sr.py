@@ -129,3 +129,5 @@ class TestKandinsky6SRPipeline(Kandinsky6SRPipelineTesterConfig, PipelineTesterM
 
 class TestKandinsky6SRPipelineMemory(Kandinsky6SRPipelineTesterConfig, MemoryTesterMixin):
     pass
+
+SCRATCH = 1

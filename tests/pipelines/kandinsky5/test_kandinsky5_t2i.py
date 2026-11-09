@@ -185,3 +185,5 @@ class TestKandinsky5T2IPipeline(Kandinsky5T2IPipelineTesterConfig, PipelineTeste
 
 class TestKandinsky5T2IPipelineMemory(Kandinsky5T2IPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Kandinsky 5 T2I pipeline."""
+
+SCRATCH = 1

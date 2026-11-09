@@ -247,3 +247,5 @@ class TestIFInpaintingPipelineSlow:
         assert_mean_pixel_difference(image, expected_image)
 
         pipe.remove_all_hooks()
+
+SCRATCH = 1

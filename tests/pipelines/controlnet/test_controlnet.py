@@ -957,3 +957,5 @@ class TestStableDiffusionMultiControlNetPipelineSlow:
         )
 
         assert np.abs(expected_image - image).max() < 5e-2
+
+SCRATCH = 1

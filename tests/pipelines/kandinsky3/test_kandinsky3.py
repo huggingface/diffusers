@@ -231,3 +231,5 @@ class TestKandinsky3PipelineIntegration:
         expected_image_np = image_processor.pil_to_numpy(expected_image)
 
         assert np.allclose(image_np, expected_image_np, atol=5e-2)
+
+SCRATCH = 1

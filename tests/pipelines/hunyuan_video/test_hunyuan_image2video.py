@@ -283,3 +283,5 @@ class TestHunyuanVideoImageToVideoPipelineLoRAMemory(
     HunyuanVideoImageToVideoPipelineTesterConfig, LoraMemoryTesterMixin
 ):
     """LoRA x memory-optimization tests (group offload, CPU offload) for the HunyuanVideo I2V pipeline."""
+
+SCRATCH = 1

@@ -160,3 +160,5 @@ class TestAnyFlowFARPipelineLoRAMemory(AnyFlowFARPipelineTesterConfig, LoraMemor
     """LoRA x memory-optimization tests (group offload, CPU offload) for the AnyFlow FAR pipeline."""
 
     denoiser_target_modules = FAR_DENOISER_TARGET_MODULES
+
+SCRATCH = 1

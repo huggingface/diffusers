@@ -271,3 +271,5 @@ class TestFluxControlNetPipelineSlow:
         expected_image = np.array([0.2734, 0.2852, 0.2852, 0.2734, 0.2754, 0.2891, 0.2617, 0.2637, 0.2773])
 
         assert numpy_cosine_similarity_distance(original_image.flatten(), expected_image) < 1e-2
+
+SCRATCH = 1

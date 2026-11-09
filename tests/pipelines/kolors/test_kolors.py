@@ -141,3 +141,5 @@ class TestKolorsPipeline(KolorsPipelineTesterConfig, PipelineTesterMixin):
 
 class TestKolorsPipelineMemory(KolorsPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Kolors pipeline."""
+
+SCRATCH = 1
