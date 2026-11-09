@@ -20,6 +20,7 @@ import pytest
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
+from diffusers import AutoPipelineForText2Image
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
