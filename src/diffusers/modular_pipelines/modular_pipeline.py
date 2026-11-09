@@ -3041,6 +3041,12 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 error_msg = f"Error in block: ({self._blocks.__class__.__name__}):\n"
                 logger.error(error_msg)
                 raise
+            finally:
+                # Cache hooks (FirstBlockCache, MagCache, ...) keep state across a run. Clear it so the next call
+                # starts fresh, as `maybe_free_model_hooks` does for standard pipelines.
+                for component in self.components.values():
+                    if hasattr(component, "_reset_stateful_cache"):
+                        component._reset_stateful_cache()
 
         if output is None:
             return state
