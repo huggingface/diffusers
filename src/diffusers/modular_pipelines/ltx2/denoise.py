@@ -21,6 +21,7 @@ import torch
 from ...configuration_utils import FrozenDict
 from ...guiders import LTX2Guidance
 from ...models import LTX2VideoTransformer3DModel
+from ...pipelines.ltx2.utils import conditioning_frame_rate
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ..modular_pipeline import (
     BlockState,
@@ -304,7 +305,7 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             # `audio_num_frames`, `video_coords`, `audio_coords` arrive tagged `denoiser_input_fields` upstream and
             # are collected from the tagged dict (filtered against the transformer signature) in `__call__`.
             InputParam.template("denoiser_input_fields"),
-            InputParam.template("num_inference_steps", required=True),
+            InputParam.template("num_inference_steps", required=True, default=None),
             InputParam.template("height", default=512),
             InputParam.template("width", default=704),
             InputParam(
@@ -318,6 +319,16 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             ),
             InputParam(
                 "frame_rate", type_hint=float, default=24.0, description="Frames per second of the generated video."
+            ),
+            InputParam(
+                "motion_speed",
+                type_hint=float,
+                default=1.0,
+                description=(
+                    "Speed of the motion relative to real time. The positional embeddings are conditioned on "
+                    "`frame_rate / motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the "
+                    "Slow-Motion-Control LoRA's 5x slow motion. `frame_rate` stays the playback rate."
+                ),
             ),
             InputParam(
                 "use_cross_timestep",
@@ -361,7 +372,7 @@ class LTX2LoopDenoiser(ModularPipelineBlocks):
             num_frames=latent_num_frames,
             height=latent_height,
             width=latent_width,
-            fps=block_state.frame_rate,
+            fps=conditioning_frame_rate(block_state.frame_rate, block_state.motion_speed),
             use_cross_timestep=block_state.use_cross_timestep,
             attention_kwargs=block_state.attention_kwargs,
             perturbation_mask=None,
@@ -643,7 +654,7 @@ class LTX2DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     def loop_inputs(self) -> list[InputParam]:
         return [
             InputParam("timesteps", type_hint=torch.Tensor, required=True),
-            InputParam.template("num_inference_steps", required=True),
+            InputParam.template("num_inference_steps", required=True, default=None),
         ]
 
     @torch.no_grad()

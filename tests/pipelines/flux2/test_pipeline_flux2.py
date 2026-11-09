@@ -13,6 +13,7 @@ from ..testing_utils import (
     BasePipelineTesterConfig,
     LoraMemoryTesterMixin,
     LoraTesterMixin,
+    MagCacheTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
 )
@@ -158,3 +159,7 @@ class TestFlux2PipelineLoRAMemory(Flux2PipelineTesterConfig, LoraMemoryTesterMix
 
     # See `TestFlux2PipelineLoRA`.
     denoiser_target_modules = {"transformer": ["to_qkv_mlp_proj", "to_k"]}
+
+
+class TestFlux2PipelineMagCache(Flux2PipelineTesterConfig, MagCacheTesterMixin):
+    """MagCache tests for the Flux2 pipeline."""

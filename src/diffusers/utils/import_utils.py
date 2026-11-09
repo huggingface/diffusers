@@ -94,6 +94,25 @@ def _is_package_available(pkg_name: str, get_dist_name: bool = False) -> tuple[b
     return pkg_exists, pkg_version
 
 
+def _is_distribution_installed(name: str) -> tuple[bool, str]:
+    """
+    Looks `name` up in the installed distribution metadata, resolving import names such as `cv2` to the distribution
+    that provides them (`opencv-python`).
+
+    Unlike `_is_package_available`, nothing here reaches the import machinery, so this is the one to use for a name
+    that comes from a downloaded repository: `importlib.util.find_spec("a.b.c")` imports `a` and `a.b` to find `c`,
+    which executes whatever code those packages contain.
+    """
+    for candidate in (_package_map or {}).get(name) or [name]:
+        try:
+            return True, importlib_metadata.version(candidate)
+        except (importlib_metadata.PackageNotFoundError, ValueError):
+            # `ValueError` is what an empty name raises; neither is something the caller can act on.
+            continue
+
+    return False, "N/A"
+
+
 if USE_TORCH in ENV_VARS_TRUE_AND_AUTO_VALUES and USE_TF not in ENV_VARS_TRUE_VALUES:
     _torch_available, _torch_version = _is_package_available("torch")
 
@@ -178,6 +197,7 @@ except importlib_metadata.PackageNotFoundError:
 _torch_xla_available, _torch_xla_version = _is_package_available("torch_xla")
 _torch_npu_available, _torch_npu_version = _is_package_available("torch_npu")
 _torch_mlu_available, _torch_mlu_version = _is_package_available("torch_mlu")
+_torch_tpu_available, _torch_tpu_version = _is_package_available("torch_tpu")
 _torch_neuronx_available, _torch_neuronx_version = _is_package_available("torch_neuronx")
 _transformers_available, _transformers_version = _is_package_available("transformers")
 _hf_hub_available, _hf_hub_version = _is_package_available("huggingface_hub")
@@ -213,6 +233,7 @@ _nltk_available, _nltk_version = _is_package_available("nltk")
 _cosmos_guardrail_available, _cosmos_guardrail_version = _is_package_available("cosmos_guardrail")
 _sageattention_available, _sageattention_version = _is_package_available("sageattention")
 _flash_attn_available, _flash_attn_version = _is_package_available("flash_attn")
+_flashinfer_available, _flashinfer_version = _is_package_available("flashinfer", get_dist_name=True)
 _flash_attn_3_available, _flash_attn_3_version = _is_package_available("flash_attn_3")
 _kornia_available, _kornia_version = _is_package_available("kornia")
 _nvidia_modelopt_available, _nvidia_modelopt_version = _is_package_available("modelopt", get_dist_name=True)
@@ -236,6 +257,10 @@ def is_torch_npu_available():
 
 def is_torch_mlu_available():
     return _torch_mlu_available
+
+
+def is_torch_tpu_available():
+    return _torch_tpu_available
 
 
 def is_torch_neuronx_available():
@@ -352,6 +377,10 @@ def is_imageio_available():
 
 def is_gguf_available():
     return _gguf_available
+
+
+def is_flashinfer_available():
+    return _flashinfer_available
 
 
 def is_flashpack_available():

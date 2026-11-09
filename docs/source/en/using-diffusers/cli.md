@@ -290,8 +290,9 @@ hf sandbox kill <id>
 ## `custom_blocks`
 
 Package a local `ModularPipelineBlocks` subclass for upload to the Hub. Reads a Python file, AST-scans it for
-subclasses of `ModularPipelineBlocks`, instantiates the chosen one, and calls `save_pretrained` in the current
-working directory.
+classes deriving from `ModularPipelineBlocks` or one of its composite subclasses (`SequentialPipelineBlocks`,
+`AutoPipelineBlocks`, `ConditionalPipelineBlocks`, `LoopSequentialPipelineBlocks`), instantiates the chosen one, and
+calls `save_pretrained` in the current working directory.
 
 ```bash
 # Package the first block found in ./block.py

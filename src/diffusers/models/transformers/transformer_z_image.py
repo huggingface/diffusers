@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import math
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -24,6 +25,7 @@ from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...models.attention_processor import Attention
 from ...models.modeling_utils import ModelMixin
 from ...models.normalization import RMSNorm
+from ...utils import apply_lora_scale
 from ...utils.torch_utils import maybe_allow_in_graph
 from ..attention_dispatch import dispatch_attention_fn
 from ..modeling_outputs import Transformer2DModelOutput
@@ -891,6 +893,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
 
         return unified, unified_freqs, attn_mask, noise_mask_tensor
 
+    @apply_lora_scale("joint_attention_kwargs")
     def forward(
         self,
         x: list[torch.Tensor, list[list[torch.Tensor]]],
@@ -902,6 +905,7 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
         image_noise_mask: list[list[int]] | None = None,
         patch_size: int = 2,
         f_patch_size: int = 1,
+        joint_attention_kwargs: dict[str, Any] | None = None,
     ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`ZImageTransformer2DModel`] forward method.
@@ -930,6 +934,8 @@ class ZImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOr
                 Spatial patch size used to patchify the input latents.
             f_patch_size (`int`, *optional*, defaults to 1):
                 Temporal patch size used to patchify the input latents.
+            joint_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary. Only the `scale` entry is used, to scale the LoRA layers.
 
         Returns:
             If `return_dict` is True, a [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a

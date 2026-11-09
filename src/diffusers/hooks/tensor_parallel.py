@@ -22,7 +22,7 @@ from ..utils import get_logger, is_peft_available
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
 
-_SUPPORTED_TP_DEVICES = ("cuda", "neuron")
+_SUPPORTED_TP_DEVICES = ("cuda", "neuron", "tpu", "xpu")
 
 
 class PackedColwiseParallel:
@@ -149,7 +149,8 @@ def resolve_tp_shard_specs(model: torch.nn.Module, tp_plan: dict, tp_degree: int
             if style == "colwise":
                 weight_spec = TPShardSpec(0, [submodule.weight.shape[0]])
                 bias_spec = weight_spec
-            elif style == "rowwise":
+            elif style in ("rowwise", "rowwise_split_input"):
+                # Both place the weight the same way; they differ only in the forward input/output hooks.
                 weight_spec = TPShardSpec(1, [submodule.weight.shape[1]])
                 bias_spec = TPShardSpec(None, None)
             elif isinstance(style, PackedColwiseParallel):
@@ -163,7 +164,8 @@ def resolve_tp_shard_specs(model: torch.nn.Module, tp_plan: dict, tp_degree: int
             else:
                 raise ValueError(
                     f"Unsupported tensor-parallel style '{style}' for '{path}'. "
-                    f"Expected 'colwise', 'rowwise', PackedColwiseParallel, or PackedRowwiseParallel."
+                    f"Expected 'colwise', 'rowwise', 'rowwise_split_input', PackedColwiseParallel, or "
+                    f"PackedRowwiseParallel."
                 )
 
             specs[f"{path}.weight"] = weight_spec
@@ -242,9 +244,9 @@ def _shard_packed_param(param, dim: int, blocks: "list[int]", device_mesh, src_d
 def _styles(relative_plan: dict) -> dict:
     """Map a `{relative_path: style}` plan to `parallelize_module` style instances.
 
-    Values may be plain strings (`"colwise"` / `"rowwise"`) or `PackedColwiseParallel` / `PackedRowwiseParallel` marker
-    instances. Returns `{relative_path: ColwiseParallel() | RowwiseParallel() | <packed impl>}`. Divisibility by the TP
-    degree is checked earlier, by `resolve_tp_shard_specs`.
+    Values may be plain strings (`"colwise"` / `"rowwise"` / `"rowwise_split_input"`) or `PackedColwiseParallel` /
+    `PackedRowwiseParallel` marker instances. Returns `{relative_path: ColwiseParallel() | RowwiseParallel() | <packed
+    impl>}`. Divisibility by the TP degree is checked earlier, by `resolve_tp_shard_specs`.
     """
     from torch.distributed.tensor import Replicate, distribute_tensor
     from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
@@ -285,6 +287,12 @@ def _styles(relative_plan: dict) -> dict:
             resolved[path] = ColwiseParallel()
         elif style == "rowwise":
             resolved[path] = RowwiseParallel()
+        elif style == "rowwise_split_input":
+            # Same weight split as "rowwise", for a Linear whose input arrives whole instead of split by a "colwise"
+            # layer before it; each rank slices its own columns locally. E.g. an AdaLN modulation projection reading
+            # the timestep embedding (MiniMax-H3's `adaln_proj.linear`), or an output projection after a gathered
+            # QK-norm. Same as the transformers style of the same name.
+            resolved[path] = RowwiseParallel(input_layouts=Replicate())
         elif isinstance(style, PackedColwiseParallel):
             resolved[path] = _make_packed_col(style)
         elif isinstance(style, PackedRowwiseParallel):
@@ -292,7 +300,8 @@ def _styles(relative_plan: dict) -> dict:
         else:
             raise ValueError(
                 f"Unsupported tensor-parallel style '{style}' for '{path}'. "
-                f"Expected 'colwise', 'rowwise', PackedColwiseParallel, or PackedRowwiseParallel."
+                f"Expected 'colwise', 'rowwise', 'rowwise_split_input', PackedColwiseParallel, or "
+                f"PackedRowwiseParallel."
             )
     return resolved
 
@@ -308,6 +317,7 @@ def _hooks_only_styles(relative_plan: dict) -> dict:
     targeted module into a `Replicate()` DTensor via a broadcast. Callers should therefore place every planned
     parameter themselves, and must ensure none is left on `meta` — the broadcast would be issued on a meta tensor.
     """
+    from torch.distributed.tensor import Replicate
     from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
 
     class _NoPartitionColwise(ColwiseParallel):
@@ -324,10 +334,13 @@ def _hooks_only_styles(relative_plan: dict) -> dict:
             resolved[path] = _NoPartitionColwise()
         elif style == "rowwise" or isinstance(style, PackedRowwiseParallel):
             resolved[path] = _NoPartitionRowwise()
+        elif style == "rowwise_split_input":
+            resolved[path] = _NoPartitionRowwise(input_layouts=Replicate())
         else:
             raise ValueError(
                 f"Unsupported tensor-parallel style '{style}' for '{path}'. "
-                f"Expected 'colwise', 'rowwise', PackedColwiseParallel, or PackedRowwiseParallel."
+                f"Expected 'colwise', 'rowwise', 'rowwise_split_input', PackedColwiseParallel, or "
+                f"PackedRowwiseParallel."
             )
     return resolved
 
