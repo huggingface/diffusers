@@ -224,8 +224,8 @@ class PAN2TextEncoderStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Text encoder step that encodes the prompt, and the negative prompt unless guidance is disabled, with "
-            "Qwen3.5."
+            "Text encoder step that encodes the prompt, and the negative prompt when guidance needs one or one is "
+            "passed, with Qwen3.5."
         )
 
     @property
@@ -246,8 +246,9 @@ class PAN2TextEncoderStep(ModularPipelineBlocks):
             InputParam.template(
                 "negative_prompt",
                 description=(
-                    "The prompt not to guide generation, a single string. Without one, or with an empty one, PAN 2's "
-                    "default negative prompt is used, its time ranges set to the clip's duration."
+                    "The prompt not to guide generation, a single string. When guidance needs one and none (or an "
+                    "empty one) is passed, PAN 2's default negative prompt is used, its time ranges set to the clip's "
+                    "duration."
                 ),
             ),
             InputParam.template("max_sequence_length", default=1536),
@@ -303,14 +304,17 @@ class PAN2TextEncoderStep(ModularPipelineBlocks):
             device=device,
         )
 
-        # The guider belongs to the denoise step: in the full pipeline, it decides whether the negative prompt is
-        # needed. Standalone, there is no guider and the negative prompt is encoded, since the PAN 2 denoise step uses
-        # classifier-free guidance by default.
+        # The guider is not a component of this block: in the pipeline, `requires_unconditional_embeds` reads the denoise
+        # step's guider and the negative prompt defaults to PAN 2's; standalone, there is no guider and the negative
+        # prompt is encoded only when it is passed.
         block_state.negative_prompt_embeds = None
-        if getattr(components, "guider", None) is None or components.requires_unconditional_embeds:
-            negative_prompt = block_state.negative_prompt or get_pan2_default_negative_prompt(
-                block_state.num_frames, block_state.fps
-            )
+        guidance_off = getattr(components, "guider", None) is not None and not components.requires_unconditional_embeds
+        negative_prompt = block_state.negative_prompt
+        if not negative_prompt and components.requires_unconditional_embeds:
+            negative_prompt = get_pan2_default_negative_prompt(block_state.num_frames, block_state.fps)
+        if negative_prompt and guidance_off:
+            logger.warning("`negative_prompt` is ignored because the guider does not use unconditional embeddings.")
+        elif negative_prompt:
             block_state.negative_prompt_embeds = get_pan2_prompt_embeds(
                 components.text_encoder,
                 components.tokenizer,
@@ -320,8 +324,6 @@ class PAN2TextEncoderStep(ModularPipelineBlocks):
                 max_sequence_length=block_state.max_sequence_length,
                 device=device,
             )
-        elif block_state.negative_prompt:
-            logger.warning("`negative_prompt` is ignored because the guider does not use unconditional embeddings.")
 
         self.set_block_state(state, block_state)
         return components, state

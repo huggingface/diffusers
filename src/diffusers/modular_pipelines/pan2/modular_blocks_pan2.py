@@ -268,8 +268,8 @@ class PAN2Blocks(SequentialPipelineBlocks):
           prompt (`str`):
               The prompt to guide generation, a single string.
           negative_prompt (`str`, *optional*):
-              The prompt not to guide generation, a single string. Without one, or with an empty one, PAN 2's default
-              negative prompt is used, its time ranges set to the clip's duration.
+              The prompt not to guide generation, a single string. When guidance needs one and none (or an empty one)
+              is passed, PAN 2's default negative prompt is used, its time ranges set to the clip's duration.
           max_sequence_length (`int`, *optional*, defaults to 1536):
               Maximum sequence length for prompt encoding.
           num_frames (`int`, *optional*, defaults to 313):
