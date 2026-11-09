@@ -24,7 +24,7 @@ Fixes # (issue)
   - [ ] Did you share the final self-review notes in the PR description or a comment?
 - [ ] Did you read the [contributor guideline](https://huggingface.co/docs/diffusers/main/en/conceptual/contribution)?
 - [ ] Did you read our [philosophy doc](https://huggingface.co/docs/diffusers/main/en/conceptual/philosophy)? (important for complex PRs)
-- [ ] Was this discussed/approved via a GitHub issue or the [forum](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers/63)? Please add a link to it if that's the case.
+- [ ] Was this discussed/approved via a GitHub issue or [GitHub Discussions](https://github.com/huggingface/diffusers/discussions)? Please add a link to it if that's the case.
 - [ ] Did you make sure to update the documentation with your changes? Here are the
       [documentation guidelines](https://github.com/huggingface/diffusers/tree/main/docs), and
       [here are tips on formatting docstrings](https://github.com/huggingface/diffusers/tree/main/docs#writing-source-documentation).
