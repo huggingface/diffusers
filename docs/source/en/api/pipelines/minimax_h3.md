@@ -78,14 +78,18 @@ Both transformer partitions are guidance-distilled, so this holds for every work
 
 ## Memory
 
-Prequantized Comfy INT8 ConvRot FL2VA transformers, both pruned and unpruned, can be loaded with
+Prequantized Comfy INT8 ConvRot FL2VA transformers, both
+[pruned](https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors)
+and [unpruned](https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_fl2va_int8_convrot.safetensors),
+can be loaded with
 `MiniMaxH3Transformer3DModel.from_single_file(..., quantization_config=ConvRotQuantizationConfig())` and installed
 with `pipe.update_components(transformer=transformer)`. The pruned file's timestep curve configuration is inferred
 from the checkpoint. See [INT8 ConvRot](../../quantization/convrot#minimax-h3) for the loader and checkpoint names.
 The conditioner and VAEs load separately; use phased execution and block offloading to fit limited memory.
-REF2VA uses the corresponding `minimax_h3_ref2va_pruned_int8_convrot.safetensors` or
-`minimax_h3_ref2va_int8_convrot.safetensors` file, the `transformer_ref` configuration subfolder, and
-`pipe.update_components(transformer_ref=transformer)`.
+REF2VA uses the corresponding
+[pruned](https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors)
+or [unpruned](https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_ref2va_int8_convrot.safetensors)
+file, the `transformer_ref` configuration subfolder, and `pipe.update_components(transformer_ref=transformer)`.
 
 The transformer alone is 61.7 GB in bfloat16 and the Qwen3-VL conditioner is another 62.1 GB, so the loading recipe depends on the hardware. Smaller canvases are the biggest speed lever on every setup: `height` and `width` only have to be multiples of 32, and 960x544 runs about 2.3x faster per step than the trained 1344x768.
 

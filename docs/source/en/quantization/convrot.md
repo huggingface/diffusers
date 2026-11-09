@@ -31,7 +31,9 @@ its eager backend. Memory savings do not guarantee faster inference.
 ## Load a checkpoint
 
 Use [`ConvRotQuantizationConfig`] with `from_single_file` to load an existing native Comfy INT8 checkpoint.
-Z-Image Turbo, Qwen-Image 2.1, and pruned or unpruned MiniMax-H3 FL2VA and REF2VA transformers are supported.
+[Z-Image Turbo](https://huggingface.co/Comfy-Org/Z-Image-Turbo),
+[Qwen-Image 2.1](https://huggingface.co/Comfy-Org/Qwen-Image-2.1), and pruned or unpruned
+[MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3) FL2VA and REF2VA transformers are supported.
 
 The INT8 linear runtime is shared across architectures. Loading another model also requires a compatible
 checkpoint converter that maps its weights, scales, and rotation metadata, and a model implementation that uses
@@ -63,8 +65,9 @@ image = pipe(
 ```
 
 For Qwen-Image 2.1, use `QwenImage21Transformer2DModel` with
-`Comfy-Org/Qwen-Image-2.1/diffusion_models/qwen_image_2.1_int8_convrot.safetensors` and the configuration from
-`Qwen/Qwen-Image-2.1`. Pass the loaded transformer to `QwenImage21Pipeline`.
+[Comfy-Org's INT8 checkpoint](https://huggingface.co/Comfy-Org/Qwen-Image-2.1/blob/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors)
+and the configuration from [Qwen/Qwen-Image-2.1](https://huggingface.co/Qwen/Qwen-Image-2.1).
+Pass the loaded transformer to `QwenImage21Pipeline`.
 
 To reduce host memory as well as VRAM peaks, encode prompts in a separate process, save the embeddings, and run
 generation with `text_encoder=None`. Supply the embeddings and their masks on the execution device. Keep the
@@ -86,9 +89,12 @@ projection fusion, or `save_pretrained` for the quantized transformer.
 
 ## MiniMax-H3
 
-Load the pruned or unpruned Comfy transformer with the same config. The loader detects a pruned checkpoint's
-`adaln_t_table`, infers its curve grid and rank, and retains the table and curve projections in FP32. Quantized
-unpruned AdaLN projections use their floating compute dtype for activations.
+Load the pruned or unpruned Comfy transformer with the same config.
+
+Pruned Comfy checkpoints replace the timestep MLP with an `adaln_t_table` and lower-rank modulation projections.
+`from_single_file` infers `adaln_curve_grid` and `time_embed_dim` from that table. Curve interpolation and projection
+run in FP32 without applying SiLU; the denoising stream retains its requested precision. Quantized unpruned AdaLN
+projections use their floating compute dtype for activations.
 
 ```python
 from diffusers import ConvRotQuantizationConfig, MiniMaxH3Transformer3DModel
@@ -101,12 +107,16 @@ transformer = MiniMaxH3Transformer3DModel.from_single_file(
 )
 ```
 
-For the unpruned FL2VA model, select `minimax_h3_fl2va_int8_convrot.safetensors`. QKV splits and SwiGLU gate/value
+For the unpruned FL2VA model, select
+[`minimax_h3_fl2va_int8_convrot.safetensors`](https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_fl2va_int8_convrot.safetensors).
+QKV splits and SwiGLU gate/value
 reordering apply to the weights and their per-row scales together. The published Comfy files use the default
 stacked QKV layout; a file merged directly from the original interleaved shards requires `qkv_layout="interleaved"`.
 
-For REF2VA, select `minimax_h3_ref2va_pruned_int8_convrot.safetensors` or
-`minimax_h3_ref2va_int8_convrot.safetensors`, load the configuration from `subfolder="transformer_ref"`, and pass
+For REF2VA, select
+[`minimax_h3_ref2va_pruned_int8_convrot.safetensors`](https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors)
+or [`minimax_h3_ref2va_int8_convrot.safetensors`](https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_ref2va_int8_convrot.safetensors),
+load the configuration from `subfolder="transformer_ref"`, and pass
 the loaded model as the modular pipeline's `transformer_ref` component.
 
 MiniMax-H3 uses the existing modular video/audio workflow. Its INT8 transformer is still large, so phase prompt
