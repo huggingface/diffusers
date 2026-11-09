@@ -562,13 +562,15 @@ def _write_summary(
         "",
         f"{len(modified_files)} Python {files} changed. {len(test_files)} test files will run.",
         "",
-        "| Changed file | Test files selected |",
+        "| Changed file | Test files it reaches |",
         "|---|---|",
     ]
     for f in rows[:MAX_SUMMARY_ROWS]:
         lines.append(f"| `{f}` | {len(selected_by[f])} |")
-    if len(rows) > MAX_SUMMARY_ROWS:
-        lines.append(f"| {len(rows) - MAX_SUMMARY_ROWS} more changed files | |")
+    overflow = rows[MAX_SUMMARY_ROWS:]
+    if overflow:
+        bound = len(selected_by[overflow[0]])
+        lines.append(f"| {len(overflow)} more changed files, each reaching {bound} or fewer tests (listed below) | |")
     if self_only:
         covered = set().union(*(selected_by[f] for f in rows)) if rows else set()
         inside = sum(1 for f in self_only if f in covered)
@@ -602,17 +604,24 @@ def _write_summary(
                 f"`{d.rsplit('/', 1)[-1]}`, add it to the banned imports in `pyproject.toml`."
             )
 
-    for f in rows[:MAX_SUMMARY_ROWS]:
-        if not selected_by[f]:
-            continue
+    def dropdown(f: str) -> List[str]:
         n = len(selected_by[f])
-        lines += [
-            "",
-            "<details>",
-            f"<summary><code>{f}</code> → {n} test {'file' if n == 1 else 'files'}</summary>",
-            "",
-        ]
-        lines += _selection_tree(f, selected_by[f], direct_deps, suite_totals)
+        title = f"<summary><code>{f}</code> → {n} test {'file' if n == 1 else 'files'}</summary>"
+        return (
+            ["", "<details>", title, ""]
+            + _selection_tree(f, selected_by[f], direct_deps, suite_totals)
+            + ["", "</details>"]
+        )
+
+    for f in rows[:MAX_SUMMARY_ROWS]:
+        if selected_by[f]:
+            lines += dropdown(f)
+    # The tail of a wide diff: one collapsed section holding a dropdown per remaining file, so nothing is
+    # left unexplained while the top level stays at MAX_SUMMARY_ROWS entries.
+    if overflow:
+        lines += ["", "<details>", f"<summary>{len(overflow)} more changed files</summary>"]
+        for f in overflow:
+            lines += dropdown(f) if selected_by[f] else ["", f"`{f}` reaches no tests", ""]
         lines += ["", "</details>"]
     Path(summary_file).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
