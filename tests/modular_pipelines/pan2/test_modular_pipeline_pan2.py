@@ -168,8 +168,6 @@ class TestPAN2ModularPipelineFast(PAN2ModularPipelineTesterConfig, ModularPipeli
         inputs = {k: v for k, v in self.get_dummy_inputs().items() if k not in ("height", "width")}
         videos = pipe(**inputs, image_latents=image_latents, output=self.output_name)
         assert videos.shape == (1, 5, 3, 32, 64)
-        with pytest.raises(ValueError, match="do not match the size of `image_latents`"):
-            pipe(**inputs, image_latents=image_latents, height=64, output=self.output_name)
 
     def test_prompt_list_raises(self):
         pipe = self.get_pipeline().to(torch_device)

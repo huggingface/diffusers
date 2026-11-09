@@ -87,7 +87,7 @@ class PAN2Image2VideoInputStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Input step that derives `height` and `width` from the first-frame latents when they are not provided."
+        return "Input step that derives `height` and `width` from the first-frame latents."
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -97,13 +97,6 @@ class PAN2Image2VideoInputStep(ModularPipelineBlocks):
                 required=True,
                 type_hint=torch.Tensor,
                 description="The normalized first-frame latents. Can be generated from the vae_encoder step.",
-            ),
-            InputParam.template(
-                "height",
-                description="The height in pixels of the generated video, by default that of `image_latents`.",
-            ),
-            InputParam.template(
-                "width", description="The width in pixels of the generated video, by default that of `image_latents`."
             ),
         ]
 
@@ -121,14 +114,8 @@ class PAN2Image2VideoInputStep(ModularPipelineBlocks):
         block_state = self.get_block_state(state)
 
         latent_height, latent_width = block_state.image_latents.shape[-2:]
-        height = latent_height * components.vae_scale_factor_spatial
-        width = latent_width * components.vae_scale_factor_spatial
-        if (block_state.height or height, block_state.width or width) != (height, width):
-            raise ValueError(
-                f"`height` and `width` ({block_state.height}, {block_state.width}) do not match the size of "
-                f"`image_latents` ({height}, {width}); leave them unset to take the size of `image_latents`."
-            )
-        block_state.height, block_state.width = height, width
+        block_state.height = latent_height * components.vae_scale_factor_spatial
+        block_state.width = latent_width * components.vae_scale_factor_spatial
 
         self.set_block_state(state, block_state)
         return components, state
