@@ -259,9 +259,7 @@ class TestStableDiffusionXLPAGImg2ImgPipelineIntegration:
         return inputs
 
     def test_pag_cfg(self):
-        from diffusers import AutoPipelineForImage2Image
-
-        pipeline = AutoPipelineForImage2Image.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
+        pipeline = StableDiffusionXLPAGImg2ImgPipeline.from_pretrained(self.repo_id, torch_dtype=torch.float16)
         pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
@@ -278,9 +276,7 @@ class TestStableDiffusionXLPAGImg2ImgPipelineIntegration:
         )
 
     def test_pag_uncond(self):
-        from diffusers import AutoPipelineForImage2Image
-
-        pipeline = AutoPipelineForImage2Image.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
+        pipeline = StableDiffusionXLPAGImg2ImgPipeline.from_pretrained(self.repo_id, torch_dtype=torch.float16)
         pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.set_progress_bar_config(disable=None)
 

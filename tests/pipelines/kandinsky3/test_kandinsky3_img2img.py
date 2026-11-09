@@ -191,9 +191,7 @@ class TestKandinsky3Img2ImgPipelineIntegration:
         backend_empty_cache(torch_device)
 
     def test_kandinskyV3_img2img(self):
-        from diffusers import AutoPipelineForImage2Image
-
-        pipe = AutoPipelineForImage2Image.from_pretrained(
+        pipe = Kandinsky3Img2ImgPipeline.from_pretrained(
             "kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16
         )
         pipe.enable_model_cpu_offload(device=torch_device)
