@@ -39,8 +39,7 @@ Stage 4 — bucket: group tests by top-level `tests/` folder for the CI matrix. 
     `tests/pipelines` are split further into one job per feature mixin (via the pytest markers the
     mixins carry) so a large selection fans out instead of serialising in one job.
 Stage 5 — report: print the import chain that selected each test (kept as a CI artifact) and write a
-    markdown job summary of how many tests each modified file triggers and how many source files trigger
-    each modified test, on the PR and on the base commit.
+    markdown job summary saying, for each changed file, which tests it selects and through which file.
 
 Usage:
 
@@ -89,8 +88,11 @@ FEATURE_GROUPS = {
     "single_file": ["single_file"],
 }
 FEATURE_MARKERS = [m for markers in FEATURE_GROUPS.values() for m in markers]
-# Rows per section of the job summary; a wide migration PR touches hundreds of files and the rest are counted.
+# Job summary limits: rows in the table, tests named before they are grouped by folder, folders named before
+# the rest are counted. A wide migration PR touches hundreds of files and selects most of the suite.
 MAX_SUMMARY_ROWS = 10
+NAME_TESTS_UP_TO = 6
+NAME_FOLDERS_UP_TO = 5
 _unknown = sorted(set(FEATURE_MARKERS) - NON_CORE_MARKERS)
 if _unknown:
     raise ValueError(
@@ -167,11 +169,8 @@ def get_diff(repo: Repo, base_commit, commits) -> List[str]:
     return list(dict.fromkeys(code_diff))
 
 
-def get_modified_python_files(diff_with_last_commit: bool = False) -> Tuple[List[str], str]:
-    """List Python files modified between HEAD and either main (default) or the previous commit.
-
-    Also returns the base commit the diff was taken against, so the import graph can be rebuilt at that point.
-    """
+def get_modified_python_files(diff_with_last_commit: bool = False) -> List[str]:
+    """List Python files modified between HEAD and either main (default) or the previous commit."""
     repo = Repo(PATH_TO_REPO)
     if diff_with_last_commit:
         base_label = "previous commit"
@@ -181,7 +180,7 @@ def get_modified_python_files(diff_with_last_commit: bool = False) -> Tuple[List
         base_label = f"merge-base with main ({upstream_main.commit})"
         commits = repo.merge_base(upstream_main, repo.head)
     print(f"Diffing HEAD ({repo.head.commit}) against {base_label}: {[str(c) for c in commits]}")
-    return get_diff(repo, repo.head.commit, commits), commits[0].hexsha
+    return get_diff(repo, repo.head.commit, commits)
 
 
 # ============================================================
@@ -327,7 +326,7 @@ def get_module_dependencies(module_file: str, cache: Dict[str, List[Tuple[str, L
             # correct: changes to the init will trigger this module).
             dependencies.append(target)
 
-    return list(set(dependencies))
+    return sorted(set(dependencies))
 
 
 def _merged_nested_deps(m: str, direct_deps: Dict[str, List[str]]) -> bool:
@@ -449,83 +448,146 @@ def _tests_triggered_by(f: str, reverse_map: Dict[str, List[str]]) -> set:
     return triggered
 
 
-def _graph_at(commit: str) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
-    """Direct and reverse dependency maps with the repo checked out at `commit`."""
-    with checkout_commit(Repo(PATH_TO_REPO), commit):
-        direct_deps = create_direct_dependency_map()
-    return direct_deps, create_reverse_dependency_map(direct_deps)
+def _selection_routes(changed: str, tests: set, direct_deps: Dict[str, List[str]]):
+    """Split the tests `changed` selects into those importing it directly and those reached through another file.
+
+    Tests reached indirectly are grouped under the intermediate file that the most of them pass through
+    (nearest the tests on a tie): that is where a cascade is visible (`auto_pipeline.py`, a test file imported
+    by other tests, a helper that imports a model). Groups come back largest first.
+    """
+    others = sorted(t for t in tests if t != changed)
+    chains = {t: (_import_chain(t, [changed], direct_deps) or [changed, t])[1:-1] for t in others}
+    traffic = collections.Counter(hop for hops in chains.values() for hop in hops)
+    direct, via = [], collections.defaultdict(list)
+    for t, hops in chains.items():
+        if not hops:
+            direct.append(t)
+        else:
+            via[max(reversed(hops), key=lambda h: traffic[h])].append(t)
+    return direct, sorted(via.items(), key=lambda kv: (-len(kv[1]), kv[0]))
 
 
-def _test_reach(reverse_map: Dict[str, List[str]]) -> Dict[str, int]:
-    """For every test file, the number of `src/` files whose change selects it."""
-    reach: Dict[str, int] = collections.Counter()
-    for src, dependents in reverse_map.items():
-        if src.startswith("src/"):
-            reach.update(t for t in dependents if _is_test_file(t))
-    return reach
+def _suite_lines(tests: List[str], suite_totals: Dict[str, int]) -> List[str]:
+    """Summarise many tests as suite coverage: `tests/models/: 80 of 104 test files`. A suite only brushed by
+    the group (fewer than ten tests and under a quarter of the suite) is folded into one `N test files
+    across …` line, since five against two hundred says nothing."""
+    by_suite = collections.Counter(_suite_of(t) for t in tests)
+    significant = lambda suite, n: n >= 10 or n >= suite_totals[suite] / 4  # noqa: E731
+    major = [(suite, n) for suite, n in by_suite.most_common() if significant(suite, n)]
+    minor = [(suite, n) for suite, n in by_suite.most_common() if not significant(suite, n)]
+    lines = [f"{suite}: {n} of {suite_totals[suite]} test files" for suite, n in major]
+    if minor:
+        lines.append(f"{sum(n for _, n in minor)} test files across " + ", ".join(suite for suite, _ in minor))
+    return lines
+
+
+def _suite_of(test_file: str) -> str:
+    parts = test_file.split("/")
+    return f"{parts[0]}/{parts[1]}/" if len(parts) > 2 else f"{parts[0]}/"
+
+
+def _selection_tree(
+    changed: str, tests: set, direct_deps: Dict[str, List[str]], suite_totals: Dict[str, int]
+) -> List[str]:
+    """Text tree of how `changed` reaches the tests it selects, in a code block.
+
+    Tests importing `changed` directly hang off the root; tests reached through another file hang off a
+    `via <file>` branch. Up to `NAME_TESTS_UP_TO` tests are listed by name; more are summarised as suite
+    coverage. Routes beyond the first `NAME_FOLDERS_UP_TO` collapse into one branch describing the modules
+    they pass through and what those modules import from `changed`, which for a hub is the whole explanation.
+    """
+    direct, via = _selection_routes(changed, tests, direct_deps)
+
+    def leaves(ts: List[str]) -> List[str]:
+        return ts if len(ts) <= NAME_TESTS_UP_TO else _suite_lines(ts, suite_totals)
+
+    branches: List[Tuple[str, List[str]]] = [(leaf, []) for leaf in leaves(direct)]
+    branches += [(f"via {hop}", leaves(ts)) for hop, ts in via[:NAME_FOLDERS_UP_TO]]
+    if len(via) > NAME_FOLDERS_UP_TO:
+        rest = via[NAME_FOLDERS_UP_TO:]
+        by_package: Dict[str, List] = collections.defaultdict(lambda: [0, 0, collections.Counter()])
+        for hop, ts in rest:
+            entry = by_package["/".join(hop.split("/")[:-1][:3]) + "/"]
+            entry[0] += 1
+            entry[1] += len(ts)
+            entry[2].update(name for target, names in _extract_imports(hop) if target == changed for name in names)
+        children = []
+        for pkg, (n, t, names) in sorted(by_package.items(), key=lambda kv: -kv[1][1])[:NAME_FOLDERS_UP_TO]:
+            imported = ", ".join(name for name, _ in names.most_common(3))
+            children.append(
+                f"{n} module{'s' if n != 1 else ''} in {pkg} → {t} test{'s' if t != 1 else ''}"
+                + (f", importing {imported}" if imported else "")
+            )
+        total = sum(len(ts) for _, ts in rest)
+        branches.append((f"via {len(rest)} other modules → {total} tests", children))
+
+    lines = ["```", changed]
+    for i, (label, children) in enumerate(branches):
+        last = i == len(branches) - 1
+        lines.append(("└── " if last else "├── ") + label)
+        for j, child in enumerate(children):
+            lines.append(("    " if last else "│   ") + ("└── " if j == len(children) - 1 else "├── ") + child)
+    lines.append("```")
+    return lines
 
 
 def _write_summary(
     summary_file: str,
     modified_files: List[str],
     test_files: List[str],
+    direct_deps: Dict[str, List[str]],
     reverse_map: Dict[str, List[str]],
-    base_commit: str,
 ):
-    """Write a short markdown report for the CI job summary, comparing the PR's import graph to the base's.
+    """Write the CI job summary: how many tests each changed file selects, and a collapsible tree per file
+    showing through which files it reaches them.
 
-    Modified source files: how many test files each one triggers, on the PR and on the base. Modified and
-    added test files: the same, plus how many source files trigger the test (its reach). A top-level import
-    of a hub such as `auto_pipeline.py` roughly doubles a test's reach, and from then on the test runs on
-    every PR touching any pipeline; the PR adding the import is the only place to see it. A new file has no
-    base value, so its numbers stand alone. Test files that trigger only themselves and whose reach did not
-    change are counted on one line instead of listed.
+    Rows are changed files, largest selection first. A source file that selects nothing keeps its row, since
+    that change runs no tests; anything else that selects nothing (conftest, helpers, files outside the graph)
+    is left out. Changed test files that select only themselves are counted on one row. The import chain that
+    selected every individual test is in the stdout report, kept as a CI artifact.
     """
-    base_direct, base_reverse = _graph_at(base_commit)
-    reach, base_reach = _test_reach(reverse_map), _test_reach(base_reverse)
-    triggered = {f: len(_tests_triggered_by(f, reverse_map)) for f in modified_files}
-    base_triggered = {f: len(_tests_triggered_by(f, base_reverse)) for f in modified_files}
-    on_main = lambda f, value: "new file" if f not in base_direct else str(value)  # noqa: E731
+    selected_by = {f: _tests_triggered_by(f, reverse_map) for f in modified_files if (PATH_TO_REPO / f).exists()}
+    selected_by = {f: t for f, t in selected_by.items() if t or f.startswith("src/")}
+    self_only = [f for f, tests in selected_by.items() if tests == {f}]
+    rows = sorted((f for f in selected_by if f not in self_only), key=lambda f: (-len(selected_by[f]), f))
 
+    suite_totals = collections.Counter(_suite_of(t) for t in _all_test_files())
+    files = "file" if len(modified_files) == 1 else "files"
     lines = [
         "## Test fetcher",
         "",
-        f"Selected {len(test_files)} test files from {len(modified_files)} modified Python files.",
+        f"{len(modified_files)} Python {files} changed. {len(test_files)} test files will run.",
+        "",
+        "| Changed file | Test files selected |",
+        "|---|---|",
     ]
-    by_reach = sorted(modified_files, key=lambda f: (-triggered[f], f))
+    for f in rows[:MAX_SUMMARY_ROWS]:
+        lines.append(f"| `{f}` | {len(selected_by[f])} |")
+    if len(rows) > MAX_SUMMARY_ROWS:
+        lines.append(f"| {len(rows) - MAX_SUMMARY_ROWS} more changed files | |")
+    if self_only:
+        covered = set().union(*(selected_by[f] for f in rows)) if rows else set()
+        inside = sum(1 for f in self_only if f in covered)
+        if len(self_only) == 1:
+            lines.append(f"| `{self_only[0]}` (selects only itself) | 1 |")
+        else:
+            note = f", {inside} already counted above" if inside else ""
+            lines.append(
+                f"| {len(self_only)} changed test files, each selecting only itself{note} | {len(self_only)} |"
+            )
 
-    def section(title: str, rows: List[str], hidden: int):
-        if not rows:
-            return
-        lines.extend(["", f"**{title}**", "", "| File | On branch | On main |", "|---|---|---|"])
-        lines.extend(rows)
-        if hidden:
-            lines.append(f"| {hidden} more not shown | | |")
-
-    # Source files, and test helpers (anything under tests/ pytest does not collect): what they trigger. A
-    # zero is worth a row: the change runs no tests, either for lack of coverage or because the import graph
-    # cannot see how the module is reached. Deleted files are left out since they trigger nothing either way.
-    for title, keep in (
-        ("Modified source files: test files each one triggers", lambda f: f.startswith("src/")),
-        (
-            "Modified test helpers: test files each one triggers",
-            lambda f: f.startswith("tests/") and not _is_test_file(f),
-        ),
-    ):
-        rows = [
-            f"| `{f}` | {triggered[f]} | {on_main(f, base_triggered[f])} |"
-            for f in by_reach
-            if keep(f) and (PATH_TO_REPO / f).exists()
+    for f in rows[:MAX_SUMMARY_ROWS]:
+        if not selected_by[f]:
+            continue
+        n = len(selected_by[f])
+        lines += [
+            "",
+            "<details>",
+            f"<summary><code>{f}</code> → {n} test {'file' if n == 1 else 'files'}</summary>",
+            "",
         ]
-        section(title, rows[:MAX_SUMMARY_ROWS], len(rows[MAX_SUMMARY_ROWS:]))
-
-    # Test files: every one the diff touches, largest change in reach first.
-    present = [f for f in test_files if f in triggered]
-    present.sort(key=lambda f: (-abs(reach[f] - base_reach.get(f, 0)), f))
-    rows = [f"| `{f}` | {reach[f]} | {on_main(f, base_reach[f])} |" for f in present[:MAX_SUMMARY_ROWS]]
-    section("Modified and added test files: source files that trigger each one", rows, len(present[MAX_SUMMARY_ROWS:]))
-
-    lines += ["", f"**Distinct test files selected: {len(test_files)}**"]
+        lines += _selection_tree(f, selected_by[f], direct_deps, suite_totals)
+        lines += ["", "</details>"]
     Path(summary_file).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -641,7 +703,7 @@ def _is_test_file(path: str) -> bool:
 
 def fetch_tests_to_run(json_output_file: str, summary_file: str, diff_with_last_commit: bool):
     """Determine the tests to run from the diff, write `test_map.json` and the markdown job summary."""
-    modified_files, base_commit = get_modified_python_files(diff_with_last_commit=diff_with_last_commit)
+    modified_files = get_modified_python_files(diff_with_last_commit=diff_with_last_commit)
     direct_deps = create_direct_dependency_map()
     reverse_map = create_reverse_dependency_map(direct_deps)
 
@@ -654,7 +716,7 @@ def fetch_tests_to_run(json_output_file: str, summary_file: str, diff_with_last_
 
     test_files_to_run = sorted(p for p in selected if (PATH_TO_REPO / p).exists())
     _print_selection_report(test_files_to_run, modified_files, direct_deps)
-    _write_summary(summary_file, modified_files, test_files_to_run, reverse_map, base_commit)
+    _write_summary(summary_file, modified_files, test_files_to_run, direct_deps, reverse_map)
     _write_matrix(json_output_file, test_files_to_run)
 
 
