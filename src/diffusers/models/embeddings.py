@@ -1017,7 +1017,10 @@ def apply_rotary_emb_allegro(x: torch.Tensor, freqs_cis, positions):
         sin = F.embedding(pos, sin)[:, None, :, :]
         x1, x2 = tokens[..., : tokens.shape[-1] // 2], tokens[..., tokens.shape[-1] // 2 :]
         tokens_rotated = torch.cat((-x2, x1), dim=-1)
-        return (tokens.float() * cos + tokens_rotated.float() * sin).to(tokens.dtype)
+        # float32 math through type promotion, without float32 copies of the input
+        compute_dtype = torch.promote_types(torch.float32, cos.dtype)
+        cos, sin = cos.to(compute_dtype), sin.to(compute_dtype)
+        return (tokens * cos + tokens_rotated * sin).to(tokens.dtype)
 
     (t_cos, t_sin), (h_cos, h_sin), (w_cos, w_sin) = freqs_cis
     t, h, w = x.chunk(3, dim=-1)

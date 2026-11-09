@@ -93,7 +93,10 @@ def _apply_rotary_emb(hidden_states: torch.Tensor, rope: tuple[torch.Tensor, tor
     cos, sin = rope
     cos = cos[None, :, None].to(hidden_states.device)
     sin = sin[None, :, None].to(hidden_states.device)
-    return (hidden_states.float() * cos + _rotate_half(hidden_states).float() * sin).to(hidden_states.dtype)
+    # float32 math through type promotion, without float32 copies of the input
+    compute_dtype = torch.promote_types(torch.float32, cos.dtype)
+    cos, sin = cos.to(compute_dtype), sin.to(compute_dtype)
+    return (hidden_states * cos + _rotate_half(hidden_states) * sin).to(hidden_states.dtype)
 
 
 class AudioDiTGRN(nn.Module):

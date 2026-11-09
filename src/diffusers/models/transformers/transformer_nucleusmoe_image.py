@@ -74,7 +74,10 @@ def _apply_rotary_emb_nucleus(
         else:
             raise ValueError(f"`use_real_unbind_dim={use_real_unbind_dim}` but should be -1 or -2.")
 
-        out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+        # float32 math through type promotion, without float32 copies of the input
+        compute_dtype = torch.promote_types(torch.float32, cos.dtype)
+        cos, sin = cos.to(compute_dtype), sin.to(compute_dtype)
+        out = (x * cos + x_rotated * sin).to(x.dtype)
 
         return out
     else:
