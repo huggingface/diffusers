@@ -994,7 +994,11 @@ def apply_rotary_emb(
         else:
             raise ValueError(f"`use_real_unbind_dim={use_real_unbind_dim}` but should be -1 or -2.")
 
-        out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+        # Compute in float32 through type promotion rather than `x.float()` / `x_rotated.float()`, which would
+        # materialize two float32 copies of x. Same values: bf16 / fp16 -> float32 is exact.
+        compute_dtype = torch.promote_types(torch.float32, cos.dtype)
+        cos, sin = cos.to(compute_dtype), sin.to(compute_dtype)
+        out = (x * cos + x_rotated * sin).to(x.dtype)
 
         return out
     else:
