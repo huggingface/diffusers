@@ -67,6 +67,8 @@
       title: Batch inference
     - local: optimization/memory
       title: Reduce memory usage
+    - local: hybrid_inference/overview
+      title: Remote inference
     - local: optimization/speed-memory-optims
       title: Compiling and offloading quantized models
     title: Speed and memory
@@ -123,13 +125,6 @@
     - local: optimization/tpu
       title: Google TPU
     title: Hardware-specific acceleration
-  - isExpanded: false
-    sections:
-    - local: using-diffusers/create_a_server
-      title: Create a server
-    - local: hybrid_inference/overview
-      title: Remote inference
-    title: Serving and scaling
   - isExpanded: false
     sections:
     - local: optimization/cache_dit

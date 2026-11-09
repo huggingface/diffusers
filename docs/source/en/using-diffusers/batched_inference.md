@@ -180,6 +180,17 @@ plt.show()
 
 Each image is tied to a seed, so you can pick an image you like and regenerate it with the same seed while you refine its prompt.
 
+## Serve concurrent requests
+
+A server also increases throughput by handling requests from many users at the same time. Load the pipeline once and share it across requests so the models stay in GPU memory only once. Schedulers aren't thread-safe, so give each request its own scheduler with [`~DiffusionPipeline.from_pipe`]. Sharing one scheduler across threads raises errors like `IndexError: index 21 is out of bounds for dimension 0 with size 21`.
+
+```py
+scheduler = shared_pipeline.scheduler.from_config(shared_pipeline.scheduler.config)
+pipeline = StableDiffusion3Pipeline.from_pipe(shared_pipeline, scheduler=scheduler)
+```
+
+For complete servers built with [FastAPI](https://fastapi.tiangolo.com/), see the [server](https://github.com/huggingface/diffusers/tree/main/examples/server) example and the [server-async](https://github.com/huggingface/diffusers/tree/main/examples/server-async) example. The server-async example also clones the random number generator state for each request and makes tokenizers safe to share across threads.
+
 ## Next steps
 
 - When a batch doesn't fit on one GPU, or you have more prompts than one GPU can process, spread the prompts across GPUs with [Data parallelism](../optimization/data_parallelism).
