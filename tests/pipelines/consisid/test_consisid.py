@@ -239,3 +239,5 @@ class TestConsisIDPipelineIntegration:
 
         max_diff = numpy_cosine_similarity_distance(video.cpu(), expected_video)
         assert max_diff < 1e-3, f"Max diff is too high. got {video}"
+
+SCRATCH = 1

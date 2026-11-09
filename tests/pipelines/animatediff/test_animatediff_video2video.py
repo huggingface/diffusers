@@ -166,3 +166,5 @@ class TestAnimateDiffVideoToVideoPipelineFromPipe(AnimateDiffVideoToVideoPipelin
     """`from_pipe` round-trip tests against `StableDiffusionPipeline` for the AnimateDiff video-to-video pipeline."""
 
     original_pipeline_repo = "hf-internal-testing/tinier-stable-diffusion-pipe"
+
+SCRATCH = 1

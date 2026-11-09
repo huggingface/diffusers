@@ -767,3 +767,5 @@ class BriaFiboPipeline(DiffusionPipeline, FluxLoraLoaderMixin):
 
         if max_sequence_length is not None and max_sequence_length > 3000:
             raise ValueError(f"`max_sequence_length` cannot be greater than 3000 but is {max_sequence_length}")
+
+SCRATCH = 1

@@ -301,3 +301,5 @@ class TestConsistencyModelPipelineSlow:
         expected_slice = np.array([0.1623, 0.2009, 0.2387, 0.1731, 0.1168, 0.1202, 0.2031, 0.1327, 0.2447])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+SCRATCH = 1

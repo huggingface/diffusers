@@ -631,3 +631,5 @@ class TestFluxLoRAIntegration:
         )
         max_diff = numpy_cosine_similarity_distance(expected_slice.flatten(), out_slice)
         assert max_diff < 1e-3
+
+SCRATCH = 1

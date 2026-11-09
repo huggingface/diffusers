@@ -129,3 +129,5 @@ class TestJoyImageEditPlusPipeline(JoyImageEditPlusPipelineTesterConfig, Pipelin
 
 class TestJoyImageEditPlusPipelineMemory(JoyImageEditPlusPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the JoyImage Edit Plus pipeline."""
+
+SCRATCH = 1

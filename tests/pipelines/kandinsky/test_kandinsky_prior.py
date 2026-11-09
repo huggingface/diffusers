@@ -194,3 +194,5 @@ class TestKandinskyPriorPipeline(KandinskyPriorPipelineTesterConfig, PipelineTes
 
 class TestKandinskyPriorPipelineMemory(KandinskyPriorPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Kandinsky prior pipeline."""
+
+SCRATCH = 1

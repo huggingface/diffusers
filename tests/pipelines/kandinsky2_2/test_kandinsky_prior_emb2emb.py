@@ -213,3 +213,5 @@ class TestKandinskyV22PriorEmb2EmbPipeline(KandinskyV22PriorEmb2EmbPipelineTeste
 class TestKandinskyV22PriorEmb2EmbPipelineMemory(KandinskyV22PriorEmb2EmbPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Kandinsky 2.2 prior
     emb2emb pipeline."""
+
+SCRATCH = 1

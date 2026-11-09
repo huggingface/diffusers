@@ -230,3 +230,5 @@ class TestKandinskyV22PriorPipeline(KandinskyV22PriorPipelineTesterConfig, Pipel
 class TestKandinskyV22PriorPipelineMemory(KandinskyV22PriorPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Kandinsky 2.2 prior
     pipeline."""
+
+SCRATCH = 1

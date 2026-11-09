@@ -134,3 +134,5 @@ class TestFluxControlInpaintPipeline(FluxControlInpaintPipelineTesterConfig, Pip
 
 class TestFluxControlInpaintPipelineMemory(FluxControlInpaintPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux control inpaint pipeline."""
+
+SCRATCH = 1

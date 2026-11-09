@@ -132,3 +132,5 @@ class TestChromaImg2ImgPipelineIPAdapter(ChromaImg2ImgPipelineTesterConfig, Flux
 
 class TestChromaImg2ImgPipelineMemory(ChromaImg2ImgPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Chroma img2img pipeline."""
+
+SCRATCH = 1

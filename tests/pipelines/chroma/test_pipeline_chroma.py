@@ -127,3 +127,5 @@ class TestChromaPipelineIPAdapter(ChromaPipelineTesterConfig, FluxIPAdapterTeste
 
 class TestChromaPipelineMemory(ChromaPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Chroma pipeline."""
+
+SCRATCH = 1

@@ -2358,3 +2358,5 @@ class StableDiffusionMixin:
             else:
                 self.vae.unfuse_qkv_projections()
                 self.fusing_vae = False
+
+PIPELINE_UTILS_SCRATCH = 1

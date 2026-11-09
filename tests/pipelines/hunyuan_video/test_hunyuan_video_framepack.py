@@ -352,3 +352,5 @@ class TestHunyuanVideoFramepackPipelineLoRA(HunyuanVideoFramepackPipelineTesterC
 
 class TestHunyuanVideoFramepackPipelineLoRAMemory(HunyuanVideoFramepackPipelineTesterConfig, LoraMemoryTesterMixin):
     """LoRA x memory-optimization tests (group offload, CPU offload) for the Framepack pipeline."""
+
+SCRATCH = 1

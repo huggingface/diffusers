@@ -1096,3 +1096,5 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             return (audio,)
 
         return AudioPipelineOutput(audios=audio)
+
+SCRATCH = 1

@@ -129,3 +129,5 @@ class TestFlux2KleinKVPipeline(Flux2KleinKVPipelineTesterConfig, PipelineTesterM
 
 class TestFlux2KleinKVPipelineMemory(Flux2KleinKVPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux2 Klein KV pipeline."""
+
+SCRATCH = 1

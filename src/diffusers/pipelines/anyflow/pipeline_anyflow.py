@@ -654,3 +654,5 @@ class AnyFlowPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             return (video,)
 
         return AnyFlowPipelineOutput(frames=video)
+
+SCRATCH = 1

@@ -287,3 +287,5 @@ class TestStableDiffusionXLControlNetInpaintPipelineMemory(
     StableDiffusionXLControlNetInpaintPipelineTesterConfig, MemoryTesterMixin
 ):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the SDXL ControlNet inpaint pipeline."""
+
+SCRATCH = 1

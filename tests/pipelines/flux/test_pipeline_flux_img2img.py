@@ -171,3 +171,5 @@ class TestFluxImg2ImgPipelineIPAdapter(FluxImg2ImgPipelineTesterConfig, FluxIPAd
 
 class TestFluxImg2ImgPipelineMemory(FluxImg2ImgPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux img2img pipeline."""
+
+SCRATCH = 1

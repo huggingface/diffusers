@@ -867,3 +867,5 @@ class BriaFibo2Pipeline(DiffusionPipeline, BriaFibo2LoraLoaderMixin):
             return (image,)
 
         return BriaFibo2PipelineOutput(images=image)
+
+SCRATCH = 1

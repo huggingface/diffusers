@@ -168,3 +168,5 @@ class TestHeliosPipelineIntegration:
     @pytest.mark.skip("TODO: test needs to be implemented")
     def test_helios(self):
         pass
+
+SCRATCH = 1

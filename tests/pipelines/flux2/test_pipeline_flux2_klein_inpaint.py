@@ -182,3 +182,5 @@ class TestFlux2KleinInpaintPipeline(Flux2KleinInpaintPipelineTesterConfig, Pipel
 
 class TestFlux2KleinInpaintPipelineMemory(Flux2KleinInpaintPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux2 Klein inpaint pipeline."""
+
+SCRATCH = 1

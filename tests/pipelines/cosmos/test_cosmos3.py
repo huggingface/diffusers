@@ -226,3 +226,5 @@ class TestCosmos3OmniPipeline(Cosmos3OmniPipelineTesterConfig, PipelineTesterMix
 
 class TestCosmos3OmniPipelineMemory(Cosmos3OmniPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Cosmos3 Omni pipeline."""
+
+SCRATCH = 1

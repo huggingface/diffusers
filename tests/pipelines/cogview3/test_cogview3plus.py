@@ -154,3 +154,5 @@ class TestCogView3PlusPipelineIntegration:
 
         max_diff = numpy_cosine_similarity_distance(image, expected_image)
         assert max_diff < 1e-3, f"Max diff is too high. got {image}"
+
+SCRATCH = 1
