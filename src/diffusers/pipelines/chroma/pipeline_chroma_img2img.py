@@ -1006,3 +1006,5 @@ class ChromaImg2ImgPipeline(
             return (image,)
 
         return ChromaPipelineOutput(images=image)
+
+SCRATCH = 1

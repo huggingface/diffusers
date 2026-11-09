@@ -244,3 +244,5 @@ class TestFlux2KleinPipelineIntegration:
 
 class TestFlux2KleinPipelineMagCache(Flux2KleinPipelineTesterConfig, MagCacheTesterMixin):
     """MagCache tests for the Flux2 Klein pipeline."""
+
+SCRATCH = 1

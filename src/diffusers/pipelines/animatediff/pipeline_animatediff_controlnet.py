@@ -1120,3 +1120,5 @@ class AnimateDiffControlNetPipeline(
             return (video,)
 
         return AnimateDiffPipelineOutput(frames=video)
+
+SCRATCH = 1

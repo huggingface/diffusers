@@ -934,3 +934,5 @@ class AllegroPipeline(DiffusionPipeline):
             return (video,)
 
         return AllegroPipelineOutput(frames=video)
+
+SCRATCH = 1

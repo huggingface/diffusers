@@ -154,3 +154,5 @@ class TestDiTPipelineIntegration:
             output_slice = image.flatten()
 
             assert numpy_cosine_similarity_distance(expected_slice, output_slice) < 1e-2
+
+SCRATCH = 1

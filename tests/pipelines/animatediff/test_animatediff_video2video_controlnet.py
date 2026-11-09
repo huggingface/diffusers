@@ -190,3 +190,5 @@ class TestAnimateDiffVideoToVideoControlNetPipelineFromPipe(
     """`from_pipe` round-trip tests against `StableDiffusionPipeline` for the AnimateDiff video-to-video ControlNet pipeline."""
 
     original_pipeline_repo = "hf-internal-testing/tinier-stable-diffusion-pipe"
+
+SCRATCH = 1

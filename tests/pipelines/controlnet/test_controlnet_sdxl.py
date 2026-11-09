@@ -931,3 +931,5 @@ class TestStableDiffusionSSD1BControlNetPipelineMemory(
     StableDiffusionSSD1BControlNetPipelineTesterConfig, MemoryTesterMixin
 ):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the SSD-1B ControlNet pipeline."""
+
+SCRATCH = 1

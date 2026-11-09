@@ -744,3 +744,5 @@ class BriaPipeline(DiffusionPipeline):
             return (image,)
 
         return BriaPipelineOutput(images=image)
+
+SCRATCH = 1

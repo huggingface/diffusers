@@ -672,3 +672,5 @@ class AuraFlowPipeline(DiffusionPipeline, AuraFlowLoraLoaderMixin):
             return (image,)
 
         return ImagePipelineOutput(images=image)
+
+SCRATCH = 1

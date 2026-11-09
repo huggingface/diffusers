@@ -599,3 +599,5 @@ class TestAudioLDM2PipelineIntegration:
         )
         max_diff = np.abs(expected_slice - audio_slice).max()
         assert max_diff < 1e-3
+
+SCRATCH = 1

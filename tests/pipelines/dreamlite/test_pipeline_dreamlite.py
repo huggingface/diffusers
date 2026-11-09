@@ -285,3 +285,5 @@ class TestDreamLitePipelineIntegration:
 
         assert out.shape == (1, 1024, 1024, 3)
         assert not np.isnan(out).any()
+
+SCRATCH = 1

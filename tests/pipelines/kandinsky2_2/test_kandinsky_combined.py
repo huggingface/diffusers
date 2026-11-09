@@ -314,3 +314,5 @@ class TestKandinskyV22InpaintCombinedPipelineMemory(
     @pytest.mark.skip(DEVICE_MAP_SKIP_REASON)
     def test_pipeline_with_accelerator_device_map(self):
         pass
+
+SCRATCH = 1

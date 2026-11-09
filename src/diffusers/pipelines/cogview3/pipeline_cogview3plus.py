@@ -683,3 +683,5 @@ class CogView3PlusPipeline(DiffusionPipeline):
             return (image,)
 
         return CogView3PipelineOutput(images=image)
+
+SCRATCH = 1

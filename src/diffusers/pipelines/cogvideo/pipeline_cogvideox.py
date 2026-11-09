@@ -796,3 +796,5 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
             return (video,)
 
         return CogVideoXPipelineOutput(frames=video)
+
+SCRATCH = 1

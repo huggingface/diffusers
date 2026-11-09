@@ -159,3 +159,5 @@ class TestChronoEditPipeline(ChronoEditPipelineTesterConfig, PipelineTesterMixin
 
 class TestChronoEditPipelineMemory(ChronoEditPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the ChronoEdit pipeline."""
+
+SCRATCH = 1

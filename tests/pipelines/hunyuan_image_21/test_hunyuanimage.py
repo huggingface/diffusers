@@ -239,3 +239,5 @@ class TestHunyuanImagePipelineMemory(HunyuanImagePipelineTesterConfig, MemoryTes
 
 class TestHunyuanImagePipelineFirstBlockCache(HunyuanImagePipelineTesterConfig, FirstBlockCacheTesterMixin):
     """First Block Cache tests for the HunyuanImage pipeline."""
+
+SCRATCH = 1

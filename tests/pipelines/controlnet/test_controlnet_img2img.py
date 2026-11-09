@@ -401,3 +401,5 @@ class TestControlNetImg2ImgPipelineSlow:
         )
 
         assert np.abs(expected_image - image).max() < 9e-2
+
+SCRATCH = 1

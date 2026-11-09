@@ -923,3 +923,5 @@ class ChromaPipeline(
             return (image,)
 
         return ChromaPipelineOutput(images=image)
+
+SCRATCH = 1

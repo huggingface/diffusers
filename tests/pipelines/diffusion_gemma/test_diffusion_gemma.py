@@ -282,3 +282,5 @@ class TestDiffusionGemmaPipeline:
         ).sequences
         ndiff = (dynamic != static).sum().item()
         assert ndiff == 0, f"static/dynamic agree on only ndiff={ndiff}/{dynamic.numel()} tokens"
+
+SCRATCH = 1

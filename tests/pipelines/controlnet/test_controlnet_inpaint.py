@@ -535,3 +535,5 @@ class TestControlNetInpaintPipelineSlow:
         )
 
         assert numpy_cosine_similarity_distance(expected_image.flatten(), image.flatten()) < 1e-2
+
+SCRATCH = 1

@@ -163,3 +163,5 @@ class TestFlux2PipelineLoRAMemory(Flux2PipelineTesterConfig, LoraMemoryTesterMix
 
 class TestFlux2PipelineMagCache(Flux2PipelineTesterConfig, MagCacheTesterMixin):
     """MagCache tests for the Flux2 pipeline."""
+
+SCRATCH = 1

@@ -293,3 +293,5 @@ class TestKandinskyV22ControlnetPipelineIntegration:
         )
         expected_max_diff = expected_max_diffs.get_expectation()
         assert max_diff < expected_max_diff
+
+SCRATCH = 1

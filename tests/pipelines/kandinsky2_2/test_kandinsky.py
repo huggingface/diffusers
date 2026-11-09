@@ -259,3 +259,5 @@ class TestKandinskyV22PipelineIntegration:
 
         max_diff = numpy_cosine_similarity_distance(expected_image.flatten(), image.flatten())
         assert max_diff < 1e-4
+
+SCRATCH = 1

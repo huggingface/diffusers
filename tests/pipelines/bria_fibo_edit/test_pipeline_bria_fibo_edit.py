@@ -264,3 +264,5 @@ class TestBriaFiboEditPipelineLoRA(BriaFiboEditPipelineTesterConfig, LoraTesterM
 
 class TestBriaFiboEditPipelineLoRAMemory(BriaFiboEditPipelineTesterConfig, LoraMemoryTesterMixin):
     """LoRA x memory-optimization tests (group offload, CPU offload) for the Bria FIBO Edit pipeline."""
+
+SCRATCH = 1

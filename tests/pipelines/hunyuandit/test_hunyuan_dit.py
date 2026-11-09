@@ -262,3 +262,5 @@ class TestHunyuanDiTPipelineIntegration:
 
         max_diff = numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice)
         assert max_diff < 1e-3, f"Max diff is too high. got {image_slice.flatten()}"
+
+SCRATCH = 1
