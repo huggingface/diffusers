@@ -751,3 +751,5 @@ class ChronoEditPipeline(DiffusionPipeline, WanLoraLoaderMixin):
             return (video,)
 
         return ChronoEditPipelineOutput(frames=video)
+
+SCRATCH = 1

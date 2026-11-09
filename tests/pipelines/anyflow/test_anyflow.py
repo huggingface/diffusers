@@ -129,3 +129,5 @@ class TestAnyFlowPipelineLoRA(AnyFlowPipelineTesterConfig, LoraTesterMixin):
 
 class TestAnyFlowPipelineLoRAMemory(AnyFlowPipelineTesterConfig, LoraMemoryTesterMixin):
     """LoRA x memory-optimization tests (group offload, CPU offload) for the AnyFlow pipeline."""
+
+SCRATCH = 1

@@ -360,3 +360,5 @@ class TestStableDiffusion3ControlNetPipelineSlow:
         expected_image = np.array([0.7207, 0.7041, 0.6543, 0.7500, 0.7490, 0.6592, 0.6001, 0.7168, 0.7231])
 
         assert numpy_cosine_similarity_distance(original_image.flatten(), expected_image) < 1e-2
+
+SCRATCH = 1

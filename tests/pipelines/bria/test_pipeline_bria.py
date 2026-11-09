@@ -230,3 +230,5 @@ class TestBriaPipelineSlow:
 
         max_diff = numpy_cosine_similarity_distance(expected_slice, image_slice)
         assert max_diff < 1e-4, f"Image slice is different from expected slice: {max_diff:.4f}"
+
+SCRATCH = 1

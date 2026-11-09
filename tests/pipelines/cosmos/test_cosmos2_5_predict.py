@@ -160,3 +160,5 @@ class TestCosmos2_5_PredictPipeline(
 
 class TestCosmos2_5_PredictPipelineMemory(Cosmos2_5_PredictPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Cosmos2.5 predict pipeline."""
+
+SCRATCH = 1

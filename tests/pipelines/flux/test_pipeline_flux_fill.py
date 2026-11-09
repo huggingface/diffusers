@@ -142,3 +142,5 @@ class TestFluxFillPipeline(FluxFillPipelineTesterConfig, PipelineTesterMixin):
 
 class TestFluxFillPipelineMemory(FluxFillPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Flux fill pipeline."""
+
+SCRATCH = 1

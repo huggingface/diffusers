@@ -1294,3 +1294,5 @@ class AceStepPipeline(DiffusionPipeline, AceStepLoraLoaderMixin):
             return (audio,)
 
         return AudioPipelineOutput(audios=audio)
+
+SCRATCH = 1

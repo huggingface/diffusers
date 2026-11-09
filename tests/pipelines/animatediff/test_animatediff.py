@@ -220,3 +220,5 @@ class TestAnimateDiffPipelineFromPipe(AnimateDiffPipelineTesterConfig, FromPipeT
     """`from_pipe` round-trip tests against `StableDiffusionPipeline` for the AnimateDiff pipeline."""
 
     original_pipeline_repo = "hf-internal-testing/tinier-stable-diffusion-pipe"
+
+SCRATCH = 1

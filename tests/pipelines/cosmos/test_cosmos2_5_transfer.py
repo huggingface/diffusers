@@ -244,3 +244,5 @@ class TestCosmos2_5_TransferPipeline(
 
 class TestCosmos2_5_TransferPipelineMemory(Cosmos2_5_TransferPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Cosmos2.5 transfer pipeline."""
+
+SCRATCH = 1

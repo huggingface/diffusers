@@ -167,3 +167,5 @@ class TestCogVideoXFunControlPipeline(CogVideoXFunControlPipelineTesterConfig, P
 
 class TestCogVideoXFunControlPipelineMemory(CogVideoXFunControlPipelineTesterConfig, MemoryTesterMixin):
     pass
+
+SCRATCH = 1

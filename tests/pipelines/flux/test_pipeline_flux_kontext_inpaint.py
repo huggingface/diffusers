@@ -201,3 +201,5 @@ class TestFluxKontextInpaintPipelineFasterCache(FluxKontextInpaintPipelineTester
         "attention_weight_callback": lambda _: 0.5,
         "is_guidance_distilled": True,
     }
+
+SCRATCH = 1

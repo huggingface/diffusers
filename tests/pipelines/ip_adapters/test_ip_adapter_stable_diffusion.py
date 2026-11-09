@@ -771,3 +771,5 @@ class TestIPAdapterSDXLIntegration(IPAdapterNightlyTestsMixin):
         )
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
+
+SCRATCH = 1

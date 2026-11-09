@@ -98,3 +98,5 @@ class TestAuraFlowPipelineLoRAMemory(AuraFlowPipelineTesterConfig, LoraMemoryTes
 
     # See `TestAuraFlowPipelineLoRA`.
     denoiser_target_modules = {"transformer": ["to_q", "to_k", "to_v", "to_out.0", "linear_1"]}
+
+SCRATCH = 1

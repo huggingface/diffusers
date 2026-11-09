@@ -231,3 +231,5 @@ class TestGlmImagePipeline(GlmImagePipelineTesterConfig, PipelineTesterMixin):
 @require_torch_accelerator
 class TestGlmImagePipelineMemory(GlmImagePipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the GLM-Image pipeline."""
+
+SCRATCH = 1

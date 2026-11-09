@@ -251,3 +251,5 @@ class TestStableDiffusionXLControlNetImg2ImgPipelineMemory(
     StableDiffusionXLControlNetImg2ImgPipelineTesterConfig, MemoryTesterMixin
 ):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the SDXL ControlNet img2img pipeline."""
+
+SCRATCH = 1

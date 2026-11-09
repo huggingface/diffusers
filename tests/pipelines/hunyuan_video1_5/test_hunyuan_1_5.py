@@ -181,3 +181,5 @@ class TestHunyuanVideo15Pipeline(HunyuanVideo15PipelineTesterConfig, PipelineTes
 
 class TestHunyuanVideo15PipelineMemory(HunyuanVideo15PipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the HunyuanVideo 1.5 pipeline."""
+
+SCRATCH = 1

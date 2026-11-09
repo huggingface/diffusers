@@ -871,3 +871,5 @@ class AnimateDiffPipeline(
             return (video,)
 
         return AnimateDiffPipelineOutput(frames=video)
+
+SCRATCH = 1

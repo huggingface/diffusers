@@ -272,3 +272,5 @@ class TestKandinskyPipelineIntegration:
         assert image.shape == (512, 512, 3)
 
         assert_mean_pixel_difference(image, expected_image)
+
+SCRATCH = 1

@@ -393,3 +393,5 @@ class TestBriaFibo2ImageProcessor:
 
         assert text_encoder_image.getpixel((0, 0)) == (128, 128, 128)
         assert text_encoder_image.getpixel((767, 0)) == (255, 0, 0)
+
+SCRATCH = 1

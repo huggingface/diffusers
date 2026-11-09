@@ -391,3 +391,5 @@ class TestAceStepPipelineLoRA(AceStepPipelineTesterConfig, LoraTesterMixin):
 
 class TestAceStepPipelineLoRAMemory(AceStepPipelineTesterConfig, LoraMemoryTesterMixin):
     """LoRA x memory-optimization tests (group offload, CPU offload) for the ACE-Step pipeline."""
+
+SCRATCH = 1
