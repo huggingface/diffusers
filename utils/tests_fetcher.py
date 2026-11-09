@@ -520,7 +520,7 @@ def _selection_tree(
             imported = ", ".join(name for name, _ in names.most_common(3))
             children.append(
                 f"{n} module{'s' if n != 1 else ''} in {pkg} → {t} test{'s' if t != 1 else ''}"
-                + (f", importing {imported}" if imported else "")
+                + (f"; they import {imported} from {changed.rsplit('/', 1)[-1]}" if imported else "")
             )
         total = sum(len(ts) for _, ts in rest)
         branches.append((f"via {len(rest)} other modules → {total} tests", children))
@@ -542,20 +542,23 @@ def _write_summary(
     direct_deps: Dict[str, List[str]],
     reverse_map: Dict[str, List[str]],
 ):
-    """Write the CI job summary: how many tests each changed file selects, and a collapsible tree per file
-    showing through which files it reaches them.
+    """Write the CI job summary: which tests each changed file selects and through which files.
 
-    Rows are changed files, largest selection first. A source file that selects nothing keeps its row, since
-    that change runs no tests; anything else that selects nothing (conftest, helpers, files outside the graph)
-    is left out. Changed test files that select only themselves are counted on one row. The import chain that
-    selected every individual test is in the stdout report, kept as a CI artifact.
+    The table lists changed files largest selection first, capped at `MAX_SUMMARY_ROWS` rows; changed test
+    files that select only themselves are counted on one row. Changed files that reach no tests are called
+    out, since CI will not exercise them. A single collapsed Details section then holds one dropdown per
+    changed file with the import tree that explains its selection. The import chain for every selected test
+    is in the stdout report, kept as a CI artifact.
     """
     selected_by = {f: _tests_triggered_by(f, reverse_map) for f in modified_files if (PATH_TO_REPO / f).exists()}
     selected_by = {f: t for f, t in selected_by.items() if t or f.startswith("src/")}
-    self_only = [f for f, tests in selected_by.items() if tests == {f}]
-    rows = sorted((f for f in selected_by if f not in self_only), key=lambda f: (-len(selected_by[f]), f))
-
     suite_totals = collections.Counter(_suite_of(t) for t in _all_test_files())
+    self_only = [f for f, tests in selected_by.items() if tests == {f}]
+    no_tests = sorted(f for f, tests in selected_by.items() if not tests)
+    rows = sorted(
+        (f for f in selected_by if f not in self_only and f not in no_tests), key=lambda f: (-len(selected_by[f]), f)
+    )
+
     files = "file" if len(modified_files) == 1 else "files"
     lines = [
         "## Test fetcher",
@@ -570,7 +573,7 @@ def _write_summary(
     overflow = rows[MAX_SUMMARY_ROWS:]
     if overflow:
         bound = len(selected_by[overflow[0]])
-        lines.append(f"| {len(overflow)} more changed files, each reaching {bound} or fewer tests (listed below) | |")
+        lines.append(f"| {len(overflow)} more changed files, each reaching {bound} or fewer tests (see Details) | |")
     if self_only:
         covered = set().union(*(selected_by[f] for f in rows)) if rows else set()
         inside = sum(1 for f in self_only if f in covered)
@@ -581,6 +584,14 @@ def _write_summary(
             lines.append(
                 f"| {len(self_only)} changed test files, each selecting only itself{note} | {len(self_only)} |"
             )
+
+    if no_tests:
+        listed = ", ".join(f"`{f}`" for f in no_tests)
+        lines += [
+            "",
+            f"**Changed files that run no tests:** {listed}. No test imports them, so CI does not exercise these "
+            "changes.",
+        ]
 
     # The one thing worth saying about a changed test file on the PR that changes it: a new import of a module
     # that itself imports much of the library. The test still selects only itself here, but from now on it runs
@@ -604,24 +615,14 @@ def _write_summary(
                 f"`{d.rsplit('/', 1)[-1]}`, add it to the banned imports in `pyproject.toml`."
             )
 
-    def dropdown(f: str) -> List[str]:
-        n = len(selected_by[f])
-        title = f"<summary><code>{f}</code> → {n} test {'file' if n == 1 else 'files'}</summary>"
-        return (
-            ["", "<details>", title, ""]
-            + _selection_tree(f, selected_by[f], direct_deps, suite_totals)
-            + ["", "</details>"]
-        )
-
-    for f in rows[:MAX_SUMMARY_ROWS]:
-        if selected_by[f]:
-            lines += dropdown(f)
-    # The tail of a wide diff: one collapsed section holding a dropdown per remaining file, so nothing is
-    # left unexplained while the top level stays at MAX_SUMMARY_ROWS entries.
-    if overflow:
-        lines += ["", "<details>", f"<summary>{len(overflow)} more changed files</summary>"]
-        for f in overflow:
-            lines += dropdown(f) if selected_by[f] else ["", f"`{f}` reaches no tests", ""]
+    if rows:
+        lines += ["", "<details>", "<summary>Details: how each changed file reaches its tests</summary>"]
+        for f in rows:
+            n = len(selected_by[f])
+            title = f"<summary><code>{f}</code> → {n} test {'file' if n == 1 else 'files'}</summary>"
+            lines += ["", "<details>", title, ""]
+            lines += _selection_tree(f, selected_by[f], direct_deps, suite_totals)
+            lines += ["", "</details>"]
         lines += ["", "</details>"]
     Path(summary_file).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
