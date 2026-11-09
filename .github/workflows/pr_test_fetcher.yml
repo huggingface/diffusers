@@ -1,6 +1,12 @@
 name: Fast tests for PRs - Test Fetcher
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      diff_with_last_commit:
+        description: Diff against the previous commit instead of the merge-base with main
+        type: boolean
+        default: false
 
 
 env:
@@ -47,7 +53,7 @@ jobs:
       # fetcher spawns in the container would otherwise refuse the repo as dubiously owned.
       run: |
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
-        python utils/tests_fetcher.py | tee test_preparation.txt
+        python utils/tests_fetcher.py ${{ inputs.diff_with_last_commit && '--diff_with_last_commit' || '' }} | tee test_preparation.txt
     - name: Report selection in job summary
       run: |
         if [ -f test_fetcher_summary.md ]; then
