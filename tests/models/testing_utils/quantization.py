@@ -14,17 +14,21 @@
 # limitations under the License.
 
 import gc
+import importlib.metadata
+import json
 import re
 import tempfile
 
 import pytest
 import safetensors.torch
 import torch
+from packaging.version import Version
 
 from diffusers import (
     AutoRoundConfig,
     BFLQuantizationConfig,
     BitsAndBytesConfig,
+    ConvRotQuantizationConfig,
     GGUFQuantizationConfig,
     NunchakuLiteQuantizationConfig,
     NVIDIAModelOptConfig,
@@ -64,6 +68,7 @@ from ...testing_utils import (
     require_torchao_version_greater_or_equal,
     torch_device,
 )
+from .common import cast_inputs_to_dtype
 from .single_file import fetch_checkpoint_metadata
 
 
@@ -191,15 +196,19 @@ class QuantizationTesterMixin:
         )
 
     @torch.no_grad()
-    def _test_quantization_inference(self, config_kwargs):
+    def _test_quantization_inference(self, config_kwargs, dtype=None):
         model_quantized = self._create_quantized_model(config_kwargs)
         model_quantized.to(torch_device)
 
         inputs = self.get_dummy_inputs()
+        if dtype is not None:
+            inputs = cast_inputs_to_dtype(inputs, torch.float32, dtype)
         output = model_quantized(**inputs, return_dict=False)[0]
 
         assert output is not None, "Model output is None"
-        assert not torch.isnan(output).any(), "Model output contains NaN"
+        outputs = output if isinstance(output, (list, tuple)) else [output]
+        for tensor in outputs:
+            assert not torch.isnan(tensor).any(), "Model output contains NaN"
 
     def _test_quantization_dtype_assignment(self, config_kwargs):
         model = self._create_quantized_model(config_kwargs)
@@ -1829,6 +1838,109 @@ class AutoRoundCompileTesterMixin(AutoRoundConfigMixin, QuantizationCompileTeste
 
     def test_autoround_torch_compile_with_group_offload(self):
         self._test_torch_compile_with_group_offload(self.config_dict)
+
+
+class ConvRotConfigMixin:
+    CONVROT_CONFIGS = [{"compute_dtype": torch.bfloat16}, {"compute_dtype": torch.float16}]
+
+    @property
+    def convrot_modules(self):
+        raise NotImplementedError("Subclasses must specify the checkpoint's quantized modules.")
+
+    def _load_unquantized_model(self):
+        torch.manual_seed(0)
+        return self.model_class(**self.get_init_dict()).eval()
+
+    @torch.no_grad()
+    def _convrot_state_dict(self, model):
+        rotation = torch.tensor([[1, 1, 1, -1], [1, 1, -1, 1], [1, -1, 1, 1], [-1, 1, 1, 1]]).float()
+        rotation = torch.kron(torch.kron(rotation, rotation), rotation) / 8
+        metadata = {"format": "int8_tensorwise", "convrot": True, "convrot_groupsize": 64}
+        state_dict = model.state_dict()
+        for name in self.convrot_modules:
+            weight = state_dict[f"{name}.weight"].float()
+            rotated = (weight.reshape(weight.shape[0], -1, 64) @ rotation).reshape_as(weight)
+            scale = rotated.abs().amax(dim=1, keepdim=True).clamp_min(1e-8) / 127
+            state_dict[f"{name}.weight"] = (rotated / scale).round().clamp(-127, 127).to(torch.int8)
+            state_dict[f"{name}.weight_scale"] = scale
+            state_dict[f"{name}.comfy_quant"] = torch.tensor(list(json.dumps(metadata).encode()), dtype=torch.uint8)
+        return state_dict
+
+    def _create_quantized_model(self, config_kwargs, **extra_kwargs):
+        model = self._load_unquantized_model()
+        kwargs = {
+            "quantization_config": ConvRotQuantizationConfig(**config_kwargs),
+            "dtype": config_kwargs["compute_dtype"],
+            "device": str(torch_device),
+            **extra_kwargs,
+        }
+        with tempfile.TemporaryDirectory() as config_dir:
+            model.save_config(config_dir)
+            return self.model_class.from_single_file(self._convrot_state_dict(model), config=config_dir, **kwargs)
+
+    def _verify_if_layer_quantized(self, name, module, config_kwargs):
+        from diffusers.quantizers.convrot.utils import ConvRotInt8Linear
+
+        assert isinstance(module, ConvRotInt8Linear), f"{name} is not a ConvRotInt8Linear"
+        assert module.weight.dtype == torch.int8
+        assert module.weight_scale.dtype == torch.float32
+        assert module.weight_scale.shape == (module.out_features, 1)
+        assert module.compute_dtype == config_kwargs["compute_dtype"]
+        assert module.convrot and module.convrot_groupsize == 64
+
+    def _is_module_quantized(self, module, config_kwargs=None):
+        from diffusers.quantizers.convrot.utils import ConvRotInt8Linear
+
+        return isinstance(module, ConvRotInt8Linear)
+
+
+@require_accelerate
+class ConvRotTesterMixin(ConvRotConfigMixin, QuantizationTesterMixin):
+    @pytest.fixture(autouse=True)
+    def convrot_backend(self):
+        kitchen = pytest.importorskip("comfy_kitchen")
+        if Version(importlib.metadata.version("comfy-kitchen")) < Version("0.2.41"):
+            pytest.skip("Requires comfy-kitchen>=0.2.41")
+        if torch_device != "cuda" or torch.cuda.get_device_capability() < (7, 5):
+            pytest.skip("Requires an NVIDIA GPU with INT8 tensor cores")
+        backend = kitchen.list_backends().get("cuda", {})
+        if not backend.get("available") or "int8_linear" not in backend.get("capabilities", []):
+            pytest.skip("Requires Comfy-Kitchen's native CUDA INT8 backend")
+        with kitchen.use_backend("cuda"):
+            yield
+
+    @pytest.mark.parametrize("config_kwargs", ConvRotConfigMixin.CONVROT_CONFIGS, ids=["bf16", "fp16"])
+    def test_convrot_quantization_inference(self, config_kwargs):
+        self._test_quantization_inference(config_kwargs, dtype=config_kwargs["compute_dtype"])
+
+    @pytest.mark.parametrize("config_kwargs", ConvRotConfigMixin.CONVROT_CONFIGS, ids=["bf16", "fp16"])
+    def test_convrot_quantization_num_parameters(self, config_kwargs):
+        self._test_quantization_num_parameters(config_kwargs)
+
+    @pytest.mark.parametrize("config_kwargs", ConvRotConfigMixin.CONVROT_CONFIGS, ids=["bf16", "fp16"])
+    def test_convrot_quantization_dtype_assignment(self, config_kwargs):
+        self._test_quantization_dtype_assignment(config_kwargs)
+
+    @pytest.mark.parametrize("config_kwargs", ConvRotConfigMixin.CONVROT_CONFIGS, ids=["bf16", "fp16"])
+    def test_convrot_keep_modules_in_fp32(self, config_kwargs):
+        self._test_keep_modules_in_fp32(config_kwargs)
+
+    @pytest.mark.parametrize("config_kwargs", ConvRotConfigMixin.CONVROT_CONFIGS, ids=["bf16", "fp16"])
+    def test_convrot_quantized_layers(self, config_kwargs):
+        model = self._create_quantized_model(config_kwargs)
+        quantized = set()
+        for name, module in model.named_modules():
+            if self._is_module_quantized(module):
+                self._verify_if_layer_quantized(name, module, config_kwargs)
+                quantized.add(name)
+        assert quantized == set(self.convrot_modules)
+        assert not any(tensor.is_meta for tensor in model.state_dict().values())
+
+    @pytest.mark.parametrize("config_kwargs", ConvRotConfigMixin.CONVROT_CONFIGS, ids=["bf16", "fp16"])
+    def test_convrot_serialization_is_rejected(self, config_kwargs, tmp_path):
+        model = self._create_quantized_model(config_kwargs)
+        with pytest.raises(ValueError, match="serializ"):
+            model.save_pretrained(tmp_path)
 
 
 class BFLConfigMixin:

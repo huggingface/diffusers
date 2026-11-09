@@ -25,6 +25,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    ConvRotTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     SingleFileTesterMixin,
@@ -97,6 +98,24 @@ class QwenImage21TransformerTesterConfig(BaseModelTesterConfig):
             "img_shapes": [[(1, target_height, target_width)]] * batch_size,
             "img_mask": img_mask,
         }
+
+
+class TestQwenImage21TransformerConvRot(QwenImage21TransformerTesterConfig, ConvRotTesterMixin):
+    convrot_modules = tuple(
+        f"transformer_blocks.0.{name}"
+        for name in (
+            "attn.to_q",
+            "attn.to_k",
+            "attn.to_v",
+            "attn.to_out.0",
+            "img_mlp.proj",
+            "img_mlp.gate_layer",
+            "img_mlp.out",
+        )
+    )
+
+    def get_init_dict(self):
+        return {**super().get_init_dict(), "num_layers": 1, "num_attention_heads": 4}
 
 
 class TestQwenImage21Transformer(QwenImage21TransformerTesterConfig, ModelTesterMixin):

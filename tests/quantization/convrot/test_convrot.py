@@ -230,8 +230,6 @@ def test_single_file_load_preserves_codes_scales_and_unquantized_weights(tmp_pat
     assert linear.weight_scale.dtype == torch.float32
     torch.testing.assert_close(linear.weight_scale, original_scale, rtol=0, atol=0)
     assert all(value.device.type != "meta" for value in loaded.state_dict().values())
-    with pytest.raises(ValueError, match="serializ"):
-        loaded.save_pretrained(tmp_path / "unsupported")
 
 
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
