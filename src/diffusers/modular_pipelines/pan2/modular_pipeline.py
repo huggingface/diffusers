@@ -17,7 +17,11 @@ from ..modular_pipeline import ModularPipeline
 
 
 if is_pan2_guardrail_available():
-    from pan2_guardrail import PAN2SafetyChecker
+    from pan2_guardrail import PAN2SafetyChecker as _PAN2SafetyChecker
+
+    class PAN2SafetyChecker(_PAN2SafetyChecker):
+        r"""The PAN 2 guardrail. Defined in diffusers so that a saved pipeline records it as a diffusers class."""
+
 else:
 
     class PAN2SafetyChecker:
@@ -90,28 +94,15 @@ class PAN2ModularPipeline(ModularPipeline):
             return self.guider._enabled and self.guider.num_conditions > 1
         return False
 
-    def load_components(self, names: list[str] | str | None = None, workflow: str | None = None, **kwargs):
-        r"""Load the components, and the PAN 2 guardrail too when the checks are on and it is installed."""
-        super().load_components(names=names, workflow=workflow, **kwargs)
-        if self.requires_safety_checker and is_pan2_guardrail_available():
-            self.enable_safety_checker()
-
-    def to(self, *args, **kwargs):
-        r"""Move the pipeline, and the PAN 2 guardrail with it."""
-        pipeline = super().to(*args, **kwargs)
-        if getattr(pipeline, "safety_checker", None) is not None:
-            pipeline.safety_checker.to(pipeline.device)
-        return pipeline
-
     def enable_safety_checker(self):
         r"""Check the prompt and the generated videos with the PAN 2 guardrail."""
-        if getattr(self, "safety_checker", None) is None:
-            self.safety_checker = PAN2SafetyChecker.from_pretrained().to(self.device)
+        if self.safety_checker is None:
+            self.update_components(safety_checker=PAN2SafetyChecker.from_pretrained().to(self.device))
         self._is_safety_checker_enabled = True
 
     def check_safety_checker_loaded(self):
         r"""Raise if the checks are on but the PAN 2 guardrail is not loaded."""
-        if getattr(self, "safety_checker", None) is not None:
+        if self.safety_checker is not None:
             return
         if not is_pan2_guardrail_available():
             raise ValueError(

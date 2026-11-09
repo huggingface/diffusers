@@ -24,7 +24,7 @@ from ...utils import logging
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
-from .modular_pipeline import PAN2ModularPipeline
+from .modular_pipeline import PAN2ModularPipeline, PAN2SafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -233,6 +233,7 @@ class PAN2TextEncoderStep(ModularPipelineBlocks):
         return [
             ComponentSpec("text_encoder", Qwen3_5TextModel),
             ComponentSpec("tokenizer", Qwen2Tokenizer),
+            ComponentSpec("safety_checker", PAN2SafetyChecker),
         ]
 
     @property

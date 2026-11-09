@@ -162,6 +162,7 @@ else:
     _import_structure["pan2"] = [
         "PAN2Blocks",
         "PAN2ModularPipeline",
+        "PAN2SafetyChecker",
     ]
     _import_structure["p_h3_image"] = [
         "PH3ImageBlocks",
@@ -262,7 +263,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PH3ImageBlocks,
             PH3ImageModularPipeline,
         )
-        from .pan2 import PAN2Blocks, PAN2ModularPipeline
+        from .pan2 import PAN2Blocks, PAN2ModularPipeline, PAN2SafetyChecker
         from .pika_h3_flex import (
             PikaH3FlexBlocks,
             PikaH3FlexModularPipeline,

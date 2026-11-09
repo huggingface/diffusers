@@ -21,7 +21,7 @@ from ...utils import logging
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
-from .modular_pipeline import PAN2ModularPipeline
+from .modular_pipeline import PAN2ModularPipeline, PAN2SafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -44,6 +44,7 @@ class PAN2VaeDecoderStep(ModularPipelineBlocks):
                 config=FrozenDict({"vae_scale_factor": 16}),
                 default_creation_method="from_config",
             ),
+            ComponentSpec("safety_checker", PAN2SafetyChecker),
         ]
 
     @property

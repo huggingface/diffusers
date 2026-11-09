@@ -257,9 +257,9 @@ class PAN2Blocks(SequentialPipelineBlocks):
         - `i2v`: requires `prompt`, `image`
 
       Components:
-          text_encoder (`Qwen3_5TextModel`) tokenizer (`Qwen2Tokenizer`) vae (`AutoencoderKLWan`) video_processor
-          (`VideoProcessor`) scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`PAN2Transformer3DModel`)
-          guider (`ClassifierFreeGuidance`)
+          text_encoder (`Qwen3_5TextModel`) tokenizer (`Qwen2Tokenizer`) safety_checker (`PAN2SafetyChecker`) vae
+          (`AutoencoderKLWan`) video_processor (`VideoProcessor`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          transformer (`PAN2Transformer3DModel`) guider (`ClassifierFreeGuidance`)
 
       Configs:
           enable_safety_checker (default: True)

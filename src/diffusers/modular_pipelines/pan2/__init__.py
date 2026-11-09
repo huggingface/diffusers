@@ -22,7 +22,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["modular_blocks_pan2"] = ["PAN2Blocks"]
-    _import_structure["modular_pipeline"] = ["PAN2ModularPipeline"]
+    _import_structure["modular_pipeline"] = ["PAN2ModularPipeline", "PAN2SafetyChecker"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -32,7 +32,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
         from .modular_blocks_pan2 import PAN2Blocks
-        from .modular_pipeline import PAN2ModularPipeline
+        from .modular_pipeline import PAN2ModularPipeline, PAN2SafetyChecker
 else:
     import sys
 

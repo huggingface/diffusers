@@ -67,6 +67,7 @@ _PAN2_COMPONENTS = {
     "guider": "ClassifierFreeGuidance",
     "vae": "AutoencoderKLWan",
     "video_processor": "VideoProcessor",
+    "safety_checker": "PAN2SafetyChecker",
 }
 _PAN2_INPUTS = {
     "negative_prompt": None,
