@@ -701,13 +701,10 @@ class AutoencoderKLMiniMaxH3Image(ModelMixin, ConfigMixin, AttentionMixin, Autoe
             result_rows.append(torch.cat(result_row, dim=-1))
         return torch.cat(result_rows, dim=-2)
 
-    def _encode_tile(self, x: torch.Tensor) -> torch.Tensor:
-        # The encoder is a causal video encoder; an image is a single frame, which maps to a single latent frame.
-        return self.quant_conv(self.encoder(x[:, :, None]))[:, :, -1]
-
     def _encode(self, x: torch.Tensor) -> torch.Tensor:
+        # The encoder is a causal video encoder; an image is a single frame, which maps to a single latent frame.
         if not self.use_tiling:
-            return self._encode_tile(x)
+            return self.quant_conv(self.encoder(x[:, :, None]))[:, :, -1]
 
         height, width = x.shape[-2], x.shape[-1]
         y_indices, y_lengths, y_overlaps = self._split_tiles(
@@ -721,7 +718,8 @@ class AutoencoderKLMiniMaxH3Image(ModelMixin, ConfigMixin, AttentionMixin, Autoe
         for i_pos, i_len in zip(y_indices, y_lengths):
             row = []
             for j_pos, j_len in zip(x_indices, x_lengths):
-                row.append(self._encode_tile(x[..., i_pos : i_pos + i_len, j_pos : j_pos + j_len]))
+                tile = x[..., i_pos : i_pos + i_len, j_pos : j_pos + j_len]
+                row.append(self.quant_conv(self.encoder(tile[:, :, None]))[:, :, -1])
             rows.append(row)
 
         latent_y_overlaps = [overlap // self.spatial_compression_ratio for overlap in y_overlaps]

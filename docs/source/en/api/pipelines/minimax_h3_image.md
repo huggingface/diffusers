@@ -18,14 +18,19 @@ Like MiniMax-H3, it is integrated as [Modular Diffusers](../../modular_diffusers
 ```py
 import torch
 from diffusers import ComponentsManager, ModularPipeline
-from diffusers.utils import load_image
 
 manager = ComponentsManager()
 manager.enable_auto_cpu_offload(device="cuda")
 
 pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3-Image", components_manager=manager)
 pipe.load_components(dtype=torch.bfloat16)
+```
 
+The transformer and the text encoder are about 62 GB each in bfloat16 and do not fit on an 80 GB GPU together, so the examples use auto offloading: the [`ComponentsManager`] moves each component onto the accelerator when a block needs it. A 4736x3552 image then peaks at about 65 GB.
+
+Text-to-image:
+
+```py
 prompt = (
     "An overhead photograph of a rustic farm-to-table spread on a weathered wooden table: a round loaf of sourdough "
     "on burlap, wedges of cheese on a dark board, a copper bowl of vegetables, vine tomatoes, olives and walnuts."
@@ -33,9 +38,15 @@ prompt = (
 image = pipe(
     prompt=prompt, height=3552, width=4736, generator=torch.Generator().manual_seed(42), output="images"
 )[0]
+```
+
+Editing a reference image:
+
+```py
+from diffusers.utils import load_image
 
 reference = load_image("https://huggingface.co/MiniMaxAI/MiniMax-H3-Image/resolve/main/examples/picture1.png")
-edited = pipe(
+image = pipe(
     prompt="Keep everything in <Picture 1> as it is, but remove the headphones and have the two hosts fist bump.",
     image=reference,
     height=4096,
@@ -44,8 +55,6 @@ edited = pipe(
     output="images",
 )[0]
 ```
-
-The transformer and the text encoder are about 62 GB each in bfloat16 and do not fit on an 80 GB GPU together, so the example uses auto offloading: the [`ComponentsManager`] moves each component onto the accelerator when a block needs it. A 4736x3552 image then peaks at about 65 GB.
 
 ## Components
 
@@ -78,7 +87,6 @@ MiniMax recommends 4096x4096 for 1:1, 4736x3552 for 4:3, 5024x3360 for 3:2, 5472
 
 - The checkpoint samples in 6 steps over its `sample_sigmas`, and the transformer has one output head per step, so there is no `num_inference_steps`.
 - The model is guidance-distilled, so there is no guider, `negative_prompt` or `guidance_scale`.
-- A CPU generator, as in the example, gives the same noise on every machine.
 
 ## MiniMaxH3ImageModularPipeline
 

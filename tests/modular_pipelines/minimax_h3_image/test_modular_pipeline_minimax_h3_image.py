@@ -222,7 +222,9 @@ class TestMiniMaxH3ImageModularPipelineFast(MiniMaxH3ImageModularPipelineTesterC
             inputs = self.get_edit_inputs()
             # A 14 x 10 latent grid for the 56 x 40 reference.
             noise = torch.randn(1, 4, 10, 14, generator=torch.Generator().manual_seed(reference_seed))
-            return pipe(**inputs, reference_noise=[noise], output="images")
+            # The latents rather than the image: the 0.001 share of noise the anchors carry moves the tiny model's
+            # output by less than one 8-bit level.
+            return pipe(**inputs, reference_noise=[noise], output="latents")
 
         assert torch.equal(run(1), run(1))
         assert not torch.equal(run(1), run(2))
@@ -278,6 +280,22 @@ class TestMiniMaxH3ImageModularPipelineFast(MiniMaxH3ImageModularPipelineTesterC
         expected = 1.0 - torch.tensor(_SAMPLE_SIGMAS[:-1])
         torch.testing.assert_close(state.get("timesteps").cpu(), expected)
 
+    def test_scheduler_steps_in_the_velocity_form(self):
+        r"""The heads were distilled with `x + (sigma - sigma_next) * v`, and the scheduler steps that way, bit for bit."""
+        pipe = self.get_pipeline()
+        scheduler = pipe.scheduler
+        scheduler.set_timesteps(sigmas=_SAMPLE_SIGMAS)
+        generator = torch.Generator().manual_seed(0)
+        sample = torch.randn(4, 96, generator=generator)
+        sigmas = torch.tensor(_SAMPLE_SIGMAS, dtype=torch.float32)
+
+        assert scheduler.config.euler_update_form == "velocity"
+        for index, timestep in enumerate(scheduler.timesteps):
+            velocity = torch.randn(4, 96, generator=generator)
+            expected = sample + (sigmas[index] - sigmas[index + 1]) * velocity
+            sample = scheduler.step(velocity, timestep, sample).prev_sample
+            assert torch.equal(sample, expected)
+
     def test_reference_rows_are_held_at_the_conditioning_level(self):
         r"""The reference rows of an edit read a fixed timestep on every step; the generated rows step down."""
         pipe = self.get_pipeline()
@@ -290,6 +308,37 @@ class TestMiniMaxH3ImageModularPipelineFast(MiniMaxH3ImageModularPipelineTesterC
             row_timesteps = timesteps.cpu()[indices.cpu()]
             assert torch.all(row_timesteps[image_indices[:num_reference_rows]] == pipe.reference_noise_aug)
             assert torch.all(row_timesteps[image_indices[num_reference_rows:]] == state.get("timesteps")[step].cpu())
+
+    @pytest.mark.parametrize("output_type", ["np", "pil", "pt"])
+    def test_output_type(self, output_type):
+        pipe = self.get_pipeline()
+
+        inputs = self.get_dummy_inputs()
+        inputs["output_type"] = output_type
+        images = pipe(**inputs, output="images")
+
+        if output_type == "np":
+            assert images.shape == (1, 32, 32, 3)
+        elif output_type == "pil":
+            assert images[0].size == (32, 32)
+        else:
+            assert images.shape == (1, 3, 32, 32)
+
+    def test_prompt_list(self):
+        pipe = self.get_pipeline()
+
+        inputs = self.get_dummy_inputs()
+        inputs["prompt"] = ["a robot", "a fox"]
+
+        with pytest.raises(ValueError, match="must be a single non-empty string"):
+            pipe(**inputs)
+
+
+class TestMiniMaxH3ImageModularBlocks(MiniMaxH3ImageModularPipelineTesterConfig):
+    """
+    The encoder blocks run on their own rather than through a full request: each is built into a one-block pipeline
+    with `init_pipeline()`, so what is pinned here is the block's own contract, not the pipeline's.
+    """
 
     @pytest.mark.parametrize("edit", [False, True], ids=["text2image", "image_conditioned"])
     def test_text_encoder_block_standalone(self, edit):
@@ -324,30 +373,6 @@ class TestMiniMaxH3ImageModularPipelineFast(MiniMaxH3ImageModularPipelineTesterC
         assert reference_latents[0].shape == (1, 4, 8, 16)
         assert torch.equal(reference_latents[0], run(0)[0])
         assert not torch.equal(reference_latents[0], run(1)[0])
-
-    @pytest.mark.parametrize("output_type", ["np", "pil", "pt"])
-    def test_output_type(self, output_type):
-        pipe = self.get_pipeline()
-
-        inputs = self.get_dummy_inputs()
-        inputs["output_type"] = output_type
-        images = pipe(**inputs, output="images")
-
-        if output_type == "np":
-            assert images.shape == (1, 32, 32, 3)
-        elif output_type == "pil":
-            assert images[0].size == (32, 32)
-        else:
-            assert images.shape == (1, 3, 32, 32)
-
-    def test_prompt_list(self):
-        pipe = self.get_pipeline()
-
-        inputs = self.get_dummy_inputs()
-        inputs["prompt"] = ["a robot", "a fox"]
-
-        with pytest.raises(ValueError, match="must be a single non-empty string"):
-            pipe(**inputs)
 
 
 class TestMiniMaxH3ImageModularPipelineLoading(MiniMaxH3ImageModularPipelineTesterConfig, ModularLoadingTesterMixin):
