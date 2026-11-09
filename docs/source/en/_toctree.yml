@@ -397,6 +397,8 @@
         title: Lumina2Transformer2DModel
       - local: api/models/lumina_nextdit2d
         title: LuminaNextDiT2DModel
+      - local: api/models/minimax_h3_image_transformer2d
+        title: MiniMaxH3ImageTransformer2DModel
       - local: api/models/minimax_h3_transformer3d
         title: MiniMaxH3Transformer3DModel
       - local: api/models/minimax_music3_transformer
@@ -505,6 +507,8 @@
         title: AutoencoderKLMiniMaxH3
       - local: api/models/autoencoderkl_minimax_h3_audio
         title: AutoencoderKLMiniMaxH3Audio
+      - local: api/models/autoencoderkl_minimax_h3_image
+        title: AutoencoderKLMiniMaxH3Image
       - local: api/models/autoencoderkl_mochi
         title: AutoencoderKLMochi
       - local: api/models/autoencoderkl_p_h3_image
@@ -653,6 +657,8 @@
         title: Lumina-T2X
       - local: api/pipelines/marigold
         title: Marigold
+      - local: api/pipelines/minimax_h3_image
+        title: MiniMax-H3-Image
       - local: api/pipelines/nucleusmoe_image
         title: NucleusMoE-Image
       - local: api/pipelines/omnigen

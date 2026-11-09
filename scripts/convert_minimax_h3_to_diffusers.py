@@ -22,6 +22,11 @@ The FL2VA and Ref2VA variants differ only in the transformer weights, so the var
 `modular_model_index.json`: MiniMax-H3 is integrated as Modular Diffusers blocks only, so no `model_index.json` is
 written.
 
+`--version image` converts a MiniMax-H3-Image release instead: the same transformer without the audio projections,
+with the per-step output heads of `pdd_fused_heads.safetensors` folded in as `pdd_proj_out.{i}` in place of the base
+head, the image VAE, a scheduler config and a `modular_model_index.json` whose `text_encoder` entry points at the
+MiniMax-H3 repository.
+
 Usage:
 
 ```bash
@@ -33,6 +38,11 @@ python scripts/convert_minimax_h3_to_diffusers.py \
 python scripts/convert_minimax_h3_to_diffusers.py \
     --checkpoint_path /path/to/MiniMax-H3/FL2VA --output_path /tmp/h3-diffusers \
     --modular_repo_id MiniMaxAI/MiniMax-H3
+
+# Convert a MiniMax-H3-Image release.
+python scripts/convert_minimax_h3_to_diffusers.py --version image \
+    --checkpoint_path /path/to/MiniMax-H3-Image --output_path /tmp/h3-image-diffusers \
+    --modular_repo_id MiniMaxAI/MiniMax-H3-Image
 ```
 """
 
@@ -41,6 +51,7 @@ import glob
 import json
 import math
 import os
+import shutil
 import struct
 from typing import Any
 
@@ -89,6 +100,14 @@ MINIMAX_H3_TEST_TRANSFORMER_CONFIG = {
     "time_embed_hidden_dim": 64,
     "time_embed_dim": 32,
     "rope_freq_dim": 4,
+}
+
+# `MiniMaxH3ImageTransformer2DModel` argument names. MiniMax-H3-Image is the same DiT without the audio input
+# projection and output head (`audio_enabled: false`), plus one output head per step of its 6-step Parallel Decoding
+# Distillation (PDD) schedule (`pdd_fused_heads.safetensors`).
+MINIMAX_H3_IMAGE_TRANSFORMER_CONFIG = {
+    **{name: value for name, value in MINIMAX_H3_TRANSFORMER_CONFIG.items() if name != "audio_in_channels"},
+    "num_pdd_heads": 6,  # pdd_config.json num_inference_steps
 }
 
 # MiniMax-H3 ships a mixed-precision checkpoint. These *original* keys are float32; everything else is bfloat16 —
@@ -169,8 +188,6 @@ def get_transformer_key_plan(config: dict[str, Any]) -> dict[str, list[tuple[str
     plan: dict[str, list[tuple[str, list[int]]]] = {
         "video_patch_proj.weight": [("proj_in.weight", [hidden_size, video_patch_dim])],
         "video_patch_proj.bias": [("proj_in.bias", [hidden_size])],
-        "audio_patch_proj.weight": [("audio_proj_in.weight", [hidden_size, config["audio_in_channels"]])],
-        "audio_patch_proj.bias": [("audio_proj_in.bias", [hidden_size])],
         "condition_proj.weight": [("context_embedder.weight", [hidden_size, config["text_dim"]])],
         "condition_proj.bias": [("context_embedder.bias", [hidden_size])],
         # `Timesteps` + `TimestepEmbedding` reproduce the reference sinusoid and MLP exactly, so the timestep MLP is
@@ -189,11 +206,25 @@ def get_transformer_key_plan(config: dict[str, Any]) -> dict[str, list[tuple[str
         "final_layer.adaln_proj.linear.bias": [("norm_out.linear.bias", [2 * hidden_size])],
         "final_layer.video_out.weight": [("proj_out.weight", [video_patch_dim, hidden_size])],
         "final_layer.video_out.bias": [("proj_out.bias", [video_patch_dim])],
-        "final_layer.audio_out.weight": [("audio_proj_out.weight", [config["audio_in_channels"], hidden_size])],
-        "final_layer.audio_out.bias": [("audio_proj_out.bias", [config["audio_in_channels"]])],
     }
+    if config.get("audio_in_channels") is not None:
+        plan.update(
+            {
+                "audio_patch_proj.weight": [("audio_proj_in.weight", [hidden_size, config["audio_in_channels"]])],
+                "audio_patch_proj.bias": [("audio_proj_in.bias", [hidden_size])],
+                "final_layer.audio_out.weight": [
+                    ("audio_proj_out.weight", [config["audio_in_channels"], hidden_size])
+                ],
+                "final_layer.audio_out.bias": [("audio_proj_out.bias", [config["audio_in_channels"]])],
+            }
+        )
     for key in MINIMAX_H3_TRANSFORMER_DROPPED_KEYS:
         plan[key] = []
+    if config.get("num_pdd_heads") is not None:
+        # A PDD release ships its per-step heads outside `transformer/` (see `convert_pdd_heads`) and runs every step
+        # with one of them, so the checkpoint's own `video_out` head is never used.
+        plan["final_layer.video_out.weight"] = []
+        plan["final_layer.video_out.bias"] = []
 
     block_specs = [
         ("blocks", "transformer_blocks", config["num_layers"], True),
@@ -233,6 +264,9 @@ def convert_transformer_key(
 ) -> list[tuple[str, torch.Tensor]]:
     """Convert one original key/tensor pair into the diffusers key/tensor pair(s) it maps to."""
     if source_key in MINIMAX_H3_TRANSFORMER_DROPPED_KEYS:
+        return []
+    if config.get("num_pdd_heads") is not None and source_key.startswith("final_layer.video_out."):
+        # Replaced by the per-step PDD heads (see `get_transformer_key_plan`).
         return []
 
     target_key = source_key
@@ -521,6 +555,88 @@ def convert_video_vae(
     )
 
 
+# `AutoencoderKLMiniMaxH3Image` argument names. The encoder is the video VAE's; the decoder comes from
+# `vit_decoder_kwargs` in the release's `vae/config.json` (names in the comments), which `convert_image_vae` checks.
+MINIMAX_H3_IMAGE_VAE_CONFIG = {
+    **{key: MINIMAX_H3_VIDEO_VAE_CONFIG[key] for key in MINIMAX_H3_VIDEO_VAE_CONFIG if not key.startswith("decoder_")},
+    "decoder_num_layers": 24,  # vit_decoder_kwargs.num_layers
+    "decoder_num_attention_heads": 16,  # vit_decoder_kwargs.heads
+    "decoder_attention_head_dim": 64,  # vit_decoder_kwargs.dim_head
+    "decoder_num_register_tokens": 4,  # ViT3DDecoder default
+    "decoder_ffn_mult": 4,  # FeedForward default
+    "decoder_rope_theta": 100.0,  # vit_decoder_kwargs.rope_theta
+    "decoder_rope_dim_ratio": 0.5,  # vit_decoder_kwargs.rope_dim_ratio
+    "decoder_norm_eps": 1e-05,  # ViT3DDecoder eps
+}
+# The video temporal chunking does not apply to a single frame.
+del MINIMAX_H3_IMAGE_VAE_CONFIG["clip_length"], MINIMAX_H3_IMAGE_VAE_CONFIG["token_drop"]
+
+
+def convert_image_vae(checkpoint_path: str, output_path: str, config: dict[str, Any], diffusers_version: str) -> None:
+    """Convert the MiniMax-H3-Image VAE (`vae/`) and emit its config.
+
+    The keys are the video VAE's, so they convert with `convert_video_vae_key`; only `post_quant_conv` is a 2D
+    convolution here, which `AutoencoderKLMiniMaxH3Image` matches.
+    """
+    source_dir = os.path.join(checkpoint_path, "vae")
+    with open(os.path.join(source_dir, "config.json")) as f:
+        source_config = json.load(f)
+    decoder_kwargs = source_config["vit_decoder_kwargs"]
+    expected = {
+        "vit_decoder_2d": (source_config.get("vit_decoder_2d"), True),
+        "num_layers": (decoder_kwargs["num_layers"], config["decoder_num_layers"]),
+        "heads": (decoder_kwargs["heads"], config["decoder_num_attention_heads"]),
+        "dim_head": (decoder_kwargs["dim_head"], config["decoder_attention_head_dim"]),
+        "rope_theta": (decoder_kwargs["rope_theta"], config["decoder_rope_theta"]),
+        "rope_dim_ratio": (decoder_kwargs["rope_dim_ratio"], config["decoder_rope_dim_ratio"]),
+        "latent_channels": (source_config["latent_channels"], config["latent_channels"]),
+        # The tile geometry `AutoencoderKLMiniMaxH3Image` enables by default.
+        "vae_encoder_tiling": (source_config["vae_encoder_tiling"], 1),
+        "vae_decoder_tiling": (source_config["vae_decoder_tiling"], 1),
+        "vae_tile_size": (source_config["vae_tile_size"], 256),
+        "vae_tile_overlap_min": (source_config["vae_tile_overlap_min"], 64),
+    }
+    mismatches = {key: values for key, values in expected.items() if values[0] != values[1]}
+    if mismatches:
+        raise ValueError(
+            f"{source_dir}/config.json disagrees with the image VAE config (source, expected): {mismatches}"
+        )
+
+    weights_path = os.path.join(source_dir, "diffusion_pytorch_model.safetensors")
+    plan = get_video_vae_key_plan(config)
+    state_dict: dict[str, torch.Tensor] = {}
+    with safe_open(weights_path, framework="pt", device="cpu") as f:
+        source_keys = set(f.keys())
+        unexpected = sorted(source_keys - set(plan))
+        missing = sorted(set(plan) - source_keys)
+        if unexpected or missing:
+            raise KeyError(f"{weights_path}: unexpected keys {unexpected[:5]}, missing keys {missing[:5]}.")
+        for source_key in sorted(source_keys):
+            for target_key, tensor in convert_video_vae_key(source_key, f.get_tensor(source_key), config):
+                if tensor.dtype != torch.float32:
+                    raise ValueError(f"{source_key}: expected torch.float32, got {tensor.dtype}.")
+                state_dict[target_key] = tensor
+
+    os.makedirs(output_path, exist_ok=True)
+    save_file(state_dict, os.path.join(output_path, "diffusion_pytorch_model.safetensors"), metadata={"format": "pt"})
+    with open(os.path.join(output_path, "config.json"), "w") as f:
+        json.dump(
+            {
+                "_class_name": "AutoencoderKLMiniMaxH3Image",
+                "_diffusers_version": diffusers_version,
+                **config,
+                "latents_mean": source_config["latents_mean"],
+                "latents_std": source_config["latents_std"],
+            },
+            f,
+            indent=2,
+        )
+    total_size = sum(tensor.numel() * tensor.element_size() for tensor in state_dict.values())
+    print(
+        f"vae: {len(source_keys)} original keys -> {len(state_dict)} diffusers keys, {total_size / 1024**3:.2f} GiB."
+    )
+
+
 # Not present in `audio_vae/metadata.json`: the reference implementation hardcodes these in its DAC audio VAE and its
 # attention projection, keyed off the sample rate.
 MINIMAX_H3_AUDIO_VAE_FIXED_CONFIG = {
@@ -727,6 +843,43 @@ def dry_run(checkpoint_path: str, config: dict[str, Any]) -> None:
     print(f"total output bytes    : {total_bytes} ({total_bytes / 1024**3:.2f} GiB)")
 
 
+def convert_pdd_heads(checkpoint_path: str, config: dict[str, Any]) -> dict[str, torch.Tensor]:
+    """Split the stacked PDD heads of a MiniMax-H3-Image release into one `pdd_proj_out.{i}` head per step.
+
+    The release keeps them outside `transformer/`, in the file `_minimax_h3.pdd_fused_heads` of `model_index.json`
+    names: `video_out.weight` of shape `(num_steps, out, in)` and `video_out.bias` of shape `(num_steps, out)`, float32,
+    with `pdd_config.json` listing the step count and the sigma grid they were distilled on.
+    """
+    with open(os.path.join(checkpoint_path, "model_index.json")) as f:
+        heads_path = os.path.join(checkpoint_path, json.load(f)["_minimax_h3"]["pdd_fused_heads"])
+    with open(os.path.join(checkpoint_path, "pdd_config.json")) as f:
+        num_steps = json.load(f)["num_inference_steps"]
+    if num_steps != config["num_pdd_heads"]:
+        raise ValueError(f"pdd_config.json has {num_steps} steps, the config {config['num_pdd_heads']} heads.")
+
+    with safe_open(heads_path, framework="pt", device="cpu") as f:
+        heads = {key: f.get_tensor(key) for key in f.keys()}
+    if set(heads) != {"video_out.weight", "video_out.bias"}:
+        raise KeyError(f"{heads_path} must hold exactly `video_out.weight` and `video_out.bias`, got {sorted(heads)}.")
+
+    hidden_size = config["hidden_size"]
+    video_patch_dim = config["in_channels"] * math.prod(config["patch_size"])
+    expected_shapes = {
+        "video_out.weight": (num_steps, video_patch_dim, hidden_size),
+        "video_out.bias": (num_steps, video_patch_dim),
+    }
+    converted = {}
+    for key, tensor in heads.items():
+        if tuple(tensor.shape) != expected_shapes[key] or tensor.dtype != torch.float32:
+            raise ValueError(
+                f"{key}: expected float32 {expected_shapes[key]}, got {tensor.dtype} {tuple(tensor.shape)}."
+            )
+        suffix = key.removeprefix("video_out.")
+        for step in range(num_steps):
+            converted[f"pdd_proj_out.{step}.{suffix}"] = tensor[step].contiguous()
+    return converted
+
+
 def convert_transformer(checkpoint_path: str, output_path: str, config: dict[str, Any], max_shard_size: int) -> None:
     plan = get_transformer_key_plan(config)
     transformer_dir = os.path.join(checkpoint_path, "transformer")
@@ -781,6 +934,11 @@ def convert_transformer(checkpoint_path: str, output_path: str, config: dict[str
                     total_size += tensor.numel() * tensor.element_size()
                 if buffer_size >= max_shard_size:
                     flush()
+    if config.get("num_pdd_heads") is not None:
+        for target_key, tensor in convert_pdd_heads(checkpoint_path, config).items():
+            buffer[target_key] = tensor
+            buffer_size += tensor.numel() * tensor.element_size()
+            total_size += tensor.numel() * tensor.element_size()
     flush()
 
     missing = sorted(set(plan) - seen_source_keys)
@@ -808,11 +966,13 @@ def convert_transformer(checkpoint_path: str, output_path: str, config: dict[str
     )
 
 
-def write_transformer_config(output_path: str, config: dict[str, Any], diffusers_version: str) -> None:
+def write_transformer_config(
+    output_path: str, config: dict[str, Any], diffusers_version: str, class_name: str = "MiniMaxH3Transformer3DModel"
+) -> None:
     os.makedirs(output_path, exist_ok=True)
     with open(os.path.join(output_path, "config.json"), "w") as f:
         json.dump(
-            {"_class_name": "MiniMaxH3Transformer3DModel", "_diffusers_version": diffusers_version, **config},
+            {"_class_name": class_name, "_diffusers_version": diffusers_version, **config},
             f,
             indent=2,
         )
@@ -878,6 +1038,81 @@ def write_model_index(output_path: str, repo_id: str, diffusers_version: str) ->
     print(f"modular_model_index.json: {len(MINIMAX_H3_COMPONENTS)} components load from {repo_id}.")
 
 
+# The components a MiniMax-H3-Image repository names. The release does not carry its text encoder: its
+# `model_index.json` points at `text_encoder/` of the MiniMax-H3 repository, and so does the index written here.
+MINIMAX_H3_IMAGE_COMPONENTS = {
+    "text_encoder": ["transformers", "Qwen3VLForConditionalGeneration"],
+    "tokenizer": ["transformers", "Qwen2TokenizerFast"],
+    "processor": ["transformers", "Qwen3VLProcessor"],
+    "vae": ["diffusers", "AutoencoderKLMiniMaxH3Image"],
+    "transformer": ["diffusers", "MiniMaxH3ImageTransformer2DModel"],
+    "scheduler": ["diffusers", "MiniMaxH3Scheduler"],
+}
+
+
+def write_image_scheduler_config(output_path: str, diffusers_version: str) -> None:
+    """Emit the `MiniMaxH3Scheduler` config of a MiniMax-H3-Image release.
+
+    The release samples on the explicit grid of its `pdd_config.json`, which the blocks pass to `set_timesteps`
+    verbatim (`shift_provided_sigmas=False`), and evaluates the Euler update in the velocity form its heads were distilled with.
+    """
+    folder_path = os.path.join(output_path, "scheduler")
+    os.makedirs(folder_path, exist_ok=True)
+    with open(os.path.join(folder_path, "scheduler_config.json"), "w") as f:
+        json.dump(
+            {
+                "_class_name": "MiniMaxH3Scheduler",
+                "_diffusers_version": diffusers_version,
+                "shift_provided_sigmas": False,
+                "euler_update_form": "velocity",
+            },
+            f,
+            indent=2,
+        )
+    print("scheduler: explicit sigmas taken verbatim, Euler update in the velocity form.")
+
+
+def write_image_model_index(
+    checkpoint_path: str, output_path: str, repo_id: str, text_encoder_repo_id: str, diffusers_version: str
+) -> None:
+    """Emit the `modular_model_index.json` of a MiniMax-H3-Image repository.
+
+    Besides the components it carries `sample_sigmas`, the grid of the release's `pdd_config.json` that the per-step
+    output heads were distilled on.
+    """
+    with open(os.path.join(checkpoint_path, "pdd_config.json")) as f:
+        pdd_config = json.load(f)
+    sigmas = pdd_config["sigmas"]
+    if len(sigmas) != pdd_config["num_inference_steps"] + 1 or sigmas[0] != 1.0 or sigmas[-1] != 0.0:
+        raise ValueError(f"pdd_config.json must list `num_inference_steps + 1` sigmas from 1.0 to 0.0, got {sigmas}.")
+
+    modular_index = {
+        "_class_name": "MiniMaxH3ImageModularPipeline",
+        "_diffusers_version": diffusers_version,
+        "_blocks_class_name": "MiniMaxH3ImageBlocks",
+        "sample_sigmas": sigmas,
+    }
+    for name, (library, class_name) in MINIMAX_H3_IMAGE_COMPONENTS.items():
+        modular_index[name] = [
+            library,
+            class_name,
+            {
+                "type_hint": [library, class_name],
+                "pretrained_model_name_or_path": text_encoder_repo_id if name == "text_encoder" else repo_id,
+                "subfolder": name,
+                "variant": None,
+                "revision": None,
+            },
+        ]
+    os.makedirs(output_path, exist_ok=True)
+    with open(os.path.join(output_path, "modular_model_index.json"), "w") as f:
+        json.dump(modular_index, f, indent=2)
+    print(
+        f"modular_model_index.json: {len(MINIMAX_H3_IMAGE_COMPONENTS)} components load from {repo_id}, the text "
+        f"encoder from {text_encoder_repo_id}; {len(sigmas) - 1} sampling steps."
+    )
+
+
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -898,11 +1133,23 @@ def get_args():
         ),
     )
     parser.add_argument(
+        "--text_encoder_repo_id",
+        type=str,
+        default="MiniMaxAI/MiniMax-H3",
+        help=(
+            "`--version image` only: the repository whose `text_encoder/` the image release conditions on, which its "
+            "index points at instead of carrying a copy."
+        ),
+    )
+    parser.add_argument(
         "--version",
         type=str,
         default="h3",
-        choices=["h3", "test"],
-        help="`test` emits the tiny config used for fixtures.",
+        choices=["h3", "image", "test"],
+        help=(
+            "`image` converts a MiniMax-H3-Image release (transformer and VAE); `test` emits the tiny config used for "
+            "fixtures."
+        ),
     )
     parser.add_argument(
         "--max_shard_size",
@@ -921,10 +1168,36 @@ def get_args():
 def main(args):
     from diffusers import __version__ as diffusers_version
 
-    config = MINIMAX_H3_TEST_TRANSFORMER_CONFIG if args.version == "test" else MINIMAX_H3_TRANSFORMER_CONFIG
+    config = {
+        "h3": MINIMAX_H3_TRANSFORMER_CONFIG,
+        "image": MINIMAX_H3_IMAGE_TRANSFORMER_CONFIG,
+        "test": MINIMAX_H3_TEST_TRANSFORMER_CONFIG,
+    }[args.version]
 
     if args.dry_run:
         dry_run(args.checkpoint_path, config)
+        return
+
+    if args.version == "image":
+        transformer_path = os.path.join(args.output_path, "transformer")
+        convert_transformer(args.checkpoint_path, transformer_path, config, args.max_shard_size)
+        write_transformer_config(transformer_path, config, diffusers_version, "MiniMaxH3ImageTransformer2DModel")
+        convert_image_vae(
+            args.checkpoint_path, os.path.join(args.output_path, "vae"), MINIMAX_H3_IMAGE_VAE_CONFIG, diffusers_version
+        )
+        # The tokenizer and the processor are already in the `transformers` layout.
+        for name in ("tokenizer", "processor"):
+            shutil.copytree(
+                os.path.join(args.checkpoint_path, name), os.path.join(args.output_path, name), dirs_exist_ok=True
+            )
+        write_image_scheduler_config(args.output_path, diffusers_version)
+        write_image_model_index(
+            args.checkpoint_path,
+            args.output_path,
+            args.modular_repo_id or args.output_path,
+            args.text_encoder_repo_id,
+            diffusers_version,
+        )
         return
 
     transformer_path = os.path.join(args.output_path, "transformer")
