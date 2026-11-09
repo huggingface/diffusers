@@ -113,11 +113,29 @@ output = pipe(
 write_cif(output, features, atom_array, "design.cif")
 ```
 
-Convert native adapters before loading them. This splits the fused `to_qkv` weights into `to_q`, `to_k` and `to_v`:
+The [released native adapter](https://huggingface.co/nvidia/RFD4-Proteina/tree/main/adapter) is one example you can
+convert. Download it first:
+
+```python
+from huggingface_hub import snapshot_download
+
+snapshot_download("nvidia/RFD4-Proteina", allow_patterns=["adapter/*"], local_dir="rfd4-native")
+```
+
+Conversion splits the fused `to_qkv` weights into `to_q`, `to_k` and `to_v`:
 
 ```bash
 python scripts/convert_rfd4_proteina_to_diffusers.py \
   --adapter \
-  --source native-adapter \
+  --source rfd4-native/adapter \
   --destination rfd4-proteina-lora-converted
+```
+
+This adapter goes with the `pretrain-base` revision. The default revision already has it merged:
+
+```python
+pipe = RFD4ProteinaPipeline.from_pretrained(
+    "nvidia/RFD4-Proteina-Diffusers", revision="pretrain-base", dtype=torch.bfloat16
+).to("cuda")
+pipe.load_lora_weights("rfd4-proteina-lora-converted")
 ```
