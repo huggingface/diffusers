@@ -445,7 +445,20 @@ def test_h3_single_file_rejects_disabling_low_cpu_mem_usage_with_fp32_modules(tm
         )
 
 
-@pytest.mark.parametrize("adaln_curve_grid", [None, 5])
+@pytest.mark.parametrize(
+    "adaln_curve_grid",
+    [
+        None,
+        pytest.param(
+            5,
+            marks=pytest.mark.xfail(
+                raises=AttributeError,
+                strict=True,
+                reason="Pruned AdaLN uses curve_proj; dynamic TP plans await diffusers#15197.",
+            ),
+        ),
+    ],
+)
 def test_h3_tensor_parallel_plan_resolves_modulation_projection(adaln_curve_grid):
     model = MiniMaxH3Transformer3DModel(**h3_config(), adaln_curve_grid=adaln_curve_grid)
     specs = resolve_tp_shard_specs(model, model._tp_plan, tp_degree=2)
