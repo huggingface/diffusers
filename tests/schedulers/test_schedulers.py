@@ -812,7 +812,7 @@ class TestSchedulerPushToHub:
         delete_repo(token=TOKEN, repo_id=self.repo_id)
 
         # Push to hub via save_config
-        scheduler.save_config(tmp_path, repo_id=self.repo_id, push_to_hub=True, token=TOKEN)
+        scheduler.save_config(str(tmp_path), repo_id=self.repo_id, push_to_hub=True, token=TOKEN)
 
         scheduler_loaded = DDIMScheduler.from_pretrained(f"{USER}/{self.repo_id}")
 
@@ -838,7 +838,7 @@ class TestSchedulerPushToHub:
         delete_repo(token=TOKEN, repo_id=self.org_repo_id)
 
         # Push to hub via save_config
-        scheduler.save_config(tmp_path, repo_id=self.org_repo_id, push_to_hub=True, token=TOKEN)
+        scheduler.save_config(str(tmp_path), repo_id=self.org_repo_id, push_to_hub=True, token=TOKEN)
 
         scheduler_loaded = DDIMScheduler.from_pretrained(self.org_repo_id)
 
