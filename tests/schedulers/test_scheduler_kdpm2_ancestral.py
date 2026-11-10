@@ -3,10 +3,10 @@ import torch
 from diffusers import KDPM2AncestralDiscreteScheduler
 
 from ..testing_utils import torch_device
-from .test_schedulers import SchedulerCommonTest
+from .test_schedulers import SchedulerTesterMixin
 
 
-class KDPM2AncestralDiscreteSchedulerTest(SchedulerCommonTest):
+class TestKDPM2AncestralDiscreteScheduler(SchedulerTesterMixin):
     scheduler_classes = (KDPM2AncestralDiscreteScheduler,)
     num_inference_steps = 10
 

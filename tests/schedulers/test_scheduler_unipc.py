@@ -9,10 +9,10 @@ from diffusers import (
     UniPCMultistepScheduler,
 )
 
-from .test_schedulers import SchedulerCommonTest
+from .test_schedulers import SchedulerTesterMixin
 
 
-class UniPCMultistepSchedulerTest(SchedulerCommonTest):
+class TestUniPCMultistepScheduler(SchedulerTesterMixin):
     scheduler_classes = (UniPCMultistepScheduler,)
     forward_default_kwargs = (("num_inference_steps", 25),)
 
@@ -136,8 +136,8 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
             output_0 = scheduler.step(residual, time_step_0, sample, **kwargs).prev_sample
             output_1 = scheduler.step(residual, time_step_1, sample, **kwargs).prev_sample
 
-            self.assertEqual(output_0.shape, sample.shape)
-            self.assertEqual(output_0.shape, output_1.shape)
+            assert output_0.shape == sample.shape
+            assert output_0.shape == output_1.shape
 
     def test_switch(self):
         # make sure that iterating over schedulers with same config names gives same results
@@ -285,7 +285,7 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
         assert abs(result_mean.item() - 0.4109) < 1e-3, f" expected result mean 0.4109, but get {result_mean}"
 
 
-class UniPCMultistepScheduler1DTest(UniPCMultistepSchedulerTest):
+class TestUniPCMultistepScheduler1D(TestUniPCMultistepScheduler):
     @property
     def dummy_sample(self):
         batch_size = 4
@@ -426,5 +426,5 @@ class UniPCMultistepScheduler1DTest(UniPCMultistepSchedulerTest):
         expected_sigmas = torch.tensor(expected_sigmas)
         expected_timesteps = (expected_sigmas * num_train_timesteps).to(torch.int64)
         expected_timesteps = expected_timesteps[0:-1]
-        self.assertTrue(torch.allclose(scheduler.sigmas, expected_sigmas))
-        self.assertTrue(torch.all(expected_timesteps == scheduler.timesteps))
+        assert torch.allclose(scheduler.sigmas, expected_sigmas)
+        assert torch.all(expected_timesteps == scheduler.timesteps)

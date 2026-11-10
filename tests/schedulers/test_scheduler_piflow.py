@@ -12,19 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
 
+import pytest
 import torch
 
 from diffusers import PiflowScheduler
 from diffusers.schedulers.scheduling_piflow import DXPolicy, PiflowSchedulerOutput, policy_rollout_fm
 
 
-class PiflowSchedulerTest(unittest.TestCase):
+class TestPiflowScheduler:
     """
     PiflowScheduler's model output is "widened" (``n_grid`` predictions packed into the channel
-    dimension) rather than matching the sample shape, so it cannot use ``SchedulerCommonTest`` (see
-    ``FlowMapEulerDiscreteSchedulerTest`` for the same situation with a different non-standard
+    dimension) rather than matching the sample shape, so it cannot use ``SchedulerTesterMixin`` (see
+    ``TestFlowMapEulerDiscreteScheduler`` for the same situation with a different non-standard
     contract). These tests exercise the contract `Kandinsky6TI2VAPipeline` actually relies on.
     """
 
@@ -50,25 +50,25 @@ class PiflowSchedulerTest(unittest.TestCase):
 
     def test_instantiation_with_defaults(self):
         scheduler = self.scheduler_class(**self.get_default_config())
-        self.assertEqual(scheduler.config.num_train_timesteps, 1000)
-        self.assertEqual(scheduler.config.n_grid, 4)
+        assert scheduler.config.num_train_timesteps == 1000
+        assert scheduler.config.n_grid == 4
 
     def test_invalid_n_grid_raises(self):
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             self.scheduler_class(**self.get_default_config(n_grid=1))
 
     def test_invalid_eps_raises(self):
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             self.scheduler_class(**self.get_default_config(eps=0.0))
 
     def test_invalid_final_step_size_scale_raises(self):
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             self.scheduler_class(**self.get_default_config(final_step_size_scale=0.0))
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             self.scheduler_class(**self.get_default_config(final_step_size_scale=1.5))
 
     def test_invalid_num_policy_substeps_raises(self):
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             self.scheduler_class(**self.get_default_config(num_policy_substeps=0))
 
     # ---- set_timesteps ----
@@ -77,23 +77,23 @@ class PiflowSchedulerTest(unittest.TestCase):
         scheduler = self.scheduler_class(**self.get_default_config())
         for nfe in [1, 2, 4, 8, 16]:
             scheduler.set_timesteps(nfe)
-            self.assertEqual(scheduler.timesteps.shape, (nfe,))
-            self.assertEqual(scheduler.sigmas.shape, (nfe + 1,))
-            self.assertEqual(scheduler.sigmas[-1].item(), 0.0)
+            assert scheduler.timesteps.shape == (nfe,)
+            assert scheduler.sigmas.shape == (nfe + 1,)
+            assert scheduler.sigmas[-1].item() == 0.0
             # strictly decreasing: this schedule should never hit the duplicate-timestep branch
             # in `_step_index_for` that other flow schedulers need for interpolated sigmas.
             diffs = scheduler.timesteps[1:] - scheduler.timesteps[:-1]
-            self.assertTrue(torch.all(diffs < 0))
+            assert torch.all(diffs < 0)
 
     def test_set_timesteps_rejects_unsupported_args(self):
         scheduler = self.scheduler_class(**self.get_default_config())
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             scheduler.set_timesteps(4, sigmas=[1.0, 0.5, 0.0])
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             scheduler.set_timesteps(4, mu=1.0)
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             scheduler.set_timesteps(4, timesteps=[900, 500, 100])
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             scheduler.set_timesteps(0)
 
     # ---- step() input validation ----
@@ -103,7 +103,7 @@ class PiflowSchedulerTest(unittest.TestCase):
         scheduler.set_timesteps(4)
         sample = torch.randn(1, 3)
         model_output = self.make_widened_output(torch.randn(1, 3), scheduler.n_grid)
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             scheduler.step(model_output, 0, sample)
 
     def test_step_after_exhausted_schedule_raises(self):
@@ -113,7 +113,7 @@ class PiflowSchedulerTest(unittest.TestCase):
         for t in scheduler.timesteps:
             model_output = self.make_widened_output(torch.randn(1, 3), scheduler.n_grid)
             sample = scheduler.step(model_output, t, sample).prev_sample
-        with self.assertRaises(RuntimeError):
+        with pytest.raises(RuntimeError):
             scheduler.step(
                 self.make_widened_output(torch.randn(1, 3), scheduler.n_grid), scheduler.timesteps[-1], sample
             )
@@ -124,18 +124,18 @@ class PiflowSchedulerTest(unittest.TestCase):
         sample = torch.randn(1, 3)
         model_output = self.make_widened_output(torch.randn(1, 3), scheduler.n_grid)
         output = scheduler.step(model_output, scheduler.timesteps[0], sample, return_dict=False)
-        self.assertIsInstance(output, tuple)
+        assert isinstance(output, tuple)
         output_dict = scheduler.step(model_output, scheduler.timesteps[0], sample, return_dict=True)
-        self.assertIsInstance(output_dict, PiflowSchedulerOutput)
+        assert isinstance(output_dict, PiflowSchedulerOutput)
 
     def test_to_grid_rejects_mismatched_shapes(self):
         scheduler = self.scheduler_class(**self.get_default_config())
         scheduler.set_timesteps(2)
         sample = torch.randn(1, 3)
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             # channel count not divisible by n_grid
             scheduler.step(torch.randn(1, 5), scheduler.timesteps[0], sample)
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             # divisible by n_grid, but the per-grid width doesn't match the sample's channel count
             scheduler.step(torch.randn(1, 4 * 2), scheduler.timesteps[0], sample)
 
@@ -170,8 +170,8 @@ class PiflowSchedulerTest(unittest.TestCase):
                 for t in scheduler.timesteps:
                     model_output = self.make_widened_output(torch.randn(2, 6), n_grid)
                     sample = scheduler.step(model_output, t, sample).prev_sample
-                self.assertFalse(torch.isnan(sample).any(), f"NaN with n_grid={n_grid}, nfe={nfe}")
-                self.assertFalse(torch.isinf(sample).any(), f"Inf with n_grid={n_grid}, nfe={nfe}")
+                assert not torch.isnan(sample).any(), f"NaN with n_grid={n_grid}, nfe={nfe}"
+                assert not torch.isinf(sample).any(), f"Inf with n_grid={n_grid}, nfe={nfe}"
 
     def test_step_recovers_known_clean_target(self):
         """A "perfect" model whose implied x0 prediction is always exactly `target` (i.e. every grid
@@ -221,7 +221,7 @@ class PiflowSchedulerTest(unittest.TestCase):
             shift=scheduler.config.shift,
             eps=scheduler.eps,
         )
-        self.assertTrue(torch.all(policy.raw_t_dst == 0))
+        assert torch.all(policy.raw_t_dst == 0)
         expected, _, _ = policy_rollout_fm(
             sample,
             sigma,

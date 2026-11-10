@@ -4,10 +4,10 @@ import torch
 
 from diffusers import DPMSolverMultistepInverseScheduler, DPMSolverMultistepScheduler
 
-from .test_schedulers import SchedulerCommonTest
+from .test_schedulers import SchedulerTesterMixin
 
 
-class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
+class TestDPMSolverMultistepInverseScheduler(SchedulerTesterMixin):
     scheduler_classes = (DPMSolverMultistepInverseScheduler,)
     forward_default_kwargs = (("num_inference_steps", 25),)
 
@@ -136,8 +136,8 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             output_0 = scheduler.step(residual, time_step_0, sample, **kwargs).prev_sample
             output_1 = scheduler.step(residual, time_step_1, sample, **kwargs).prev_sample
 
-            self.assertEqual(output_0.shape, sample.shape)
-            self.assertEqual(output_0.shape, output_1.shape)
+            assert output_0.shape == sample.shape
+            assert output_0.shape == output_1.shape
 
     def test_timesteps(self):
         for timesteps in [25, 50, 100, 999, 1000]:
