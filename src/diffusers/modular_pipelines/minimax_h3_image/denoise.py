@@ -87,13 +87,19 @@ class MiniMaxH3ImageLoopDenoiser(ModularPipelineBlocks):
         self, components: MiniMaxH3ImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
     ) -> tuple[MiniMaxH3ImageModularPipeline, BlockState]:
         unique_timesteps, timestep_indices = block_state.row_timestep_plan[i]
-        # The layout tags its outputs `denoiser_input_fields`, and their names are the transformer's own parameter
-        # names, so the rows of the packed sequence are described to it without this block enumerating them.
-        layout_kwargs = {
-            name: value
-            for name, value in block_state.denoiser_input_fields.items()
-            if name in inspect.signature(components.transformer.forward).parameters
+        # Every field tagged `denoiser_input_fields` whose name is one of the transformer's parameters is passed to
+        # it. In the shipped layouts, `position_ids`, `token_tags`, `image_indices` and `text_indices` are tagged
+        # this way; they describe the rows of the packed sequence. A custom block can tag further transformer inputs
+        # the same way.
+        transformer_args = set(inspect.signature(components.transformer.forward).parameters)
+        additional_denoiser_kwargs = {
+            name: value for name, value in block_state.denoiser_input_fields.items() if name in transformer_args
         }
+        # `latents` and `prompt_embeds` go in as `hidden_states` and `encoder_hidden_states`. Any other field passed
+        # as `denoiser_input_fields` that the transformer does not take is not used, and we warn about it.
+        unused = sorted(set(block_state.denoiser_input_fields) - transformer_args - {"latents", "prompt_embeds"})
+        if unused and i == 0:
+            logger.warning(f"`denoiser_input_fields` {unused} are not inputs of the transformer and are not used.")
         block_state.noise_pred = components.transformer(
             hidden_states=block_state.latents[None],
             encoder_hidden_states=block_state.prompt_embeds,
@@ -101,7 +107,7 @@ class MiniMaxH3ImageLoopDenoiser(ModularPipelineBlocks):
             timestep_indices=timestep_indices,
             pdd_step_index=i,
             return_dict=False,
-            **layout_kwargs,
+            **additional_denoiser_kwargs,
         )[0]
         return components, block_state
 
