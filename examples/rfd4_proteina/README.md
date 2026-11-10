@@ -84,6 +84,21 @@ Use `--checkpointing_steps` and `--checkpoints_total_limit` to control checkpoin
 Pass `--validation_cif` to generate a structure every `--validation_steps`. Validation runs on the main process,
 with dropout disabled, and writes a CIF next to the adapter. It uses the checkpoint's full sampling schedule.
 
+### Cyclic peptide check
+
+Trained on 255 CPSea complexes for 1,000 steps on two H200s, starting from weights matched to the updated native
+release. We tested the [PD-1 cyclic peptide inputs](https://github.com/RosettaCommons/RFD4-Proteina/pull/82) with the
+same 16 seeds per chemistry at steps 0, 500 and 1,000. PD-1 was excluded from fine-tuning.
+
+![PD-1 contacts and training loss](https://raw.githubusercontent.com/kierandidi/diffusers/ec4c9150455cf160a68caae75e9bf968cd9edee8/pr-assets/contacts-and-loss.png)
+
+Median contacts (heavy-atom pairs within 5 Å) rose from 187.5→229.5, 150.5→262 and 160.5→220 for head-to-tail,
+disulfide and isopeptide designs. Contacts per peptide atom also increased. Shading shows 95% seed-bootstrap intervals;
+loss uses EMA α=0.02 over faint raw values.
+
+This is one target and one training run. Head-to-tail closure stayed at 16/16, but disulfide fell from 12/16 to 6/16
+and isopeptide from 5/16 to 1/16. More contacts alone don't establish better binding or overall design quality.
+
 ## Inference
 
 The saved adapter loads into the pipeline:
