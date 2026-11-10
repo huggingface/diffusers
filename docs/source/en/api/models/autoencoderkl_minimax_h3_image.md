@@ -24,7 +24,7 @@ import torch
 from diffusers import AutoencoderKLMiniMaxH3Image
 
 vae = AutoencoderKLMiniMaxH3Image.from_pretrained(
-    "MiniMaxAI/MiniMax-H3-Image", subfolder="vae", dtype=torch.float32
+    "MiniMaxAI/MiniMax-H3-Image", subfolder="vae_diffusers", dtype=torch.float32
 ).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 

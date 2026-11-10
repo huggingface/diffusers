@@ -45,7 +45,7 @@ Editing a reference image:
 ```py
 from diffusers.utils import load_image
 
-reference = load_image("https://huggingface.co/MiniMaxAI/MiniMax-H3-Image/resolve/main/examples/picture1.png")
+reference = load_image("https://huggingface.co/MiniMaxAI/MiniMax-H3-Image/resolve/main/examples/reference1.png")
 image = pipe(
     prompt="Keep everything in <Picture 1> as it is, but remove the headphones and have the two hosts fist bump.",
     image=reference,

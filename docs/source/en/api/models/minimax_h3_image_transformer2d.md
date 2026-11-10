@@ -22,7 +22,7 @@ import torch
 from diffusers import MiniMaxH3ImageTransformer2DModel
 
 transformer = MiniMaxH3ImageTransformer2DModel.from_pretrained(
-    "MiniMaxAI/MiniMax-H3-Image", subfolder="transformer", dtype=torch.bfloat16
+    "MiniMaxAI/MiniMax-H3-Image", subfolder="transformer_diffusers", dtype=torch.bfloat16
 ).to("cuda")  # or "mps", "xpu", "cpu"
 ```
 

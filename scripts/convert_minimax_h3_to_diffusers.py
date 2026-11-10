@@ -24,9 +24,10 @@ written.
 
 `--version image` converts a MiniMax-H3-Image release instead: the same transformer without the audio projections,
 with the per-step output heads of `pdd_fused_heads.safetensors` folded in as `pdd_proj_out.{i}` in place of the base
-head, the image VAE, a scheduler config and a `modular_model_index.json`. The release conditions on the MiniMax-H3
-text encoder without carrying it, so `--text_encoder_path` names a local copy that is copied in: the converted
-repository is self-contained.
+head, the image VAE, a scheduler config and a `modular_model_index.json`. The release keeps its original `transformer/`
+and `vae/` at the repository root, so the converted ones are written to `transformer_diffusers/` and `vae_diffusers/`
+and can be published next to them. The release conditions on the MiniMax-H3 text encoder without carrying it, so
+`--text_encoder_path` names a local copy that is copied in: the converted repository is self-contained.
 
 Usage:
 
@@ -1050,6 +1051,10 @@ MINIMAX_H3_IMAGE_COMPONENTS = {
     "scheduler": ["diffusers", "MiniMaxH3Scheduler"],
 }
 
+# The release already has `transformer/` and `vae/` folders in the original format, so the converted components live
+# in folders of their own. Every other component uses its name as its folder.
+MINIMAX_H3_IMAGE_SUBFOLDERS = {"transformer": "transformer_diffusers", "vae": "vae_diffusers"}
+
 
 def write_image_scheduler_config(output_path: str, diffusers_version: str) -> None:
     """Emit the `MiniMaxH3Scheduler` config of a MiniMax-H3-Image release.
@@ -1077,7 +1082,8 @@ def write_image_model_index(checkpoint_path: str, output_path: str, repo_id: str
     """Emit the `modular_model_index.json` of a MiniMax-H3-Image repository.
 
     Besides the components it carries `sample_sigmas`, the grid of the release's `pdd_config.json` that the per-step
-    output heads were distilled on.
+    output heads were distilled on. The transformer and the VAE load from the folders of
+    `MINIMAX_H3_IMAGE_SUBFOLDERS`.
     """
     with open(os.path.join(checkpoint_path, "pdd_config.json")) as f:
         pdd_config = json.load(f)
@@ -1098,7 +1104,7 @@ def write_image_model_index(checkpoint_path: str, output_path: str, repo_id: str
             {
                 "type_hint": [library, class_name],
                 "pretrained_model_name_or_path": repo_id,
-                "subfolder": name,
+                "subfolder": MINIMAX_H3_IMAGE_SUBFOLDERS.get(name, name),
                 "variant": None,
                 "revision": None,
             },
@@ -1182,11 +1188,14 @@ def main(args):
             raise ValueError(
                 "`--version image` needs `--text_encoder_path`, the `text_encoder/` folder of MiniMax-H3."
             )
-        transformer_path = os.path.join(args.output_path, "transformer")
+        transformer_path = os.path.join(args.output_path, MINIMAX_H3_IMAGE_SUBFOLDERS["transformer"])
         convert_transformer(args.checkpoint_path, transformer_path, config, args.max_shard_size)
         write_transformer_config(transformer_path, config, diffusers_version, "MiniMaxH3ImageTransformer2DModel")
         convert_image_vae(
-            args.checkpoint_path, os.path.join(args.output_path, "vae"), MINIMAX_H3_IMAGE_VAE_CONFIG, diffusers_version
+            args.checkpoint_path,
+            os.path.join(args.output_path, MINIMAX_H3_IMAGE_SUBFOLDERS["vae"]),
+            MINIMAX_H3_IMAGE_VAE_CONFIG,
+            diffusers_version,
         )
         # The tokenizer and the processor are already in the `transformers` layout.
         for name in ("tokenizer", "processor"):
