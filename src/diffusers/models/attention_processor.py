@@ -29,6 +29,11 @@ from ..utils.torch_utils import is_torch_version, maybe_allow_in_graph
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+XFORMERS_DEPRECATION_MESSAGE = (
+    "xFormers memory-efficient attention is deprecated and will be removed in version 0.46.0. It is no longer needed"
+    " since PyTorch's native `F.scaled_dot_product_attention` is used by default, so you can remove this call."
+)
+
 if is_torch_npu_available():
     import torch_npu
 
@@ -361,16 +366,15 @@ class Attention(nn.Module):
     def set_use_memory_efficient_attention_xformers(
         self, use_memory_efficient_attention_xformers: bool, attention_op: Callable | None = None
     ) -> None:
-        r"""
-        Set whether to use memory efficient attention from `xformers` or not.
+        # Deprecated and scheduled for removal in version 0.46.0.
+        deprecate(
+            "set_use_memory_efficient_attention_xformers", "0.46.0", XFORMERS_DEPRECATION_MESSAGE, standard_warn=False
+        )
+        self._set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers, attention_op)
 
-        Args:
-            use_memory_efficient_attention_xformers (`bool`):
-                Whether to use memory efficient attention from `xformers` or not.
-            attention_op (`Callable`, *optional*):
-                The attention operation to use. Defaults to `None` which uses the default attention operation from
-                `xformers`.
-        """
+    def _set_use_memory_efficient_attention_xformers(
+        self, use_memory_efficient_attention_xformers: bool, attention_op: Callable | None = None
+    ) -> None:
         is_custom_diffusion = hasattr(self, "processor") and isinstance(
             self.processor,
             (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor, CustomDiffusionAttnProcessor2_0),

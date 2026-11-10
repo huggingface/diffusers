@@ -156,7 +156,6 @@ accelerate launch train_dreambooth.py \
 
 It is possible to run dreambooth on a 12GB GPU by using the following optimizations:
 - [gradient checkpointing and the 8-bit optimizer](#training-on-a-16gb-gpu)
-- [xformers](#training-with-xformers)
 - [setting grads to none](#set-grads-to-none)
 
 ```bash
@@ -177,7 +176,6 @@ accelerate launch train_dreambooth.py \
   --train_batch_size=1 \
   --gradient_accumulation_steps=1 --gradient_checkpointing \
   --use_8bit_adam \
-  --enable_xformers_memory_efficient_attention \
   --set_grads_to_none \
   --learning_rate=2e-6 \
   --lr_scheduler="constant" \
@@ -520,9 +518,6 @@ python train_dreambooth_flax.py \
   --num_class_images=200 \
   --max_train_steps=800
 ```
-
-### Training with xformers:
-You can enable memory efficient attention by [installing xFormers](https://github.com/facebookresearch/xformers#installing-xformers) and padding the `--enable_xformers_memory_efficient_attention` argument to the script. This is not available with the Flax/JAX implementation.
 
 You can also use Dreambooth to train the specialized in-painting model. See [the script in the research folder for details](https://github.com/huggingface/diffusers/tree/main/examples/research_projects/dreambooth_inpaint).
 

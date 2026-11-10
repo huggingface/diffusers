@@ -30,8 +30,6 @@ The Stable Diffusion upscaler diffusion model was created by the researchers and
 	- __call__
 	- enable_attention_slicing
 	- disable_attention_slicing
-	- enable_xformers_memory_efficient_attention
-	- disable_xformers_memory_efficient_attention
 
 ## StableDiffusionPipelineOutput
 

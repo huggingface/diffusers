@@ -198,7 +198,6 @@ pipeline = StableDiffusionXLAdapterPipeline.from_pretrained(
 )
 
 pipeline.scheduler = EulerAncestralDiscreteSchedulerTest.from_config(pipe.scheduler.config)
-pipeline.enable_xformers_memory_efficient_attention()
 pipeline.enable_model_cpu_offload()
 
 control_image = load_image("./conditioning_image_1.png")

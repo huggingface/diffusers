@@ -85,8 +85,6 @@ EXAMPLE_DOC_STRING = """
 
         >>> # speed up diffusion process with faster scheduler and memory optimization
         >>> pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-        >>> # remove following line if xformers is not installed
-        >>> pipe.enable_xformers_memory_efficient_attention()
 
         >>> pipe.enable_model_cpu_offload()
 

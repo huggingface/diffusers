@@ -181,7 +181,6 @@ If you’re training on more than one GPU, add the `--multi_gpu` parameter to th
 accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
     --pretrained_model_name_or_path=$MODEL_NAME \
     --dataset_name=$DATASET_ID \
-    --enable_xformers_memory_efficient_attention \
     --resolution=256 \
     --random_flip \
     --train_batch_size=4 \

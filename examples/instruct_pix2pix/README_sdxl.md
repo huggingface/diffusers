@@ -36,7 +36,6 @@ Now, we can launch training:
 accelerate launch train_instruct_pix2pix_sdxl.py \
     --pretrained_model_name_or_path=$MODEL_NAME \
     --dataset_name=$DATASET_ID \
-    --enable_xformers_memory_efficient_attention \
     --resolution=256 --random_flip \
     --train_batch_size=4 --gradient_accumulation_steps=4 --gradient_checkpointing \
     --max_train_steps=15000 \
@@ -55,7 +54,6 @@ accelerate launch train_instruct_pix2pix_sdxl.py \
     --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-1.0 \
     --dataset_name=$DATASET_ID \
     --use_ema \
-    --enable_xformers_memory_efficient_attention \
     --resolution=512 --random_flip \
     --train_batch_size=4 --gradient_accumulation_steps=4 --gradient_checkpointing \
     --max_train_steps=15000 \
@@ -85,7 +83,6 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix_sd
     --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-1.0 \
     --dataset_name=$DATASET_ID \
     --use_ema \
-    --enable_xformers_memory_efficient_attention \
     --resolution=512 --random_flip \
     --train_batch_size=4 --gradient_accumulation_steps=4 --gradient_checkpointing \
     --max_train_steps=15000 \
@@ -162,7 +159,6 @@ accelerate launch train_instruct_pix2pix.py \
     --pretrained_model_name_or_path=$MODEL_NAME \
     --dataset_name=$DATASET_ID \
     --use_ema \
-    --enable_xformers_memory_efficient_attention \
     --resolution=512 --random_flip \
     --train_batch_size=4 --gradient_accumulation_steps=4 --gradient_checkpointing \
     --max_train_steps=15000 \
