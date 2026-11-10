@@ -57,6 +57,14 @@ class FluxIPAdapterTesterMixin(BasePipelineOutputMixin):
         inputs["return_dict"] = False
         return inputs
 
+    def create_ip_adapter_state_dict(self, model):
+        # The state dict builder is imported here rather than at module scope: it lives in a model test module
+        # that calls `enable_full_determinism()` on import, which would otherwise flip that global for every test
+        # collected alongside this directory.
+        from ...models.transformers.test_models_transformer_flux import create_flux_ip_adapter_state_dict
+
+        return create_flux_ip_adapter_state_dict(model)
+
     def test_ip_adapter(self, expected_max_diff: float = 1e-4, expected_pipe_slice=None):
         r"""Tests for IP-Adapter.
 
@@ -66,11 +74,6 @@ class FluxIPAdapterTesterMixin(BasePipelineOutputMixin):
           - Single IP-Adapter with scale!=0 should produce different output compared to no IP-Adapter.
           - Multi IP-Adapter with scale!=0 should produce different output compared to no IP-Adapter.
         """
-        # The state dict builder is imported here rather than at module scope: it lives in a model test module
-        # that calls `enable_full_determinism()` on import, which would otherwise flip that global for every test
-        # collected alongside this directory.
-        from ...models.transformers.test_models_transformer_flux import create_flux_ip_adapter_state_dict
-
         # Raising the tolerance for this test when it's run on a CPU because we compare against static slices and
         # that can be shaky (with a VVVV low probability).
         expected_max_diff = 9e-4 if torch_device == "cpu" else expected_max_diff
@@ -91,7 +94,7 @@ class FluxIPAdapterTesterMixin(BasePipelineOutputMixin):
             output_without_adapter = expected_pipe_slice
 
         # 1. Single IP-Adapter test cases
-        adapter_state_dict = create_flux_ip_adapter_state_dict(pipe.transformer)
+        adapter_state_dict = self.create_ip_adapter_state_dict(pipe.transformer)
         # Load through the pipeline's public IP-Adapter API. `image_encoder_pretrained_model_name_or_path=None`
         # skips fetching a CLIP image encoder since we feed pre-computed `ip_adapter_image_embeds` directly.
         pipe.load_ip_adapter(adapter_state_dict, weight_name="", image_encoder_pretrained_model_name_or_path=None)
@@ -124,8 +127,8 @@ class FluxIPAdapterTesterMixin(BasePipelineOutputMixin):
         assert max_diff_with_adapter_scale > 1e-2, "Output with ip-adapter must be different from normal inference"
 
         # 2. Multi IP-Adapter test cases
-        adapter_state_dict_1 = create_flux_ip_adapter_state_dict(pipe.transformer)
-        adapter_state_dict_2 = create_flux_ip_adapter_state_dict(pipe.transformer)
+        adapter_state_dict_1 = self.create_ip_adapter_state_dict(pipe.transformer)
+        adapter_state_dict_2 = self.create_ip_adapter_state_dict(pipe.transformer)
         pipe.load_ip_adapter(
             [adapter_state_dict_1, adapter_state_dict_2],
             weight_name=["", ""],
