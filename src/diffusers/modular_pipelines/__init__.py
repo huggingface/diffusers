@@ -155,6 +155,10 @@ else:
         "MiniMaxH3Blocks",
         "MiniMaxH3ModularPipeline",
     ]
+    _import_structure["minimax_h3_image"] = [
+        "MiniMaxH3ImageBlocks",
+        "MiniMaxH3ImageModularPipeline",
+    ]
     _import_structure["minimax_music3"] = [
         "MiniMaxMusic3Blocks",
         "MiniMaxMusic3ModularPipeline",
@@ -243,6 +247,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .minimax_h3 import (
             MiniMaxH3Blocks,
             MiniMaxH3ModularPipeline,
+        )
+        from .minimax_h3_image import (
+            MiniMaxH3ImageBlocks,
+            MiniMaxH3ImageModularPipeline,
         )
         from .minimax_music3 import (
             MiniMaxMusic3Blocks,
