@@ -40,7 +40,7 @@ You can optimize the pipeline's runtime and memory consumption with torch.compil
 
 ### Inference
 
-Use [`torch.compile`](https://huggingface.co/docs/diffusers/main/en/tutorials/fast_diffusion#torchcompile) to reduce the inference latency.
+Use [`torch.compile`](../../optimization/fp16#torchcompile) to reduce the inference latency.
 
 First, load the pipeline:
 

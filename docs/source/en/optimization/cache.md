@@ -115,7 +115,7 @@ This model-level API works with [`Cosmos3OmniPipeline`], [`Cosmos3OmniModularPip
 
 ## FirstBlockCache
 
-[FirstBlock Cache](https://huggingface.co/docs/diffusers/main/en/api/cache#diffusers.FirstBlockCacheConfig) checks how much the early layers of the denoiser changes from one timestep to the next. If the change is small, the model skips the expensive later layers and reuses the previous output.
+[FirstBlock Cache](../api/cache#diffusers.FirstBlockCacheConfig) checks how much the early layers of the denoiser changes from one timestep to the next. If the change is small, the model skips the expensive later layers and reuses the previous output.
 
 ```py
 import torch
