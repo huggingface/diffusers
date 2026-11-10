@@ -77,6 +77,23 @@ The workflow is selected on the `image` input:
 
 The prompt is used verbatim, with no chat template, and long, complete descriptions work best. An edit prompt typically names what to preserve, then what to change, then describes the target image in full.
 
+## Prompt enhancement
+
+[MiniMax-H3-Image-PE](https://huggingface.co/MiniMaxAI/MiniMax-H3-Image-PE) is MiniMax's prompt expansion model: it rewrites a short request into the kind of detailed description the image model works best with, and recommends an aspect ratio. The [diffusers/minimax-h3-image-pe-blocks](https://huggingface.co/diffusers/minimax-h3-image-pe-blocks) custom blocks run it as a pipeline of its own. They need `xgrammar`, and about 52 GB of GPU memory.
+
+```py
+import torch
+from diffusers import ModularPipeline
+
+enhancer = ModularPipeline.from_pretrained("diffusers/minimax-h3-image-pe-blocks", trust_remote_code=True)
+enhancer.load_components(dtype=torch.bfloat16, device_map="cuda")
+
+state = enhancer(prompt="a cozy cabin in the snow")
+prompt, aspect_ratio = state.get("prompt"), state.get("aspect_ratio")
+```
+
+Pass the reference images as `image` to expand an editing instruction instead. Then pass `prompt` to the image pipeline, with a `height` and `width` that match `aspect_ratio`.
+
 ## Image size
 
 `height` and `width` are the size of the returned image and default to 2048. The model generates at 4 megapixels or more: a smaller request is generated on a larger canvas of the same aspect ratio and resized back, so a 1024x1024 request costs as much as a 2048x2048 one. `min_generation_area` sets that threshold in pixels; pass `1024` to always generate at the requested size. Either way the canvas sides are rounded to multiples of 32.
