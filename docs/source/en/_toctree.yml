@@ -53,7 +53,7 @@
   title: Inference
 - isExpanded: true
   sections:
-  - local: stable_diffusion
+  - local: optimization/overview
     title: Basic performance
   - isExpanded: false
     sections:

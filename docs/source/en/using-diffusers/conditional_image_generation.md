@@ -304,4 +304,4 @@ pipeline = AutoPipelineForText2Image.from_pretrained("stable-diffusion-v1-5/stab
 pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
-For more tips on how to optimize your code to save memory and speed up inference, see [Optimize and scale](../stable_diffusion#optimization-techniques).
+For more tips on how to optimize your code to save memory and speed up inference, see [Optimize and scale](../optimization/overview#optimization-techniques).

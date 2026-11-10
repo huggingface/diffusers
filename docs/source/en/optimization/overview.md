@@ -41,7 +41,7 @@ If the pipeline does not fit, or memory is tight, call [`~DiffusionPipeline.enab
 
 Skip it when the model fits. Offloading is slower when you do not need it.
 
-For more offloading options, see [Reduce memory usage](./optimization/memory#offloading).
+For more offloading options, see [Reduce memory usage](./memory#offloading).
 
 ```py
 pipeline = DiffusionPipeline.from_pretrained(
@@ -72,18 +72,18 @@ When the starter path is not enough, use these techniques. If inference is too s
 
 Faster inference:
 
-- [torch.compile](./optimization/fp16#torchcompile) — Compile the UNet, transformer, or VAE into optimized kernels.
-- [Regional compilation](./optimization/fp16#regional-compilation) — Compile repeated blocks to cut `torch.compile` cold-start latency and reuse compiled artifacts.
-- [Caching](./optimization/cache) — Reuse intermediates across denoising steps when you want more speed and can spend memory.
-- [Attention backends](./optimization/attention_backends) — Swap Diffusers attention implementations through a unified API when attention is the bottleneck.
-- [Kernels](./optimization/fp16#kernels) — Load optimized Hub compute kernels (attention and custom CUDA ops such as RMSNorm or RoPE) when you need hardware-specific speedups beyond stock PyTorch.
+- [torch.compile](./fp16#torchcompile) — Compile the UNet, transformer, or VAE into optimized kernels.
+- [Regional compilation](./fp16#regional-compilation) — Compile repeated blocks to cut `torch.compile` cold-start latency and reuse compiled artifacts.
+- [Caching](./cache) — Reuse intermediates across denoising steps when you want more speed and can spend memory.
+- [Attention backends](./attention_backends) — Swap Diffusers attention implementations through a unified API when attention is the bottleneck.
+- [Kernels](./fp16#kernels) — Load optimized Hub compute kernels (attention and custom CUDA ops such as RMSNorm or RoPE) when you need hardware-specific speedups beyond stock PyTorch.
 
 Less memory:
 
-- [Offloading](./optimization/memory#offloading) — Move inactive models or layers to the CPU with CPU, model, or group offloading.
-- [Quantization](./quantization/overview) — Load smaller weights to cut memory (some backends also speed up inference). [GGUF](./quantization/gguf) is a common starting point.
-- [VAE slicing](./optimization/memory#vae-slicing) and [VAE tiling](./optimization/memory#vae-tiling) — Decode large batches or high-resolution images in pieces to lower peak memory.
+- [Offloading](./memory#offloading) — Move inactive models or layers to the CPU with CPU, model, or group offloading.
+- [Quantization](../quantization/overview) — Load smaller weights to cut memory (some backends also speed up inference). [GGUF](../quantization/gguf) is a common starting point.
+- [VAE slicing](./memory#vae-slicing) and [VAE tiling](./memory#vae-tiling) — Decode large batches or high-resolution images in pieces to lower peak memory.
 
 Both:
 
-- [Quantize, compile, and offload](./optimization/speed-memory-optims) — Combine quantization, `torch.compile`, and offloading when one technique is not enough.
+- [Quantize, compile, and offload](./speed-memory-optims) — Combine quantization, `torch.compile`, and offloading when one technique is not enough.

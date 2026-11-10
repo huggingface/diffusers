@@ -19,13 +19,13 @@ Pick a method depending on how much config you will set, and the fit you need. E
 
 | Method | Use when | Notes |
 |--------|----------|-------|
-| Text KV Cache | NucleusMoE image, reuse text K/V projections across steps | Currently hooks NucleusMoE image blocks |
-| SeaCache | Cosmos 3 video generation | Settings often don't transfer across models |
-| FirstBlockCache | Want one main speed/quality knob on a registered transformer | One `threshold` controls how often steps are skipped |
-| MagCache | Have magnitude ratios for your checkpoint and scheduler, or will calibrate first | Ratios are checkpoint and scheduler specific |
-| TaylorSeer | Want to predict later activations from earlier steps | Higher `max_order` uses more memory |
-| PAB | Video, willing to tune attention reuse (block and timestep skip ranges per attention kind) | Skip ranges need tuning per model |
-| FasterCache | Like PAB, plus optional CFG-branch skipping | Experimental |
+| [Text KV Cache](#text-kv-cache) | NucleusMoE image, reuse text K/V projections across steps | Currently hooks NucleusMoE image blocks |
+| [SeaCache](#seacache) | Cosmos 3 video generation | Settings often don't transfer across models |
+| [FirstBlockCache](#firstblockcache) | Want one main speed/quality knob on a registered transformer | One `threshold` controls how often steps are skipped |
+| [MagCache](#magcache) | Have magnitude ratios for your checkpoint and scheduler, or will calibrate first | Ratios are checkpoint and scheduler specific |
+| [TaylorSeer](#taylorseer-cache) | Want to predict later activations from earlier steps | Higher `max_order` uses more memory |
+| [PAB](#pyramid-attention-broadcast) | Video, willing to tune attention reuse (block and timestep skip ranges per attention kind) | Skip ranges need tuning per model |
+| [FasterCache](#fastercache) | Like PAB, plus optional CFG-branch skipping | Experimental |
 
 ## Pyramid Attention Broadcast
 
@@ -69,7 +69,7 @@ config = FasterCacheConfig(
     current_timestep_callback=lambda: pipe.current_timestep,
     attention_weight_callback=lambda _: 0.3,
     unconditional_batch_skip_range=5,
-    unconditional_batch_timestep_skip_range=(-1, 641),
+    unconditional_batch_timestep_skip_range=(-1, 781),
     tensor_format="BFCHW",
 )
 pipe.transformer.enable_cache(config)

@@ -27,7 +27,7 @@ Refer to the table below for an overview of the available attention families and
 | PyTorch native | built-in PyTorch implementation using [scaled_dot_product_attention](./fp16#scaled-dot-product-attention) |
 | xFormers | memory-efficient attention with support for various attention kernels |
 
-Hub backends (the `*_hub` names) only need the [Kernels](https://github.com/huggingface/kernels) library and download the kernel on first use. Other backends need their own package, such as `flash-attn` or `sageattention`. The [Available backends](#available-backends) table lists the requirements Diffusers checks when you enable a backend.
+Hub backends (the `*_hub` names) need the [Kernels](https://github.com/huggingface/kernels) library and download the kernel on first use. The SageAttention Hub backends also need `DIFFUSERS_TRUST_REMOTE_KERNELS=true` (see [Trusting remote kernels](#trusting-remote-kernels)). Other backends need their own package, such as `flash-attn` or `sageattention`. The [Available backends](#available-backends) table lists the requirements Diffusers checks when you enable a backend.
 
 ## Set a backend on the model
 
