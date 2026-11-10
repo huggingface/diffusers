@@ -61,7 +61,7 @@ pip install git+https://github.com/ifm-ai/pan2-guardrail
 
 ## Context parallelism
 
-[`PAN2Transformer3DModel`] supports [context parallelism](../../training/distributed_inference#context-parallelism). The text and video token counts are usually not divisible by the number of devices (the number of text tokens depends on the prompt), so use `ulysses_anything` or `ring_anything` for inference. Plain `ulysses_degree` / `ring_degree`, for example for training, requires both token counts to be divisible by the context parallel size.
+[`PAN2Transformer3DModel`] supports [context parallelism](../../optimization/context_parallelism). The text and video token counts are usually not divisible by the number of devices (the number of text tokens depends on the prompt), so use `ulysses_anything` or `ring_anything` for inference. Plain `ulysses_degree` / `ring_degree`, for example for training, requires both token counts to be divisible by the context parallel size.
 
 ```py
 # torchrun --nproc_per_node=2 pan2_context_parallel.py
