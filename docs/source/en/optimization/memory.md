@@ -216,6 +216,8 @@ print(f"Max memory reserved: {torch.cuda.max_memory_allocated() / 1024**3:.2f} G
 > [!WARNING]
 > [`AutoencoderKLWan`] and [`AsymmetricAutoencoderKL`] don't support tiling.
 
+To skip VAE memory on your GPU entirely, encode and decode on a remote endpoint with [Remote inference](../hybrid_inference/overview).
+
 ## Offloading
 
 Offloading strategies move not currently active layers or models to the CPU to avoid increasing GPU memory. These strategies can be combined with quantization and torch.compile to balance inference speed and memory usage.

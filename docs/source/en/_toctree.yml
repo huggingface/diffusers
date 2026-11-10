@@ -63,22 +63,28 @@
       title: Caching
     - local: optimization/attention_backends
       title: Attention backends
+    - local: using-diffusers/batched_inference
+      title: Batch inference
     - local: optimization/memory
       title: Reduce memory usage
+    - local: hybrid_inference/overview
+      title: Remote inference
     - local: optimization/speed-memory-optims
       title: Compiling and offloading quantized models
-    title: Inference
+    title: Speed and memory
   - isExpanded: false
     sections:
-    - local: optimization/cache_dit
-      title: CacheDiT
-    - local: optimization/para_attn
-      title: ParaAttention
-    - local: optimization/pruna
-      title: Pruna
-    - local: optimization/xdit
-      title: xDiT
-    title: Community methods
+    - local: training/distributed_inference
+      title: Overview
+    - local: optimization/data_parallelism
+      title: Data parallelism
+    - local: optimization/device_map
+      title: Model sharding with device_map
+    - local: optimization/context_parallelism
+      title: Context parallelism
+    - local: optimization/tensor_parallelism
+      title: Tensor parallelism
+    title: Distributed inference
   - isExpanded: false
     sections:
     - local: quantization/overview
@@ -121,15 +127,15 @@
     title: Hardware-specific acceleration
   - isExpanded: false
     sections:
-    - local: using-diffusers/create_a_server
-      title: Create a server
-    - local: using-diffusers/batched_inference
-      title: Batch inference
-    - local: training/distributed_inference
-      title: Distributed inference
-    - local: hybrid_inference/overview
-      title: Remote inference
-    title: Serving and scaling
+    - local: optimization/cache_dit
+      title: CacheDiT
+    - local: optimization/para_attn
+      title: ParaAttention
+    - local: optimization/pruna
+      title: Pruna
+    - local: optimization/xdit
+      title: xDiT
+    title: Community methods
   title: Optimize and scale
 - isExpanded: false
   sections:
@@ -239,8 +245,6 @@
     - local: using-diffusers/controlling_generation
       title: Controlled generation
     title: Concepts and background
-  - local: community_projects
-    title: Projects built with Diffusers
   title: Resources
 - isExpanded: false
   sections:
