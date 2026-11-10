@@ -37,7 +37,7 @@ jobs:
           fetch-depth: 2
 
       - name: Tailscale # In order to be able to SSH when a test fails
-        uses: huggingface/tailscale-action@07d36e4c3b68707bd3fe070dbb96f03f993a6efd  # main
+        uses: huggingface/tailscale-action@9d1a67c46875a956cf2d1975473da978a970a2a9  # main
         with:
           authkey: ${{ secrets.TAILSCALE_SSH_AUTHKEY }}
           slackChannel: ${{ secrets.SLACK_CIFEEDBACK_CHANNEL }}
