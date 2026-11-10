@@ -147,7 +147,9 @@ def mambo_guidance(
 ):
     dim = list(range(1, len(pred_cond.shape)))
     diff = pred_cond - pred_uncond
-    ratio = torch.norm(diff, dim=dim, keepdim=True) / torch.norm(pred_uncond, dim=dim, keepdim=True)
+    ratio = torch.linalg.vector_norm(diff, dim=dim, keepdim=True) / torch.linalg.vector_norm(
+        pred_uncond, dim=dim, keepdim=True
+    )
     guidance_scale_final = (
         guidance_scale * torch.exp(-alpha * ratio)
         if use_original_formulation
