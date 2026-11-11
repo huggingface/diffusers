@@ -28,6 +28,8 @@ from ..testing_utils import (
     MemoryTesterMixin,
     ModelTesterMixin,
     SingleFileTesterMixin,
+    TensorParallelNeuronTesterMixin,
+    TensorParallelTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -85,7 +87,7 @@ class MiniMaxH3TransformerTesterConfig(BaseModelTesterConfig):
             "rope_freq_dim": 2,
         }
 
-    def get_packed_layout(self, num_video_tokens: int = NUM_VIDEO_TOKENS) -> dict:
+    def get_packed_layout(self, num_video_tokens: int = NUM_VIDEO_TOKENS, device: str | torch.device = None) -> dict:
         r"""
         Build the structural arguments of one packed sequence.
 
@@ -93,29 +95,33 @@ class MiniMaxH3TransformerTesterConfig(BaseModelTesterConfig):
         modality and its noise level, and hands over the `(t, h, w)` grid plus the three index tensors. The layout
         here mirrors what the pipelines pack, with two distinct timesteps so the `(timestep, modality)` AdaLN table
         is addressed on more than one row.
+
+        `device` defaults to the test device; the Neuron TP spec asks for CPU because its worker builds the model on
+        CPU and moves it only after sharding.
         """
+        device = torch_device if device is None else device
         sequence_length = NUM_TEXT_TOKENS + NUM_AUDIO_TOKENS + num_video_tokens
-        text_indices = torch.arange(NUM_TEXT_TOKENS, device=torch_device)
-        audio_indices = torch.arange(NUM_TEXT_TOKENS, NUM_TEXT_TOKENS + NUM_AUDIO_TOKENS, device=torch_device)
-        video_indices = torch.arange(NUM_TEXT_TOKENS + NUM_AUDIO_TOKENS, sequence_length, device=torch_device)
+        text_indices = torch.arange(NUM_TEXT_TOKENS, device=device)
+        audio_indices = torch.arange(NUM_TEXT_TOKENS, NUM_TEXT_TOKENS + NUM_AUDIO_TOKENS, device=device)
+        video_indices = torch.arange(NUM_TEXT_TOKENS + NUM_AUDIO_TOKENS, sequence_length, device=device)
 
         # 0 = video, 1 = text, 2 = audio.
-        token_tags = torch.empty(sequence_length, dtype=torch.long, device=torch_device)
+        token_tags = torch.empty(sequence_length, dtype=torch.long, device=device)
         token_tags[text_indices] = 1
         token_tags[audio_indices] = 2
         token_tags[video_indices] = 0
 
         # The conditioning-free rows share the video timestep; the audio rows step down their own schedule.
-        timestep_indices = torch.zeros(sequence_length, dtype=torch.long, device=torch_device)
+        timestep_indices = torch.zeros(sequence_length, dtype=torch.long, device=device)
         timestep_indices[audio_indices] = 1
 
-        position_ids = torch.zeros(sequence_length, 3, dtype=torch.float32, device=torch_device)
-        position_ids[:, 0] = torch.arange(sequence_length, dtype=torch.float32, device=torch_device)
-        position_ids[video_indices, 1] = torch.arange(num_video_tokens, dtype=torch.float32, device=torch_device) % 4
-        position_ids[video_indices, 2] = torch.arange(num_video_tokens, dtype=torch.float32, device=torch_device) % 2
+        position_ids = torch.zeros(sequence_length, 3, dtype=torch.float32, device=device)
+        position_ids[:, 0] = torch.arange(sequence_length, dtype=torch.float32, device=device)
+        position_ids[video_indices, 1] = torch.arange(num_video_tokens, dtype=torch.float32, device=device) % 4
+        position_ids[video_indices, 2] = torch.arange(num_video_tokens, dtype=torch.float32, device=device) % 2
 
         return {
-            "timestep": torch.tensor([0.7, 0.3], device=torch_device),
+            "timestep": torch.tensor([0.7, 0.3], device=device),
             "timestep_indices": timestep_indices,
             "token_tags": token_tags,
             "position_ids": position_ids,
@@ -124,7 +130,10 @@ class MiniMaxH3TransformerTesterConfig(BaseModelTesterConfig):
             "text_indices": text_indices,
         }
 
-    def get_dummy_inputs(self, num_video_tokens: int = NUM_VIDEO_TOKENS, batch_size: int = 2) -> dict:
+    def get_dummy_inputs(
+        self, num_video_tokens: int = NUM_VIDEO_TOKENS, batch_size: int = 2, device: str | torch.device = None
+    ) -> dict:
+        device = torch_device if device is None else device
         generator = self.generator
         init_dict = self.get_init_dict()
         patch_size = init_dict["patch_size"]
@@ -132,17 +141,17 @@ class MiniMaxH3TransformerTesterConfig(BaseModelTesterConfig):
 
         return {
             "hidden_states": randn_tensor(
-                (batch_size, num_video_tokens, video_patch_dim), generator=generator, device=torch_device
+                (batch_size, num_video_tokens, video_patch_dim), generator=generator, device=device
             ),
             "audio_hidden_states": randn_tensor(
                 (batch_size, NUM_AUDIO_TOKENS, init_dict["audio_in_channels"]),
                 generator=generator,
-                device=torch_device,
+                device=device,
             ),
             "encoder_hidden_states": randn_tensor(
-                (batch_size, NUM_TEXT_TOKENS, init_dict["text_dim"]), generator=generator, device=torch_device
+                (batch_size, NUM_TEXT_TOKENS, init_dict["text_dim"]), generator=generator, device=device
             ),
-            **self.get_packed_layout(num_video_tokens),
+            **self.get_packed_layout(num_video_tokens, device=device),
         }
 
 
@@ -206,3 +215,11 @@ class TestMiniMaxH3TransformerSingleFile(MiniMaxH3TransformerTesterConfig, Singl
     @property
     def pretrained_model_kwargs(self):
         return {"subfolder": "transformer"}
+
+
+class TestMiniMaxH3TransformerTensorParallel(MiniMaxH3TransformerTesterConfig, TensorParallelTesterMixin):
+    """Tensor Parallel inference tests for the MiniMax-H3 transformer (CUDA/XPU multi-accelerator)."""
+
+
+class TestMiniMaxH3TransformerTensorParallelNeuron(MiniMaxH3TransformerTesterConfig, TensorParallelNeuronTesterMixin):
+    """Tensor Parallel inference test for the MiniMax-H3 transformer on AWS Neuron."""

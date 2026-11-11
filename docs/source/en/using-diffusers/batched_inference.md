@@ -12,11 +12,13 @@ specific language governing permissions and limitations under the License.
 
 # Batch inference
 
-Batch inference processes multiple prompts at a time to increase throughput. It is more efficient because processing multiple prompts at once maximizes GPU usage versus processing a single prompt and underutilizing the GPU.
+Batch inference processes multiple prompts at once to increase throughput. A batch keeps the GPU busy, while a single prompt leaves it underused.
 
-The downside is increased latency because you must wait for the entire batch to complete, and more GPU memory is required for large batches.
+The downside is higher latency, because you wait for the entire batch to finish. Large batches also need more GPU memory.
 
-For text-to-image, pass a list of prompts to the pipeline and for image-to-image, pass a list of images and prompts to the pipeline. The example below demonstrates batched text-to-image inference.
+## Batch multiple prompts
+
+Pass a list of prompts to the pipeline to generate one image for each prompt.
 
 ```py
 import torch
@@ -55,6 +57,8 @@ plt.show()
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/batch-inference.png"/>
 </div>
+
+## Generate several images per prompt
 
 To generate multiple variations of one prompt, use the `num_images_per_prompt` argument.
 
@@ -96,7 +100,9 @@ plt.show()
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/batch-inference-2.png"/>
 </div>
 
-Combine both approaches to generate different variations of different prompts.
+## Generate several images for several prompts
+
+Combine both approaches to generate different variations of different prompts. This example reuses the `pipeline` and `prompts` from the examples above.
 
 ```py
 images = pipeline(
@@ -120,23 +126,25 @@ plt.show()
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/batch-inference-3.png"/>
 </div>
 
-## Deterministic generation
+## Generate reproducible batches
 
-Enable reproducible batch generation by passing a list of [Generator’s](https://pytorch.org/docs/stable/generated/torch.Generator.html) to the pipeline and tie each `Generator` to a seed to reuse it.
+To make a batch reproducible, pass the pipeline a list of [Generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) objects, one for each image, each with its own seed.
 
 > [!TIP]
 > Refer to the [Reproducibility](./reusing_seeds) docs to learn more about deterministic algorithms and the `Generator` object.
 
-Use a list comprehension to iterate over the batch size specified in `range()` to create a unique `Generator` object for each image in the batch. Don't multiply the `Generator` by the batch size because that only creates one `Generator` object that is used sequentially for each image in the batch.
+Create one `Generator` per image with a list comprehension. Multiplying a list (`[generator] * 3`) gives you three references to the same `Generator`, so the images don't get independent seeds.
 
 ```py
+# don't do this
 generator = [torch.Generator(device="cuda").manual_seed(0)] * 3  # or "mps", "xpu", "cpu"
 ```
 
-Pass the `generator` to the pipeline.
+The number of generators must match the number of images in the batch. Pass the `generator` to the pipeline.
 
 ```py
 import torch
+import matplotlib.pyplot as plt
 from diffusers import DiffusionPipeline
 
 pipeline = DiffusionPipeline.from_pretrained(
@@ -145,13 +153,13 @@ pipeline = DiffusionPipeline.from_pretrained(
     device_map="cuda"
 )
 
-generator = [torch.Generator(device="cuda").manual_seed(i) for i in range(3)]  # or "mps", "xpu", "cpu"
 prompts = [
     "Cinematic shot of a cozy coffee shop interior, warm pastel light streaming through a window where a cat rests. Shallow depth of field, glowing cups in soft focus, dreamy lofi-inspired mood, nostalgic tones, framed like a quiet film scene.",
     "Polaroid-style photograph of a cozy coffee shop interior, bathed in warm pastel light. A cat sits on the windowsill near steaming mugs. Soft, slightly faded tones and dreamy blur evoke nostalgia, a lofi mood, and the intimate, imperfect charm of instant film.",
     "Soft watercolor illustration of a cozy coffee shop interior, pastel washes of color filling the space. A cat rests peacefully on the windowsill as warm light glows through. Gentle brushstrokes create a dreamy, lofi-inspired atmosphere with whimsical textures and nostalgic calm.",
     "Isometric pixel-art illustration of a cozy coffee shop interior in detailed 8-bit style. Warm pastel light fills the space as a cat rests on the windowsill. Blocky furniture and tiny mugs add charm, low-res retro graphics enhance the nostalgic, lofi-inspired game aesthetic."
 ]
+generator = [torch.Generator(device="cuda").manual_seed(i) for i in range(len(prompts))]  # or "mps", "xpu", "cpu"
 
 images = pipeline(
     prompt=prompts,
@@ -170,4 +178,19 @@ plt.tight_layout()
 plt.show()
 ```
 
-You can use this to select an image associated with a seed and iteratively improve on it by crafting a more detailed prompt.
+Each image is tied to a seed, so you can pick an image you like and regenerate it with the same seed while you refine its prompt.
+
+## Serve concurrent requests
+
+A server also increases throughput by handling requests from many users at the same time. Load the pipeline once and share it across requests so the models stay in GPU memory only once. Schedulers aren't thread-safe, so give each request its own scheduler with [`~DiffusionPipeline.from_pipe`]. Sharing one scheduler across threads raises errors like `IndexError: index 21 is out of bounds for dimension 0 with size 21`.
+
+```py
+scheduler = shared_pipeline.scheduler.from_config(shared_pipeline.scheduler.config)
+pipeline = StableDiffusion3Pipeline.from_pipe(shared_pipeline, scheduler=scheduler)
+```
+
+For complete servers built with [FastAPI](https://fastapi.tiangolo.com/), see the [server](https://github.com/huggingface/diffusers/tree/main/examples/server) example and the [server-async](https://github.com/huggingface/diffusers/tree/main/examples/server-async) example. The server-async example also clones the random number generator state for each request and makes tokenizers safe to share across threads.
+
+## Next steps
+
+- When a batch doesn't fit on one GPU, or you have more prompts than one GPU can process, spread the prompts across GPUs with [Data parallelism](../optimization/data_parallelism).

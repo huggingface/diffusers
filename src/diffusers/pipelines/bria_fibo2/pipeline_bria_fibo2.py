@@ -22,6 +22,7 @@ import PIL.Image
 import torch
 from transformers import Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 
+from ...loaders import BriaFibo2LoraLoaderMixin
 from ...models import AutoencoderKLFlux2, BriaFibo2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
@@ -167,7 +168,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class BriaFibo2Pipeline(DiffusionPipeline):
+class BriaFibo2Pipeline(DiffusionPipeline, BriaFibo2LoraLoaderMixin):
     r"""
     Pipeline for text-to-image generation and image editing with Fibo 2.0.
 

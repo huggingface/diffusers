@@ -330,6 +330,7 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
     from transformers import AutoModel, AutoTokenizer
 
     from diffusers import (
+        AceStepConditionEncoder,
         AceStepPipeline,
         AceStepTransformer1DModel,
         AutoencoderOobleck,
@@ -338,7 +339,6 @@ def convert_ace_step_weights(checkpoint_dir, dit_config, output_dir, dtype_str="
     from diffusers.pipelines.ace_step import (
         AceStepAudioTokenDetokenizer,
         AceStepAudioTokenizer,
-        AceStepConditionEncoder,
     )
 
     # Drop metadata keys — they're re-populated by `save_pretrained` at save time.
