@@ -163,12 +163,17 @@ class StableAudio3SelfAttnProcessor:
             return x.unflatten(-1, (attn.heads, attn.dim_heads))
 
         if attn.use_differential:
-            q1, q2, k1, k2, v = attn.to_qkv(hidden_states).chunk(5, dim=-1)
-            q1, q2, k1, k2, v = map(heads, (q1, q2, k1, k2, v))
-            q1, q2 = attn.q_norm(q1), attn.q_norm(q2)
-            k1, k2 = attn.k_norm(k1), attn.k_norm(k2)
-            q1, q2 = _apply_rotary_partial(q1, rope), _apply_rotary_partial(q2, rope)
-            k1, k2 = _apply_rotary_partial(k1, rope), _apply_rotary_partial(k2, rope)
+            # q1 / q2 share q_norm, k1 / k2 share k_norm, and all four share RoPE, so each pair runs as one
+            # (2 * heads)-head tensor
+            inner_dim = attn.heads * attn.dim_heads
+            q, k, v = attn.to_qkv(hidden_states).split([2 * inner_dim, 2 * inner_dim, inner_dim], dim=-1)
+            q = q.unflatten(-1, (2 * attn.heads, attn.dim_heads))
+            k = k.unflatten(-1, (2 * attn.heads, attn.dim_heads))
+            v = heads(v)
+            q = _apply_rotary_partial(attn.q_norm(q), rope)
+            k = _apply_rotary_partial(attn.k_norm(k), rope)
+            q1, q2 = q.chunk(2, dim=2)
+            k1, k2 = k.chunk(2, dim=2)
             out = dispatch_attention_fn(
                 q1, k1, v, backend=self._attention_backend, parallel_config=self._parallel_config
             ) - dispatch_attention_fn(
@@ -210,11 +215,14 @@ class StableAudio3CrossAttnProcessor:
         attn_mask = None if context_mask is None else context_mask[:, None, None, :].bool()
 
         if attn.use_differential:
-            q1, q2 = attn.to_q(hidden_states).chunk(2, dim=-1)
-            k1, k2, v = attn.to_kv(context).chunk(3, dim=-1)
-            q1, q2, k1, k2, v = map(heads, (q1, q2, k1, k2, v))
-            q1, q2 = attn.q_norm(q1), attn.q_norm(q2)
-            k1, k2 = attn.k_norm(k1), attn.k_norm(k2)
+            # q1 / q2 share q_norm and k1 / k2 share k_norm, so each pair runs as one (2 * heads)-head tensor
+            inner_dim = attn.heads * attn.dim_heads
+            q = attn.q_norm(attn.to_q(hidden_states).unflatten(-1, (2 * attn.heads, attn.dim_heads)))
+            k, v = attn.to_kv(context).split([2 * inner_dim, inner_dim], dim=-1)
+            k = attn.k_norm(k.unflatten(-1, (2 * attn.heads, attn.dim_heads)))
+            v = heads(v)
+            q1, q2 = q.chunk(2, dim=2)
+            k1, k2 = k.chunk(2, dim=2)
             out = dispatch_attention_fn(
                 q1, k1, v, attn_mask=attn_mask, backend=self._attention_backend, parallel_config=self._parallel_config
             ) - dispatch_attention_fn(

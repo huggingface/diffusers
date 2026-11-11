@@ -164,6 +164,30 @@ class TestAutoencoderSAMEBehavior(unittest.TestCase):
         # patch_size=256, strides=[16] → 256×16 = 4096
         self.assertEqual(model.downsampling_ratio, 4096)
 
+    def test_differential_attention_matches_per_group_reference(self):
+        """Normalizing / rotating [q1 | q2] and [k1 | k2] as one tensor equals separate per-group calls."""
+        from diffusers.models.attention_dispatch import dispatch_attention_fn
+        from diffusers.models.autoencoders.autoencoder_same import SAMEAttention, _apply_rotary_partial
+
+        torch.manual_seed(0)
+        attn = SAMEAttention(64, dim_heads=16, use_differential=True).eval()
+        x = torch.randn(2, 12, 64)
+        with torch.no_grad():
+            attn.to_out.weight.normal_()  # zero-initialised, would hide any difference
+            for norm in (attn.q_norm, attn.k_norm):
+                norm.gamma.uniform_(0.5, 1.5)
+                norm.beta.normal_()
+
+            freqs = attn.rope(12, x.device).float()
+            rope = (freqs.cos(), freqs.sin())
+            q1, q2, k1, k2, v = (
+                t.unflatten(-1, (attn.heads, attn.dim_heads)) for t in attn.to_qkv(x).chunk(5, dim=-1)
+            )
+            q1, q2 = (_apply_rotary_partial(attn.q_norm(t), rope) for t in (q1, q2))
+            k1, k2 = (_apply_rotary_partial(attn.k_norm(t), rope) for t in (k1, k2))
+            ref = attn.to_out((dispatch_attention_fn(q1, k1, v) - dispatch_attention_fn(q2, k2, v)).flatten(2, 3))
+            self.assertTrue(torch.equal(attn(x), ref))
+
 
 if __name__ == "__main__":
     unittest.main()

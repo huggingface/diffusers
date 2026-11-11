@@ -223,6 +223,50 @@ class TestStableAudio3DiTModelBehavior(unittest.TestCase):
         out = model(hs, t, ctx, glob)
         self.assertEqual(out.sample.shape, hs.shape)
 
+    def test_differential_attention_matches_per_group_reference(self):
+        """Normalizing / rotating [q1 | q2] and [k1 | k2] as one tensor equals separate per-group calls."""
+        from diffusers.models.attention_dispatch import dispatch_attention_fn
+        from diffusers.models.transformers.transformer_stable_audio3 import (
+            StableAudio3CrossAttention,
+            StableAudio3RotaryEmbedding,
+            StableAudio3SelfAttention,
+            _apply_rotary_partial,
+        )
+
+        def heads(attn, x):
+            return x.unflatten(-1, (attn.heads, attn.dim_heads))
+
+        def diff_attn(attn, q1, k1, q2, k2, v, mask=None):
+            out = dispatch_attention_fn(q1, k1, v, attn_mask=mask) - dispatch_attention_fn(q2, k2, v, attn_mask=mask)
+            return attn.to_out(out.flatten(2, 3))
+
+        torch.manual_seed(0)
+        x = torch.randn(2, 12, 64)
+        context = torch.randn(2, 5, 32)
+        context_mask = torch.tensor([[True] * 5, [True] * 3 + [False] * 2])
+        freqs = StableAudio3RotaryEmbedding(8)(12, x.device).float()
+        rope = (freqs.cos(), freqs.sin())
+        self_attn = StableAudio3SelfAttention(64, dim_heads=16, use_differential=True).eval()
+        cross_attn = StableAudio3CrossAttention(64, context_dim=32, dim_heads=16, use_differential=True).eval()
+
+        with torch.no_grad():
+            for attn in (self_attn, cross_attn):
+                attn.q_norm.gamma.uniform_(0.5, 1.5)
+                attn.k_norm.gamma.uniform_(0.5, 1.5)
+
+            q1, q2, k1, k2, v = (heads(self_attn, t) for t in self_attn.to_qkv(x).chunk(5, dim=-1))
+            q1, q2 = (_apply_rotary_partial(self_attn.q_norm(t), rope) for t in (q1, q2))
+            k1, k2 = (_apply_rotary_partial(self_attn.k_norm(t), rope) for t in (k1, k2))
+            self.assertTrue(torch.equal(self_attn(x, rope=rope), diff_attn(self_attn, q1, k1, q2, k2, v)))
+
+            q1, q2 = (cross_attn.q_norm(heads(cross_attn, t)) for t in cross_attn.to_q(x).chunk(2, dim=-1))
+            k1, k2, v = (heads(cross_attn, t) for t in cross_attn.to_kv(context).chunk(3, dim=-1))
+            k1, k2 = cross_attn.k_norm(k1), cross_attn.k_norm(k2)
+            mask = context_mask[:, None, None, :]
+            self.assertTrue(
+                torch.equal(cross_attn(x, context, context_mask), diff_attn(cross_attn, q1, k1, q2, k2, v, mask))
+            )
+
     def test_local_add_cond_zero_init_is_noop(self):
         """`to_local_embed` is zero-initialised, so inpaint conditioning is a no-op until trained."""
         hs, t, ctx, glob = _make_inputs()
