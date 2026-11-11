@@ -664,9 +664,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 continue
             processor._attention_backend = backend
 
-        # Important to set the active backend so that it propagates gracefully throughout.
-        _AttentionBackendRegistry.set_active_backend(backend)
-
     def reset_attention_backend(self) -> None:
         """
         Resets the attention backend for the model. Following calls to `forward` will use the environment default, if
@@ -819,22 +816,28 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 state_dict, max_shard_size=max_shard_size, filename_pattern=weights_name_pattern
             )
 
-            # Clean the folder from a previous save
+            # Clean the folder from a previous save. Match only shards of the exact
+            # checkpoint being written (same variant and serialization format): the
+            # prefix must be anchored, or a default save (weights_name
+            # "diffusion_pytorch_model") would also match another variant's shards
+            # ("diffusion_pytorch_model.ema-00001-of-00002") via a bare startswith
+            # and delete them while leaving that variant's index behind.
             if is_main_process:
+                weights_without_ext, ext = os.path.splitext(weights_name)
+                index_file = _add_variant(
+                    SAFE_WEIGHTS_INDEX_NAME if safe_serialization else WEIGHTS_INDEX_NAME, variant
+                )
                 for filename in os.listdir(save_directory):
                     if filename in state_dict_split.filename_to_tensors.keys():
                         continue
                     full_filename = os.path.join(save_directory, filename)
                     if not os.path.isfile(full_filename):
                         continue
-                    weights_without_ext = weights_name_pattern.replace(".bin", "").replace(".safetensors", "")
-                    weights_without_ext = weights_without_ext.replace("{suffix}", "")
-                    filename_without_ext = filename.replace(".bin", "").replace(".safetensors", "")
-                    # make sure that file to be deleted matches format of sharded file, e.g. pytorch_model-00001-of-00005
-                    if (
-                        filename.startswith(weights_without_ext)
-                        and _REGEX_SHARD.fullmatch(filename_without_ext) is not None
-                    ):
+                    # only remove shards of the checkpoint being written; another variant's shards share the prefix
+                    shard_match = _REGEX_SHARD.fullmatch(filename.removesuffix(ext))
+                    is_prior_shard = shard_match is not None and shard_match.group(1) == weights_without_ext
+                    is_stale_index = filename == index_file and not state_dict_split.is_sharded
+                    if is_prior_shard or is_stale_index:
                         os.remove(full_filename)
 
             for filename, tensors in state_dict_split.filename_to_tensors.items():
@@ -981,8 +984,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 more information about each option see [designing a device
                 map](https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference#the-devicemap). You
                 can also refer to the [Diffusers-specific
-                documentation](https://huggingface.co/docs/diffusers/main/en/training/distributed_inference#model-sharding)
-                for more concrete examples.
+                documentation](https://huggingface.co/docs/diffusers/main/en/optimization/device_map) for more concrete
+                examples.
             max_memory (`Dict`, *optional*):
                 A dictionary device identifier for the maximum memory. Will default to the maximum memory available for
                 each GPU and the available CPU RAM if unset.
@@ -1544,7 +1547,18 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if tp_shard_specs is not None:
                 # The weights are already sharded, so this only registers the forward hooks. `_parallel_config`
                 # was recorded by `_resolve_parallel_config` before loading.
+                from torch.distributed.tensor import DTensor
+
                 from ..hooks.tensor_parallel import apply_tensor_parallel
+
+                # Non-persistent buffers are absent from both the state dict and the checkpoint, and
+                # `init_empty_weights` leaves them as real CPU tensors, so move them across explicitly.
+                tp_device = tp_config._device
+                for name, buffer in model.named_buffers():
+                    if buffer.device != tp_device and not isinstance(buffer, DTensor):
+                        module_path, _, buffer_name = name.rpartition(".")
+                        module = model.get_submodule(module_path) if module_path else model
+                        module._buffers[buffer_name] = buffer.to(tp_device)
 
                 apply_tensor_parallel(model, tp_config, cls._tp_plan, weights_already_sharded=True)
             else:
@@ -1777,6 +1791,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 model=self,
             )
             resolve_tp_shard_specs(self, self._tp_plan, _tp_degree(tp_config))
+            logger.warning(
+                "Sharding an in-memory model costs full checkpoint memory on every rank. Prefer "
+                "`from_pretrained(..., parallel_config=...)`, which reads only each rank's shard."
+            )
 
         config = self._resolve_parallel_config(config)
 

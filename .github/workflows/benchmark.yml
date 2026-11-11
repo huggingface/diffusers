@@ -20,6 +20,7 @@ jobs:
   torch_models_cuda_benchmark_tests:
     permissions:
       contents: read
+      id-token: write
     env:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_BENCHMARK }}
     name: Torch Core Models CUDA Benchmarking Tests
@@ -50,7 +51,7 @@ jobs:
           diffusers-cli env
       - name: Diffusers Benchmarking
         env:
-          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+          HF_OIDC_RESOURCE: Diffusers-CI-Bot
         run: |
           cd benchmarks && python run_all.py
 
