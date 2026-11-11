@@ -26,11 +26,11 @@ from transformers import (
     SpeechT5HifiGan,
 )
 
+from ....dependency_versions_table import deps
 from ....models import AutoencoderKL, UNet2DConditionModel
 from ....schedulers import KarrasDiffusionSchedulers
 from ....utils import (
     is_accelerate_available,
-    is_accelerate_version,
     is_librosa_available,
     logging,
     replace_example_docstring,
@@ -402,10 +402,12 @@ class MusicLDMPipeline(DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusi
         lower than with `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution
         of the `unet`.
         """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+        if is_accelerate_available():
             from accelerate import cpu_offload_with_hook
         else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+            raise ImportError(
+                f"`enable_model_cpu_offload` requires `{deps['accelerate']}`: `pip install -U '{deps['accelerate']}'`"
+            )
 
         device_type = get_device()
         device = torch.device(f"{device_type}:{gpu_id}")

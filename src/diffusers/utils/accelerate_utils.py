@@ -17,13 +17,7 @@ Accelerate utilities: Utilities related to accelerate
 
 import functools
 
-from packaging import version
-
 from .import_utils import is_accelerate_available
-
-
-if is_accelerate_available():
-    import accelerate
 
 
 def apply_forward_hook(method):
@@ -37,9 +31,6 @@ def apply_forward_hook(method):
     :param method: The method to decorate. This method should be a method of a PyTorch module.
     """
     if not is_accelerate_available():
-        return method
-    accelerate_version = version.parse(accelerate.__version__).base_version
-    if version.parse(accelerate_version) < version.parse("0.17.0"):
         return method
 
     @functools.wraps(method)

@@ -62,6 +62,7 @@ jobs:
   run_nightly_tests_for_torch_pipelines:
     permissions:
       contents: read
+      id-token: write
     name: Nightly Torch Pipelines CUDA Tests
     needs: setup_torch_cuda_pipeline_matrix
     strategy:
@@ -93,7 +94,7 @@ jobs:
           diffusers-cli env
       - name: Pipeline CUDA Test
         env:
-          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+          HF_OIDC_RESOURCE: Diffusers-CI-Bot
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
@@ -116,6 +117,7 @@ jobs:
   run_nightly_tests_for_other_torch_modules:
     permissions:
       contents: read
+      id-token: write
     name: Nightly Torch CUDA Tests
     runs-on:
       group: aws-g4dn-2xlarge
@@ -150,7 +152,7 @@ jobs:
     - name: Run nightly PyTorch CUDA tests for non-pipeline modules
       if: ${{ matrix.module != 'examples'}}
       env:
-        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+        HF_OIDC_RESOURCE: Diffusers-CI-Bot
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
@@ -163,7 +165,7 @@ jobs:
     - name: Run nightly example tests with Torch
       if: ${{ matrix.module == 'examples' }}
       env:
-        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+        HF_OIDC_RESOURCE: Diffusers-CI-Bot
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
@@ -188,6 +190,7 @@ jobs:
   run_torch_compile_tests:
     permissions:
       contents: read
+      id-token: write
     name: PyTorch Compile CUDA tests
 
     runs-on:
@@ -216,7 +219,7 @@ jobs:
         diffusers-cli env
     - name: Run torch compile tests on GPU
       env:
-        HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+        HF_OIDC_RESOURCE: Diffusers-CI-Bot
       run: |
         pytest -n 1 --max-worker-restart=0 --dist=loadfile -m compile --make-reports=tests_torch_compile_cuda tests/
     - name: Failure short reports
@@ -233,6 +236,7 @@ jobs:
   run_big_gpu_torch_tests:
     permissions:
       contents: read
+      id-token: write
     name: Torch tests on big GPU
     strategy:
       fail-fast: false
@@ -262,7 +266,7 @@ jobs:
           diffusers-cli env
       - name: Selected Torch CUDA Test on big GPU
         env:
-          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+          HF_OIDC_RESOURCE: Diffusers-CI-Bot
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
           BIG_GPU_MEMORY: 40
@@ -287,6 +291,7 @@ jobs:
   torch_minimum_version_cuda_tests:
     permissions:
       contents: read
+      id-token: write
     name: Torch Minimum Version CUDA Tests
     runs-on:
       group: aws-g4dn-2xlarge
@@ -316,7 +321,7 @@ jobs:
 
       - name: Run PyTorch CUDA tests
         env:
-          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+          HF_OIDC_RESOURCE: Diffusers-CI-Bot
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
@@ -345,6 +350,7 @@ jobs:
   run_nightly_quantization_tests:
     permissions:
       contents: read
+      id-token: write
     name: Torch quantization nightly tests
     strategy:
       fail-fast: false
@@ -390,7 +396,7 @@ jobs:
           diffusers-cli env
       - name: ${{ matrix.config.backend }} quantization tests on GPU
         env:
-          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+          HF_OIDC_RESOURCE: Diffusers-CI-Bot
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
           BIG_GPU_MEMORY: 40
@@ -417,6 +423,7 @@ jobs:
   run_nightly_pipeline_level_quantization_tests:
     permissions:
       contents: read
+      id-token: write
     name: Torch quantization nightly tests
     strategy:
       fail-fast: false
@@ -445,7 +452,7 @@ jobs:
           diffusers-cli env
       - name: Pipeline-level quantization tests on GPU
         env:
-          HF_TOKEN: ${{ secrets.DIFFUSERS_HF_HUB_READ_TOKEN }}
+          HF_OIDC_RESOURCE: Diffusers-CI-Bot
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
           BIG_GPU_MEMORY: 40

@@ -1093,8 +1093,8 @@ def combine_inputs(*named_input_lists: list[tuple[str, list[InputParam]]]) -> li
     """
     Combines multiple lists of InputParam objects from different blocks. Duplicate inputs keep the first occurrence. If
     duplicate inputs declare different defaults, the combined input's default is None and the per-block defaults are
-    recorded in `defaults_by_block`; each block resolves its own default at runtime in `get_block_state`, and the
-    docstring formatters render the per-block defaults.
+    recorded in `defaults_by_block`; the branch that runs fills in its own default when it reads the state
+    (`get_block_state`), and the docstring formatters render the per-block defaults.
 
     Example:
 
