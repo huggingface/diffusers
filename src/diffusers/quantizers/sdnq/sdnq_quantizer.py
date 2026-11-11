@@ -25,7 +25,7 @@ logger = logging.get_logger(__name__)
 def _check_sdnq_requirement():
     if not is_sdnq_available():
         raise ImportError(
-            f"Loading or creating an SDNQ quantized model requires the sdnq library: `pip install '{deps['sdnq']}'`"
+            f"Loading or creating an SDNQ quantized model requires the sdnq library: `pip install -U '{deps['sdnq']}'`"
         )
 
 
