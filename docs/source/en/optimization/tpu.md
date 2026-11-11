@@ -105,7 +105,7 @@ If the pipeline doesn't fit on one chip:
 Shard models too large for one chip across several. FLUX.2-dev's text encoder (~48GB) and transformer (~64GB) each
 exceed a single chip, so the example below shards both:
 
-- the transformer with [`TensorParallelConfig`], passed to the `parallel_config` argument of [`~ModelMixin.from_pretrained`]. Each rank reads only its own slice of every sharded weight, so the full model is never materialized. For general TP details (`_tp_plan`, colwise/rowwise), see the [Tensor parallelism](../training/distributed_inference#tensor-parallelism) guide.
+- the transformer with [`TensorParallelConfig`], passed to the `parallel_config` argument of [`~ModelMixin.from_pretrained`]. Each rank reads only its own slice of every sharded weight, so the full model is never materialized. For general TP details (`_tp_plan`, colwise/rowwise), see the [Tensor parallelism](./tensor_parallelism) guide.
 - the text encoder with Transformers' own [tensor parallelism](https://huggingface.co/docs/transformers/perf_infer_gpu_multi), passing a [`~transformers.DistributedConfig`] and the same mesh.
 
 On TPU, initialize the process group with `backend="tpu_dist"` and build the mesh with `DeviceMesh("tpu", ...)`.
