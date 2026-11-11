@@ -84,6 +84,11 @@ Use `--checkpointing_steps` and `--checkpoints_total_limit` to control checkpoin
 Pass `--validation_cif` to generate a structure every `--validation_steps`. Validation runs on the main process,
 with dropout disabled, and writes a CIF next to the adapter. It uses the checkpoint's full sampling schedule.
 
+A run writes a model card next to the adapter, naming the base checkpoint and the structures trained on, with a
+snippet that generates from the result. Add `--push_to_hub` to upload the adapter and that card at the end of
+training, `--hub_model_id` to name the repository (the output directory's name by default) and `--hub_token` to
+authenticate as someone other than the logged-in user. Checkpoint directories and logs are left behind.
+
 ### Cyclic peptide check
 
 Trained on 255 CPSea complexes for 1,000 steps on two H200s, starting from weights matched to the updated native

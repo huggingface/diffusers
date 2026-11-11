@@ -30,6 +30,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from filelock import FileLock
+from huggingface_hub import create_repo, upload_folder
 from peft import LoraConfig
 from peft.utils import get_peft_model_state_dict, set_peft_model_state_dict
 from torch.utils.data import DataLoader, Dataset
@@ -40,6 +41,7 @@ from diffusers import RFD4ProteinaAutoencoder, RFD4ProteinaPipeline, RFD4Protein
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import _collate_lora_metadata, cast_training_params
 from diffusers.utils import convert_unet_state_dict_to_peft
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 
 
 logger = get_logger(__name__)
@@ -150,6 +152,14 @@ def parse_args():
         help="Annotated CIF generated from after every `validation_steps` to watch the adapter's effect.",
     )
     parser.add_argument("--validation_steps", type=int, default=250, help="Steps between validation generations.")
+    parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
+    parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
+    parser.add_argument(
+        "--hub_model_id",
+        type=str,
+        default=None,
+        help="The name of the repository to keep in sync with the local `output_dir`.",
+    )
     return parser.parse_args()
 
 
@@ -229,6 +239,68 @@ class PreparedStructureDataset(Dataset):
         return self._features(self.paths[index])
 
 
+def save_model_card(repo_id: str, base_model: str, instance_data_dir: str, repo_folder: str) -> None:
+    """Write a model card describing the adapter and how to generate with it."""
+    model_description = f"""
+# RFD4-Proteina LoRA - {repo_id}
+
+These are LoRA adapter weights for [{base_model}](https://huggingface.co/{base_model}), trained on structures from
+`{Path(instance_data_dir).name}`.
+
+The denoiser was adapted with [the RFD4-Proteina LoRA example](https://github.com/huggingface/diffusers/blob/main/examples/rfd4_proteina/README.md);
+the autoencoder is paired with the checkpoint and stays frozen.
+
+## Generating with the adapter
+
+Structures are read and written by
+[`rfd4-proteina-prep`](https://huggingface.co/nvidia/RFD4-Proteina-prep), which is not part of Diffusers.
+
+```py
+import torch
+from diffusers import RFD4ProteinaPipeline
+from rfd4_proteina_prep import prepare_cif, write_cif
+
+pipe = RFD4ProteinaPipeline.from_pretrained("{base_model}", dtype=torch.bfloat16).to("cuda")
+pipe.load_lora_weights("{repo_id}")
+
+features, atom_array = prepare_cif("input.cif", seed=0, device=pipe.device)
+named = (
+    "padding_mask",
+    "is_in_context_conditioning",
+    "supports_local_latent",
+    "token_type",
+    "atom37_mask",
+    "coords_nm",
+)
+output = pipe(
+    **{{name: features[name] for name in named}},
+    conditioning_features={{name: value for name, value in features.items() if name not in named}},
+    generator=torch.Generator(device=pipe.device).manual_seed(0),
+)
+write_cif(output, features, atom_array, "design.cif")
+```
+
+For weighting, merging and fusing adapters, see the
+[documentation on loading LoRAs](https://huggingface.co/docs/diffusers/main/en/using-diffusers/loading_adapters).
+
+## License
+
+Please adhere to the licensing terms as described in the model repository.
+"""
+    model_card = load_or_create_model_card(
+        repo_id_or_path=repo_id,
+        from_training=True,
+        license="other",
+        base_model=base_model,
+        model_description=model_description,
+    )
+    model_card = populate_model_card(
+        model_card,
+        tags=["rfd4-proteina", "protein-structure", "diffusers-training", "diffusers", "lora", "template:sd-lora"],
+    )
+    model_card.save(os.path.join(repo_folder, "README.md"))
+
+
 def collate_fn(examples):
     """Use one structure per batch because token counts vary."""
     return examples[0]
@@ -294,8 +366,15 @@ def main():
 
     if args.seed is not None:
         set_seed(args.seed)
+    repo_id = None
     if accelerator.is_main_process:
         os.makedirs(args.output_dir, exist_ok=True)
+        if args.push_to_hub:
+            repo_id = create_repo(
+                repo_id=args.hub_model_id or Path(args.output_dir).name,
+                exist_ok=True,
+                token=args.hub_token,
+            ).repo_id
 
     weight_dtype = {"fp16": torch.float16, "bf16": torch.bfloat16}.get(accelerator.mixed_precision, torch.float32)
     load_kwargs = {"revision": args.revision, "variant": args.variant, "cache_dir": args.cache_dir}
@@ -534,6 +613,20 @@ def main():
             **_collate_lora_metadata({"transformer": trained}),
         )
         logger.info(f"Saved the adapter to {args.output_dir}.")
+        save_model_card(
+            repo_id or args.hub_model_id or Path(args.output_dir).name,
+            base_model=args.pretrained_model_name_or_path,
+            instance_data_dir=args.instance_data_dir,
+            repo_folder=args.output_dir,
+        )
+        if args.push_to_hub:
+            upload_folder(
+                repo_id=repo_id,
+                folder_path=args.output_dir,
+                commit_message="End of training",
+                ignore_patterns=["checkpoint-*", "logs/*"],
+                token=args.hub_token,
+            )
     accelerator.end_training()
 
 
