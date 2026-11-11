@@ -984,8 +984,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 more information about each option see [designing a device
                 map](https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference#the-devicemap). You
                 can also refer to the [Diffusers-specific
-                documentation](https://huggingface.co/docs/diffusers/main/en/training/distributed_inference#model-sharding)
-                for more concrete examples.
+                documentation](https://huggingface.co/docs/diffusers/main/en/optimization/device_map) for more concrete
+                examples.
             max_memory (`Dict`, *optional*):
                 A dictionary device identifier for the maximum memory. Will default to the maximum memory available for
                 each GPU and the available CPU RAM if unset.
@@ -1547,7 +1547,18 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if tp_shard_specs is not None:
                 # The weights are already sharded, so this only registers the forward hooks. `_parallel_config`
                 # was recorded by `_resolve_parallel_config` before loading.
+                from torch.distributed.tensor import DTensor
+
                 from ..hooks.tensor_parallel import apply_tensor_parallel
+
+                # Non-persistent buffers are absent from both the state dict and the checkpoint, and
+                # `init_empty_weights` leaves them as real CPU tensors, so move them across explicitly.
+                tp_device = tp_config._device
+                for name, buffer in model.named_buffers():
+                    if buffer.device != tp_device and not isinstance(buffer, DTensor):
+                        module_path, _, buffer_name = name.rpartition(".")
+                        module = model.get_submodule(module_path) if module_path else model
+                        module._buffers[buffer_name] = buffer.to(tp_device)
 
                 apply_tensor_parallel(model, tp_config, cls._tp_plan, weights_already_sharded=True)
             else:
@@ -1780,6 +1791,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 model=self,
             )
             resolve_tp_shard_specs(self, self._tp_plan, _tp_degree(tp_config))
+            logger.warning(
+                "Sharding an in-memory model costs full checkpoint memory on every rank. Prefer "
+                "`from_pretrained(..., parallel_config=...)`, which reads only each rank's shard."
+            )
 
         config = self._resolve_parallel_config(config)
 
