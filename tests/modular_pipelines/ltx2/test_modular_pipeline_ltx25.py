@@ -18,7 +18,9 @@ import PIL.Image
 import pytest
 import torch
 
+from diffusers import LTX2VideoDiffusionDecoderModel
 from diffusers.modular_pipelines import LTX2AutoBlocks, LTX25AutoBlocks, LTX25ModularPipeline
+from diffusers.modular_pipelines.ltx2.decoders import LTX2DiffusionVaeDecoderStep
 from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
 from diffusers.pipelines.ltx2.pipeline_ltx2_ic_lora import LTX2ReferenceCondition
 
@@ -210,6 +212,49 @@ class TestLTX25Text2VideoModularPipelineFast(
         pipe = self.get_pipeline().to("cpu")
         with pytest.raises(ValueError, match="motion_speed"):
             pipe(**self.get_dummy_inputs(), motion_speed=0.0, output="videos")
+
+    def test_decode_step_forwards_keyframes(self):
+        """Keyframe planes and their pixel frames must reach the diffusion decoder through the decode step."""
+        decode = LTX2DiffusionVaeDecoderStep().init_pipeline(self.pretrained_model_name_or_path)
+        decode.load_components(dtype=torch.float32)
+        # The tiny checkpoint has no keyframe tag, so decode with a copy of its decoder that has one.
+        decoder = LTX2VideoDiffusionDecoderModel.from_config(
+            decode.diffusion_decoder.config, decoder_keyframe_type_embedding=True
+        )
+        missing = decoder.load_state_dict(decode.diffusion_decoder.state_dict(), strict=False).missing_keys
+        assert missing == ["decoder.type_emb"]
+        decode.update_components(diffusion_decoder=decoder.eval())
+
+        channels = decoder.config.latent_channels
+        latents = torch.randn(1, channels, 2, 3, 3, generator=torch.Generator().manual_seed(1))
+        keyframes = torch.randn(1, channels, 2, 3, 3, generator=torch.Generator().manual_seed(2))
+        # The decode step alone has no VAE, so it unpacks with the default 32x spatial / 8x temporal ratios:
+        # 96x96 pixels and 9 frames give this 2x3x3 latent grid.
+        call = {
+            "latents": latents.permute(0, 2, 3, 4, 1).reshape(1, 2 * 3 * 3, channels),
+            "height": 96,
+            "width": 96,
+            "num_frames": 9,
+            "dtype": torch.float32,
+            "output_type": "pt",
+            "output": "videos",
+        }
+        plain = decode(**call, generator=self.get_generator(0))
+        with_planes = decode(
+            **call, keyframe_latents=keyframes, keyframe_frame_indices=[1, 2], generator=self.get_generator(0)
+        )
+        assert with_planes.shape == plain.shape
+        assert not torch.allclose(with_planes, plain)
+
+        with torch.no_grad():
+            direct = decoder.decode(
+                latents,
+                generator=self.get_generator(0),
+                return_dict=False,
+                keyframe_latents=keyframes,
+                keyframe_frame_indices=[1, 2],
+            )[0]
+        assert torch.equal(with_planes, decode.video_processor.postprocess_video(direct, output_type="pt"))
 
 
 class TestLTX25Text2VideoModularPipelineLoading(LTX25Text2VideoModularPipelineTesterConfig, ModularLoadingTesterMixin):

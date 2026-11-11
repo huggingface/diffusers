@@ -84,6 +84,8 @@ class LTX2VideoDiffusionDecodePipeline(DiffusionPipeline):
         output_type: str = "pil",
         return_dict: bool = True,
         denormalize: bool = True,
+        keyframe_latents: torch.Tensor | None = None,
+        keyframe_frame_indices: torch.Tensor | list[int] | None = None,
     ) -> LTX2VideoDecodeOutput | tuple:
         r"""
         Args:
@@ -98,20 +100,41 @@ class LTX2VideoDiffusionDecodePipeline(DiffusionPipeline):
                 Whether to return a [`~pipelines.ltx2.pipeline_output.LTX2VideoDecodeOutput`] instead of a plain tuple.
             denormalize (`bool`, *optional*, defaults to `True`):
                 Whether to apply the latent statistics before decoding. Set to `False` if the latents are already
-                denormalized.
+                denormalized. When `True`, the same statistics are applied to `keyframe_latents`.
+            keyframe_latents (`torch.Tensor`, *optional*):
+                Keyframe planes of shape `(B, C, P, H, W)` on the same latent grid as `latents`, one latent frame per
+                plane. Each plane must be the latent of a standalone one-frame clip. Pass the `keyframes` of
+                [`LTX2DFRPipelineOutput`] together with `denormalize=False`.
+            keyframe_frame_indices (`torch.Tensor` or `list[int]`, *optional*):
+                Pixel-frame index of each plane in the decoded video, length `P`. Pass the `keyframe_positions` of
+                [`LTX2DFRPipelineOutput`]. Required when `keyframe_latents` is set.
 
         Returns:
             [`~pipelines.ltx2.pipeline_output.LTX2VideoDecodeOutput`] or `tuple`
         """
         device = self._execution_device
         latents = latents.to(device)
+        if keyframe_latents is not None:
+            keyframe_latents = keyframe_latents.to(device)
 
         if denormalize:
             latents_mean, latents_std, scaling_factor = self._latent_stats(device, latents.dtype)
             latents = self._denormalize_latents(latents, latents_mean, latents_std, scaling_factor)
+            if keyframe_latents is not None:
+                keyframe_latents = self._denormalize_latents(
+                    keyframe_latents, latents_mean, latents_std, scaling_factor
+                )
 
         latents = latents.to(self.diffusion_decoder.dtype)
-        video = self.diffusion_decoder.decode(latents, generator=generator, return_dict=False)[0]
+        if keyframe_latents is not None:
+            keyframe_latents = keyframe_latents.to(self.diffusion_decoder.dtype)
+        video = self.diffusion_decoder.decode(
+            latents,
+            generator=generator,
+            return_dict=False,
+            keyframe_latents=keyframe_latents,
+            keyframe_frame_indices=keyframe_frame_indices,
+        )[0]
         video = self.video_processor.postprocess_video(video, output_type=output_type)
 
         self.maybe_free_model_hooks()

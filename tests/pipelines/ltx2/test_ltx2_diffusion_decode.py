@@ -112,3 +112,63 @@ def test_denormalize_can_be_skipped():
         latents, generator=torch.Generator(torch_device).manual_seed(0), output_type="pt", denormalize=False
     ).frames
     assert not torch.equal(normalized, raw)
+
+
+def _build_keyframe_decoder():
+    torch.manual_seed(0)
+    decoder = (
+        LTX2VideoDiffusionDecoderModel(**DECODER_CONFIG, decoder_keyframe_type_embedding=True).to(torch_device).eval()
+    )
+    with torch.no_grad():
+        decoder.latents_mean.copy_(torch.linspace(-0.1, 0.1, DECODER_CONFIG["latent_channels"]))
+        decoder.latents_std.copy_(torch.linspace(0.5, 1.5, DECODER_CONFIG["latent_channels"]))
+        for parameter in decoder.parameters():
+            parameter.copy_(torch.randn(parameter.shape, generator=torch.Generator("cpu").manual_seed(0)) * 0.3)
+    return decoder
+
+
+def test_decode_pipeline_forwards_keyframes():
+    """Keyframe planes and pixel-frame indices must reach the shared decoder through the public pipeline."""
+    decoder = _build_keyframe_decoder()
+    pipe = LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=FlowMatchEulerDiscreteScheduler())
+    latents = torch.randn(1, 8, 2, 3, 3, generator=torch.Generator().manual_seed(1)).to(torch_device)
+    keyframes = torch.randn(1, 8, 2, 3, 3, generator=torch.Generator().manual_seed(2)).to(torch_device)
+    indices = [8, 16]
+
+    plain = pipe(
+        latents, generator=torch.Generator(torch_device).manual_seed(0), output_type="pt", denormalize=False
+    ).frames
+    with_planes = pipe(
+        latents,
+        generator=torch.Generator(torch_device).manual_seed(0),
+        output_type="pt",
+        denormalize=False,
+        keyframe_latents=keyframes,
+        keyframe_frame_indices=indices,
+    ).frames
+    assert with_planes.shape == plain.shape
+    assert not torch.allclose(with_planes, plain)
+
+    with torch.no_grad():
+        direct = decoder.decode(
+            latents.to(decoder.dtype),
+            generator=torch.Generator(torch_device).manual_seed(0),
+            return_dict=False,
+            keyframe_latents=keyframes.to(decoder.dtype),
+            keyframe_frame_indices=indices,
+        )[0]
+    assert torch.equal(with_planes, pipe.video_processor.postprocess_video(direct, output_type="pt"))
+
+
+def test_decode_pipeline_without_keyframes_matches_plain_decode():
+    decoder = _build_keyframe_decoder()
+    pipe = LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=FlowMatchEulerDiscreteScheduler())
+    latents = torch.randn(1, 8, 2, 3, 3, generator=torch.Generator().manual_seed(1)).to(torch_device)
+    pipeline_out = pipe(
+        latents, generator=torch.Generator(torch_device).manual_seed(0), output_type="pt", denormalize=False
+    ).frames
+    with torch.no_grad():
+        direct = decoder.decode(
+            latents.to(decoder.dtype), generator=torch.Generator(torch_device).manual_seed(0), return_dict=False
+        )[0]
+    assert torch.equal(pipeline_out, pipe.video_processor.postprocess_video(direct, output_type="pt"))
