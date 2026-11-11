@@ -992,7 +992,7 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
         generator: torch.Generator | None = None,
         num_inference_steps: int | None = None,
         return_dict: bool = True,
-    ) -> DecoderOutput | torch.Tensor:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         """Decode a batch of latents.
 
         `z` is expected to be denormalized already (the pipeline applies `latents_mean` / `latents_std`), matching

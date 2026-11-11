@@ -352,7 +352,7 @@ class AutoencoderKLKVAEAudio(ModelMixin, AttentionMixin, AutoencoderMixin, Confi
         return self.decoder(z)
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor]:
         """
         Decode a batch of latents into audio waveforms.
 
@@ -382,7 +382,7 @@ class AutoencoderKLKVAEAudio(ModelMixin, AttentionMixin, AutoencoderMixin, Confi
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> DecoderOutput | torch.Tensor:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         r"""
         Args:
             sample (`torch.Tensor` of shape `(batch_size, num_channels, num_samples)`):
