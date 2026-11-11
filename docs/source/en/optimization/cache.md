@@ -15,6 +15,11 @@ Caching accelerates inference by storing and reusing intermediate outputs of dif
 
 This guide shows you how to use the caching methods supported in Diffusers.
 
+Pyramid Attention Broadcast and FasterCache read the current timestep from the denoiser's `cache_context`.
+When writing a custom denoising loop, wrap each denoiser call with `model.cache_context("cond", timestep=t)`.
+Use a separate context name for each guidance branch, or `"cond_uncond"` for a combined batch, and call
+`model._reset_stateful_cache()` before starting a new generation. The pipeline examples below handle this for you.
+
 ## Pyramid Attention Broadcast
 
 [Pyramid Attention Broadcast (PAB)](https://huggingface.co/papers/2408.12588) is based on the observation that attention outputs aren't that different between successive timesteps of the generation process. The attention differences are smallest in the cross attention layers and are generally cached over a longer timestep range. This is followed by temporal attention and spatial attention layers.
@@ -36,7 +41,6 @@ pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 config = PyramidAttentionBroadcastConfig(
     spatial_attention_block_skip_range=2,
     spatial_attention_timestep_skip_range=(100, 800),
-    current_timestep_callback=lambda: pipe.current_timestep,
 )
 pipeline.transformer.enable_cache(config)
 ```
@@ -53,13 +57,12 @@ Set up and pass a [`FasterCacheConfig`] to a pipeline's transformer to enable it
 import torch
 from diffusers import CogVideoXPipeline, FasterCacheConfig
 
-pipe line= CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
+pipeline = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-5b", dtype=torch.bfloat16)
 pipeline.to("cuda")  # or "mps", "xpu", "cpu"
 
 config = FasterCacheConfig(
     spatial_attention_block_skip_range=2,
     spatial_attention_timestep_skip_range=(-1, 681),
-    current_timestep_callback=lambda: pipe.current_timestep,
     attention_weight_callback=lambda _: 0.3,
     unconditional_batch_skip_range=5,
     unconditional_batch_timestep_skip_range=(-1, 781),

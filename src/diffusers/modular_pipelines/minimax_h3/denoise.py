@@ -120,16 +120,17 @@ class MiniMaxH3LoopDenoiser(ModularPipelineBlocks):
             for name, value in block_state.denoiser_input_fields.items()
             if name in inspect.signature(transformer.forward).parameters
         }
-        block_state.noise_pred, block_state.audio_noise_pred = transformer(
-            hidden_states=block_state.latents[None],
-            audio_hidden_states=block_state.audio_latents[None],
-            encoder_hidden_states=block_state.prompt_embeds,
-            timestep=unique_timesteps,
-            timestep_indices=timestep_indices,
-            attention_kwargs=block_state.attention_kwargs,
-            return_dict=False,
-            **layout_kwargs,
-        )
+        with transformer.cache_context("inference", timestep=t):
+            block_state.noise_pred, block_state.audio_noise_pred = transformer(
+                hidden_states=block_state.latents[None],
+                audio_hidden_states=block_state.audio_latents[None],
+                encoder_hidden_states=block_state.prompt_embeds,
+                timestep=unique_timesteps,
+                timestep_indices=timestep_indices,
+                attention_kwargs=block_state.attention_kwargs,
+                return_dict=False,
+                **layout_kwargs,
+            )
         return components, block_state
 
 

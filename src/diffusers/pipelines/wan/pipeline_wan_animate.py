@@ -1112,7 +1112,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     latent_model_input = torch.cat([latents, reference_latents], dim=1).to(transformer_dtype)
                     timestep = t.expand(latents.shape[0])
 
-                    with self.transformer.cache_context("cond"):
+                    with self.transformer.cache_context("cond", timestep=t):
                         noise_pred = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
@@ -1128,7 +1128,7 @@ class WanAnimatePipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     if self.do_classifier_free_guidance:
                         # Blank out face for unconditional guidance (set all pixels to -1)
                         face_pixel_values_uncond = face_video_segment * 0 - 1
-                        with self.transformer.cache_context("uncond"):
+                        with self.transformer.cache_context("uncond", timestep=t):
                             noise_uncond = self.transformer(
                                 hidden_states=latent_model_input,
                                 timestep=timestep,

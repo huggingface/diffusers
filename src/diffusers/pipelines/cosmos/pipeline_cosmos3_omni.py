@@ -1751,7 +1751,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
                     # --- Conditional pass ---
                     with self.transformer.cache_context(
-                        "cond", step_index=i, sigma=sigma, num_inference_steps=self._num_timesteps
+                        "cond", step_index=i, timestep=t, sigma=sigma, num_inference_steps=self._num_timesteps
                     ):
                         preds_vision, preds_sound, preds_action = self.transformer(
                             input_ids=cond_packed_static["input_ids"],
@@ -1794,7 +1794,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                     uncond_v_vision = uncond_v_sound = uncond_v_action = None
                     if self.do_classifier_free_guidance:
                         with self.transformer.cache_context(
-                            "uncond", step_index=i, sigma=sigma, num_inference_steps=self._num_timesteps
+                            "uncond", step_index=i, timestep=t, sigma=sigma, num_inference_steps=self._num_timesteps
                         ):
                             preds_vision, preds_sound, preds_action = self.transformer(
                                 input_ids=uncond_packed_static["input_ids"],
