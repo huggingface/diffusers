@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Any
 
+from ...dependency_versions_table import deps
 from ...utils import (
     get_module_from_name,
     is_accelerate_available,
@@ -40,7 +41,7 @@ class NVIDIAModelOptQuantizer(DiffusersQuantizer):
     def validate_environment(self, *args, **kwargs):
         if not is_nvidia_modelopt_available():
             raise ImportError(
-                "Loading an nvidia-modelopt quantized model requires nvidia-modelopt library (`pip install nvidia-modelopt`)"
+                f"Loading an nvidia-modelopt quantized model requires `{deps['nvidia_modelopt[hf]']}` (`pip install -U '{deps['nvidia_modelopt[hf]']}'`)"
             )
 
         self.offload = False
