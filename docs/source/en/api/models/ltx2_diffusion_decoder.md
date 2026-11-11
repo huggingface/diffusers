@@ -98,9 +98,9 @@ video = decoder.decode(
 ```
 
 The planes go through the same weights as the video. In every attention layer each video position also attends to the
-same spatial window on its two nearest planes, and each plane to the same window on its two nearest frames. This joint
-attention runs on a built-in PyTorch implementation whatever attention processor is set, since neither FlexAttention's
-block mask nor NATTEN expresses it.
+same spatial window on its two nearest planes (frames before the first plane attend to that plane alone), and each
+plane to the same window on its two nearest frames. This joint attention runs on a built-in PyTorch implementation
+whatever attention processor is set, since neither FlexAttention's block mask nor NATTEN expresses it.
 
 Checkpoints trained for keyframe decoding also carry a learned tag added to the plane latents, which
 `decoder_keyframe_type_embedding=True` creates as `decoder.type_emb`. Decoding with keyframe planes on a checkpoint that
