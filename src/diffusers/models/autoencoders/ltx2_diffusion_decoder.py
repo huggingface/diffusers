@@ -96,7 +96,8 @@ def _neighborhood_block_mask(
 # A keyframe decode carries a second stream through the decoder: a stack of single-frame latent *planes* `(B, P, H,
 # W, C)` whose plane axis sits in the video's temporal slot. Every weight is shared between the two streams, and they
 # only mix inside one joint neighborhood-attention softmax, where each video query also sees the same spatial window
-# on its two nearest planes and each plane query also sees its two nearest video frames.
+# on its two nearest planes (only the first plane, for frames before it) and each plane query also sees its two nearest
+# video frames.
 # --------------------------------------------------------------------------------------------------------------------
 
 # Keyframe planes visible to one video query, and video frames visible to one plane query.
@@ -554,9 +555,9 @@ def _joint_neighborhood_attention(
     """Joint neighborhood attention over a video volume and a stack of keyframe planes, one softmax per query.
 
     A video query at `(t, h, w)` attends to its `Kt x Kh x Kw` video window plus the `Kh x Kw` window at the same `(h,
-    w)` on each of its `_KEYFRAME_CONTEXT_SLOTS` nearest planes, ranked by `|t - keyframe_times|` whatever `Kt` is. A
-    plane query attends to the `Kh x Kw` window on its own plane (there is no plane-to-plane attention) plus the same
-    window on each of its nearest video frames.
+    w)` on each of its `_KEYFRAME_CONTEXT_SLOTS` nearest planes, ranked by `|t - keyframe_times|` whatever `Kt` is; a
+    frame before the first plane sees that plane only. A plane query attends to the `Kh x Kw` window on its own plane
+    (there is no plane-to-plane attention) plus the same window on each of its nearest video frames.
 
     Unlike [`LTX2VideoVaeNeighborhoodAttnProcessor`] and NATTEN, whose windows shift inward at the volume border, every
     window here is centered and *clamped*: offsets that fall outside the volume are masked out. That is also why no
@@ -575,6 +576,8 @@ def _joint_neighborhood_attention(
     keyframe_times = keyframe_times.to(device=query.device, dtype=torch.float32)
     frame_times = torch.arange(num_frames, dtype=torch.float32, device=query.device)
     video_slots = _nearest_slots(frame_times, keyframe_times, _KEYFRAME_CONTEXT_SLOTS)
+    # The reference decoder gives frames before the first plane that plane alone, not their two nearest.
+    video_slots[frame_times < keyframe_times.min(), 1:] = -1
     keyframe_slots = _nearest_slots(keyframe_times, frame_times, _KEYFRAME_CONTEXT_SLOTS)
 
     side = max(1, round(math.sqrt(_JOINT_BRICK_QUERIES)))
@@ -1488,9 +1491,10 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
 
     Decoding can be anchored on *keyframe planes*: single-frame latents at known pixel frames, each encoded as a
     standalone one-frame clip, passed as `keyframe_latents` / `keyframe_frame_indices` to [`decode`]. Every video
-    position then also attends to the same spatial window on its two nearest planes. Checkpoints trained for it carry a
-    learned tag added to the plane latents, `decoder.type_emb`, which `decoder_keyframe_type_embedding=True` creates.
-    Decoding with keyframe planes on a checkpoint that lacks that tag raises rather than decoding them untagged.
+    position then also attends to the same spatial window on its two nearest planes, or on the first plane alone for
+    frames before it. Checkpoints trained for it carry a learned tag added to the plane latents, `decoder.type_emb`,
+    which `decoder_keyframe_type_embedding=True` creates. Decoding with keyframe planes on a checkpoint that lacks that
+    tag raises rather than decoding them untagged.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
@@ -1921,7 +1925,7 @@ class LTX2VideoDiffusionDecoderModel(ModelMixin, AttentionMixin, ConfigMixin):
             keyframe_latents (`torch.Tensor`, *optional*):
                 Keyframe planes of shape `(B, C, P, H, W)`, denormalized like `z` and on its latent grid, one latent
                 frame per plane, each encoded as a standalone one-frame clip. Every video position also attends to the
-                same spatial window on its two nearest planes.
+                same spatial window on its two nearest planes, or on the first plane alone for frames before it.
             keyframe_frame_indices (`torch.Tensor`, *optional*):
                 The `(P,)` pixel frame of each plane in the decoded video. Required with `keyframe_latents`.
 

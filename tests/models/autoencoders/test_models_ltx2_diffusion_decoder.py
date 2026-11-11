@@ -247,7 +247,7 @@ def _dense_joint_attention(query, key, value, keyframe_query, keyframe_key, keyf
 
     An independent statement of the visibility rule `_joint_neighborhood_attention` implements with query bricks: a
     centered window clamped (not shifted) at the volume border, the same spatial window on the two planes nearest a
-    frame, and the same spatial window on the two frames nearest a plane.
+    frame (only the first plane for frames before it), and the same spatial window on the two frames nearest a plane.
     """
     batch_size, num_frames, height, width, heads, head_dim = query.shape
     num_planes = keyframe_query.shape[1]
@@ -255,6 +255,7 @@ def _dense_joint_attention(query, key, value, keyframe_query, keyframe_key, keyf
     hi = [k - l - 1 for k, l in zip(kernel, lo)]
     frame_times = torch.arange(num_frames, dtype=torch.float32)
     video_slots = torch.argsort((frame_times[:, None] - keyframe_times[None]).abs(), dim=-1, stable=True)[:, :2]
+    video_slots[frame_times < keyframe_times.min(), 1:] = -1
     plane_slots = torch.argsort((keyframe_times[:, None] - frame_times[None]).abs(), dim=-1, stable=True)[:, :2]
 
     def grid(length):
@@ -416,6 +417,27 @@ class TestLTX2VideoDiffusionDecoderModelKeyframes(LTX2VideoDiffusionDecoderModel
         )
         for got, expected in zip(ours, dense):
             assert torch.allclose(got, expected, atol=1e-5, rtol=1e-5), (got - expected).abs().max()
+
+    def test_frames_before_the_first_plane_see_only_that_plane(self):
+        """A frame before the first plane attends to it alone, so the second plane cannot reach it."""
+        generator = torch.Generator().manual_seed(0)
+        query, key, value = (torch.randn((1, 6, 5, 5, 2, 16), generator=generator) for _ in range(3))
+        keyframe_query, keyframe_key, keyframe_value = (
+            torch.randn((1, 2, 5, 5, 2, 16), generator=generator) for _ in range(3)
+        )
+        keyframe_times = torch.tensor([3.0, 5.0])
+        video, _ = ltx2_diffusion_decoder._joint_neighborhood_attention(
+            query, key, value, keyframe_query, keyframe_key, keyframe_value, keyframe_times, (3, 3, 3)
+        )
+
+        keyframe_key, keyframe_value = keyframe_key.clone(), keyframe_value.clone()
+        keyframe_key[:, 1] = torch.randn(keyframe_key[:, 1].shape, generator=generator)
+        keyframe_value[:, 1] = torch.randn(keyframe_value[:, 1].shape, generator=generator)
+        changed, _ = ltx2_diffusion_decoder._joint_neighborhood_attention(
+            query, key, value, keyframe_query, keyframe_key, keyframe_value, keyframe_times, (3, 3, 3)
+        )
+        assert torch.equal(changed[:, :3], video[:, :3])
+        assert not torch.allclose(changed[:, 3:], video[:, 3:])
 
     def test_keyframe_geometry(self):
         indices = torch.tensor([0, 8, 16])
