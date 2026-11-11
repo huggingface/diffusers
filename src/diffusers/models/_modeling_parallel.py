@@ -288,12 +288,12 @@ class ContextParallelOutput:
 @dataclass(frozen=True)
 class Conditional:
     """
-    Marks a `_cp_plan` or `_tp_plan` entry whose module does not exist on every instance of the model class.
-    For example, different checkpoints of the same model class might have different layers / modules.
+    Marks a `_cp_plan` or `_tp_plan` entry whose module does not exist on every instance of the model class. For
+    example, different checkpoints of the same model class might have different layers / modules.
 
-    A plan entry must resolve to a module, so a typo in a key raises. Wrap the value of an entry in
-    `Conditional` when its module depends on the config or the checkpoint. The entry is skipped
-    wherever the module is missing or set to `None`, and a warning is logged if it matches no module at all.
+    A plan entry must resolve to a module, so a typo in a key raises. Wrap the value of an entry in `Conditional` when
+    its module depends on the config or the checkpoint. The entry is skipped wherever the module is missing or set to
+    `None`, and a warning is logged if it matches no module at all.
 
     Args:
         value:
