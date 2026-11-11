@@ -1582,6 +1582,28 @@ def _convert_fal_kontext_lora_to_diffusers(original_state_dict):
                 f"{original_block_prefix}final_layer.linear.{lora_key}.bias"
             )
 
+    # Some fal-kontext LoRAs carry the global embedder keys (time_in, vector_in, txt_in, img_in, guidance_in)
+    # without the `base_model.model.` prefix the block keys use.
+    for lora_key in ["lora_A", "lora_B"]:
+        for src, dst in [
+            (f"time_in.in_layer.{lora_key}.weight", f"time_text_embed.timestep_embedder.linear_1.{lora_key}.weight"),
+            (f"time_in.out_layer.{lora_key}.weight", f"time_text_embed.timestep_embedder.linear_2.{lora_key}.weight"),
+            (f"vector_in.in_layer.{lora_key}.weight", f"time_text_embed.text_embedder.linear_1.{lora_key}.weight"),
+            (f"vector_in.out_layer.{lora_key}.weight", f"time_text_embed.text_embedder.linear_2.{lora_key}.weight"),
+            (f"txt_in.{lora_key}.weight", f"context_embedder.{lora_key}.weight"),
+            (f"img_in.{lora_key}.weight", f"x_embedder.{lora_key}.weight"),
+            (
+                f"guidance_in.in_layer.{lora_key}.weight",
+                f"time_text_embed.guidance_embedder.linear_1.{lora_key}.weight",
+            ),
+            (
+                f"guidance_in.out_layer.{lora_key}.weight",
+                f"time_text_embed.guidance_embedder.linear_2.{lora_key}.weight",
+            ),
+        ]:
+            if src in original_state_dict:
+                converted_state_dict[dst] = original_state_dict.pop(src)
+
     if len(original_state_dict) > 0:
         raise ValueError(f"`original_state_dict` should be empty at this point but has {original_state_dict.keys()=}.")
 
