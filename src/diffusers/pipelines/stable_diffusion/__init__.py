@@ -8,7 +8,6 @@ from ...utils import (
     is_onnx_available,
     is_torch_available,
     is_transformers_available,
-    is_transformers_version,
 )
 
 
@@ -36,7 +35,7 @@ else:
     _import_structure["safety_checker"] = ["StableDiffusionSafetyChecker"]
     _import_structure["stable_unclip_image_normalizer"] = ["StableUnCLIPImageNormalizer"]
 try:
-    if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.25.0")):
+    if not (is_transformers_available() and is_torch_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import (
@@ -47,7 +46,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipeline_stable_diffusion_image_variation"] = ["StableDiffusionImageVariationPipeline"]
 try:
-    if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.26.0")):
+    if not (is_transformers_available() and is_torch_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import (
@@ -108,7 +107,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
     try:
-        if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.25.0")):
+        if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import (
@@ -120,7 +119,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
 
     try:
-        if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.26.0")):
+        if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import StableDiffusionDepth2ImgPipeline

@@ -21,6 +21,7 @@ import importlib
 
 from packaging import version
 
+from ..dependency_versions_table import deps
 from . import logging
 from .import_utils import is_peft_available, is_torch_available
 from .torch_utils import empty_device_cache
@@ -358,7 +359,7 @@ def check_peft_version(min_version: str) -> None:
             The version of PEFT to check against.
     """
     if not is_peft_available():
-        raise ValueError("PEFT is not installed. Please install it with `pip install peft`")
+        raise ValueError(f"PEFT is not installed. Please install it with `pip install -U '{deps['peft']}'`")
 
     is_peft_version_compatible = version.parse(importlib.metadata.version("peft")) >= version.parse(min_version)
 

@@ -24,7 +24,7 @@ from torch import nn
 from ..image_processor import IPAdapterMaskProcessor
 from ..utils import deprecate, is_torch_xla_available, logging
 from ..utils.import_utils import is_torch_npu_available, is_torch_xla_version, is_xformers_available
-from ..utils.torch_utils import is_torch_version, maybe_allow_in_graph
+from ..utils.torch_utils import maybe_allow_in_graph
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -2087,12 +2087,6 @@ class AllegroAttnProcessor2_0:
 class AuraFlowAttnProcessor2_0:
     """Attention processor used typically in processing Aura Flow."""
 
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention") and is_torch_version("<", "2.1"):
-            raise ImportError(
-                "AuraFlowAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to at least 2.1 or above as we use `scale` in `F.scaled_dot_product_attention()`. "
-            )
-
     def __call__(
         self,
         attn: Attention,
@@ -2179,12 +2173,6 @@ class AuraFlowAttnProcessor2_0:
 
 class FusedAuraFlowAttnProcessor2_0:
     """Attention processor used typically in processing Aura Flow with fused projections."""
-
-    def __init__(self):
-        if not hasattr(F, "scaled_dot_product_attention") and is_torch_version("<", "2.1"):
-            raise ImportError(
-                "FusedAuraFlowAttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to at least 2.1 or above as we use `scale` in `F.scaled_dot_product_attention()`. "
-            )
 
     def __call__(
         self,
