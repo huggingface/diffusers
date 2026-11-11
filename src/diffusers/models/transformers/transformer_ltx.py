@@ -22,7 +22,7 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import apply_lora_scale, deprecate, is_torch_version, logging
+from ...utils import apply_lora_scale, deprecate, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
@@ -53,12 +53,6 @@ class LTXVideoAttnProcessor:
 
     _attention_backend = None
     _parallel_config = None
-
-    def __init__(self):
-        if is_torch_version("<", "2.0"):
-            raise ValueError(
-                "LTX attention processors require a minimum PyTorch version of 2.0. Please upgrade your PyTorch installation."
-            )
 
     def __call__(
         self,

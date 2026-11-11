@@ -38,6 +38,7 @@ from torch import Tensor, nn
 from typing_extensions import Self
 
 from .. import __version__
+from ..dependency_versions_table import deps
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
@@ -58,7 +59,6 @@ from ..utils import (
     is_bitsandbytes_version,
     is_flashpack_available,
     is_peft_available,
-    is_torch_version,
     logging,
 )
 from ..utils.distributed_utils import is_torch_dist_rank_zero
@@ -127,10 +127,7 @@ TORCH_INIT_FUNCTIONS = {
     "kaiming_normal": nn.init.kaiming_normal,
 }
 
-if is_torch_version(">=", "1.9.0"):
-    _LOW_CPU_MEM_USAGE_DEFAULT = True
-else:
-    _LOW_CPU_MEM_USAGE_DEFAULT = False
+_LOW_CPU_MEM_USAGE_DEFAULT = True
 
 
 if is_accelerate_available():
@@ -313,11 +310,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if gradient_checkpointing_func is None:
 
             def _gradient_checkpointing_func(module, *args):
-                ckpt_kwargs = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
                 return torch.utils.checkpoint.checkpoint(
                     module.__call__,
                     *args,
-                    **ckpt_kwargs,
+                    use_reentrant=False,
                 )
 
             gradient_checkpointing_func = _gradient_checkpointing_func
@@ -664,9 +660,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 continue
             processor._attention_backend = backend
 
-        # Important to set the active backend so that it propagates gracefully throughout.
-        _AttentionBackendRegistry.set_active_backend(backend)
-
     def reset_attention_backend(self) -> None:
         """
         Resets the attention backend for the model. Following calls to `forward` will use the environment default, if
@@ -819,22 +812,28 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 state_dict, max_shard_size=max_shard_size, filename_pattern=weights_name_pattern
             )
 
-            # Clean the folder from a previous save
+            # Clean the folder from a previous save. Match only shards of the exact
+            # checkpoint being written (same variant and serialization format): the
+            # prefix must be anchored, or a default save (weights_name
+            # "diffusion_pytorch_model") would also match another variant's shards
+            # ("diffusion_pytorch_model.ema-00001-of-00002") via a bare startswith
+            # and delete them while leaving that variant's index behind.
             if is_main_process:
+                weights_without_ext, ext = os.path.splitext(weights_name)
+                index_file = _add_variant(
+                    SAFE_WEIGHTS_INDEX_NAME if safe_serialization else WEIGHTS_INDEX_NAME, variant
+                )
                 for filename in os.listdir(save_directory):
                     if filename in state_dict_split.filename_to_tensors.keys():
                         continue
                     full_filename = os.path.join(save_directory, filename)
                     if not os.path.isfile(full_filename):
                         continue
-                    weights_without_ext = weights_name_pattern.replace(".bin", "").replace(".safetensors", "")
-                    weights_without_ext = weights_without_ext.replace("{suffix}", "")
-                    filename_without_ext = filename.replace(".bin", "").replace(".safetensors", "")
-                    # make sure that file to be deleted matches format of sharded file, e.g. pytorch_model-00001-of-00005
-                    if (
-                        filename.startswith(weights_without_ext)
-                        and _REGEX_SHARD.fullmatch(filename_without_ext) is not None
-                    ):
+                    # only remove shards of the checkpoint being written; another variant's shards share the prefix
+                    shard_match = _REGEX_SHARD.fullmatch(filename.removesuffix(ext))
+                    is_prior_shard = shard_match is not None and shard_match.group(1) == weights_without_ext
+                    is_stale_index = filename == index_file and not state_dict_split.is_sharded
+                    if is_prior_shard or is_stale_index:
                         os.remove(full_filename)
 
             for filename, tensors in state_dict_split.filename_to_tensors.items():
@@ -981,8 +980,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 more information about each option see [designing a device
                 map](https://huggingface.co/docs/accelerate/en/concept_guides/big_model_inference#the-devicemap). You
                 can also refer to the [Diffusers-specific
-                documentation](https://huggingface.co/docs/diffusers/main/en/training/distributed_inference#model-sharding)
-                for more concrete examples.
+                documentation](https://huggingface.co/docs/diffusers/main/en/optimization/device_map) for more concrete
+                examples.
             max_memory (`Dict`, *optional*):
                 A dictionary device identifier for the maximum memory. Will default to the maximum memory available for
                 each GPU and the available CPU RAM if unset.
@@ -1088,20 +1087,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if device_map is not None and not is_accelerate_available():
             raise NotImplementedError(
                 "Loading and dispatching requires `accelerate`. Please make sure to install accelerate or set"
-                " `device_map=None`. You can install accelerate with `pip install accelerate`."
-            )
-
-        # Check if we can handle device_map and dispatching the weights
-        if device_map is not None and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `device_map=None`."
-            )
-
-        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `low_cpu_mem_usage=False`."
+                f" `device_map=None`. You can install accelerate with `pip install -U '{deps['accelerate']}'`."
             )
 
         if low_cpu_mem_usage is False and device_map is not None:
@@ -1134,11 +1120,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 low_cpu_mem_usage = True
             elif not low_cpu_mem_usage:
                 raise ValueError("Passing along a `device_map` requires `low_cpu_mem_usage=True`")
-
-        if low_cpu_mem_usage:
-            if device_map is not None and not is_torch_version(">=", "1.10"):
-                # The max memory utils require PyTorch >= 1.10 to have torch.cuda.mem_get_info.
-                raise ValueError("`low_cpu_mem_usage` and `device_map` require PyTorch >= 1.10.")
 
         user_agent = {
             "diffusers": __version__,
@@ -1544,7 +1525,18 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if tp_shard_specs is not None:
                 # The weights are already sharded, so this only registers the forward hooks. `_parallel_config`
                 # was recorded by `_resolve_parallel_config` before loading.
+                from torch.distributed.tensor import DTensor
+
                 from ..hooks.tensor_parallel import apply_tensor_parallel
+
+                # Non-persistent buffers are absent from both the state dict and the checkpoint, and
+                # `init_empty_weights` leaves them as real CPU tensors, so move them across explicitly.
+                tp_device = tp_config._device
+                for name, buffer in model.named_buffers():
+                    if buffer.device != tp_device and not isinstance(buffer, DTensor):
+                        module_path, _, buffer_name = name.rpartition(".")
+                        module = model.get_submodule(module_path) if module_path else model
+                        module._buffers[buffer_name] = buffer.to(tp_device)
 
                 apply_tensor_parallel(model, tp_config, cls._tp_plan, weights_already_sharded=True)
             else:
@@ -1566,11 +1558,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 raise ValueError(
                     "Calling `cuda()` is not supported for `8-bit` quantized models with the installed version of bitsandbytes. "
                     f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.48.0."
-                )
-            elif getattr(self, "is_loaded_in_4bit", False) and is_bitsandbytes_version("<", "0.43.2"):
-                raise ValueError(
-                    "Calling `cuda()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
-                    f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
                 )
 
         # Checks if group offloading is enabled
@@ -1625,11 +1612,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 raise ValueError(
                     "Calling `to()` is not supported for `8-bit` quantized models with the installed version of bitsandbytes. "
                     f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.48.0."
-                )
-            elif getattr(self, "is_loaded_in_4bit", False) and is_bitsandbytes_version("<", "0.43.2"):
-                raise ValueError(
-                    "Calling `to()` is not supported for `4-bit` quantized models with the installed version of bitsandbytes. "
-                    f"The current device is `{self.device}`. If you intended to move the model, please install bitsandbytes >= 0.43.2."
                 )
         if _is_group_offload_enabled(self) and device_arg_or_kwarg_present:
             logger.warning(
@@ -1777,6 +1759,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 model=self,
             )
             resolve_tp_shard_specs(self, self._tp_plan, _tp_degree(tp_config))
+            logger.warning(
+                "Sharding an in-memory model costs full checkpoint memory on every rank. Prefer "
+                "`from_pretrained(..., parallel_config=...)`, which reads only each rank's shard."
+            )
 
         config = self._resolve_parallel_config(config)
 
@@ -2133,7 +2119,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             else:
                 raise ValueError(
                     "bitsandbytes is not installed but it seems that the model has been loaded in 4bit precision, something went wrong"
-                    " make sure to install bitsandbytes with `pip install bitsandbytes`. You also need a GPU. "
+                    f" make sure to install bitsandbytes with `pip install -U '{deps['bitsandbytes']}'`. You also need a GPU. "
                 )
 
         if exclude_embeddings:

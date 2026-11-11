@@ -51,7 +51,7 @@ from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_instru
     StableDiffusionXLInstructPix2PixPipeline,
 )
 from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version, deprecate, is_wandb_available, load_image
+from diffusers.utils import check_min_version, is_wandb_available, load_image
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
@@ -486,15 +486,6 @@ def main():
             " Please use `hf auth login` to authenticate with the Hub."
         )
 
-    if args.non_ema_revision is not None:
-        deprecate(
-            "non_ema_revision!=None",
-            "0.15.0",
-            message=(
-                "Downloading 'non_ema' weights from revision branches of the Hub is deprecated. Please make sure to"
-                " use `--variant=non_ema` instead."
-            ),
-        )
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
 
     if torch.backends.mps.is_available() and args.mixed_precision == "bf16":

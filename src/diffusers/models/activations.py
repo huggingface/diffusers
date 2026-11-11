@@ -18,7 +18,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..utils import deprecate
-from ..utils.import_utils import is_torch_npu_available, is_torch_version
+from ..utils.import_utils import is_torch_npu_available
 
 
 if is_torch_npu_available():
@@ -79,9 +79,6 @@ class GELU(nn.Module):
         self.approximate = approximate
 
     def gelu(self, gate: torch.Tensor) -> torch.Tensor:
-        if gate.device.type == "mps" and is_torch_version("<", "2.0.0"):
-            # fp16 gelu not supported on mps before torch 2.0
-            return F.gelu(gate.to(dtype=torch.float32), approximate=self.approximate).to(dtype=gate.dtype)
         return F.gelu(gate, approximate=self.approximate)
 
     def forward(self, hidden_states) -> torch.Tensor:
@@ -105,9 +102,6 @@ class GEGLU(nn.Module):
         self.proj = nn.Linear(dim_in, dim_out * 2, bias=bias)
 
     def gelu(self, gate: torch.Tensor) -> torch.Tensor:
-        if gate.device.type == "mps" and is_torch_version("<", "2.0.0"):
-            # fp16 gelu not supported on mps before torch 2.0
-            return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
         return F.gelu(gate)
 
     def forward(self, hidden_states, *args, **kwargs) -> torch.Tensor:
