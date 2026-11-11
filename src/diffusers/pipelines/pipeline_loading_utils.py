@@ -602,17 +602,8 @@ def _load_empty_model(
         cache_dir=cached_folder,
     )
 
-    if is_transformers_available():
-        transformers_version = version.parse(version.parse(transformers.__version__).base_version)
-    else:
-        transformers_version = "N/A"
-
     # Determine library.
-    is_transformers_model = (
-        is_transformers_available()
-        and issubclass(class_obj, PreTrainedModel)
-        and transformers_version >= version.parse("4.20.0")
-    )
+    is_transformers_model = is_transformers_available() and issubclass(class_obj, PreTrainedModel)
     diffusers_module = importlib.import_module(__name__.split(".")[0])
     is_diffusers_model = issubclass(class_obj, diffusers_module.ModelMixin)
 
@@ -862,11 +853,7 @@ def load_sub_model(
     else:
         transformers_version = "N/A"
 
-    is_transformers_model = (
-        is_transformers_available()
-        and issubclass(class_obj, PreTrainedModel)
-        and transformers_version >= version.parse("4.20.0")
-    )
+    is_transformers_model = is_transformers_available() and issubclass(class_obj, PreTrainedModel)
 
     # For transformers models >= 4.56.0, use 'dtype' instead of 'torch_dtype' to avoid deprecation warnings
     if issubclass(class_obj, torch.nn.Module):
@@ -893,17 +880,7 @@ def load_sub_model(
         if is_diffusers_model:
             loading_kwargs["use_flashpack"] = use_flashpack
 
-        # the following can be deleted once the minimum required `transformers` version
-        # is higher than 4.27
-        if (
-            is_transformers_model
-            and loading_kwargs["variant"] is not None
-            and transformers_version < version.parse("4.27.0")
-        ):
-            raise ImportError(
-                f"When passing `variant='{variant}'`, please make sure to upgrade your `transformers` version to at least 4.27.0.dev0"
-            )
-        elif is_transformers_model and loading_kwargs["variant"] is None:
+        if is_transformers_model and loading_kwargs["variant"] is None:
             loading_kwargs.pop("variant")
 
         loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
