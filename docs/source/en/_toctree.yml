@@ -555,6 +555,8 @@
         title: AudioLDM 2
       - local: api/pipelines/longcat_audio_dit
         title: LongCat-AudioDiT
+      - local: api/pipelines/minimax_music3
+        title: MiniMax Music 3
       - local: api/pipelines/stable_audio
         title: Stable Audio
       - local: api/pipelines/stable_audio_3
@@ -563,8 +565,6 @@
     - sections:
       - local: api/pipelines/anima
         title: Anima
-      - local: api/pipelines/animatediff
-        title: AnimateDiff
       - local: api/pipelines/aura_flow
         title: AuraFlow
       - local: api/pipelines/bria_3_2
@@ -607,10 +607,6 @@
         title: DiT
       - local: api/pipelines/dreamlite
         title: DreamLite
-      - local: api/pipelines/easyanimate
-        title: EasyAnimate
-      - local: api/pipelines/echo
-        title: Echo
       - local: api/pipelines/ernie_image
         title: ERNIE-Image
       - local: api/pipelines/flux
@@ -675,8 +671,6 @@
         title: P-H3-Image
       - local: api/pipelines/pag
         title: PAG
-      - local: api/pipelines/pika_h3_flex
-        title: Pika H3 Flex
       - local: api/pipelines/pixart
         title: PixArt-α
       - local: api/pipelines/pixart_sigma
@@ -693,10 +687,6 @@
         title: Sana
       - local: api/pipelines/sana_sprint
         title: Sana Sprint
-      - local: api/pipelines/sana_video
-        title: Sana Video
-      - local: api/pipelines/sana_wm
-        title: SANA-WM
       - local: api/pipelines/shap_e
         title: Shap-E
       - local: api/pipelines/stable_cascade
@@ -751,6 +741,8 @@
     - sections:
       - local: api/pipelines/allegro
         title: Allegro
+      - local: api/pipelines/animatediff
+        title: AnimateDiff
       - local: api/pipelines/anyflow
         title: AnyFlow
       - local: api/pipelines/chronoedit
@@ -763,6 +755,10 @@
         title: Cosmos
       - local: api/pipelines/cosmos3
         title: Cosmos3
+      - local: api/pipelines/easyanimate
+        title: EasyAnimate
+      - local: api/pipelines/echo
+        title: Echo
       - local: api/pipelines/framepack
         title: Framepack
       - local: api/pipelines/helios
@@ -783,8 +779,6 @@
         title: LTX-2
       - local: api/pipelines/ltx_video
         title: LTXVideo
-      - local: api/pipelines/minimax_music3
-        title: MiniMax Music 3
       - local: api/pipelines/minimax_h3
         title: MiniMax-H3
       - local: api/pipelines/mochi
@@ -793,6 +787,12 @@
         title: Motif-Video
       - local: api/pipelines/pan2
         title: PAN 2
+      - local: api/pipelines/pika_h3_flex
+        title: Pika H3 Flex
+      - local: api/pipelines/sana_video
+        title: Sana Video
+      - local: api/pipelines/sana_wm
+        title: SANA-WM
       - local: api/pipelines/skyreels_v2
         title: SkyReels-V2
       - local: api/pipelines/stable_diffusion/svd
