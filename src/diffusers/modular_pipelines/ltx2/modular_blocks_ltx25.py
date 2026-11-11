@@ -57,6 +57,12 @@ class LTX25DecoderStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           dtype (`dtype`):
               The dtype of the model inputs, can be generated in input step.
+          keyframe_latents (`Tensor`, *optional*):
+              Denormalized keyframe planes `(B, C, P, H, W)` on the unpacked latent grid, one latent frame per plane.
+              Same contract as `LTX2DFRPipelineOutput.keyframes`. Omit for a plain decode.
+          keyframe_frame_indices (`list`, *optional*):
+              Pixel-frame index of each keyframe plane, length `P`. Same contract as
+              `LTX2DFRPipelineOutput.keyframe_positions`. Required when `keyframe_latents` is set.
           audio_latents (`Tensor`):
               Denoised audio latents.
           audio_num_frames (`int`):
@@ -115,6 +121,12 @@ class LTX25ConditionDecoderStep(SequentialPipelineBlocks):
               Torch generator for deterministic generation.
           dtype (`dtype`):
               The dtype of the model inputs, can be generated in input step.
+          keyframe_latents (`Tensor`, *optional*):
+              Denormalized keyframe planes `(B, C, P, H, W)` on the unpacked latent grid, one latent frame per plane.
+              Same contract as `LTX2DFRPipelineOutput.keyframes`. Omit for a plain decode.
+          keyframe_frame_indices (`list`, *optional*):
+              Pixel-frame index of each keyframe plane, length `P`. Same contract as
+              `LTX2DFRPipelineOutput.keyframe_positions`. Required when `keyframe_latents` is set.
           audio_latents (`Tensor`):
               Denoised audio latents.
           audio_num_frames (`int`):
@@ -176,6 +188,12 @@ class LTX25AutoDecoderStep(AutoPipelineBlocks):
               Torch generator for deterministic generation.
           dtype (`dtype`):
               The dtype of the model inputs, can be generated in input step.
+          keyframe_latents (`Tensor`, *optional*):
+              Denormalized keyframe planes `(B, C, P, H, W)` on the unpacked latent grid, one latent frame per plane.
+              Same contract as `LTX2DFRPipelineOutput.keyframes`. Omit for a plain decode.
+          keyframe_frame_indices (`list`, *optional*):
+              Pixel-frame index of each keyframe plane, length `P`. Same contract as
+              `LTX2DFRPipelineOutput.keyframe_positions`. Required when `keyframe_latents` is set.
           audio_latents (`Tensor`):
               Denoised audio latents.
           audio_num_frames (`int`):
@@ -336,6 +354,12 @@ class LTX25AutoBlocks(SequentialPipelineBlocks):
               VAE-encoded reference-image latents used for image-to-video conditioning.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
+          keyframe_latents (`Tensor`, *optional*):
+              Denormalized keyframe planes `(B, C, P, H, W)` on the unpacked latent grid, one latent frame per plane.
+              Same contract as `LTX2DFRPipelineOutput.keyframes`. Omit for a plain decode.
+          keyframe_frame_indices (`list`, *optional*):
+              Pixel-frame index of each keyframe plane, length `P`. Same contract as
+              `LTX2DFRPipelineOutput.keyframe_positions`. Required when `keyframe_latents` is set.
 
       Outputs:
           videos (`list`):
