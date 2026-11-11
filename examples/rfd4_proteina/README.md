@@ -67,6 +67,23 @@ accelerate launch examples/rfd4_proteina/train_rfd4_proteina_lora.py \
   --seed 0
 ```
 
+To upload the final adapter and its model card, log in with `hf auth login` and add
+`--push_to_hub --hub_model_id your-username/rfd4-proteina-lora`. Authentication also supports `HF_TOKEN` or `--hub_token` to override the logged-in account.
+Only the final adapter and model card are uploaded. Every run writes a model card to `--output_dir`, even without upload.
+
+For a Hub dataset, replace `--instance_data_dir` with `--dataset_name your-username/annotated-structures`.
+Use `--dataset_config_name`, `--dataset_split` (default `train`), `--dataset_revision` and `--structure_column`
+(default `structure`) to select the data. The column must contain annotated `.cif`, `.cif.gz` or `.cif.zst` files
+stored with `AtomicStructure`. Original file bytes are cached without decoding so conditioning annotations are preserved;
+ordinary unannotated structures still need the preparation described above.
+
+`AtomicStructure` is currently in [Datasets PR #8895](https://github.com/huggingface/datasets/pull/8895).
+Until it is released, `--dataset_name` requires this revision; local CIF training does not require Datasets:
+
+```bash
+pip install git+https://github.com/huggingface/datasets.git@9ddf85d4fbd0aacba0b04911b12ee8527103c23a
+```
+
 Training uses rank 32 / alpha 64 adapters on `to_q`, `to_k`, `to_v` and `to_out`, following the released recipe.
 The flow-matching loss scores the predicted clean backbone and local latents. It does not include the native
 trainer's auxiliary sequence and insertion losses.
@@ -83,11 +100,6 @@ Use `--checkpointing_steps` and `--checkpoints_total_limit` to control checkpoin
 
 Pass `--validation_cif` to generate a structure every `--validation_steps`. Validation runs on the main process,
 with dropout disabled, and writes a CIF next to the adapter. It uses the checkpoint's full sampling schedule.
-
-A run writes a model card next to the adapter, naming the base checkpoint and the structures trained on, with a
-snippet that generates from the result. Add `--push_to_hub` to upload the adapter and that card at the end of
-training, `--hub_model_id` to name the repository (the output directory's name by default) and `--hub_token` to
-authenticate as someone other than the logged-in user. Checkpoint directories and logs are left behind.
 
 ### Cyclic peptide check
 

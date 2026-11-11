@@ -30,7 +30,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from filelock import FileLock
-from huggingface_hub import create_repo, upload_folder
+from huggingface_hub import ModelCard, ModelCardData, create_repo, upload_folder
 from peft import LoraConfig
 from peft.utils import get_peft_model_state_dict, set_peft_model_state_dict
 from torch.utils.data import DataLoader, Dataset
@@ -41,7 +41,7 @@ from diffusers import RFD4ProteinaAutoencoder, RFD4ProteinaPipeline, RFD4Protein
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import _collate_lora_metadata, cast_training_params
 from diffusers.utils import convert_unet_state_dict_to_peft
-from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
+from diffusers.utils.hub_utils import MODEL_CARD_TEMPLATE_PATH, populate_model_card
 
 
 logger = get_logger(__name__)
@@ -80,9 +80,23 @@ def parse_args():
     parser.add_argument(
         "--instance_data_dir",
         type=str,
-        required=True,
+        default=None,
         help="Directory searched recursively for the annotated CIF files to fine-tune on.",
     )
+    parser.add_argument("--dataset_name", type=str, default=None, help="Dataset id or local dataset path.")
+    parser.add_argument("--dataset_config_name", type=str, default=None, help="Dataset configuration.")
+    parser.add_argument("--dataset_revision", type=str, default=None, help="Dataset revision to load.")
+    parser.add_argument("--dataset_split", type=str, default="train", help="Dataset split to train on.")
+    parser.add_argument(
+        "--structure_column", type=str, default="structure", help="AtomicStructure column of annotated CIFs."
+    )
+    parser.add_argument(
+        "--push_to_hub", action="store_true", help="Upload the final adapter and model card to the Hub."
+    )
+    parser.add_argument(
+        "--hub_token", type=str, default=None, help="Token to use instead of the logged-in Hub account."
+    )
+    parser.add_argument("--hub_model_id", type=str, default=None, help="Hub repository for the trained adapter.")
     parser.add_argument(
         "--features_cache_dir",
         type=str,
@@ -152,15 +166,116 @@ def parse_args():
         help="Annotated CIF generated from after every `validation_steps` to watch the adapter's effect.",
     )
     parser.add_argument("--validation_steps", type=int, default=250, help="Steps between validation generations.")
-    parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
-    parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
-    parser.add_argument(
-        "--hub_model_id",
-        type=str,
-        default=None,
-        help="The name of the repository to keep in sync with the local `output_dir`.",
+    args = parser.parse_args()
+    if (args.instance_data_dir is None) == (args.dataset_name is None):
+        parser.error("Specify exactly one of --instance_data_dir or --dataset_name.")
+    return args
+
+
+def prepare_dataset(args):
+    """Keep the original CIF bytes so conditioning annotations survive loading."""
+    try:
+        from datasets import AtomicStructure, DownloadManager, config, load_dataset
+    except ImportError as error:
+        raise ImportError(
+            "--dataset_name requires Datasets with AtomicStructure support; see the example README."
+        ) from error
+
+    dataset = load_dataset(
+        args.dataset_name,
+        args.dataset_config_name,
+        split=args.dataset_split,
+        revision=args.dataset_revision,
+        cache_dir=args.cache_dir,
     )
-    return parser.parse_args()
+    if args.structure_column not in dataset.column_names:
+        raise ValueError(f"Dataset has no {args.structure_column!r} column. Choose it with --structure_column.")
+    dataset = dataset.select_columns([args.structure_column]).cast_column(
+        args.structure_column, AtomicStructure(decode=False)
+    )
+    root = Path(args.cache_dir or config.HF_DATASETS_CACHE) / "rfd4_proteina" / dataset._fingerprint
+    root.mkdir(parents=True, exist_ok=True)
+    downloader = DownloadManager()
+    with FileLock(str(root) + ".lock"):
+        for index, row in enumerate(dataset):
+            source = row[args.structure_column]
+            suffix = next(
+                (ext for ext in (".cif", ".cif.gz", ".cif.zst") if (source["path"] or "structure.cif").endswith(ext)),
+                None,
+            )
+            if suffix is None:
+                raise ValueError(
+                    f"Row {index}: expected an annotated .cif, .cif.gz or .cif.zst, got {source['path']!r}."
+                )
+            path = root / f"{index}{suffix}"
+            if path.is_file():
+                continue
+            content = source["bytes"]
+            if content is None:
+                content = Path(downloader.download(source["path"])).read_bytes()
+            temporary = path.with_name(path.name + ".tmp")
+            temporary.write_bytes(content)
+            os.replace(temporary, path)
+    return root
+
+
+def save_model_card(args, adapter_id, num_structures, global_step):
+    dataset_description = (
+        f"{args.dataset_name} (config: {args.dataset_config_name or 'default'}, split: {args.dataset_split}, "
+        f"revision: {args.dataset_revision or 'default'})"
+        if args.dataset_name
+        else f"Local annotated CIFs ({Path(args.instance_data_dir).name})"
+    )
+    model_description = f"""
+# RFD4-Proteina LoRA
+
+Adapter for `{args.pretrained_model_name_or_path}` (revision: `{args.revision or "default"}`).
+The autoencoder and base denoiser were frozen.
+
+## Training
+
+- Dataset: {dataset_description}
+- Structures after filtering: {num_structures}
+- Optimizer steps: {global_step}; learning rate: {args.learning_rate}
+- Rank: {args.rank}; alpha: {args.lora_alpha}; dropout: {args.lora_dropout}
+- Target modules: {", ".join(args.target_modules)}
+- Seed: {args.seed}; precision: {args.mixed_precision or "Accelerate configuration"}
+
+Training uses backbone and local-latent flow-matching losses, without the native auxiliary sequence and insertion losses.
+
+## Inference
+
+```python
+import torch
+from diffusers import RFD4ProteinaPipeline
+from rfd4_proteina_prep import prepare_cif, write_cif
+
+pipe = RFD4ProteinaPipeline.from_pretrained(
+    {args.pretrained_model_name_or_path!r}, revision={args.revision!r}, variant={args.variant!r}, dtype=torch.bfloat16
+).to("cuda")
+pipe.load_lora_weights({adapter_id!r})
+features, atom_array = prepare_cif("input.cif", seed=0, device=pipe.device)
+named = {PIPELINE_INPUTS!r}
+inputs = {{name: features[name] for name in named}}
+conditioning = {{name: value for name, value in features.items() if name not in named}}
+output = pipe(
+    **inputs,
+    conditioning_features=conditioning,
+    generator=torch.Generator(device=pipe.device).manual_seed(0),
+)
+write_cif(output, features, atom_array, "generated.cif")
+```
+
+See the [training example](https://github.com/huggingface/diffusers/tree/main/examples/rfd4_proteina#inference)
+for CIF preparation and generation. Follow the base model and dataset licenses when using or sharing this adapter.
+"""
+    card = ModelCard.from_template(
+        ModelCardData(library_name="diffusers", base_model=args.pretrained_model_name_or_path, inference=False),
+        template_path=MODEL_CARD_TEMPLATE_PATH,
+        model_description=model_description,
+    )
+    card = populate_model_card(card, tags=["diffusers-training", "lora", "rfd4-proteina"])
+    card.save(Path(args.output_dir) / "README.md")
 
 
 class PreparedStructureDataset(Dataset):
@@ -239,68 +354,6 @@ class PreparedStructureDataset(Dataset):
         return self._features(self.paths[index])
 
 
-def save_model_card(repo_id: str, base_model: str, instance_data_dir: str, repo_folder: str) -> None:
-    """Write a model card describing the adapter and how to generate with it."""
-    model_description = f"""
-# RFD4-Proteina LoRA - {repo_id}
-
-These are LoRA adapter weights for [{base_model}](https://huggingface.co/{base_model}), trained on structures from
-`{Path(instance_data_dir).name}`.
-
-The denoiser was adapted with [the RFD4-Proteina LoRA example](https://github.com/huggingface/diffusers/blob/main/examples/rfd4_proteina/README.md);
-the autoencoder is paired with the checkpoint and stays frozen.
-
-## Generating with the adapter
-
-Structures are read and written by
-[`rfd4-proteina-prep`](https://huggingface.co/nvidia/RFD4-Proteina-prep), which is not part of Diffusers.
-
-```py
-import torch
-from diffusers import RFD4ProteinaPipeline
-from rfd4_proteina_prep import prepare_cif, write_cif
-
-pipe = RFD4ProteinaPipeline.from_pretrained("{base_model}", dtype=torch.bfloat16).to("cuda")
-pipe.load_lora_weights("{repo_id}")
-
-features, atom_array = prepare_cif("input.cif", seed=0, device=pipe.device)
-named = (
-    "padding_mask",
-    "is_in_context_conditioning",
-    "supports_local_latent",
-    "token_type",
-    "atom37_mask",
-    "coords_nm",
-)
-output = pipe(
-    **{{name: features[name] for name in named}},
-    conditioning_features={{name: value for name, value in features.items() if name not in named}},
-    generator=torch.Generator(device=pipe.device).manual_seed(0),
-)
-write_cif(output, features, atom_array, "design.cif")
-```
-
-For weighting, merging and fusing adapters, see the
-[documentation on loading LoRAs](https://huggingface.co/docs/diffusers/main/en/using-diffusers/loading_adapters).
-
-## License
-
-Please adhere to the licensing terms as described in the model repository.
-"""
-    model_card = load_or_create_model_card(
-        repo_id_or_path=repo_id,
-        from_training=True,
-        license="other",
-        base_model=base_model,
-        model_description=model_description,
-    )
-    model_card = populate_model_card(
-        model_card,
-        tags=["rfd4-proteina", "protein-structure", "diffusers-training", "diffusers", "lora", "template:sd-lora"],
-    )
-    model_card.save(os.path.join(repo_folder, "README.md"))
-
-
 def collate_fn(examples):
     """Use one structure per batch because token counts vary."""
     return examples[0]
@@ -366,14 +419,11 @@ def main():
 
     if args.seed is not None:
         set_seed(args.seed)
-    repo_id = None
     if accelerator.is_main_process:
         os.makedirs(args.output_dir, exist_ok=True)
         if args.push_to_hub:
             repo_id = create_repo(
-                repo_id=args.hub_model_id or Path(args.output_dir).name,
-                exist_ok=True,
-                token=args.hub_token,
+                args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
             ).repo_id
 
     weight_dtype = {"fp16": torch.float16, "bf16": torch.bfloat16}.get(accelerator.mixed_precision, torch.float32)
@@ -467,8 +517,9 @@ def main():
         eps=args.adam_epsilon,
     )
     with accelerator.main_process_first():
+        data_dir = prepare_dataset(args) if args.dataset_name else args.instance_data_dir
         dataset = PreparedStructureDataset(
-            args.instance_data_dir, seed=args.prep_seed, max_tokens=args.max_tokens, cache_dir=args.features_cache_dir
+            data_dir, seed=args.prep_seed, max_tokens=args.max_tokens, cache_dir=args.features_cache_dir
         )
     dataloader = DataLoader(
         dataset,
@@ -489,7 +540,11 @@ def main():
     if accelerator.is_main_process:
         # Trackers take scalars, so the list of adapted modules is logged as one string.
         accelerator.init_trackers(
-            "rfd4-proteina-lora", config={**vars(args), "target_modules": ",".join(args.target_modules)}
+            "rfd4-proteina-lora",
+            config={
+                **{key: value for key, value in vars(args).items() if key != "hub_token"},
+                "target_modules": ",".join(args.target_modules),
+            },
         )
 
     logger.info("***** Running training *****")
@@ -600,9 +655,7 @@ def main():
             if global_step >= args.max_train_steps:
                 break
         if global_step == 0:
-            raise ValueError(
-                f"No structure under {args.instance_data_dir} could be trained on; see the warnings above."
-            )
+            raise ValueError(f"No structure under {data_dir} could be trained on; see the warnings above.")
 
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -612,21 +665,16 @@ def main():
             transformer_lora_layers=get_peft_model_state_dict(trained),
             **_collate_lora_metadata({"transformer": trained}),
         )
-        logger.info(f"Saved the adapter to {args.output_dir}.")
-        save_model_card(
-            repo_id or args.hub_model_id or Path(args.output_dir).name,
-            base_model=args.pretrained_model_name_or_path,
-            instance_data_dir=args.instance_data_dir,
-            repo_folder=args.output_dir,
-        )
+        save_model_card(args, repo_id if args.push_to_hub else args.output_dir, len(dataset), global_step)
         if args.push_to_hub:
             upload_folder(
                 repo_id=repo_id,
                 folder_path=args.output_dir,
+                allow_patterns=["README.md", "pytorch_lora_weights.safetensors"],
                 commit_message="End of training",
-                ignore_patterns=["checkpoint-*", "logs/*"],
                 token=args.hub_token,
             )
+        logger.info(f"Saved the adapter to {args.output_dir}.")
     accelerator.end_training()
 
 
