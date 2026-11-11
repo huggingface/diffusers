@@ -50,7 +50,9 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_magvit"] = ["AutoencoderKLMagvit"]
     _import_structure["autoencoders.autoencoder_kl_minimax_h3"] = ["AutoencoderKLMiniMaxH3"]
     _import_structure["autoencoders.autoencoder_kl_minimax_h3_audio"] = ["AutoencoderKLMiniMaxH3Audio"]
+    _import_structure["autoencoders.autoencoder_kl_minimax_h3_image"] = ["AutoencoderKLMiniMaxH3Image"]
     _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
+    _import_structure["autoencoders.autoencoder_kl_p_h3_image"] = ["AutoencoderKLPH3Image"]
     _import_structure["autoencoders.autoencoder_kl_qwenimage"] = ["AutoencoderKLQwenImage"]
     _import_structure["autoencoders.autoencoder_kl_qwenimage21"] = ["AutoencoderKLQwenImage21"]
     _import_structure["autoencoders.autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
@@ -76,6 +78,7 @@ if is_torch_available():
     _import_structure["condition_embedders.condition_embedder_gligen"] = ["CLIPImageProjection"]
     _import_structure["condition_embedders.condition_embedder_ltx2"] = ["LTX2TextConnectors"]
     _import_structure["condition_embedders.condition_embedder_minimax_music3"] = ["MiniMaxMusic3ConditionEncoder"]
+    _import_structure["condition_embedders.condition_embedder_p_h3_image"] = ["PH3ImageTextConnector"]
     _import_structure["condition_embedders.condition_embedder_stable_audio"] = ["StableAudioProjectionModel"]
     _import_structure["condition_embedders.condition_embedder_stable_audio_3"] = ["StableAudio3DurationEmbedder"]
     _import_structure["controlnets.controlnet"] = ["ControlNetModel"]
@@ -149,6 +152,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_kandinsky"] = ["Kandinsky5Transformer3DModel"]
     _import_structure["transformers.transformer_kandinsky6"] = ["Kandinsky6Transformer3DModel"]
     _import_structure["transformers.transformer_kandinsky6_sr"] = ["Kandinsky6SRTransformer3DModel"]
+    _import_structure["transformers.transformer_kandinsky_s2v"] = ["KandinskyS2VTransformer3DModel"]
     _import_structure["transformers.transformer_krea2"] = ["Krea2Transformer2DModel"]
     _import_structure["transformers.transformer_longcat_audio_dit"] = ["LongCatAudioDiTTransformer"]
     _import_structure["transformers.transformer_longcat_image"] = ["LongCatImageTransformer2DModel"]
@@ -156,12 +160,14 @@ if is_torch_available():
     _import_structure["transformers.transformer_ltx2"] = ["LTX2VideoTransformer3DModel"]
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
     _import_structure["transformers.transformer_minimax_h3"] = ["MiniMaxH3Transformer3DModel"]
+    _import_structure["transformers.transformer_minimax_h3_image"] = ["MiniMaxH3ImageTransformer2DModel"]
     _import_structure["transformers.transformer_minimax_music3"] = ["MiniMaxMusic3Transformer1DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
     _import_structure["transformers.transformer_motif_video"] = ["MotifVideoTransformer3DModel"]
     _import_structure["transformers.transformer_nucleusmoe_image"] = ["NucleusMoEImageTransformer2DModel"]
     _import_structure["transformers.transformer_omnigen"] = ["OmniGenTransformer2DModel"]
     _import_structure["transformers.transformer_ovis_image"] = ["OvisImageTransformer2DModel"]
+    _import_structure["transformers.transformer_pan2"] = ["PAN2Transformer3DModel"]
     _import_structure["transformers.transformer_prx"] = ["PRXTransformer2DModel"]
     _import_structure["transformers.transformer_qwenimage"] = ["QwenImageTransformer2DModel"]
     _import_structure["transformers.transformer_qwenimage21"] = ["QwenImage21Transformer2DModel"]
@@ -218,7 +224,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLMagvit,
             AutoencoderKLMiniMaxH3,
             AutoencoderKLMiniMaxH3Audio,
+            AutoencoderKLMiniMaxH3Image,
             AutoencoderKLMochi,
+            AutoencoderKLPH3Image,
             AutoencoderKLQwenImage,
             AutoencoderKLQwenImage21,
             AutoencoderKLTemporalDecoder,
@@ -247,6 +255,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CLIPImageProjection,
             LTX2TextConnectors,
             MiniMaxMusic3ConditionEncoder,
+            PH3ImageTextConnector,
             ReduxImageEncoder,
             StableAudio3DurationEmbedder,
             StableAudioProjectionModel,
@@ -313,6 +322,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky5Transformer3DModel,
             Kandinsky6SRTransformer3DModel,
             Kandinsky6Transformer3DModel,
+            KandinskyS2VTransformer3DModel,
             Krea2Transformer2DModel,
             LatteTransformer3DModel,
             LongCatAudioDiTTransformer,
@@ -321,6 +331,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
+            MiniMaxH3ImageTransformer2DModel,
             MiniMaxH3Transformer3DModel,
             MiniMaxMusic3RVQDepthDecoder,
             MiniMaxMusic3Transformer1DModel,
@@ -329,6 +340,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             NucleusMoEImageTransformer2DModel,
             OmniGenTransformer2DModel,
             OvisImageTransformer2DModel,
+            PAN2Transformer3DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
             PRXTransformer2DModel,

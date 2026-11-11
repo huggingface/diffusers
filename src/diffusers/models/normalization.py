@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..utils import is_torch_npu_available, is_torch_version
+from ..utils import is_torch_npu_available
 from .activations import get_activation
 from .embeddings import CombinedTimestepLabelEmbeddings, PixArtAlphaCombinedTimestepSizeEmbeddings
 
@@ -337,7 +337,7 @@ class AdaLayerNormContinuous(nn.Module):
         self.silu = nn.SiLU()
         self.linear = nn.Linear(conditioning_embedding_dim, embedding_dim * 2, bias=bias)
         if norm_type == "layer_norm":
-            self.norm = LayerNorm(embedding_dim, eps, elementwise_affine, bias)
+            self.norm = nn.LayerNorm(embedding_dim, eps, elementwise_affine, bias)
         elif norm_type == "rms_norm":
             self.norm = RMSNorm(embedding_dim, eps, elementwise_affine)
         else:
@@ -374,7 +374,7 @@ class LuminaLayerNormContinuous(nn.Module):
         self.linear_1 = nn.Linear(conditioning_embedding_dim, embedding_dim, bias=bias)
 
         if norm_type == "layer_norm":
-            self.norm = LayerNorm(embedding_dim, eps, elementwise_affine, bias)
+            self.norm = nn.LayerNorm(embedding_dim, eps, elementwise_affine, bias)
         elif norm_type == "rms_norm":
             self.norm = RMSNorm(embedding_dim, eps=eps, elementwise_affine=elementwise_affine)
         else:
@@ -467,44 +467,6 @@ class CogVideoXLayerNormZero(nn.Module):
         hidden_states = self.norm(hidden_states) * (1 + scale)[:, None, :] + shift[:, None, :]
         encoder_hidden_states = self.norm(encoder_hidden_states) * (1 + enc_scale)[:, None, :] + enc_shift[:, None, :]
         return hidden_states, encoder_hidden_states, gate[:, None, :], enc_gate[:, None, :]
-
-
-if is_torch_version(">=", "2.1.0"):
-    LayerNorm = nn.LayerNorm
-else:
-    # Has optional bias parameter compared to torch layer norm
-    # TODO: replace with torch layernorm once min required torch version >= 2.1
-    class LayerNorm(nn.Module):
-        r"""
-        LayerNorm with the bias parameter.
-
-        Args:
-            dim (`int`): Dimensionality to use for the parameters.
-            eps (`float`, defaults to 1e-5): Epsilon factor.
-            elementwise_affine (`bool`, defaults to `True`):
-                Boolean flag to denote if affine transformation should be applied.
-            bias (`bias`, defaults to `True`): Boolean flag to denote if bias should be use.
-        """
-
-        def __init__(self, dim, eps: float = 1e-5, elementwise_affine: bool = True, bias: bool = True):
-            super().__init__()
-
-            self.eps = eps
-
-            if isinstance(dim, numbers.Integral):
-                dim = (dim,)
-
-            self.dim = torch.Size(dim)
-
-            if elementwise_affine:
-                self.weight = nn.Parameter(torch.ones(dim))
-                self.bias = nn.Parameter(torch.zeros(dim)) if bias else None
-            else:
-                self.weight = None
-                self.bias = None
-
-        def forward(self, input) -> torch.Tensor:
-            return F.layer_norm(input, self.dim, self.weight, self.bias, self.eps)
 
 
 class RMSNorm(nn.Module):

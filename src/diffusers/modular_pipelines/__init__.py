@@ -91,6 +91,12 @@ else:
         "Ideogram4AutoBlocks",
         "Ideogram4ModularPipeline",
     ]
+    _import_structure["kandinsky_s2v"] = [
+        "KandinskyS2VAutoBlocks",
+        "KandinskyS2VDistilledAutoBlocks",
+        "KandinskyS2VDistilledModularPipeline",
+        "KandinskyS2VModularPipeline",
+    ]
     _import_structure["krea2"] = [
         "Krea2AutoBlocks",
         "Krea2ModularPipeline",
@@ -149,9 +155,22 @@ else:
         "MiniMaxH3Blocks",
         "MiniMaxH3ModularPipeline",
     ]
+    _import_structure["minimax_h3_image"] = [
+        "MiniMaxH3ImageBlocks",
+        "MiniMaxH3ImageModularPipeline",
+    ]
     _import_structure["minimax_music3"] = [
         "MiniMaxMusic3Blocks",
         "MiniMaxMusic3ModularPipeline",
+    ]
+    _import_structure["pan2"] = [
+        "PAN2Blocks",
+        "PAN2ModularPipeline",
+        "PAN2SafetyChecker",
+    ]
+    _import_structure["p_h3_image"] = [
+        "PH3ImageBlocks",
+        "PH3ImageModularPipeline",
     ]
     _import_structure["pika_h3_flex"] = [
         "PikaH3FlexBlocks",
@@ -211,6 +230,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Ideogram4AutoBlocks,
             Ideogram4ModularPipeline,
         )
+        from .kandinsky_s2v import (
+            KandinskyS2VAutoBlocks,
+            KandinskyS2VDistilledAutoBlocks,
+            KandinskyS2VDistilledModularPipeline,
+            KandinskyS2VModularPipeline,
+        )
         from .krea2 import (
             Krea2AutoBlocks,
             Krea2ModularPipeline,
@@ -222,6 +247,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .minimax_h3 import (
             MiniMaxH3Blocks,
             MiniMaxH3ModularPipeline,
+        )
+        from .minimax_h3_image import (
+            MiniMaxH3ImageBlocks,
+            MiniMaxH3ImageModularPipeline,
         )
         from .minimax_music3 import (
             MiniMaxMusic3Blocks,
@@ -238,6 +267,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SequentialPipelineBlocks,
         )
         from .modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, InsertableDict, OutputParam
+        from .p_h3_image import (
+            PH3ImageBlocks,
+            PH3ImageModularPipeline,
+        )
+        from .pan2 import PAN2Blocks, PAN2ModularPipeline, PAN2SafetyChecker
         from .pika_h3_flex import (
             PikaH3FlexBlocks,
             PikaH3FlexModularPipeline,

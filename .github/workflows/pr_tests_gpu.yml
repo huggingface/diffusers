@@ -302,7 +302,7 @@ jobs:
       env:
         HF_OIDC_RESOURCE: ${{ !github.event.pull_request.head.repo.fork && 'Diffusers-CI-Bot' || '' }}
       run: |
-        uv pip install ".[training]"
+        uv pip install ".[training]" --upgrade-package protobuf
         pytest -n 1 --max-worker-restart=0 --dist=loadfile --make-reports=examples_torch_cuda examples/
 
     - name: Failure short reports

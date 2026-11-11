@@ -186,26 +186,8 @@ if _CAN_USE_XFORMERS_ATTN:
 else:
     xops = None
 
-# Version guard for PyTorch compatibility - custom_op was added in PyTorch 2.4
-if torch.__version__ >= "2.4.0":
-    _custom_op = torch.library.custom_op
-    _register_fake = torch.library.register_fake
-else:
-
-    def custom_op_no_op(name, fn=None, /, *, mutates_args, device_types=None, schema=None):
-        def wrap(func):
-            return func
-
-        return wrap if fn is None else fn
-
-    def register_fake_no_op(op, fn=None, /, *, lib=None, _stacklevel=1):
-        def wrap(func):
-            return func
-
-        return wrap if fn is None else fn
-
-    _custom_op = custom_op_no_op
-    _register_fake = register_fake_no_op
+_custom_op = torch.library.custom_op
+_register_fake = torch.library.register_fake
 
 
 # TODO(aryan): Add support for the following:
@@ -344,16 +326,16 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
     AttentionBackendName.FLASH_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_func",
-        wrapped_forward_attr="flash_attn_interface._flash_attn_forward",
-        wrapped_backward_attr="flash_attn_interface._flash_attn_backward",
-        version=3,
+        wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_forward",
+        wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_backward",
+        version=4,
     ),
     AttentionBackendName.FLASH_VARLEN_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_varlen_func",
-        wrapped_forward_attr="flash_attn_interface._flash_attn_varlen_forward",
-        wrapped_backward_attr="flash_attn_interface._flash_attn_varlen_backward",
-        version=3,
+        wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_varlen_forward",
+        wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_varlen_backward",
+        version=4,
     ),
     AttentionBackendName.SAGE_HUB: _HubKernelConfig(
         repo_id="SageAttention/sage-attention",

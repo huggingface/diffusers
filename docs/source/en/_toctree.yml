@@ -63,22 +63,28 @@
       title: Caching
     - local: optimization/attention_backends
       title: Attention backends
+    - local: using-diffusers/batched_inference
+      title: Batch inference
     - local: optimization/memory
       title: Reduce memory usage
+    - local: hybrid_inference/overview
+      title: Remote inference
     - local: optimization/speed-memory-optims
       title: Compiling and offloading quantized models
-    title: Inference
+    title: Speed and memory
   - isExpanded: false
     sections:
-    - local: optimization/cache_dit
-      title: CacheDiT
-    - local: optimization/para_attn
-      title: ParaAttention
-    - local: optimization/pruna
-      title: Pruna
-    - local: optimization/xdit
-      title: xDiT
-    title: Community methods
+    - local: training/distributed_inference
+      title: Overview
+    - local: optimization/data_parallelism
+      title: Data parallelism
+    - local: optimization/device_map
+      title: Model sharding with device_map
+    - local: optimization/context_parallelism
+      title: Context parallelism
+    - local: optimization/tensor_parallelism
+      title: Tensor parallelism
+    title: Distributed inference
   - isExpanded: false
     sections:
     - local: quantization/overview
@@ -121,15 +127,15 @@
     title: Hardware-specific acceleration
   - isExpanded: false
     sections:
-    - local: using-diffusers/create_a_server
-      title: Create a server
-    - local: using-diffusers/batched_inference
-      title: Batch inference
-    - local: training/distributed_inference
-      title: Distributed inference
-    - local: hybrid_inference/overview
-      title: Remote inference
-    title: Serving and scaling
+    - local: optimization/cache_dit
+      title: CacheDiT
+    - local: optimization/para_attn
+      title: ParaAttention
+    - local: optimization/pruna
+      title: Pruna
+    - local: optimization/xdit
+      title: xDiT
+    title: Community methods
   title: Optimize and scale
 - isExpanded: false
   sections:
@@ -239,8 +245,6 @@
     - local: using-diffusers/controlling_generation
       title: Controlled generation
     title: Concepts and background
-  - local: community_projects
-    title: Projects built with Diffusers
   title: Resources
 - isExpanded: false
   sections:
@@ -381,6 +385,8 @@
         title: JoyImageEditTransformer3DModel
       - local: api/models/kandinsky6_transformer
         title: Kandinsky 6 Transformers
+      - local: api/models/kandinsky_s2v_transformer
+        title: KandinskyS2VTransformer3DModel
       - local: api/models/krea2_transformer2d
         title: Krea2Transformer2DModel
       - local: api/models/latte_transformer3d
@@ -395,6 +401,8 @@
         title: Lumina2Transformer2DModel
       - local: api/models/lumina_nextdit2d
         title: LuminaNextDiT2DModel
+      - local: api/models/minimax_h3_image_transformer2d
+        title: MiniMaxH3ImageTransformer2DModel
       - local: api/models/minimax_h3_transformer3d
         title: MiniMaxH3Transformer3DModel
       - local: api/models/minimax_music3_transformer
@@ -407,6 +415,8 @@
         title: OmniGenTransformer2DModel
       - local: api/models/ovisimage_transformer2d
         title: OvisImageTransformer2DModel
+      - local: api/models/pan2_transformer3d
+        title: PAN2Transformer3DModel
       - local: api/models/pixart_transformer2d
         title: PixArtTransformer2DModel
       - local: api/models/prior_transformer
@@ -503,8 +513,12 @@
         title: AutoencoderKLMiniMaxH3
       - local: api/models/autoencoderkl_minimax_h3_audio
         title: AutoencoderKLMiniMaxH3Audio
+      - local: api/models/autoencoderkl_minimax_h3_image
+        title: AutoencoderKLMiniMaxH3Image
       - local: api/models/autoencoderkl_mochi
         title: AutoencoderKLMochi
+      - local: api/models/autoencoderkl_p_h3_image
+        title: AutoencoderKLPH3Image
       - local: api/models/autoencoderkl_qwenimage
         title: AutoencoderKLQwenImage
       - local: api/models/autoencoderkl_qwenimage21
@@ -649,12 +663,16 @@
         title: Lumina-T2X
       - local: api/pipelines/marigold
         title: Marigold
+      - local: api/pipelines/minimax_h3_image
+        title: MiniMax-H3-Image
       - local: api/pipelines/nucleusmoe_image
         title: NucleusMoE-Image
       - local: api/pipelines/omnigen
         title: OmniGen
       - local: api/pipelines/ovis_image
         title: Ovis-Image
+      - local: api/pipelines/p_h3_image
+        title: P-H3-Image
       - local: api/pipelines/pag
         title: PAG
       - local: api/pipelines/pika_h3_flex
@@ -757,6 +775,8 @@
         title: Kandinsky 5.0 Video
       - local: api/pipelines/kandinsky6
         title: Kandinsky 6
+      - local: api/pipelines/kandinsky_s2v
+        title: Kandinsky S2V 1.0
       - local: api/pipelines/latte
         title: Latte
       - local: api/pipelines/ltx2
@@ -771,6 +791,8 @@
         title: Mochi
       - local: api/pipelines/motif_video
         title: Motif-Video
+      - local: api/pipelines/pan2
+        title: PAN 2
       - local: api/pipelines/skyreels_v2
         title: SkyReels-V2
       - local: api/pipelines/stable_diffusion/svd
