@@ -182,6 +182,40 @@ class TestStableAudio3DiTModelBehavior(unittest.TestCase):
         out = model(hs, t, ctx, glob)
         self.assertEqual(out.sample.shape, hs.shape)
 
+    def test_rotary_partial_matches_angle_table_reference(self):
+        """Rotating with the precomputed (cos, sin) pair equals rotating with the angle table, bit for bit."""
+        from diffusers.models.transformers.transformer_stable_audio3 import (
+            StableAudio3RotaryEmbedding,
+            _apply_rotary_partial,
+        )
+
+        torch.manual_seed(0)
+        freqs = StableAudio3RotaryEmbedding(8)(12, "cpu").float()
+        rot_dim = freqs.shape[-1]
+        for dtype in (torch.float32, torch.float16, torch.bfloat16):
+            t = torch.randn(2, 12, 4, 16).to(dtype)
+            t_rot, t_pass = t[..., :rot_dim].float(), t[..., rot_dim:]
+            x1, x2 = t_rot.unflatten(-1, (2, -1)).unbind(-2)
+            angles = freqs.unsqueeze(1)
+            ref = t_rot * angles.cos() + torch.cat((-x2, x1), dim=-1) * angles.sin()
+            ref = torch.cat((ref.to(dtype), t_pass), dim=-1)
+            self.assertTrue(torch.equal(_apply_rotary_partial(t, (freqs.cos(), freqs.sin())), ref))
+
+    def test_rms_norm_low_precision_gamma_matches_float32_reference(self):
+        """A bf16 / fp16 `gamma` gives the same output as multiplying by `gamma.float()`, bit for bit."""
+        from diffusers.models.transformers.transformer_stable_audio3 import StableAudio3RMSNorm
+
+        torch.manual_seed(0)
+        for dtype in (torch.float16, torch.bfloat16):
+            norm = StableAudio3RMSNorm(16).to(dtype)
+            with torch.no_grad():
+                norm.gamma.uniform_(0.5, 1.5)
+                x = torch.randn(2, 12, 16).to(dtype)
+                h = x.float()
+                h = h * torch.rsqrt(h.pow(2).mean(-1, keepdim=True) + norm.eps)
+                ref = (h * norm.gamma.float()).to(dtype)
+                self.assertTrue(torch.equal(norm(x), ref))
+
     def test_differential_attention(self):
         """use_differential_attention=True should produce valid output shape."""
         model = StableAudio3DiTModel(**dict(TINY_CFG, use_differential_attention=True))
