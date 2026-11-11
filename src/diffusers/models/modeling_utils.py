@@ -1242,7 +1242,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             tp_config = (
                 parallel_config
                 if isinstance(parallel_config, TensorParallelConfig)
-                else parallel_config.tensor_parallel_config
+                else getattr(parallel_config, "tensor_parallel_config", None)
             )
             if tp_config is not None and tp_config.tp_degree == 1 and tp_config.mesh is None:
                 # Nothing to shard, so take the ordinary loader rather than building 1-rank DTensors.

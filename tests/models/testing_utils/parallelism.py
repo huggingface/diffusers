@@ -21,7 +21,15 @@ import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
-from diffusers.models._modeling_parallel import ContextParallelConfig, TensorParallelConfig
+from diffusers.configuration_utils import ConfigMixin, register_to_config
+from diffusers.models import ModelMixin
+from diffusers.models._modeling_parallel import (
+    Conditional,
+    ContextParallelConfig,
+    ContextParallelInput,
+    ContextParallelOutput,
+    TensorParallelConfig,
+)
 from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
 from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME
 
@@ -55,6 +63,63 @@ def _find_free_port():
         s.listen(1)
         port = s.getsockname()[1]
     return port
+
+
+class DummyConditionalPlanBlock(torch.nn.Module):
+    def __init__(self, hidden_dim: int, use_conditional_layers: bool):
+        super().__init__()
+        self.up_proj = torch.nn.Linear(hidden_dim, 2 * hidden_dim)
+        self.gate_proj = torch.nn.Linear(hidden_dim, 2 * hidden_dim) if use_conditional_layers else None
+        self.down_proj = torch.nn.Linear(2 * hidden_dim, hidden_dim)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        projected = torch.nn.functional.silu(self.up_proj(hidden_states))
+        if self.gate_proj is not None:
+            projected = projected * self.gate_proj(hidden_states)
+        return hidden_states + self.down_proj(projected)
+
+
+class DummyConditionalPlanModel(ModelMixin, ConfigMixin):
+    """A tiny model whose `_cp_plan` and `_tp_plan` have `Conditional` entries.
+
+    The conditional layers exist only with `use_conditional_layers=True`. Without it, `pos_embed` is not created and
+    each block's `gate_proj` is `None`, which are the two ways a layer can be absent. The forward breaks on a shape
+    mismatch if a conditional layer exists but its plan entry is not applied.
+    """
+
+    _cp_plan = {
+        "": {"hidden_states": ContextParallelInput(split_dim=1, expected_dims=3)},
+        "pos_embed": Conditional({0: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True)}),
+        "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+    }
+    _tp_plan = {
+        "blocks.*.up_proj": "colwise",
+        "blocks.*.gate_proj": Conditional("colwise"),
+        "blocks.*.down_proj": "rowwise",
+    }
+
+    @register_to_config
+    def __init__(
+        self,
+        hidden_dim: int = 8,
+        num_layers: int = 2,
+        max_positions: int = 16,
+        use_conditional_layers: bool = True,
+    ):
+        super().__init__()
+        if use_conditional_layers:
+            self.pos_embed = torch.nn.Embedding(max_positions, hidden_dim)
+        self.blocks = torch.nn.ModuleList(
+            [DummyConditionalPlanBlock(hidden_dim, use_conditional_layers) for _ in range(num_layers)]
+        )
+        self.proj_out = torch.nn.Linear(hidden_dim, hidden_dim)
+
+    def forward(self, hidden_states: torch.Tensor, position_ids: torch.Tensor) -> torch.Tensor:
+        if self.config.use_conditional_layers:
+            hidden_states = hidden_states + self.pos_embed(position_ids)
+        for block in self.blocks:
+            hidden_states = block(hidden_states)
+        return self.proj_out(hidden_states)
 
 
 def _context_parallel_worker(

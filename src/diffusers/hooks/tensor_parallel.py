@@ -16,7 +16,7 @@ from typing import NamedTuple
 
 import torch
 
-from ..models._modeling_parallel import TensorParallelConfig
+from ..models._modeling_parallel import Conditional, TensorParallelConfig
 from ..utils import get_logger, is_peft_available
 
 
@@ -183,12 +183,25 @@ def resolve_tp_shard_specs(model: torch.nn.Module, tp_plan: dict, tp_degree: int
     return specs
 
 
-def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict) -> list:
+def _maybe_get_submodule(module: torch.nn.Module, path: str) -> "torch.nn.Module | None":
+    """Resolve the dotted `path` on `module`, or return `None` if an attribute along it is missing or `None`."""
+    for atom in path.split("."):
+        module = getattr(module, atom, None)
+        if module is None:
+            return None
+    return module
+
+
+def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict, warn_unmatched: bool = False) -> list:
     """Group a flat `_tp_plan` into per-block `(submodule, {relative_path: style})` plans.
 
     Each glob is split at its single `*`; the prefix must resolve to a `ModuleList` and the suffix is the per-element
     key. Grouping by block lets the caller issue one `parallelize_module` call per block, which `RowwiseParallel` needs
     to attach its input redistribution at the block boundary.
+
+    A `Conditional` entry is unwrapped here and kept only for the blocks where its module exists, so the returned plans
+    hold plain styles. `warn_unmatched` logs the `Conditional` entries that match no module; it is off by default
+    because the plan is resolved several times per model.
 
     Example: when `transformer_blocks` is a `ModuleList` of length 2, the input `{"transformer_blocks.*.ff.linear_out":
     "rowwise"}` returns `[(transformer_blocks[0], {"ff.linear_out": "rowwise"}), (transformer_blocks[1],
@@ -196,24 +209,42 @@ def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict) -> list:
     """
     grouped: dict[int, tuple] = {}
     order: list[int] = []
+    unmatched: list[str] = []
 
     for pattern, style in tp_plan.items():
         if pattern.count("*") > 1:
             raise ValueError(f"Wildcard '*' can only be used once in a `_tp_plan` key, got '{pattern}'.")
 
+        conditional = isinstance(style, Conditional)
+        if conditional:
+            style = style.value
+
         if "*" in pattern:
             prefix, _, suffix = pattern.partition("*")
-            container = model
-            for atom in prefix.strip(".").split("."):
-                container = getattr(container, atom)
-            if not isinstance(container, torch.nn.ModuleList):
+            prefix = prefix.strip(".")
+            if conditional:
+                container = _maybe_get_submodule(model, prefix)
+            else:
+                container = model
+                for atom in prefix.split("."):
+                    container = getattr(container, atom)
+            if conditional and container is None:
+                blocks = []
+            elif not isinstance(container, torch.nn.ModuleList):
                 raise ValueError(
                     f"`_tp_plan` wildcard '{pattern}' must expand over a `ModuleList`, but "
-                    f"'{prefix.strip('.')}' resolved to '{container.__class__.__name__}'."
+                    f"'{prefix}' resolved to '{container.__class__.__name__}'."
                 )
-            relative, blocks = suffix.strip("."), list(container)
+            else:
+                blocks = list(container)
+            relative = suffix.strip(".")
         else:
             relative, blocks = pattern, [model]
+
+        if conditional:
+            blocks = [block for block in blocks if _maybe_get_submodule(block, relative) is not None]
+            if not blocks:
+                unmatched.append(pattern)
 
         for block in blocks:
             key = id(block)
@@ -221,6 +252,12 @@ def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict) -> list:
                 grouped[key] = (block, {})
                 order.append(key)
             grouped[key][1][relative] = style
+
+    if warn_unmatched and unmatched:
+        logger.warning(
+            f"Skipping the `Conditional` `_tp_plan` entries that match no module of '{model.__class__.__name__}': "
+            f"{unmatched}."
+        )
 
     return [grouped[key] for key in order]
 
@@ -512,7 +549,7 @@ def apply_tensor_parallel(
         )
 
     backend = "neuron" if tp_mesh.device_type == "neuron" else "default"
-    groups = _resolve_tp_plan(model, tp_plan)
+    groups = _resolve_tp_plan(model, tp_plan, warn_unmatched=True)
     logger.debug(f"Applying tensor parallel (backend={backend}) over {len(groups)} module group(s) on mesh {tp_mesh}.")
 
     from torch.distributed.tensor.parallel import parallelize_module

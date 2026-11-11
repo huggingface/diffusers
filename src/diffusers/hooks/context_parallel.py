@@ -24,6 +24,7 @@ if torch.distributed.is_available():
     import torch.distributed._functional_collectives as funcol
 
 from ..models._modeling_parallel import (
+    Conditional,
     ContextParallelConfig,
     ContextParallelInput,
     ContextParallelModelPlan,
@@ -85,10 +86,17 @@ def apply_context_parallel(
     """Apply context parallel on a model."""
     logger.debug(f"Applying context parallel with CP mesh: {parallel_config._mesh} and plan: {plan}")
 
+    unmatched = []
     for module_id, cp_model_plan in plan.items():
-        submodule = _get_submodule_by_name(module, module_id)
+        conditional = isinstance(cp_model_plan, Conditional)
+        if conditional:
+            cp_model_plan = cp_model_plan.value
+        submodule = _get_submodule_by_name(module, module_id, conditional)
         if not isinstance(submodule, list):
             submodule = [submodule]
+        if conditional and len(submodule) == 0:
+            unmatched.append(module_id)
+            continue
 
         logger.debug(f"Applying ContextParallelHook to {module_id=} identifying a total of {len(submodule)} modules")
 
@@ -108,10 +116,19 @@ def apply_context_parallel(
             registry = HookRegistry.check_if_exists_or_initialize(m)
             registry.register_hook(hook, hook_name)
 
+    if unmatched:
+        logger.warning(
+            f"Skipping the `Conditional` context parallel plan entries that match no module of "
+            f"'{module.__class__.__name__}': {unmatched}."
+        )
+
 
 def remove_context_parallel(module: torch.nn.Module, plan: dict[str, ContextParallelModelPlan]) -> None:
     for module_id, cp_model_plan in plan.items():
-        submodule = _get_submodule_by_name(module, module_id)
+        conditional = isinstance(cp_model_plan, Conditional)
+        if conditional:
+            cp_model_plan = cp_model_plan.value
+        submodule = _get_submodule_by_name(module, module_id, conditional)
         if not isinstance(submodule, list):
             submodule = [submodule]
 
@@ -354,13 +371,17 @@ def _all_gather_anything(tensor: torch.Tensor, dim: int, group: dist.device_mesh
     return gathered_tensor
 
 
-def _get_submodule_by_name(model: torch.nn.Module, name: str) -> torch.nn.Module | list[torch.nn.Module]:
+def _get_submodule_by_name(
+    model: torch.nn.Module, name: str, conditional: bool = False
+) -> torch.nn.Module | list[torch.nn.Module]:
     if name.count("*") > 1:
         raise ValueError("Wildcard '*' can only be used once in the name")
-    return _find_submodule_by_name(model, name)
+    return _find_submodule_by_name(model, name, conditional)
 
 
-def _find_submodule_by_name(model: torch.nn.Module, name: str) -> torch.nn.Module | list[torch.nn.Module]:
+def _find_submodule_by_name(
+    model: torch.nn.Module, name: str, conditional: bool = False
+) -> torch.nn.Module | list[torch.nn.Module]:
     if name == "":
         return model
     first_atom, remaining_name = name.split(".", 1) if "." in name else (name, "")
@@ -369,14 +390,17 @@ def _find_submodule_by_name(model: torch.nn.Module, name: str) -> torch.nn.Modul
             raise ValueError("Wildcard '*' can only be used with ModuleList")
         submodules = []
         for submodule in model:
-            subsubmodules = _find_submodule_by_name(submodule, remaining_name)
+            subsubmodules = _find_submodule_by_name(submodule, remaining_name, conditional)
             if not isinstance(subsubmodules, list):
                 subsubmodules = [subsubmodules]
             submodules.extend(subsubmodules)
         return submodules
     else:
+        if conditional and getattr(model, first_atom, None) is None:
+            # A `Conditional` entry matches nothing where its module is missing or set to `None`.
+            return []
         if hasattr(model, first_atom):
             submodule = getattr(model, first_atom)
-            return _find_submodule_by_name(submodule, remaining_name)
+            return _find_submodule_by_name(submodule, remaining_name, conditional)
         else:
             raise ValueError(f"'{first_atom}' is not a submodule of '{model.__class__.__name__}'")
