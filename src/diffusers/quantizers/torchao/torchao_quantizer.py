@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 from packaging import version
 
+from ...dependency_versions_table import deps
 from ...utils import (
     get_module_from_name,
     is_safetensors_available,
@@ -179,7 +180,7 @@ class TorchAoHfQuantizer(DiffusersQuantizer):
     def validate_environment(self, *args, **kwargs):
         if not is_torchao_available():
             raise ImportError(
-                "Loading a TorchAO quantized model requires the torchao library. Please install with `pip install torchao`"
+                f"Loading a TorchAO quantized model requires `{deps['torchao']}`. Please install with `pip install -U '{deps['torchao']}'`"
             )
         self.offload = False
 

@@ -31,6 +31,7 @@ from transformers import (
     VitsTokenizer,
 )
 
+from ...dependency_versions_table import deps
 from ...models import AutoencoderKL
 from ...models.condition_embedders import AudioLDM2ProjectionModel
 from ...schedulers import KarrasDiffusionSchedulers
@@ -232,7 +233,9 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         if is_accelerate_available():
             from accelerate import cpu_offload_with_hook
         else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate`: `pip install accelerate`")
+            raise ImportError(
+                f"`enable_model_cpu_offload` requires `{deps['accelerate']}`: `pip install -U '{deps['accelerate']}'`"
+            )
 
         torch_device = torch.device(device)
         device_index = torch_device.index

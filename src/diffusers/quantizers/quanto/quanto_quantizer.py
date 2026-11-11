@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Any
 
+from ...dependency_versions_table import deps
 from ...utils import (
     deprecate,
     get_module_from_name,
@@ -52,12 +53,12 @@ class QuantoQuantizer(DiffusersQuantizer):
 
         if not is_optimum_quanto_available():
             raise ImportError(
-                "Loading an optimum-quanto quantized model requires optimum-quanto library (`pip install optimum-quanto`)"
+                f"Loading an optimum-quanto quantized model requires `{deps['optimum_quanto']}` (`pip install -U '{deps['optimum_quanto']}'`)"
             )
 
         if not is_accelerate_available():
             raise ImportError(
-                "Loading an optimum-quanto quantized model requires accelerate library (`pip install accelerate`)"
+                f"Loading an optimum-quanto quantized model requires `{deps['accelerate']}` (`pip install -U '{deps['accelerate']}'`)"
             )
 
         device_map = kwargs.get("device_map", None)

@@ -38,6 +38,7 @@ from torch import Tensor, nn
 from typing_extensions import Self
 
 from .. import __version__
+from ..dependency_versions_table import deps
 from ..quantizers import DiffusersAutoQuantizer, DiffusersQuantizer
 from ..quantizers.quantization_config import QuantizationMethod
 from ..utils import (
@@ -1086,7 +1087,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         if device_map is not None and not is_accelerate_available():
             raise NotImplementedError(
                 "Loading and dispatching requires `accelerate`. Please make sure to install accelerate or set"
-                " `device_map=None`. You can install accelerate with `pip install accelerate`."
+                f" `device_map=None`. You can install accelerate with `pip install -U '{deps['accelerate']}'`."
             )
 
         if low_cpu_mem_usage is False and device_map is not None:
@@ -2118,7 +2119,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             else:
                 raise ValueError(
                     "bitsandbytes is not installed but it seems that the model has been loaded in 4bit precision, something went wrong"
-                    " make sure to install bitsandbytes with `pip install bitsandbytes`. You also need a GPU. "
+                    f" make sure to install bitsandbytes with `pip install -U '{deps['bitsandbytes']}'`. You also need a GPU. "
                 )
 
         if exclude_embeddings:

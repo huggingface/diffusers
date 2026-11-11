@@ -50,6 +50,7 @@ from typing_extensions import Self
 
 from .. import __version__
 from ..configuration_utils import ConfigMixin
+from ..dependency_versions_table import deps
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
@@ -823,7 +824,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         if device_map is not None and not is_accelerate_available():
             raise NotImplementedError(
-                "Using `device_map` requires the `accelerate` library. Please install it using: `pip install accelerate`."
+                f"Using `device_map` requires `{deps['accelerate']}`. Please install it using: `pip install -U '{deps['accelerate']}'`."
             )
 
         if device_map is not None and not isinstance(device_map, str):
@@ -1186,7 +1187,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if is_accelerate_available():
             from accelerate import cpu_offload_with_hook
         else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate`: `pip install accelerate`")
+            raise ImportError(
+                f"`enable_model_cpu_offload` requires `{deps['accelerate']}`: `pip install -U '{deps['accelerate']}'`"
+            )
 
         self.remove_all_hooks()
 
@@ -1294,7 +1297,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if is_accelerate_available():
             from accelerate import cpu_offload
         else:
-            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate`: `pip install accelerate`")
+            raise ImportError(
+                f"`enable_sequential_cpu_offload` requires `{deps['accelerate']}`: `pip install -U '{deps['accelerate']}'`"
+            )
         self.remove_all_hooks()
 
         is_pipeline_device_mapped = self._is_pipeline_device_mapped()
