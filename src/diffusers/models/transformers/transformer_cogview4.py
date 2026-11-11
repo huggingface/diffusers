@@ -48,7 +48,9 @@ class CogView4PatchEmbed(nn.Module):
         self.proj = nn.Linear(in_channels * patch_size**2, hidden_size)
         self.text_proj = nn.Linear(text_hidden_size, hidden_size)
 
-    def forward(self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         batch_size, channel, height, width = hidden_states.shape
         post_patch_height = height // self.patch_size
         post_patch_width = width // self.patch_size
