@@ -115,3 +115,34 @@ Launch one process per NeuronCore. Set `--nproc_per_node` to the number of Neuro
 ```bash
 torchrun --nproc_per_node=8 tensor_parallel_neuron.py
 ```
+
+
+## Native FLUX.2 Klein serving proof of concept
+
+The `examples/inference/flux2_klein_neuron.py` example provides a standalone
+single-device BF16 baseline for `black-forest-labs/FLUX.2-klein-4B` using the native
+`torch_neuronx` device backend. This is separate from the Optimum Neuron export
+workflow above. It uses CPU random generators and optionally compiles the
+transformer while leaving the text encoder and VAE eager.
+
+```bash
+NEURON_RT_VISIBLE_CORES=0 \
+TORCH_NEURONX_NEFF_CACHE_DIR=/tmp/flux2-klein-neff-cache \
+python examples/inference/flux2_klein_neuron.py \
+    --compile-transformer --height 256 --width 256 --runs 2
+```
+
+Use a free Neuron core and a compatible native Neuron SDK. The initial resolution
+is deliberately small; larger resolutions and tensor parallelism are outside
+this proof of concept. The first request includes compilation; subsequent
+requests recreate the same CPU generator to help compare outputs.
+
+For serving, the experimental `add-diffusers-support` branch of
+`vllm-omni-neuron` wraps the same pipeline with vLLM-Omni's Diffusers adapter.
+Diffusers owns model execution; the plugin owns worker initialization, placement,
+and compilation policy. The pinned serving runtime compiles the text encoder,
+transformer, VAE decoder, scheduler step, and tensor preparation regions; this
+compilation policy differs from the standalone baseline. See that branch's `examples/diffusers/README.md` for
+offline and HTTP smoke tests. The real 4B checkpoint has completed offline Omni
+generation on Trainium2 at 256×256, four steps, BF16, and TP=1. HTTP serving and
+larger shapes remain unvalidated; this is not production support.
