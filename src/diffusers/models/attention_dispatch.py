@@ -231,6 +231,8 @@ class AttentionBackendName(str, Enum):
 
     # `aiter` (via the `kernels-community/aiter-flash-attn-ck` Hub kernel)
     AITER_FA2_HUB = "aiter_fa2_hub"
+    # `aiter` SageAttention for gfx1201 (via the `kernels-community/aiter-sage-attention` Hub kernel)
+    AITER_SAGE_HUB = "aiter_sage_hub"
 
     # PyTorch native
     FLEX = "flex"
@@ -342,16 +344,16 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
     AttentionBackendName.FLASH_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_func",
-        wrapped_forward_attr="flash_attn_interface._flash_attn_forward",
-        wrapped_backward_attr="flash_attn_interface._flash_attn_backward",
-        version=3,
+        wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_forward",
+        wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_backward",
+        version=4,
     ),
     AttentionBackendName.FLASH_VARLEN_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_varlen_func",
-        wrapped_forward_attr="flash_attn_interface._flash_attn_varlen_forward",
-        wrapped_backward_attr="flash_attn_interface._flash_attn_varlen_backward",
-        version=3,
+        wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_varlen_forward",
+        wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_varlen_backward",
+        version=4,
     ),
     AttentionBackendName.SAGE_HUB: _HubKernelConfig(
         repo_id="SageAttention/sage-attention",
@@ -371,6 +373,11 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
     AttentionBackendName.AITER_FA2_HUB: _HubKernelConfig(
         repo_id="kernels-community/aiter-flash-attn-ck",
         function_attr="flash_attn_func",
+        version=1,
+    ),
+    AttentionBackendName.AITER_SAGE_HUB: _HubKernelConfig(
+        repo_id="kernels-community/aiter-sage-attention",
+        function_attr="sageattn",
         version=1,
     ),
 }
@@ -555,6 +562,7 @@ def _check_attention_backend_requirements(backend: AttentionBackendName) -> None
         AttentionBackendName.SAGE_BLACKWELL_HUB,
         AttentionBackendName.FLASH_4_HUB,
         AttentionBackendName.AITER_FA2_HUB,
+        AttentionBackendName.AITER_SAGE_HUB,
     ]:
         if not is_kernels_available():
             raise RuntimeError(
@@ -2316,7 +2324,8 @@ def all_to_all_single_any_qkv_async(
     r"""
     x: torch.Tensor, shape (B, S_LOCAL, H, D) return: Callable that returns (B, S_GLOBAL, H_LOCAL, D)
 
-    seq_lengths: Optional sequence lengths in process-group rank order, collected from the current inputs.
+    seq_lengths: Optional sequence lengths in process-group rank order, collected from the current inputs. Reuse the
+        lengths saved during forward in backward to avoid another size exchange.
     """
     world_size = dist.get_world_size(group=group)
     B, S_LOCAL, H, D = x.shape
@@ -2352,7 +2361,8 @@ def all_to_all_single_any_o_async(
     r"""
     x: torch.Tensor, shape (B, S_GLOBAL, H_LOCAL, D) return: Callable that returns (B, S_LOCAL, H_GLOBAL, D)
 
-    seq_lengths: Optional sequence lengths in process-group rank order, collected from the current inputs.
+    seq_lengths: Optional sequence lengths in process-group rank order, collected from the current inputs. Reuse the
+        lengths saved during forward in backward to avoid another size exchange.
     """
     # Assume H is provided in kwargs, since we can't infer H from x's shape.
     # The padding logic needs H to determine if padding is necessary.
@@ -2791,7 +2801,8 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
 
         metadata = ulysses_anything_metadata(query)
         key_metadata = ulysses_anything_metadata(key)
-        # Keep layouts per invocation: local lengths can repeat while other ranks' lengths change.
+        # Save this invocation's rank-ordered lengths on its autograd context. A local length can stay unchanged while
+        # other ranks change, so a cross-invocation cache could produce different collective participation by rank.
         metadata["seq_lengths"] = gather_size_by_comm(query.shape[1], group)
         key_metadata["seq_lengths"] = gather_size_by_comm(key.shape[1], group)
         ctx.query_metadata = metadata
@@ -2805,15 +2816,15 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
         value = value_wait()  # type: torch.Tensor
 
         if attn_mask is not None and attn_mask.shape[-1] == S_KV_LOCAL:
-            # All-gather a local mask to match the post-all-to-all global sequence.
-            # The "anything" path allows unequal local sizes, so we pad to the
-            # maximum across ranks before all-gathering, then trim each shard.
+            # The mask's sequence dimension is the local key dimension. Gather those same rank-ordered lengths once so
+            # the padded shards can be trimmed back to their real lengths after the all-gather.
             mask_local_sizes = key_metadata["seq_lengths"]
             max_local = max(mask_local_sizes)
             if attn_mask.shape[-1] < max_local:
                 attn_mask = F.pad(attn_mask, (0, max_local - attn_mask.shape[-1]))
             mask_list = [torch.empty_like(attn_mask) for _ in range(dist.get_world_size(group=group))]
             dist.all_gather(mask_list, attn_mask.contiguous(), group=group)
+            # Trimming the concatenated tensor would retain padding between shards. Trim every shard first.
             attn_mask = torch.cat([mask[..., :size] for mask, size in zip(mask_list, mask_local_sizes)], dim=-1)
 
         out = forward_op(
@@ -3625,6 +3636,106 @@ def _aiter_flash_attention(
         out, lse, *_ = out
         return out, lse
     return out
+
+
+def _aiter_sage_attention_hub_supported(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: torch.Tensor | None,
+    dropout_p: float,
+    is_causal: bool,
+    enable_gqa: bool,
+    return_lse: bool,
+) -> bool:
+    return (
+        query.shape == key.shape == value.shape
+        and query.shape[-1] == 128
+        and query.dtype == key.dtype == value.dtype == torch.bfloat16
+        and attn_mask is None
+        and dropout_p == 0.0
+        and not is_causal
+        and not enable_gqa
+        and not return_lse
+    )
+
+
+def _aiter_sage_attention_hub_forward_op(
+    ctx: torch.autograd.function.FunctionCtx,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: torch.Tensor | None = None,
+    dropout_p: float = 0.0,
+    is_causal: bool = False,
+    scale: float | None = None,
+    enable_gqa: bool = False,
+    return_lse: bool = False,
+    _save_ctx: bool = True,
+    _parallel_config: "ParallelConfig" | None = None,
+):
+    if not _aiter_sage_attention_hub_supported(
+        query, key, value, attn_mask, dropout_p, is_causal, enable_gqa, return_lse
+    ):
+        return _native_attention_forward_op(
+            ctx,
+            query,
+            key,
+            value,
+            attn_mask,
+            dropout_p,
+            is_causal,
+            scale,
+            enable_gqa,
+            return_lse,
+            _save_ctx,
+            _parallel_config,
+        )
+    func = _HUB_KERNELS_REGISTRY[AttentionBackendName.AITER_SAGE_HUB].kernel_fn
+    return func(q=query, k=key, v=value, tensor_layout="NHD", is_causal=is_causal, sm_scale=scale)
+
+
+@_AttentionBackendRegistry.register(
+    AttentionBackendName.AITER_SAGE_HUB,
+    # The gfx1201 kernel takes bf16 Q/K/V of equal shape with head dim 128, non-causal and unmasked. Other calls (for
+    # example head-dim-64 VAE attention or cross-attention that follow the active backend) fall back to native SDPA.
+    constraints=[_check_device_cuda, _check_shape],
+    supports_context_parallel=True,
+)
+def _aiter_sage_attention_hub(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    attn_mask: torch.Tensor | None = None,
+    is_causal: bool = False,
+    scale: float | None = None,
+    return_lse: bool = False,
+    _parallel_config: "ParallelConfig" | None = None,
+) -> torch.Tensor:
+    if _parallel_config is None:
+        if not _aiter_sage_attention_hub_supported(query, key, value, attn_mask, 0.0, is_causal, False, return_lse):
+            return _native_attention(query, key, value, attn_mask, 0.0, is_causal, scale, False, return_lse)
+        return _aiter_sage_attention_hub_forward_op(
+            None, query, key, value, attn_mask, 0.0, is_causal, scale, False, return_lse
+        )
+    if _parallel_config.context_parallel_config.ring_degree > 1:
+        raise NotImplementedError(
+            "The AITER_SAGE_HUB backend does not support `ring_degree > 1`, since the kernel does not return the LSE."
+        )
+    return _templated_context_parallel_attention(
+        query,
+        key,
+        value,
+        attn_mask,
+        0.0,
+        is_causal,
+        scale,
+        False,
+        return_lse,
+        forward_op=_aiter_sage_attention_hub_forward_op,
+        backward_op=_sage_attention_backward_op,
+        _parallel_config=_parallel_config,
+    )
 
 
 @_AttentionBackendRegistry.register(
