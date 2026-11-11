@@ -40,9 +40,11 @@ import diffusers
 from diffusers import RFD4ProteinaAutoencoder, RFD4ProteinaPipeline, RFD4ProteinaScheduler, RFD4ProteinaTransformer
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import _collate_lora_metadata, cast_training_params
-from diffusers.utils import convert_unet_state_dict_to_peft
+from diffusers.utils import check_min_version, convert_unet_state_dict_to_peft
 from diffusers.utils.hub_utils import MODEL_CARD_TEMPLATE_PATH, populate_model_card
 
+
+check_min_version("0.42.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -397,6 +399,8 @@ def flow_matching_loss(prediction, state, times, clean, supervision_masks) -> to
 
 def main():
     args = parse_args()
+    if args.hub_token is not None and args.report_to in ("wandb", "all"):
+        raise ValueError("Use `hf auth login` or HF_TOKEN instead of --hub_token when reporting to W&B.")
     logging_dir = Path(args.output_dir, args.logging_dir)
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,

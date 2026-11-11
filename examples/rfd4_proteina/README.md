@@ -1,7 +1,7 @@
 # LoRA fine-tuning for RFD4-Proteina
 
 This example fine-tunes [RFD4-Proteína](https://huggingface.co/docs/diffusers/main/en/api/pipelines/rfd4_proteina)
-with LoRA on a folder of annotated CIF files. The autoencoder stays frozen; only the denoiser adapters train.
+with LoRA on annotated CIFs from a local folder or a Hub dataset. The autoencoder stays frozen; only the denoiser adapters train.
 Saved adapters load with `RFD4ProteinaPipeline.load_lora_weights`.
 
 ## Setup
@@ -69,6 +69,7 @@ accelerate launch examples/rfd4_proteina/train_rfd4_proteina_lora.py \
 
 To upload the final adapter and its model card, log in with `hf auth login` and add
 `--push_to_hub --hub_model_id your-username/rfd4-proteina-lora`. Authentication also supports `HF_TOKEN` or `--hub_token` to override the logged-in account.
+For W&B logging, use `hf auth login` or `HF_TOKEN` rather than passing `--hub_token`.
 Only the final adapter and model card are uploaded. Every run writes a model card to `--output_dir`, even without upload.
 
 For a Hub dataset, replace `--instance_data_dir` with `--dataset_name your-username/annotated-structures`.
