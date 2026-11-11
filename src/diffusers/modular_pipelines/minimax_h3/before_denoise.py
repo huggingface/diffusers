@@ -965,8 +965,11 @@ class MiniMaxH3PrepareConditionLatentsStep(ModularPipelineBlocks):
         for condition in block_state.condition_latents:
             noise = randn_tensor(condition.shape, generator=block_state.generator, device=device, dtype=torch.float32)
             # The anchors are not fully clean: the released model noises them to `t = 0.999` and holds them there
-            # for every step. Mixing before the patchify is the same arithmetic, since patchify only permutes.
-            noised = components.scheduler.scale_noise(condition.to(device), components.keyframe_noise_aug, noise)
+            # for every step. Mixing before the patchify is the same arithmetic, since patchify only permutes. The
+            # level goes in as a tensor so `1 - t` is evaluated in float32, the way this port has always mixed it.
+            noised = components.scheduler.scale_noise(
+                condition.to(device), torch.tensor(components.keyframe_noise_aug), noise
+            )
             packed.append(patchify_video_latents(noised, patch_size))
         block_state.condition_rows = torch.cat(packed)
         # In a hand-assembled chain the canvas reaching the layout is user input, so it can disagree with the
@@ -1228,6 +1231,10 @@ class MiniMaxH3SetTimestepsStep(ModularPipelineBlocks):
         Returns:
             `tuple[torch.Tensor, torch.Tensor]`: the distinct timesteps, sorted, and the index of every row into them.
         """
+        # The layout step puts the indices on the execution device, but this plan is built on CPU.
+        video_indices = video_indices.cpu()
+        audio_indices = audio_indices.cpu()
+
         sequence_length = int(video_indices.numel() + audio_indices.numel() + num_text_tokens)
         row_timesteps = torch.full((sequence_length,), video_timestep, dtype=torch.float32)
         row_timesteps[video_indices[:num_condition_video_rows]] = condition_video_timestep
