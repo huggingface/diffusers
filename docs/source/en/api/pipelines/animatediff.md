@@ -827,7 +827,7 @@ export_to_gif(frames, "animation.gif")
 
 ## Using AnimateLCM
 
-[AnimateLCM](https://animatelcm.github.io/) is a motion module checkpoint and an [LCM LoRA](https://huggingface.co/docs/diffusers/using-diffusers/inference_with_lcm_lora) that have been created using a consistency learning strategy that decouples the distillation of the image generation priors and the motion generation priors.
+[AnimateLCM](https://animatelcm.github.io/) is a motion module checkpoint and an LCM LoRA that have been created using a consistency learning strategy that decouples the distillation of the image generation priors and the motion generation priors.
 
 ```python
 import torch
