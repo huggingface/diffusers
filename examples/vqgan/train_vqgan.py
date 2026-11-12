@@ -979,7 +979,8 @@ def main():
                     ):
                         log_grad_norm(discriminator, accelerator, global_step)
             batch_time_m.update(time.time() - end)
-            # Checks if the accelerator has performed an optimization step behind the scenes
+            # Checks if the accelerator has performed an optimization step behind the scenes.
+            # Skip EMA and step bookkeeping when the optimizer step was skipped due to gradient overflow.
             if accelerator.sync_gradients:
                 if not accelerator.optimizer_step_was_skipped:
                     global_step += 1
