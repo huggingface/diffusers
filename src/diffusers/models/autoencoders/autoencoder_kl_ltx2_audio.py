@@ -773,7 +773,7 @@ class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
         return self.decoder(z)
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor]:
         if self.use_slicing and z.shape[0] > 1:
             decoded_slices = [self._decode(z_slice) for z_slice in z.split(1)]
             decoded = torch.cat(decoded_slices)
@@ -791,7 +791,7 @@ class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: torch.Generator | None = None,
-    ) -> DecoderOutput | torch.Tensor:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

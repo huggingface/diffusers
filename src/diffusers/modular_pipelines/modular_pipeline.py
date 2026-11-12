@@ -218,7 +218,9 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("ltx2", _create_default_map_fn("LTX2ModularPipeline")),
         ("ltx2.5", _create_default_map_fn("LTX25ModularPipeline")),
         ("minimax-h3", _create_default_map_fn("MiniMaxH3ModularPipeline")),
+        ("minimax-h3-image", _create_default_map_fn("MiniMaxH3ImageModularPipeline")),
         ("minimax-music3", _create_default_map_fn("MiniMaxMusic3ModularPipeline")),
+        ("pan2", _create_default_map_fn("PAN2ModularPipeline")),
         ("pika-h3-flex", _create_default_map_fn("PikaH3FlexModularPipeline")),
         ("p-h3-image", _create_default_map_fn("PH3ImageModularPipeline")),
         ("ernie-image", _create_default_map_fn("ErnieImageModularPipeline")),
@@ -2731,7 +2733,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
         def module_is_sequentially_offloaded(module):
-            if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
+            if not is_accelerate_available():
                 return False
 
             _, _, is_loaded_in_8bit_bnb = _check_bnb_status(module)
@@ -2746,7 +2748,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             )
 
         def module_is_offloaded(module):
-            if not is_accelerate_available() or is_accelerate_version("<", "0.17.0.dev0"):
+            if not is_accelerate_available():
                 return False
 
             return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, accelerate.hooks.CpuOffload)
@@ -3041,6 +3043,12 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 error_msg = f"Error in block: ({self._blocks.__class__.__name__}):\n"
                 logger.error(error_msg)
                 raise
+            finally:
+                # Cache hooks (FirstBlockCache, MagCache, ...) keep state across a run. Clear it so the next call
+                # starts fresh, as `maybe_free_model_hooks` does for standard pipelines.
+                for component in self.components.values():
+                    if hasattr(component, "_reset_stateful_cache"):
+                        component._reset_stateful_cache()
 
         if output is None:
             return state

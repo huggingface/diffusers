@@ -871,7 +871,7 @@ class WanRotaryPosEmbed(nn.Module):
         self.register_buffer("freqs_cos", torch.cat(freqs_cos, dim=1), persistent=False)
         self.register_buffer("freqs_sin", torch.cat(freqs_sin, dim=1), persistent=False)
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p_t, p_h, p_w = self.patch_size
         ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
@@ -1163,7 +1163,7 @@ class WanAnimateTransformer3DModel(
         motion_encode_batch_size: int | None = None,
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
-    ) -> torch.Tensor | dict[str, torch.Tensor]:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         Forward pass of Wan2.2-Animate transformer model.
 

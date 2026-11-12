@@ -296,7 +296,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, AttentionMixin, ConfigMixin, 
         encoder_hidden_states: torch.Tensor,
         added_time_ids: torch.Tensor,
         return_dict: bool = True,
-    ) -> UNetSpatioTemporalConditionOutput | tuple:
+    ) -> UNetSpatioTemporalConditionOutput | tuple[torch.Tensor]:
         r"""
         The [`UNetSpatioTemporalConditionModel`] forward method.
 

@@ -14,6 +14,7 @@
 
 from typing import TYPE_CHECKING
 
+from ...dependency_versions_table import deps
 from ...utils import is_auto_round_available, logging
 from ..base import DiffusersQuantizer
 
@@ -46,14 +47,14 @@ class AutoRoundQuantizer(DiffusersQuantizer):
 
     def validate_environment(self, *args, **kwargs):
         """
-        Validates that the auto-round library (>= 0.5) is installed and captures the device_map for later use during
+        Validates that a supported auto-round library is installed and captures the device_map for later use during
         model conversion.
         """
         self.device_map = kwargs.get("device_map", None)
         if not is_auto_round_available():
             raise ImportError(
                 "Loading an AutoRound quantized model requires the auto-round library "
-                "(`pip install 'auto-round>=0.13.0'`)"
+                f"(`pip install -U '{deps['auto-round']}'`)"
             )
         if not self.pre_quantized:
             raise ValueError(
