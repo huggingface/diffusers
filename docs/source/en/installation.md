@@ -164,7 +164,8 @@ A file is shared only when all of these are true:
 - The filesystem supports symlinks.
 - The files are byte-for-byte identical. Converting to a different dtype, saving in a different format, or resharding changes the hash.
 
-Files you downloaded with an older version of `huggingface_hub` aren't shared with new downloads. Only files downloaded with version 1.32.0 or later are added to the shared store.
+> [!NOTE]
+> Files you downloaded with an older version of `huggingface_hub` aren't shared with new downloads. Only files downloaded with version 1.32.0 or later are added to the shared store.
 
 File sharing saves download time and disk space, but not memory. To use one loaded model in several pipelines, see [Reusing models in multiple pipelines](./using-diffusers/loading#reusing-models-in-multiple-pipelines).
 
