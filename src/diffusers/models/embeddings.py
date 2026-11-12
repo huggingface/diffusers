@@ -420,10 +420,10 @@ class LuminaPatchEmbed(nn.Module):
             and embedded tensor(s), the mask indicating the valid patches, the original image size(s), and the
             frequency tensor(s).
         """
-        freqs_cis = freqs_cis.to(x[0].device)
         patch_height = patch_width = self.patch_size
         batch_size, channel, height, width = x.size()
         height_tokens, width_tokens = height // patch_height, width // patch_width
+        freqs_cis = freqs_cis[:height_tokens, :width_tokens].to(x.device)
 
         x = x.view(batch_size, channel, height_tokens, patch_height, width_tokens, patch_width).permute(
             0, 2, 4, 1, 3, 5
@@ -438,7 +438,7 @@ class LuminaPatchEmbed(nn.Module):
             x,
             mask,
             [(height, width)] * batch_size,
-            freqs_cis[:height_tokens, :width_tokens].flatten(0, 1).unsqueeze(0),
+            freqs_cis.flatten(0, 1).unsqueeze(0),
         )
 
 

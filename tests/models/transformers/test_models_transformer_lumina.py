@@ -20,6 +20,7 @@ import torch.nn.functional as F
 
 from diffusers import LuminaNextDiT2DModel
 from diffusers.models import attention_processor
+from diffusers.models.embeddings import get_2d_rotary_pos_embed_lumina
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -139,3 +140,21 @@ class TestLuminaNextDiTBehavior(LuminaNextDiTTesterConfig):
         assert torch.equal(out, ref)
         # the mask reaches SDPA: the padded text tokens of the second sample do not change its output
         assert torch.equal(out_perturbed[1], out[1])
+
+    def test_rotary_table_on_token_grid_matches_384_table(self):
+        """The RoPE table built on the latent token grid gives the same output as the sliced 384 x 384 table."""
+        model = self._model()
+        inputs = self._inputs()
+        tokens = inputs["hidden_states"].shape[-1] // self.get_init_dict()["patch_size"]
+        for linear_factor, ntk_factor in ((2.0, 1.0), (1.0, 2.0), (0.5, 1.0), (1.0, 0.5), (1.0, 1.0)):
+            kwargs = {"linear_factor": linear_factor, "ntk_factor": ntk_factor}
+            full = get_2d_rotary_pos_embed_lumina(model.head_dim, 384, 384, **kwargs)
+            grid = get_2d_rotary_pos_embed_lumina(model.head_dim, tokens, tokens, **kwargs)
+            assert torch.equal(grid, full[:tokens, :tokens])
+            # non-square grid: the pipeline passes height_tokens and width_tokens separately
+            rect = get_2d_rotary_pos_embed_lumina(model.head_dim, tokens - 2, tokens, **kwargs)
+            assert torch.equal(rect, full[: tokens - 2, :tokens])
+            with torch.no_grad():
+                ref = model(**{**inputs, "image_rotary_emb": full}).sample
+                out = model(**{**inputs, "image_rotary_emb": grid.to(torch_device)}).sample
+            assert torch.equal(out, ref)
