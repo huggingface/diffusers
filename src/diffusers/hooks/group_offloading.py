@@ -14,6 +14,7 @@
 
 import hashlib
 import os
+import weakref
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, replace
 from enum import Enum
@@ -34,6 +35,8 @@ if is_accelerate_available():
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
+
+_STREAM_PINNED_STAGING: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
 
 def _is_torchao_tensor(tensor: torch.Tensor) -> bool:
@@ -178,7 +181,7 @@ class ModuleGroup:
 
     def _init_cpu_param_dict(self):
         cpu_param_dict = {}
-        if self.stream is None:
+        if self.stream is None and not self.low_cpu_mem_usage:
             return cpu_param_dict
 
         for module in self.modules:
@@ -198,10 +201,40 @@ class ModuleGroup:
     @contextmanager
     def _pinned_memory_tensors(self):
         try:
-            pinned_dict = {
-                param: tensor.pin_memory() if not tensor.is_pinned() else tensor
-                for param, tensor in self.cpu_param_dict.items()
-            }
+            if self.stream is not None and self.low_cpu_mem_usage:
+                # Offsets are 16-byte aligned so every dtype can view its slice of the buffer.
+                staging_bytes = sum(
+                    -(-tensor.numel() * tensor.element_size() // 16) * 16
+                    for tensor in self.cpu_param_dict.values()
+                    if not _is_torchao_tensor(tensor) and not tensor.is_pinned() and tensor.is_contiguous()
+                )
+                staging = None
+                if staging_bytes > 0:
+                    # One buffer per stream is enough: `_onload_from_memory` synchronizes the stream before
+                    # refilling it, so the previous transfer out of it has finished.
+                    staging = _STREAM_PINNED_STAGING.get(self.stream)
+                    if staging is None or staging.numel() < staging_bytes:
+                        staging = torch.empty(staging_bytes, dtype=torch.uint8, pin_memory=True)
+                        _STREAM_PINNED_STAGING[self.stream] = staging
+
+                offset = 0
+                pinned_dict = {}
+                for param, tensor in self.cpu_param_dict.items():
+                    if _is_torchao_tensor(tensor) or tensor.is_pinned() or staging is None:
+                        pinned_dict[param] = tensor.pin_memory() if not tensor.is_pinned() else tensor
+                    elif tensor.is_contiguous():
+                        nbytes = tensor.numel() * tensor.element_size()
+                        view = staging[offset : offset + nbytes].view(tensor.dtype).reshape(tensor.shape)
+                        view.copy_(tensor)
+                        pinned_dict[param] = view
+                        offset += -(-nbytes // 16) * 16
+                    else:
+                        pinned_dict[param] = tensor.pin_memory()
+            else:
+                pinned_dict = {
+                    param: tensor.pin_memory() if not tensor.is_pinned() else tensor
+                    for param, tensor in self.cpu_param_dict.items()
+                }
             yield pinned_dict
         finally:
             pinned_dict = None
@@ -314,8 +347,8 @@ class ModuleGroup:
             tensor_obj.data = torch.empty_like(tensor_obj.data, device=self.offload_device)
 
     def _offload_to_memory(self):
-        if self.stream is not None:
-            if not self.record_stream:
+        if self.stream is not None or self.cpu_param_dict:
+            if self.stream is not None and not self.record_stream:
                 self._torch_accelerator_module.current_stream().synchronize()
 
             for group_module in self.modules:
@@ -806,6 +839,7 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
             non_blocking=False,
             stream=None,
             record_stream=False,
+            low_cpu_mem_usage=config.low_cpu_mem_usage,
             onload_self=True,
             group_id=f"{config.module_prefix}{module.__class__.__name__}_unmatched_group",
         )
