@@ -128,7 +128,7 @@ class EasyAnimateAttnProcessor2_0:
         encoder_hidden_states: torch.Tensor,
         attention_mask: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor | None = None,
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         if attn.add_q_proj is None and encoder_hidden_states is not None:
             hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 

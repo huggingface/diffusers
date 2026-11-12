@@ -115,7 +115,7 @@ _deps = [
     "numpy",
     "parameterized",
     "peft>=0.17.0",
-    "protobuf>=3.20.3,<4",
+    "protobuf>=3.20.3",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",

@@ -23,6 +23,7 @@ from typing import Literal
 import safetensors
 import torch
 
+from ..dependency_versions_table import deps
 from ..hooks.group_offloading import _maybe_remove_and_reapply_group_offloading
 from ..utils import (
     MIN_PEFT_VERSION,
@@ -532,7 +533,9 @@ class PeftAdapterMixin:
         check_peft_version(min_version=MIN_PEFT_VERSION)
 
         if not is_peft_available():
-            raise ImportError("PEFT is not available. Please install PEFT to use this function: `pip install peft`.")
+            raise ImportError(
+                f"PEFT is not available. Please install PEFT to use this function: `pip install -U '{deps['peft']}'`."
+            )
 
         from peft import PeftConfig, inject_adapter_in_model
 
@@ -656,7 +659,9 @@ class PeftAdapterMixin:
         check_peft_version(min_version=MIN_PEFT_VERSION)
 
         if not is_peft_available():
-            raise ImportError("PEFT is not available. Please install PEFT to use this function: `pip install peft`.")
+            raise ImportError(
+                f"PEFT is not available. Please install PEFT to use this function: `pip install -U '{deps['peft']}'`."
+            )
 
         if not self._hf_peft_config_loaded:
             raise ValueError("No adapter loaded. Please load an adapter first.")

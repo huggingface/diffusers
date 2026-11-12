@@ -314,7 +314,7 @@ class Krea2RotaryPosEmbed(nn.Module):
         self.theta = theta
         self.axes_dim = axes_dim
 
-    def forward(self, ids: torch.Tensor) -> torch.Tensor:
+    def forward(self, ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         n_axes = ids.shape[-1]
         cos_out = []
         sin_out = []
