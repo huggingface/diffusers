@@ -22,7 +22,6 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProject
 
 from diffusers import (
     AutoencoderKL,
-    AutoPipelineForText2Image,
     EulerDiscreteScheduler,
     StableDiffusionXLPAGPipeline,
     StableDiffusionXLPipeline,
@@ -260,7 +259,7 @@ class TestStableDiffusionXLPAGPipelineIntegration:
         return inputs
 
     def test_pag_cfg(self):
-        pipeline = AutoPipelineForText2Image.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
+        pipeline = StableDiffusionXLPAGPipeline.from_pretrained(self.repo_id, torch_dtype=torch.float16)
         pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
@@ -282,7 +281,7 @@ class TestStableDiffusionXLPAGPipelineIntegration:
         )
 
     def test_pag_uncond(self):
-        pipeline = AutoPipelineForText2Image.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
+        pipeline = StableDiffusionXLPAGPipeline.from_pretrained(self.repo_id, torch_dtype=torch.float16)
         pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.set_progress_bar_config(disable=None)
 

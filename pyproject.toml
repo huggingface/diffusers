@@ -7,12 +7,29 @@ extend-exclude = [
 [tool.ruff.lint]
 # Never enforce `E501` (line length violations).
 ignore = ["C901", "E501", "E721", "E741", "F402", "F823"]
-select = ["C", "E", "F", "I", "W"]
+select = ["C", "E", "F", "I", "W", "TID251"]
+
+# `utils/tests_fetcher.py` selects the tests a PR runs from the import graph. `auto_pipeline.py` imports every
+# pipeline, so a test that imports an AutoPipeline is selected on every pipeline change. Tests use the concrete
+# pipeline class instead; the auto pipelines' own test is the one exception.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"diffusers.AutoPipelineForText2Image".msg = "AutoPipeline imports are not allowed in tests because they interfere with the test fetcher's selection logic. Use the specific pipeline class instead (e.g. `FluxPipeline`)."
+"diffusers.AutoPipelineForImage2Image".msg = "AutoPipeline imports are not allowed in tests because they interfere with the test fetcher's selection logic. Use the specific pipeline class instead (e.g. `FluxPipeline`)."
+"diffusers.AutoPipelineForInpainting".msg = "AutoPipeline imports are not allowed in tests because they interfere with the test fetcher's selection logic. Use the specific pipeline class instead (e.g. `FluxPipeline`)."
+"diffusers.AutoPipelineForText2Audio".msg = "AutoPipeline imports are not allowed in tests because they interfere with the test fetcher's selection logic. Use the specific pipeline class instead (e.g. `FluxPipeline`)."
 
 # Ignore import violations in all `__init__.py` files.
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["E402", "F401", "F403", "F811"]
 "src/diffusers/utils/dummy_*.py" = ["F401"]
+# The AutoPipeline ban only concerns test selection; everything outside tests/ may use them.
+"tests/pipelines/test_pipelines_auto.py" = ["TID251"]
+"src/**" = ["TID251"]
+"examples/**" = ["TID251"]
+"benchmarks/**" = ["TID251"]
+"scripts/**" = ["TID251"]
+"utils/**" = ["TID251"]
+"docs/**" = ["TID251"]
 
 [tool.ruff.lint.isort]
 lines-after-imports = 2

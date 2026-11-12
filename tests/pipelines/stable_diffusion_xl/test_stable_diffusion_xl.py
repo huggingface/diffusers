@@ -27,7 +27,6 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProject
 
 from diffusers import (
     AutoencoderKL,
-    AutoPipelineForText2Image,
     ControlNetModel,
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -1520,7 +1519,7 @@ class TestStableDiffusionXLTurboPipelineIntegration:
     def test_sdxl_turbo_512(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
-        pipe = AutoPipelineForText2Image.from_pretrained(self.ckpt_id, torch_dtype=torch.float16, variant="fp16")
+        pipe = StableDiffusionXLPipeline.from_pretrained(self.ckpt_id, torch_dtype=torch.float16, variant="fp16")
         pipe.to(torch_device)
         backend_synchronize(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -1547,7 +1546,7 @@ class TestStableDiffusionXLTurboPipelineIntegration:
         device = torch.neuron.current_device()
         generator = torch.Generator("cpu").manual_seed(0)
 
-        pipe = AutoPipelineForText2Image.from_pretrained(self.ckpt_id, torch_dtype=torch.bfloat16, variant="fp16")
+        pipe = StableDiffusionXLPipeline.from_pretrained(self.ckpt_id, torch_dtype=torch.bfloat16, variant="fp16")
         pipe = pipe.to(device)
         backend_synchronize(torch_device)
 

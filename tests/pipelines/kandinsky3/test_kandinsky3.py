@@ -22,8 +22,7 @@ from PIL import Image
 from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
 from diffusers import (
-    AutoPipelineForImage2Image,
-    AutoPipelineForText2Image,
+    Kandinsky3Img2ImgPipeline,
     Kandinsky3Pipeline,
     Kandinsky3UNet,
     VQModel,
@@ -177,7 +176,7 @@ class TestKandinsky3PipelineIntegration:
         backend_empty_cache(torch_device)
 
     def test_kandinskyV3(self):
-        pipe = AutoPipelineForText2Image.from_pretrained(
+        pipe = Kandinsky3Pipeline.from_pretrained(
             "kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16
         )
         pipe.enable_model_cpu_offload(device=torch_device)
@@ -203,7 +202,7 @@ class TestKandinsky3PipelineIntegration:
         assert np.allclose(image_np, expected_image_np, atol=5e-2)
 
     def test_kandinskyV3_img2img(self):
-        pipe = AutoPipelineForImage2Image.from_pretrained(
+        pipe = Kandinsky3Img2ImgPipeline.from_pretrained(
             "kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16
         )
         pipe.enable_model_cpu_offload(device=torch_device)
