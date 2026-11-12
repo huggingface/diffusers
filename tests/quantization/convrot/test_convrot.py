@@ -22,13 +22,20 @@ import torch
 from packaging.version import Version
 from torch import nn
 
-from diffusers import ConvRotQuantizationConfig, MiniMaxH3Transformer3DModel, QwenImage21Transformer2DModel
+from diffusers import (
+    AutoencoderKLMiniMaxH3,
+    ConvRotQuantizationConfig,
+    MiniMaxH3Transformer3DModel,
+    QwenImage21Transformer2DModel,
+)
 from diffusers.hooks.tensor_parallel import resolve_tp_shard_specs
 from diffusers.loaders.single_file_utils import (
     convert_minimax_h3_transformer_checkpoint_to_diffusers,
+    convert_minimax_h3_vae_checkpoint_to_diffusers,
     convert_qwen_image21_transformer_checkpoint_to_diffusers,
     convert_z_image_transformer_checkpoint_to_diffusers,
     infer_minimax_h3_checkpoint_config,
+    infer_minimax_h3_vae_checkpoint_config,
 )
 from diffusers.quantizers import DiffusersAutoQuantizer
 from diffusers.quantizers.convrot import ConvRotQuantizer
@@ -503,3 +510,184 @@ def test_h3_quantized_adaln_preserves_fractional_activations(native_kitchen):
         actual = torch.cat(modulation(temb), dim=-1)
     assert actual.dtype == torch.bfloat16
     assert (actual.float() - reference).norm() / reference.norm() < 0.025
+
+
+@pytest.mark.parametrize("dtype", [torch.int8, torch.float32])
+@pytest.mark.parametrize("scalar_scale", [False, True])
+def test_h3_vae_fused_conversion(dtype, scalar_scale):
+    prefix = "decoder.transformer_blocks.0"
+    state = {}
+    for projection, rows in (("attn.to_qkv", 96), ("ff.w1", 64)):
+        source = f"{prefix}.{projection}"
+        state.update(checkpoint(source, rows=rows))
+        state[f"{source}.weight"] = state[f"{source}.weight"].to(dtype)
+        state[f"{source}.bias"] = torch.arange(rows, dtype=torch.float32)
+        if scalar_scale:
+            state[f"{source}.weight_scale"] = torch.tensor(0.001)
+    converted = convert_minimax_h3_vae_checkpoint_to_diffusers(state, config={})
+    for index, name in enumerate("qkv"):
+        for suffix in ("weight", "bias", "weight_scale", "comfy_quant"):
+            original = state[f"{prefix}.attn.to_qkv.{suffix}"]
+            expected = (
+                original if suffix == "comfy_quant" or original.ndim == 0 else original[index * 32 : (index + 1) * 32]
+            )
+            torch.testing.assert_close(converted[f"{prefix}.attn.to_{name}.{suffix}"], expected, rtol=0, atol=0)
+    for suffix in ("weight", "bias", "weight_scale", "comfy_quant"):
+        original = state[f"{prefix}.ff.w1.{suffix}"]
+        expected = (
+            original if suffix == "comfy_quant" or original.ndim == 0 else torch.cat((original[32:], original[:32]))
+        )
+        torch.testing.assert_close(converted[f"{prefix}.ff.net.0.proj.{suffix}"], expected, rtol=0, atol=0)
+    twice = convert_minimax_h3_vae_checkpoint_to_diffusers(converted, config={})
+    assert twice.keys() == converted.keys()
+    for key in converted:
+        torch.testing.assert_close(twice[key], converted[key], rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("projection,rows", [("attn.to_qkv", 95), ("ff.w1", 63)])
+def test_h3_vae_invalid_fused_rows(projection, rows):
+    with pytest.raises(ValueError, match="equal projections|even number"):
+        convert_minimax_h3_vae_checkpoint_to_diffusers(
+            checkpoint(f"decoder.transformer_blocks.0.{projection}", rows=rows), config={}
+        )
+
+
+@pytest.mark.parametrize("projection", ["attn.to_qkv", "ff.w1"])
+@pytest.mark.parametrize("suffix", ["weight_scale", "bias"])
+def test_h3_vae_invalid_fused_sidecar(projection, suffix):
+    state = checkpoint(f"decoder.transformer_blocks.0.{projection}", rows=96)
+    state[f"decoder.transformer_blocks.0.{projection}.{suffix}"] = torch.ones(32)
+    with pytest.raises(ValueError, match="one entry per fused output row"):
+        convert_minimax_h3_vae_checkpoint_to_diffusers(state, config={})
+
+
+@pytest.mark.parametrize(
+    "name,value", [("latents_mean", [float("nan")]), ("latents_std", [0.0]), ("latents_std", [[1.0]])]
+)
+def test_h3_vae_invalid_normalization(name, value):
+    with pytest.raises(ValueError, match="finite per-channel"):
+        infer_minimax_h3_vae_checkpoint_config({name: torch.tensor(value)})
+
+
+def test_h3_vae_normalization_channel_mismatch():
+    with pytest.raises(ValueError, match="24 channels"):
+        convert_minimax_h3_vae_checkpoint_to_diffusers({"latents_mean": torch.ones(4)}, config={"latent_channels": 24})
+
+
+@pytest.fixture
+def h3_vae_checkpoint(tmp_path):
+    from safetensors.torch import save_file
+
+    torch.manual_seed(42)
+    model = AutoencoderKLMiniMaxH3(
+        latent_channels=4,
+        block_out_channels=(8, 16),
+        layers_per_block=1,
+        spatial_downsample_factors=(2, 2),
+        temporal_downsample_factors=(2, 2),
+        norm_num_groups=8,
+        decoder_num_layers=1,
+        decoder_num_attention_heads=4,
+        decoder_attention_head_dim=64,
+        decoder_num_register_tokens=2,
+        decoder_ffn_mult=1,
+        latents_mean=(0.0,) * 4,
+        latents_std=(1.0,) * 4,
+    )
+    model.save_config(tmp_path / "vae")
+    state = model.state_dict()
+    prefix = "decoder.transformer_blocks.0"
+    for suffix in ("weight", "bias"):
+        state[f"{prefix}.attn.to_qkv.{suffix}"] = torch.cat(
+            [state.pop(f"{prefix}.attn.to_{name}.{suffix}") for name in "qkv"]
+        )
+    for source, rows in (("attn.to_qkv", 768), ("attn.to_out.0", 256), ("ff.net.0.proj", 512), ("ff.net.2", 256)):
+        state.update(checkpoint(f"{prefix}.{source}", rows=rows))
+    original = {}
+    for key, value in state.items():
+        key = key.replace("encoder.down_blocks.", "encoder.down.")
+        key = key.replace(".resnets.", ".block.").replace(".downsamplers.0.", ".downsample.")
+        key = key.replace(".conv_shortcut.", ".nin_shortcut.").replace("decoder.proj_in.", "decoder.x_embedder.")
+        key = key.replace(".attn.to_out.0.", ".attn.to_out.")
+        key = key.replace(".ff.net.0.proj.", ".ff.w1.").replace(".ff.net.2.", ".ff.w2.")
+        original[key] = value.contiguous()
+    original.update(
+        latents_mean=torch.arange(4).float(),
+        latents_std=torch.arange(1, 5).float(),
+        **{"decoder.mask_token": torch.zeros(1, 1, 256)},
+    )
+    path = tmp_path / "vae.safetensors"
+    save_file(original, path)
+    return path, original
+
+
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+def test_h3_vae_single_file_load(tmp_path, h3_vae_checkpoint, kitchen, dtype):
+    path, original = h3_vae_checkpoint
+    model = AutoencoderKLMiniMaxH3.from_single_file(
+        str(path),
+        config=str(tmp_path),
+        subfolder="vae",
+        quantization_config=ConvRotQuantizationConfig(compute_dtype=dtype),
+        dtype=dtype,
+    )
+    assert model.config.latents_mean == [0.0, 1.0, 2.0, 3.0]
+    assert model.config.latents_std == [1.0, 2.0, 3.0, 4.0]
+    assert model.use_tiling
+    assert model.dtype == dtype
+    assert sum(isinstance(module, ConvRotInt8Linear) for module in model.modules()) == 6
+    assert not any(value.is_meta for value in model.state_dict().values())
+    converted = convert_minimax_h3_vae_checkpoint_to_diffusers(original, config=model.config)
+    for name, value in model.state_dict().items():
+        if name.endswith(".weight_scale") or any(part in name.split(".") for part in model._keep_in_fp32_modules):
+            expected_dtype = torch.float32
+        elif name.endswith(".weight") and converted[name].dtype == torch.int8:
+            expected_dtype = torch.int8
+        else:
+            expected_dtype = dtype
+        assert value.dtype == expected_dtype, name
+        torch.testing.assert_close(value, converted[name].to(expected_dtype), rtol=0, atol=0)
+
+
+@pytest.mark.parametrize("include_markers", [True, False])
+def test_h3_vae_requires_quantization_config(tmp_path, h3_vae_checkpoint, include_markers):
+    _, state = h3_vae_checkpoint
+    if not include_markers:
+        state = {key: value for key, value in state.items() if not key.endswith(".comfy_quant")}
+    with pytest.raises(ValueError, match="quantization_config"):
+        AutoencoderKLMiniMaxH3.from_single_file(state, config=str(tmp_path), subfolder="vae")
+
+
+def test_single_file_floating_weights_with_other_quantization_metadata(tmp_path, h3_vae_checkpoint):
+    _, state = h3_vae_checkpoint
+    state = {
+        key: marker(format="float8_e4m3fn") if key.endswith(".comfy_quant") else value.float()
+        for key, value in state.items()
+        if not key.endswith(".weight_scale")
+    }
+    loaded = AutoencoderKLMiniMaxH3.from_single_file(state, config=str(tmp_path), subfolder="vae")
+    assert not getattr(loaded, "is_quantized", False)
+    assert not any(value.is_meta for value in loaded.state_dict().values())
+    torch.testing.assert_close(loaded.decoder.proj_in.weight, state["decoder.x_embedder.weight"])
+
+
+def test_h3_vae_missing_tensor_is_rejected(tmp_path, h3_vae_checkpoint, kitchen):
+    _, state = h3_vae_checkpoint
+    state.pop("decoder.transformer_blocks.0.attn.to_qkv.bias")
+    with pytest.raises(ValueError, match="missing model tensors"):
+        AutoencoderKLMiniMaxH3.from_single_file(
+            state, config=str(tmp_path), subfolder="vae", quantization_config=ConvRotQuantizationConfig()
+        )
+
+
+def test_h3_vae_native_encode_decode(tmp_path, h3_vae_checkpoint, native_kitchen):
+    path, _ = h3_vae_checkpoint
+    model = AutoencoderKLMiniMaxH3.from_single_file(
+        str(path), config=str(tmp_path), subfolder="vae", quantization_config=ConvRotQuantizationConfig()
+    ).to("cuda")
+    with torch.inference_mode(), native_kitchen.use_backend("cuda"):
+        encoded = model.encode(torch.zeros(1, 3, 1, 8, 8, device="cuda")).latent_dist.mean
+        decoded = model.decode(torch.zeros(1, 4, 7, 2, 2, device="cuda")).sample
+    assert encoded.shape == (1, 4, 1, 2, 2)
+    assert decoded.shape == (1, 3, 22, 8, 8)
+    assert torch.isfinite(encoded).all() and torch.isfinite(decoded).all()

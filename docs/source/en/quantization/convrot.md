@@ -83,9 +83,9 @@ The loader splits scales alongside fused QKV and gate/up weights, and preserves 
 Unquantized layers use the requested precision, except for modules the model keeps in FP32. BF16 and FP16
 computation are supported.
 
-This integration loads prequantized single-file transformer checkpoints. It does not support the older
-ComfyUI-INT8-Fast marker format, other Comfy quantization formats, on-load quantization, training, LoRA, attention
-projection fusion, or `save_pretrained` for the quantized transformer.
+This integration loads prequantized single-file transformer and MiniMax-H3 video VAE checkpoints. It does not support
+the older ComfyUI-INT8-Fast marker format, other Comfy quantization formats, on-load quantization, training, LoRA,
+attention projection fusion, or `save_pretrained` for quantized models.
 
 ## MiniMax-H3
 
@@ -122,3 +122,35 @@ the loaded model as the modular pipeline's `transformer_ref` component.
 MiniMax-H3 uses the existing modular video/audio workflow. Its INT8 transformer is still large, so phase prompt
 encoding, denoising, and VAE decoding separately when host memory is limited, and offload transformer blocks as
 needed. See the [MiniMax-H3 pipeline guide](../api/pipelines/minimax_h3) for packing and sampling constraints.
+
+### Video VAE
+
+Load the [Comfy-Org INT8 video VAE](https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_int8_convrot.safetensors)
+with the native single-file loader:
+
+```python
+import torch
+from diffusers import AutoencoderKLMiniMaxH3, ConvRotQuantizationConfig
+
+vae = AutoencoderKLMiniMaxH3.from_single_file(
+    "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_int8_convrot.safetensors",
+    config="MiniMaxAI/MiniMax-H3",
+    subfolder="vae",
+    quantization_config=ConvRotQuantizationConfig(compute_dtype=torch.bfloat16),
+    dtype=torch.bfloat16,
+)
+vae.to("cuda")
+```
+
+The decoder transformer projections retain their native INT8 weights and FP32 scales. The encoder, latent
+convolutions, normalization, residual anchors, and unquantized boundary projections stay in FP32; quantized
+projection biases and computation use the requested compute dtype. Keep the mixed precision established by the
+loader: move the VAE with `vae.to("cuda")` without passing a floating dtype.
+
+The loader splits fused QKV weights, scales, and biases together and reorders SwiGLU gate/value rows. Checkpoint
+`latents_mean` and `latents_std` tensors override the corresponding configuration values. Encode/decode operate
+on unnormalized latents: normalize encoded latents with `(latents - mean) / std` before denoising, and undo that
+normalization before decoding. The existing MiniMax-H3 workflow handles this normalization.
+
+Spatial tiling remains enabled by default. This support targets the video VAE checkpoint linked above; the H3
+audio and SOL VAEs use different architectures.

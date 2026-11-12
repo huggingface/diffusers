@@ -130,6 +130,9 @@ class ConvRotQuantizer(DiffusersQuantizer):
             module.weight_scale = state_dict[param_name].to(target_device, torch.float32)
 
     def _process_model_after_weight_loading(self, model, **kwargs):
+        missing = [name for name, tensor in model.state_dict().items() if tensor.is_meta]
+        if missing:
+            raise ValueError(f"The ConvRot checkpoint is missing model tensors: {missing}.")
         return model
 
     @property

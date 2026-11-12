@@ -53,6 +53,7 @@ from .single_file_utils import (
     convert_ltx_vae_checkpoint_to_diffusers,
     convert_lumina2_to_diffusers,
     convert_minimax_h3_transformer_checkpoint_to_diffusers,
+    convert_minimax_h3_vae_checkpoint_to_diffusers,
     convert_mochi_transformer_checkpoint_to_diffusers,
     convert_qwen_image21_transformer_checkpoint_to_diffusers,
     convert_sana_transformer_to_diffusers,
@@ -69,6 +70,7 @@ from .single_file_utils import (
     fetch_diffusers_config,
     fetch_original_config,
     infer_minimax_h3_checkpoint_config,
+    infer_minimax_h3_vae_checkpoint_config,
     load_single_file_checkpoint,
 )
 
@@ -241,6 +243,12 @@ SINGLE_FILE_LOADABLE_CLASSES = {
         "checkpoint_mapping_fn": convert_minimax_h3_transformer_checkpoint_to_diffusers,
         "checkpoint_config_fn": infer_minimax_h3_checkpoint_config,
         "default_subfolder": "transformer",
+    },
+    "AutoencoderKLMiniMaxH3": {
+        "checkpoint_mapping_fn": convert_minimax_h3_vae_checkpoint_to_diffusers,
+        "checkpoint_config_fn": infer_minimax_h3_vae_checkpoint_config,
+        "default_subfolder": "vae",
+        "quantized_keep_in_fp32_modules": ["post_quant_conv", "proj_in", "proj_out", "register_tokens"],
     },
 }
 
@@ -425,6 +433,10 @@ class FromOriginalModelMixin:
 
         else:
             hf_quantizer = None
+            if any(key.endswith(".weight") and value.dtype == torch.int8 for key, value in checkpoint.items()):
+                raise ValueError(
+                    "Native Comfy INT8 checkpoints require `quantization_config=ConvRotQuantizationConfig()`."
+                )
 
         mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[mapping_class_name]
 
@@ -516,6 +528,10 @@ class FromOriginalModelMixin:
 
         else:
             keep_in_fp32_modules = []
+
+        if hf_quantizer is not None and "quantized_keep_in_fp32_modules" in mapping_functions:
+            keep_in_fp32_modules = keep_in_fp32_modules + mapping_functions["quantized_keep_in_fp32_modules"]
+            model._keep_in_fp32_modules = keep_in_fp32_modules
 
         # Now that the model is loaded, we can determine the `device_map`
         device_map = _determine_device_map(model, device_map, None, torch_dtype, keep_in_fp32_modules, hf_quantizer)

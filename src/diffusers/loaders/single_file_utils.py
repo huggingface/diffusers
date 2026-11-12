@@ -4340,6 +4340,63 @@ def infer_minimax_h3_checkpoint_config(checkpoint):
     return {"adaln_curve_grid": table.shape[0], "time_embed_dim": table.shape[1]}
 
 
+def infer_minimax_h3_vae_checkpoint_config(checkpoint):
+    config = {}
+    for name in ("latents_mean", "latents_std"):
+        if name not in checkpoint:
+            continue
+        value = checkpoint[name]
+        if value.ndim != 1 or not torch.isfinite(value).all() or (name == "latents_std" and not (value > 0).all()):
+            raise ValueError(
+                f"MiniMax-H3 {name} must be a finite per-channel vector with positive standard deviations."
+            )
+        config[name] = value.tolist()
+    return config
+
+
+def convert_minimax_h3_vae_checkpoint_to_diffusers(checkpoint, config, **kwargs):
+    converted = {}
+    gated_projections = set()
+    for key, value in checkpoint.items():
+        if key in ("decoder.mask_token", "latents_mean", "latents_std"):
+            continue
+        key = re.sub(r"encoder\.down\.(\d+)\.block\.(\d+)\.", r"encoder.down_blocks.\1.resnets.\2.", key)
+        key = re.sub(r"encoder\.down\.(\d+)\.downsample\.", r"encoder.down_blocks.\1.downsamplers.0.", key)
+        key = key.replace(".nin_shortcut.", ".conv_shortcut.")
+        key = key.replace("decoder.x_embedder.", "decoder.proj_in.")
+        key = re.sub(r"\.attn\.to_out\.(?!0\.)", ".attn.to_out.0.", key)
+        if key.endswith(".ff.w1.weight"):
+            gated_projections.add(key.replace(".ff.w1.weight", ".ff.net.0.proj.weight"))
+        key = key.replace(".ff.w1.", ".ff.net.0.proj.").replace(".ff.w2.", ".ff.net.2.")
+        converted[key] = value
+
+    for name in ("latents_mean", "latents_std"):
+        if name in checkpoint and checkpoint[name].shape != (config["latent_channels"],):
+            raise ValueError(f"MiniMax-H3 {name} must have {config['latent_channels']} channels.")
+
+    for key in list(converted):
+        if key.endswith(".attn.to_qkv.weight"):
+            source = key.removesuffix(".weight")
+            _split_linear_checkpoint(converted, source, [source.replace(".to_qkv", f".to_{name}") for name in "qkv"])
+        elif key in gated_projections:
+            source = key.removesuffix(".weight")
+            rows = converted[key].shape[0]
+            if rows % 2:
+                raise ValueError(f"{key} must have an even number of gate/value rows.")
+            for suffix in ("weight", "weight_scale", "bias"):
+                tensor_key = f"{source}.{suffix}"
+                if tensor_key not in converted:
+                    continue
+                tensor = converted[tensor_key]
+                if suffix == "weight_scale" and tensor.numel() == 1:
+                    continue
+                if tensor.ndim == 0 or tensor.shape[0] != rows:
+                    raise ValueError(f"{tensor_key} must have one entry per fused output row.")
+                gate, value = tensor.chunk(2, dim=0)
+                converted[tensor_key] = torch.cat((value, gate), dim=0)
+    return converted
+
+
 def convert_minimax_h3_transformer_checkpoint_to_diffusers(checkpoint, config, qkv_layout="stacked", **kwargs):
     if qkv_layout not in ("stacked", "interleaved"):
         raise ValueError(
