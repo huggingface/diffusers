@@ -806,10 +806,11 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
             non_blocking=False,
             stream=None,
             record_stream=False,
+            low_cpu_mem_usage=config.low_cpu_mem_usage,
             onload_self=True,
             group_id=f"{config.module_prefix}{module.__class__.__name__}_unmatched_group",
         )
-        if config.stream is None:
+        if config.stream is None or len(matched_module_groups) == 0:
             _apply_group_offloading_hook(module, unmatched_group, config=config)
         else:
             _apply_lazy_group_offloading_hook(module, unmatched_group, config=config)
