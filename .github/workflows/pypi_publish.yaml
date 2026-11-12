@@ -77,3 +77,73 @@ jobs:
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # release/v1
         with:
           verbose: true
+
+  post-release:
+    needs: publish-to-pypi
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: post-release-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - name: Check for a minor release
+        id: release
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.([1-9][0-9]*)\.0$ ]]; then
+            echo "is_minor=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out the default branch
+        if: steps.release.outputs.is_minor == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Set up Python
+        if: steps.release.outputs.is_minor == 'true'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11"
+
+      - name: Install release dependencies
+        if: steps.release.outputs.is_minor == 'true'
+        run: python -m pip install packaging
+
+      - name: Run post-release updates
+        if: steps.release.outputs.is_minor == 'true'
+        id: post_release
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import runpy
+          import subprocess
+
+          from packaging.version import Version
+
+          release = Version(os.environ["RELEASE_TAG"])
+          next_version = Version(f"{release.major}.{release.minor + 1}.0.dev0")
+          current_version = runpy.run_path("utils/release.py")["get_version"]()
+          if current_version >= next_version:
+              print(f"Already developing {current_version}; skipping {release}.")
+          else:
+              subprocess.run(["make", "post-release"], input=f"{next_version}\n", text=True, check=True)
+              with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+                  output.write("updated=true\n")
+          PY
+
+      - name: Open post-release pull request
+        if: steps.post_release.outputs.updated == 'true'
+        uses: peter-evans/create-pull-request@3ffccacd46053766916f087ce41d627c0b8cf2d1
+        with:
+          base: ${{ github.event.repository.default_branch }}
+          branch: post-release/${{ github.ref_name }}
+          commit-message: Run post-release ${{ github.ref_name }}.
+          title: Post release ${{ github.ref_name }}
+          body: "Post release version updates cc: @yiyixu, @dn6, and @sayakpaul"
