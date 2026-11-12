@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import hashlib
+import itertools
+import mmap
 import os
 import weakref
 from contextlib import contextmanager, nullcontext
@@ -37,6 +39,8 @@ if is_accelerate_available():
 logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 _STREAM_PINNED_STAGING: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+_HOST_REGISTERED_RANGES: list[tuple[int, int]] = []
+_CUDA_HOST_REGISTER_READ_ONLY = 8
 
 
 def _is_torchao_tensor(tensor: torch.Tensor) -> bool:
@@ -114,6 +118,7 @@ class GroupOffloadingConfig:
     block_modules: list[str] | None = None
     exclude_kwargs: list[str] | None = None
     module_prefix: str = ""
+    pin_cpu_memory_in_place: bool = False
 
 
 class ModuleGroup:
@@ -610,6 +615,7 @@ def apply_group_offloading(
     offload_to_disk_path: str | None = None,
     block_modules: list[str] | None = None,
     exclude_kwargs: list[str] | None = None,
+    pin_cpu_memory_in_place: bool = False,
 ) -> None:
     r"""
     Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is, and
@@ -674,6 +680,12 @@ def apply_group_offloading(
             List of kwarg keys that should not be processed by send_to_device. This is useful for mutable state like
             caching lists that need to maintain their object identity across forward passes. If not provided, will be
             inferred from the module's `_skip_keys` attribute if it exists.
+        pin_cpu_memory_in_place (`bool`, defaults to `False`):
+            Only used with `use_stream=True` and `low_cpu_mem_usage=True`. If True, the CPU tensors of the module are
+            page-locked where they already live (for example the memory-mapped safetensors file) with
+            `cudaHostRegister`, so streamed onloading copies them to the device directly instead of first copying them
+            into a pinned buffer on every forward pass. No second copy of the weights is allocated, but the registered
+            pages stay resident and cannot be reclaimed by the OS until the module is garbage collected.
 
     Example:
         ```python
@@ -711,6 +723,10 @@ def apply_group_offloading(
 
     if not use_stream and record_stream:
         raise ValueError("`record_stream` cannot be True when `use_stream=False`.")
+    if pin_cpu_memory_in_place and not (use_stream and low_cpu_mem_usage and offload_to_disk_path is None):
+        raise ValueError(
+            "`pin_cpu_memory_in_place=True` requires `use_stream=True`, `low_cpu_mem_usage=True` and no `offload_to_disk_path`."
+        )
     if offload_type == GroupOffloadingType.BLOCK_LEVEL and num_blocks_per_group is None:
         raise ValueError("`num_blocks_per_group` must be provided when using `offload_type='block_level'.")
 
@@ -734,6 +750,7 @@ def apply_group_offloading(
         offload_to_disk_path=offload_to_disk_path,
         block_modules=block_modules,
         exclude_kwargs=exclude_kwargs,
+        pin_cpu_memory_in_place=pin_cpu_memory_in_place,
     )
     _apply_group_offloading(module, config)
 
@@ -745,6 +762,61 @@ def _apply_group_offloading(module: torch.nn.Module, config: GroupOffloadingConf
         _apply_group_offloading_leaf_level(module, config)
     else:
         assert False
+    if config.pin_cpu_memory_in_place:
+        _pin_cpu_tensors_in_place(module)
+
+
+def _unregister_host_ranges(ranges: list[tuple[int, int]]) -> None:
+    cudart = torch.cuda.cudart()
+    for start, end in ranges:
+        cudart.cudaHostUnregister(start)
+        _HOST_REGISTERED_RANGES.remove((start, end))
+
+
+def _pin_cpu_tensors_in_place(module: torch.nn.Module) -> None:
+    if not torch.cuda.is_available():
+        logger.warning("`pin_cpu_memory_in_place=True` needs a CUDA/ROCm device; falling back to pinned staging.")
+        return
+    page = mmap.PAGESIZE
+    spans = []
+    for tensor in itertools.chain(module.parameters(), module.buffers()):
+        if tensor.device.type != "cpu" or tensor.numel() == 0 or _is_torchao_tensor(tensor) or tensor.is_pinned():
+            continue
+        start = tensor.data_ptr() // page * page
+        end = -(-(tensor.data_ptr() + tensor.numel() * tensor.element_size()) // page) * page
+        spans.append((start, end))
+    spans.sort()
+    merged = []
+    for start, end in spans:
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+
+    cudart = torch.cuda.cudart()
+    registered = []
+    for start, end in merged:
+        # Pages already registered by another module (e.g. a shared mmap page) are skipped.
+        for r_start, r_end in sorted(_HOST_REGISTERED_RANGES):
+            if r_end <= start or r_start >= end:
+                continue
+            if r_start > start:
+                registered += _register_host_range(cudart, start, r_start)
+            start = max(start, r_end)
+        if start < end:
+            registered += _register_host_range(cudart, start, end)
+    if registered:
+        weakref.finalize(module, _unregister_host_ranges, registered)
+
+
+def _register_host_range(cudart, start: int, end: int) -> list[tuple[int, int]]:
+    # Read-only first: memory-mapped checkpoints are usually mapped without write permission.
+    for flags in (_CUDA_HOST_REGISTER_READ_ONLY, 0):
+        if int(cudart.cudaHostRegister(start, end - start, flags)) == 0:
+            _HOST_REGISTERED_RANGES.append((start, end))
+            return [(start, end)]
+    logger.warning("Could not page-lock a CPU memory range in place; it will use pinned staging instead.")
+    return []
 
 
 def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOffloadingConfig) -> None:

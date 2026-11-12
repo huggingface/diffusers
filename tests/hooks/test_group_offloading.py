@@ -782,3 +782,52 @@ class TestGroupOffloadingLowCpuMemStaging:
         with torch.no_grad():
             for _ in range(2):
                 assert torch.equal(model(x), model_ref(x))
+
+
+@require_torch_accelerator
+class TestGroupOffloadingPinCpuMemoryInPlace:
+    def test_pin_in_place_skips_staging_and_matches_reference(self, tmp_path):
+        import safetensors.torch
+
+        from diffusers.hooks import group_offloading as go_mod
+
+        model = DummyModel(16, 32, 16, num_layers=3).eval()
+        ckpt = tmp_path / "dummy.safetensors"
+        safetensors.torch.save_file(model.state_dict(), str(ckpt))
+        model.load_state_dict(safetensors.torch.load_file(str(ckpt), device="cpu"), assign=True)
+        orig_ptrs = {name: param.data_ptr() for name, param in model.named_parameters()}
+
+        model_ref = DummyModel(16, 32, 16, num_layers=3).eval()
+        model_ref.load_state_dict(model.state_dict(), strict=True)
+        model_ref.to(torch_device)
+
+        model.enable_group_offload(
+            torch_device,
+            offload_type="block_level",
+            num_blocks_per_group=1,
+            use_stream=True,
+            record_stream=True,
+            low_cpu_mem_usage=True,
+            pin_cpu_memory_in_place=True,
+        )
+        for name, param in model.named_parameters():
+            assert param.device.type == "cpu"
+            assert param.data_ptr() == orig_ptrs[name]
+            assert param.is_pinned(), name
+
+        x = torch.randn(4, 16, device=torch_device)
+        with torch.no_grad():
+            for _ in range(3):
+                assert torch.allclose(model(x), model_ref(x), atol=1e-5)
+
+        block_hook = model.blocks[0]._diffusers_hook.get_hook("group_offloading")
+        assert go_mod._STREAM_PINNED_STAGING.get(block_hook.group.stream) is None
+        for name, param in model.named_parameters():
+            assert param.data_ptr() == orig_ptrs[name]
+
+    def test_pin_in_place_requires_streamed_low_cpu_mem_usage(self):
+        model = DummyModel(16, 32, 16, num_layers=1)
+        with pytest.raises(ValueError, match="pin_cpu_memory_in_place"):
+            model.enable_group_offload(
+                torch_device, offload_type="block_level", num_blocks_per_group=1, pin_cpu_memory_in_place=True
+            )
