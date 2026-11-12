@@ -74,7 +74,6 @@ LOADABLE_CLASSES = {
         "ModelMixin": ["save_pretrained", "from_pretrained"],
         "SchedulerMixin": ["save_pretrained", "from_pretrained"],
         "DiffusionPipeline": ["save_pretrained", "from_pretrained"],
-        "OnnxRuntimeModel": ["save_pretrained", "from_pretrained"],
         "BaseGuidance": ["save_pretrained", "from_pretrained"],
     },
     "transformers": {
@@ -602,17 +601,8 @@ def _load_empty_model(
         cache_dir=cached_folder,
     )
 
-    if is_transformers_available():
-        transformers_version = version.parse(version.parse(transformers.__version__).base_version)
-    else:
-        transformers_version = "N/A"
-
     # Determine library.
-    is_transformers_model = (
-        is_transformers_available()
-        and issubclass(class_obj, PreTrainedModel)
-        and transformers_version >= version.parse("4.20.0")
-    )
+    is_transformers_model = is_transformers_available() and issubclass(class_obj, PreTrainedModel)
     diffusers_module = importlib.import_module(__name__.split(".")[0])
     is_diffusers_model = issubclass(class_obj, diffusers_module.ModelMixin)
 
@@ -794,8 +784,6 @@ def load_sub_model(
     is_pipeline_module: bool,
     pipeline_class: Any,
     dtype: torch.dtype,
-    provider: Any,
-    sess_options: Any,
     device_map: dict[str, torch.device] | str | None,
     max_memory: dict[int | str, int | str] | None,
     offload_folder: str | os.PathLike | None,
@@ -806,7 +794,6 @@ def load_sub_model(
     low_cpu_mem_usage: bool,
     cached_folder: str | os.PathLike,
     use_safetensors: bool,
-    provider_options: Any,
     disable_mmap: bool,
     quantization_config: Any | None = None,
     use_flashpack: bool = False,
@@ -862,11 +849,7 @@ def load_sub_model(
     else:
         transformers_version = "N/A"
 
-    is_transformers_model = (
-        is_transformers_available()
-        and issubclass(class_obj, PreTrainedModel)
-        and transformers_version >= version.parse("4.20.0")
-    )
+    is_transformers_model = is_transformers_available() and issubclass(class_obj, PreTrainedModel)
 
     # For transformers models >= 4.56.0, use 'dtype' instead of 'torch_dtype' to avoid deprecation warnings
     if issubclass(class_obj, torch.nn.Module):
@@ -874,10 +857,6 @@ def load_sub_model(
             loading_kwargs["dtype"] = dtype
         else:
             loading_kwargs["torch_dtype"] = dtype
-    if issubclass(class_obj, diffusers_module.OnnxRuntimeModel):
-        loading_kwargs["provider"] = provider
-        loading_kwargs["sess_options"] = sess_options
-        loading_kwargs["provider_options"] = provider_options
 
     # When loading a transformers model, if the device_map is None, the weights will be initialized as opposed to diffusers.
     # To make default loading faster we set the `low_cpu_mem_usage=low_cpu_mem_usage` flag which is `True` by default.
@@ -893,17 +872,7 @@ def load_sub_model(
         if is_diffusers_model:
             loading_kwargs["use_flashpack"] = use_flashpack
 
-        # the following can be deleted once the minimum required `transformers` version
-        # is higher than 4.27
-        if (
-            is_transformers_model
-            and loading_kwargs["variant"] is not None
-            and transformers_version < version.parse("4.27.0")
-        ):
-            raise ImportError(
-                f"When passing `variant='{variant}'`, please make sure to upgrade your `transformers` version to at least 4.27.0.dev0"
-            )
-        elif is_transformers_model and loading_kwargs["variant"] is None:
+        if is_transformers_model and loading_kwargs["variant"] is None:
             loading_kwargs.pop("variant")
 
         loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage

@@ -50,6 +50,7 @@ from typing_extensions import Self
 
 from .. import __version__
 from ..configuration_utils import ConfigMixin
+from ..dependency_versions_table import deps
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
@@ -70,7 +71,6 @@ from ..utils import (
     is_bitsandbytes_version,
     is_hpu_available,
     is_torch_npu_available,
-    is_torch_version,
     is_transformers_version,
     logging,
     numpy_to_pil,
@@ -465,7 +465,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
         def module_is_sequentially_offloaded(module):
-            if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
+            if not is_accelerate_available():
                 return False
 
             _, _, is_loaded_in_8bit_bnb = _check_bnb_status(module)
@@ -483,7 +483,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         def module_is_offloaded(module):
-            if not is_accelerate_available() or is_accelerate_version("<", "0.17.0.dev0"):
+            if not is_accelerate_available():
                 return False
 
             return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, accelerate.hooks.CpuOffload)
@@ -789,9 +789,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         dtype = _resolve_dtype(kwargs.pop("dtype", None), torch_dtype)
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         custom_revision = kwargs.pop("custom_revision", None)
-        provider = kwargs.pop("provider", None)
-        sess_options = kwargs.pop("sess_options", None)
-        provider_options = kwargs.pop("provider_options", None)
         device_map = kwargs.pop("device_map", None)
         max_memory = kwargs.pop("max_memory", None)
         offload_folder = kwargs.pop("offload_folder", None)
@@ -822,21 +819,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if quantization_config is not None and not isinstance(quantization_config, PipelineQuantizationConfig):
             raise ValueError("`quantization_config` must be an instance of `PipelineQuantizationConfig`.")
 
-        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `low_cpu_mem_usage=False`."
-            )
-
-        if device_map is not None and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `device_map=None`."
-            )
-
         if device_map is not None and not is_accelerate_available():
             raise NotImplementedError(
-                "Using `device_map` requires the `accelerate` library. Please install it using: `pip install accelerate`."
+                f"Using `device_map` requires `{deps['accelerate']}`. Please install it using: `pip install -U '{deps['accelerate']}'`."
             )
 
         if device_map is not None and not isinstance(device_map, str):
@@ -846,10 +831,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             raise NotImplementedError(
                 f"{device_map} not supported. Supported strategies are: {', '.join(SUPPORTED_DEVICE_MAP)}"
             )
-
-        if device_map is not None and device_map in SUPPORTED_DEVICE_MAP:
-            if is_accelerate_version("<", "0.28.0"):
-                raise NotImplementedError("Device placement requires `accelerate` version `0.28.0` or later.")
 
         if low_cpu_mem_usage is False and device_map is not None:
             raise ValueError(
@@ -1049,8 +1030,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     is_pipeline_module=is_pipeline_module,
                     pipeline_class=pipeline_class,
                     dtype=sub_model_dtype,
-                    provider=provider,
-                    sess_options=sess_options,
                     device_map=current_device_map,
                     max_memory=max_memory,
                     offload_folder=offload_folder,
@@ -1061,7 +1040,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
                     use_safetensors=use_safetensors,
-                    provider_options=provider_options,
                     disable_mmap=disable_mmap,
                     quantization_config=quantization_config,
                     use_flashpack=use_flashpack,
@@ -1200,10 +1178,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 "Model CPU offload cannot be enabled because no `model_cpu_offload_seq` class attribute is set."
             )
 
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+        if is_accelerate_available():
             from accelerate import cpu_offload_with_hook
         else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+            raise ImportError(
+                f"`enable_model_cpu_offload` requires `{deps['accelerate']}`: `pip install -U '{deps['accelerate']}'`"
+            )
 
         self.remove_all_hooks()
 
@@ -1308,10 +1288,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self._maybe_raise_error_if_group_offload_active(raise_error=True)
         self._maybe_raise_error_if_tensor_parallel_active()
 
-        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
+        if is_accelerate_available():
             from accelerate import cpu_offload
         else:
-            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
+            raise ImportError(
+                f"`enable_sequential_cpu_offload` requires `{deps['accelerate']}`: `pip install -U '{deps['accelerate']}'`"
+            )
         self.remove_all_hooks()
 
         is_pipeline_device_mapped = self._is_pipeline_device_mapped()

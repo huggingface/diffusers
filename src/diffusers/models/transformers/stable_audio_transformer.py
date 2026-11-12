@@ -289,7 +289,7 @@ class StableAudioDiTModel(ModelMixin, AttentionMixin, ConfigMixin):
         return_dict: bool = True,
         attention_mask: torch.LongTensor | None = None,
         encoder_attention_mask: torch.LongTensor | None = None,
-    ) -> torch.FloatTensor | Transformer2DModelOutput:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`StableAudioDiTModel`] forward method.
 
