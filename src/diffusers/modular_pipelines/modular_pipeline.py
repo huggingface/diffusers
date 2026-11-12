@@ -42,7 +42,6 @@ from ..pipelines.pipeline_loading_utils import (
 from ..utils import (
     TRANSFORMERS_COMPONENT_AUX_FILES,
     PushToHubMixin,
-    deprecate,
     is_accelerate_available,
     is_transformers_available,
     logging,
@@ -2069,16 +2068,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 - `token` (`str`, *optional*):
                     The Hugging Face token to use for authentication.
         """
-        if "overwrite_modular_index" not in kwargs:
-            deprecate(
-                "overwrite_modular_index",
-                "0.43.0",
-                "The default of `overwrite_modular_index` in `ModularPipeline.save_pretrained` changed from `False`"
-                " to `True`: the saved `modular_model_index.json` now points each saved component at the destination"
-                " (the save directory, or `repo_id` when pushing to the Hub). Pass `overwrite_modular_index=False`"
-                " to keep the previously recorded loading specs, or pass `True` explicitly to silence this warning.",
-                standard_warn=False,
-            )
         overwrite_modular_index = kwargs.pop("overwrite_modular_index", True)
         repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
 

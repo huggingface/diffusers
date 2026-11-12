@@ -789,9 +789,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         dtype = _resolve_dtype(kwargs.pop("dtype", None), torch_dtype)
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         custom_revision = kwargs.pop("custom_revision", None)
-        provider = kwargs.pop("provider", None)
-        sess_options = kwargs.pop("sess_options", None)
-        provider_options = kwargs.pop("provider_options", None)
         device_map = kwargs.pop("device_map", None)
         max_memory = kwargs.pop("max_memory", None)
         offload_folder = kwargs.pop("offload_folder", None)
@@ -1033,8 +1030,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     is_pipeline_module=is_pipeline_module,
                     pipeline_class=pipeline_class,
                     dtype=sub_model_dtype,
-                    provider=provider,
-                    sess_options=sess_options,
                     device_map=current_device_map,
                     max_memory=max_memory,
                     offload_folder=offload_folder,
@@ -1045,7 +1040,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
                     use_safetensors=use_safetensors,
-                    provider_options=provider_options,
                     disable_mmap=disable_mmap,
                     quantization_config=quantization_config,
                     use_flashpack=use_flashpack,
