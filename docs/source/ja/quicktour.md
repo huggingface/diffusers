@@ -301,4 +301,4 @@ DDPMScheduler {
 * 様々な使用例については、公式およびコミュニティの[training or finetuning scripts](https://github.com/huggingface/diffusers/tree/main/examples#-diffusers-examples)の例を参照してください。
 * スケジューラのロード、アクセス、変更、比較については[Using different Schedulers](./using-diffusers/schedulers)ガイドを参照してください。
 * プロンプトエンジニアリング、スピードとメモリの最適化、より高品質な画像を生成するためのヒントやトリックについては、[Stable Diffusion](./stable_diffusion)ガイドを参照してください。
-* 🧨 Diffusers の高速化については、最適化された [PyTorch on a GPU](./optimization/fp16)のガイド、[Stable Diffusion on Apple Silicon (M1/M2)](./optimization/mps)と[ONNX Runtime](./optimization/onnx)を参照してください。
+* 🧨 Diffusers の高速化については、最適化された [PyTorch on a GPU](./optimization/fp16)のガイド、[Stable Diffusion on Apple Silicon (M1/M2)](./optimization/mps)を参照してください。
