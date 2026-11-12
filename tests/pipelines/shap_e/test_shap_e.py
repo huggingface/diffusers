@@ -20,7 +20,8 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import HeunDiscreteScheduler, PriorTransformer, ShapEPipeline
-from diffusers.pipelines.shap_e import ShapERenderer
+from diffusers.pipelines.shap_e import MLPNeRFModelOutput, ShapERenderer, StratifiedRaySampler, create_pan_cameras
+from diffusers.pipelines.shap_e.renderer import encode_direction, posenc_nerf
 
 from ...testing_utils import (
     backend_empty_cache,
@@ -213,6 +214,51 @@ class TestShapEPipeline(ShapEPipelineTesterConfig, PipelineTesterMixin):
 
     def test_save_load_local(self, tmp_path, base_pipe_output):
         super().test_save_load_local(tmp_path, base_pipe_output, expected_max_difference=5e-3)
+
+    def test_renderer_fine_pass_reuse_matches_full_recompute(self):
+        # The fine pass runs the MLP only on the new samples and reuses the coarse raw MLP outputs at the coarse ts.
+        # It must match running the MLP on all merged ts. Exact equality relies on the MLP matmul giving the same
+        # result for a row whatever the number of rows. That held on CPU in our runs but not for a GPU GEMM kernel at
+        # this tiny size, so the check runs on CPU.
+        renderer = self.dummy_renderer.to("cpu")
+        rays = create_pan_cameras(4).camera_rays.to("cpu")
+        origin, direction = rays[..., 0, :], rays[..., 1, :]
+
+        _, fine_sampler, coarse_out = renderer.render_rays(rays, StratifiedRaySampler(), 8)
+        torch.manual_seed(0)
+        _, _, fine_out = renderer.render_rays(rays, fine_sampler, 16, prev_model_out=coarse_out)
+
+        torch.manual_seed(0)
+        vrange = renderer.volume.intersect(origin, direction, t0_lower=None)
+        new_ts = fine_sampler.sample(vrange.t0, vrange.t1, 16).to(rays.dtype)
+        expected_ts = torch.sort(torch.cat([new_ts, coarse_out.ts], dim=-2), dim=-2).values
+        positions = origin.unsqueeze(-2) + expected_ts * direction.unsqueeze(-2)
+        expected = renderer.mlp(position=positions, direction=None, ts=expected_ts, nerf_level="fine")
+
+        assert torch.equal(fine_out.ts, expected_ts)
+        for name in ("density", "channels", "signed_distance", "raw_output"):
+            assert torch.equal(getattr(fine_out, name), getattr(expected, name)), name
+
+        # The coarse raw outputs are used: changing them changes the fine pass.
+        changed_coarse_out = MLPNeRFModelOutput(
+            density=coarse_out.density,
+            signed_distance=coarse_out.signed_distance,
+            channels=coarse_out.channels,
+            ts=coarse_out.ts,
+            raw_output=coarse_out.raw_output + 1,
+        )
+        torch.manual_seed(0)
+        _, _, changed_fine_out = renderer.render_rays(rays, fine_sampler, 16, prev_model_out=changed_coarse_out)
+        assert not torch.equal(changed_fine_out.raw_output, fine_out.raw_output)
+
+    def test_encode_direction_without_direction(self):
+        position = torch.randn(2, 5, 3, device=torch_device)
+        expected = torch.zeros_like(posenc_nerf(position, min_deg=0, max_deg=8))
+        output = encode_direction(position)
+        assert output.device == expected.device
+        assert output.dtype == expected.dtype
+        assert output.shape == expected.shape
+        assert torch.equal(output, expected)
 
 
 class TestShapEPipelineMemory(ShapEPipelineTesterConfig, MemoryTesterMixin):
