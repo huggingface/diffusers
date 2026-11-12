@@ -524,13 +524,15 @@ def test_h3_vae_fused_conversion(dtype, scalar_scale):
         state[f"{source}.bias"] = torch.arange(rows, dtype=torch.float32)
         if scalar_scale:
             state[f"{source}.weight_scale"] = torch.tensor(0.001)
-    converted = convert_minimax_h3_vae_checkpoint_to_diffusers(state, config={})
+    config = {"decoder_num_attention_heads": 2, "decoder_attention_head_dim": 16}
+    converted = convert_minimax_h3_vae_checkpoint_to_diffusers(state, config=config)
     for index, name in enumerate("qkv"):
+        indices = torch.cat(
+            (torch.arange(index * 16, (index + 1) * 16), torch.arange(48 + index * 16, 48 + (index + 1) * 16))
+        )
         for suffix in ("weight", "bias", "weight_scale", "comfy_quant"):
             original = state[f"{prefix}.attn.to_qkv.{suffix}"]
-            expected = (
-                original if suffix == "comfy_quant" or original.ndim == 0 else original[index * 32 : (index + 1) * 32]
-            )
+            expected = original if suffix == "comfy_quant" or original.ndim == 0 else original[indices]
             torch.testing.assert_close(converted[f"{prefix}.attn.to_{name}.{suffix}"], expected, rtol=0, atol=0)
     for suffix in ("weight", "bias", "weight_scale", "comfy_quant"):
         original = state[f"{prefix}.ff.w1.{suffix}"]
@@ -546,9 +548,10 @@ def test_h3_vae_fused_conversion(dtype, scalar_scale):
 
 @pytest.mark.parametrize("projection,rows", [("attn.to_qkv", 95), ("ff.w1", 63)])
 def test_h3_vae_invalid_fused_rows(projection, rows):
-    with pytest.raises(ValueError, match="equal projections|even number"):
+    with pytest.raises(ValueError, match="interleaved QKV output rows|even number"):
         convert_minimax_h3_vae_checkpoint_to_diffusers(
-            checkpoint(f"decoder.transformer_blocks.0.{projection}", rows=rows), config={}
+            checkpoint(f"decoder.transformer_blocks.0.{projection}", rows=rows),
+            config={"decoder_num_attention_heads": 2, "decoder_attention_head_dim": 16},
         )
 
 
@@ -558,7 +561,9 @@ def test_h3_vae_invalid_fused_sidecar(projection, suffix):
     state = checkpoint(f"decoder.transformer_blocks.0.{projection}", rows=96)
     state[f"decoder.transformer_blocks.0.{projection}.{suffix}"] = torch.ones(32)
     with pytest.raises(ValueError, match="one entry per fused output row"):
-        convert_minimax_h3_vae_checkpoint_to_diffusers(state, config={})
+        convert_minimax_h3_vae_checkpoint_to_diffusers(
+            state, config={"decoder_num_attention_heads": 2, "decoder_attention_head_dim": 16}
+        )
 
 
 @pytest.mark.parametrize(
@@ -598,9 +603,9 @@ def h3_vae_checkpoint(tmp_path):
     state = model.state_dict()
     prefix = "decoder.transformer_blocks.0"
     for suffix in ("weight", "bias"):
-        state[f"{prefix}.attn.to_qkv.{suffix}"] = torch.cat(
-            [state.pop(f"{prefix}.attn.to_{name}.{suffix}") for name in "qkv"]
-        )
+        state[f"{prefix}.attn.to_qkv.{suffix}"] = torch.stack(
+            [state.pop(f"{prefix}.attn.to_{name}.{suffix}").unflatten(0, (4, 64)) for name in "qkv"], dim=1
+        ).flatten(0, 2)
     for source, rows in (("attn.to_qkv", 768), ("attn.to_out.0", 256), ("ff.net.0.proj", 512), ("ff.net.2", 256)):
         state.update(checkpoint(f"{prefix}.{source}", rows=rows))
     original = {}

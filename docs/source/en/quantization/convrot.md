@@ -147,7 +147,8 @@ convolutions, normalization, residual anchors, and unquantized boundary projecti
 projection biases and computation use the requested compute dtype. Keep the mixed precision established by the
 loader: move the VAE with `vae.to("cuda")` without passing a floating dtype.
 
-The loader splits fused QKV weights, scales, and biases together and reorders SwiGLU gate/value rows. Checkpoint
+The video VAE stores QKV rows interleaved by attention head. The loader separates these into Q, K, and V projections,
+reordering their weights, scales, and biases together, and also reorders SwiGLU gate/value rows. Checkpoint
 `latents_mean` and `latents_std` tensors override the corresponding configuration values. Encode/decode operate
 on unnormalized latents: normalize encoded latents with `(latents - mean) / std` before denoising, and undo that
 normalization before decoding. The existing MiniMax-H3 workflow handles this normalization.

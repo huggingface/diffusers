@@ -4377,6 +4377,21 @@ def convert_minimax_h3_vae_checkpoint_to_diffusers(checkpoint, config, **kwargs)
     for key in list(converted):
         if key.endswith(".attn.to_qkv.weight"):
             source = key.removesuffix(".weight")
+            rows = converted[key].shape[0]
+            heads = config["decoder_num_attention_heads"]
+            head_dim = config["decoder_attention_head_dim"]
+            if rows != heads * 3 * head_dim:
+                raise ValueError(f"{key} must have {heads * 3 * head_dim} interleaved QKV output rows.")
+            for suffix in ("weight", "weight_scale", "bias"):
+                tensor_key = f"{source}.{suffix}"
+                if tensor_key not in converted:
+                    continue
+                tensor = converted[tensor_key]
+                if suffix == "weight_scale" and tensor.numel() == 1:
+                    continue
+                if tensor.ndim == 0 or tensor.shape[0] != rows:
+                    raise ValueError(f"{tensor_key} must have one entry per fused output row.")
+                converted[tensor_key] = tensor.unflatten(0, (heads, 3, head_dim)).transpose(0, 1).flatten(0, 2)
             _split_linear_checkpoint(converted, source, [source.replace(".to_qkv", f".to_{name}") for name in "qkv"])
         elif key in gated_projections:
             source = key.removesuffix(".weight")
