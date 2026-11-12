@@ -31,7 +31,7 @@ Available models:
 
 | Model | Recommended dtype |
 |:-----:|:-----------------:|
-| [`Efficient-Large-Model/SANA-Video_2B_480p_diffusers`](https://huggingface.co/Efficient-Large-Model/ANA-Video_2B_480p_diffusers) | `torch.bfloat16` |
+| [`Efficient-Large-Model/SANA-Video_2B_480p_diffusers`](https://huggingface.co/Efficient-Large-Model/SANA-Video_2B_480p_diffusers) | `torch.bfloat16` |
 
 Refer to [this](https://huggingface.co/collections/Efficient-Large-Model/sana-video) collection for more information.
 
