@@ -103,7 +103,8 @@ class TestTextToImage(ExamplesTestsAccelerate):
             # Remove checkpoint 2 so that we can check only later checkpoints exist after resuming
             shutil.rmtree(os.path.join(tmpdir, "checkpoint-2"))
 
-            # Run training script for 2 total steps resuming from checkpoint 4
+            # Run training script resuming from checkpoint 4, targeting 5 total steps
+            # (1 more step past checkpoint-4 to produce checkpoint-5)
 
             resume_run_args = f"""
                 examples/text_to_image/train_text_to_image.py
@@ -114,7 +115,7 @@ class TestTextToImage(ExamplesTestsAccelerate):
                 --random_flip
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
-                --max_train_steps 2
+                --max_train_steps 5
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
@@ -180,7 +181,8 @@ class TestTextToImage(ExamplesTestsAccelerate):
             # Remove checkpoint 2 so that we can check only later checkpoints exist after resuming
             shutil.rmtree(os.path.join(tmpdir, "checkpoint-2"))
 
-            # Run training script for 2 total steps resuming from checkpoint 4
+            # Run training script resuming from checkpoint 4, targeting 5 total steps
+            # (1 more step past checkpoint-4 to produce checkpoint-5)
 
             resume_run_args = f"""
                 examples/text_to_image/train_text_to_image.py
@@ -191,7 +193,7 @@ class TestTextToImage(ExamplesTestsAccelerate):
                 --random_flip
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
-                --max_train_steps 2
+                --max_train_steps 5
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
