@@ -831,3 +831,40 @@ class TestGroupOffloadingPinCpuMemoryInPlace:
             model.enable_group_offload(
                 torch_device, offload_type="block_level", num_blocks_per_group=1, pin_cpu_memory_in_place=True
             )
+
+    def test_pin_in_place_shared_pages_stay_registered_until_last_owner(self, tmp_path):
+        import safetensors.torch
+
+        from diffusers.hooks import group_offloading as go_mod
+
+        # Both models view the same mmap, so their page ranges overlap.
+        ckpt = tmp_path / "dummy.safetensors"
+        safetensors.torch.save_file(DummyModel(16, 32, 16, num_layers=2).state_dict(), str(ckpt))
+        shared = safetensors.torch.load_file(str(ckpt), device="cpu")
+        first, second = DummyModel(16, 32, 16, num_layers=2).eval(), DummyModel(16, 32, 16, num_layers=2).eval()
+        for model in (first, second):
+            model.load_state_dict(shared, assign=True)
+        del shared
+        kwargs = {
+            "offload_type": "block_level",
+            "num_blocks_per_group": 1,
+            "use_stream": True,
+            "low_cpu_mem_usage": True,
+            "pin_cpu_memory_in_place": True,
+        }
+        before = len(go_mod._HOST_REGISTERED_RANGES)
+        first.enable_group_offload(torch_device, **kwargs)
+        second.enable_group_offload(torch_device, **kwargs)
+        x = torch.randn(4, 16, device=torch_device)
+        with torch.no_grad():
+            expected = second(x)
+
+        del first
+        gc.collect()
+        assert all(param.is_pinned() for param in second.parameters())
+        with torch.no_grad():
+            assert torch.equal(second(x), expected)
+
+        del second
+        gc.collect()
+        assert len(go_mod._HOST_REGISTERED_RANGES) == before
