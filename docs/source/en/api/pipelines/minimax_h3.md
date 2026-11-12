@@ -85,7 +85,10 @@ can be loaded with
 `MiniMaxH3Transformer3DModel.from_single_file(..., quantization_config=ConvRotQuantizationConfig())` and installed
 with `pipe.update_components(transformer=transformer)`. The pruned file's timestep curve configuration is inferred
 from the checkpoint. See [INT8 ConvRot](../../quantization/convrot#minimax-h3) for the loader and checkpoint names.
-The conditioner and VAEs load separately; use phased execution and block offloading to fit limited memory.
+The [INT8 video VAE](https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_int8_convrot.safetensors)
+is also supported through `AutoencoderKLMiniMaxH3.from_single_file` and `pipe.update_components(vae=vae)`.
+See [the video VAE loading guide](../../quantization/convrot#video-vae) for its mixed precision requirements.
+The conditioner and audio VAE load separately; use phased execution and block offloading to fit limited memory.
 REF2VA uses the corresponding
 [pruned](https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors)
 or [unpruned](https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_ref2va_int8_convrot.safetensors)
@@ -106,11 +109,25 @@ manager.enable_auto_cpu_offload(device="cuda", memory_reserve_margin="12GB")  # 
 pipe.transformer.set_attention_backend("_flash_3_hub")  # Hopper, roughly 3x faster; kernels fetched from the Hub
 ```
 
-On a consumer card (24 to 32 GB), quantize the two large components to int8 as they load and stream the transformer's blocks from CPU RAM. Everything below uses supported loaders only, no patches, and works straight from the bfloat16 checkpoint:
+On a consumer card (24 to 32 GB), load the prequantized ConvRot transformer and video VAE, quantize the
+conditioner with TorchAO, and stream the transformer and conditioner from CPU RAM. The ConvRot files retain
+their stored INT8 weights, so loading them does not require the full floating-point transformer or video VAE
+checkpoints. The example below uses the pruned FL2VA transformer for text and keyframe workflows.
+
+Install the ConvRot runtime alongside TorchAO:
+
+```bash
+pip install "comfy-kitchen>=0.2.41" accelerate torchao
+```
 
 ```py
 import torch
-from diffusers import MiniMaxH3Transformer3DModel, ModularPipeline, TorchAoConfig
+from diffusers import (
+    AutoencoderKLMiniMaxH3,
+    ConvRotQuantizationConfig,
+    MiniMaxH3Transformer3DModel,
+    ModularPipeline,
+)
 from diffusers.hooks import apply_group_offloading
 from transformers import Qwen3VLForConditionalGeneration
 from transformers import TorchAoConfig as TransformersTorchAoConfig
@@ -118,22 +135,32 @@ from torchao.quantization import Int8WeightOnlyConfig
 
 pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3")
 pipe.update_components(
-    transformer=MiniMaxH3Transformer3DModel.from_pretrained(
-        "MiniMaxAI/MiniMax-H3", subfolder="transformer", dtype=torch.bfloat16,
-        quantization_config=TorchAoConfig(
-            Int8WeightOnlyConfig(version=2),
-            modules_to_not_convert=[
-                "proj_in", "audio_proj_in", "context_embedder", "time_embedder", "time_proj",
-                "token_refiner", "norm_out", "proj_out", "audio_proj_out",
-            ],
-        ),
-        low_cpu_mem_usage=False,
+    transformer=MiniMaxH3Transformer3DModel.from_single_file(
+        "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        config="MiniMaxAI/MiniMax-H3",
+        subfolder="transformer",
+        quantization_config=ConvRotQuantizationConfig(compute_dtype=torch.bfloat16),
+        dtype=torch.bfloat16,
+    ),
+    vae=AutoencoderKLMiniMaxH3.from_single_file(
+        "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_int8_convrot.safetensors",
+        config="MiniMaxAI/MiniMax-H3",
+        subfolder="vae",
+        quantization_config=ConvRotQuantizationConfig(compute_dtype=torch.bfloat16),
+        dtype=torch.bfloat16,
     ),
     text_encoder=Qwen3VLForConditionalGeneration.from_pretrained(
-        "MiniMaxAI/MiniMax-H3", subfolder="text_encoder", dtype=torch.bfloat16,
+        "MiniMaxAI/MiniMax-H3",
+        subfolder="text_encoder",
+        dtype=torch.bfloat16,
         quantization_config=TransformersTorchAoConfig(
             Int8WeightOnlyConfig(version=2),
-            modules_to_not_convert=["model.visual", "model.language_model.embed_tokens", "model.language_model.norm", "lm_head"],
+            modules_to_not_convert=[
+                "model.visual",
+                "model.language_model.embed_tokens",
+                "model.language_model.norm",
+                "lm_head",
+            ],
         ),
     ),
 )
@@ -147,11 +174,18 @@ pipe.text_encoder.requires_grad_(False)
 offload = dict(onload_device=torch.device("cuda"), offload_device=torch.device("cpu"), use_stream=True)
 pipe.transformer.enable_group_offload(offload_type="block_level", num_blocks_per_group=1, **offload)
 apply_group_offloading(pipe.text_encoder.model, offload_type="leaf_level", **offload)
-pipe.vae.to("cuda")  # or "mps", "xpu", "cpu"
+pipe.vae.to("cuda")
 pipe.audio_vae.to("cuda")
 ```
 
-On 12 to 16 GB the same recipe works with the video VAE group offloaded too (`offload_type="leaf_level"`, no stream) and a small canvas such as 960x544. Expect the weights to live in host RAM: around 75 GB of it at int8.
+Move the loaded VAE between devices without passing a floating dtype, so its FP32 modules and native INT8
+weights retain their precision. Spatial tiling stays enabled by default. For REF2VA, use one of the linked REF2VA
+checkpoints with `subfolder="transformer_ref"`, install it as `transformer_ref`, and load the `ref2va` workflow;
+the video VAE is shared.
+
+On 12 to 16 GB, also group offload the video VAE (`offload_type="leaf_level"`, no stream) instead of moving it
+to CUDA, and use a small canvas such as 960x544. The transformer and conditioner weights still require tens of
+gigabytes of host RAM.
 
 With two cards nothing has to be offloaded: split the pipeline in two and put each half on its own device.
 
