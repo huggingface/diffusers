@@ -16,7 +16,7 @@ import torch
 from torch import nn
 
 
-class ConvRotInt8Linear(nn.Module):
+class ComfyInt8Linear(nn.Module):
     """Linear inference using stored INT8 codes and Comfy-Kitchen's dynamic activation quantization."""
 
     def __init__(self, linear, scale_shape, marker, compute_dtype):

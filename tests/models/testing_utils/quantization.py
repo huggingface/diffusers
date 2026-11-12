@@ -28,7 +28,7 @@ from diffusers import (
     AutoRoundConfig,
     BFLQuantizationConfig,
     BitsAndBytesConfig,
-    ConvRotQuantizationConfig,
+    ComfyQuantizationConfig,
     GGUFQuantizationConfig,
     NunchakuLiteQuantizationConfig,
     NVIDIAModelOptConfig,
@@ -1869,7 +1869,7 @@ class ConvRotConfigMixin:
     def _create_quantized_model(self, config_kwargs, **extra_kwargs):
         model = self._load_unquantized_model()
         kwargs = {
-            "quantization_config": ConvRotQuantizationConfig(**config_kwargs),
+            "quantization_config": ComfyQuantizationConfig(**config_kwargs),
             "dtype": config_kwargs["compute_dtype"],
             "device": str(torch_device),
             **extra_kwargs,
@@ -1879,9 +1879,9 @@ class ConvRotConfigMixin:
             return self.model_class.from_single_file(self._convrot_state_dict(model), config=config_dir, **kwargs)
 
     def _verify_if_layer_quantized(self, name, module, config_kwargs):
-        from diffusers.quantizers.convrot.utils import ConvRotInt8Linear
+        from diffusers.quantizers.comfy.utils import ComfyInt8Linear
 
-        assert isinstance(module, ConvRotInt8Linear), f"{name} is not a ConvRotInt8Linear"
+        assert isinstance(module, ComfyInt8Linear), f"{name} is not a ComfyInt8Linear"
         assert module.weight.dtype == torch.int8
         assert module.weight_scale.dtype == torch.float32
         assert module.weight_scale.shape == (module.out_features, 1)
@@ -1889,9 +1889,9 @@ class ConvRotConfigMixin:
         assert module.convrot and module.convrot_groupsize == 64
 
     def _is_module_quantized(self, module, config_kwargs=None):
-        from diffusers.quantizers.convrot.utils import ConvRotInt8Linear
+        from diffusers.quantizers.comfy.utils import ComfyInt8Linear
 
-        return isinstance(module, ConvRotInt8Linear)
+        return isinstance(module, ComfyInt8Linear)
 
 
 @require_accelerate

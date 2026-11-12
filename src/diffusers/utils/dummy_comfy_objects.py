@@ -2,7 +2,7 @@
 from ..utils import DummyObject, requires_backends
 
 
-class ConvRotQuantizationConfig(metaclass=DummyObject):
+class ComfyQuantizationConfig(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

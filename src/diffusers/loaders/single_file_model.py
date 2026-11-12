@@ -435,7 +435,7 @@ class FromOriginalModelMixin:
             hf_quantizer = None
             if any(key.endswith(".weight") and value.dtype == torch.int8 for key, value in checkpoint.items()):
                 raise ValueError(
-                    "Native Comfy INT8 checkpoints require `quantization_config=ConvRotQuantizationConfig()`."
+                    "Native Comfy INT8 checkpoints require `quantization_config=ComfyQuantizationConfig()`."
                 )
 
         mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[mapping_class_name]

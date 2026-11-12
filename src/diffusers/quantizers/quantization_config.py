@@ -45,7 +45,7 @@ logger = logging.get_logger(__name__)
 class QuantizationMethod(str, Enum):
     BITS_AND_BYTES = "bitsandbytes"
     BFL = "bfl"
-    CONVROT = "convrot"
+    COMFY = "comfy"
     GGUF = "gguf"
     NUNCHAKU_LITE = "nunchaku_lite"
     TORCHAO = "torchao"
@@ -434,8 +434,11 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
 
 
 @dataclass
-class ConvRotQuantizationConfig(QuantizationConfigMixin):
-    """Load native Comfy INT8 ConvRot checkpoints with Comfy-Kitchen kernels.
+class ComfyQuantizationConfig(QuantizationConfigMixin):
+    """Load native Comfy checkpoints with Comfy-Kitchen kernels.
+
+    Currently supports prequantized INT8 W8A8 linear layers with optional ConvRot rotation. Other Comfy quantization
+    formats are not supported.
 
     Args:
         compute_dtype (`torch.dtype`, defaults to `torch.bfloat16`):
@@ -443,17 +446,17 @@ class ConvRotQuantizationConfig(QuantizationConfigMixin):
     """
 
     def __init__(self, compute_dtype: "torch.dtype" | str | None = None, **kwargs):
-        self.quant_method = QuantizationMethod.CONVROT
+        self.quant_method = QuantizationMethod.COMFY
         if isinstance(compute_dtype, str):
             compute_dtype = {"bfloat16": torch.bfloat16, "float16": torch.float16}.get(compute_dtype)
             if compute_dtype is None:
-                raise ValueError("ConvRot compute_dtype must be bfloat16 or float16.")
+                raise ValueError("Comfy compute_dtype must be bfloat16 or float16.")
         self.compute_dtype = compute_dtype if compute_dtype is not None else torch.bfloat16
         self.pre_quantized = True
         if not kwargs.get("pre_quantized", True):
-            raise ValueError("ConvRot only supports prequantized checkpoints.")
+            raise ValueError("Comfy only supports prequantized checkpoints.")
         if self.compute_dtype not in (torch.bfloat16, torch.float16):
-            raise ValueError("ConvRot compute_dtype must be torch.bfloat16 or torch.float16.")
+            raise ValueError("Comfy compute_dtype must be torch.bfloat16 or torch.float16.")
 
     def to_dict(self):
         result = super().to_dict()
@@ -461,7 +464,7 @@ class ConvRotQuantizationConfig(QuantizationConfigMixin):
         return result
 
     def to_diff_dict(self):
-        default = ConvRotQuantizationConfig().to_dict()
+        default = ComfyQuantizationConfig().to_dict()
         return {key: value for key, value in self.to_dict().items() if key == "quant_method" or value != default[key]}
 
 

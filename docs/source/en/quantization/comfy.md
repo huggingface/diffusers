@@ -11,7 +11,16 @@ specific language governing permissions and limitations under the License.
 
 -->
 
-# INT8 ConvRot
+# Comfy Quantization
+
+[Comfy Quants](https://github.com/Comfy-Org/comfy-quants) exports prequantized checkpoints for ComfyUI-compatible
+loaders. Diffusers loads supported checkpoints with [`ComfyQuantizationConfig`] and uses
+[Comfy-Kitchen](https://github.com/Comfy-Org/comfy-kitchen) for inference.
+
+Currently, this integration supports native `int8_tensorwise` linear layers with optional ConvRot rotation. Other
+Comfy quantization formats are not supported.
+
+## INT8 ConvRot
 
 [ConvRot](https://arxiv.org/abs/2512.03673) uses group-wise regular Hadamard rotations to spread activation outliers.
 Native Comfy INT8 checkpoints store rotated INT8 weights, FP32 scales, and per-layer rotation metadata. At inference,
@@ -30,7 +39,7 @@ its eager backend. Memory savings do not guarantee faster inference.
 
 ## Load a checkpoint
 
-Use [`ConvRotQuantizationConfig`] with `from_single_file` to load an existing native Comfy INT8 checkpoint.
+Use [`ComfyQuantizationConfig`] with `from_single_file` to load an existing native Comfy INT8 checkpoint.
 [Z-Image Turbo](https://huggingface.co/Comfy-Org/Z-Image-Turbo),
 [Qwen-Image 2.1](https://huggingface.co/Comfy-Org/Qwen-Image-2.1), and pruned or unpruned
 [MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3) FL2VA and REF2VA transformers are supported.
@@ -41,13 +50,13 @@ the floating compute dtype for activations.
 
 ```python
 import torch
-from diffusers import ConvRotQuantizationConfig, ZImagePipeline, ZImageTransformer2DModel
+from diffusers import ComfyQuantizationConfig, ZImagePipeline, ZImageTransformer2DModel
 
 transformer = ZImageTransformer2DModel.from_single_file(
     "https://huggingface.co/Comfy-Org/Z-Image-Turbo/blob/main/split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors",
     config="Tongyi-MAI/Z-Image-Turbo",
     subfolder="transformer",
-    quantization_config=ConvRotQuantizationConfig(compute_dtype=torch.bfloat16),
+    quantization_config=ComfyQuantizationConfig(compute_dtype=torch.bfloat16),
     dtype=torch.bfloat16,
 )
 pipe = ZImagePipeline.from_pretrained(
@@ -73,15 +82,25 @@ To reduce host memory as well as VRAM peaks, encode prompts in a separate proces
 generation with `text_encoder=None`. Supply the embeddings and their masks on the execution device. Keep the
 VAE offloaded during denoising and enable VAE tiling when needed.
 
-## Supported format
+## Checkpoint format and conversion
 
 Each quantized linear layer must have an INT8 `[out_features, in_features]` weight, an FP32 scalar or per-output-row
 `weight_scale`, and a uint8 JSON `comfy_quant` tensor declaring `"format": "int8_tensorwise"`. Rotated layers require
 per-output-row scales, `"convrot": true`, and a power-of-four `convrot_groupsize` that divides the input width.
 
+The per-layer layout follows the [native Comfy INT8 format](https://github.com/Comfy-Org/comfy-quants/blob/main/docs/formats/int8_tensorwise.md).
+The older `int8_w8a8` export uses a different marker for the retired ComfyUI-INT8-Fast loader and is not supported.
+
+The quantizer reads these markers and replaces matching linear layers independently of the model architecture.
+Checkpoint conversion still maps the source model's layer names to Diffusers names and handles fused projections.
 The loader splits scales alongside fused QKV and gate/up weights, and preserves the associated rotation metadata.
 Unquantized layers use the requested precision, except for modules the model keeps in FP32. BF16 and FP16
 computation are supported.
+
+The Comfy format identifies a layer's quantization scheme; it does not define a universal mapping between model
+architectures. New model support requires checking its existing single-file converter for scale and marker
+preservation, projection row ordering, and floating activation dtypes. MXFP8, NVFP4, and INT4 use different scale
+or packing layouts and require format-specific conversion before they can be supported.
 
 This integration loads prequantized single-file transformer and MiniMax-H3 video VAE checkpoints. It does not support
 the older ComfyUI-INT8-Fast marker format, other Comfy quantization formats, on-load quantization, training, LoRA,
@@ -97,13 +116,13 @@ run in FP32 without applying SiLU; the denoising stream retains its requested pr
 projections use their floating compute dtype for activations.
 
 ```python
-from diffusers import ConvRotQuantizationConfig, MiniMaxH3Transformer3DModel
+from diffusers import ComfyQuantizationConfig, MiniMaxH3Transformer3DModel
 
 transformer = MiniMaxH3Transformer3DModel.from_single_file(
     "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
     config="MiniMaxAI/MiniMax-H3",
     subfolder="transformer",
-    quantization_config=ConvRotQuantizationConfig(),
+    quantization_config=ComfyQuantizationConfig(),
 )
 ```
 
@@ -130,13 +149,13 @@ with the native single-file loader:
 
 ```python
 import torch
-from diffusers import AutoencoderKLMiniMaxH3, ConvRotQuantizationConfig
+from diffusers import AutoencoderKLMiniMaxH3, ComfyQuantizationConfig
 
 vae = AutoencoderKLMiniMaxH3.from_single_file(
     "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_int8_convrot.safetensors",
     config="MiniMaxAI/MiniMax-H3",
     subfolder="vae",
-    quantization_config=ConvRotQuantizationConfig(compute_dtype=torch.bfloat16),
+    quantization_config=ComfyQuantizationConfig(compute_dtype=torch.bfloat16),
     dtype=torch.bfloat16,
 )
 vae.to("cuda")

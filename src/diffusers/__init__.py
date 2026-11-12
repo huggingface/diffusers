@@ -150,13 +150,13 @@ try:
     if not is_torch_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from .utils import dummy_convrot_objects
+    from .utils import dummy_comfy_objects
 
-    _import_structure["utils.dummy_convrot_objects"] = [
-        name for name in dir(dummy_convrot_objects) if not name.startswith("_")
+    _import_structure["utils.dummy_comfy_objects"] = [
+        name for name in dir(dummy_comfy_objects) if not name.startswith("_")
     ]
 else:
-    _import_structure["quantizers.quantization_config"].append("ConvRotQuantizationConfig")
+    _import_structure["quantizers.quantization_config"].append("ComfyQuantizationConfig")
 
 try:
     if not is_auto_round_available():
@@ -1119,9 +1119,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         if not is_torch_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
-        from .utils.dummy_convrot_objects import *
+        from .utils.dummy_comfy_objects import *
     else:
-        from .quantizers.quantization_config import ConvRotQuantizationConfig
+        from .quantizers.quantization_config import ComfyQuantizationConfig
 
     try:
         if not is_auto_round_available():

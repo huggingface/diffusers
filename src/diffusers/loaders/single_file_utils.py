@@ -4099,6 +4099,21 @@ def _split_linear_checkpoint(state_dict, source, targets):
             state_dict[f"{target}.{suffix}"] = chunk
 
 
+def _map_linear_checkpoint_rows(state_dict, source, transform):
+    """Apply the same row transform to a linear weight, its bias, and its INT8 scales."""
+    rows = state_dict[f"{source}.weight"].shape[0]
+    for suffix in ("weight", "weight_scale", "bias"):
+        key = f"{source}.{suffix}"
+        if key not in state_dict:
+            continue
+        tensor = state_dict[key]
+        if suffix == "weight_scale" and tensor.numel() == 1:
+            continue
+        if tensor.ndim == 0 or tensor.shape[0] != rows:
+            raise ValueError(f"{key} must have one entry per fused output row.")
+        state_dict[key] = transform(tensor)
+
+
 def convert_z_image_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     Z_IMAGE_KEYS_RENAME_DICT = {
         "final_layer.": "all_final_layer.2-1.",
@@ -4382,33 +4397,20 @@ def convert_minimax_h3_vae_checkpoint_to_diffusers(checkpoint, config, **kwargs)
             head_dim = config["decoder_attention_head_dim"]
             if rows != heads * 3 * head_dim:
                 raise ValueError(f"{key} must have {heads * 3 * head_dim} interleaved QKV output rows.")
-            for suffix in ("weight", "weight_scale", "bias"):
-                tensor_key = f"{source}.{suffix}"
-                if tensor_key not in converted:
-                    continue
-                tensor = converted[tensor_key]
-                if suffix == "weight_scale" and tensor.numel() == 1:
-                    continue
-                if tensor.ndim == 0 or tensor.shape[0] != rows:
-                    raise ValueError(f"{tensor_key} must have one entry per fused output row.")
-                converted[tensor_key] = tensor.unflatten(0, (heads, 3, head_dim)).transpose(0, 1).flatten(0, 2)
+            _map_linear_checkpoint_rows(
+                converted,
+                source,
+                lambda tensor: tensor.unflatten(0, (heads, 3, head_dim)).transpose(0, 1).flatten(0, 2),
+            )
             _split_linear_checkpoint(converted, source, [source.replace(".to_qkv", f".to_{name}") for name in "qkv"])
         elif key in gated_projections:
             source = key.removesuffix(".weight")
             rows = converted[key].shape[0]
             if rows % 2:
                 raise ValueError(f"{key} must have an even number of gate/value rows.")
-            for suffix in ("weight", "weight_scale", "bias"):
-                tensor_key = f"{source}.{suffix}"
-                if tensor_key not in converted:
-                    continue
-                tensor = converted[tensor_key]
-                if suffix == "weight_scale" and tensor.numel() == 1:
-                    continue
-                if tensor.ndim == 0 or tensor.shape[0] != rows:
-                    raise ValueError(f"{tensor_key} must have one entry per fused output row.")
-                gate, value = tensor.chunk(2, dim=0)
-                converted[tensor_key] = torch.cat((value, gate), dim=0)
+            _map_linear_checkpoint_rows(
+                converted, source, lambda tensor: torch.cat(tensor.chunk(2, dim=0)[::-1], dim=0)
+            )
     return converted
 
 
@@ -4451,18 +4453,13 @@ def convert_minimax_h3_transformer_checkpoint_to_diffusers(checkpoint, config, q
         # the caller has to say which one it is.
         source = key[: -len(".weight")]
         if qkv_layout == "interleaved":
-            for suffix in ("weight", "weight_scale", "bias"):
-                tensor_key = f"{source}.{suffix}"
-                if tensor_key not in state_dict:
-                    continue
-                tensor = state_dict[tensor_key]
-                if suffix == "weight_scale" and tensor.numel() == 1:
-                    continue
-                state_dict[tensor_key] = (
-                    tensor.unflatten(0, (config["num_attention_heads"], 3, config["attention_head_dim"]))
-                    .transpose(0, 1)
-                    .flatten(0, 2)
-                )
+            _map_linear_checkpoint_rows(
+                state_dict,
+                source,
+                lambda tensor: tensor.unflatten(0, (config["num_attention_heads"], 3, config["attention_head_dim"]))
+                .transpose(0, 1)
+                .flatten(0, 2),
+            )
         _split_linear_checkpoint(
             state_dict, source, [source.replace(".qkv_proj", f".to_{name}") for name in ("q", "k", "v")]
         )
@@ -4472,15 +4469,9 @@ def convert_minimax_h3_transformer_checkpoint_to_diffusers(checkpoint, config, q
             return
         # The checkpoint fuses `[gate; value]`, `SwiGLU` reads `[value; gate]`.
         source = key[: -len(".weight")]
-        for suffix in ("weight", "weight_scale", "bias"):
-            tensor_key = f"{source}.{suffix}"
-            if tensor_key not in state_dict:
-                continue
-            tensor = state_dict[tensor_key]
-            if suffix == "weight_scale" and tensor.numel() == 1:
-                continue
-            gate, value = torch.chunk(tensor, 2, dim=0)
-            state_dict[tensor_key] = torch.cat([value, gate], dim=0)
+        if state_dict[key].shape[0] % 2:
+            raise ValueError(f"{key} must have an even number of gate/value rows.")
+        _map_linear_checkpoint_rows(state_dict, source, lambda tensor: torch.cat(tensor.chunk(2, dim=0)[::-1], dim=0))
 
     TRANSFORMER_SPECIAL_KEYS_REMAP = {
         ".attn.qkv_proj.weight": convert_minimax_h3_fused_attention,

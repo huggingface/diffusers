@@ -21,10 +21,10 @@ from torch import nn
 
 from ...utils import get_module_from_name, is_accelerate_available, is_comfy_kitchen_available
 from ..base import DiffusersQuantizer
-from .utils import ConvRotInt8Linear
+from .utils import ComfyInt8Linear
 
 
-class ConvRotQuantizer(DiffusersQuantizer):
+class ComfyQuantizer(DiffusersQuantizer):
     use_keep_in_fp32_modules = True
 
     def __init__(self, quantization_config, **kwargs):
@@ -33,22 +33,22 @@ class ConvRotQuantizer(DiffusersQuantizer):
 
     def validate_environment(self, *args, **kwargs):
         if not is_accelerate_available():
-            raise ImportError("Loading ConvRot checkpoints requires accelerate: `pip install accelerate`.")
+            raise ImportError("Loading Comfy INT8 checkpoints requires accelerate: `pip install accelerate`.")
         if not is_comfy_kitchen_available():
-            raise ImportError("ConvRot inference requires comfy-kitchen: `pip install 'comfy-kitchen>=0.2.41'`.")
+            raise ImportError("Comfy INT8 inference requires comfy-kitchen: `pip install 'comfy-kitchen>=0.2.41'`.")
         if Version(importlib.metadata.version("comfy-kitchen")) < Version("0.2.41"):
-            raise ImportError("ConvRot inference requires comfy-kitchen>=0.2.41.")
+            raise ImportError("Comfy INT8 inference requires comfy-kitchen>=0.2.41.")
 
     def update_torch_dtype(self, torch_dtype):
         if torch_dtype is not None and torch_dtype != self.compute_dtype:
-            raise ValueError("`dtype` must match ConvRotQuantizationConfig.compute_dtype.")
+            raise ValueError("`dtype` must match ComfyQuantizationConfig.compute_dtype.")
         return self.compute_dtype
 
     def _process_model_before_weight_loading(
         self, model, device_map, state_dict=None, keep_in_fp32_modules=(), **kwargs
     ):
         if state_dict is None:
-            raise ValueError("ConvRot checkpoints must be loaded with from_single_file().")
+            raise ValueError("Comfy INT8 checkpoints must be loaded with from_single_file().")
         marker_keys = [key for key in state_dict if key.endswith(".comfy_quant")]
         if not marker_keys:
             raise ValueError("The checkpoint has no native Comfy INT8 quantization markers.")
@@ -113,12 +113,12 @@ class ConvRotQuantizer(DiffusersQuantizer):
 
         for prefix, module, scale_shape, marker, key in replacements:
             parent, name = get_module_from_name(model, prefix)
-            setattr(parent, name, ConvRotInt8Linear(module, scale_shape, marker, self.compute_dtype))
+            setattr(parent, name, ComfyInt8Linear(module, scale_shape, marker, self.compute_dtype))
             state_dict.pop(key)
 
     def check_if_quantized_param(self, model, param_value, param_name, state_dict, **kwargs):
         module, name = get_module_from_name(model, param_name)
-        return isinstance(module, ConvRotInt8Linear) and name in ("weight", "weight_scale")
+        return isinstance(module, ComfyInt8Linear) and name in ("weight", "weight_scale")
 
     def create_quantized_param(
         self, model, param_value, param_name, target_device, state_dict, unexpected_keys=None, **kwargs
@@ -132,7 +132,7 @@ class ConvRotQuantizer(DiffusersQuantizer):
     def _process_model_after_weight_loading(self, model, **kwargs):
         missing = [name for name, tensor in model.state_dict().items() if tensor.is_meta]
         if missing:
-            raise ValueError(f"The ConvRot checkpoint is missing model tensors: {missing}.")
+            raise ValueError(f"The Comfy INT8 checkpoint is missing model tensors: {missing}.")
         return model
 
     @property

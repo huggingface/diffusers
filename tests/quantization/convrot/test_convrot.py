@@ -24,7 +24,7 @@ from torch import nn
 
 from diffusers import (
     AutoencoderKLMiniMaxH3,
-    ConvRotQuantizationConfig,
+    ComfyQuantizationConfig,
     MiniMaxH3Transformer3DModel,
     QwenImage21Transformer2DModel,
 )
@@ -38,8 +38,8 @@ from diffusers.loaders.single_file_utils import (
     infer_minimax_h3_vae_checkpoint_config,
 )
 from diffusers.quantizers import DiffusersAutoQuantizer
-from diffusers.quantizers.convrot import ConvRotQuantizer
-from diffusers.quantizers.convrot.utils import ConvRotInt8Linear
+from diffusers.quantizers.comfy import ComfyQuantizer
+from diffusers.quantizers.comfy.utils import ComfyInt8Linear
 
 
 @pytest.fixture
@@ -73,19 +73,23 @@ def checkpoint(prefix="linear", rows=32, columns=256, **kwargs):
     }
 
 
-def test_config_and_registration():
-    config = ConvRotQuantizationConfig()
-    assert config.compute_dtype == torch.bfloat16
-    assert isinstance(DiffusersAutoQuantizer.from_config(config), ConvRotQuantizer)
-    assert isinstance(DiffusersAutoQuantizer.from_dict(config.to_dict()), ConvRotQuantizationConfig)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+def test_config_and_registration(dtype):
+    config = ComfyQuantizationConfig(compute_dtype=dtype)
+    assert config.compute_dtype == dtype
+    assert isinstance(DiffusersAutoQuantizer.from_config(config), ComfyQuantizer)
+    restored = DiffusersAutoQuantizer.from_dict(config.to_dict())
+    assert isinstance(restored, ComfyQuantizationConfig)
+    assert restored.compute_dtype == dtype
+    assert isinstance(DiffusersAutoQuantizer.from_config(config.to_dict()), ComfyQuantizer)
     with pytest.raises(ValueError, match="compute_dtype"):
-        ConvRotQuantizationConfig(torch.float32)
+        ComfyQuantizationConfig(torch.float32)
     with pytest.raises(ValueError, match="must match"):
-        ConvRotQuantizer(config).update_torch_dtype(torch.float16)
+        ComfyQuantizer(config).update_torch_dtype(torch.float32)
     with pytest.raises(ValueError, match="prequantized"):
-        ConvRotQuantizationConfig(pre_quantized=False)
-    assert json.loads(config.to_json_string(use_diff=False))["compute_dtype"] == "bfloat16"
-    assert json.loads(config.to_json_string())["quant_method"] == "convrot"
+        ComfyQuantizationConfig(pre_quantized=False)
+    assert json.loads(config.to_json_string(use_diff=False))["compute_dtype"] == str(dtype).replace("torch.", "")
+    assert json.loads(config.to_json_string())["quant_method"] == "comfy"
 
 
 @pytest.mark.parametrize(
@@ -143,6 +147,9 @@ def test_bf16_conversion_is_unchanged(conversion, source, parts):
     [
         (lambda state: state.pop("linear.weight_scale"), "requires both"),
         (lambda state: state.update({"linear.comfy_quant": marker(format="nvfp4")}), "int8_tensorwise"),
+        (lambda state: state.update({"linear.comfy_quant": marker(format="mxfp8")}), "int8_tensorwise"),
+        (lambda state: state.update({"linear.comfy_quant": marker(format="float8_e4m3fn")}), "int8_tensorwise"),
+        (lambda state: state.update({"linear.comfy_quant": marker(format="svdquant_w4a4")}), "int8_tensorwise"),
         (lambda state: state.update({"linear.comfy_quant": marker(convrot_groupsize=128)}), "power of four"),
         (lambda state: state.update({"linear.comfy_quant": marker(convrot_groupsize=1024)}), "group-aligned"),
         (
@@ -161,16 +168,16 @@ def test_invalid_checkpoint_is_rejected_before_replacement(change, message):
     model.add_module("linear", nn.Linear(256, 32, bias=False))
     state = checkpoint()
     change(state)
-    quantizer = ConvRotQuantizer(ConvRotQuantizationConfig())
+    quantizer = ComfyQuantizer(ComfyQuantizationConfig())
     with pytest.raises(ValueError, match=message):
         quantizer.preprocess_model(model, device_map=None, state_dict=state)
     assert isinstance(model.linear, nn.Linear)
 
 
 def test_missing_optional_dependency():
-    with patch("diffusers.quantizers.convrot.convrot_quantizer.is_comfy_kitchen_available", return_value=False):
+    with patch("diffusers.quantizers.comfy.comfy_quantizer.is_comfy_kitchen_available", return_value=False):
         with pytest.raises(ImportError, match="comfy-kitchen"):
-            ConvRotQuantizer(ConvRotQuantizationConfig()).validate_environment()
+            ComfyQuantizer(ComfyQuantizationConfig()).validate_environment()
 
 
 def test_unmarked_int8_weight_is_rejected():
@@ -179,7 +186,7 @@ def test_unmarked_int8_weight_is_rejected():
     state = checkpoint()
     state["unmarked.weight"] = torch.zeros(32, 256, dtype=torch.int8)
     with pytest.raises(ValueError, match="require native Comfy quantization markers"):
-        ConvRotQuantizer(ConvRotQuantizationConfig()).preprocess_model(model, device_map=None, state_dict=state)
+        ComfyQuantizer(ComfyQuantizationConfig()).preprocess_model(model, device_map=None, state_dict=state)
 
 
 def test_bad_fused_scale_rows_are_rejected():
@@ -212,11 +219,11 @@ def test_single_file_load_preserves_codes_scales_and_unquantized_weights(tmp_pat
     loaded = QwenImage21Transformer2DModel.from_single_file(
         state,
         config=str(tmp_path),
-        quantization_config=ConvRotQuantizationConfig(),
+        quantization_config=ComfyQuantizationConfig(),
         dtype=torch.bfloat16,
     )
     linear = loaded.transformer_blocks[0].attn.to_q
-    assert isinstance(linear, ConvRotInt8Linear)
+    assert isinstance(linear, ComfyInt8Linear)
     torch.testing.assert_close(linear.weight, quantized["transformer_blocks.0.attn.to_q.weight"])
     torch.testing.assert_close(
         linear.weight_scale, quantized["transformer_blocks.0.attn.to_q.weight_scale"], rtol=0, atol=0
@@ -224,7 +231,7 @@ def test_single_file_load_preserves_codes_scales_and_unquantized_weights(tmp_pat
     torch.testing.assert_close(loaded.img_in.weight, model.img_in.weight)
     for index, name in enumerate(("gate_layer", "proj")):
         projection = getattr(loaded.transformer_blocks[0].img_mlp, name)
-        assert isinstance(projection, ConvRotInt8Linear)
+        assert isinstance(projection, ComfyInt8Linear)
         torch.testing.assert_close(projection.weight, fused[f"{fused_prefix}.weight"][index * 256 : (index + 1) * 256])
         torch.testing.assert_close(
             projection.weight_scale,
@@ -246,7 +253,7 @@ def test_single_file_load_preserves_codes_scales_and_unquantized_weights(tmp_pat
 def test_native_int8_linear_against_independent_reference(dtype, rotated, group_size, native_kitchen):
     ck = native_kitchen
     torch.manual_seed(42)
-    linear = ConvRotInt8Linear(
+    linear = ComfyInt8Linear(
         nn.Linear(256, 32, bias=True), (32, 1), {"convrot": rotated, "convrot_groupsize": group_size}, dtype
     )
     linear.weight = nn.Parameter(
@@ -278,7 +285,7 @@ def test_repeated_forward_and_model_cpu_offload(native_kitchen):
     from accelerate import cpu_offload_with_hook
 
     ck = native_kitchen
-    linear = ConvRotInt8Linear(nn.Linear(256, 32, bias=False), (32, 1), {"convrot": True}, torch.bfloat16)
+    linear = ComfyInt8Linear(nn.Linear(256, 32, bias=False), (32, 1), {"convrot": True}, torch.bfloat16)
     linear.weight = nn.Parameter(torch.randint(-32, 33, (32, 256), dtype=torch.int8), requires_grad=False)
     linear.weight_scale = torch.full((32, 1), 0.00314159, dtype=torch.float32)
     scale = linear.weight_scale.clone()
@@ -300,15 +307,23 @@ def test_repeated_forward_and_model_cpu_offload(native_kitchen):
 
 
 @pytest.mark.parametrize("layout", ["stacked", "interleaved"])
-def test_h3_fused_qkv_and_swiglu_metadata(layout):
+@pytest.mark.parametrize("scalar_scale", [False, True])
+def test_h3_fused_qkv_and_swiglu_metadata(layout, scalar_scale):
     source = "blocks.0.attn.qkv_proj"
     state = checkpoint(source, rows=12, columns=4, convrot_groupsize=4)
     state[f"{source}.weight"] = torch.arange(48, dtype=torch.int8).reshape(12, 4)
-    weight = state[f"{source}.weight"].clone()
-    scale = state[f"{source}.weight_scale"].clone()
     state.update(checkpoint("blocks.0.mlp.fc1", rows=16, columns=4, convrot_groupsize=4))
+    for projection, rows in ((source, 12), ("blocks.0.mlp.fc1", 16)):
+        state[f"{projection}.bias"] = torch.arange(rows, dtype=torch.float32)
+        if scalar_scale:
+            state[f"{projection}.weight_scale"] = torch.tensor(0.001)
+            state[f"{projection}.comfy_quant"] = marker(convrot=False)
+    weight = state[f"{source}.weight"].clone()
+    bias = state[f"{source}.bias"].clone()
+    scale = state[f"{source}.weight_scale"].clone()
     ff_weight = state["blocks.0.mlp.fc1.weight"].clone()
     ff_scale = state["blocks.0.mlp.fc1.weight_scale"].clone()
+    ff_bias = state["blocks.0.mlp.fc1.bias"].clone()
     converted = convert_minimax_h3_transformer_checkpoint_to_diffusers(
         state, config={"num_attention_heads": 2, "attention_head_dim": 2}, qkv_layout=layout
     )
@@ -319,13 +334,21 @@ def test_h3_fused_qkv_and_swiglu_metadata(layout):
         target = f"transformer_blocks.0.attn.to_{name}"
         indices = row_order[index * 4 : (index + 1) * 4]
         torch.testing.assert_close(converted[f"{target}.weight"], weight[indices])
-        torch.testing.assert_close(converted[f"{target}.weight_scale"], scale[indices], rtol=0, atol=0)
-        assert json.loads(bytes(converted[f"{target}.comfy_quant"].tolist()))["convrot"]
+        torch.testing.assert_close(converted[f"{target}.bias"], bias[indices], rtol=0, atol=0)
+        torch.testing.assert_close(
+            converted[f"{target}.weight_scale"], scale if scalar_scale else scale[indices], rtol=0, atol=0
+        )
+        assert json.loads(bytes(converted[f"{target}.comfy_quant"].tolist()))["convrot"] is (not scalar_scale)
     indices = torch.cat([torch.arange(8, 16), torch.arange(8)])
     torch.testing.assert_close(converted["transformer_blocks.0.ff.net.0.proj.weight"], ff_weight[indices])
     torch.testing.assert_close(
-        converted["transformer_blocks.0.ff.net.0.proj.weight_scale"], ff_scale[indices], rtol=0, atol=0
+        converted["transformer_blocks.0.ff.net.0.proj.weight_scale"],
+        ff_scale if scalar_scale else ff_scale[indices],
+        rtol=0,
+        atol=0,
     )
+
+    torch.testing.assert_close(converted["transformer_blocks.0.ff.net.0.proj.bias"], ff_bias[indices], rtol=0, atol=0)
 
 
 def h3_config():
@@ -495,7 +518,7 @@ def test_h3_quantized_adaln_preserves_fractional_activations(native_kitchen):
 
     torch.manual_seed(42)
     modulation = MiniMaxH3AdaLayerNormModulation(time_embed_dim=64, hidden_size=32)
-    projection = ConvRotInt8Linear(modulation.linear, (576, 1), {"convrot": False}, torch.bfloat16)
+    projection = ComfyInt8Linear(modulation.linear, (576, 1), {"convrot": False}, torch.bfloat16)
     projection.weight = nn.Parameter(
         torch.randint(-64, 65, (576, 64), device="cuda", dtype=torch.int8), requires_grad=False
     )
@@ -633,14 +656,14 @@ def test_h3_vae_single_file_load(tmp_path, h3_vae_checkpoint, kitchen, dtype):
         str(path),
         config=str(tmp_path),
         subfolder="vae",
-        quantization_config=ConvRotQuantizationConfig(compute_dtype=dtype),
+        quantization_config=ComfyQuantizationConfig(compute_dtype=dtype),
         dtype=dtype,
     )
     assert model.config.latents_mean == [0.0, 1.0, 2.0, 3.0]
     assert model.config.latents_std == [1.0, 2.0, 3.0, 4.0]
     assert model.use_tiling
     assert model.dtype == dtype
-    assert sum(isinstance(module, ConvRotInt8Linear) for module in model.modules()) == 6
+    assert sum(isinstance(module, ComfyInt8Linear) for module in model.modules()) == 6
     assert not any(value.is_meta for value in model.state_dict().values())
     converted = convert_minimax_h3_vae_checkpoint_to_diffusers(original, config=model.config)
     for name, value in model.state_dict().items():
@@ -681,14 +704,14 @@ def test_h3_vae_missing_tensor_is_rejected(tmp_path, h3_vae_checkpoint, kitchen)
     state.pop("decoder.transformer_blocks.0.attn.to_qkv.bias")
     with pytest.raises(ValueError, match="missing model tensors"):
         AutoencoderKLMiniMaxH3.from_single_file(
-            state, config=str(tmp_path), subfolder="vae", quantization_config=ConvRotQuantizationConfig()
+            state, config=str(tmp_path), subfolder="vae", quantization_config=ComfyQuantizationConfig()
         )
 
 
 def test_h3_vae_native_encode_decode(tmp_path, h3_vae_checkpoint, native_kitchen):
     path, _ = h3_vae_checkpoint
     model = AutoencoderKLMiniMaxH3.from_single_file(
-        str(path), config=str(tmp_path), subfolder="vae", quantization_config=ConvRotQuantizationConfig()
+        str(path), config=str(tmp_path), subfolder="vae", quantization_config=ComfyQuantizationConfig()
     ).to("cuda")
     with torch.inference_mode(), native_kitchen.use_backend("cuda"):
         encoded = model.encode(torch.zeros(1, 3, 1, 8, 8, device="cuda")).latent_dist.mean

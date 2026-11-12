@@ -34,9 +34,9 @@ Quantization techniques reduce memory and computational costs by representing we
 
 [[autodoc]] quantizers.quantization_config.GGUFQuantizationConfig
 
-## ConvRotQuantizationConfig
+## ComfyQuantizationConfig
 
-[[autodoc]] quantizers.quantization_config.ConvRotQuantizationConfig
+[[autodoc]] quantizers.quantization_config.ComfyQuantizationConfig
 
 ## NunchakuLiteQuantizationConfig
 
