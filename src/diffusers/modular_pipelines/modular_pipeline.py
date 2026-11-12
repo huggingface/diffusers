@@ -42,7 +42,6 @@ from ..pipelines.pipeline_loading_utils import (
 from ..utils import (
     TRANSFORMERS_COMPONENT_AUX_FILES,
     PushToHubMixin,
-    deprecate,
     is_accelerate_available,
     is_transformers_available,
     logging,
@@ -218,7 +217,9 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("ltx2", _create_default_map_fn("LTX2ModularPipeline")),
         ("ltx2.5", _create_default_map_fn("LTX25ModularPipeline")),
         ("minimax-h3", _create_default_map_fn("MiniMaxH3ModularPipeline")),
+        ("minimax-h3-image", _create_default_map_fn("MiniMaxH3ImageModularPipeline")),
         ("minimax-music3", _create_default_map_fn("MiniMaxMusic3ModularPipeline")),
+        ("pan2", _create_default_map_fn("PAN2ModularPipeline")),
         ("pika-h3-flex", _create_default_map_fn("PikaH3FlexModularPipeline")),
         ("p-h3-image", _create_default_map_fn("PH3ImageModularPipeline")),
         ("ernie-image", _create_default_map_fn("ErnieImageModularPipeline")),
@@ -2067,16 +2068,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 - `token` (`str`, *optional*):
                     The Hugging Face token to use for authentication.
         """
-        if "overwrite_modular_index" not in kwargs:
-            deprecate(
-                "overwrite_modular_index",
-                "0.43.0",
-                "The default of `overwrite_modular_index` in `ModularPipeline.save_pretrained` changed from `False`"
-                " to `True`: the saved `modular_model_index.json` now points each saved component at the destination"
-                " (the save directory, or `repo_id` when pushing to the Hub). Pass `overwrite_modular_index=False`"
-                " to keep the previously recorded loading specs, or pass `True` explicitly to silence this warning.",
-                standard_warn=False,
-            )
         overwrite_modular_index = kwargs.pop("overwrite_modular_index", True)
         repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
 
@@ -2731,7 +2722,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
         def module_is_sequentially_offloaded(module):
-            if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
+            if not is_accelerate_available():
                 return False
 
             _, _, is_loaded_in_8bit_bnb = _check_bnb_status(module)
@@ -2746,7 +2737,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             )
 
         def module_is_offloaded(module):
-            if not is_accelerate_available() or is_accelerate_version("<", "0.17.0.dev0"):
+            if not is_accelerate_available():
                 return False
 
             return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, accelerate.hooks.CpuOffload)

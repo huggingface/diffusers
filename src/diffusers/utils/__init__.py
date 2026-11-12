@@ -107,6 +107,7 @@ from .import_utils import (
     is_optimum_quanto_available,
     is_optimum_quanto_version,
     is_outlines_available,
+    is_pan2_guardrail_available,
     is_peft_available,
     is_peft_version,
     is_pytorch_retinaface_available,

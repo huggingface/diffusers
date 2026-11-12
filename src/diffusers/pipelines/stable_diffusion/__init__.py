@@ -5,10 +5,8 @@ from ...utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
-    is_onnx_available,
     is_torch_available,
     is_transformers_available,
-    is_transformers_version,
 )
 
 
@@ -36,7 +34,7 @@ else:
     _import_structure["safety_checker"] = ["StableDiffusionSafetyChecker"]
     _import_structure["stable_unclip_image_normalizer"] = ["StableUnCLIPImageNormalizer"]
 try:
-    if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.25.0")):
+    if not (is_transformers_available() and is_torch_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import (
@@ -47,7 +45,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipeline_stable_diffusion_image_variation"] = ["StableDiffusionImageVariationPipeline"]
 try:
-    if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.26.0")):
+    if not (is_transformers_available() and is_torch_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import (
@@ -62,22 +60,6 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipeline_stable_diffusion_depth2img"] = ["StableDiffusionDepth2ImgPipeline"]
 
-try:
-    if not (is_transformers_available() and is_onnx_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from ...utils import dummy_onnx_objects  # noqa F403
-
-    _dummy_objects.update(get_objects_from_module(dummy_onnx_objects))
-else:
-    _import_structure["pipeline_onnx_stable_diffusion"] = [
-        "OnnxStableDiffusionPipeline",
-        "StableDiffusionOnnxPipeline",
-    ]
-    _import_structure["pipeline_onnx_stable_diffusion_img2img"] = ["OnnxStableDiffusionImg2ImgPipeline"]
-    _import_structure["pipeline_onnx_stable_diffusion_inpaint"] = ["OnnxStableDiffusionInpaintPipeline"]
-    _import_structure["pipeline_onnx_stable_diffusion_inpaint_legacy"] = ["OnnxStableDiffusionInpaintPipelineLegacy"]
-    _import_structure["pipeline_onnx_stable_diffusion_upscale"] = ["OnnxStableDiffusionUpscalePipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -108,7 +90,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
     try:
-        if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.25.0")):
+        if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import (
@@ -120,7 +102,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
 
     try:
-        if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.26.0")):
+        if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import StableDiffusionDepth2ImgPipeline
@@ -129,25 +111,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionDepth2ImgPipeline,
         )
 
-    try:
-        if not (is_transformers_available() and is_onnx_available()):
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from ...utils.dummy_onnx_objects import *
-    else:
-        from .pipeline_onnx_stable_diffusion import (
-            OnnxStableDiffusionPipeline,
-            StableDiffusionOnnxPipeline,
-        )
-        from .pipeline_onnx_stable_diffusion_img2img import (
-            OnnxStableDiffusionImg2ImgPipeline,
-        )
-        from .pipeline_onnx_stable_diffusion_inpaint import (
-            OnnxStableDiffusionInpaintPipeline,
-        )
-        from .pipeline_onnx_stable_diffusion_upscale import (
-            OnnxStableDiffusionUpscalePipeline,
-        )
 
 else:
     import sys
