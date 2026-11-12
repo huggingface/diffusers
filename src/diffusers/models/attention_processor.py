@@ -3634,10 +3634,8 @@ class LuminaAttnProcessor2_0:
             key = key.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
             value = value.unsqueeze(3).repeat(1, 1, 1, n_rep, 1).flatten(2, 3)
 
-        # scaled_dot_product_attention expects attention_mask shape to be
-        # (batch, heads, source_length, target_length)
+        # (batch, 1, 1, kv_len): scaled_dot_product_attention broadcasts the mask over heads and query positions
         attention_mask = attention_mask.bool().view(batch_size, 1, 1, -1)
-        attention_mask = attention_mask.expand(-1, attn.heads, sequence_length, -1)
 
         query = query.transpose(1, 2)
         key = key.transpose(1, 2)

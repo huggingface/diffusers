@@ -13,9 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from unittest import mock
+
 import torch
+import torch.nn.functional as F
 
 from diffusers import LuminaNextDiT2DModel
+from diffusers.models import attention_processor
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -94,3 +98,44 @@ class TestLuminaNextDiT(LuminaNextDiTTesterConfig, ModelTesterMixin):
 
 class TestLuminaNextDiTTraining(LuminaNextDiTTesterConfig, TrainingTesterMixin):
     pass
+
+
+class TestLuminaNextDiTBehavior(LuminaNextDiTTesterConfig):
+    def _model(self):
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        with torch.no_grad():
+            for layer in model.layers:
+                layer.gate.uniform_(0.5, 1.5)  # zero-initialised, would hide the cross-attention (and its mask)
+        return model
+
+    def _inputs(self):
+        inputs = self.get_dummy_inputs()
+        # padded prompt: the second sample has only 5 valid text tokens
+        mask = torch.ones(2, 16, device=torch_device)
+        mask[1, 5:] = 0
+        inputs["encoder_mask"] = mask
+        return inputs
+
+    def test_attention_mask_broadcast_matches_expanded_mask(self):
+        """Passing the (batch, 1, 1, kv_len) mask to SDPA equals expanding it to (batch, heads, q_len, kv_len)."""
+        model = self._model()
+        inputs = self._inputs()
+        sdpa = F.scaled_dot_product_attention
+
+        def sdpa_with_expanded_mask(query, key, value, attn_mask=None, **kwargs):
+            if attn_mask is not None:
+                attn_mask = attn_mask.expand(-1, query.shape[1], query.shape[2], -1)
+            return sdpa(query, key, value, attn_mask=attn_mask, **kwargs)
+
+        perturbed = {**inputs, "encoder_hidden_states": inputs["encoder_hidden_states"].clone()}
+        perturbed["encoder_hidden_states"][1, 5:] += 10
+
+        with torch.no_grad():
+            out = model(**inputs).sample
+            out_perturbed = model(**perturbed).sample
+            with mock.patch.object(attention_processor.F, "scaled_dot_product_attention", sdpa_with_expanded_mask):
+                ref = model(**inputs).sample
+        assert torch.equal(out, ref)
+        # the mask reaches SDPA: the padded text tokens of the second sample do not change its output
+        assert torch.equal(out_perturbed[1], out[1])
