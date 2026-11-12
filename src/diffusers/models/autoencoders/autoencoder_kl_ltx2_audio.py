@@ -316,6 +316,46 @@ class LTX2AudioAudioPatchifier:
         return self._patch_size
 
 
+class LTX2AudioDownStage(nn.Module):
+    def __init__(self, block: nn.ModuleList, attn: nn.ModuleList, downsample: nn.Module | None = None) -> None:
+        super().__init__()
+        self.block = block
+        self.attn = attn
+        if downsample is not None:
+            self.downsample = downsample
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        for block_idx, block in enumerate(self.block):
+            hidden_states = block(hidden_states, temb=None)
+            if self.attn:
+                hidden_states = self.attn[block_idx](hidden_states)
+
+        if hasattr(self, "downsample"):
+            hidden_states = self.downsample(hidden_states)
+
+        return hidden_states
+
+
+class LTX2AudioUpStage(nn.Module):
+    def __init__(self, block: nn.ModuleList, attn: nn.ModuleList, upsample: nn.Module | None = None) -> None:
+        super().__init__()
+        self.block = block
+        self.attn = attn
+        if upsample is not None:
+            self.upsample = upsample
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        for block_idx, block in enumerate(self.block):
+            hidden_states = block(hidden_states, temb=None)
+            if self.attn:
+                hidden_states = self.attn[block_idx](hidden_states)
+
+        if hasattr(self, "upsample"):
+            hidden_states = self.upsample(hidden_states)
+
+        return hidden_states
+
+
 class LTX2AudioEncoder(nn.Module):
     def __init__(
         self,
@@ -375,13 +415,12 @@ class LTX2AudioEncoder(nn.Module):
         curr_res = self.resolution
 
         for level in range(self.num_resolutions):
-            stage = nn.Module()
-            stage.block = nn.ModuleList()
-            stage.attn = nn.ModuleList()
+            blocks = nn.ModuleList()
+            attns = nn.ModuleList()
             block_out = self.base_channels * self.channel_multipliers[level]
 
             for _ in range(self.num_res_blocks):
-                stage.block.append(
+                blocks.append(
                     LTX2AudioResnetBlock(
                         in_channels=block_in,
                         out_channels=block_out,
@@ -394,13 +433,14 @@ class LTX2AudioEncoder(nn.Module):
                 block_in = block_out
                 if self.attn_resolutions:
                     if curr_res in self.attn_resolutions:
-                        stage.attn.append(LTX2AudioAttnBlock(block_in, norm_type=self.norm_type))
+                        attns.append(LTX2AudioAttnBlock(block_in, norm_type=self.norm_type))
 
+            downsample = None
             if level != self.num_resolutions - 1:
-                stage.downsample = LTX2AudioDownsample(block_in, True, causality_axis=self.causality_axis)
+                downsample = LTX2AudioDownsample(block_in, True, causality_axis=self.causality_axis)
                 curr_res = curr_res // 2
 
-            self.down.append(stage)
+            self.down.append(LTX2AudioDownStage(blocks, attns, downsample))
 
         self.mid = nn.Module()
         self.mid.block_1 = LTX2AudioResnetBlock(
@@ -446,14 +486,7 @@ class LTX2AudioEncoder(nn.Module):
         hidden_states = self.conv_in(hidden_states)
 
         for level in range(self.num_resolutions):
-            stage = self.down[level]
-            for block_idx, block in enumerate(stage.block):
-                hidden_states = block(hidden_states, temb=None)
-                if stage.attn:
-                    hidden_states = stage.attn[block_idx](hidden_states)
-
-            if level != self.num_resolutions - 1 and hasattr(stage, "downsample"):
-                hidden_states = stage.downsample(hidden_states)
+            hidden_states = self.down[level](hidden_states)
 
         hidden_states = self.mid.block_1(hidden_states, temb=None)
         hidden_states = self.mid.attn_1(hidden_states)
@@ -560,13 +593,12 @@ class LTX2AudioDecoder(nn.Module):
         curr_res = self.resolution // (2 ** (self.num_resolutions - 1))
 
         for level in reversed(range(self.num_resolutions)):
-            stage = nn.Module()
-            stage.block = nn.ModuleList()
-            stage.attn = nn.ModuleList()
+            blocks = nn.ModuleList()
+            attns = nn.ModuleList()
             block_out = self.base_channels * self.channel_multipliers[level]
 
             for _ in range(self.num_res_blocks + 1):
-                stage.block.append(
+                blocks.append(
                     LTX2AudioResnetBlock(
                         in_channels=block_in,
                         out_channels=block_out,
@@ -579,13 +611,14 @@ class LTX2AudioDecoder(nn.Module):
                 block_in = block_out
                 if self.attn_resolutions:
                     if curr_res in self.attn_resolutions:
-                        stage.attn.append(LTX2AudioAttnBlock(block_in, norm_type=self.norm_type))
+                        attns.append(LTX2AudioAttnBlock(block_in, norm_type=self.norm_type))
 
+            upsample = None
             if level != 0:
-                stage.upsample = LTX2AudioUpsample(block_in, True, causality_axis=self.causality_axis)
+                upsample = LTX2AudioUpsample(block_in, True, causality_axis=self.causality_axis)
                 curr_res *= 2
 
-            self.up.insert(0, stage)
+            self.up.insert(0, LTX2AudioUpStage(blocks, attns, upsample))
 
         final_block_channels = block_in
 
@@ -623,14 +656,7 @@ class LTX2AudioDecoder(nn.Module):
         hidden_features = self.mid.block_2(hidden_features, temb=None)
 
         for level in reversed(range(self.num_resolutions)):
-            stage = self.up[level]
-            for block_idx, block in enumerate(stage.block):
-                hidden_features = block(hidden_features, temb=None)
-                if stage.attn:
-                    hidden_features = stage.attn[block_idx](hidden_features)
-
-            if level != 0 and hasattr(stage, "upsample"):
-                hidden_features = stage.upsample(hidden_features)
+            hidden_features = self.up[level](hidden_features)
 
         if self.give_pre_end:
             return hidden_features
@@ -671,6 +697,7 @@ class AutoencoderKLLTX2Audio(ModelMixin, AutoencoderMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = False
+    _group_offload_block_modules = ["encoder", "decoder"]
 
     @register_to_config
     def __init__(

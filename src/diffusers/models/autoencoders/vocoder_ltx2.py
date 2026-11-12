@@ -497,6 +497,8 @@ class LTX2VocoderWithBWE(ModelMixin, ConfigMixin):
     architecture as the original vocoder.
     """
 
+    _group_offload_block_modules = ["vocoder", "bwe_generator"]
+
     @register_to_config
     def __init__(
         self,

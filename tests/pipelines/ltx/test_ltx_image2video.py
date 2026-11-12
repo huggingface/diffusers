@@ -36,6 +36,7 @@ enable_full_determinism()
 
 
 class LTXImageToVideoPipelineTesterConfig(BasePipelineTesterConfig):
+    group_offloading_block_level_exclude_modules = []
     pipeline_class = LTXImageToVideoPipeline
     required_input_params_in_call_signature = frozenset(
         [

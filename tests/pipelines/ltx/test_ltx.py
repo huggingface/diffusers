@@ -32,6 +32,7 @@ enable_full_determinism()
 
 
 class LTXPipelineTesterConfig(BasePipelineTesterConfig):
+    group_offloading_block_level_exclude_modules = []
     pipeline_class = LTXPipeline
     required_input_params_in_call_signature = frozenset(
         ["prompt", "height", "width", "guidance_scale", "negative_prompt", "prompt_embeds", "negative_prompt_embeds"]
