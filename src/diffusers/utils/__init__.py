@@ -18,6 +18,7 @@ import os
 from packaging import version
 
 from .. import __version__
+from .aiter_swizzle_gemm import MIN_SWIZZLE_WEIGHT_ELEMS, SHUFFLE_LAYOUT, apply_swizzle, can_shuffle
 from .constants import (
     CONFIG_NAME,
     DEFAULT_HF_PARALLEL_LOADING_WORKERS,
