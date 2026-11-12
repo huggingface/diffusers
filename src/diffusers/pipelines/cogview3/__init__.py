@@ -12,7 +12,7 @@ from ...utils import (
 
 _dummy_objects = {}
 _additional_imports = {}
-_import_structure = {"pipeline_output": ["CogView3PlusPipelineOutput"]}
+_import_structure = {"pipeline_output": ["CogView3PipelineOutput"]}
 
 try:
     if not (is_transformers_available() and is_torch_available()):
