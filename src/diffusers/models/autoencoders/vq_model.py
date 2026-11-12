@@ -130,7 +130,7 @@ class VQModel(ModelMixin, AutoencoderMixin, ConfigMixin):
         )
 
     @apply_forward_hook
-    def encode(self, x: torch.Tensor, return_dict: bool = True) -> VQEncoderOutput:
+    def encode(self, x: torch.Tensor, return_dict: bool = True) -> VQEncoderOutput | tuple[torch.Tensor]:
         h = self.encoder(x)
         h = self.quant_conv(h)
 
@@ -142,7 +142,7 @@ class VQModel(ModelMixin, AutoencoderMixin, ConfigMixin):
     @apply_forward_hook
     def decode(
         self, h: torch.Tensor, force_not_quantize: bool = False, return_dict: bool = True, shape=None
-    ) -> DecoderOutput | torch.Tensor:
+    ) -> DecoderOutput | tuple[torch.Tensor, torch.Tensor]:
         # also go through quantization layer
         if not force_not_quantize:
             quant, commit_loss, _ = self.quantize(h)

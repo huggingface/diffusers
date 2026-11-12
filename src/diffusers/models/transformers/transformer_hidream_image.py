@@ -185,7 +185,7 @@ class HiDreamAttention(Attention):
         hidden_states_masks: torch.Tensor = None,
         norm_encoder_hidden_states: torch.Tensor = None,
         image_rotary_emb: torch.Tensor = None,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         return self.processor(
             self,
             hidden_states=norm_hidden_states,
@@ -207,7 +207,7 @@ class HiDreamAttnProcessor:
         image_rotary_emb: torch.Tensor = None,
         *args,
         **kwargs,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         dtype = hidden_states.dtype
         batch_size = hidden_states.shape[0]
 
