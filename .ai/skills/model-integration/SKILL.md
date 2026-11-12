@@ -17,8 +17,9 @@ Before writing any code, gather info in this order:
 1. **Reference repo** — ask for the github link. If they've already set it up locally, ask for the path. Otherwise, ask what setup steps are needed (install deps, download checkpoints, set env vars, etc.) and run through them before proceeding.
 2. **Inference script** — ask for a runnable end-to-end script for a basic workflow first (e.g. T2V). Then ask what other workflows they want to support (I2V, V2V, etc.) and agree on the full implementation order together.
 3. **Standard vs modular** — **default to modular.** [Modular Diffusers](references/modular.md) is the preferred implementation for new pipelines; the standard `DiffusionPipeline` is still supported but no longer the default. We prefer modular especially for models that don't fit a fixed task-based structure (modality baked into the checkpoint) or that are actively evolving.
+4. **Hub checkpoint** — ask where the diffusers weights will be hosted: in a separate repo, or in the same repo as the reference checkpoint (see **Hub checkpoint**).
 
-Ask step 3 as an `AskUserQuestion`, with modular marked as the recommended default.
+Ask step 3 as an `AskUserQuestion`, with modular marked as the recommended default. Ask step 4 as one too, with no recommended option.
 
 Once you have everything, **confirm the plan** with the user before implementing — state exactly what you'll do, e.g. "I'll integrate model X with pipeline Y based on your script, and verify the model matches the reference before considering it done."
 
@@ -41,6 +42,7 @@ A pipeline in Diffusers (be it standard or modular) will have multiple component
   - [ ] Add a LoRA mixin if applicable
   - [ ] Register in the relevant `__init__.py` files (lazy imports)
   - [ ] Pipeline-level tests (see **Testing**)
+- [ ] **Hub checkpoint** — assemble the repo layout and its index (see **Hub checkpoint**)
 - [ ] **Docs** — see **File structure**
 - [ ] **Style** — `make style` and `make quality`
 
@@ -84,6 +86,16 @@ Common conversion patterns to watch for model-level components:
 - Weight transpositions (linear stored as transposed conv, or vice versa)
 - Interleaved head dimensions that need reshaping
 - Bias terms absorbed into different layers
+
+## Hub checkpoint
+
+Conversion ends with a repo a user can load in one call. Decide its layout with the user before the conversion script writes anything — the script's output directory should already be that layout.
+
+**Separate repo or the reference checkpoint's repo — the user's call.** In a separate repo the converted weights are laid out the standard way (`transformer/`, `vae/`, `text_encoder/`, ...). In the reference checkpoint's repo the converted components sit next to the reference ones, and the only practical difference is folder names: when the reference checkpoint already uses a name the diffusers layout needs (`transformer/`, `vae/`, ...), write the converted component to `<name>_diffusers/` and leave the reference folder untouched. [MiniMaxAI/MiniMax-H3-Image](https://huggingface.co/MiniMaxAI/MiniMax-H3-Image) is the worked example: `transformer/` and `vae/` hold the reference weights, `transformer_diffusers/` and `vae_diffusers/` hold the converted ones, and `modular_model_index.json` points at the latter through each component's `subfolder`. Components with no name clash keep their plain folder name.
+
+**Self-contained by default.** Every component's loading spec in the index points at this repo, including a component that is identical to another model's (a shared text encoder or VAE). Don't reference another repo just to save disk space: the Hub and the local cache already deduplicate identical files. See [Referencing components in other repositories](https://huggingface.co/docs/diffusers/main/en/modular_diffusers/modular_pipeline#referencing-components-in-other-repositories).
+
+Check the result by loading the pipeline from the assembled repo (`ModularPipeline.from_pretrained(repo)` + `load_components()`) and reading its `modular_model_index.json`: every `pretrained_model_name_or_path` should be the repo itself.
 
 ## Testing
 
