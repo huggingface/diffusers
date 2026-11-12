@@ -1,10 +1,14 @@
+import math
 import tempfile
 import unittest
 
+import numpy as np
 import torch
+from parameterized import parameterized
 
 from diffusers import (
     DEISMultistepScheduler,
+    DPMSolverMultistepInverseScheduler,
     DPMSolverMultistepScheduler,
     DPMSolverSinglestepScheduler,
     UniPCMultistepScheduler,
@@ -202,7 +206,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
                 for order in [1, 2, 3]:
                     for prediction_type in ["epsilon", "sample"]:
                         if algorithm_type in ["sde-dpmsolver", "sde-dpmsolver++"]:
-                            if order == 3:
+                            if order == 3 and algorithm_type == "sde-dpmsolver":
                                 continue
                         else:
                             self.check_over_configs(
@@ -218,6 +222,94 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
                             algorithm_type=algorithm_type,
                         )
                         assert not torch.isnan(sample).any(), "Samples have nan numbers"
+
+    @parameterized.expand(
+        [
+            ("dpmsolver++", 1, DPMSolverMultistepScheduler, 1),
+            ("sde-dpmsolver++", 2, DPMSolverMultistepScheduler, 1),
+            ("dpmsolver++", 1, DPMSolverMultistepInverseScheduler, -1),
+        ]
+    )
+    def test_third_order_polynomial_integral(self, algorithm_type, rate, scheduler_class, direction):
+        nodes, weights = np.polynomial.legendre.leggauss(16)
+        sample = torch.tensor([0.25, -0.5, 0.0], dtype=torch.float64)
+        for step_size in [0.2, 0.03]:
+            for r0, r1 in [(1.0, 1.0), (0.5, 1.5)]:
+                with self.subTest(step_size=step_size, r0=r0, r1=r1):
+                    h = direction * step_size
+                    scheduler = scheduler_class(algorithm_type=algorithm_type, solver_order=3)
+                    lambdas = torch.tensor([-(r0 + r1) * h, -r0 * h, 0.0, h], dtype=torch.float64)
+                    scheduler.sigmas = torch.exp(-lambdas)
+                    scheduler._step_index = 2
+                    model_outputs = [torch.tensor([1.0, t, t**2], dtype=torch.float64) for t in lambdas[:3]]
+                    actual = scheduler.multistep_dpm_solver_third_order_update(
+                        model_outputs, sample=sample, noise=torch.zeros_like(sample)
+                    )
+
+                    # Integrate constant, linear and quadratic state-independent data predictions.
+                    u = h * (nodes + 1) / 2
+                    forcing = (
+                        rate
+                        * h
+                        / 2
+                        * (weights * np.exp(-rate * (h - u)) * np.array([np.ones_like(u), u, u**2])).sum(axis=1)
+                    )
+                    alpha_t = 1 / math.sqrt(1 + math.exp(-2 * h))
+                    expected = alpha_t * (math.sqrt(2) * math.exp(-rate * h) * sample + torch.from_numpy(forcing))
+                    torch.testing.assert_close(actual, expected, rtol=1e-9, atol=1e-14)
+
+    @parameterized.expand([("dpmsolver++", 1), ("sde-dpmsolver++", 2)])
+    def test_third_order_quadratic_small_steps(self, algorithm_type, rate):
+        nodes, weights = np.polynomial.legendre.leggauss(16)
+        for dtype, step_sizes, rtol in [
+            (torch.float32, [0.101, 0.099, 0.051, 0.049, 1e-2, 1e-3, 1e-4], 1e-4),
+            (torch.float64, [1e-4, 1e-6, 1e-8], 1e-8),
+        ]:
+            for h in step_sizes:
+                with self.subTest(dtype=dtype, h=h):
+                    scheduler = DPMSolverMultistepScheduler(algorithm_type=algorithm_type, solver_order=3)
+                    scheduler.sigmas = torch.exp(torch.tensor([2 * h, h, 0.0, -h], dtype=dtype))
+                    scheduler._step_index = 2
+                    alpha, sigma = scheduler._sigma_to_alpha_sigma_t(scheduler.sigmas)
+                    # Evaluate the predictor at the coordinates actually represented by the schedule.
+                    lambdas = torch.log(alpha) - torch.log(sigma)
+                    model_outputs = [t.square().reshape(1) for t in lambdas[:3]]
+                    sample = torch.zeros(1, dtype=dtype)
+                    actual = scheduler.multistep_dpm_solver_third_order_update(
+                        model_outputs, sample=sample, noise=torch.zeros_like(sample)
+                    )
+
+                    h = (lambdas[3] - lambdas[2]).item()
+                    u = h * (nodes + 1) / 2
+                    forcing = rate * h / 2 * np.sum(weights * np.exp(-rate * (h - u)) * u**2)
+                    expected = torch.tensor([alpha[3].item() * forcing], dtype=dtype)
+                    torch.testing.assert_close(actual, expected, rtol=rtol, atol=0)
+
+    @parameterized.expand([("dpmsolver++", 1), ("sde-dpmsolver++", 2)])
+    def test_third_order_cubic_forcing_convergence(self, algorithm_type, rate):
+        nodes, weights = np.polynomial.legendre.leggauss(16)
+        u = (nodes + 1) / 2
+        alpha_t = 1 / math.sqrt(1 + math.exp(-2))
+        expected = alpha_t * rate / 2 * np.sum(weights * np.exp(-rate * (1 - u)) * u**3)
+        errors = []
+        for num_steps in [16, 32, 64]:
+            scheduler = DPMSolverMultistepScheduler(algorithm_type=algorithm_type, solver_order=3)
+            lambdas = torch.arange(-2, num_steps + 1, dtype=torch.float64) / num_steps
+            scheduler.sigmas = torch.exp(-lambdas)
+            model_outputs = [t.pow(3).reshape(1) for t in lambdas]
+            sample = torch.zeros(1, dtype=torch.float64)
+            # Exact history and zero noise isolate the multistep drift for this scalar predictor.
+            for step_index in range(2, num_steps + 2):
+                scheduler._step_index = step_index
+                sample = scheduler.multistep_dpm_solver_third_order_update(
+                    model_outputs[step_index - 2 : step_index + 1], sample=sample, noise=torch.zeros_like(sample)
+                )
+            errors.append(abs(sample.item() - expected))
+
+        for coarse_error, fine_error in zip(errors, errors[1:]):
+            observed_order = math.log2(coarse_error / fine_error)
+            self.assertGreater(observed_order, 2.8)
+            self.assertLess(observed_order, 3.2)
 
     def test_lower_order_final(self):
         self.check_over_configs(lower_order_final=True)
