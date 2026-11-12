@@ -254,7 +254,6 @@ class TestRandnTensor:
         from ..testing_utils import CaptureLogger
 
         gen = torch.Generator(device="cpu")
-        diffusers_logging.set_verbosity_info()
 
         def _capture(target_device):
             with CaptureLogger(torch_utils.logger) as cl:
@@ -264,10 +263,15 @@ class TestRandnTensor:
                     pass
             return cl.out
 
-        mps_out = _capture("mps")
-        assert "moved to" not in mps_out, f"MPS target should not emit the CPU-fallback info log, got: {mps_out}"
+        verbosity = diffusers_logging.get_verbosity()
+        diffusers_logging.set_verbosity_info()
+        try:
+            mps_out = _capture("mps")
+            cuda_out = _capture("cuda")
+        finally:
+            diffusers_logging.set_verbosity(verbosity)
 
-        cuda_out = _capture("cuda")
+        assert "moved to" not in mps_out, f"MPS target should not emit the CPU-fallback info log, got: {mps_out}"
         assert "moved to" in cuda_out, f"Non-MPS target should still emit the CPU-fallback info log, got: {cuda_out}"
 
 
