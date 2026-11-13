@@ -183,6 +183,25 @@ class TestFlux2TransformerTensorParallelNeuron(Flux2TransformerTesterConfig, Ten
 class TestFlux2TransformerLoRA(Flux2TransformerTesterConfig, LoraTesterMixin):
     """LoRA adapter tests for Flux2 Transformer."""
 
+    def test_lora_bfl_final_layer_modulation(self):
+        # The original final layer orders its modulation (shift, scale) and diffusers' `norm_out` (scale, shift), so
+        # an adapter in the original layout must move the converted rows the way it moves the original ones.
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict())
+        linear = model.norm_out.linear
+        lora_A, lora_B = torch.randn(2, linear.in_features), torch.randn(linear.out_features, 2)
+        state_dict = {
+            "diffusion_model.final_layer.adaLN_modulation.1.lora_A.weight": lora_A,
+            "diffusion_model.final_layer.adaLN_modulation.1.lora_B.weight": lora_B,
+        }
+        converted = Flux2LoraLoaderMixin.lora_state_dict(state_dict)
+        delta = (
+            converted["transformer.norm_out.linear.lora_B.weight"]
+            @ converted["transformer.norm_out.linear.lora_A.weight"]
+        )
+        shift, scale = (lora_B @ lora_A).chunk(2, dim=0)
+        assert torch.allclose(delta, torch.cat([scale, shift]))
+
 
 class TestFlux2TransformerLoKr(Flux2TransformerTesterConfig, LoKrTesterMixin):
     """LoKr adapter tests for Flux2 Transformer, including the Flux2 LoKr checkpoint formats."""

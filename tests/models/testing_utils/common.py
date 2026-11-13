@@ -15,6 +15,7 @@
 
 import json
 import os
+import re
 from collections import defaultdict
 from typing import Any, Dict, Optional, Type
 
@@ -22,10 +23,12 @@ import pytest
 import torch
 import torch.nn as nn
 from accelerate.utils.modeling import _get_proper_dtype, compute_module_sizes, dtype_byte_size
+from safetensors.torch import load_file, save_file
 
-from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME, _add_variant, logging
+from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME, SAFETENSORS_WEIGHTS_NAME, _add_variant, logging
 
 from ...testing_utils import (
+    CaptureLogger,
     assert_tensors_close,
     require_accelerator,
     require_torch_multi_accelerator,
@@ -225,6 +228,15 @@ class BaseModelTesterConfig:
         """Percentages for model parallelism tests."""
         return [0.9]
 
+    @property
+    def unexpected_keys_to_ignore(self) -> Optional[list[str]]:
+        """
+        `_keys_to_ignore_on_load_unexpected` only holds regex patterns. The underlying test
+        (`test_from_pretrained_ignores_unexpected_keys`) needs concrete state-dict key names
+        to inject into a loaded checkpoint to perform checks.
+        """
+        return self.model_class._keys_to_ignore_on_load_unexpected
+
     # ==================== Required Methods ====================
 
     def get_init_dict(self) -> Dict[str, Any]:
@@ -337,6 +349,55 @@ class ModelTesterMixin(BaseModelOutputMixin):
         assert_tensors_close(
             base_model_output, new_image, atol=atol, rtol=rtol, msg="Models give different forward passes."
         )
+
+    @pytest.mark.parametrize("include_unexpected_weight", [False, True])
+    def test_from_pretrained_ignores_unexpected_keys(self, tmp_path, include_unexpected_weight):
+        patterns = self.model_class._keys_to_ignore_on_load_unexpected
+        if not patterns:
+            pytest.skip("Model does not have _keys_to_ignore_on_load_unexpected defined.")
+
+        ignored_keys = self.unexpected_keys_to_ignore
+        assert ignored_keys
+
+        # Every pattern must match some sample key, and every sample key must match some pattern.
+        assert all(any(re.search(pattern, key) for key in ignored_keys) for pattern in patterns)
+        assert all(any(re.search(pattern, key) for pattern in patterns) for key in ignored_keys)
+
+        model = self.model_class(**self.get_init_dict())
+        model.save_pretrained(tmp_path)
+        weights_path = tmp_path / SAFETENSORS_WEIGHTS_NAME
+
+        # Inject keys into the state_dict that are supposed to be ignored at load.
+        # We check that the loading doesn't complain about these keys.
+        state_dict = load_file(weights_path)
+        for key in ignored_keys:
+            assert key not in state_dict
+            state_dict[key] = torch.ones(1)
+
+        # Unexpected keys that aren't defined under `_keys_to_ignore_on_load_unexpected`
+        # should be warned about.
+        unexpected_key = "test_module.unexpected_weight"
+        assert not any(re.search(pattern, unexpected_key) for pattern in patterns)
+        if include_unexpected_weight:
+            state_dict[unexpected_key] = torch.ones(1)
+
+        save_file(state_dict, weights_path, metadata={"format": "pt"})
+
+        logger = logging.get_logger("diffusers.models.modeling_utils")
+        with CaptureLogger(logger) as captured:
+            _, loading_info = self.model_class.from_pretrained(tmp_path, output_loading_info=True)
+
+        # Only warn about the key that is truly unexpected.
+        assert loading_info["unexpected_keys"] == ([unexpected_key] if include_unexpected_weight else [])
+        assert loading_info["missing_keys"] == []
+        assert loading_info["mismatched_keys"] == []
+        for key in ignored_keys:
+            assert key not in captured.out
+        if include_unexpected_weight:
+            assert unexpected_key in captured.out
+            assert "were not used when initializing" in captured.out
+        else:
+            assert "were not used when initializing" not in captured.out
 
     @torch.no_grad()
     def test_from_save_pretrained_variant(self, base_model_output, tmp_path, atol=5e-5, rtol=0):

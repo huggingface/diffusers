@@ -31,7 +31,7 @@ This pipeline was contributed by [maxin-cn](https://github.com/maxin-cn). The or
 
 ### Inference
 
-Use [`torch.compile`](https://huggingface.co/docs/diffusers/main/en/tutorials/fast_diffusion#torchcompile) to reduce the inference latency.
+Use [`torch.compile`](../../optimization/fp16#torchcompile) to reduce the inference latency.
 
 First, load the pipeline:
 
