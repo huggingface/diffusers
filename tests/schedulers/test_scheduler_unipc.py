@@ -424,7 +424,13 @@ class UniPCMultistepScheduler1DTest(UniPCMultistepSchedulerTest):
             0.0,  # 0 appended as default
         ]
         expected_sigmas = torch.tensor(expected_sigmas)
-        expected_timesteps = (expected_sigmas * num_train_timesteps).to(torch.int64)
-        expected_timesteps = expected_timesteps[0:-1]
+        expected_timesteps = expected_sigmas[:-1] * num_train_timesteps
+
         self.assertTrue(torch.allclose(scheduler.sigmas, expected_sigmas))
-        self.assertTrue(torch.all(expected_timesteps == scheduler.timesteps))
+        self.assertTrue(scheduler.timesteps.is_floating_point())
+        torch.testing.assert_close(
+            scheduler.timesteps,
+            expected_timesteps,
+            rtol=1e-5,
+            atol=1e-4,
+        )

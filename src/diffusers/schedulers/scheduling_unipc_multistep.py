@@ -463,7 +463,15 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas)
-        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.int64)
+
+        if self.config.use_flow_sigmas:
+            self.timesteps = (
+                self.sigmas[:-1] * self.config.num_train_timesteps
+            ).to(device=device)
+        else:
+            self.timesteps = torch.from_numpy(timesteps).to(
+                device=device, dtype=torch.int64
+            )
 
         self.num_inference_steps = len(timesteps)
 
