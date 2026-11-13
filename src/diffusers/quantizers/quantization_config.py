@@ -43,6 +43,7 @@ logger = logging.get_logger(__name__)
 class QuantizationMethod(str, Enum):
     BITS_AND_BYTES = "bitsandbytes"
     BFL = "bfl"
+    COMFY = "comfy"
     GGUF = "gguf"
     NUNCHAKU_LITE = "nunchaku_lite"
     TORCHAO = "torchao"
@@ -421,6 +422,46 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
 
         if self.compute_dtype is None:
             self.compute_dtype = torch.float32
+
+
+@dataclass
+class ComfyQuantizationConfig(QuantizationConfigMixin):
+    """Load native Comfy checkpoints with Comfy-Kitchen kernels.
+
+    Currently supports prequantized INT8 ConvRot checkpoints. Other Comfy quantization schemes are not supported.
+
+    Args:
+        compute_dtype (`torch.dtype`, defaults to `torch.bfloat16`):
+            Precision of activations and unquantized layers. Supports BF16 and FP16.
+        quant_type (`str`, defaults to `"int8_convrot"`):
+            Quantization type to load. Only INT8 ConvRot is supported.
+    """
+
+    def __init__(self, compute_dtype: "torch.dtype" | str | None = None, quant_type: str = "int8_convrot", **kwargs):
+        self.quant_method = QuantizationMethod.COMFY
+        self.quant_type = quant_type
+        self.compute_dtype = compute_dtype if compute_dtype is not None else torch.bfloat16
+        self.pre_quantized = kwargs.get("pre_quantized", True)
+        self.post_init()
+
+    def post_init(self):
+        if isinstance(self.compute_dtype, str):
+            self.compute_dtype = {"bfloat16": torch.bfloat16, "float16": torch.float16}.get(self.compute_dtype)
+        if self.quant_type != "int8_convrot":
+            raise ValueError("Comfy only supports quant_type='int8_convrot'.")
+        if self.pre_quantized is not True:
+            raise ValueError("Comfy only supports prequantized checkpoints.")
+        if self.compute_dtype not in (torch.bfloat16, torch.float16):
+            raise ValueError("Comfy compute_dtype must be torch.bfloat16 or torch.float16.")
+
+    def to_dict(self):
+        result = super().to_dict()
+        result["compute_dtype"] = str(self.compute_dtype).replace("torch.", "")
+        return result
+
+    def to_diff_dict(self):
+        default = ComfyQuantizationConfig().to_dict()
+        return {key: value for key, value in self.to_dict().items() if key == "quant_method" or value != default[key]}
 
 
 @dataclass

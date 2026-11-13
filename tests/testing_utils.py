@@ -34,6 +34,7 @@ from diffusers.utils.import_utils import (
     is_accelerate_available,
     is_auto_round_available,
     is_bitsandbytes_available,
+    is_comfy_kitchen_available,
     is_compel_available,
     is_flashpack_available,
     is_gguf_available,
@@ -865,6 +866,13 @@ def require_hf_hub_version_greater(hf_hub_version):
         )(test_case)
 
     return decorator
+
+
+def require_comfy_kitchen(test_case):
+    available = is_comfy_kitchen_available() and version.parse(
+        importlib.metadata.version("comfy-kitchen")
+    ) >= version.parse("0.2.41")
+    return pytest.mark.skipif(not available, reason="Test requires comfy-kitchen>=0.2.41")(test_case)
 
 
 def require_gguf_version_greater_or_equal(gguf_version):

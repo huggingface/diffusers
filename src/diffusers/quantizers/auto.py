@@ -21,6 +21,7 @@ import warnings
 from .autoround import AutoRoundQuantizer
 from .bfl import BFLQuantizer
 from .bitsandbytes import BnB4BitDiffusersQuantizer, BnB8BitDiffusersQuantizer
+from .comfy import ComfyQuantizer
 from .gguf import GGUFQuantizer
 from .modelopt import NVIDIAModelOptQuantizer
 from .nunchaku import NunchakuLiteQuantizer
@@ -28,6 +29,7 @@ from .quantization_config import (
     AutoRoundConfig,
     BFLQuantizationConfig,
     BitsAndBytesConfig,
+    ComfyQuantizationConfig,
     GGUFQuantizationConfig,
     NunchakuLiteQuantizationConfig,
     NVIDIAModelOptConfig,
@@ -43,6 +45,7 @@ from .torchao import TorchAoHfQuantizer
 
 
 AUTO_QUANTIZER_MAPPING = {
+    "comfy": ComfyQuantizer,
     "bfl": BFLQuantizer,
     "bitsandbytes_4bit": BnB4BitDiffusersQuantizer,
     "bitsandbytes_8bit": BnB8BitDiffusersQuantizer,
@@ -56,6 +59,7 @@ AUTO_QUANTIZER_MAPPING = {
 }
 
 AUTO_QUANTIZATION_CONFIG_MAPPING = {
+    "comfy": ComfyQuantizationConfig,
     "bfl": BFLQuantizationConfig,
     "bitsandbytes_4bit": BitsAndBytesConfig,
     "bitsandbytes_8bit": BitsAndBytesConfig,

@@ -4077,26 +4077,70 @@ def convert_flux3_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     return converted_state_dict
 
 
+def _split_linear_checkpoint(state_dict, source, targets):
+    """Split fused output rows together with their bias, scales, and quantization markers."""
+    weight = state_dict.pop(f"{source}.weight")
+    if weight.shape[0] % len(targets):
+        raise ValueError(f"{source}.weight cannot be split into {len(targets)} equal projections.")
+    for target, chunk in zip(targets, weight.chunk(len(targets), dim=0)):
+        state_dict[f"{target}.weight"] = chunk
+    for suffix in ("bias", "weight_scale", "comfy_quant"):
+        key = f"{source}.{suffix}"
+        if key not in state_dict:
+            continue
+        value = state_dict.pop(key)
+        if suffix == "comfy_quant" or (suffix == "weight_scale" and value.numel() == 1):
+            chunks = [value] * len(targets)
+        else:
+            if value.ndim == 0 or value.shape[0] != weight.shape[0]:
+                raise ValueError(f"{key} must have one entry per fused output row.")
+            chunks = value.chunk(len(targets), dim=0)
+        for target, chunk in zip(targets, chunks):
+            state_dict[f"{target}.{suffix}"] = chunk
+
+
+def _map_linear_checkpoint_rows(state_dict, source, transform):
+    """Apply the same row transform to a linear weight, its bias, and its INT8 scales."""
+    rows = state_dict[f"{source}.weight"].shape[0]
+    for suffix in ("weight", "weight_scale", "bias"):
+        key = f"{source}.{suffix}"
+        if key not in state_dict:
+            continue
+        tensor = state_dict[key]
+        if suffix == "weight_scale" and tensor.numel() == 1:
+            continue
+        if tensor.ndim == 0 or tensor.shape[0] != rows:
+            raise ValueError(f"{key} must have one entry per fused output row.")
+        state_dict[key] = transform(tensor)
+
+
 def convert_z_image_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     Z_IMAGE_KEYS_RENAME_DICT = {
         "final_layer.": "all_final_layer.2-1.",
         "x_embedder.": "all_x_embedder.2-1.",
-        ".attention.out.bias": ".attention.to_out.0.bias",
+        ".attention.out.": ".attention.to_out.0.",
         ".attention.k_norm.weight": ".attention.norm_k.weight",
         ".attention.q_norm.weight": ".attention.norm_q.weight",
-        ".attention.out.weight": ".attention.to_out.0.weight",
         "model.diffusion_model.": "",
     }
 
     def convert_z_image_fused_attention(key: str, state_dict: dict[str, object]) -> None:
-        if ".attention.qkv.weight" not in key:
+        if not key.endswith(".attention.qkv.weight"):
+            return
+
+        new_q_name = key.replace(".attention.qkv.weight", ".attention.to_q.weight")
+        new_k_name = key.replace(".attention.qkv.weight", ".attention.to_k.weight")
+        new_v_name = key.replace(".attention.qkv.weight", ".attention.to_v.weight")
+
+        source = key[: -len(".weight")]
+        if any(f"{source}.{suffix}" in state_dict for suffix in ("bias", "weight_scale", "comfy_quant")):
+            _split_linear_checkpoint(
+                state_dict, source, [name[: -len(".weight")] for name in (new_q_name, new_k_name, new_v_name)]
+            )
             return
 
         fused_qkv_weight = state_dict.pop(key)
         to_q_weight, to_k_weight, to_v_weight = torch.chunk(fused_qkv_weight, 3, dim=0)
-        new_q_name = key.replace(".attention.qkv.weight", ".attention.to_q.weight")
-        new_k_name = key.replace(".attention.qkv.weight", ".attention.to_k.weight")
-        new_v_name = key.replace(".attention.qkv.weight", ".attention.to_v.weight")
 
         state_dict[new_q_name] = to_q_weight
         state_dict[new_k_name] = to_k_weight
@@ -4316,6 +4360,74 @@ def convert_ernie_image_transformer_checkpoint_to_diffusers(checkpoint, **kwargs
     return checkpoint
 
 
+def infer_minimax_h3_checkpoint_config(checkpoint):
+    table = checkpoint.get("adaln_t_table", checkpoint.get("model.diffusion_model.adaln_t_table"))
+    if table is None:
+        return {}
+    if table.ndim != 2 or table.shape[0] < 2 or table.shape[1] < 1:
+        raise ValueError("MiniMax-H3 adaln_t_table must have shape (grid_size >= 2, time_embed_dim >= 1).")
+    return {"adaln_curve_grid": table.shape[0], "time_embed_dim": table.shape[1]}
+
+
+def infer_minimax_h3_vae_checkpoint_config(checkpoint):
+    config = {}
+    for name in ("latents_mean", "latents_std"):
+        if name not in checkpoint:
+            continue
+        value = checkpoint[name]
+        if value.ndim != 1 or not torch.isfinite(value).all() or (name == "latents_std" and not (value > 0).all()):
+            raise ValueError(
+                f"MiniMax-H3 {name} must be a finite per-channel vector with positive standard deviations."
+            )
+        config[name] = value.tolist()
+    return config
+
+
+def convert_minimax_h3_vae_checkpoint_to_diffusers(checkpoint, config, **kwargs):
+    converted = {}
+    gated_projections = set()
+    for key, value in checkpoint.items():
+        if key in ("decoder.mask_token", "latents_mean", "latents_std"):
+            continue
+        key = re.sub(r"encoder\.down\.(\d+)\.block\.(\d+)\.", r"encoder.down_blocks.\1.resnets.\2.", key)
+        key = re.sub(r"encoder\.down\.(\d+)\.downsample\.", r"encoder.down_blocks.\1.downsamplers.0.", key)
+        key = key.replace(".nin_shortcut.", ".conv_shortcut.")
+        key = key.replace("decoder.x_embedder.", "decoder.proj_in.")
+        key = re.sub(r"\.attn\.to_out\.(?!0\.)", ".attn.to_out.0.", key)
+        if key.endswith(".ff.w1.weight"):
+            gated_projections.add(key.replace(".ff.w1.weight", ".ff.net.0.proj.weight"))
+        key = key.replace(".ff.w1.", ".ff.net.0.proj.").replace(".ff.w2.", ".ff.net.2.")
+        converted[key] = value
+
+    for name in ("latents_mean", "latents_std"):
+        if name in checkpoint and checkpoint[name].shape != (config["latent_channels"],):
+            raise ValueError(f"MiniMax-H3 {name} must have {config['latent_channels']} channels.")
+
+    for key in list(converted):
+        if key.endswith(".attn.to_qkv.weight"):
+            source = key.removesuffix(".weight")
+            rows = converted[key].shape[0]
+            heads = config["decoder_num_attention_heads"]
+            head_dim = config["decoder_attention_head_dim"]
+            if rows != heads * 3 * head_dim:
+                raise ValueError(f"{key} must have {heads * 3 * head_dim} interleaved QKV output rows.")
+            _map_linear_checkpoint_rows(
+                converted,
+                source,
+                lambda tensor: tensor.unflatten(0, (heads, 3, head_dim)).transpose(0, 1).flatten(0, 2),
+            )
+            _split_linear_checkpoint(converted, source, [source.replace(".to_qkv", f".to_{name}") for name in "qkv"])
+        elif key in gated_projections:
+            source = key.removesuffix(".weight")
+            rows = converted[key].shape[0]
+            if rows % 2:
+                raise ValueError(f"{key} must have an even number of gate/value rows.")
+            _map_linear_checkpoint_rows(
+                converted, source, lambda tensor: torch.cat(tensor.chunk(2, dim=0)[::-1], dim=0)
+            )
+    return converted
+
+
 def convert_minimax_h3_transformer_checkpoint_to_diffusers(checkpoint, config, qkv_layout="stacked", **kwargs):
     if qkv_layout not in ("stacked", "interleaved"):
         raise ValueError(
@@ -4324,12 +4436,10 @@ def convert_minimax_h3_transformer_checkpoint_to_diffusers(checkpoint, config, q
             'from it). "interleaved" is the per-head `[q k v]` row order of the MiniMaxAI/MiniMax-H3 shards, for a '
             "file merged from those shards by hand. The two cannot be told apart from the checkpoint itself."
         )
-    if "adaln_t_table" in checkpoint:
-        raise ValueError(
-            "This is a pruned MiniMax-H3 checkpoint: it replaces `time_embedder` with `adaln_t_table` of shape "
-            f"{tuple(checkpoint['adaln_t_table'].shape)}, which `MiniMaxH3Transformer3DModel` does not support. "
-            "Use the unpruned checkpoint from https://huggingface.co/MiniMaxAI/MiniMax-H3."
-        )
+    checkpoint = {key.removeprefix("model.diffusion_model."): value for key, value in checkpoint.items()}
+    adaln_curve_config = infer_minimax_h3_checkpoint_config(checkpoint)
+    if adaln_curve_config and any(config.get(key) != value for key, value in adaln_curve_config.items()):
+        raise ValueError("The MiniMax-H3 configuration does not match the checkpoint's AdaLN curve table.")
 
     MINIMAX_H3_KEYS_RENAME_DICT = {
         "token_refiner.blocks.": "token_refiner.refiner_blocks.",
@@ -4350,25 +4460,32 @@ def convert_minimax_h3_transformer_checkpoint_to_diffusers(checkpoint, config, q
     }
 
     def convert_minimax_h3_fused_attention(key: str, state_dict: dict[str, object]) -> None:
+        if not key.endswith(".weight"):
+            return
         # Published single files store the reference model's post-load `[q; k; v]` stack; the MiniMaxAI/MiniMax-H3
         # shards interleave the rows per head, `[head0: q k v, head1: q k v, ...]`. Keys and shapes are identical, so
         # the caller has to say which one it is.
-        fused_qkv_weight = state_dict.pop(key)
+        source = key[: -len(".weight")]
         if qkv_layout == "interleaved":
-            fused_qkv_weight = fused_qkv_weight.unflatten(
-                0, (config["num_attention_heads"], 3, config["attention_head_dim"])
+            _map_linear_checkpoint_rows(
+                state_dict,
+                source,
+                lambda tensor: tensor.unflatten(0, (config["num_attention_heads"], 3, config["attention_head_dim"]))
+                .transpose(0, 1)
+                .flatten(0, 2),
             )
-            to_q_weight, to_k_weight, to_v_weight = [weight.flatten(0, 1) for weight in fused_qkv_weight.unbind(dim=1)]
-        else:
-            to_q_weight, to_k_weight, to_v_weight = torch.chunk(fused_qkv_weight, 3, dim=0)
-        state_dict[key.replace(".attn.qkv_proj.weight", ".attn.to_q.weight")] = to_q_weight
-        state_dict[key.replace(".attn.qkv_proj.weight", ".attn.to_k.weight")] = to_k_weight
-        state_dict[key.replace(".attn.qkv_proj.weight", ".attn.to_v.weight")] = to_v_weight
+        _split_linear_checkpoint(
+            state_dict, source, [source.replace(".qkv_proj", f".to_{name}") for name in ("q", "k", "v")]
+        )
 
     def convert_minimax_h3_gated_ff(key: str, state_dict: dict[str, object]) -> None:
+        if not key.endswith(".weight"):
+            return
         # The checkpoint fuses `[gate; value]`, `SwiGLU` reads `[value; gate]`.
-        gate, value = torch.chunk(state_dict[key], 2, dim=0)
-        state_dict[key] = torch.cat([value, gate], dim=0)
+        source = key[: -len(".weight")]
+        if state_dict[key].shape[0] % 2:
+            raise ValueError(f"{key} must have an even number of gate/value rows.")
+        _map_linear_checkpoint_rows(state_dict, source, lambda tensor: torch.cat(tensor.chunk(2, dim=0)[::-1], dim=0))
 
     TRANSFORMER_SPECIAL_KEYS_REMAP = {
         ".attn.qkv_proj.weight": convert_minimax_h3_fused_attention,
@@ -4389,6 +4506,9 @@ def convert_minimax_h3_transformer_checkpoint_to_diffusers(checkpoint, config, q
             new_key = new_key.replace("blocks.", "transformer_blocks.", 1)
         for replace_key, rename_key in MINIMAX_H3_KEYS_RENAME_DICT.items():
             new_key = new_key.replace(replace_key, rename_key)
+        if adaln_curve_config:
+            new_key = new_key.replace(".adaln_proj.linear.", ".adaln_proj.curve_proj.")
+            new_key = new_key.replace("norm_out.linear.", "norm_out.curve_proj.")
 
         update_state_dict(converted_state_dict, key, new_key)
 
@@ -4402,21 +4522,14 @@ def convert_minimax_h3_transformer_checkpoint_to_diffusers(checkpoint, config, q
 
 
 def convert_qwen_image21_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
-    converted_state_dict = {}
-
-    for key in list(checkpoint.keys()):
-        new_key = key.replace("model.diffusion_model.", "")
-        value = checkpoint.pop(key)
-
-        # ComfyUI fuses the SwiGLU gate and up projections into a single GEMM, gate rows first.
-        if new_key.endswith("img_mlp.gate_up.weight"):
-            gate, up = value.chunk(2, dim=0)
-            converted_state_dict[new_key.replace("gate_up", "gate_layer")] = gate
-            converted_state_dict[new_key.replace("gate_up", "proj")] = up
-        else:
-            converted_state_dict[new_key] = value
-
-    return converted_state_dict
+    checkpoint = {key.replace("model.diffusion_model.", ""): value for key, value in checkpoint.items()}
+    for key in list(checkpoint):
+        if key.endswith("img_mlp.gate_up.weight"):
+            source = key[: -len(".weight")]
+            _split_linear_checkpoint(
+                checkpoint, source, [source.replace("gate_up", name) for name in ("gate_layer", "proj")]
+            )
+    return checkpoint
 
 
 def convert_krea2_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):

@@ -93,6 +93,8 @@
       title: bitsandbytes
     - local: quantization/bfl
       title: BFL (fp8r / nvfp4)
+    - local: quantization/comfy
+      title: Comfy Quantization
     - local: quantization/gguf
       title: gguf
     - local: quantization/nunchaku

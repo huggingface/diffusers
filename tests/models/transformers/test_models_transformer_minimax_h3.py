@@ -24,6 +24,7 @@ from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
     ContextParallelTesterMixin,
+    ConvRotTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
@@ -153,6 +154,28 @@ class MiniMaxH3TransformerTesterConfig(BaseModelTesterConfig):
             ),
             **self.get_packed_layout(num_video_tokens, device=device),
         }
+
+
+class TestMiniMaxH3TransformerConvRot(MiniMaxH3TransformerTesterConfig, ConvRotTesterMixin):
+    convrot_modules = tuple(
+        f"transformer_blocks.0.{name}"
+        for name in ("attn.to_q", "attn.to_k", "attn.to_v", "attn.to_out.0", "ff.net.0.proj", "ff.net.2")
+    )
+
+    def get_init_dict(self):
+        return {
+            **super().get_init_dict(),
+            "hidden_size": 64,
+            "num_attention_heads": 4,
+            "ffn_dim": 64,
+            "num_layers": 1,
+            "num_refiner_layers": 1,
+        }
+
+
+class TestMiniMaxH3PrunedTransformerConvRot(TestMiniMaxH3TransformerConvRot):
+    def get_init_dict(self):
+        return {**super().get_init_dict(), "adaln_curve_grid": 5}
 
 
 class TestMiniMaxH3Transformer(MiniMaxH3TransformerTesterConfig, ModelTesterMixin):

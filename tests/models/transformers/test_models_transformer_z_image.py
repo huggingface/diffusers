@@ -26,6 +26,7 @@ from ..testing_utils import (
     AutoRoundCompileTesterMixin,
     AutoRoundTesterMixin,
     BaseModelTesterConfig,
+    ConvRotTesterMixin,
     LoKrTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
@@ -115,6 +116,31 @@ class ZImageTransformerTesterConfig(BaseModelTesterConfig):
         timestep = torch.tensor([0.0]).to(torch_device)
 
         return {"x": hidden_states, "cap_feats": encoder_hidden_states, "t": timestep}
+
+
+class TestZImageTransformerConvRot(ZImageTransformerTesterConfig, ConvRotTesterMixin):
+    convrot_modules = tuple(
+        f"layers.0.{name}"
+        for name in (
+            "attention.to_q",
+            "attention.to_k",
+            "attention.to_v",
+            "attention.to_out.0",
+            "feed_forward.w1",
+            "feed_forward.w2",
+            "feed_forward.w3",
+        )
+    )
+
+    def get_init_dict(self):
+        return {**super().get_init_dict(), "dim": 192, "n_heads": 12, "n_kv_heads": 12}
+
+    def _convrot_state_dict(self, model):
+        state_dict = super()._convrot_state_dict(model)
+        return {
+            name.replace("all_x_embedder.2-1.", "x_embedder.").replace("all_final_layer.2-1.", "final_layer."): tensor
+            for name, tensor in state_dict.items()
+        }
 
 
 class TestZImageTransformer(ZImageTransformerTesterConfig, ModelTesterMixin):

@@ -78,6 +78,8 @@ Both transformer partitions are guidance-distilled, so this holds for every work
 
 ## Memory
 
+See [Comfy Quantization](../../quantization/comfy#minimax-h3) for loading prequantized INT8 ConvRot transformers and the video VAE.
+
 The transformer alone is 61.7 GB in bfloat16 and the Qwen3-VL conditioner is another 62.1 GB, so the loading recipe depends on the hardware. Smaller canvases are the biggest speed lever on every setup: `height` and `width` only have to be multiples of 32, and 960x544 runs about 2.3x faster per step than the trained 1344x768.
 
 On one 80 GB card, register the components in a [`ComponentsManager`] and let it move them on and off the accelerator:
