@@ -96,19 +96,78 @@ class HunyuanVideo15TextInputStep(ModularPipelineBlocks):
 
     @property
     def description(self) -> str:
-        return "Input processing step that determines batch_size"
+        return (
+            "Input processing step that:\n"
+            "  1. Determines `batch_size` based on `prompt_embeds`\n"
+            "  2. Expands the text embeddings and their masks to `batch_size * num_videos_per_prompt`\n\n"
+            "This block should be placed after all encoder steps to process the text embeddings before they are used in "
+            "subsequent pipeline steps."
+        )
 
     @property
     def inputs(self) -> list[InputParam]:
         return [
+            InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
             InputParam.template("prompt_embeds"),
-            InputParam.template("batch_size", default=None),
+            InputParam.template("prompt_embeds_mask"),
+            InputParam.template("negative_prompt_embeds"),
+            InputParam.template("negative_prompt_embeds_mask"),
+            InputParam(
+                "prompt_embeds_2",
+                required=True,
+                type_hint=torch.Tensor,
+                description="ByT5 glyph-text embeddings. Can be generated from text_encoder step.",
+            ),
+            InputParam(
+                "prompt_embeds_mask_2",
+                required=True,
+                type_hint=torch.Tensor,
+                description="Attention mask for the ByT5 glyph-text embeddings. Can be generated from text_encoder step.",
+            ),
+            InputParam(
+                "negative_prompt_embeds_2",
+                type_hint=torch.Tensor,
+                description="ByT5 glyph-text negative embeddings. Can be generated from text_encoder step.",
+            ),
+            InputParam(
+                "negative_prompt_embeds_mask_2",
+                type_hint=torch.Tensor,
+                description="Attention mask for the ByT5 glyph-text negative embeddings. Can be generated from text_encoder step.",
+            ),
         ]
 
     @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [
-            OutputParam("batch_size", type_hint=int),
+            OutputParam("batch_size", type_hint=int, description="Number of prompts"),
+            OutputParam.template("prompt_embeds", note="batch-expanded"),
+            OutputParam.template("prompt_embeds_mask", note="batch-expanded"),
+            OutputParam.template("negative_prompt_embeds", note="batch-expanded"),
+            OutputParam.template("negative_prompt_embeds_mask", note="batch-expanded"),
+            OutputParam(
+                "prompt_embeds_2",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="ByT5 glyph-text embeddings used as a second conditioning stream for the transformer. (batch-expanded)",
+            ),
+            OutputParam(
+                "prompt_embeds_mask_2",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="Attention mask for the ByT5 glyph-text embeddings. (batch-expanded)",
+            ),
+            OutputParam(
+                "negative_prompt_embeds_2",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="ByT5 glyph-text negative embeddings for classifier-free guidance. (batch-expanded)",
+            ),
+            OutputParam(
+                "negative_prompt_embeds_mask_2",
+                type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
+                description="Attention mask for the ByT5 glyph-text negative embeddings. (batch-expanded)",
+            ),
         ]
 
     @torch.no_grad()
@@ -116,7 +175,25 @@ class HunyuanVideo15TextInputStep(ModularPipelineBlocks):
         self, components: HunyuanVideo15ModularPipeline, state: PipelineState
     ) -> tuple[HunyuanVideo15ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
-        block_state.batch_size = getattr(block_state, "batch_size", None) or block_state.prompt_embeds.shape[0]
+        block_state.batch_size = block_state.prompt_embeds.shape[0]
+
+        # the text encoder emits one row per prompt; expand every embedding and mask to batch_size * num_videos_per_prompt
+        for name in (
+            "prompt_embeds",
+            "prompt_embeds_mask",
+            "negative_prompt_embeds",
+            "negative_prompt_embeds_mask",
+            "prompt_embeds_2",
+            "prompt_embeds_mask_2",
+            "negative_prompt_embeds_2",
+            "negative_prompt_embeds_mask_2",
+        ):
+            value = getattr(block_state, name)
+            if value is None:
+                continue
+            value = value.repeat_interleave(block_state.num_videos_per_prompt, dim=0)
+            setattr(block_state, name, value)
+
         self.set_block_state(state, block_state)
         return components, state
 
