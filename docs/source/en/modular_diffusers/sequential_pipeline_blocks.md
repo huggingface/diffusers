@@ -110,7 +110,7 @@ class ImageProcessingStep(SequentialPipelineBlocks):
             " - Encodes the image into latent space."
         )
 ```
-When you create a [`~modular_pipelines.SequentialPipelineBlocks`], `inputs`, `intermediate_outputs`, `expected_components` and `expected_configs` are aggregated from the sub-blocks, so there is no need to define them again. The sequence cannot add or remove any of them, but it can redefine how one is declared with `input_overrides`, `intermediate_output_overrides`, `component_overrides` and `config_overrides`. That lets you reuse the same sub-blocks with another default for an input, another type hint or description, or other repo info for a component. Each is a `{name: declaration}` dict: the name must already be in the aggregated list, and the declaration takes the aggregated entry's place.
+When you create a [`~modular_pipelines.SequentialPipelineBlocks`], `inputs`, `intermediate_outputs`, `expected_components` and `expected_configs` are aggregated from the sub-blocks, so there is no need to define them again. The sequence cannot add or remove any of them, but it can redefine how an input, a component or a config is declared with `input_overrides`, `component_overrides` and `config_overrides`. That lets you reuse the same sub-blocks with another default for an input, or other repo info for a component. Each is a `{name: declaration}` dict: the name must already be in the aggregated list, and the declaration takes the aggregated entry's place.
 
 ```py
 class ImageProcessingStep(SequentialPipelineBlocks):

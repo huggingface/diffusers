@@ -1131,7 +1131,7 @@ def override_attribute(items: list, overrides: dict[str, Any], attr_name: str, b
     Apply a composite block's `*_overrides` to the list it derived from its sub-blocks.
 
     Args:
-        items: the derived `InputParam`, `OutputParam`, `ComponentSpec` or `ConfigSpec` list
+        items: the derived `InputParam`, `ComponentSpec` or `ConfigSpec` list
         overrides: `{name: declaration}`; every name must be in `items`, and the declaration, an object of the same
             class as the entry it replaces, takes that entry's place whole
         attr_name: the overrides attribute being applied, e.g. `"input_overrides"`, for error messages

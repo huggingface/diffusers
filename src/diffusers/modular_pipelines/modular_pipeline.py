@@ -705,9 +705,6 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
             `required`, description. When the sub-blocks declare different defaults for the same input, each one
             keeps its own at runtime (`defaults_by_block`); a declaration here with a default replaces them all with
             one value.
-        intermediate_output_overrides: the composite block's own declarations for intermediate outputs it derives
-            from its sub-blocks, as `{name: OutputParam}`, e.g.
-            `{"latents": OutputParam("latents", description="Denoised latents.")}`. The name must be a derived output.
         component_overrides: the composite block's own specs for components it derives from its sub-blocks, as
             `{name: ComponentSpec}`, e.g. `{"text_encoder": ComponentSpec("text_encoder", T5EncoderModel)}`. The name
             must be a derived component.
@@ -721,7 +718,6 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
     block_trigger_inputs = []
     default_block_name = None
     input_overrides: dict[str, InputParam] = {}
-    intermediate_output_overrides: dict[str, OutputParam] = {}
     component_overrides: dict[str, ComponentSpec] = {}
     config_overrides: dict[str, ConfigSpec] = {}
 
@@ -851,12 +847,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
     def intermediate_outputs(self) -> list[str]:
         named_outputs = [(name, block.intermediate_outputs) for name, block in self.sub_blocks.items()]
         combined_outputs = combine_outputs(*named_outputs)
-        return override_attribute(
-            combined_outputs,
-            self.intermediate_output_overrides,
-            "intermediate_output_overrides",
-            self.__class__.__name__,
-        )
+        return combined_outputs
 
     @property
     def outputs(self) -> list[str]:
@@ -1133,10 +1124,6 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             `required`, description. When the sub-blocks declare different defaults for the same input, each one
             keeps its own at runtime (`defaults_by_block`); a declaration here with a default replaces them all with
             one value. Can also be passed to `from_blocks_dict`.
-        intermediate_output_overrides: the composite block's own declarations for intermediate outputs it derives
-            from its sub-blocks, as `{name: OutputParam}`, e.g.
-            `{"latents": OutputParam("latents", description="Denoised latents.")}`. The name must be a derived output.
-            Can also be passed to `from_blocks_dict`.
         component_overrides: the composite block's own specs for components it derives from its sub-blocks, as
             `{name: ComponentSpec}`, e.g. `{"text_encoder": ComponentSpec("text_encoder", T5EncoderModel)}`. The name
             must be a derived component. Can also be passed to `from_blocks_dict`.
@@ -1148,7 +1135,6 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
     block_classes = []
     block_names = []
     input_overrides: dict[str, InputParam] = {}
-    intermediate_output_overrides: dict[str, OutputParam] = {}
     component_overrides: dict[str, ComponentSpec] = {}
     config_overrides: dict[str, ConfigSpec] = {}
 
@@ -1216,7 +1202,6 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         blocks_dict: dict[str, Any],
         description: str | None = None,
         input_overrides: dict[str, InputParam] | None = None,
-        intermediate_output_overrides: dict[str, OutputParam] | None = None,
         component_overrides: dict[str, ComponentSpec] | None = None,
         config_overrides: dict[str, ConfigSpec] | None = None,
     ) -> "SequentialPipelineBlocks":
@@ -1226,8 +1211,6 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             blocks_dict: Dictionary mapping block names to block classes or instances
             description: Description of the new block
             input_overrides: the composite's own declarations replacing derived `inputs`, as `{name: InputParam}`
-            intermediate_output_overrides: the composite's own declarations replacing derived
-                `intermediate_outputs`, as `{name: OutputParam}`
             component_overrides: the composite's own specs replacing derived `expected_components`, as
                 `{name: ComponentSpec}`
             config_overrides: the composite's own specs replacing derived `expected_configs`, as `{name: ConfigSpec}`
@@ -1253,7 +1236,6 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             instance.description = description
         for name, value in (
             ("input_overrides", input_overrides),
-            ("intermediate_output_overrides", intermediate_output_overrides),
             ("component_overrides", component_overrides),
             ("config_overrides", config_overrides),
         ):
@@ -1370,12 +1352,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
     def intermediate_outputs(self) -> list[str]:
         named_outputs = [(name, block.intermediate_outputs) for name, block in self.sub_blocks.items()]
         combined_outputs = combine_outputs(*named_outputs)
-        return override_attribute(
-            combined_outputs,
-            self.intermediate_output_overrides,
-            "intermediate_output_overrides",
-            self.__class__.__name__,
-        )
+        return combined_outputs
 
     # `outputs` is what `doc` and the model card list as the block's outputs. By default that is every intermediate
     # output; a composite overrides it to show only what the step is for, e.g. just `latents` for the `denoise` block.
@@ -1584,10 +1561,6 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
             `required`, description. When the sub-blocks declare different defaults for the same input, each one
             keeps its own at runtime (`defaults_by_block`); a declaration here with a default replaces them all with
             one value. Can also be passed to `from_blocks_dict`.
-        intermediate_output_overrides: the composite block's own declarations for intermediate outputs it derives
-            from its sub-blocks, as `{name: OutputParam}`, e.g.
-            `{"latents": OutputParam("latents", description="Denoised latents.")}`. The name must be a derived output.
-            Can also be passed to `from_blocks_dict`.
         component_overrides: the composite block's own specs for components it derives from its sub-blocks, as
             `{name: ComponentSpec}`, e.g. `{"text_encoder": ComponentSpec("text_encoder", T5EncoderModel)}`. The name
             must be a derived component. Can also be passed to `from_blocks_dict`.
@@ -1600,7 +1573,6 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
     block_classes = []
     block_names = []
     input_overrides: dict[str, InputParam] = {}
-    intermediate_output_overrides: dict[str, OutputParam] = {}
     component_overrides: dict[str, ComponentSpec] = {}
     config_overrides: dict[str, ConfigSpec] = {}
 
@@ -1712,12 +1684,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         for output in self.loop_intermediate_outputs:
             if output.name not in {output.name for output in combined_outputs}:
                 combined_outputs.append(output)
-        return override_attribute(
-            combined_outputs,
-            self.intermediate_output_overrides,
-            "intermediate_output_overrides",
-            self.__class__.__name__,
-        )
+        return combined_outputs
 
     # YiYi TODO: this need to be thought about more
     @property
@@ -1755,7 +1722,6 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         cls,
         blocks_dict: dict[str, Any],
         input_overrides: dict[str, InputParam] | None = None,
-        intermediate_output_overrides: dict[str, OutputParam] | None = None,
         component_overrides: dict[str, ComponentSpec] | None = None,
         config_overrides: dict[str, ConfigSpec] | None = None,
     ) -> "LoopSequentialPipelineBlocks":
@@ -1765,8 +1731,6 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         Args:
             blocks_dict: Dictionary mapping block names to block instances
             input_overrides: the composite's own declarations replacing derived `inputs`, as `{name: InputParam}`
-            intermediate_output_overrides: the composite's own declarations replacing derived
-                `intermediate_outputs`, as `{name: OutputParam}`
             component_overrides: the composite's own specs replacing derived `expected_components`, as
                 `{name: ComponentSpec}`
             config_overrides: the composite's own specs replacing derived `expected_configs`, as `{name: ConfigSpec}`
@@ -1789,7 +1753,6 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         instance.sub_blocks = blocks_dict
         for name, value in (
             ("input_overrides", input_overrides),
-            ("intermediate_output_overrides", intermediate_output_overrides),
             ("component_overrides", component_overrides),
             ("config_overrides", config_overrides),
         ):

@@ -779,13 +779,11 @@ class TestOverrides:
         assert batch_size.required is True
         assert batch_size.default is None
 
-    def test_output_component_and_config_overrides(self):
+    def test_component_and_config_overrides(self):
         blocks = self._sequential(
-            intermediate_output_overrides={"latents": OutputParam("latents", description="final latents")},
             component_overrides={"unet": ComponentSpec("unet", description="any UNet2DConditionModel")},
             config_overrides={"scale": ConfigSpec("scale", default=16)},
         )
-        assert [out.description for out in blocks.intermediate_outputs if out.name == "latents"] == ["final latents"]
         assert [c.description for c in blocks.expected_components if c.name == "unet"] == ["any UNet2DConditionModel"]
         assert [c.default for c in blocks.expected_configs if c.name == "scale"] == [16]
 
@@ -806,11 +804,9 @@ class TestOverrides:
         blocks = SequentialPipelineBlocks.from_blocks_dict(
             {"prepare_latents": PrepareLatentsBlock(), "unet": UNetBlock()},
             input_overrides={"batch_size": InputParam("batch_size", default=2)},
-            intermediate_output_overrides={"latents": OutputParam("latents", description="final latents")},
             config_overrides={"scale": ConfigSpec("scale", default=16)},
         )
         assert [inp.default for inp in blocks.inputs if inp.name == "batch_size"] == [2]
-        assert [out.description for out in blocks.intermediate_outputs if out.name == "latents"] == ["final latents"]
         assert [c.default for c in blocks.expected_configs if c.name == "scale"] == [16]
 
         loop = LoopSequentialPipelineBlocks.from_blocks_dict(
