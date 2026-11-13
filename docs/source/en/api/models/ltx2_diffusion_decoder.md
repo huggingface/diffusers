@@ -50,7 +50,7 @@ backend by default and needs no extra dependency. PyTorch does not compile `flex
 and uncompiled it materializes the full score matrix — which is impractical at full-resolution sequence lengths.
 For those, either compile the decoder or switch to [NATTEN](https://github.com/SHI-Labs/NATTEN)'s kernels, which
 are also what the original implementation uses. The processor fetches NATTEN from the Hub
-([`shi-labs/natten`](https://huggingface.co/shi-labs/natten)) through the
+([`shi-labs/natten`](https://huggingface.co/kernels/shi-labs/natten)) through the
 [`kernels`](https://github.com/huggingface/kernels) package, so it needs `pip install kernels` rather than a local
 NATTEN build:
 
