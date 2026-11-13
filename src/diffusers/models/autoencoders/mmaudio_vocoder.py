@@ -210,7 +210,7 @@ class MMAudioVocoder(ModelMixin, ConfigMixin):
         self.activation_post = MMAudioActivation1d(channels)
         self.conv_post = nn.Conv1d(channels, 1, 7, padding=3, bias=False)
 
-    def forward(self, mel: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple:
+    def forward(self, mel: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor]:
         r"""
         Args:
             mel (`torch.Tensor` of shape `(batch_size, num_mels, num_mel_frames)`):

@@ -36,11 +36,11 @@ HunyuanDiT has the following components:
 
 ## Optimization
 
-You can optimize the pipeline's runtime and memory consumption with torch.compile and feed-forward chunking. To learn about other optimization methods, check out the [Speed up inference](../../optimization/fp16) and [Reduce memory usage](../../optimization/memory) guides.
+You can optimize the pipeline's runtime and memory consumption with torch.compile and feed-forward chunking. To learn about other optimization methods, see [Optimize and scale](../../optimization/overview#optimization-techniques).
 
 ### Inference
 
-Use [`torch.compile`](https://huggingface.co/docs/diffusers/main/en/tutorials/fast_diffusion#torchcompile) to reduce the inference latency.
+Use [`torch.compile`](../../optimization/fp16#torchcompile) to reduce the inference latency.
 
 First, load the pipeline:
 

@@ -1,4 +1,4 @@
-__version__ = "0.42.0.dev0"
+__version__ = "0.43.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -170,18 +170,6 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["quantizers.quantization_config"].append("SDNQConfig")
 
-try:
-    if not is_onnx_available():
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_onnx_objects  # noqa F403
-
-    _import_structure["utils.dummy_onnx_objects"] = [
-        name for name in dir(dummy_onnx_objects) if not name.startswith("_")
-    ]
-
-else:
-    _import_structure["pipelines"].extend(["OnnxRuntimeModel"])
 
 try:
     if not is_torch_available():
@@ -994,27 +982,6 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipelines"].extend(["KolorsImg2ImgPipeline", "KolorsPAGPipeline", "KolorsPipeline"])
 
-try:
-    if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_torch_and_transformers_and_onnx_objects  # noqa F403
-
-    _import_structure["utils.dummy_torch_and_transformers_and_onnx_objects"] = [
-        name for name in dir(dummy_torch_and_transformers_and_onnx_objects) if not name.startswith("_")
-    ]
-
-else:
-    _import_structure["pipelines"].extend(
-        [
-            "OnnxStableDiffusionImg2ImgPipeline",
-            "OnnxStableDiffusionInpaintPipeline",
-            "OnnxStableDiffusionInpaintPipelineLegacy",
-            "OnnxStableDiffusionPipeline",
-            "OnnxStableDiffusionUpscalePipeline",
-            "StableDiffusionOnnxPipeline",
-        ]
-    )
 
 try:
     if not (is_torch_available() and is_librosa_available()):
@@ -1132,14 +1099,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_sdnq_objects import *
     else:
         from .quantizers.quantization_config import SDNQConfig
-
-    try:
-        if not is_onnx_available():
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from .utils.dummy_onnx_objects import *  # noqa F403
-    else:
-        from .pipelines import OnnxRuntimeModel
 
     try:
         if not is_torch_available():
@@ -1903,21 +1862,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_and_opencv_objects import *  # noqa F403
     else:
         from .pipelines import ConsisIDPipeline
-
-    try:
-        if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from .utils.dummy_torch_and_transformers_and_onnx_objects import *  # noqa F403
-    else:
-        from .pipelines import (
-            OnnxStableDiffusionImg2ImgPipeline,
-            OnnxStableDiffusionInpaintPipeline,
-            OnnxStableDiffusionInpaintPipelineLegacy,
-            OnnxStableDiffusionPipeline,
-            OnnxStableDiffusionUpscalePipeline,
-            StableDiffusionOnnxPipeline,
-        )
 
     try:
         if not (is_torch_available() and is_librosa_available()):
