@@ -907,7 +907,7 @@ def main():
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
-    logger.info(f"  Num Epochs = {args.num_train_epochs}")
+    logger.info(f"  Num Epochs (estimated) = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
@@ -951,7 +951,8 @@ def main():
         disable=not accelerator.is_local_main_process,
     )
 
-    for epoch in range(first_epoch, args.num_train_epochs):
+    epoch = first_epoch
+    while global_step < args.max_train_steps:
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
@@ -1086,6 +1087,8 @@ def main():
             if global_step >= args.max_train_steps:
                 break
 
+        epoch += 1
+
         if accelerator.is_main_process:
             if args.validation_prompts is not None and epoch % args.validation_epochs == 0:
                 if args.use_ema:
@@ -1107,6 +1110,7 @@ def main():
                     ema_unet.restore(unet.parameters())
 
     # Create the pipeline using the trained modules and save it.
+    logger.info(f"  Num Epochs (actual) = {epoch}")
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = unwrap_model(unet)
