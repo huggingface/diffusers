@@ -949,6 +949,7 @@ class StableDiffusion3Pipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSingle
         )
 
         self._guidance_scale = guidance_scale
+        self._skip_guidance_layers = skip_guidance_layers
         self._skip_layer_guidance_scale = skip_layer_guidance_scale
         self._clip_skip = clip_skip
         self._joint_attention_kwargs = joint_attention_kwargs
