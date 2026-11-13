@@ -21,7 +21,7 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...utils import BaseOutput
-from .._modeling_parallel import TensorParallelConfig
+from .._modeling_parallel import Conditional, TensorParallelConfig
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
@@ -385,6 +385,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         },
         **{f"layers.*.self_attn.{name}": "rowwise" for name in ("to_out", "to_add_out")},
         **{f"layers.*.{mlp}.up_proj": "colwise" for mlp in ("mlp", "mlp_moe_gen")},
+        **{f"layers.*.{mlp}.gate_proj": Conditional("colwise") for mlp in ("mlp", "mlp_moe_gen")},
         **{f"layers.*.{mlp}.down_proj": "rowwise" for mlp in ("mlp", "mlp_moe_gen")},
     }
     # Optional context-parallelism seams. They default to ``None`` (no-op) so the
@@ -401,17 +402,6 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
     # so __init__ must accept it. Excluding it here keeps save_pretrained from writing it into
     # config.json — the value is a load-time runtime hint, not part of the model architecture.
     ignore_for_config = ["dtype"]
-
-    def _get_tp_plan(self):
-        tp_plan = super()._get_tp_plan().copy()
-        if self.config.hidden_act == "silu":
-            tp_plan.update(
-                {
-                    "layers.*.mlp.gate_proj": "colwise",
-                    "layers.*.mlp_moe_gen.gate_proj": "colwise",
-                }
-            )
-        return tp_plan
 
     def _resolve_parallel_config(self, config):
         tp = config if isinstance(config, TensorParallelConfig) else getattr(config, "tensor_parallel_config", None)
