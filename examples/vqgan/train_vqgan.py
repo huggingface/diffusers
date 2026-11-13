@@ -517,9 +517,6 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
-    )
-    parser.add_argument(
         "--tracker_project_name",
         type=str,
         default="vqgan-training",
@@ -665,8 +662,6 @@ def main():
     except AssertionError as e:
         raise NotImplementedError(e)
     # Enable flash attention if asked
-    if args.enable_xformers_memory_efficient_attention:
-        model.enable_xformers_memory_efficient_attention()
 
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):

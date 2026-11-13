@@ -30,8 +30,6 @@ The Stable Diffusion model can also infer depth based on an image using [MiDaS](
 	- __call__
 	- enable_attention_slicing
 	- disable_attention_slicing
-	- enable_xformers_memory_efficient_attention
-	- disable_xformers_memory_efficient_attention
 	- load_textual_inversion
 	- load_lora_weights
 	- save_lora_weights

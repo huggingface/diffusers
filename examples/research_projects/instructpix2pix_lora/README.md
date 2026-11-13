@@ -40,7 +40,6 @@ export OUTPUT_DIR="instructPix2Pix-cartoonization"
 accelerate launch train_instruct_pix2pix_lora.py \
   --pretrained_model_name_or_path=$MODEL_ID \
   --dataset_name=$DATASET_ID \
-  --enable_xformers_memory_efficient_attention \
   --resolution=256 --random_flip \
   --train_batch_size=2 --gradient_accumulation_steps=4 --gradient_checkpointing \
   --max_train_steps=15000 \

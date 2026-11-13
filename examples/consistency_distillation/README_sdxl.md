@@ -68,7 +68,7 @@ accelerate launch train_lcm_distill_sdxl_wds.py \
     --validation_steps=200 \
     --checkpointing_steps=200 --checkpoints_total_limit=10 \
     --train_batch_size=12 \
-    --gradient_checkpointing --enable_xformers_memory_efficient_attention \
+    --gradient_checkpointing \
     --gradient_accumulation_steps=1 \
     --use_8bit_adam \
     --resume_from_checkpoint=latest \
@@ -104,7 +104,7 @@ accelerate launch train_lcm_distill_lora_sdxl_wds.py \
     --validation_steps=200 \
     --checkpointing_steps=200 --checkpoints_total_limit=10 \
     --train_batch_size=12 \
-    --gradient_checkpointing --enable_xformers_memory_efficient_attention \
+    --gradient_checkpointing \
     --gradient_accumulation_steps=1 \
     --use_8bit_adam \
     --resume_from_checkpoint=latest \

@@ -448,13 +448,6 @@ SDXL is a large model, and you may need to optimize memory to get it to run on y
 + refiner.unet = torch.compile(refiner.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
-3. Enable [xFormers](../../../optimization/attention_backends) to run SDXL if `torch<2.0`:
-
-```diff
-+ base.enable_xformers_memory_efficient_attention()
-+ refiner.enable_xformers_memory_efficient_attention()
-```
-
 ## Resources
 
 If you're interested in experimenting with a minimal version of the [`UNet2DConditionModel`] used in SDXL, take a look at the [minSDXL](https://github.com/cloneofsimo/minSDXL) implementation which is written in PyTorch and directly compatible with 🤗 Diffusers.

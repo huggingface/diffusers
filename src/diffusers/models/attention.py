@@ -22,7 +22,7 @@ from ..utils import deprecate, logging
 from ..utils.import_utils import is_torch_npu_available, is_torch_xla_available, is_xformers_available
 from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import GEGLU, GELU, ApproximateGELU, FP32SiLU, LinearActivation, SwiGLU
-from .attention_processor import Attention, AttentionProcessor, JointAttnProcessor2_0
+from .attention_processor import XFORMERS_DEPRECATION_MESSAGE, Attention, AttentionProcessor, JointAttnProcessor2_0
 from .embeddings import SinusoidalPositionalEmbedding
 from .normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZero, RMSNorm, SD35AdaLayerNormZeroX
 
@@ -214,16 +214,15 @@ class AttentionModuleMixin:
     def set_use_memory_efficient_attention_xformers(
         self, use_memory_efficient_attention_xformers: bool, attention_op: Callable | None = None
     ) -> None:
-        """
-        Set whether to use memory efficient attention from `xformers` or not.
+        # Deprecated and scheduled for removal in version 0.46.0.
+        deprecate(
+            "set_use_memory_efficient_attention_xformers", "0.46.0", XFORMERS_DEPRECATION_MESSAGE, standard_warn=False
+        )
+        self._set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers, attention_op)
 
-        Args:
-            use_memory_efficient_attention_xformers (`bool`):
-                Whether to use memory efficient attention from `xformers` or not.
-            attention_op (`Callable`, *optional*):
-                The attention operation to use. Defaults to `None` which uses the default attention operation from
-                `xformers`.
-        """
+    def _set_use_memory_efficient_attention_xformers(
+        self, use_memory_efficient_attention_xformers: bool, attention_op: Callable | None = None
+    ) -> None:
         if use_memory_efficient_attention_xformers:
             if not is_xformers_available():
                 raise ModuleNotFoundError(

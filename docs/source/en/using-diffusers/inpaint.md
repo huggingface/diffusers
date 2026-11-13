@@ -29,12 +29,10 @@ pipeline = AutoPipelineForInpainting.from_pretrained(
     "kandinsky-community/kandinsky-2-2-decoder-inpaint", dtype=torch.float16
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 ```
 
 > [!TIP]
-> You'll notice throughout the guide, we use [`~DiffusionPipeline.enable_model_cpu_offload`] and [`~DiffusionPipeline.enable_xformers_memory_efficient_attention`], to save memory and increase inference speed. If you're using PyTorch 2.0, it's not necessary to call [`~DiffusionPipeline.enable_xformers_memory_efficient_attention`] on your pipeline because it'll already be using PyTorch 2.0's native [scaled-dot product attention](../optimization/fp16#scaled-dot-product-attention).
+> You'll notice throughout the guide, we use [`~DiffusionPipeline.enable_model_cpu_offload`] to save memory.
 
 2. Load the base and mask images:
 
@@ -127,8 +125,6 @@ pipeline = AutoPipelineForInpainting.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-inpainting", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
@@ -153,8 +149,6 @@ pipeline = AutoPipelineForInpainting.from_pretrained(
     "diffusers/stable-diffusion-xl-1.0-inpainting-0.1", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
@@ -179,8 +173,6 @@ pipeline = AutoPipelineForInpainting.from_pretrained(
     "kandinsky-community/kandinsky-2-2-decoder-inpaint", dtype=torch.float16
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
@@ -230,8 +222,6 @@ pipeline = AutoPipelineForInpainting.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
@@ -255,8 +245,6 @@ pipeline = AutoPipelineForInpainting.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-inpainting", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
@@ -296,8 +284,6 @@ pipeline = AutoPipelineForInpainting.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
@@ -319,8 +305,6 @@ pipeline = AutoPipelineForInpainting.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-inpainting", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
@@ -399,8 +383,6 @@ pipeline = AutoPipelineForInpainting.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-inpainting", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
@@ -444,8 +426,6 @@ pipeline = AutoPipelineForInpainting.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-inpainting", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
@@ -484,8 +464,6 @@ pipeline = AutoPipelineForInpainting.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-inpainting", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
@@ -556,8 +534,6 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 text2image = pipeline("concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k").images[0]
 ```
@@ -575,8 +551,6 @@ pipeline = AutoPipelineForInpainting.from_pretrained(
     "kandinsky-community/kandinsky-2-2-decoder-inpaint", dtype=torch.float16
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 prompt = "digital painting of a fantasy waterfall, cloudy"
 image = pipeline(prompt=prompt, image=text2image, mask_image=mask_image).images[0]
@@ -609,8 +583,6 @@ pipeline = AutoPipelineForInpainting.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-inpainting", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
@@ -630,8 +602,6 @@ pipeline = AutoPipelineForInpainting.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0", dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 image = pipeline(prompt=prompt, image=image_inpainting, mask_image=mask_image, output_type="latent").images[0]
 ```
@@ -643,8 +613,6 @@ Finally, you can pass this image to an image-to-image pipeline to put the finish
 
 ```py
 pipeline = AutoPipelineForImage2Image.from_pipe(pipeline)
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 image = pipeline(prompt=prompt, image=image).images[0]
 make_image_grid([init_image, mask_image, image_inpainting, image], rows=2, cols=2)
@@ -686,8 +654,6 @@ pipeline = AutoPipelineForInpainting.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-inpainting", dtype=torch.float16,
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 image = pipeline(prompt_embeds=prompt_embeds, # generated from Compel
     negative_prompt_embeds=negative_prompt_embeds, # generated from Compel
@@ -717,8 +683,6 @@ pipeline = StableDiffusionControlNetInpaintPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-inpainting", controlnet=controlnet, dtype=torch.float16, variant="fp16"
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
@@ -755,8 +719,6 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "nitrosocke/elden-ring-diffusion", dtype=torch.float16,
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 prompt = "elden ring style castle" # include the token "elden ring style" in the prompt
 negative_prompt = "bad architecture, deformed, disfigured, poor details"
@@ -787,7 +749,6 @@ It can be difficult and slow to run diffusion models if you're resource constrai
 You can also offload the model to the CPU to save even more memory:
 
 ```diff
-+ pipeline.enable_xformers_memory_efficient_attention()
 + pipeline.enable_model_cpu_offload()
 ```
 

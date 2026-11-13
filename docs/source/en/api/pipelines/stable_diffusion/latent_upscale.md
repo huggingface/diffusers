@@ -27,8 +27,6 @@ The Stable Diffusion latent upscaler model was created by [Katherine Crowson](ht
 	- enable_sequential_cpu_offload
 	- enable_attention_slicing
 	- disable_attention_slicing
-	- enable_xformers_memory_efficient_attention
-	- disable_xformers_memory_efficient_attention
 
 ## StableDiffusionPipelineOutput
 

@@ -34,8 +34,6 @@ The abstract from the paper is:
 	- __call__
 	- enable_attention_slicing
 	- disable_attention_slicing
-	- enable_xformers_memory_efficient_attention
-	- disable_xformers_memory_efficient_attention
 	- load_textual_inversion
 	- from_single_file
 	- load_lora_weights

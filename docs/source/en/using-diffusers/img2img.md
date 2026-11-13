@@ -29,12 +29,10 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "kandinsky-community/kandinsky-2-2-decoder", dtype=torch.float16, use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 ```
 
 > [!TIP]
-> You'll notice throughout the guide, we use [`~DiffusionPipeline.enable_model_cpu_offload`] and [`~DiffusionPipeline.enable_xformers_memory_efficient_attention`], to save memory and increase inference speed. If you're using PyTorch 2.0, then you don't need to call [`~DiffusionPipeline.enable_xformers_memory_efficient_attention`] on your pipeline because it'll already be using PyTorch 2.0's native [scaled-dot product attention](../optimization/fp16#scaled-dot-product-attention).
+> You'll notice throughout the guide, we use [`~DiffusionPipeline.enable_model_cpu_offload`] to save memory.
 
 2. Load an image to pass to the pipeline:
 
@@ -78,8 +76,6 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png"
@@ -116,8 +112,6 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-sdxl-init.png"
@@ -156,8 +150,6 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "kandinsky-community/kandinsky-2-2-decoder", dtype=torch.float16, use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png"
@@ -203,8 +195,6 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png"
@@ -247,8 +237,6 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png"
@@ -289,8 +277,6 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png"
@@ -334,8 +320,6 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 text2image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k").images[0]
 text2image
@@ -348,8 +332,6 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "kandinsky-community/kandinsky-2-2-decoder", dtype=torch.float16, use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 image2image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", image=text2image).images[0]
 make_image_grid([text2image, image2image], rows=1, cols=2)
@@ -370,8 +352,6 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png"
@@ -393,8 +373,6 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "ogkalu/Comic-Diffusion", dtype=torch.float16
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # need to include the token "charliebo artstyle" in the prompt to use this checkpoint
 image = pipeline("Astronaut in a jungle, charliebo artstyle", image=image, output_type="latent").images[0]
@@ -407,8 +385,6 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "kohbanye/pixel-art-style", dtype=torch.float16
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # need to include the token "pixelartstyle" in the prompt to use this checkpoint
 image = pipeline("Astronaut in a jungle, pixelartstyle", image=image).images[0]
@@ -430,8 +406,6 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png"
@@ -455,7 +429,6 @@ upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained(
     "stabilityai/sd-x2-latent-upscaler", dtype=torch.float16, use_safetensors=True
 )
 upscaler.enable_model_cpu_offload()
-upscaler.enable_xformers_memory_efficient_attention()
 
 image_2 = upscaler(prompt, image=image_1).images[0]
 ```
@@ -469,7 +442,6 @@ super_res = StableDiffusionUpscalePipeline.from_pretrained(
     "stabilityai/stable-diffusion-x4-upscaler", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 super_res.enable_model_cpu_offload()
-super_res.enable_xformers_memory_efficient_attention()
 
 image_3 = super_res(prompt, image=image_2).images[0]
 make_image_grid([init_image, image_3.resize((512, 512))], rows=1, cols=2)
@@ -493,8 +465,6 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 image = pipeline(prompt_embeds=prompt_embeds, # generated from Compel
     negative_prompt_embeds=negative_prompt_embeds, # generated from Compel
@@ -530,8 +500,6 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5", controlnet=controlnet, dtype=torch.float16, variant="fp16", use_safetensors=True
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 ```
 
 Now generate a new image conditioned on the depth map, initial image, and prompt:
@@ -564,8 +532,6 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "nitrosocke/elden-ring-diffusion", dtype=torch.float16,
 )
 pipeline.enable_model_cpu_offload()
-# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
-pipeline.enable_xformers_memory_efficient_attention()
 
 prompt = "elden ring style astronaut in a jungle" # include the token "elden ring style" in the prompt
 negative_prompt = "ugly, deformed, disfigured, poor details, bad anatomy"
@@ -584,7 +550,6 @@ Running diffusion models is computationally expensive and intensive, but with a 
 
 ```diff
 + pipeline.enable_model_cpu_offload()
-+ pipeline.enable_xformers_memory_efficient_attention()
 ```
 
 With [`torch.compile`](../optimization/fp16#torchcompile), you can boost your inference speed even more by wrapping your UNet with it:

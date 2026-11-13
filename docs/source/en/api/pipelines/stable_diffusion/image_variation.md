@@ -26,8 +26,6 @@ The original codebase can be found at [LambdaLabsML/lambda-diffusers](https://gi
 	- __call__
 	- enable_attention_slicing
 	- disable_attention_slicing
-	- enable_xformers_memory_efficient_attention
-	- disable_xformers_memory_efficient_attention
 
 ## StableDiffusionPipelineOutput
 
