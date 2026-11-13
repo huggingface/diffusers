@@ -38,6 +38,7 @@ from ..testing_utils import (
     BasePipelineTesterConfig,
     LoraMemoryTesterMixin,
     LoraTesterMixin,
+    MagCacheTesterMixin,
     MemoryTesterMixin,
     PipelineTesterMixin,
 )
@@ -347,3 +348,7 @@ class TestQwenImage21PipelineLoRA(QwenImage21PipelineTesterConfig, LoraTesterMix
 
 class TestQwenImage21PipelineLoRAMemory(QwenImage21PipelineTesterConfig, LoraMemoryTesterMixin):
     """LoRA x memory-optimization tests for the Qwen-Image 2.1 pipeline."""
+
+
+class TestQwenImage21PipelineMagCache(QwenImage21PipelineTesterConfig, MagCacheTesterMixin):
+    """MagCache tests for the Qwen-Image 2.1 pipeline."""
