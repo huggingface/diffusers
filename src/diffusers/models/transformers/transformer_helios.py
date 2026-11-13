@@ -88,12 +88,47 @@ class HeliosOutputNorm(nn.Module):
         self.norm = FP32LayerNorm(dim, eps, elementwise_affine=False)
 
     def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor, original_context_length: int) -> torch.Tensor:
-        temb = temb[:, -original_context_length:, :]
+        # temb: (batch_size, 1, dim), broadcast over the tokens
         shift, scale = (self.scale_shift_table.unsqueeze(0).to(temb.device) + temb.unsqueeze(2)).chunk(2, dim=2)
         shift, scale = shift.squeeze(2).to(hidden_states.device), scale.squeeze(2).to(hidden_states.device)
         hidden_states = hidden_states[:, -original_context_length:, :]
         hidden_states = (self.norm(hidden_states.float()) * (1 + scale) + shift).type_as(hidden_states)
         return hidden_states
+
+
+def _modulation_rows(scale_shift_table: torch.Tensor, timestep_proj: torch.Tensor) -> list[torch.Tensor]:
+    # (1, 6, dim) table + (batch_size, 1, 6, dim) projection -> six float32 (batch_size, 1, dim) rows
+    return [x.squeeze(2) for x in (scale_shift_table.unsqueeze(0) + timestep_proj.float()).chunk(6, dim=2)]
+
+
+def _modulate_(norm_hidden_states: torch.Tensor, scale, shift, history_len: int) -> torch.Tensor:
+    # In place on the float32 norm output: x * (1 + scale) + shift. scale and shift are (history row, main row); the
+    # history row applies to the first history_len tokens, the main row to the others.
+    if history_len > 0:
+        norm_hidden_states[:, :history_len].mul_(1 + scale[0])
+        norm_hidden_states[:, :history_len].add_(shift[0])
+        norm_hidden_states[:, history_len:].mul_(1 + scale[1])
+        norm_hidden_states[:, history_len:].add_(shift[1])
+    else:
+        norm_hidden_states.mul_(1 + scale[1])
+        norm_hidden_states.add_(shift[1])
+    return norm_hidden_states
+
+
+def _gate(hidden_states: torch.Tensor, gate, history_len: int, out: torch.Tensor | None = None) -> torch.Tensor:
+    # hidden_states * gate as float32, with gate = (history row, main row) as in `_modulate_`
+    if torch.is_grad_enabled():  # out= does not support autograd
+        if history_len > 0:
+            return torch.cat([hidden_states[:, :history_len] * gate[0], hidden_states[:, history_len:] * gate[1]], 1)
+        return hidden_states * gate[1]
+    if out is None:
+        out = torch.empty(hidden_states.shape, dtype=torch.float32, device=hidden_states.device)
+    if history_len > 0:
+        torch.mul(hidden_states[:, :history_len], gate[0], out=out[:, :history_len])
+        torch.mul(hidden_states[:, history_len:], gate[1], out=out[:, history_len:])
+    else:
+        torch.mul(hidden_states, gate[1], out=out)
+    return out
 
 
 class HeliosAttnProcessor:
@@ -429,28 +464,24 @@ class HeliosTransformerBlock(nn.Module):
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        temb: torch.Tensor,
+        temb: tuple[torch.Tensor | None, torch.Tensor, int],
         rotary_emb: torch.Tensor,
         original_context_length: int = None,
     ) -> torch.Tensor:
-        if temb.ndim == 4:
-            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
-                self.scale_shift_table.unsqueeze(0) + temb.float()
-            ).chunk(6, dim=2)
-            # batch_size, seq_len, 1, inner_dim
-            shift_msa = shift_msa.squeeze(2)
-            scale_msa = scale_msa.squeeze(2)
-            gate_msa = gate_msa.squeeze(2)
-            c_shift_msa = c_shift_msa.squeeze(2)
-            c_scale_msa = c_scale_msa.squeeze(2)
-            c_gate_msa = c_gate_msa.squeeze(2)
-        else:
-            shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = (
-                self.scale_shift_table + temb.float()
-            ).chunk(6, dim=1)
+        # temb = (history timestep_proj, main timestep_proj, history_len), each timestep_proj (batch_size, 1, 6, dim):
+        # the first history_len tokens are modulated with the history row, the others with the main row
+        timestep_proj_history, timestep_proj, history_len = temb
+        rows = _modulation_rows(self.scale_shift_table, timestep_proj)
+        rows_history = (
+            _modulation_rows(self.scale_shift_table, timestep_proj_history) if history_len > 0 else [None] * 6
+        )
+        shift_msa, scale_msa, gate_msa, c_shift_msa, c_scale_msa, c_gate_msa = [
+            (row_history, row) for row_history, row in zip(rows_history, rows)
+        ]
 
         # 1. Self-attention
-        norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
+        norm_hidden_states = _modulate_(self.norm1(hidden_states.float()), scale_msa, shift_msa, history_len)
+        norm_hidden_states = norm_hidden_states.type_as(hidden_states)
         attn_output = self.attn1(
             norm_hidden_states,
             None,
@@ -458,7 +489,7 @@ class HeliosTransformerBlock(nn.Module):
             rotary_emb,
             original_context_length,
         )
-        hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
+        hidden_states = (hidden_states.float() + _gate(attn_output, gate_msa, history_len)).type_as(hidden_states)
 
         # 2. Cross-attention
         if self.guidance_cross_attn:
@@ -489,11 +520,13 @@ class HeliosTransformerBlock(nn.Module):
             hidden_states = hidden_states + attn_output
 
         # 3. Feed-forward
-        norm_hidden_states = (self.norm3(hidden_states.float()) * (1 + c_scale_msa) + c_shift_msa).type_as(
+        norm_hidden_states = _modulate_(self.norm3(hidden_states.float()), c_scale_msa, c_shift_msa, history_len)
+        norm_hidden_states = norm_hidden_states.type_as(hidden_states)
+        ff_output = self.ffn(norm_hidden_states)
+        ff_output = ff_output.float()
+        hidden_states = (hidden_states.float() + _gate(ff_output, c_gate_msa, history_len, out=ff_output)).type_as(
             hidden_states
         )
-        ff_output = self.ffn(norm_hidden_states)
-        hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
 
         return hidden_states
 
@@ -789,34 +822,20 @@ class HeliosTransformer3DModel(
 
         history_context_length = hidden_states.shape[1] - original_context_length
 
+        # The history tokens get the projection of timestep 0 (zero_history_timestep), the others the projection of
+        # timestep. The blocks get the two projections and the history length and apply each to its token range.
+        timestep_proj_t0, history_len = None, 0
         if indices_hidden_states is not None and self.zero_history_timestep:
             timestep_t0 = torch.zeros((1), dtype=timestep.dtype, device=timestep.device)
-            temb_t0, timestep_proj_t0, _ = self.condition_embedder(
+            _, timestep_proj_t0, _ = self.condition_embedder(
                 timestep_t0, encoder_hidden_states, is_return_encoder_hidden_states=False
             )
-            temb_t0 = temb_t0.unsqueeze(1).expand(batch_size, history_context_length, -1)
-            timestep_proj_t0 = (
-                timestep_proj_t0.unflatten(-1, (6, -1))
-                .view(1, 6, 1, -1)
-                .expand(batch_size, -1, history_context_length, -1)
-            )
-
+            timestep_proj_t0 = timestep_proj_t0.unflatten(-1, (6, -1)).view(1, 1, 6, -1).expand(batch_size, -1, -1, -1)
+            history_len = history_context_length
         temb, timestep_proj, encoder_hidden_states = self.condition_embedder(timestep, encoder_hidden_states)
-        timestep_proj = timestep_proj.unflatten(-1, (6, -1))
-
-        if indices_hidden_states is not None and not self.zero_history_timestep:
-            main_repeat_size = hidden_states.shape[1]
-        else:
-            main_repeat_size = original_context_length
-        temb = temb.view(batch_size, 1, -1).expand(batch_size, main_repeat_size, -1)
-        timestep_proj = timestep_proj.view(batch_size, 6, 1, -1).expand(batch_size, 6, main_repeat_size, -1)
-
-        if indices_hidden_states is not None and self.zero_history_timestep:
-            temb = torch.cat([temb_t0, temb], dim=1)
-            timestep_proj = torch.cat([timestep_proj_t0, timestep_proj], dim=2)
-
-        if timestep_proj.ndim == 4:
-            timestep_proj = timestep_proj.permute(0, 2, 1, 3)
+        timestep_proj_main = timestep_proj.unflatten(-1, (6, -1)).view(batch_size, 1, 6, -1)
+        modulation = (timestep_proj_t0, timestep_proj_main, history_len)
+        temb = temb.view(batch_size, 1, -1)
 
         # 6. Transformer blocks
         hidden_states = hidden_states.contiguous()
@@ -828,7 +847,7 @@ class HeliosTransformer3DModel(
                     block,
                     hidden_states,
                     encoder_hidden_states,
-                    timestep_proj,
+                    modulation,
                     rotary_emb,
                     original_context_length,
                 )
@@ -837,7 +856,7 @@ class HeliosTransformer3DModel(
                 hidden_states = block(
                     hidden_states,
                     encoder_hidden_states,
-                    timestep_proj,
+                    modulation,
                     rotary_emb,
                     original_context_length,
                 )
