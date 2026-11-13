@@ -182,12 +182,90 @@ class TestStableAudio3DiTModelBehavior(unittest.TestCase):
         out = model(hs, t, ctx, glob)
         self.assertEqual(out.sample.shape, hs.shape)
 
+    def test_rotary_partial_matches_angle_table_reference(self):
+        """Rotating with the precomputed (cos, sin) pair equals rotating with the angle table, bit for bit."""
+        from diffusers.models.transformers.transformer_stable_audio3 import (
+            StableAudio3RotaryEmbedding,
+            _apply_rotary_partial,
+        )
+
+        torch.manual_seed(0)
+        freqs = StableAudio3RotaryEmbedding(8)(12, "cpu").float()
+        rot_dim = freqs.shape[-1]
+        for dtype in (torch.float32, torch.float16, torch.bfloat16):
+            t = torch.randn(2, 12, 4, 16).to(dtype)
+            t_rot, t_pass = t[..., :rot_dim].float(), t[..., rot_dim:]
+            x1, x2 = t_rot.unflatten(-1, (2, -1)).unbind(-2)
+            angles = freqs.unsqueeze(1)
+            ref = t_rot * angles.cos() + torch.cat((-x2, x1), dim=-1) * angles.sin()
+            ref = torch.cat((ref.to(dtype), t_pass), dim=-1)
+            self.assertTrue(torch.equal(_apply_rotary_partial(t, (freqs.cos(), freqs.sin())), ref))
+
+    def test_rms_norm_low_precision_gamma_matches_float32_reference(self):
+        """A bf16 / fp16 `gamma` gives the same output as multiplying by `gamma.float()`, bit for bit."""
+        from diffusers.models.transformers.transformer_stable_audio3 import StableAudio3RMSNorm
+
+        torch.manual_seed(0)
+        for dtype in (torch.float16, torch.bfloat16):
+            norm = StableAudio3RMSNorm(16).to(dtype)
+            with torch.no_grad():
+                norm.gamma.uniform_(0.5, 1.5)
+                x = torch.randn(2, 12, 16).to(dtype)
+                h = x.float()
+                h = h * torch.rsqrt(h.pow(2).mean(-1, keepdim=True) + norm.eps)
+                ref = (h * norm.gamma.float()).to(dtype)
+                self.assertTrue(torch.equal(norm(x), ref))
+
     def test_differential_attention(self):
         """use_differential_attention=True should produce valid output shape."""
         model = StableAudio3DiTModel(**dict(TINY_CFG, use_differential_attention=True))
         hs, t, ctx, glob = _make_inputs()
         out = model(hs, t, ctx, glob)
         self.assertEqual(out.sample.shape, hs.shape)
+
+    def test_differential_attention_matches_per_group_reference(self):
+        """Normalizing / rotating [q1 | q2] and [k1 | k2] as one tensor equals separate per-group calls."""
+        from diffusers.models.attention_dispatch import dispatch_attention_fn
+        from diffusers.models.transformers.transformer_stable_audio3 import (
+            StableAudio3CrossAttention,
+            StableAudio3RotaryEmbedding,
+            StableAudio3SelfAttention,
+            _apply_rotary_partial,
+        )
+
+        def heads(attn, x):
+            return x.unflatten(-1, (attn.heads, attn.dim_heads))
+
+        def diff_attn(attn, q1, k1, q2, k2, v, mask=None):
+            out = dispatch_attention_fn(q1, k1, v, attn_mask=mask) - dispatch_attention_fn(q2, k2, v, attn_mask=mask)
+            return attn.to_out(out.flatten(2, 3))
+
+        torch.manual_seed(0)
+        x = torch.randn(2, 12, 64)
+        context = torch.randn(2, 5, 32)
+        context_mask = torch.tensor([[True] * 5, [True] * 3 + [False] * 2])
+        freqs = StableAudio3RotaryEmbedding(8)(12, x.device).float()
+        rope = (freqs.cos(), freqs.sin())
+        self_attn = StableAudio3SelfAttention(64, dim_heads=16, use_differential=True).eval()
+        cross_attn = StableAudio3CrossAttention(64, context_dim=32, dim_heads=16, use_differential=True).eval()
+
+        with torch.no_grad():
+            for attn in (self_attn, cross_attn):
+                attn.q_norm.gamma.uniform_(0.5, 1.5)
+                attn.k_norm.gamma.uniform_(0.5, 1.5)
+
+            q1, q2, k1, k2, v = (heads(self_attn, t) for t in self_attn.to_qkv(x).chunk(5, dim=-1))
+            q1, q2 = (_apply_rotary_partial(self_attn.q_norm(t), rope) for t in (q1, q2))
+            k1, k2 = (_apply_rotary_partial(self_attn.k_norm(t), rope) for t in (k1, k2))
+            self.assertTrue(torch.equal(self_attn(x, rope=rope), diff_attn(self_attn, q1, k1, q2, k2, v)))
+
+            q1, q2 = (cross_attn.q_norm(heads(cross_attn, t)) for t in cross_attn.to_q(x).chunk(2, dim=-1))
+            k1, k2, v = (heads(cross_attn, t) for t in cross_attn.to_kv(context).chunk(3, dim=-1))
+            k1, k2 = cross_attn.k_norm(k1), cross_attn.k_norm(k2)
+            mask = context_mask[:, None, None, :]
+            self.assertTrue(
+                torch.equal(cross_attn(x, context, context_mask), diff_attn(cross_attn, q1, k1, q2, k2, v, mask))
+            )
 
     def test_local_add_cond_zero_init_is_noop(self):
         """`to_local_embed` is zero-initialised, so inpaint conditioning is a no-op until trained."""
