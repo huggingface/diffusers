@@ -21,13 +21,8 @@ import torch
 
 from ....models import T5FilmDecoder
 from ....schedulers import DDPMScheduler
-from ....utils import is_onnx_available, logging
+from ....utils import logging
 from ....utils.torch_utils import randn_tensor
-
-
-if is_onnx_available():
-    from ...onnx_utils import OnnxRuntimeModel
-
 from ...pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .continuous_encoder import SpectrogramContEncoder
 from .notes_encoder import SpectrogramNotesEncoder
@@ -52,7 +47,6 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
             A [`T5FilmDecoder`] to denoise the encoded audio latents.
         scheduler ([`DDPMScheduler`]):
             A scheduler to be used in combination with `decoder` to denoise the encoded audio latents.
-        melgan ([`OnnxRuntimeModel`]):
     """
 
     _optional_components = ["melgan"]
@@ -63,7 +57,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         continuous_encoder: SpectrogramContEncoder,
         decoder: T5FilmDecoder,
         scheduler: DDPMScheduler,
-        melgan: OnnxRuntimeModel if is_onnx_available() else Any,
+        melgan: Any,
     ) -> None:
         super().__init__()
 
@@ -251,11 +245,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
 
             logger.info("Generated segment", i)
 
-        if output_type == "np" and not is_onnx_available():
-            raise ValueError(
-                "Cannot return output in 'np' format if ONNX is not available. Make sure to have ONNX installed or set 'output_type' to 'mel'."
-            )
-        elif output_type == "np" and self.melgan is None:
+        if output_type == "np" and self.melgan is None:
             raise ValueError(
                 "Cannot return output in 'np' format if melgan component is not defined. Make sure to define `self.melgan` or set 'output_type' to 'mel'."
             )

@@ -74,7 +74,6 @@ LOADABLE_CLASSES = {
         "ModelMixin": ["save_pretrained", "from_pretrained"],
         "SchedulerMixin": ["save_pretrained", "from_pretrained"],
         "DiffusionPipeline": ["save_pretrained", "from_pretrained"],
-        "OnnxRuntimeModel": ["save_pretrained", "from_pretrained"],
         "BaseGuidance": ["save_pretrained", "from_pretrained"],
     },
     "transformers": {
@@ -785,8 +784,6 @@ def load_sub_model(
     is_pipeline_module: bool,
     pipeline_class: Any,
     dtype: torch.dtype,
-    provider: Any,
-    sess_options: Any,
     device_map: dict[str, torch.device] | str | None,
     max_memory: dict[int | str, int | str] | None,
     offload_folder: str | os.PathLike | None,
@@ -797,7 +794,6 @@ def load_sub_model(
     low_cpu_mem_usage: bool,
     cached_folder: str | os.PathLike,
     use_safetensors: bool,
-    provider_options: Any,
     disable_mmap: bool,
     quantization_config: Any | None = None,
     use_flashpack: bool = False,
@@ -861,10 +857,6 @@ def load_sub_model(
             loading_kwargs["dtype"] = dtype
         else:
             loading_kwargs["torch_dtype"] = dtype
-    if issubclass(class_obj, diffusers_module.OnnxRuntimeModel):
-        loading_kwargs["provider"] = provider
-        loading_kwargs["sess_options"] = sess_options
-        loading_kwargs["provider_options"] = provider_options
 
     # When loading a transformers model, if the device_map is None, the weights will be initialized as opposed to diffusers.
     # To make default loading faster we set the `low_cpu_mem_usage=low_cpu_mem_usage` flag which is `True` by default.

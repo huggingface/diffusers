@@ -60,7 +60,6 @@ from diffusers import (
     UniPCMultistepScheduler,
     logging,
 )
-from diffusers.pipelines.onnx_utils import OnnxRuntimeModel
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, is_transformers_version
 from diffusers.utils.import_utils import is_peft_available
@@ -1310,12 +1309,6 @@ class TestPipelineFast:
         # clean up the VRAM after each test
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def test_onnx_runtime_model_deprecation(self):
-        with pytest.warns(
-            FutureWarning, match=r"`OnnxRuntimeModel` is deprecated and will be removed in version 0\.43\.0"
-        ):
-            OnnxRuntimeModel()
 
     def dummy_image(self):
         batch_size = 1

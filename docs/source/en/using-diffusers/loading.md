@@ -191,6 +191,8 @@ When working with multiple pipelines that use the same model, the [`~DiffusionPi
 
 Memory usage is determined by the pipeline with the highest memory requirement regardless of the number of pipelines.
 
+[`~DiffusionPipeline.from_pipe`] shares models in memory. Separate [`~DiffusionPipeline.from_pretrained`] calls share files on disk when two repositories contain identical files, like the same text encoder. See [Share files across repositories](../installation#share-files-across-repositories) for details.
+
 The example below loads a pipeline and then loads a second pipeline with [`~DiffusionPipeline.from_pipe`] to use [perturbed-attention guidance (PAG)](../api/pipelines/pag) to improve generation quality.
 
 > [!WARNING]

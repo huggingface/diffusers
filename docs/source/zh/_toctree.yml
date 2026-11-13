@@ -122,8 +122,6 @@
 - title: Model accelerators and hardware
   isExpanded: false
   sections:
-  - local: optimization/onnx
-    title: ONNX
   - local: optimization/open_vino
     title: OpenVINO
   - local: optimization/coreml
