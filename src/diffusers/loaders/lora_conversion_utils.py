@@ -2562,7 +2562,12 @@ def _convert_non_diffusers_flux2_lora_to_diffusers(state_dict):
         for lora_key in lora_keys:
             original_key = f"{org_key}.{lora_key}.weight"
             if original_key in original_state_dict:
-                converted_state_dict[f"{diff_key}.{lora_key}.weight"] = original_state_dict.pop(original_key)
+                weight = original_state_dict.pop(original_key)
+                # The original final layer orders its modulation (shift, scale), diffusers' `norm_out` (scale, shift),
+                # as in `convert_flux2_transformer_checkpoint_to_diffusers`: swap the output rows, which are lora_B's.
+                if org_key == "final_layer.adaLN_modulation.1" and lora_key == "lora_B":
+                    weight = swap_scale_shift(weight)
+                converted_state_dict[f"{diff_key}.{lora_key}.weight"] = weight
 
     if len(original_state_dict) > 0:
         raise ValueError(f"`original_state_dict` should be empty at this point but has {original_state_dict.keys()=}.")
