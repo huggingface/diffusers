@@ -23,7 +23,6 @@ https://github.com/huggingface/transformers/blob/52cb4034ada381fe1ffe8d428a1076e
 from __future__ import annotations
 
 import copy
-import importlib.metadata
 import json
 import os
 import warnings
@@ -31,9 +30,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable
 
-from packaging import version
-
-from ..utils import deprecate, is_torch_available, is_torchao_version, logging
+from ..dependency_versions_table import deps
+from ..utils import deprecate, is_torch_available, is_torchao_available, logging
 
 
 if is_torch_available():
@@ -342,13 +340,6 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
         if not isinstance(self.bnb_4bit_use_double_quant, bool):
             raise TypeError("bnb_4bit_use_double_quant must be a boolean")
 
-        if self.load_in_4bit and not version.parse(importlib.metadata.version("bitsandbytes")) >= version.parse(
-            "0.39.0"
-        ):
-            raise ValueError(
-                "4 bit quantization requires bitsandbytes>=0.39.0 - please upgrade your bitsandbytes version"
-            )
-
     def is_quantizable(self):
         r"""
         Returns `True` if the model is quantizable, `False` otherwise.
@@ -619,8 +610,10 @@ class TorchAoConfig(QuantizationConfigMixin):
         self.post_init()
 
     def post_init(self):
-        if is_torchao_version("<", "0.15.0"):
-            raise ValueError("TorchAoConfig requires torchao >= 0.15.0. Please upgrade with `pip install -U torchao`.")
+        if not is_torchao_available():
+            raise ValueError(
+                f"TorchAoConfig requires `{deps['torchao']}`. Please upgrade with `pip install -U '{deps['torchao']}'`."
+            )
 
         from torchao.quantization.quant_api import AOBaseConfig
 
@@ -644,8 +637,8 @@ class TorchAoConfig(QuantizationConfigMixin):
     @classmethod
     def from_dict(cls, config_dict, return_unused_kwargs=False, **kwargs):
         """Create configuration from a dictionary."""
-        if not is_torchao_version(">=", "0.15.0"):
-            raise NotImplementedError("TorchAoConfig requires torchao >= 0.15.0 for construction from dict")
+        if not is_torchao_available():
+            raise NotImplementedError(f"TorchAoConfig requires `{deps['torchao']}` for construction from dict")
         config_dict = config_dict.copy()
         quant_type = config_dict.pop("quant_type")
 

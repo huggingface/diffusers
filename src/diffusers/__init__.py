@@ -1,4 +1,4 @@
-__version__ = "0.42.0.dev0"
+__version__ = "0.44.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -170,18 +170,6 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["quantizers.quantization_config"].append("SDNQConfig")
 
-try:
-    if not is_onnx_available():
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_onnx_objects  # noqa F403
-
-    _import_structure["utils.dummy_onnx_objects"] = [
-        name for name in dir(dummy_onnx_objects) if not name.startswith("_")
-    ]
-
-else:
-    _import_structure["pipelines"].extend(["OnnxRuntimeModel"])
 
 try:
     if not is_torch_available():
@@ -268,6 +256,7 @@ else:
             "AutoencoderKLMagvit",
             "AutoencoderKLMiniMaxH3",
             "AutoencoderKLMiniMaxH3Audio",
+            "AutoencoderKLMiniMaxH3Image",
             "AutoencoderKLMochi",
             "AutoencoderKLPH3Image",
             "AutoencoderKLQwenImage",
@@ -344,6 +333,7 @@ else:
             "LTXVideoTransformer3DModel",
             "Lumina2Transformer2DModel",
             "LuminaNextDiT2DModel",
+            "MiniMaxH3ImageTransformer2DModel",
             "MiniMaxH3Transformer3DModel",
             "MiniMaxMusic3ConditionEncoder",
             "MiniMaxMusic3RVQDepthDecoder",
@@ -360,6 +350,7 @@ else:
             "NucleusMoEImageTransformer2DModel",
             "OmniGenTransformer2DModel",
             "OvisImageTransformer2DModel",
+            "PAN2Transformer3DModel",
             "ParallelConfig",
             "PH3ImageTextConnector",
             "PixArtTransformer2DModel",
@@ -604,9 +595,14 @@ else:
             "LTXAutoBlocks",
             "LTXModularPipeline",
             "MiniMaxH3Blocks",
+            "MiniMaxH3ImageBlocks",
+            "MiniMaxH3ImageModularPipeline",
             "MiniMaxH3ModularPipeline",
             "MiniMaxMusic3Blocks",
             "MiniMaxMusic3ModularPipeline",
+            "PAN2Blocks",
+            "PAN2ModularPipeline",
+            "PAN2SafetyChecker",
             "PH3ImageBlocks",
             "PH3ImageModularPipeline",
             "PikaH3FlexBlocks",
@@ -980,27 +976,6 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipelines"].extend(["KolorsImg2ImgPipeline", "KolorsPAGPipeline", "KolorsPipeline"])
 
-try:
-    if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_torch_and_transformers_and_onnx_objects  # noqa F403
-
-    _import_structure["utils.dummy_torch_and_transformers_and_onnx_objects"] = [
-        name for name in dir(dummy_torch_and_transformers_and_onnx_objects) if not name.startswith("_")
-    ]
-
-else:
-    _import_structure["pipelines"].extend(
-        [
-            "OnnxStableDiffusionImg2ImgPipeline",
-            "OnnxStableDiffusionInpaintPipeline",
-            "OnnxStableDiffusionInpaintPipelineLegacy",
-            "OnnxStableDiffusionPipeline",
-            "OnnxStableDiffusionUpscalePipeline",
-            "StableDiffusionOnnxPipeline",
-        ]
-    )
 
 try:
     if not (is_torch_available() and is_librosa_available()):
@@ -1120,14 +1095,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers.quantization_config import SDNQConfig
 
     try:
-        if not is_onnx_available():
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from .utils.dummy_onnx_objects import *  # noqa F403
-    else:
-        from .pipelines import OnnxRuntimeModel
-
-    try:
         if not is_torch_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
@@ -1204,6 +1171,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLMagvit,
             AutoencoderKLMiniMaxH3,
             AutoencoderKLMiniMaxH3Audio,
+            AutoencoderKLMiniMaxH3Image,
             AutoencoderKLMochi,
             AutoencoderKLPH3Image,
             AutoencoderKLQwenImage,
@@ -1280,6 +1248,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
+            MiniMaxH3ImageTransformer2DModel,
             MiniMaxH3Transformer3DModel,
             MiniMaxMusic3ConditionEncoder,
             MiniMaxMusic3RVQDepthDecoder,
@@ -1296,6 +1265,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             NucleusMoEImageTransformer2DModel,
             OmniGenTransformer2DModel,
             OvisImageTransformer2DModel,
+            PAN2Transformer3DModel,
             ParallelConfig,
             PH3ImageTextConnector,
             PixArtTransformer2DModel,
@@ -1518,9 +1488,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTXAutoBlocks,
             LTXModularPipeline,
             MiniMaxH3Blocks,
+            MiniMaxH3ImageBlocks,
+            MiniMaxH3ImageModularPipeline,
             MiniMaxH3ModularPipeline,
             MiniMaxMusic3Blocks,
             MiniMaxMusic3ModularPipeline,
+            PAN2Blocks,
+            PAN2ModularPipeline,
+            PAN2SafetyChecker,
             PH3ImageBlocks,
             PH3ImageModularPipeline,
             PikaH3FlexBlocks,
@@ -1875,21 +1850,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_and_opencv_objects import *  # noqa F403
     else:
         from .pipelines import ConsisIDPipeline
-
-    try:
-        if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from .utils.dummy_torch_and_transformers_and_onnx_objects import *  # noqa F403
-    else:
-        from .pipelines import (
-            OnnxStableDiffusionImg2ImgPipeline,
-            OnnxStableDiffusionInpaintPipeline,
-            OnnxStableDiffusionInpaintPipelineLegacy,
-            OnnxStableDiffusionPipeline,
-            OnnxStableDiffusionUpscalePipeline,
-            StableDiffusionOnnxPipeline,
-        )
 
     try:
         if not (is_torch_available() and is_librosa_available()):

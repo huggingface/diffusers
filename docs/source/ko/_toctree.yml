@@ -160,8 +160,6 @@
   - local: in_translation # optimization/tgate
     title: (번역중) TGATE
   - sections:
-    - local: optimization/onnx
-      title: ONNX
     - local: optimization/open_vino
       title: OpenVINO
     - local: optimization/coreml

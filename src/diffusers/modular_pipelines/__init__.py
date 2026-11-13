@@ -155,9 +155,18 @@ else:
         "MiniMaxH3Blocks",
         "MiniMaxH3ModularPipeline",
     ]
+    _import_structure["minimax_h3_image"] = [
+        "MiniMaxH3ImageBlocks",
+        "MiniMaxH3ImageModularPipeline",
+    ]
     _import_structure["minimax_music3"] = [
         "MiniMaxMusic3Blocks",
         "MiniMaxMusic3ModularPipeline",
+    ]
+    _import_structure["pan2"] = [
+        "PAN2Blocks",
+        "PAN2ModularPipeline",
+        "PAN2SafetyChecker",
     ]
     _import_structure["p_h3_image"] = [
         "PH3ImageBlocks",
@@ -239,6 +248,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MiniMaxH3Blocks,
             MiniMaxH3ModularPipeline,
         )
+        from .minimax_h3_image import (
+            MiniMaxH3ImageBlocks,
+            MiniMaxH3ImageModularPipeline,
+        )
         from .minimax_music3 import (
             MiniMaxMusic3Blocks,
             MiniMaxMusic3ModularPipeline,
@@ -258,6 +271,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PH3ImageBlocks,
             PH3ImageModularPipeline,
         )
+        from .pan2 import PAN2Blocks, PAN2ModularPipeline, PAN2SafetyChecker
         from .pika_h3_flex import (
             PikaH3FlexBlocks,
             PikaH3FlexModularPipeline,

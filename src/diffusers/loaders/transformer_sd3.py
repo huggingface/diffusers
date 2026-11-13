@@ -17,7 +17,7 @@ from ..models.attention_processor import SD3IPAdapterJointAttnProcessor2_0
 from ..models.embeddings import IPAdapterTimeImageProjection
 from ..models.model_loading_utils import load_model_dict_into_meta
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
-from ..utils import is_accelerate_available, is_torch_version, logging
+from ..utils import is_accelerate_available, logging
 from ..utils.torch_utils import empty_device_cache
 
 
@@ -42,12 +42,6 @@ class SD3Transformer2DLoadersMixin:
                     " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
                     " install accelerate\n```\n."
                 )
-
-        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `low_cpu_mem_usage=False`."
-            )
 
         # IP-Adapter cross attention parameters
         hidden_size = self.config.attention_head_dim * self.config.num_attention_heads
@@ -100,12 +94,6 @@ class SD3Transformer2DLoadersMixin:
                     " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
                     " install accelerate\n```\n."
                 )
-
-        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `low_cpu_mem_usage=False`."
-            )
 
         init_context = init_empty_weights if low_cpu_mem_usage else nullcontext
 
