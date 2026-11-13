@@ -117,7 +117,7 @@ def apply_context_parallel(
             registry.register_hook(hook, hook_name)
 
     if unmatched:
-        logger.warning(
+        logger.debug(
             f"Skipping the `Conditional` context parallel plan entries that match no module of "
             f"'{module.__class__.__name__}': {unmatched}."
         )

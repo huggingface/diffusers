@@ -57,7 +57,10 @@ def _conditional_plan_worker(rank, world_size, master_port, checkpoint_dir, para
         else:
             parallel_config = ContextParallelConfig(ulysses_degree=world_size)
 
-        with CaptureLogger(logging.get_logger("diffusers.hooks")) as cap_logger:
+        # A skipped `Conditional` entry is logged at debug level.
+        hooks_logger = logging.get_logger("diffusers.hooks")
+        hooks_logger.setLevel(logging.DEBUG)
+        with CaptureLogger(hooks_logger) as cap_logger:
             model = DummyConditionalPlanModel.from_pretrained(checkpoint_dir, parallel_config=parallel_config)
         if parallelism == "context":
             # A tensor-parallel load already places each rank's shard on its device.
@@ -91,7 +94,7 @@ def _conditional_plan_worker(rank, world_size, master_port, checkpoint_dir, para
 class TestConditionalPlanEntries:
     """`Conditional` entries of a `_tp_plan` / `_cp_plan`, on a checkpoint with and without the conditional layers."""
 
-    unmatched_warning = "match no module"
+    unmatched_message = "match no module of 'DummyConditionalPlanModel'"
 
     def _save_and_load_with_parallelism(self, tmp_path, parallelism, use_conditional_layers):
         """Save the model, load it on two ranks with parallelism, and check the output against a single device."""
@@ -128,10 +131,9 @@ class TestConditionalPlanEntries:
         if use_conditional_layers:
             gate_params = {f"blocks.{i}.gate_proj.{name}" for i in range(2) for name in ("weight", "bias")}
             assert gate_params <= set(result["applied"])
-            assert self.unmatched_warning not in result["logs"]
+            assert self.unmatched_message not in result["logs"]
         else:
-            assert self.unmatched_warning in result["logs"]
-            assert "blocks.*.gate_proj" in result["logs"]
+            assert f"{self.unmatched_message}: ['blocks.*.gate_proj']" in result["logs"]
 
     @is_context_parallel
     @pytest.mark.parametrize("use_conditional_layers", [True, False])
@@ -140,7 +142,6 @@ class TestConditionalPlanEntries:
 
         if use_conditional_layers:
             assert "pos_embed" in result["applied"]
-            assert self.unmatched_warning not in result["logs"]
+            assert self.unmatched_message not in result["logs"]
         else:
-            assert self.unmatched_warning in result["logs"]
-            assert "pos_embed" in result["logs"]
+            assert f"{self.unmatched_message}: ['pos_embed']" in result["logs"]

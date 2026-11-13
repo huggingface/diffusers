@@ -192,7 +192,7 @@ def _maybe_get_submodule(module: torch.nn.Module, path: str) -> "torch.nn.Module
     return module
 
 
-def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict, warn_unmatched: bool = False) -> list:
+def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict, log_unmatched: bool = False) -> list:
     """Group a flat `_tp_plan` into per-block `(submodule, {relative_path: style})` plans.
 
     Each glob is split at its single `*`; the prefix must resolve to a `ModuleList` and the suffix is the per-element
@@ -200,7 +200,7 @@ def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict, warn_unmatched: bool
     to attach its input redistribution at the block boundary.
 
     A `Conditional` entry is unwrapped here and kept only for the blocks where its module exists, so the returned plans
-    hold plain styles. `warn_unmatched` logs the `Conditional` entries that match no module; it is off by default
+    hold plain styles. `log_unmatched` logs the `Conditional` entries that match no module; it is off by default
     because the plan is resolved several times per model.
 
     Example: when `transformer_blocks` is a `ModuleList` of length 2, the input `{"transformer_blocks.*.ff.linear_out":
@@ -253,8 +253,8 @@ def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict, warn_unmatched: bool
                 order.append(key)
             grouped[key][1][relative] = style
 
-    if warn_unmatched and unmatched:
-        logger.warning(
+    if log_unmatched and unmatched:
+        logger.debug(
             f"Skipping the `Conditional` `_tp_plan` entries that match no module of '{model.__class__.__name__}': "
             f"{unmatched}."
         )
@@ -549,7 +549,7 @@ def apply_tensor_parallel(
         )
 
     backend = "neuron" if tp_mesh.device_type == "neuron" else "default"
-    groups = _resolve_tp_plan(model, tp_plan, warn_unmatched=True)
+    groups = _resolve_tp_plan(model, tp_plan, log_unmatched=True)
     logger.debug(f"Applying tensor parallel (backend={backend}) over {len(groups)} module group(s) on mesh {tp_mesh}.")
 
     from torch.distributed.tensor.parallel import parallelize_module

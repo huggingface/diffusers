@@ -293,7 +293,7 @@ class Conditional:
 
     A plan entry must resolve to a module, so a typo in a key raises. Wrap the value of an entry in `Conditional` when
     its module depends on the config or the checkpoint. The entry is skipped wherever the module is missing or set to
-    `None`, and a warning is logged if it matches no module at all.
+    `None`, and a debug message is logged if it matches no module at all.
 
     Args:
         value:
