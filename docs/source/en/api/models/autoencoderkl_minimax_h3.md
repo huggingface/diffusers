@@ -32,9 +32,6 @@ vae = AutoencoderKLMiniMaxH3.from_pretrained(
 
 ## AutoencoderKLMiniMaxH3
 
-Comfy-Kitchen INT8 video VAE checkpoints are supported. See the
-[Comfy Quantization guide](../../quantization/comfy#video-vae) for loading instructions.
-
 [[autodoc]] AutoencoderKLMiniMaxH3
     - encode
     - decode

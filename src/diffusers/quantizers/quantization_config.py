@@ -428,23 +428,28 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
 class ComfyQuantizationConfig(QuantizationConfigMixin):
     """Load native Comfy checkpoints with Comfy-Kitchen kernels.
 
-    Currently supports prequantized INT8 W8A8 linear layers with optional ConvRot rotation. Other Comfy quantization
-    formats are not supported.
+    Currently supports prequantized INT8 ConvRot checkpoints. Other Comfy quantization schemes are not supported.
 
     Args:
         compute_dtype (`torch.dtype`, defaults to `torch.bfloat16`):
             Precision of activations and unquantized layers. Supports BF16 and FP16.
+        quant_type (`str`, defaults to `"int8_convrot"`):
+            Quantization type to load. Only INT8 ConvRot is supported.
     """
 
-    def __init__(self, compute_dtype: "torch.dtype" | str | None = None, **kwargs):
+    def __init__(self, compute_dtype: "torch.dtype" | str | None = None, quant_type: str = "int8_convrot", **kwargs):
         self.quant_method = QuantizationMethod.COMFY
-        if isinstance(compute_dtype, str):
-            compute_dtype = {"bfloat16": torch.bfloat16, "float16": torch.float16}.get(compute_dtype)
-            if compute_dtype is None:
-                raise ValueError("Comfy compute_dtype must be bfloat16 or float16.")
+        self.quant_type = quant_type
         self.compute_dtype = compute_dtype if compute_dtype is not None else torch.bfloat16
-        self.pre_quantized = True
-        if not kwargs.get("pre_quantized", True):
+        self.pre_quantized = kwargs.get("pre_quantized", True)
+        self.post_init()
+
+    def post_init(self):
+        if isinstance(self.compute_dtype, str):
+            self.compute_dtype = {"bfloat16": torch.bfloat16, "float16": torch.float16}.get(self.compute_dtype)
+        if self.quant_type != "int8_convrot":
+            raise ValueError("Comfy only supports quant_type='int8_convrot'.")
+        if self.pre_quantized is not True:
             raise ValueError("Comfy only supports prequantized checkpoints.")
         if self.compute_dtype not in (torch.bfloat16, torch.float16):
             raise ValueError("Comfy compute_dtype must be torch.bfloat16 or torch.float16.")

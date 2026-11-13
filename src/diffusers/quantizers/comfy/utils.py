@@ -15,6 +15,12 @@
 import torch
 from torch import nn
 
+from ...utils import is_comfy_kitchen_available
+
+
+if is_comfy_kitchen_available():
+    import comfy_kitchen as ck
+
 
 class ComfyInt8Linear(nn.Module):
     """Linear inference using stored INT8 codes and Comfy-Kitchen's dynamic activation quantization."""
@@ -44,8 +50,6 @@ class ComfyInt8Linear(nn.Module):
         return self
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        import comfy_kitchen as ck
-
         return ck.int8_linear(
             inputs.to(self.compute_dtype).contiguous(),
             self.weight,

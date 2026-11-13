@@ -4127,10 +4127,24 @@ def convert_z_image_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     def convert_z_image_fused_attention(key: str, state_dict: dict[str, object]) -> None:
         if not key.endswith(".attention.qkv.weight"):
             return
+
+        new_q_name = key.replace(".attention.qkv.weight", ".attention.to_q.weight")
+        new_k_name = key.replace(".attention.qkv.weight", ".attention.to_k.weight")
+        new_v_name = key.replace(".attention.qkv.weight", ".attention.to_v.weight")
+
         source = key[: -len(".weight")]
-        _split_linear_checkpoint(
-            state_dict, source, [source.replace(".qkv", f".to_{name}") for name in ("q", "k", "v")]
-        )
+        if any(f"{source}.{suffix}" in state_dict for suffix in ("bias", "weight_scale", "comfy_quant")):
+            _split_linear_checkpoint(
+                state_dict, source, [name[: -len(".weight")] for name in (new_q_name, new_k_name, new_v_name)]
+            )
+            return
+
+        fused_qkv_weight = state_dict.pop(key)
+        to_q_weight, to_k_weight, to_v_weight = torch.chunk(fused_qkv_weight, 3, dim=0)
+
+        state_dict[new_q_name] = to_q_weight
+        state_dict[new_k_name] = to_k_weight
+        state_dict[new_v_name] = to_v_weight
         return
 
     TRANSFORMER_SPECIAL_KEYS_REMAP = {

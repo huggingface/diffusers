@@ -1,4 +1,3 @@
-# coding=utf-8
 # Copyright 2026 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +24,7 @@ from torch import nn
 from diffusers import (
     AutoencoderKLMiniMaxH3,
     ComfyQuantizationConfig,
+    GGUFQuantizationConfig,
     MiniMaxH3Transformer3DModel,
     QwenImage21Transformer2DModel,
 )
@@ -90,6 +90,62 @@ def test_config_and_registration(dtype):
         ComfyQuantizationConfig(pre_quantized=False)
     assert json.loads(config.to_json_string(use_diff=False))["compute_dtype"] == str(dtype).replace("torch.", "")
     assert json.loads(config.to_json_string())["quant_method"] == "comfy"
+    assert ("compute_dtype" in config.to_diff_dict()) == (dtype != torch.bfloat16)
+    assert config.quant_type == "int8_convrot"
+    assert restored.quant_type == "int8_convrot"
+    assert ComfyQuantizationConfig(quant_type="int8_convrot").quant_type == config.quant_type
+
+
+@pytest.mark.parametrize("quant_type", ["nvfp4", "mxfp8", "int4", "int8_tensorwise"])
+def test_unsupported_quantization_type(quant_type):
+    with pytest.raises(ValueError, match="quant_type"):
+        ComfyQuantizationConfig(quant_type=quant_type)
+
+
+@pytest.mark.parametrize(
+    "overrides,message",
+    [
+        ({"quant_type": "nvfp4"}, "quant_type"),
+        ({"compute_dtype": torch.float32}, "compute_dtype"),
+        ({"pre_quantized": False}, "prequantized"),
+    ],
+)
+def test_config_overrides_are_validated_before_loading(overrides, message):
+    config = ComfyQuantizationConfig.from_dict(ComfyQuantizationConfig().to_dict(), **overrides)
+    with pytest.raises(ValueError, match=message):
+        DiffusersAutoQuantizer.from_config(config)
+
+
+def test_string_compute_dtype_override_is_normalized_before_loading():
+    config = ComfyQuantizationConfig.from_dict(ComfyQuantizationConfig().to_dict(), compute_dtype="float16")
+    quantizer = DiffusersAutoQuantizer.from_config(config)
+    assert quantizer.compute_dtype == torch.float16
+
+
+@pytest.mark.parametrize("rotation", [False, None])
+def test_convrot_quantization_type_rejects_checkpoint_without_rotation(rotation):
+    model = nn.Sequential()
+    model.add_module("linear", nn.Linear(256, 32, bias=False))
+    state = checkpoint(convrot=False)
+    if rotation is None:
+        payload = {"format": "int8_tensorwise"}
+        state["linear.comfy_quant"] = torch.tensor(list(json.dumps(payload).encode()), dtype=torch.uint8)
+    with pytest.raises(ValueError, match="requires a checkpoint with ConvRot"):
+        ComfyQuantizer(ComfyQuantizationConfig()).preprocess_model(model, device_map=None, state_dict=state)
+    assert isinstance(model.linear, nn.Linear)
+    assert "linear.comfy_quant" in state
+
+
+def test_convrot_checkpoint_can_include_unrotated_layers():
+    model = nn.Sequential()
+    model.add_module("linear", nn.Linear(256, 32, bias=False))
+    model.add_module("unrotated", nn.Linear(256, 32, bias=False))
+    state = {**checkpoint(), **checkpoint("unrotated", convrot=False)}
+    ComfyQuantizer(ComfyQuantizationConfig()).preprocess_model(model, device_map=None, state_dict=state)
+    assert isinstance(model.linear, ComfyInt8Linear)
+    assert model.linear.convrot
+    assert isinstance(model.unrotated, ComfyInt8Linear)
+    assert not model.unrotated.convrot
 
 
 @pytest.mark.parametrize(
@@ -652,6 +708,7 @@ def h3_vae_checkpoint(tmp_path):
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 def test_h3_vae_single_file_load(tmp_path, h3_vae_checkpoint, kitchen, dtype):
     path, original = h3_vae_checkpoint
+    class_fp32_modules = list(AutoencoderKLMiniMaxH3._keep_in_fp32_modules)
     model = AutoencoderKLMiniMaxH3.from_single_file(
         str(path),
         config=str(tmp_path),
@@ -662,6 +719,10 @@ def test_h3_vae_single_file_load(tmp_path, h3_vae_checkpoint, kitchen, dtype):
     assert model.config.latents_mean == [0.0, 1.0, 2.0, 3.0]
     assert model.config.latents_std == [1.0, 2.0, 3.0, 4.0]
     assert model.use_tiling
+    assert AutoencoderKLMiniMaxH3._keep_in_fp32_modules == class_fp32_modules
+    assert model._keep_in_fp32_modules is not AutoencoderKLMiniMaxH3._keep_in_fp32_modules
+    other_model = AutoencoderKLMiniMaxH3.from_config(model.config)
+    assert other_model._keep_in_fp32_modules == class_fp32_modules
     assert model.dtype == dtype
     assert sum(isinstance(module, ComfyInt8Linear) for module in model.modules()) == 6
     assert not any(value.is_meta for value in model.state_dict().values())
@@ -697,6 +758,14 @@ def test_single_file_floating_weights_with_other_quantization_metadata(tmp_path,
     assert not getattr(loaded, "is_quantized", False)
     assert not any(value.is_meta for value in loaded.state_dict().values())
     torch.testing.assert_close(loaded.decoder.proj_in.weight, state["decoder.x_embedder.weight"])
+
+
+def test_comfy_checkpoint_rejects_other_quantization_backend(tmp_path, h3_vae_checkpoint):
+    _, state = h3_vae_checkpoint
+    with pytest.raises(ValueError, match="ComfyQuantizationConfig"):
+        AutoencoderKLMiniMaxH3.from_single_file(
+            state, config=str(tmp_path), subfolder="vae", quantization_config=GGUFQuantizationConfig()
+        )
 
 
 def test_h3_vae_missing_tensor_is_rejected(tmp_path, h3_vae_checkpoint, kitchen):

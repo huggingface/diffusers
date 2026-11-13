@@ -23,7 +23,6 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
-    ConvRotTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     TrainingTesterMixin,
@@ -89,23 +88,6 @@ class AutoencoderKLMiniMaxH3TesterConfig(BaseModelTesterConfig):
     def get_dummy_inputs(self) -> dict:
         return {
             "sample": randn_tensor((2, 3, NUM_FRAMES, HEIGHT, WIDTH), generator=self.generator, device=torch_device),
-        }
-
-
-class TestAutoencoderKLMiniMaxH3ConvRot(AutoencoderKLMiniMaxH3TesterConfig, ConvRotTesterMixin):
-    @property
-    def convrot_modules(self):
-        return [
-            f"decoder.transformer_blocks.0.{name}"
-            for name in ("attn.to_q", "attn.to_k", "attn.to_v", "attn.to_out.0", "ff.net.0.proj", "ff.net.2")
-        ]
-
-    def get_init_dict(self):
-        return {
-            **super().get_init_dict(),
-            "decoder_num_layers": 1,
-            "decoder_num_attention_heads": 4,
-            "decoder_attention_head_dim": 16,
         }
 
 

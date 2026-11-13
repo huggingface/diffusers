@@ -27,6 +27,7 @@ from ..models.model_loading_utils import (
     _expand_device_map,
 )
 from ..quantizers import DiffusersAutoQuantizer
+from ..quantizers.comfy import ComfyQuantizer
 from ..utils import deprecate, is_accelerate_available, logging
 from ..utils.torch_utils import empty_device_cache
 from .single_file_utils import (
@@ -427,6 +428,10 @@ class FromOriginalModelMixin:
             if not low_cpu_mem_usage:
                 raise ValueError("`low_cpu_mem_usage` cannot be False when using quantization.")
             hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config)
+            if not isinstance(hf_quantizer, ComfyQuantizer) and any(
+                key.endswith(".comfy_quant") for key in checkpoint
+            ):
+                raise ValueError("Native Comfy checkpoints require `quantization_config=ComfyQuantizationConfig()`.")
             hf_quantizer.validate_environment()
             torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
             checkpoint = hf_quantizer.maybe_update_state_dict(checkpoint)
@@ -435,7 +440,8 @@ class FromOriginalModelMixin:
             hf_quantizer = None
             if any(key.endswith(".weight") and value.dtype == torch.int8 for key, value in checkpoint.items()):
                 raise ValueError(
-                    "Native Comfy INT8 checkpoints require `quantization_config=ComfyQuantizationConfig()`."
+                    "INT8 checkpoints require a compatible `quantization_config`; native Comfy checkpoints use "
+                    "`ComfyQuantizationConfig()`."
                 )
 
         mapping_functions = SINGLE_FILE_LOADABLE_CLASSES[mapping_class_name]
@@ -522,16 +528,19 @@ class FromOriginalModelMixin:
             (torch_dtype == torch.float16) or hasattr(hf_quantizer, "use_keep_in_fp32_modules")
         )
         if use_keep_in_fp32_modules:
-            keep_in_fp32_modules = cls._keep_in_fp32_modules
-            if not isinstance(keep_in_fp32_modules, list):
-                keep_in_fp32_modules = [keep_in_fp32_modules]
+            keep_in_fp32_modules = (
+                list(cls._keep_in_fp32_modules)
+                if isinstance(cls._keep_in_fp32_modules, list)
+                else [cls._keep_in_fp32_modules]
+            )
 
         else:
             keep_in_fp32_modules = []
 
-        if hf_quantizer is not None and "quantized_keep_in_fp32_modules" in mapping_functions:
+        if isinstance(hf_quantizer, ComfyQuantizer) and "quantized_keep_in_fp32_modules" in mapping_functions:
             keep_in_fp32_modules = keep_in_fp32_modules + mapping_functions["quantized_keep_in_fp32_modules"]
             model._keep_in_fp32_modules = keep_in_fp32_modules
+            logger.debug("Updated %s instance FP32 modules: %s", cls.__name__, keep_in_fp32_modules)
 
         # Now that the model is loaded, we can determine the `device_map`
         device_map = _determine_device_map(model, device_map, None, torch_dtype, keep_in_fp32_modules, hf_quantizer)

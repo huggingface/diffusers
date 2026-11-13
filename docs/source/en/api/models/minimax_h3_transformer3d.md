@@ -34,9 +34,6 @@ The checkpoint is mixed precision: the two input patch projections, the timestep
 
 ## MiniMaxH3Transformer3DModel
 
-Comfy-Kitchen INT8 checkpoints are supported. See the
-[Comfy Quantization guide](../../quantization/comfy#minimax-h3) for loading instructions.
-
 [[autodoc]] MiniMaxH3Transformer3DModel
 
 ## MiniMaxH3TransformerOutput

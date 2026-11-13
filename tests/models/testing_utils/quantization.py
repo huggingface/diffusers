@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import gc
-import importlib.metadata
 import json
 import re
 import tempfile
@@ -22,7 +21,6 @@ import tempfile
 import pytest
 import safetensors.torch
 import torch
-from packaging.version import Version
 
 from diffusers import (
     AutoRoundConfig,
@@ -62,6 +60,7 @@ from ...testing_utils import (
     require_accelerator,
     require_auto_round_version_greater_or_equal,
     require_bitsandbytes_version_greater,
+    require_comfy_kitchen,
     require_gguf_version_greater_or_equal,
     require_modelopt_version_greater_or_equal,
     require_sdnq,
@@ -1894,13 +1893,14 @@ class ConvRotConfigMixin:
         return isinstance(module, ComfyInt8Linear)
 
 
+@is_quantization
+@require_accelerator
+@require_comfy_kitchen
 @require_accelerate
 class ConvRotTesterMixin(ConvRotConfigMixin, QuantizationTesterMixin):
     @pytest.fixture(autouse=True)
     def convrot_backend(self):
         kitchen = pytest.importorskip("comfy_kitchen")
-        if Version(importlib.metadata.version("comfy-kitchen")) < Version("0.2.41"):
-            pytest.skip("Requires comfy-kitchen>=0.2.41")
         if torch_device != "cuda" or torch.cuda.get_device_capability() < (7, 5):
             pytest.skip("Requires an NVIDIA GPU with INT8 tensor cores")
         backend = kitchen.list_backends().get("cuda", {})
@@ -1937,10 +1937,10 @@ class ConvRotTesterMixin(ConvRotConfigMixin, QuantizationTesterMixin):
         assert not any(tensor.is_meta for tensor in model.state_dict().values())
 
     @pytest.mark.parametrize("config_kwargs", ConvRotConfigMixin.CONVROT_CONFIGS, ids=["bf16", "fp16"])
-    def test_convrot_serialization_is_rejected(self, config_kwargs, tmp_path):
+    @pytest.mark.xfail(strict=True, raises=ValueError, reason="Comfy quantized models do not support serialization.")
+    def test_convrot_quantization_serialization(self, config_kwargs, tmp_path):
         model = self._create_quantized_model(config_kwargs)
-        with pytest.raises(ValueError, match="serializ"):
-            model.save_pretrained(tmp_path)
+        model.save_pretrained(tmp_path)
 
 
 class BFLConfigMixin:

@@ -28,6 +28,7 @@ class ComfyQuantizer(DiffusersQuantizer):
     use_keep_in_fp32_modules = True
 
     def __init__(self, quantization_config, **kwargs):
+        quantization_config.post_init()
         super().__init__(quantization_config, **kwargs)
         self.compute_dtype = quantization_config.compute_dtype
 
@@ -72,7 +73,7 @@ class ComfyQuantizer(DiffusersQuantizer):
             except (ValueError, UnicodeDecodeError) as exc:
                 raise ValueError(f"{key} is not valid JSON.") from exc
             if not isinstance(marker, dict) or marker.get("format") != "int8_tensorwise":
-                raise ValueError(f"{key} must declare format='int8_tensorwise'.")
+                raise ValueError(f"{key} must declare format='int8_tensorwise' for quant_type='int8_convrot'.")
             if marker.get("full_precision_matrix_mult", False):
                 raise ValueError(f"{prefix} requests full_precision_matrix_mult, which is not supported.")
             if not isinstance(marker.get("convrot", False), bool):
@@ -110,6 +111,9 @@ class ComfyQuantizer(DiffusersQuantizer):
             if any(name in prefix.split(".") for name in keep_in_fp32_modules):
                 raise ValueError(f"{prefix} is quantized but must be kept in FP32 by the model.")
             replacements.append((prefix, module, scale.shape, marker, key))
+
+        if not any(marker.get("convrot", False) for _, _, _, marker, _ in replacements):
+            raise ValueError("quant_type='int8_convrot' requires a checkpoint with ConvRot rotation metadata.")
 
         for prefix, module, scale_shape, marker, key in replacements:
             parent, name = get_module_from_name(model, prefix)

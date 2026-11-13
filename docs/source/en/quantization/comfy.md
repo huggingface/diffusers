@@ -17,8 +17,8 @@ specific language governing permissions and limitations under the License.
 loaders. Diffusers loads supported checkpoints with [`ComfyQuantizationConfig`] and uses
 [Comfy-Kitchen](https://github.com/Comfy-Org/comfy-kitchen) for inference.
 
-Currently, this integration supports native `int8_tensorwise` linear layers with optional ConvRot rotation. Other
-Comfy quantization formats are not supported.
+Currently, this integration supports `quant_type="int8_convrot"` checkpoints containing native `int8_tensorwise`
+linear layers with ConvRot rotation. Other Comfy quantization schemes are not supported.
 
 ## INT8 ConvRot
 
@@ -56,7 +56,7 @@ transformer = ZImageTransformer2DModel.from_single_file(
     "https://huggingface.co/Comfy-Org/Z-Image-Turbo/blob/main/split_files/diffusion_models/z_image_turbo_int8_convrot.safetensors",
     config="Tongyi-MAI/Z-Image-Turbo",
     subfolder="transformer",
-    quantization_config=ComfyQuantizationConfig(compute_dtype=torch.bfloat16),
+    quantization_config=ComfyQuantizationConfig(quant_type="int8_convrot", compute_dtype=torch.bfloat16),
     dtype=torch.bfloat16,
 )
 pipe = ZImagePipeline.from_pretrained(
@@ -102,9 +102,18 @@ architectures. New model support requires checking its existing single-file conv
 preservation, projection row ordering, and floating activation dtypes. MXFP8, NVFP4, and INT4 use different scale
 or packing layouts and require format-specific conversion before they can be supported.
 
-This integration loads prequantized single-file transformer and MiniMax-H3 video VAE checkpoints. It does not support
-the older ComfyUI-INT8-Fast marker format, other Comfy quantization formats, on-load quantization, training, LoRA,
-attention projection fusion, or `save_pretrained` for quantized models.
+## Unsupported schemes and features
+
+Only `quant_type="int8_convrot"` is supported; it is also the default. MXFP8, NVFP4, INT4, and the older
+`int8_w8a8` format are not supported. Unsupported quantization types are rejected when creating
+[`ComfyQuantizationConfig`] and checked again before loading. At load time, the quantizer checks each layer's
+format, weights, scales, and rotation metadata against the selected quantization type. The checkpoint must
+contain at least one ConvRot layer; unrotated INT8 layers within the same checkpoint are allowed. A checkpoint
+containing only unrotated INT8 layers is rejected. Native Comfy checkpoints require [`ComfyQuantizationConfig`];
+selecting a different quantization backend raises an error.
+
+This integration loads prequantized single-file transformer and MiniMax-H3 video VAE checkpoints. On-load
+quantization, training, LoRA, attention projection fusion, and `save_pretrained` for quantized models are not supported.
 
 ## MiniMax-H3
 
@@ -174,3 +183,83 @@ normalization before decoding. The existing MiniMax-H3 workflow handles this nor
 
 Spatial tiling remains enabled by default. This support targets the video VAE checkpoint linked above; the H3
 audio and SOL VAEs use different architectures.
+
+### Loading on a 24 GB GPU
+
+On a consumer card (24 to 32 GB), load the prequantized ConvRot transformer and video VAE, quantize the
+conditioner with TorchAO, and stream the transformer and conditioner from CPU RAM. The ConvRot files retain
+their stored INT8 weights, so loading them does not require the full floating-point transformer or video VAE
+checkpoints. The example below uses the pruned FL2VA transformer for text and keyframe workflows.
+
+Install the ConvRot runtime alongside TorchAO:
+
+```bash
+pip install "comfy-kitchen>=0.2.41" accelerate torchao
+```
+
+```py
+import torch
+from diffusers import (
+    AutoencoderKLMiniMaxH3,
+    ComfyQuantizationConfig,
+    MiniMaxH3Transformer3DModel,
+    ModularPipeline,
+)
+from diffusers.hooks import apply_group_offloading
+from transformers import Qwen3VLForConditionalGeneration
+from transformers import TorchAoConfig as TransformersTorchAoConfig
+from torchao.quantization import Int8WeightOnlyConfig
+
+pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3")
+pipe.update_components(
+    transformer=MiniMaxH3Transformer3DModel.from_single_file(
+        "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        config="MiniMaxAI/MiniMax-H3",
+        subfolder="transformer",
+        quantization_config=ComfyQuantizationConfig(compute_dtype=torch.bfloat16),
+        dtype=torch.bfloat16,
+    ),
+    vae=AutoencoderKLMiniMaxH3.from_single_file(
+        "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_int8_convrot.safetensors",
+        config="MiniMaxAI/MiniMax-H3",
+        subfolder="vae",
+        quantization_config=ComfyQuantizationConfig(compute_dtype=torch.bfloat16),
+        dtype=torch.bfloat16,
+    ),
+    text_encoder=Qwen3VLForConditionalGeneration.from_pretrained(
+        "MiniMaxAI/MiniMax-H3",
+        subfolder="text_encoder",
+        dtype=torch.bfloat16,
+        quantization_config=TransformersTorchAoConfig(
+            Int8WeightOnlyConfig(version=2),
+            modules_to_not_convert=[
+                "model.visual",
+                "model.language_model.embed_tokens",
+                "model.language_model.norm",
+                "lm_head",
+            ],
+        ),
+    ),
+)
+pipe.load_components(workflow="t2va", dtype=torch.bfloat16)
+
+# version=2 int8 tensors are pinnable, which streamed offload needs, and freezing removes the one autograd
+# path the quantized tensors cannot serve.
+pipe.transformer.requires_grad_(False)
+pipe.text_encoder.requires_grad_(False)
+
+offload = dict(onload_device=torch.device("cuda"), offload_device=torch.device("cpu"), use_stream=True)
+pipe.transformer.enable_group_offload(offload_type="block_level", num_blocks_per_group=1, **offload)
+apply_group_offloading(pipe.text_encoder.model, offload_type="leaf_level", **offload)
+pipe.vae.to("cuda")
+pipe.audio_vae.to("cuda")
+```
+
+Move the loaded VAE between devices without passing a floating dtype, so its FP32 modules and native INT8
+weights retain their precision. Spatial tiling stays enabled by default. For REF2VA, use one of the linked REF2VA
+checkpoints with `subfolder="transformer_ref"`, install it as `transformer_ref`, and load the `ref2va` workflow;
+the video VAE is shared.
+
+On 12 to 16 GB, also group offload the video VAE (`offload_type="leaf_level"`, no stream) instead of moving it
+to CUDA, and use a small canvas such as 960x544. The transformer and conditioner weights still require tens of
+gigabytes of host RAM.
