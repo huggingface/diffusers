@@ -428,3 +428,25 @@ class UniPCMultistepScheduler1DTest(UniPCMultistepSchedulerTest):
         expected_timesteps = expected_timesteps[0:-1]
         self.assertTrue(torch.allclose(scheduler.sigmas, expected_sigmas))
         self.assertTrue(torch.all(expected_timesteps == scheduler.timesteps))
+
+    def test_zero_width_final_step(self):
+        scheduler_class = self.scheduler_classes[0]
+        model = self.dummy_model()
+        for kwargs in [
+            {"use_karras_sigmas": True},
+            {"use_exponential_sigmas": True},
+            {"use_beta_sigmas": True},
+        ]:
+            scheduler_config = self.get_scheduler_config(
+                solver_order=3,
+                lower_order_final=False,
+                final_sigmas_type="sigma_min",
+                **kwargs,
+            )
+            scheduler = scheduler_class(**scheduler_config)
+            scheduler.set_timesteps(20)
+            sample = self.dummy_sample_deter
+            for t in scheduler.timesteps:
+                residual = model(sample, t)
+                sample = scheduler.step(residual, t, sample).prev_sample
+            assert not torch.isnan(sample).any()

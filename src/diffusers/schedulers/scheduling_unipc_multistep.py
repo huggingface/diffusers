@@ -1207,6 +1207,10 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         if self.config.lower_order_final:
             this_order = min(self.config.solver_order, len(self.timesteps) - self.step_index)
+        elif self.step_index == len(self.timesteps) - 1 and bool(
+            self.sigmas[self.step_index + 1] == self.sigmas[self.step_index]
+        ):
+            this_order = 1
         else:
             this_order = self.config.solver_order
 
