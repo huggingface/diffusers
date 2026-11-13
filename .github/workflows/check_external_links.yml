@@ -1,0 +1,89 @@
+name: Check external links
+
+# This workflow checks external links weekly instead of in
+# build_pr_documentation.yml. Only links that return 404 or 410 fail the run.
+
+on:
+  schedule:
+    - cron: "0 10 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check-external-links:
+    name: Check external documentation links
+    if: github.repository == 'huggingface/diffusers'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.10'
+
+      - name: Install doc-builder
+        run: |
+          pip install git+https://github.com/huggingface/doc-builder.git@main
+
+      - name: Check external links
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -o pipefail
+          doc-builder check-links docs/source/en --check-external --format list | tee link-report.txt
+
+      - name: Write job summary
+        if: always() && hashFiles('link-report.txt') != ''
+        run: |
+          {
+            echo '## External link check'
+            echo '```'
+            cat link-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Download the links posted by the last run
+        id: previous
+        if: always() && (steps.check.outcome == 'success' || steps.check.outcome == 'failure')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p previous
+          run_id=$(gh api "repos/${{ github.repository }}/actions/artifacts?name=external-links-state&per_page=20" \
+            --jq '[.artifacts[] | select(.expired | not) | select(.workflow_run.head_branch == "main")][0].workflow_run.id // empty')
+          if [ -n "$run_id" ]; then
+            gh run download "$run_id" --repo "${{ github.repository }}" --name external-links-state --dir previous
+          else
+            echo "No earlier list found. Every broken link counts as new."
+          fi
+
+      - name: Post newly broken links to Slack
+        id: post
+        if: always() && steps.previous.outcome == 'success'
+        env:
+          SLACK_WEBHOOK_URL: ${{ github.ref == 'refs/heads/main' && secrets.SLACK_WEBHOOK_URL_EXTERNAL_LINKS || '' }}
+          OUTCOME: ${{ steps.check.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python utils/report_broken_links.py link-report.txt previous/reported-links.txt reported-links.txt
+
+      - name: Save the posted links for the next run
+        if: always() && steps.post.outcome == 'success' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: external-links-state
+          path: reported-links.txt
+          retention-days: 90
+          if-no-files-found: error
