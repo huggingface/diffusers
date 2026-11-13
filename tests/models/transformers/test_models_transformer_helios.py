@@ -142,11 +142,11 @@ class TestHeliosTransformer3D(HeliosTransformer3DTesterConfig, ModelTesterMixin)
 class TestHeliosTransformer3DModulation(HeliosTransformer3DTesterConfig):
     def test_modulation_rows_match_per_token_table(self):
         """Applying the two modulation rows by token range gives the same block outputs and transformer output, bit
-        for bit, as the per-token (batch_size, seq_len, 6, dim) table the blocks and the output norm got before."""
+        for bit, as modulating with a per-token (batch_size, seq_len, 6, dim) table that has one row per token."""
         inputs = self.get_dummy_inputs()
 
         def tables(model, seq_len, context_len):
-            # the per-token temb and timestep_proj tables, built as HeliosTransformer3DModel.forward built them before
+            # reference: the per-token temb and timestep_proj tables, one row per token
             timestep, encoder_hidden_states = inputs["timestep"], inputs["encoder_hidden_states"]
             batch_size, history_len = timestep.shape[0], seq_len - context_len
             if model.zero_history_timestep:

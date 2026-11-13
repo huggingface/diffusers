@@ -823,7 +823,7 @@ class HeliosTransformer3DModel(
         history_context_length = hidden_states.shape[1] - original_context_length
 
         # The history tokens get the projection of timestep 0 (zero_history_timestep), the others the projection of
-        # timestep. The blocks get the two rows and the history length, not a per-token table.
+        # timestep. The blocks get the two projections and the history length and apply each to its token range.
         timestep_proj_t0, history_len = None, 0
         if indices_hidden_states is not None and self.zero_history_timestep:
             timestep_t0 = torch.zeros((1), dtype=timestep.dtype, device=timestep.device)
