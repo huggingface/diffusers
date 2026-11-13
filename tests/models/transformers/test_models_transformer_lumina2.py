@@ -13,9 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
+import torch.nn.functional as F
 
 from diffusers import Lumina2Transformer2DModel
+from diffusers.models.attention import LuminaFeedForward
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -115,3 +118,21 @@ class TestLumina2Transformer2DSingleFile(Lumina2TransformerTesterConfig, SingleF
     @property
     def pretrained_model_kwargs(self):
         return {"subfolder": "transformer"}
+
+
+class TestLuminaFeedForward:
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    # CPU and CUDA only: their fp16 / bf16 SiLU kernels compute in float32; other backends may differ by rounding.
+    @pytest.mark.parametrize("device", sorted({"cpu", torch_device} & {"cpu", "cuda"}))
+    def test_silu_matches_float32_reference(self, device, dtype):
+        """The SiLU output equals SiLU computed on the input upcast to float32 and cast back, bit for bit."""
+        torch.manual_seed(0)
+        feed_forward = LuminaFeedForward(dim=32, inner_dim=64, multiple_of=32).to(device, dtype)
+        # 2 x 8 x 64 = 1024 hidden elements: a multiple of the CPU vector width, so no element takes the scalar
+        # tail of the SiLU kernel (bit-exact on CPU).
+        x = 4 * torch.randn(2, 8, 32, device=device, dtype=dtype)
+        with torch.no_grad():
+            out = feed_forward(x)
+            hidden = F.silu(feed_forward.linear_1(x).float()).to(dtype) * feed_forward.linear_3(x)
+            ref = feed_forward.linear_2(hidden)
+        assert torch.equal(out, ref)
