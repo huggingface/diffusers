@@ -82,6 +82,40 @@ class DDPMParallelSchedulerTest(SchedulerCommonTest):
         assert torch.sum(torch.abs(scheduler._get_variance(487) - 0.00979)) < 1e-5
         assert torch.sum(torch.abs(scheduler._get_variance(999) - 0.02)) < 1e-5
 
+    def test_terminal_step_adds_no_noise(self):
+        # Regression test for https://github.com/huggingface/diffusers/issues/15139:
+        # with trailing timestep spacing the final selected timestep is nonzero,
+        # so `step()` must not add fresh noise at the terminal transition.
+        scheduler_class = self.scheduler_classes[0]
+        sample = torch.zeros(1, 1, 2, 2)
+        pred_original_sample = torch.full_like(sample, 0.25)
+
+        for variance_type in ["fixed_small", "fixed_large"]:
+            scheduler_config = self.get_scheduler_config(
+                variance_type=variance_type,
+                timestep_spacing="trailing",
+                prediction_type="sample",
+                clip_sample=False,
+            )
+            scheduler = scheduler_class(**scheduler_config)
+            scheduler.set_timesteps(50)
+            t = scheduler.timesteps[-1]
+            assert scheduler.previous_timestep(t) == -1
+
+            generator = torch.Generator().manual_seed(0)
+            initial_state = generator.get_state()
+            output = scheduler.step(
+                pred_original_sample,
+                t,
+                sample,
+                generator=generator,
+            )
+            assert torch.equal(output.prev_sample, output.pred_original_sample)
+            # The terminal step must not draw at all: output equality alone
+            # would miss a draw whose variance is zero or rounds away, so
+            # also require the supplied generator to be untouched.
+            assert torch.equal(generator.get_state(), initial_state)
+
     def test_rescale_betas_zero_snr(self):
         for rescale_betas_zero_snr in [True, False]:
             self.check_over_configs(rescale_betas_zero_snr=rescale_betas_zero_snr)
