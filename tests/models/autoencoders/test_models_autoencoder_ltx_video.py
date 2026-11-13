@@ -199,3 +199,62 @@ class TestAutoencoderKLLTXVideoSingleFile(AutoencoderKLLTXVideo090TesterConfig, 
     @property
     def pretrained_model_kwargs(self):
         return {"subfolder": "vae"}
+
+
+class _MockTemporalExpansionDecoder(torch.nn.Module):
+    """Deterministic decoder stub with the causal temporal expansion of the real decoders.
+
+    Latent frame 0 maps to video frame 0 and every subsequent latent frame maps to
+    `temporal_compression_ratio` video frames. Because each output frame depends only on its
+    latent frame, temporally tiled decoding must reproduce full decoding exactly, which makes
+    frame misalignment detectable without pretrained weights.
+    """
+
+    def __init__(self, temporal_compression_ratio: int):
+        super().__init__()
+        self.temporal_compression_ratio = temporal_compression_ratio
+
+    def forward(self, x: torch.Tensor, temb=None) -> torch.Tensor:
+        out_num_frames = (x.shape[2] - 1) * self.temporal_compression_ratio + 1
+        out = x.new_zeros((x.shape[0], 3, out_num_frames, *x.shape[-2:]))
+        out[:, :, 0] = x[:, :, 0]
+        out[:, :, 1:] = x[:, :, 1:].repeat_interleave(self.temporal_compression_ratio, dim=2)
+        return out
+
+
+class TestAutoencoderKLLTXVideoFramewiseDecode:
+    """Tests for temporally tiled decoding alignment."""
+
+    def test_framewise_decode_matches_full_decode(self):
+        torch.manual_seed(0)
+        vae = AutoencoderKLLTXVideo(
+            in_channels=3,
+            out_channels=3,
+            latent_channels=3,
+            block_out_channels=(8, 8, 8, 8),
+            decoder_block_out_channels=(8, 8, 8, 8),
+            layers_per_block=(1, 1, 1, 1, 1),
+            decoder_layers_per_block=(1, 1, 1, 1, 1),
+            spatio_temporal_scaling=(True, True, False, False),
+            decoder_spatio_temporal_scaling=(True, True, False, False),
+            decoder_inject_noise=(False, False, False, False, False),
+            upsample_residual=(False, False, False, False),
+            upsample_factor=(1, 1, 1, 1),
+            timestep_conditioning=False,
+            patch_size=1,
+            patch_size_t=1,
+            encoder_causal=True,
+            decoder_causal=False,
+        )
+        vae.decoder = _MockTemporalExpansionDecoder(vae.temporal_compression_ratio)
+
+        # Enough latent frames so that several temporal tiles overlap.
+        z = torch.randn(1, vae.config.latent_channels, 7, 8, 8)
+
+        with torch.no_grad():
+            full = vae.decode(z).sample
+            vae.use_framewise_decoding = True
+            tiled = vae.decode(z).sample
+
+        assert tiled.shape == full.shape
+        torch.testing.assert_close(tiled, full, atol=1e-6, rtol=1e-6)

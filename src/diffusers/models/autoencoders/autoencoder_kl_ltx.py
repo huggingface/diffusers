@@ -1496,7 +1496,9 @@ class AutoencoderKLLTXVideo(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrigi
             else:
                 decoded = self.decoder(tile, temb)
             if i > 0:
-                decoded = decoded[:, :, :-1, :, :]
+                # The decoder is causal: the first output frame of a chunk corresponds to the first latent
+                # frame of the chunk, which the previous chunk already decoded. Drop that duplicate.
+                decoded = decoded[:, :, 1:, :, :]
             row.append(decoded)
 
         result_row = []
