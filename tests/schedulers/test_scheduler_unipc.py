@@ -284,6 +284,61 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
         assert abs(result_sum.item() - 315.5757) < 1e-2, f" expected result sum 315.5757, but get {result_sum}"
         assert abs(result_mean.item() - 0.4109) < 1e-3, f" expected result mean 0.4109, but get {result_mean}"
 
+    def test_last_step_to_sigma_zero_is_the_data_prediction(self):
+        scheduler_class = self.scheduler_classes[0]
+        model = self.dummy_model()
+
+        for solver_type in ["bh1", "bh2"]:
+            for order in [1, 2, 3]:
+                for lower_order_final in [True, False]:
+                    scheduler_config = self.get_scheduler_config(
+                        solver_type=solver_type,
+                        solver_order=order,
+                        lower_order_final=lower_order_final,
+                        final_sigmas_type="zero",
+                    )
+                    scheduler = scheduler_class(**scheduler_config)
+                    scheduler.set_timesteps(10)
+
+                    sample = self.dummy_sample_deter.clone()
+                    for t in scheduler.timesteps[:-1]:
+                        sample = scheduler.step(model(sample, t), t, sample).prev_sample
+
+                    t_last = scheduler.timesteps[-1]
+                    last_residual = model(sample, t_last)
+                    expected = scheduler.convert_model_output(last_residual, sample=sample)
+                    prev_sample = scheduler.step(last_residual, t_last, sample).prev_sample
+
+                    assert torch.isfinite(prev_sample).all()
+                    assert torch.allclose(prev_sample, expected, atol=1e-6)
+
+    def test_predict_x0_false_requires_final_sigmas_type_sigma_min(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(predict_x0=False, final_sigmas_type="zero")
+        with self.assertRaises(ValueError):
+            scheduler_class(**scheduler_config)
+
+    def test_default_dtype_float64(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(solver_order=2)
+        scheduler = scheduler_class(**scheduler_config)
+        scheduler.set_timesteps(10)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter.clone()
+
+        prev_dtype = torch.get_default_dtype()
+        torch.set_default_dtype(torch.float64)
+        try:
+            for t in scheduler.timesteps:
+                residual = model(sample, t)
+                sample = scheduler.step(residual, t, sample).prev_sample
+        finally:
+            torch.set_default_dtype(prev_dtype)
+
+        assert sample.dtype == torch.float32
+        assert torch.isfinite(sample).all()
+
 
 class UniPCMultistepScheduler1DTest(UniPCMultistepSchedulerTest):
     @property
