@@ -73,6 +73,44 @@ class DDIMSchedulerTest(SchedulerCommonTest):
         for timestep_spacing in ["trailing", "leading"]:
             self.check_over_configs(timestep_spacing=timestep_spacing)
 
+    def test_prev_timestep_matches_schedule(self):
+        # step must use the materialised schedule, not a uniform-stride formula.
+        # The stride formula matches leading and trailing intermediates, but not linspace.
+        for timestep_spacing in ["leading", "trailing", "linspace"]:
+            scheduler = DDIMScheduler(
+                num_train_timesteps=1000,
+                beta_start=0.0001,
+                beta_end=0.02,
+                beta_schedule="linear",
+                clip_sample=False,
+                timestep_spacing=timestep_spacing,
+            )
+            scheduler.set_timesteps(10)
+            timesteps = scheduler.timesteps.tolist()
+            for i, t in enumerate(timesteps):
+                expected = -1 if i == len(timesteps) - 1 else timesteps[i + 1]
+                got = scheduler.previous_timestep(t)
+                got = int(got) if not isinstance(got, int) else got
+                if expected < 0:
+                    self.assertLess(got, 0)
+                else:
+                    self.assertEqual(got, expected)
+
+            # leading / trailing: schedule prev equals the historical stride formula except
+            # at the final step, where both are negative and both select final_alpha_cumprod.
+            if timestep_spacing in ["leading", "trailing"]:
+                stride = scheduler.config.num_train_timesteps // scheduler.num_inference_steps
+                for i, t in enumerate(timesteps[:-1]):
+                    self.assertEqual(timesteps[i + 1], t - stride)
+                hard_last = timesteps[-1] - stride
+                self.assertLess(hard_last, 0)
+
+            # linspace: the historical stride formula disagrees on intermediate steps.
+            if timestep_spacing == "linspace":
+                stride = scheduler.config.num_train_timesteps // scheduler.num_inference_steps
+                mismatches = sum(1 for i, t in enumerate(timesteps[:-1]) if timesteps[i + 1] != t - stride)
+                self.assertGreater(mismatches, 0)
+
     def test_rescale_betas_zero_snr(self):
         for rescale_betas_zero_snr in [True, False]:
             self.check_over_configs(rescale_betas_zero_snr=rescale_betas_zero_snr)
