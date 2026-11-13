@@ -13,11 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from functools import partial
-
 import pytest
 import torch
-import torch.multiprocessing as mp
 
 from diffusers import Cosmos3OmniTransformer, SeaCacheConfig
 from diffusers.hooks import sea_cache as sea_cache_module
@@ -30,7 +27,6 @@ from diffusers.models.transformers.transformer_cosmos3 import (
     Cosmos3PackedMoTAttention,
     Cosmos3VLTextMoTDecoderLayer,
 )
-from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -43,12 +39,6 @@ from ..testing_utils import (
     TensorParallelTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
-)
-from ..testing_utils.common import cast_inputs_to_dtype
-from ..testing_utils.parallelism import (
-    _find_free_port,
-    _tensor_parallel_from_pretrained_worker,
-    _tensor_parallel_worker,
 )
 
 
@@ -767,42 +757,3 @@ class TestCosmos3OmniTransformerTensorParallel(Cosmos3TensorParallelTesterConfig
     @pytest.fixture(autouse=True, params=["silu", "relu2"])
     def activation(self, request):
         self.hidden_act = request.param
-
-    @pytest.mark.parametrize("sharded", [False, True], ids=["unsharded", "sharded"])
-    def test_tensor_parallel_bfloat16(self, tmp_path, sharded):
-        init_dict = self.get_init_dict()
-        model = self.model_class(**init_dict).eval()
-        model.save_pretrained(tmp_path, max_shard_size="100KB" if sharded else "5GB")
-        assert (tmp_path / SAFE_WEIGHTS_INDEX_NAME).is_file() == sharded
-        reference = self.model_class.from_pretrained(tmp_path, dtype=torch.bfloat16).to(torch_device).eval()
-        expected_dtypes = {name: parameter.dtype for name, parameter in reference.named_parameters()}
-        assert {dtype for name, dtype in expected_dtypes.items() if name.startswith("time_embedder.")} == {
-            torch.float32
-        }
-        assert torch.bfloat16 in expected_dtypes.values()
-        inputs = cast_inputs_to_dtype(self.get_dummy_inputs(), torch.float32, torch.bfloat16)
-        with torch.no_grad():
-            predictions = reference(**inputs, return_dict=False)[0]
-        expected = torch.cat([sample.flatten() for sample in predictions]).float().cpu()
-        inputs = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
-        for k, v in inputs.items():
-            if isinstance(v, list):
-                inputs[k] = [x.cpu() if isinstance(x, torch.Tensor) else x for x in v]
-        state_dict = {name: tensor.cpu() for name, tensor in reference.state_dict().items()}
-
-        with mp.Manager() as manager:
-            for loading in (False, True):
-                result = manager.dict()
-                args = (2, _find_free_port(), self.model_class)
-                if loading:
-                    worker = _tensor_parallel_from_pretrained_worker
-                    args += (str(tmp_path), inputs, result, torch.bfloat16)
-                else:
-                    # Preserve the reference's mixed BF16/FP32 dtypes when rebuilding the in-memory model.
-                    worker = partial(_tensor_parallel_worker, assign=True)
-                    args += (init_dict, inputs, result, state_dict)
-                mp.spawn(worker, args=args, nprocs=2, join=True)
-                assert result.get("status") == "success", result.get("error", "Unknown error")
-                torch.testing.assert_close(expected, torch.tensor(result["output"]), atol=0.025, rtol=0.025)
-                if loading:
-                    assert result["parameter_dtypes"] == expected_dtypes

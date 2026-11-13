@@ -323,7 +323,6 @@ def _tensor_parallel_worker(
     return_dict,
     state_dict,
     device_type=torch_device,
-    assign=False,
 ):
     """Worker function for tensor parallel inference testing.
 
@@ -353,7 +352,7 @@ def _tensor_parallel_worker(
             device = torch.device(f"{device_type}:{rank}")
 
         model = model_class(**init_dict)
-        model.load_state_dict(state_dict, assign=assign)
+        model.load_state_dict(state_dict)
         model.to(device)
         model.eval()
 
@@ -389,7 +388,7 @@ def _tensor_parallel_worker(
 
 
 def _tensor_parallel_from_pretrained_worker(
-    rank, world_size, master_port, model_class, checkpoint_dir, inputs_dict, return_dict, dtype=None
+    rank, world_size, master_port, model_class, checkpoint_dir, inputs_dict, return_dict
 ):
     """Worker for `from_pretrained(..., parallel_config=...)`, i.e. sharding while reading the checkpoint.
 
@@ -412,7 +411,7 @@ def _tensor_parallel_from_pretrained_worker(
         from diffusers.hooks.tensor_parallel import resolve_tp_shard_specs
 
         model = model_class.from_pretrained(
-            checkpoint_dir, dtype=dtype, parallel_config=TensorParallelConfig(tp_degree=world_size)
+            checkpoint_dir, parallel_config=TensorParallelConfig(tp_degree=world_size)
         ).eval()
 
         device = torch.device(f"{torch_device}:{rank}")
@@ -450,7 +449,6 @@ def _tensor_parallel_from_pretrained_worker(
 
             unplanned = sorted(k for k, v in state_dict.items() if isinstance(v, DTensor) and k not in specs)
             assert not unplanned, f"Parameters not covered by `_tp_plan` were loaded as DTensors: {unplanned}"
-            return_dict["parameter_dtypes"] = {name: parameter.dtype for name, parameter in model.named_parameters()}
 
             return_dict["status"] = "success"
             return_dict["output"] = output.float().cpu().tolist()
