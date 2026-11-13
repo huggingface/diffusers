@@ -27,9 +27,11 @@ The caption helpers here are shared by `Ideogram4Pipeline` and the modular `Ideo
 import math
 
 import torch
+from torch import nn
 
-from ...models.others.prompt_enhancer_head_ideogram4 import Ideogram4PromptEnhancerHead as _Ideogram4PromptEnhancerHead
-from ...utils import deprecate, logging
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...models.modeling_utils import ModelMixin
+from ...utils import logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -37,17 +39,21 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 PROMPT_UPSAMPLE_TEMPERATURE = 1.0
 
 
-# Deprecated alias kept for backward compatibility. The warning is raised from `__new__` rather than `__init__` so
-# that the parent's `__init__` signature, which `ConfigMixin` inspects when loading a config, stays intact.
-class Ideogram4PromptEnhancerHead(_Ideogram4PromptEnhancerHead):
-    def __new__(cls, *args, **kwargs):
-        deprecate(
-            "Ideogram4PromptEnhancerHead",
-            "1.0.0",
-            "Importing `Ideogram4PromptEnhancerHead` from `diffusers.pipelines.ideogram4.prompt_enhancer` is deprecated. "
-            "Import it with `from diffusers import Ideogram4PromptEnhancerHead` instead.",
-        )
-        return super().__new__(cls)
+class Ideogram4PromptEnhancerHead(ModelMixin, ConfigMixin):
+    """LM head that makes the head-less Qwen3-VL `text_encoder` generative for prompt upsampling.
+
+    An optional pipeline component (`prompt_enhancer_head`): its weights load via a normal `from_pretrained` (its own
+    small repo, or bundled in the model repo) rather than an in-pipeline download. At upsample time the pipeline
+    combines it with the shared `text_encoder` body to form the generative model.
+    """
+
+    @register_to_config
+    def __init__(self, hidden_size: int = 4096, vocab_size: int = 151936):
+        super().__init__()
+        self.lm_head = nn.Linear(hidden_size, vocab_size, bias=False)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        return self.lm_head(hidden_states)
 
 
 def build_prompt_enhancer(text_encoder, prompt_enhancer_head):

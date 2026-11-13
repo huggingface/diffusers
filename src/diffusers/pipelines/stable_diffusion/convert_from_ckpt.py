@@ -39,7 +39,7 @@ from ...models import (
     PriorTransformer,
     UNet2DConditionModel,
 )
-from ...models.others import StableUnCLIPImageNormalizer
+from ...models.condition_embedders import StableUnCLIPImageNormalizer
 from ...schedulers import (
     DDIMScheduler,
     DDPMScheduler,

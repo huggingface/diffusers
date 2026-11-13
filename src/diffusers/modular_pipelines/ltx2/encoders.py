@@ -23,13 +23,14 @@ from transformers import PreTrainedModel, PreTrainedTokenizerBase, ProcessorMixi
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKLLTX2Video, LTX2VideoTransformer3DModel
 from ...models.condition_embedders import LTX2TextConnectors
-from ...models.others import LTX2DurationHead
 
-# NOTE (modular.md gotcha #1): `LTX2VideoCondition`, `LTX2ReferenceCondition`, the prompt-enhancement config/helpers,
-# and the system prompts live under `diffusers.pipelines.ltx2.*`, and modular blocks must not import from
-# `diffusers.pipelines.*`. The two condition dataclasses, the enhancement config, the response/image helpers, and the
-# system prompts are plain data and utilities (relocate to a neutral shared module or copy into this package). Imported
-# from the pipelines path here only so the draft is runnable.
+# NOTE (modular.md gotcha #1): `LTX2DurationHead`, `LTX2VideoCondition`, `LTX2ReferenceCondition`, the
+# prompt-enhancement config/helpers, and the system prompts live under `diffusers.pipelines.ltx2.*`, and modular blocks
+# must not import from `diffusers.pipelines.*`. `LTX2DurationHead` is a `ModelMixin` / `ConfigMixin` model class
+# (relocate to `src/diffusers/models/`); the two condition dataclasses, the enhancement config, the response/image
+# helpers, and the system prompts are plain data and utilities (relocate to a neutral shared module or copy into this
+# package). Imported from the pipelines path here only so the draft is runnable.
+from ...pipelines.ltx2.duration_head import LTX2DurationHead
 from ...pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
 from ...pipelines.ltx2.pipeline_ltx2_ic_lora import LTX2ReferenceCondition
 from ...pipelines.ltx2.prompt_enhancement import (

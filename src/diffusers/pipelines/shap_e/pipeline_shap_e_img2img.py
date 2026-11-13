@@ -20,7 +20,7 @@ import torch
 from transformers import CLIPImageProcessor, CLIPVisionModel
 
 from ...models import PriorTransformer
-from ...models.others import ShapERenderer
+from ...models.autoencoders import ShapERenderer
 from ...schedulers import HeunDiscreteScheduler
 from ...utils import (
     BaseOutput,

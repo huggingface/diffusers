@@ -12,16 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ...models.others.renderer_shap_e import (  # noqa: F401
+from ...models.autoencoders.renderer_shap_e import (  # noqa: F401
     BoundingBoxVolume,
     ImportanceRaySampler,
     MLPNeRFModelOutput,
     StratifiedRaySampler,
     VoidNeRFModel,
 )
-from ...models.others.renderer_shap_e import MLPNeRSTFModel as _MLPNeRSTFModel
-from ...models.others.renderer_shap_e import ShapEParamsProjModel as _ShapEParamsProjModel
-from ...models.others.renderer_shap_e import ShapERenderer as _ShapERenderer
+from ...models.autoencoders.renderer_shap_e import MLPNeRSTFModel as _MLPNeRSTFModel
+from ...models.autoencoders.renderer_shap_e import ShapEParamsProjModel as _ShapEParamsProjModel
+from ...models.autoencoders.renderer_shap_e import ShapERenderer as _ShapERenderer
 from ...utils import deprecate
 
 
@@ -44,7 +44,7 @@ class MLPNeRSTFModel(_MLPNeRSTFModel):
             "MLPNeRSTFModel",
             "1.0.0",
             "Importing `MLPNeRSTFModel` from `diffusers.pipelines.shap_e.renderer` is deprecated. "
-            "Import it from `diffusers.models.others.renderer_shap_e` instead.",
+            "Import it from `diffusers.models.autoencoders.renderer_shap_e` instead.",
         )
         return super().__new__(cls)
 
@@ -55,6 +55,6 @@ class ShapEParamsProjModel(_ShapEParamsProjModel):
             "ShapEParamsProjModel",
             "1.0.0",
             "Importing `ShapEParamsProjModel` from `diffusers.pipelines.shap_e.renderer` is deprecated. "
-            "Import it from `diffusers.models.others.renderer_shap_e` instead.",
+            "Import it from `diffusers.models.autoencoders.renderer_shap_e` instead.",
         )
         return super().__new__(cls)

@@ -12,4 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ...models.others.camera_shap_e import DifferentiableProjectiveCamera, create_pan_cameras  # noqa: F401
+from ...models.autoencoders.camera_shap_e import DifferentiableProjectiveCamera, create_pan_cameras  # noqa: F401

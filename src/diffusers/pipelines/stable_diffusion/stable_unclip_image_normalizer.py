@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ...models.others.image_normalizer_stable_unclip import StableUnCLIPImageNormalizer as _StableUnCLIPImageNormalizer
+from ...models.condition_embedders.condition_embedder_stable_unclip import (
+    StableUnCLIPImageNormalizer as _StableUnCLIPImageNormalizer,
+)
 from ...utils import deprecate
 
 

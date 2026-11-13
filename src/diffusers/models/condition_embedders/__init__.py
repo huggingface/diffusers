@@ -12,3 +12,4 @@ if is_torch_available():
     from .condition_embedder_p_h3_image import PH3ImageTextConnector
     from .condition_embedder_stable_audio import StableAudioProjectionModel
     from .condition_embedder_stable_audio_3 import StableAudio3DurationEmbedder
+    from .condition_embedder_stable_unclip import StableUnCLIPImageNormalizer
