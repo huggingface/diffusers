@@ -72,7 +72,9 @@ def encode_position(position):
 
 def encode_direction(position, direction=None):
     if direction is None:
-        return torch.zeros_like(posenc_nerf(position, min_deg=0, max_deg=8))
+        # Same shape as posenc_nerf(position, min_deg=0, max_deg=8), without computing an encoding that is discarded.
+        dim = position.shape[-1]
+        return position.new_zeros(*position.shape[:-1], dim + 2 * dim * 8)
     else:
         return posenc_nerf(direction, min_deg=0, max_deg=8)
 
@@ -603,6 +605,7 @@ class MLPNeRFModelOutput(BaseOutput):
     signed_distance: torch.Tensor
     channels: torch.Tensor
     ts: torch.Tensor
+    raw_output: torch.Tensor | None = None
 
 
 class MLPNeRSTFModel(ModelMixin, ConfigMixin):
@@ -680,6 +683,9 @@ class MLPNeRSTFModel(ModelMixin, ConfigMixin):
         if h_directionless is None:
             h_directionless = h_preact
 
+        return self._outputs_from_raw(h_final, ts, nerf_level=nerf_level, rendering_mode=rendering_mode)
+
+    def _outputs_from_raw(self, h_final, ts, nerf_level="coarse", rendering_mode="nerf"):
         activation = self.map_indices_to_keys(h_final)
 
         if nerf_level == "coarse":
@@ -701,7 +707,9 @@ class MLPNeRSTFModel(ModelMixin, ConfigMixin):
         channels = self.channel_activation(h_channels)
 
         # yiyi notes: I think signed_distance is not used
-        return MLPNeRFModelOutput(density=density, signed_distance=signed_distance, channels=channels, ts=ts)
+        return MLPNeRFModelOutput(
+            density=density, signed_distance=signed_distance, channels=channels, ts=ts, raw_output=h_final
+        )
 
 
 class ChannelsProj(nn.Module):
@@ -846,6 +854,8 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         Args:
             rays: [batch_size x ... x 2 x 3] origin and direction. sampler: disjoint volume integrals. n_samples:
             number of ts to sample. prev_model_outputs: model outputs from the previous rendering step, including
+            `ts` and `raw_output`. They must come from the previous `render_rays` call of this renderer on the same
+            `rays` with the same `render_with_direction`; their raw MLP outputs are reused at their `ts`.
 
         :return: A tuple of
             - `channels`
@@ -861,17 +871,17 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         ts = sampler.sample(vrange.t0, vrange.t1, n_samples)
         ts = ts.to(rays.dtype)
 
+        # The MLP runs on the new ts only; the raw output at `prev_model_out.ts` is reused.
+        query_ts = ts
         if prev_model_out is not None:
-            # Append the previous ts now before fprop because previous
-            # rendering used a different model and we can't reuse the output.
-            ts = torch.sort(torch.cat([ts, prev_model_out.ts], dim=-2), dim=-2).values
+            ts, order = torch.sort(torch.cat([ts, prev_model_out.ts], dim=-2), dim=-2)
 
         batch_size, *_shape, _t0_dim = vrange.t0.shape
-        _, *ts_shape, _ts_dim = ts.shape
+        _, *ts_shape, _ts_dim = query_ts.shape
 
         # 2. Get the points along the ray and query the model
         directions = torch.broadcast_to(direction.unsqueeze(-2), [batch_size, *ts_shape, 3])
-        positions = origin.unsqueeze(-2) + ts * directions
+        positions = origin.unsqueeze(-2) + query_ts * directions
 
         directions = directions.to(self.mlp.dtype)
         positions = positions.to(self.mlp.dtype)
@@ -881,9 +891,16 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         model_out = self.mlp(
             position=positions,
             direction=optional_directions,
-            ts=ts,
+            ts=query_ts,
             nerf_level="coarse" if prev_model_out is None else "fine",
         )
+
+        if prev_model_out is not None:
+            # Only `raw_output` of the call above is used: merge it with the previous raw output in the sorted order
+            # of `ts` and apply the fine heads to the result.
+            raw = torch.cat([model_out.raw_output, prev_model_out.raw_output], dim=-2)
+            raw = torch.gather(raw, -2, order.expand(*order.shape[:-1], raw.shape[-1]))
+            model_out = self.mlp._outputs_from_raw(raw, ts, nerf_level="fine")
 
         # 3. Integrate the model results
         channels, weights, transmittance = integrate_samples(
