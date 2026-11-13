@@ -135,7 +135,8 @@ class LTX2DiffusionVaeDecoderStep(ModularPipelineBlocks):
             "Step that unpacks and decodes the denoised video latents with the LTX-2 diffusion decoder (or returns "
             "latents). Swap this in for `LTX2VaeDecoderStep` on checkpoints that ship the diffusion decoder, which "
             "from LTX-2.5 on is the native default. The decoder denoises rather than deterministically decoding, so "
-            "it draws its own noise from `generator` and takes no decode timestep."
+            "it draws its own noise from `generator` and takes no decode timestep. Optional `keyframe_latents` / "
+            "`keyframe_frame_indices` are forwarded to the same `decode` call."
         )
 
     @property
@@ -162,6 +163,22 @@ class LTX2DiffusionVaeDecoderStep(ModularPipelineBlocks):
             ),
             InputParam.template("generator"),
             InputParam.template("dtype", required=True, default=None),
+            InputParam(
+                "keyframe_latents",
+                type_hint=torch.Tensor,
+                description=(
+                    "Denormalized keyframe planes `(B, C, P, H, W)` on the unpacked latent grid, one latent frame per "
+                    "plane. Same contract as `LTX2DFRPipelineOutput.keyframes`. Omit for a plain decode."
+                ),
+            ),
+            InputParam(
+                "keyframe_frame_indices",
+                type_hint=list[int],
+                description=(
+                    "Pixel-frame index of each keyframe plane, length `P`. Same contract as "
+                    "`LTX2DFRPipelineOutput.keyframe_positions`. Required when `keyframe_latents` is set."
+                ),
+            ),
         ]
 
     @property
@@ -198,8 +215,17 @@ class LTX2DiffusionVaeDecoderStep(ModularPipelineBlocks):
             latents, components.latents_mean, components.latents_std, components.vae_scaling_factor
         )
         latents = latents.to(decoder.dtype)
+        keyframe_latents = block_state.keyframe_latents
+        if keyframe_latents is not None:
+            keyframe_latents = keyframe_latents.to(device=latents.device, dtype=decoder.dtype)
         # It samples the noise it denoises, so pass the generator to keep decoding reproducible.
-        video = decoder.decode(latents, generator=block_state.generator, return_dict=False)[0]
+        video = decoder.decode(
+            latents,
+            generator=block_state.generator,
+            return_dict=False,
+            keyframe_latents=keyframe_latents,
+            keyframe_frame_indices=block_state.keyframe_frame_indices,
+        )[0]
         block_state.videos = components.video_processor.postprocess_video(video, output_type=block_state.output_type)
 
         self.set_block_state(state, block_state)

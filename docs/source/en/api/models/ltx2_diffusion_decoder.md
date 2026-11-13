@@ -79,6 +79,90 @@ reproduce the untiled result exactly; the default tile and overlap sizes match t
 Neighborhood attention rejects any grid smaller than its kernel, so a trailing remnant tile is merged into its
 neighbor rather than decoded on its own.
 
+## Keyframe-aware decoding
+
+A decode can be anchored on *keyframe planes*: single-frame latents at known pixel frames, for example the generated
+slots of [`LTX2DFRPipeline`]. Each plane must be the latent of a standalone one-frame clip (the VAE is causal, so a
+frame encoded inside a clip is a different latent), denormalized like the video latents. Positions are pixel-frame
+indices, not latent-frame indices.
+
+Omit both arguments for a plain decode; that path does not depend on whether the checkpoint carries a keyframe tag.
+
+```python
+video = decoder.decode(
+    latents,  # (B, C, F, H, W), already denormalized
+    generator=torch.Generator("cuda").manual_seed(0),
+    keyframe_latents=keyframe_latents,  # (B, C, P, H, W)
+    keyframe_frame_indices=[24, 48],  # pixel frame of each plane
+).sample
+```
+
+The planes go through the same weights as the video. In every attention layer each video position also attends to the
+same spatial window on its two nearest planes (frames before the first plane attend to that plane alone), and each
+plane to the same window on its two nearest frames. This joint attention runs on a built-in PyTorch implementation
+whatever attention processor is set, since neither FlexAttention's block mask nor NATTEN expresses it.
+
+Checkpoints trained for keyframe decoding also carry a learned tag added to the plane latents, which
+`decoder_keyframe_type_embedding=True` creates as `decoder.type_emb`. Decoding with keyframe planes on a checkpoint that
+lacks that tag raises rather than decoding the planes untagged. If a checkpoint's weights carry `decoder.type_emb` but
+its config does not set the flag, pass `decoder_keyframe_type_embedding=True` to
+[`LTX2VideoDiffusionDecoderModel.from_pretrained`]; otherwise the tag is dropped as an unexpected key. Converting the
+original VAE with `convert_ltx2_diffusion_video_vae` sets the flag when the tag is present.
+
+With tiling enabled each temporal tile keeps the planes inside it plus the nearest plane on each side.
+
+### Standard pipeline
+
+[`LTX2VideoDiffusionDecodePipeline`] forwards the same arguments. A DFR pass with `output_type="latent"` already
+denormalized both the video and the slots:
+
+```python
+from diffusers import LTX2DFRPipeline, LTX2VideoDiffusionDecodePipeline, LTX2VideoDiffusionDecoderModel
+
+dfr = LTX2DFRPipeline.from_pretrained("Lightricks/LTX-2.5-Diffusers", dtype=torch.bfloat16)
+out = dfr(prompt="...", output_type="latent", generate_slots=True)
+
+decoder = LTX2VideoDiffusionDecoderModel.from_pretrained(
+    "Lightricks/LTX-2.5-Diffusers",
+    subfolder="diffusion_decoder",
+    dtype=torch.bfloat16,
+    decoder_keyframe_type_embedding=True,  # keep the trained keyframe tag `decoder.type_emb`
+)
+decode_pipe = LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=dfr.scheduler)
+video = decode_pipe(
+    out.frames,
+    generator=torch.Generator("cuda").manual_seed(0),
+    denormalize=False,
+    keyframe_latents=out.keyframes,
+    keyframe_frame_indices=out.keyframe_positions,
+).frames
+```
+
+### Modular workflow
+
+[`LTX2DiffusionVaeDecoderStep`] (the LTX-2.5 decode block) declares the same inputs. Packed denoised latents are
+unpacked and denormalized as usual; `keyframe_latents` are already denormalized 5-D planes, matching
+`LTX2DFRPipelineOutput.keyframes`. They are optional, so they do not change automatic workflow selection.
+
+```python
+from diffusers.modular_pipelines.ltx2.decoders import LTX2DiffusionVaeDecoderStep
+
+decode = LTX2DiffusionVaeDecoderStep().init_pipeline("Lightricks/LTX-2.5-Diffusers")
+# Keep the trained keyframe tag `decoder.type_emb`; the dict form passes the flag to the decoder only.
+decode.load_components(dtype=torch.bfloat16, decoder_keyframe_type_embedding={"diffusion_decoder": True})
+videos = decode(
+    latents=packed_latents,
+    height=512,
+    width=704,
+    num_frames=121,
+    dtype=torch.bfloat16,
+    generator=torch.Generator("cuda").manual_seed(0),
+    keyframe_latents=out.keyframes,
+    keyframe_frame_indices=out.keyframe_positions,
+    output="videos",
+)
+```
+
 ## LTX2VideoDiffusionDecoderModel
 
 [[autodoc]] LTX2VideoDiffusionDecoderModel
