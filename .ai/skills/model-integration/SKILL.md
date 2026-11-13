@@ -89,7 +89,7 @@ Common conversion patterns to watch for model-level components:
 
 ## Hub checkpoint
 
-Conversion ends with a repo a user can load in one call. Decide its layout with the user before the conversion script writes anything — the script's output directory should already be that layout.
+Conversion ends with a repo that users can load with `ModularPipeline.from_pretrained`. Decide its layout with the user before the conversion script writes anything — the script's output directory should already be that layout.
 
 **Separate repo or the reference checkpoint's repo — the user's call.** In a separate repo the converted weights are laid out the standard way (`transformer/`, `vae/`, `text_encoder/`, ...). In the reference checkpoint's repo the converted components sit next to the reference ones, and the only practical difference is folder names: when the reference checkpoint already uses a name the diffusers layout needs (`transformer/`, `vae/`, ...), write the converted component to `<name>_diffusers/` and leave the reference folder untouched. [MiniMaxAI/MiniMax-H3-Image](https://huggingface.co/MiniMaxAI/MiniMax-H3-Image) is the worked example: `transformer/` and `vae/` hold the reference weights, `transformer_diffusers/` and `vae_diffusers/` hold the converted ones, and `modular_model_index.json` points at the latter through each component's `subfolder`. Components with no name clash keep their plain folder name.
 
