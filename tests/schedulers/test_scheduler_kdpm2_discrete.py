@@ -33,6 +33,16 @@ class KDPM2DiscreteSchedulerTest(SchedulerCommonTest):
         for schedule in ["linear", "scaled_linear"]:
             self.check_over_configs(beta_schedule=schedule)
 
+    def test_sigmas_interpol_no_nan_with_terminal_zero_sigma(self):
+        # Regression test for https://github.com/huggingface/diffusers/issues/15002:
+        # sigmas_interpol must not contain NaN/inf when the sigma schedule
+        # terminates at zero (log(0) interpolation produced NaN on final step).
+        scheduler = KDPM2DiscreteScheduler(**self.get_scheduler_config())
+        scheduler.set_timesteps(10, device=torch_device)
+        assert torch.isfinite(scheduler.sigmas_interpol).all(), (
+            f"sigmas_interpol contains non-finite values: {scheduler.sigmas_interpol}"
+        )
+
     def test_prediction_type(self):
         for prediction_type in ["epsilon", "v_prediction"]:
             self.check_over_configs(prediction_type=prediction_type)
