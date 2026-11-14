@@ -514,8 +514,8 @@ class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         denoising loop opens this context around them. The model weights, LoRA scale and attention backend must not
         change inside the context. The cache is dropped on exit.
 
-        Nothing is reused when context parallelism is enabled, when a diffusers hook is registered on the
-        model, with gradients enabled, or under `torch.compile`.
+        Nothing is reused when context parallelism is enabled, when a diffusers hook is on the model as the context
+        opens or on an image-prefix module at call time, with gradients enabled, or under `torch.compile`.
         """
         enabled = self._parallel_config is None and not _has_diffusers_hooks(self.modules())
         previous_cache = self._image_prefix_cache
