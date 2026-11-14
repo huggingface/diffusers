@@ -81,6 +81,19 @@ class TestImageProcessor:
                 f"decoded output does not match input for output_type {output_type}"
             )
 
+    def test_denormalize_numpy_and_torch(self):
+        """Regression: denormalize must accept NumPy arrays as documented."""
+        values = np.array([-2.0, -1.0, 0.0, 1.0, 2.0], dtype=np.float32)
+        expected = np.array([0.0, 0.0, 0.5, 1.0, 1.0], dtype=np.float32)
+
+        out_np = VaeImageProcessor.denormalize(values)
+        assert isinstance(out_np, np.ndarray)
+        assert np.allclose(out_np, expected)
+
+        out_pt = VaeImageProcessor.denormalize(torch.tensor(values))
+        assert isinstance(out_pt, torch.Tensor)
+        assert np.allclose(out_pt.cpu().numpy(), expected)
+
     def test_vae_image_processor_pil(self):
         image_processor = VaeImageProcessor(do_resize=False, do_normalize=True)
 
