@@ -15,7 +15,7 @@
 import torch
 
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import OutputParam
+from ..modular_pipeline_utils import InputParam, OutputParam
 from .before_denoise import (
     PH3ImageEditPrepareLatentsStep,
     PH3ImageEditPrepareLayoutStep,
@@ -47,7 +47,7 @@ class PH3ImageAutoBeforeEncodeStep(AutoPipelineBlocks):
           4194304) vision_pixels (default: 1000000)
 
       Inputs:
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, depends on the workflow):
               The image to edit, or a list of at most 8 images: the first is edited, the others are references.
           height (`int`, *optional*):
               Height of the generated image in pixels, rounded to a multiple of 32. Defaults to 2912 for `text2image`,
@@ -97,7 +97,7 @@ class PH3ImageAutoTextEncoderStep(AutoPipelineBlocks):
       Inputs:
           prompt (`str`):
               The prompt, or the edit instruction when `image` is passed. A single string.
-          vision_images (`list`, *optional*):
+          vision_images (`list`, *optional*, depends on the workflow):
               The images of the edit resized for the text encoder, the image to edit first.
 
       Outputs:
@@ -132,7 +132,7 @@ class PH3ImageAutoVaeEncoderStep(AutoPipelineBlocks):
           vae (`AutoencoderKLPH3Image`)
 
       Inputs:
-          reference_images (`list`, *optional*):
+          reference_images (`list`, *optional*, depends on the workflow):
               The images of the edit resized for the VAE, the image to edit first.
 
       Outputs:
@@ -329,17 +329,17 @@ class PH3ImageAutoDenoiseStep(AutoPipelineBlocks):
       Inputs:
           text_token_tags (`Tensor`):
               The per-row modality tag of every row of `prompt_embeds`.
-          condition_latents (`list`, *optional*):
+          condition_latents (`list`, *optional*, depends on the workflow):
               The conditioning latents of the images of the edit. Their shapes give the geometry of the reference
               blocks.
-          height (`int`, *optional*, defaults to None or 2912, depending on the workflow):
+          height (`int`, *optional*, depends on the workflow):
               Height of the edited image in pixels.
-          width (`int`, *optional*, defaults to None or 2912, depending on the workflow):
+          width (`int`, *optional*, depends on the workflow):
               Width of the edited image in pixels.
           generator (`Generator`, *optional*):
               The generator of the request. The conditioning noise is drawn from it first, one draw per condition,
               before the noise of the generated rows.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated image noise of shape `(1, latent_channels, 1, latent_height, latent_width)`, used instead
               of the draw.
           sigmas (`list`, *optional*):
@@ -397,7 +397,7 @@ class PH3ImageBlocks(SequentialPipelineBlocks):
           passed.
 
       Inputs:
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, depends on the workflow):
               The image to edit, or a list of at most 8 images: the first is edited, the others are references.
           height (`int`, *optional*):
               Height of the generated image in pixels, rounded to a multiple of 32. Defaults to 2912 for `text2image`,
@@ -409,19 +409,19 @@ class PH3ImageBlocks(SequentialPipelineBlocks):
               `canvas_min_pixels`, and works best at 4 or 8 megapixels.
           prompt (`str`):
               The prompt, or the edit instruction when `image` is passed. A single string.
-          max_new_tokens (`int`, *optional*, defaults to 1536 or 1024, depending on the workflow):
+          max_new_tokens (`int`, *optional*, depends on the workflow):
               The most tokens the upsampler may generate, its reasoning included.
-          vision_images (`list`, *optional*):
+          vision_images (`list`, *optional*, depends on the workflow):
               The images of the edit resized for the text encoder, the image to edit first.
-          reference_images (`list`, *optional*):
+          reference_images (`list`, *optional*, depends on the workflow):
               The images of the edit resized for the VAE, the image to edit first.
-          condition_latents (`list`, *optional*):
+          condition_latents (`list`, *optional*, depends on the workflow):
               The conditioning latents of the images of the edit. Their shapes give the geometry of the reference
               blocks.
           generator (`Generator`, *optional*):
               The generator of the request. The conditioning noise is drawn from it first, one draw per condition,
               before the noise of the generated rows.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated image noise of shape `(1, latent_channels, 1, latent_height, latent_width)`, used instead
               of the draw.
           sigmas (`list`, *optional*):
@@ -450,6 +450,27 @@ class PH3ImageBlocks(SequentialPipelineBlocks):
         PH3ImageDecodeStep,
     ]
     block_names = ["before_encode", "prompt_upsampler", "text_encoder", "vae_encoder", "denoise", "decode"]
+    # `before_encode` reads `height`/`width` with no default (an edit derives them from the image) and the prompt
+    # upsampler defaults them to 2912, so the pipeline declares them itself: optional, no default, each workflow keeps
+    # its own
+    input_overrides = [
+        InputParam.template(
+            "height",
+            description=(
+                "Height of the generated image in pixels, rounded to a multiple of 32. Defaults to 2912 for "
+                "`text2image`, which works best at 8 megapixels. An edit defaults to the first image's size, at "
+                "least `canvas_min_pixels`, and works best at 4 or 8 megapixels."
+            ),
+        ),
+        InputParam.template(
+            "width",
+            description=(
+                "Width of the generated image in pixels, rounded to a multiple of 32. Defaults to 2912 for "
+                "`text2image`, which works best at 8 megapixels. An edit defaults to the first image's size, at "
+                "least `canvas_min_pixels`, and works best at 4 or 8 megapixels."
+            ),
+        ),
+    ]
     _workflow_map = {
         "text2image": {"prompt": True},
         "image_conditioned": {"prompt": True, "image": True},

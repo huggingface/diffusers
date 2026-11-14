@@ -14,7 +14,7 @@
 
 from ...utils import logging
 from ..modular_pipeline import SequentialPipelineBlocks
-from ..modular_pipeline_utils import OutputParam
+from ..modular_pipeline_utils import InputParam, OutputParam
 from .before_denoise import (
     WanPrepareLatentsStep,
     WanSetTimestepsStep,
@@ -158,7 +158,7 @@ class Wan22VaceBlocks(SequentialPipelineBlocks):
           width (`None`, *optional*):
               TODO: Add description.
           num_frames (`int`, *optional*, defaults to 81):
-              TODO: Add description.
+              The number of frames in the generated video.
           generator (`None`, *optional*):
               TODO: Add description.
           num_videos_per_prompt (`None`, *optional*, defaults to 1):
@@ -195,6 +195,11 @@ class Wan22VaceBlocks(SequentialPipelineBlocks):
         "vace_encoder",
         "denoise",
         "decode",
+    ]
+    # `vace_encoder` defaults `num_frames` to 81 and the denoise step declares it without a default (it fills it in
+    # from the latents or the components), so the pipeline declares it itself
+    input_overrides = [
+        InputParam("num_frames", type_hint=int, default=81, description="The number of frames in the generated video.")
     ]
 
     @property

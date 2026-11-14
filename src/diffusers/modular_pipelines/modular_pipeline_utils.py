@@ -15,7 +15,7 @@
 import inspect
 import re
 from collections import OrderedDict
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from types import UnionType
 from typing import Any, Literal, Type, Union, get_args, get_origin
 
@@ -555,6 +555,20 @@ OUTPUT_PARAM_TEMPLATES = {
 }
 
 
+class _Required:
+    """The marker `ConditionalPipelineBlocks` records in `defaults_by_block` for a sub-block requiring the input."""
+
+    def __repr__(self):
+        return "required"
+
+    def __reduce__(self):
+        # keep the single instance through `copy`, `deepcopy` and pickling, so `is REQUIRED` stays true
+        return "REQUIRED"
+
+
+REQUIRED = _Required()
+
+
 @dataclass
 class InputParam:
     """Specification for an input parameter."""
@@ -566,9 +580,12 @@ class InputParam:
     description: str = ""
     kwargs_type: str = None
     metadata: dict[str, Any] = None
-    # set by `combine_inputs` when sub-blocks of a ConditionalPipelineBlocks declare different defaults for this
-    # input: maps block name -> that block's declared default; `default` is None in that case and each block
-    # resolves its own default at runtime in `get_block_state`
+    # Set by `ConditionalPipelineBlocks._get_inputs` when its sub-blocks do not declare the same default for this
+    # input (different values, or one declares it required and another does not): maps block name -> that block's
+    # default, with `REQUIRED` standing for "no default, must be passed". `default` is None and `required` is False in
+    # that case, and each block resolves its own at runtime in `get_block_state`: it fills in its default, or raises
+    # when an input it requires is missing. Nothing at runtime reads the record; the docstring renderer and the
+    # `_get_inputs` of an enclosing composite block do
     defaults_by_block: dict[str, Any] = None
 
     def __post_init__(self):
@@ -613,6 +630,9 @@ class OutputParam:
     description: str = ""
     kwargs_type: str = None
     metadata: dict[str, Any] = None
+    # private, set by a composite block on its `intermediate_outputs` when the output is not always produced, because it
+    # comes from a conditional block that can be skipped, or that not every branch produces. Not for a leaf block to declare
+    _maybe: bool = field(default=False, compare=False)
 
     def __repr__(self):
         return (
@@ -731,12 +751,12 @@ def format_params(params, header="Args", indent_level=4, max_line_length=115):
         if hasattr(param, "required"):
             if not param.required:
                 param_str += ", *optional*"
-                if param.defaults_by_block is not None:
-                    # e.g. ", defaults to None or 189, depending on the workflow"
-                    distinct_defaults = list(dict.fromkeys(param.defaults_by_block.values()))
-                    param_str += (
-                        f", defaults to {' or '.join(str(v) for v in distinct_defaults)}, depending on the workflow"
-                    )
+                if param.defaults_by_block:
+                    # the branches of a conditional sub-block declare it differently (a default each, or one requires
+                    # it). Which one applies, and whether an earlier block produces the value instead, depends on the
+                    # branch that runs, so the merged docstring says only that. `get_workflow(name).inputs` has the
+                    # exact signature of one workflow
+                    param_str += ", depends on the workflow"
                 elif param.default is not None:
                     param_str += f", defaults to {param.default}"
         param_str += "):"
@@ -811,12 +831,9 @@ def format_params_markdown(params, header="Inputs"):
 
         if hasattr(param, "required") and not param.required:
             param_str += ", *optional*"
-            if param.defaults_by_block is not None:
-                # e.g. ", defaults to `None` or `189`, depending on the workflow"
-                distinct_defaults = list(dict.fromkeys(param.defaults_by_block.values()))
-                param_str += (
-                    f", defaults to {' or '.join(f'`{v}`' for v in distinct_defaults)}, depending on the workflow"
-                )
+            if param.defaults_by_block:
+                # see `format_input_params`
+                param_str += ", depends on the workflow"
             elif param.default is not None:
                 param_str += f", defaults to `{param.default}`"
         param_str += ")"
@@ -1089,70 +1106,6 @@ def _normalize_requirements(reqs):
     return normalized
 
 
-def combine_inputs(*named_input_lists: list[tuple[str, list[InputParam]]]) -> list[InputParam]:
-    """
-    Combines multiple lists of InputParam objects from different blocks. Duplicate inputs keep the first occurrence. If
-    duplicate inputs declare different defaults, the combined input's default is None and the per-block defaults are
-    recorded in `defaults_by_block`; the branch that runs fills in its own default when it reads the state
-    (`get_block_state`), and the docstring formatters render the per-block defaults.
-
-    Example:
-
-    ```python
-    combine_inputs(
-        ("img2img", [InputParam("prompt"), InputParam("strength", default=0.3)]),
-        ("inpaint", [InputParam("prompt"), InputParam("strength", default=0.9999)]),
-    )
-    # returns:
-    #   InputParam("prompt")  # no disagreement -> first occurrence kept as-is
-    #   InputParam("strength", default=None, defaults_by_block={"img2img": 0.3, "inpaint": 0.9999})
-    ```
-
-    See `TestConditionalBlocksInputs` in `tests/modular_pipelines/test_conditional_pipeline_blocks.py` for the full
-    behavior.
-
-    Args:
-        named_input_lists: List of tuples containing (block_name, input_param_list) pairs
-
-    Returns:
-        List[InputParam]: Combined list of unique InputParam objects
-    """
-    combined_dict = {}  # name -> InputParam, e.g. {"strength": InputParam("strength", default=0.3)}
-    defaults_by_block = {}  # name -> {block_name: default}, e.g. {"strength": {"img2img": 0.3, "inpaint": 0.9999}}
-
-    for block_name, inputs in named_input_lists:
-        for input_param in inputs:
-            if input_param.name is None and input_param.kwargs_type is not None:
-                input_name = "*_" + input_param.kwargs_type
-            else:
-                input_name = input_param.name
-
-            if input_param.defaults_by_block:
-                # nested conditional block: prefix its block names with the sub-block name,
-                # e.g. {"img2img": 0.3, "inpaint": 0.9999} from sub-block "image" -> {"image.img2img": 0.3, "image.inpaint": 0.9999}
-                new_defaults = {f"{block_name}.{k}": v for k, v in input_param.defaults_by_block.items()}
-            else:
-                new_defaults = {block_name: input_param.default}
-
-            if input_name not in combined_dict:
-                combined_dict[input_name] = input_param
-                defaults_by_block[input_name] = new_defaults
-                continue
-
-            # duplicate input: accumulate this block's default,
-            # e.g. "strength" was {"img2img": 0.3}, after inpaint's turn it is {"img2img": 0.3, "inpaint": 0.9999}
-            defaults_by_block[input_name].update(new_defaults)
-            defaults = list(defaults_by_block[input_name].values())
-            if any(d != defaults[0] for d in defaults[1:]):
-                # blocks disagree (0.3 vs 0.9999): combined default becomes None and the per-block defaults are
-                # recorded on the param; `replace` creates a fresh copy so the blocks' own params are never mutated
-                combined_dict[input_name] = replace(
-                    combined_dict[input_name], default=None, defaults_by_block=dict(defaults_by_block[input_name])
-                )
-
-    return list(combined_dict.values())
-
-
 def combine_outputs(*named_output_lists: list[tuple[str, list[OutputParam]]]) -> list[OutputParam]:
     """
     Combines multiple lists of OutputParam objects from different blocks. For duplicate outputs, keeps the first
@@ -1174,6 +1127,63 @@ def combine_outputs(*named_output_lists: list[tuple[str, list[OutputParam]]]) ->
                 combined_dict[output_param.name] = output_param
 
     return list(combined_dict.values())
+
+
+def override_attribute(items: list, overrides: list, attr_name: str, block_name: str) -> list:
+    """
+    Apply a composite block's `*_overrides` to the list it derived from its sub-blocks.
+
+    Args:
+        items: the derived `InputParam`, `ComponentSpec` or `ConfigSpec` list
+        overrides: a list of declarations; the name of each must be in `items`, and the declaration, an object of the
+            same class as the entry it replaces, takes that entry's place whole
+        attr_name: the overrides attribute being applied, e.g. `"input_overrides"`, for error messages
+        block_name: the composite's class name, for error messages
+
+    Returns:
+        `items` with each overridden entry replaced by the composite's own declaration; the sub-blocks' declarations
+        are not touched.
+
+    Example:
+        ```python
+        inputs = [InputParam("strength", default=0.3), InputParam("prompt", required=True)]
+        override_attribute(
+            inputs, [InputParam.template("strength", default=0.9999)], "input_overrides", "InpaintStep"
+        )
+        # [<strength: optional, default=0.9999>, <prompt: required, default=None>]
+        ```
+    """
+    if not overrides:
+        return items
+    # kwargs inputs/outputs have no name and are keyed by "*_<kwargs_type>", like `ConditionalPipelineBlocks` does
+    index = {
+        item.name if item.name is not None else f"*_{item.kwargs_type}": position
+        for position, item in enumerate(items)
+    }
+    replaced = set()
+    for declaration in overrides:
+        if not isinstance(declaration, (InputParam, ComponentSpec, ConfigSpec)):
+            raise TypeError(
+                f"{block_name}.{attr_name} must be a list of declarations, e.g. "
+                f'`[InputParam("strength", default=0.5)]`; got an entry of type {type(declaration).__name__}.'
+            )
+        name = declaration.name if declaration.name is not None else f"*_{declaration.kwargs_type}"
+        if name in replaced:
+            raise ValueError(f"{block_name}.{attr_name} declares '{name}' more than once.")
+        replaced.add(name)
+        if name not in index:
+            raise ValueError(
+                f"{block_name}.{attr_name} has an entry for '{name}', which this block does not derive from its "
+                f"sub-blocks. Available: {sorted(k for k in index if not k.startswith('*_'))}"
+            )
+        expected = type(items[index[name]])
+        if not isinstance(declaration, expected):
+            raise TypeError(
+                f"The entry for '{name}' in {block_name}.{attr_name} must be of type {expected.__name__}, replacing "
+                f"the derived one; got {type(declaration).__name__}."
+            )
+        items[index[name]] = declaration
+    return items
 
 
 def generate_modular_model_card_content(blocks) -> dict[str, Any]:

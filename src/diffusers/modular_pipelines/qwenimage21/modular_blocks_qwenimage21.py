@@ -108,7 +108,7 @@ class QwenImage21AutoTextEncoderStep(AutoPipelineBlocks):
           (`Qwen3VLProcessor`)
 
       Inputs:
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, depends on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
           output_resolution (`int`, *optional*, defaults to 1024):
               Target side length used to derive the output size and to resize condition images.
@@ -208,7 +208,7 @@ class QwenImage21AutoVaeEncoderStep(AutoPipelineBlocks):
           image_processor (`VaeImageProcessor`) vae (`AutoencoderKLQwenImage21`)
 
       Inputs:
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, depends on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
           output_resolution (`int`, *optional*, defaults to 1024):
               Target side length used to derive the output size and to resize condition images.
@@ -438,15 +438,15 @@ class QwenImage21AutoCoreDenoiseStep(AutoPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
-          image_latents (`list`, *optional*):
+          image_latents (`list`, *optional*, depends on the workflow):
               Normalized latents of each condition image. Can be generated from vae_encoder step.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           output_resolution (`int`, *optional*, defaults to 1024):
               Target side length used to derive the output size and to resize condition images.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 40):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
@@ -510,7 +510,7 @@ class QwenImage21AutoBlocks(SequentialPipelineBlocks):
           (`ClassifierFreeGuidance`) transformer (`QwenImage21Transformer2DModel`)
 
       Inputs:
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, depends on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
           output_resolution (`int`, *optional*, defaults to 1024):
               Target side length used to derive the output size and to resize condition images.
@@ -526,11 +526,11 @@ class QwenImage21AutoBlocks(SequentialPipelineBlocks):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
-          image_latents (`list`, *optional*):
+          image_latents (`list`, *optional*, depends on the workflow):
               Normalized latents of each condition image. Can be generated from vae_encoder step.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 40):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.

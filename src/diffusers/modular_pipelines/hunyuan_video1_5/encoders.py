@@ -165,7 +165,6 @@ class HunyuanVideo15TextEncoderStep(ModularPipelineBlocks):
         return [
             InputParam.template("prompt", required=False),
             InputParam.template("negative_prompt"),
-            InputParam.template("num_images_per_prompt", name="num_videos_per_prompt"),
         ]
 
     @property
@@ -208,7 +207,6 @@ class HunyuanVideo15TextEncoderStep(ModularPipelineBlocks):
         device=None,
         dtype=None,
         batch_size=1,
-        num_videos_per_prompt=1,
     ):
         device = device or components._execution_device
         dtype = dtype or components.text_encoder.dtype
@@ -235,22 +233,6 @@ class HunyuanVideo15TextEncoderStep(ModularPipelineBlocks):
             tokenizer_max_length=components.tokenizer_2_max_length,
         )
 
-        _, seq_len, _ = prompt_embeds.shape
-        prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1).view(
-            batch_size * num_videos_per_prompt, seq_len, -1
-        )
-        prompt_embeds_mask = prompt_embeds_mask.repeat(1, num_videos_per_prompt, 1).view(
-            batch_size * num_videos_per_prompt, seq_len
-        )
-
-        _, seq_len_2, _ = prompt_embeds_2.shape
-        prompt_embeds_2 = prompt_embeds_2.repeat(1, num_videos_per_prompt, 1).view(
-            batch_size * num_videos_per_prompt, seq_len_2, -1
-        )
-        prompt_embeds_mask_2 = prompt_embeds_mask_2.repeat(1, num_videos_per_prompt, 1).view(
-            batch_size * num_videos_per_prompt, seq_len_2
-        )
-
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         prompt_embeds_mask = prompt_embeds_mask.to(dtype=dtype, device=device)
         prompt_embeds_2 = prompt_embeds_2.to(dtype=dtype, device=device)
@@ -268,7 +250,6 @@ class HunyuanVideo15TextEncoderStep(ModularPipelineBlocks):
 
         prompt = block_state.prompt
         negative_prompt = block_state.negative_prompt
-        num_videos_per_prompt = block_state.num_videos_per_prompt
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -288,7 +269,6 @@ class HunyuanVideo15TextEncoderStep(ModularPipelineBlocks):
             device=device,
             dtype=dtype,
             batch_size=batch_size,
-            num_videos_per_prompt=num_videos_per_prompt,
         )
 
         if components.requires_unconditional_embeds:
@@ -303,10 +283,7 @@ class HunyuanVideo15TextEncoderStep(ModularPipelineBlocks):
                 device=device,
                 dtype=dtype,
                 batch_size=batch_size,
-                num_videos_per_prompt=num_videos_per_prompt,
             )
-
-        state.set("batch_size", batch_size)
 
         self.set_block_state(state, block_state)
         return components, state

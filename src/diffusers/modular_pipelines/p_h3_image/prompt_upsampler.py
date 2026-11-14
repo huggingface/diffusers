@@ -264,9 +264,9 @@ class PH3ImageAutoPromptUpsampleStep(AutoPipelineBlocks):
       Inputs:
           prompt (`str`):
               The prompt, or the edit instruction when `image` is passed. A single string.
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, depends on the workflow):
               The images of the edit, at most 8, the image to edit first; the same ones the pipeline receives.
-          max_new_tokens (`int`, *optional*, defaults to 1536 or 1024, depending on the workflow):
+          max_new_tokens (`int`, *optional*, depends on the workflow):
               The most tokens the upsampler may generate, its reasoning included.
           height (`int`, *optional*, defaults to 2912):
               The height in pixels of the generated image.

@@ -14,7 +14,7 @@
 
 from ...utils import logging
 from ..modular_pipeline import SequentialPipelineBlocks
-from ..modular_pipeline_utils import OutputParam
+from ..modular_pipeline_utils import InputParam, OutputParam
 from .before_denoise import (
     WanAdditionalInputsStep,
     WanPrepareLatentsStep,
@@ -65,6 +65,10 @@ class WanImage2VideoVaeEncoderStep(SequentialPipelineBlocks):
       Outputs:
           resized_image (`Image`):
               TODO: Add description.
+          height (`int`):
+              The height in pixels of the resized image.
+          width (`int`):
+              The width in pixels of the resized image.
           first_frame_latents (`Tensor`):
               video latent representation with the first frame image condition
           image_condition_latents (`Tensor | NoneType`):
@@ -112,7 +116,7 @@ class Wan22Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               TODO: Add description.
           num_frames (`None`, *optional*):
               TODO: Add description.
-          image_condition_latents (`None`, *optional*):
+          image_condition_latents (`None`):
               TODO: Add description.
           num_inference_steps (`None`, *optional*, defaults to 50):
               TODO: Add description.
@@ -192,7 +196,7 @@ class Wan22Image2VideoBlocks(SequentialPipelineBlocks):
           width (`int`, *optional*, defaults to 832):
               TODO: Add description.
           num_frames (`int`, *optional*, defaults to 81):
-              TODO: Add description.
+              The number of frames in the generated video.
           generator (`None`, *optional*):
               TODO: Add description.
           num_videos_per_prompt (`None`, *optional*, defaults to 1):
@@ -229,6 +233,11 @@ class Wan22Image2VideoBlocks(SequentialPipelineBlocks):
         "vae_encoder",
         "denoise",
         "decode",
+    ]
+    # `vae_encoder` defaults `num_frames` to 81 and the denoise step declares it without a default (it fills it in
+    # from the latents or the components), so the pipeline declares it itself
+    input_overrides = [
+        InputParam("num_frames", type_hint=int, default=81, description="The number of frames in the generated video.")
     ]
 
     @property

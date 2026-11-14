@@ -359,7 +359,8 @@ class EchoDenoiseLoopStep(LoopSequentialPipelineBlocks):
           transformer (`LTX2VideoTransformer3DModel`)
 
       Inputs:
-          sigmas (`list | tuple`):
+          sigmas (`list | tuple`, *optional*, defaults to (1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725,
+          0.421875, 0.0)):
               DMD sigma schedule, including the terminal zero.
           latents (`Tensor`):
               Pre-generated noisy latents for image generation.
@@ -401,10 +402,6 @@ class EchoDenoiseLoopStep(LoopSequentialPipelineBlocks):
               Frame rate of the generated video.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
-          audio_latents (`Tensor`):
-              Packed target audio tokens.
-          sigmas (`list | tuple`):
-              DMD sigma schedule including the terminal zero.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
           first_frame_tokens (`Tensor`, *optional*):
