@@ -487,7 +487,8 @@ class WanTransformerBlock(nn.Module):
         # 1. Self-attention
         norm_hidden_states = (self.norm1(hidden_states.float()) * (1 + scale_msa) + shift_msa).type_as(hidden_states)
         attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb)
-        hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
+        # gate_msa is float32, so the residual add is float32 through type promotion (no float32 copy of hidden_states)
+        hidden_states = (hidden_states + attn_output * gate_msa).type_as(hidden_states)
 
         # 2. Cross-attention
         norm_hidden_states = self.norm2(hidden_states.float()).type_as(hidden_states)
@@ -499,7 +500,7 @@ class WanTransformerBlock(nn.Module):
             hidden_states
         )
         ff_output = self.ffn(norm_hidden_states)
-        hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
+        hidden_states = (hidden_states + ff_output * c_gate_msa).type_as(hidden_states)
 
         return hidden_states
 
