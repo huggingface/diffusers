@@ -9,6 +9,20 @@ class TCDSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (TCDScheduler,)
     forward_default_kwargs = (("num_inference_steps", 10),)
 
+    def test_terminal_alpha_setting(self):
+        for eta in (0.0, 0.3, 1.0):
+            for set_alpha_to_one in (True, False):
+                with self.subTest(eta=eta, set_alpha_to_one=set_alpha_to_one):
+                    scheduler = TCDScheduler(prediction_type="sample", set_alpha_to_one=set_alpha_to_one)
+                    scheduler.set_timesteps(1, device="cpu")
+                    sample = torch.ones(1, 1)
+                    prediction = torch.zeros_like(sample)
+                    timestep = scheduler.timesteps[0]
+                    alpha_t = scheduler.alphas_cumprod[timestep]
+                    expected = ((1 - scheduler.final_alpha_cumprod) / (1 - alpha_t)).sqrt() * sample
+                    actual = scheduler.step(prediction, timestep, sample, eta=eta).prev_sample
+                    torch.testing.assert_close(actual, expected)
+
     def get_scheduler_config(self, **kwargs):
         config = {
             "num_train_timesteps": 1000,
@@ -111,8 +125,8 @@ class TCDSchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 29.8715) < 1e-3  # 0.0778918
-        assert abs(result_mean.item() - 0.0389) < 1e-3
+        assert abs(result_sum.item() - 18.7097) < 1e-3
+        assert abs(result_mean.item() - 0.0244) < 1e-3
 
     def test_full_loop_multistep_deter(self):
         sample = self.full_loop(num_inference_steps=10)
@@ -120,8 +134,8 @@ class TCDSchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 181.2040) < 1e-3
-        assert abs(result_mean.item() - 0.2359) < 1e-3
+        assert abs(result_sum.item() - 174.2771) < 1e-3
+        assert abs(result_mean.item() - 0.2269) < 1e-3
 
     def test_custom_timesteps(self):
         scheduler_class = self.scheduler_classes[0]
