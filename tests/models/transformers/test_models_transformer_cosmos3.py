@@ -36,6 +36,7 @@ from ..testing_utils import (
     MemoryTesterMixin,
     ModelTesterMixin,
     SeaCacheTesterMixin,
+    TensorParallelTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -710,3 +711,49 @@ class TestCosmos3OmniTransformerTraining(Cosmos3OmniTransformerTesterConfig, Tra
 
 class TestCosmos3OmniTransformerAttention(Cosmos3OmniTransformerTesterConfig, AttentionTesterMixin):
     pass
+
+
+class Cosmos3TensorParallelTesterConfig(Cosmos3OmniTransformerTesterConfig):
+    hidden_act = "relu2"
+
+    def get_init_dict(self):
+        return {
+            **super().get_init_dict(),
+            "head_dim": 8,
+            "hidden_size": 64,
+            "intermediate_size": 128,
+            "num_attention_heads": 8,
+            "num_key_value_heads": 4,
+            "rope_axes_dim": [2, 1, 1],
+            "attention_bias": True,
+            "hidden_act": self.hidden_act,
+            "qk_norm_for_text": self.hidden_act == "silu",
+            "use_und_k_norm_for_gen": self.hidden_act == "relu2",
+        }
+
+    def get_dummy_inputs(self, batch_size=1):
+        inputs = super().get_dummy_inputs(width=7)
+        device = inputs["input_ids"].device
+        und_len, gen_len = 5 * batch_size, 7 * batch_size
+        indexes = torch.arange(und_len, und_len + gen_len, device=device)
+        inputs.update(
+            input_ids=torch.arange(und_len, device=device) % self.get_init_dict()["vocab_size"],
+            text_indexes=torch.arange(und_len, device=device),
+            position_ids=torch.arange(und_len + gen_len, device=device).expand(3, -1),
+            und_len=und_len,
+            sequence_length=und_len + gen_len,
+            vision_tokens=[inputs["vision_tokens"][0] + index for index in range(batch_size)],
+            vision_token_shapes=inputs["vision_token_shapes"] * batch_size,
+            vision_sequence_indexes=indexes,
+            vision_mse_loss_indexes=indexes,
+            vision_timesteps=torch.ones(gen_len, device=device),
+            vision_noisy_frame_indexes=inputs["vision_noisy_frame_indexes"] * batch_size,
+        )
+        return inputs
+
+
+class TestCosmos3OmniTransformerTensorParallel(Cosmos3TensorParallelTesterConfig, TensorParallelTesterMixin):
+    # Run every inherited TP test for both SiLU (Super) and ReLU2 (Edge) MLP layouts.
+    @pytest.fixture(autouse=True, params=["silu", "relu2"])
+    def activation(self, request):
+        self.hidden_act = request.param
