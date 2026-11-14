@@ -3261,9 +3261,11 @@ def _flash_varlen_attention(
         window_size=window_size,
         return_attn_probs=return_lse,
     )
+    if return_lse:
+        out, lse, *_ = out
     out = out.unflatten(0, (batch_size, -1))
 
-    return out
+    return (out, lse) if return_lse else out
 
 
 @_AttentionBackendRegistry.register(
