@@ -637,20 +637,20 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
 
         # 1. get previous step value
         prev_step_index = self.step_index + 1
-        if prev_step_index < len(self.timesteps):
+        has_next_timestep = prev_step_index < len(self.timesteps)
+        if has_next_timestep:
             prev_timestep = self.timesteps[prev_step_index]
+            timestep_s = torch.floor((1 - eta) * prev_timestep).to(dtype=torch.long)
+            alpha_prod_t_prev = self.alphas_cumprod[prev_timestep]
+            alpha_prod_s = self.alphas_cumprod[timestep_s]
         else:
-            prev_timestep = torch.tensor(0)
-
-        timestep_s = torch.floor((1 - eta) * prev_timestep).to(dtype=torch.long)
+            alpha_prod_t_prev = self.final_alpha_cumprod
+            alpha_prod_s = self.final_alpha_cumprod
 
         # 2. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[timestep]
         beta_prod_t = 1 - alpha_prod_t
 
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
-
-        alpha_prod_s = self.alphas_cumprod[timestep_s]
         beta_prod_s = 1 - alpha_prod_s
 
         # 3. Compute the predicted noised sample x_s based on the model parameterization
