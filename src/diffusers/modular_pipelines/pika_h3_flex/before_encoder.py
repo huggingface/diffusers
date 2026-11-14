@@ -22,6 +22,7 @@ from PIL import Image
 from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
 from ...utils import logging
+from ...utils.torch_utils import resample_audio
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import (
@@ -344,8 +345,9 @@ class PikaH3FlexRef2VASetupStep(ModularPipelineBlocks):
         Normalize a reference soundtrack onto the audio VAE's sample rate, as a stereo waveform.
 
         The released package resamples a soundtrack onto the audio VAE's rate first and truncates it there, to the
-        sample count that covers the generated frames, which this mirrors: the resampling is a single `torchaudio` pass
-        and the truncation is applied at `target_sample_rate`. A mono waveform is upmixed by repeating its channel.
+        sample count that covers the generated frames, which this mirrors: the resampling is a single windowed-sinc pass
+        (`torchaudio`'s default) and the truncation is applied at `target_sample_rate`. A mono waveform is upmixed by
+        repeating its channel.
 
         Args:
             waveform (`torch.Tensor` of shape `(channels, num_samples)`): The soundtrack, mono or stereo.
@@ -365,15 +367,7 @@ class PikaH3FlexRef2VASetupStep(ModularPipelineBlocks):
         waveform = waveform.to(torch.float32)
         if waveform.shape[0] != 2:
             waveform = waveform.expand(2, -1)
-        if sample_rate != target_sample_rate:
-            try:
-                import torchaudio
-            except ImportError as error:
-                raise ImportError(
-                    f"Resampling a Pika H3 Flex reference soundtrack from {sample_rate} Hz to {target_sample_rate} "
-                    "Hz needs `torchaudio`. Pass a waveform already at the audio VAE's sample rate to do without it."
-                ) from error
-            waveform = torchaudio.transforms.Resample(sample_rate, target_sample_rate)(waveform)
+        waveform = resample_audio(waveform, sample_rate, target_sample_rate)
         return waveform[:, :max_samples].contiguous()
 
     @torch.no_grad()

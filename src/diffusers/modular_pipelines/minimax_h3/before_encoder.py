@@ -22,6 +22,7 @@ from PIL import Image
 from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
 from ...utils import logging
+from ...utils.torch_utils import resample_audio
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .modular_pipeline import (
@@ -352,7 +353,7 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
 
         The reference implementation extracts a soundtrack at a native rate, truncates it there and resamples it once,
         in torch, which this mirrors: the truncation is applied at `sample_rate` and the resampling is a single
-        `torchaudio` pass. A mono waveform is upmixed by repeating its channel.
+        windowed-sinc pass (`torchaudio`'s default). A mono waveform is upmixed by repeating its channel.
 
         Args:
             waveform (`torch.Tensor` of shape `(channels, num_samples)`): The soundtrack, mono or stereo.
@@ -372,17 +373,7 @@ class MiniMaxH3Ref2VASetupStep(ModularPipelineBlocks):
         waveform = waveform.to(torch.float32)[:, : int(max_duration * sample_rate)]
         if waveform.shape[0] != 2:
             waveform = waveform.expand(2, -1).contiguous()
-        if sample_rate == target_sample_rate:
-            return waveform
-
-        try:
-            import torchaudio
-        except ImportError as error:
-            raise ImportError(
-                f"Resampling a MiniMax-H3 reference soundtrack from {sample_rate} Hz to {target_sample_rate} Hz "
-                "needs `torchaudio`. Pass a waveform already at the audio VAE's sample rate to do without it."
-            ) from error
-        return torchaudio.transforms.Resample(sample_rate, target_sample_rate)(waveform)
+        return resample_audio(waveform, sample_rate, target_sample_rate)
 
     @torch.no_grad()
     def __call__(
