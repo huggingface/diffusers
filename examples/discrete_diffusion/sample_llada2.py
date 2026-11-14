@@ -215,8 +215,17 @@ def main():
         )
     model.eval()
 
-    # Create pipeline
-    scheduler = BlockRefinementScheduler()
+    # Create pipeline. The scheduler owns sampling and the confidence thresholds; the pipeline call
+    # takes only the loop's own arguments.
+    scheduler = BlockRefinementScheduler(
+        block_length=args.block_length,
+        temperature=args.temperature,
+        top_p=args.top_p,
+        top_k=args.top_k,
+        sampling_method=args.sampling_method,
+        threshold=args.threshold,
+        editing_threshold=args.editing_threshold,
+    )
     pipe = LLaDA2Pipeline(model=model, scheduler=scheduler, tokenizer=tokenizer)
 
     # Apply sequential CPU offload if requested
@@ -242,13 +251,7 @@ def main():
         gen_length=args.gen_length,
         block_length=args.block_length,
         num_inference_steps=args.num_inference_steps,
-        temperature=args.temperature,
-        top_p=args.top_p,
-        top_k=args.top_k,
-        threshold=args.threshold,
-        editing_threshold=args.editing_threshold,
         max_post_steps=args.max_post_steps,
-        sampling_method=args.sampling_method,
         eos_early_stop=args.eos_early_stop,
         generator=generator,
     )
