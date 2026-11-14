@@ -377,6 +377,9 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
     _repeated_blocks = ["Cosmos3VLTextMoTDecoderLayer"]
     _skip_layerwise_casting_patterns = ["embed_tokens", "time_embedder", "norm"]
     _keep_in_fp32_modules = ["time_embedder"]
+    # These scale tensors are exported for vLLM-Omni/SGLang and are unused
+    # by Diffusers. ModelOpt restores its quantizer state separately.
+    _keys_to_ignore_on_load_unexpected = [r"\.(?:input_scale|weight_scale)$"]
     # Optional context-parallelism seams. They default to ``None`` (no-op) so the
     # model itself carries no CP logic. `forward` applies `_cp_shard_fn` to the
     # per-pathway hidden states + rotary embeddings before the decoder layers, and
