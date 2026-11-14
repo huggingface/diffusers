@@ -96,7 +96,7 @@ SAG provides guidance from predictions not conditioned on high-frequency details
 
 ## Depth2Image
 
-[Project](https://huggingface.co/stabilityai/stable-diffusion-2-depth)
+[Project](https://huggingface.co/sd2-community/stable-diffusion-2-depth)
 
 [Depth2Image](../api/pipelines/stable_diffusion/depth2img) is fine-tuned from Stable Diffusion to better preserve semantics for text guided image variation.
 

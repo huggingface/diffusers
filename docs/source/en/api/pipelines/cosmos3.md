@@ -1127,10 +1127,10 @@ Transfer follows a **precomputed control video** (edge, blur, depth, segmentatio
 | Segmentation | 3.0 | 2.0 | 10.0 | 121 frames @ 30 FPS |
 | World scenario (WSM) | 1.0 | 3.0 | 10.0 | 101 frames @ 10 FPS |
 
-Diffusers does not ship the control assets. Ready-made ones (a control video + matching `prompt.json` per hint, plus a shared `negative_prompt.json`) live in the [Cosmos cookbook](https://github.com/NVIDIA/cosmos/tree/main/cookbooks/cosmos3/generator/transfer/assets). For the edge example below, download them into a local `assets/` folder:
+Diffusers does not ship the control assets. Ready-made ones (a control video + matching `prompt.json` per hint, plus a shared `negative_prompt.json`) live in the [Cosmos cookbook](https://github.com/NVIDIA/cosmos/tree/6e2c69afafd6444c1ca14a021aba93fcc6b7996a/cookbooks/cosmos3/generator/transfer/assets). For the edge example below, download them into a local `assets/` folder:
 
 ```bash
-base=https://github.com/NVIDIA/cosmos/raw/refs/heads/main/cookbooks/cosmos3/generator/transfer/assets
+base=https://github.com/NVIDIA/cosmos/raw/6e2c69afafd6444c1ca14a021aba93fcc6b7996a/cookbooks/cosmos3/generator/transfer/assets
 mkdir -p assets/edge
 curl -sL "$base/edge/control_edge.mp4" -o assets/edge/control_edge.mp4
 curl -sL "$base/edge/prompt.json"      -o assets/edge/prompt.json
