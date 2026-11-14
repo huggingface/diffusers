@@ -20,8 +20,7 @@ import pytest
 import torch
 from transformers import CLIPImageProcessor, CLIPVisionConfig, CLIPVisionModel
 
-from diffusers import HeunDiscreteScheduler, PriorTransformer, ShapEImg2ImgPipeline
-from diffusers.pipelines.shap_e import ShapERenderer
+from diffusers import HeunDiscreteScheduler, PriorTransformer, ShapEImg2ImgPipeline, ShapERenderer
 
 from ...testing_utils import (
     backend_empty_cache,

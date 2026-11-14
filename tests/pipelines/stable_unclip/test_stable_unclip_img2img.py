@@ -12,9 +12,15 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
-from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, StableUnCLIPImg2ImgPipeline, UNet2DConditionModel
+from diffusers import (
+    AutoencoderKL,
+    DDIMScheduler,
+    DDPMScheduler,
+    StableUnCLIPImageNormalizer,
+    StableUnCLIPImg2ImgPipeline,
+    UNet2DConditionModel,
+)
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
 from ...testing_utils import (
     assert_tensors_close,

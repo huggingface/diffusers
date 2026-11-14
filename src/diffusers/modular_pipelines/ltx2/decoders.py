@@ -18,13 +18,7 @@ import torch
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video, LTX2VideoDiffusionDecoderModel
-
-# NOTE (modular.md gotcha #1): `LTX2Vocoder` / `LTX2VocoderWithBWE` currently live under
-# `diffusers.pipelines.ltx2.vocoder`, and modular blocks must not import from `diffusers.pipelines.*`.
-# They are already `ModelMixin` / `ConfigMixin` model classes, so the clean fix is to relocate them to
-# `src/diffusers/models/` and re-export from `diffusers.models` before this lands. Imported from the
-# pipelines path here only so the draft is runnable; switch to the models path once moved.
-from ...pipelines.ltx2.vocoder import LTX2Vocoder
+from ...models.autoencoders import LTX2Vocoder
 from ...utils import logging
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor

@@ -31,7 +31,7 @@ from transformers import (
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
 from ...loaders import FromSingleFileMixin, LTX2LoraLoaderMixin
-from ...models.autoencoders import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
+from ...models.autoencoders import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video, LTX2Vocoder, LTX2VocoderWithBWE
 from ...models.condition_embedders import LTX2TextConnectors
 from ...models.transformers import LTX2VideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler, LTXEulerAncestralRFScheduler
@@ -61,7 +61,6 @@ from .utils import (
     resolve_default_image_crf,
     trim_canvas,
 )
-from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
 
 
 if is_torch_xla_available():
