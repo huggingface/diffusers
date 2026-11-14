@@ -603,14 +603,16 @@ class AutoencoderKLMiniMaxH3Image(ModelMixin, ConfigMixin, AttentionMixin, Autoe
         self.tile_sample_min_width = 256
         self.tile_sample_min_overlap_height = 64
         self.tile_sample_min_overlap_width = 64
+        # How many tiles one decoder forward processes. Batching is much faster but changes low-precision rounding.
+        self.tile_decode_batch_size = 1
 
-    # Copied from diffusers.models.autoencoders.autoencoder_kl_minimax_h3.AutoencoderKLMiniMaxH3.enable_tiling
     def enable_tiling(
         self,
         tile_sample_min_height: int | None = None,
         tile_sample_min_width: int | None = None,
         tile_sample_min_overlap_height: int | None = None,
         tile_sample_min_overlap_width: int | None = None,
+        tile_decode_batch_size: int | None = None,
     ) -> None:
         r"""
         Enable tiled VAE encoding/decoding. When this option is enabled, the VAE splits the frames into tiles, encodes
@@ -626,12 +628,20 @@ class AutoencoderKLMiniMaxH3Image(ModelMixin, ConfigMixin, AttentionMixin, Autoe
                 The minimum overlap, in pixels, between two consecutive vertical tiles.
             tile_sample_min_overlap_width (`int`, *optional*):
                 The minimum overlap, in pixels, between two consecutive horizontal tiles.
+            tile_decode_batch_size (`int`, *optional*):
+                The number of tiles decoded together in one decoder forward pass. Larger values decode faster at the
+                cost of memory. Values other than 1 change the low-precision rounding, so the output is no longer
+                bitwise identical to the released one-tile-at-a-time decoding.
         """
         self.use_tiling = True
         self.tile_sample_min_height = tile_sample_min_height or self.tile_sample_min_height
         self.tile_sample_min_width = tile_sample_min_width or self.tile_sample_min_width
         self.tile_sample_min_overlap_height = tile_sample_min_overlap_height or self.tile_sample_min_overlap_height
         self.tile_sample_min_overlap_width = tile_sample_min_overlap_width or self.tile_sample_min_overlap_width
+        if tile_decode_batch_size is not None:
+            if tile_decode_batch_size < 1:
+                raise ValueError(f"`tile_decode_batch_size` must be a positive integer, got {tile_decode_batch_size}.")
+            self.tile_decode_batch_size = tile_decode_batch_size
 
     # Copied from diffusers.models.autoencoders.autoencoder_kl_minimax_h3.AutoencoderKLMiniMaxH3._split_tiles
     def _split_tiles(self, length: int, tile_size: int, min_overlap: int) -> tuple[list[int], list[int], list[int]]:
@@ -741,17 +751,19 @@ class AutoencoderKLMiniMaxH3Image(ModelMixin, ConfigMixin, AttentionMixin, Autoe
         )
 
         ratio = self.spatial_compression_ratio
-        rows = []
-        for i_pos, i_len in zip(y_indices, y_lengths):
-            row = []
-            for j_pos, j_len in zip(x_indices, x_lengths):
-                tile = z[
-                    ...,
-                    i_pos // ratio : i_pos // ratio + i_len // ratio,
-                    j_pos // ratio : j_pos // ratio + j_len // ratio,
-                ]
-                row.append(self.decoder(self.post_quant_conv(tile)))
-            rows.append(row)
+        tiles = [
+            z[..., i_pos // ratio : i_pos // ratio + i_len // ratio, j_pos // ratio : j_pos // ratio + j_len // ratio]
+            for i_pos, i_len in zip(y_indices, y_lengths)
+            for j_pos, j_len in zip(x_indices, x_lengths)
+        ]
+        # All tiles share one shape, so they can be stacked along the batch axis.
+        batch_size = z.shape[0]
+        decoded = []
+        for start in range(0, len(tiles), self.tile_decode_batch_size):
+            chunk = torch.cat(tiles[start : start + self.tile_decode_batch_size])
+            decoded.extend(self.decoder(self.post_quant_conv(chunk)).split(batch_size))
+        num_cols = len(x_indices)
+        rows = [decoded[start : start + num_cols] for start in range(0, len(decoded), num_cols)]
 
         return self._stitch_tiles(rows, y_overlaps, x_overlaps)
 
