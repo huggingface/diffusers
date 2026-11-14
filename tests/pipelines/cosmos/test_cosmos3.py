@@ -215,6 +215,31 @@ class TestCosmos3OmniPipeline(Cosmos3OmniPipelineTesterConfig, PipelineTesterMix
 
         torch.testing.assert_close(wide_output, crop_output)
 
+    @pytest.mark.parametrize("guidance_scale", [1.0, 2.0], ids=["no_cfg", "cfg"])
+    def test_text_kv_reuse_matches_recompute(self, guidance_scale):
+        pipeline = self.get_pipeline().to(torch_device)
+        pipeline.set_progress_bar_config(disable=None)
+
+        def run(prompt):
+            inputs = self.get_dummy_inputs()
+            inputs.update(prompt=prompt, guidance_scale=guidance_scale, num_inference_steps=3, output_type="latent")
+            return pipeline(**inputs).video
+
+        # Two calls with different prompts: the text keys/values of the first call must not leak into the second.
+        prompts = ["a dog", "a cat sitting on a red mat"]
+        reused = [run(prompt) for prompt in prompts]
+        assert getattr(pipeline.transformer, "_und_kv_cache", None) is None
+
+        # Reference: the text pathway recomputed on every step.
+        handle = pipeline.transformer.register_forward_pre_hook(
+            lambda module, _args: setattr(module, "_und_kv_cache", None)
+        )
+        recomputed = [run(prompt) for prompt in prompts]
+        handle.remove()
+
+        for reused_video, recomputed_video in zip(reused, recomputed):
+            assert torch.equal(reused_video, recomputed_video)
+
     @pytest.mark.skip("Cosmos3 currently supports one prompt per pipeline call.")
     def test_inference_batch_consistent(self):
         pass

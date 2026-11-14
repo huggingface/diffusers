@@ -30,6 +30,7 @@ from ...models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTok
 from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
 from ...models.modeling_utils import get_parameter_device
 from ...models.transformers.transformer_cosmos3 import (
+    Cosmos3AttnProcessor,
     Cosmos3OmniTransformer,
 )
 from ...schedulers import UniPCMultistepScheduler
@@ -1715,6 +1716,14 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         )
         self._mixed_precision_config = mixed_precision
         self._mixed_precision_trace = []
+        # The text (und) pathway is the same on every step: let the transformer reuse its keys/values within this
+        # call. Not with step-dependent precision, cache hooks or custom attention processors.
+        if (
+            not mixed_precision.enabled
+            and not self.transformer.is_cache_enabled
+            and all(type(p) is Cosmos3AttnProcessor for p in self.transformer.attn_processors.values())
+        ):
+            self.transformer._und_kv_cache = {}
         try:
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 for i, t in enumerate(timesteps):
@@ -1892,6 +1901,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                         progress_bar.update()
         finally:
             reset_cosmos3_mixed_precision(self.transformer, mixed_precision)
+            self.transformer._und_kv_cache = None
 
         self._current_timestep = None
 
