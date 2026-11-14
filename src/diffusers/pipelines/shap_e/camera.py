@@ -12,4 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ...models.autoencoders.camera_shap_e import DifferentiableProjectiveCamera, create_pan_cameras  # noqa: F401
+from ...models.autoencoders.camera_shap_e import DifferentiableProjectiveCamera as _DifferentiableProjectiveCamera
+from ...models.autoencoders.camera_shap_e import create_pan_cameras as _create_pan_cameras
+from ...utils import deprecate
+
+
+# Deprecated aliases kept for backward compatibility.
+class DifferentiableProjectiveCamera(_DifferentiableProjectiveCamera):
+    def __new__(cls, *args, **kwargs):
+        deprecate(
+            "DifferentiableProjectiveCamera",
+            "1.0.0",
+            "Importing `DifferentiableProjectiveCamera` from `diffusers.pipelines.shap_e.camera` is deprecated. "
+            "Import it from `diffusers.models.autoencoders.camera_shap_e` instead.",
+        )
+        return super().__new__(cls)
+
+
+def create_pan_cameras(size: int) -> _DifferentiableProjectiveCamera:
+    deprecate(
+        "create_pan_cameras",
+        "1.0.0",
+        "Importing `create_pan_cameras` from `diffusers.pipelines.shap_e.camera` is deprecated. "
+        "Import it from `diffusers.models.autoencoders.camera_shap_e` instead.",
+    )
+    return _create_pan_cameras(size)

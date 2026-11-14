@@ -12,16 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ...models.autoencoders.renderer_shap_e import (  # noqa: F401
-    BoundingBoxVolume,
-    ImportanceRaySampler,
-    MLPNeRFModelOutput,
-    StratifiedRaySampler,
-    VoidNeRFModel,
-)
+from ...models.autoencoders.renderer_shap_e import BoundingBoxVolume as _BoundingBoxVolume
+from ...models.autoencoders.renderer_shap_e import ImportanceRaySampler as _ImportanceRaySampler
+from ...models.autoencoders.renderer_shap_e import MLPNeRFModelOutput as _MLPNeRFModelOutput
 from ...models.autoencoders.renderer_shap_e import MLPNeRSTFModel as _MLPNeRSTFModel
 from ...models.autoencoders.renderer_shap_e import ShapEParamsProjModel as _ShapEParamsProjModel
 from ...models.autoencoders.renderer_shap_e import ShapERenderer as _ShapERenderer
+from ...models.autoencoders.renderer_shap_e import StratifiedRaySampler as _StratifiedRaySampler
+from ...models.autoencoders.renderer_shap_e import VoidNeRFModel as _VoidNeRFModel
 from ...utils import deprecate
 
 
@@ -55,6 +53,61 @@ class ShapEParamsProjModel(_ShapEParamsProjModel):
             "ShapEParamsProjModel",
             "1.0.0",
             "Importing `ShapEParamsProjModel` from `diffusers.pipelines.shap_e.renderer` is deprecated. "
+            "Import it from `diffusers.models.autoencoders.renderer_shap_e` instead.",
+        )
+        return super().__new__(cls)
+
+
+class VoidNeRFModel(_VoidNeRFModel):
+    def __new__(cls, *args, **kwargs):
+        deprecate(
+            "VoidNeRFModel",
+            "1.0.0",
+            "Importing `VoidNeRFModel` from `diffusers.pipelines.shap_e.renderer` is deprecated. "
+            "Import it from `diffusers.models.autoencoders.renderer_shap_e` instead.",
+        )
+        return super().__new__(cls)
+
+
+class BoundingBoxVolume(_BoundingBoxVolume):
+    def __new__(cls, *args, **kwargs):
+        deprecate(
+            "BoundingBoxVolume",
+            "1.0.0",
+            "Importing `BoundingBoxVolume` from `diffusers.pipelines.shap_e.renderer` is deprecated. "
+            "Import it from `diffusers.models.autoencoders.renderer_shap_e` instead.",
+        )
+        return super().__new__(cls)
+
+
+class StratifiedRaySampler(_StratifiedRaySampler):
+    def __new__(cls, *args, **kwargs):
+        deprecate(
+            "StratifiedRaySampler",
+            "1.0.0",
+            "Importing `StratifiedRaySampler` from `diffusers.pipelines.shap_e.renderer` is deprecated. "
+            "Import it from `diffusers.models.autoencoders.renderer_shap_e` instead.",
+        )
+        return super().__new__(cls)
+
+
+class ImportanceRaySampler(_ImportanceRaySampler):
+    def __new__(cls, *args, **kwargs):
+        deprecate(
+            "ImportanceRaySampler",
+            "1.0.0",
+            "Importing `ImportanceRaySampler` from `diffusers.pipelines.shap_e.renderer` is deprecated. "
+            "Import it from `diffusers.models.autoencoders.renderer_shap_e` instead.",
+        )
+        return super().__new__(cls)
+
+
+class MLPNeRFModelOutput(_MLPNeRFModelOutput):
+    def __new__(cls, *args, **kwargs):
+        deprecate(
+            "MLPNeRFModelOutput",
+            "1.0.0",
+            "Importing `MLPNeRFModelOutput` from `diffusers.pipelines.shap_e.renderer` is deprecated. "
             "Import it from `diffusers.models.autoencoders.renderer_shap_e` instead.",
         )
         return super().__new__(cls)

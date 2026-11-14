@@ -81,6 +81,75 @@ RELOCATED_CLASSES = [
 ]
 IDS = [name for _, _, name, _ in RELOCATED_CLASSES]
 
+# Relocated symbols that are not top-level `diffusers` exports and so are not in `_RELOCATED_PIPELINE_CLASSES`:
+# (deprecated module path, new module path, symbol name, call kwargs)
+_SHAP_E_RENDERER = "diffusers.models.autoencoders.renderer_shap_e"
+_SHAP_E_CAMERA = "diffusers.models.autoencoders.camera_shap_e"
+RELOCATED_HELPERS = [
+    (
+        "diffusers.pipelines.ace_step.modeling_ace_step",
+        "diffusers.models.condition_embedders.condition_embedder_ace_step",
+        "AceStepLyricEncoder",
+        {},
+    ),
+    (
+        "diffusers.pipelines.ace_step.modeling_ace_step",
+        "diffusers.models.condition_embedders.condition_embedder_ace_step",
+        "AceStepTimbreEncoder",
+        {},
+    ),
+    ("diffusers.pipelines.shap_e.renderer", _SHAP_E_RENDERER, "MLPNeRSTFModel", {}),
+    ("diffusers.pipelines.shap_e.renderer", _SHAP_E_RENDERER, "ShapEParamsProjModel", {}),
+    (
+        "diffusers.pipelines.shap_e.renderer",
+        _SHAP_E_RENDERER,
+        "VoidNeRFModel",
+        {"background": [0.0, 0.0, 0.0], "channel_scale": 1.0},
+    ),
+    (
+        "diffusers.pipelines.shap_e.renderer",
+        _SHAP_E_RENDERER,
+        "BoundingBoxVolume",
+        {"bbox_min": [-1.0, -1.0, -1.0], "bbox_max": [1.0, 1.0, 1.0]},
+    ),
+    ("diffusers.pipelines.shap_e.renderer", _SHAP_E_RENDERER, "StratifiedRaySampler", {}),
+    (
+        "diffusers.pipelines.shap_e.renderer",
+        _SHAP_E_RENDERER,
+        "ImportanceRaySampler",
+        {"volume_range": None, "ts": torch.zeros(1, 1, 2, 1), "weights": torch.ones(1, 1, 2, 1)},
+    ),
+    (
+        "diffusers.pipelines.shap_e.renderer",
+        _SHAP_E_RENDERER,
+        "MLPNeRFModelOutput",
+        {
+            "density": torch.zeros(1),
+            "signed_distance": torch.zeros(1),
+            "channels": torch.zeros(1),
+            "ts": torch.zeros(1),
+        },
+    ),
+    (
+        "diffusers.pipelines.shap_e.camera",
+        _SHAP_E_CAMERA,
+        "DifferentiableProjectiveCamera",
+        {
+            "origin": torch.zeros(1, 3),
+            "x": torch.zeros(1, 3),
+            "y": torch.zeros(1, 3),
+            "z": torch.zeros(1, 3),
+            "width": 4,
+            "height": 4,
+            "x_fov": 0.7,
+            "y_fov": 0.7,
+            "shape": (1,),
+        },
+    ),
+    ("diffusers.pipelines.shap_e.camera", _SHAP_E_CAMERA, "create_pan_cameras", {"size": 4}),
+]
+HELPER_IDS = [name for _, _, name, _ in RELOCATED_HELPERS]
+
 
 def _future_warnings(fn):
     with warnings.catch_warnings(record=True) as caught:
@@ -108,3 +177,16 @@ def test_model_index_entry_resolves_to_new_class(folder, module, name, kwargs):
     class_obj, _ = get_class_obj_and_candidates(folder, name, ALL_IMPORTABLE_CLASSES, pipelines, True)
     assert class_obj is new_cls
     assert simple_get_class_obj(folder, name) is new_cls
+
+
+@pytest.mark.parametrize("module, new_module, name, kwargs", RELOCATED_HELPERS, ids=HELPER_IDS)
+def test_deprecated_helper_path_warns(module, new_module, name, kwargs):
+    new_obj = getattr(importlib.import_module(new_module), name)
+    old_obj = getattr(importlib.import_module(module), name)
+    if isinstance(old_obj, type):
+        assert issubclass(old_obj, new_obj)
+
+    with torch.device("meta"):
+        assert not _future_warnings(lambda: new_obj(**kwargs))
+        messages = _future_warnings(lambda: old_obj(**kwargs))
+    assert any(name in message and "deprecated" in message for message in messages), messages
