@@ -630,6 +630,9 @@ class OutputParam:
     description: str = ""
     kwargs_type: str = None
     metadata: dict[str, Any] = None
+    # private, set by a composite block on its `intermediate_outputs` when the output is not always produced, because it
+    # comes from a conditional block that can be skipped, or that not every branch produces. Not for a leaf block to declare
+    _maybe: bool = field(default=False, compare=False)
 
     def __repr__(self):
         return (

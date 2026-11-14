@@ -111,6 +111,17 @@ class SkippableEncodeBlocks(ConditionalPipelineBlocks):
         return "encode" if image is not None else None
 
 
+class NeedsImageLatentsBlock(ModularPipelineBlocks):
+    model_name = "test"
+
+    @property
+    def inputs(self):
+        return [InputParam("image_latents", required=True)]
+
+    def __call__(self, components, state):
+        return components, state
+
+
 def strength_auto_blocks(img2img_default, inpaint_default):
     """
     An auto block whose two branches declare `strength` with their own default: `None` for no default, `REQUIRED` for
@@ -356,6 +367,50 @@ class TestSequentialPipelineBlocksRequiredInputs:
         assert [inp.name for inp in blocks.inputs] == ["image", "image_latents"]
         assert required_flags(blocks, "image", "image_latents") == {"image": False, "image_latents": False}
         assert blocks.required_inputs == []
+
+    def test_skippable_block_nested_in_a_sequence_is_still_optional(self):
+        class Encoders(SequentialPipelineBlocks):
+            block_classes = [PrepareLatentsBlock, SkippableEncodeBlocks]
+            block_names = ["prepare_latents", "encode"]
+
+        # the sequence reports what `encode` reports: `image_latents` is only sometimes produced
+        assert [(out.name, out._maybe) for out in Encoders().intermediate_outputs] == [
+            ("latents", False),
+            ("image_latents", True),
+        ]
+
+        blocks = SequentialPipelineBlocks.from_blocks_dict(
+            {"encoders": Encoders(), "consume": NeedsImageLatentsBlock()}
+        )
+        # so wrapping `encode` in a sequence does not hide it: `image_latents` stays listed, optional. `latents` is
+        # produced on every run and is not listed
+        assert [inp.name for inp in blocks.inputs] == ["latents", "batch_size", "image", "image_latents"]
+        assert required_flags(blocks, "image", "image_latents") == {"image": False, "image_latents": False}
+
+    def test_branch_with_a_skippable_block_inside_does_not_always_produce(self):
+        class EncodersWithOptionalImage(SequentialPipelineBlocks):
+            block_classes = [PrepareLatentsBlock, SkippableEncodeBlocks]
+            block_names = ["prepare_latents", "encode"]
+
+        class EncodersOrEncode(ConditionalPipelineBlocks):
+            block_classes = [EncodersWithOptionalImage, EncodeImageBlock]
+            block_names = ["optional", "always"]
+            block_trigger_inputs = ["mask"]
+            default_block_name = "optional"
+
+            def select_block(self, mask=None):
+                return "always" if mask is not None else "optional"
+
+        # `always` produces `image_latents` every time, `optional` only when `image` is passed, so the block as a whole
+        # only sometimes does; `latents` comes out of one branch only
+        assert {out.name: out._maybe for out in EncodersOrEncode().intermediate_outputs} == {
+            "latents": True,
+            "image_latents": True,
+        }
+        blocks = SequentialPipelineBlocks.from_blocks_dict(
+            {"encode": EncodersOrEncode(), "consume": NeedsImageLatentsBlock()}
+        )
+        assert required_flags(blocks, "image_latents") == {"image_latents": False}
 
     def test_record_of_a_conditional_sub_block_is_prefixed_with_its_name(self):
         # `denoise` is a conditional block whose img2img branch requires `image_latents`, recorded as

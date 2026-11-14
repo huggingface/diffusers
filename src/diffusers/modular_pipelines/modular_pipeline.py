@@ -845,9 +845,23 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
 
     @property
     def intermediate_outputs(self) -> list[str]:
+        # the outputs of each branch, e.g. [("img2img", [<latents>, <image_latents>]), ("text2img", [<latents>])]
         named_outputs = [(name, block.intermediate_outputs) for name, block in self.sub_blocks.items()]
+        # merged into one list, one entry per name, e.g. [<latents>, <image_latents>]
         combined_outputs = combine_outputs(*named_outputs)
-        return combined_outputs
+        # determine the list of outputs that are always produced
+        if self.default_block_name is None:
+            # if the block can be skipped, no outputs are always produced
+            always = set()
+        else:
+            # if the block cannot be skipped, and every branch produces the output, then the output is always produced
+            # one set of names per branch, e.g. per_branch = [{"latents", "image_latents"}, {"latents"}]: the first set
+            # is the `img2img` branch, the second the `text2img` branch
+            per_branch = [{out.name for out in outputs if not out._maybe} for _, outputs in named_outputs]
+            # e.g. always = {"latents"} as `latents` is present in both branches
+            always = set.intersection(*per_branch)
+        # use `replace` so that we don't modify the sub-block's declaration
+        return [replace(out, _maybe=out.name not in always) for out in combined_outputs]
 
     @property
     def outputs(self) -> list[str]:
@@ -1268,7 +1282,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         inputs = {}  # input_name -> InputParam, e.g. {"num_inference_steps": InputParam("num_inference_steps", default=50)}
         outputs = set()  # produced by an earlier block
         # maybe produced by an earlier block: a ConditionalPipelineBlocks that can be skipped, or whose branches do not
-        # all produce the output
+        # all produce the output, at any depth
         maybe_outputs = set()
         for block_name, block in self.sub_blocks.items():
             for inp in block.inputs:
@@ -1328,17 +1342,10 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
                             f"earlier declaration. Declare '{key}' in `input_overrides` on {self.__class__.__name__} "
                             f"if that is not intended."
                         )
-            if isinstance(block, ConditionalPipelineBlocks):
-                # for conditional blocks,
-                # if the output is produced by every branch and the block itself cannot be skipped, add it to the `outputs`
-                # otherwise, add it to the `maybe_outputs`
-                # e.g. `image_encoder` may be skipped, so `image_latents` is only produced if it runs, a maybe_outputs
-                per_branch = [{out.name for out in sub.intermediate_outputs} for sub in block.sub_blocks.values()]
-                produced = set.intersection(*per_branch) if block.default_block_name is not None else set()
-                outputs.update(produced)
-                maybe_outputs.update(set().union(*per_branch) - produced)
-            else:
-                outputs.update(out.name for out in block.intermediate_outputs)
+            # an output the block always produces goes to `outputs`, one marked `_maybe` (see `OutputParam`) to
+            # `maybe_outputs`, e.g. `image_encoder` may be skipped, so `image_latents` is only produced if it runs
+            for out in block.intermediate_outputs:
+                (maybe_outputs if out._maybe else outputs).add(out.name)
 
         return override_attribute(
             list(inputs.values()), self.input_overrides, "input_overrides", self.__class__.__name__
@@ -1352,7 +1359,10 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
     def intermediate_outputs(self) -> list[str]:
         named_outputs = [(name, block.intermediate_outputs) for name, block in self.sub_blocks.items()]
         combined_outputs = combine_outputs(*named_outputs)
-        return combined_outputs
+        # every sub-block runs, so an output is always produced when any sub-block always produces it. A maybe can only
+        # come from a conditional block nested in a sub-block, see `ConditionalPipelineBlocks.intermediate_outputs`
+        always = {out.name for _, outputs in named_outputs for out in outputs if not out._maybe}
+        return [replace(out, _maybe=out.name not in always) for out in combined_outputs]
 
     # `outputs` is what `doc` and the model card list as the block's outputs. By default that is every intermediate
     # output; a composite overrides it to show only what the step is for, e.g. just `latents` for the `denoise` block.

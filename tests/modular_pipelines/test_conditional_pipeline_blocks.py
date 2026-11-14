@@ -499,3 +499,60 @@ class TestConditionalBlocksBranchDefaults:
         state = pipe(prompt="p", image="i", strength=0.7)
         assert state.get("strength_seen_first") == 0.7
         assert state.get("strength") == 0.7
+
+
+class ProducesLatentsAndImageLatentsBlock(ModularPipelineBlocks):
+    model_name = "test"
+
+    @property
+    def intermediate_outputs(self):
+        return [OutputParam("latents"), OutputParam("image_latents")]
+
+    def __call__(self, components, state):
+        return components, state
+
+
+class ProducesLatentsBlock(ModularPipelineBlocks):
+    model_name = "test"
+
+    @property
+    def inputs(self):
+        return [InputParam("image", required=True)]
+
+    @property
+    def intermediate_outputs(self):
+        return [OutputParam("latents")]
+
+    def __call__(self, components, state):
+        return components, state
+
+
+class TestConditionalBlocksOptionalOutputs:
+    def _blocks(self, default_block_name="text2img"):
+        class Blocks(ConditionalPipelineBlocks):
+            block_classes = [ProducesLatentsBlock, ProducesLatentsAndImageLatentsBlock]
+            block_names = ["img2img", "text2img"]
+            block_trigger_inputs = ["image"]
+
+            def select_block(self, image=None):
+                return "img2img" if image is not None else None
+
+        Blocks.default_block_name = default_block_name
+        return Blocks()
+
+    def test_output_is_always_produced_only_when_every_branch_produces_it(self):
+        blocks = self._blocks()
+        # `latents` comes out of both branches, `image_latents` out of `text2img` only
+        assert {out.name: out._maybe for out in blocks.intermediate_outputs} == {
+            "latents": False,
+            "image_latents": True,
+        }
+        # the sub-blocks' own declarations are untouched
+        assert all(not out._maybe for out in ProducesLatentsAndImageLatentsBlock().intermediate_outputs)
+
+    def test_every_output_of_a_skippable_block_is_a_maybe(self):
+        blocks = self._blocks(default_block_name=None)
+        assert {out.name: out._maybe for out in blocks.intermediate_outputs} == {
+            "latents": True,
+            "image_latents": True,
+        }
