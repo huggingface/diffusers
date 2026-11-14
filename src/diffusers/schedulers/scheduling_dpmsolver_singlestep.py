@@ -415,7 +415,8 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
 
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
 
-        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.int64)
+        timestep_dtype = torch.float32 if self.config.use_flow_sigmas else torch.int64
+        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=timestep_dtype)
         self.model_outputs = [None] * self.config.solver_order
         self.sample = None
 
