@@ -132,6 +132,10 @@ Set `ulysses_degree` to more than 1 and `ulysses_anything=True`.
 pipeline.transformer.enable_parallelism(config=ContextParallelConfig(ulysses_degree=2, ulysses_anything=True))
 ```
 
+Ulysses Anything Attention also supports backward through the attention output with uneven sequence lengths and supported padded-head layouts. Use an attention backend with a backward implementation, such as `native`, and zero attention dropout for training. Local key-padding masks are gathered according to each rank's actual sequence length; masks with a per-head dimension are not supported. Auxiliary log-sum-exp outputs are not differentiable.
+
+Context parallelism partitions activations, not model parameters. Each rank computes the gradients from its own sequence shard, so your training strategy must sum, not average, replicated parameter gradients across context-parallel ranks. Causal attention, grouped-query attention, and combining Ulysses Anything Attention with Ring Attention remain unsupported.
+
 > [!TIP]
 > Add a `gloo` backend for CPU tensors to [init_process_group](https://docs.pytorch.org/docs/stable/distributed.html#torch.distributed.init_process_group). It avoids the forced CUDA syncs that host-to-device and device-to-host transfers cause.
 
