@@ -113,6 +113,54 @@ class CogView4AdaLayerNormZero(nn.Module):
         )
 
 
+def _apply_rotary_emb_to_latents_(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    text_seq_length: int,
+    image_rotary_emb: tuple[torch.Tensor, torch.Tensor],
+) -> None:
+    """
+    Applies the rotary embedding in place to the latent part of `query` and `key`, with the same result as
+    `apply_rotary_emb(..., use_real_unbind_dim=-2)`.
+    """
+    cos, sin = image_rotary_emb
+    use_split_half = (
+        not torch.is_grad_enabled()
+        and isinstance(cos, torch.Tensor)
+        and isinstance(sin, torch.Tensor)
+        and cos.dim() == 2
+        and sin.dim() == 2
+        and cos.dtype == torch.float32
+        and sin.dtype == torch.float32
+        and cos.device == query.device
+        and sin.device == query.device
+        and query.shape[-1] % 2 == 0
+    )
+    if not use_split_half:
+        from ..embeddings import apply_rotary_emb
+
+        query[:, :, text_seq_length:, :] = apply_rotary_emb(
+            query[:, :, text_seq_length:, :], image_rotary_emb, use_real_unbind_dim=-2
+        )
+        key[:, :, text_seq_length:, :] = apply_rotary_emb(
+            key[:, :, text_seq_length:, :], image_rotary_emb, use_real_unbind_dim=-2
+        )
+        return
+
+    # Same fp32 products and sums as `apply_rotary_emb`, written into the two halves of `x` without building the
+    # rotated copy; the `out=` store rounds to the input dtype once, like `.to(x.dtype)`.
+    half = query.shape[-1] // 2
+    sin1, sin2 = sin[:, :half], sin[:, half:]
+    for x in (query, key):
+        x = x[:, :, text_seq_length:, :]
+        x1, x2 = x[..., :half], x[..., half:]
+        x_cos = x * cos
+        x2_sin1 = x2 * sin1
+        x1_sin2 = x1 * sin2
+        torch.sub(x_cos[..., :half], x2_sin1, out=x1)
+        torch.add(x_cos[..., half:], x1_sin2, out=x2)
+
+
 class CogView4AttnProcessor:
     """
     Processor for implementing scaled dot-product attention for the CogView4 model. It applies a rotary embedding on
@@ -157,14 +205,7 @@ class CogView4AttnProcessor:
 
         # 3. Rotational positional embeddings applied to latent stream
         if image_rotary_emb is not None:
-            from ..embeddings import apply_rotary_emb
-
-            query[:, :, text_seq_length:, :] = apply_rotary_emb(
-                query[:, :, text_seq_length:, :], image_rotary_emb, use_real_unbind_dim=-2
-            )
-            key[:, :, text_seq_length:, :] = apply_rotary_emb(
-                key[:, :, text_seq_length:, :], image_rotary_emb, use_real_unbind_dim=-2
-            )
+            _apply_rotary_emb_to_latents_(query, key, text_seq_length, image_rotary_emb)
 
         # 4. Attention
         if attention_mask is not None:
@@ -751,7 +792,9 @@ class CogView4Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Cach
 
         # 1. RoPE
         if image_rotary_emb is None:
-            image_rotary_emb = self.rope(hidden_states)
+            freqs_cos, freqs_sin = self.rope(hidden_states)
+            # The RoPE tables are built on CPU; move them once here instead of once per attention layer.
+            image_rotary_emb = (freqs_cos.to(hidden_states.device), freqs_sin.to(hidden_states.device))
 
         # 2. Patch & Timestep embeddings
         p = self.config.patch_size
