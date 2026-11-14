@@ -60,47 +60,53 @@ class Cosmos3AttnProcessor:
     def __call__(
         self,
         attn: "Cosmos3PackedMoTAttention",
-        und_seq: torch.Tensor,
+        und_seq: torch.Tensor | None,
         gen_seq: torch.Tensor,
         rotary_emb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        # Per-pathway projections
-        q_und = attn.to_q(und_seq).view(-1, attn.num_attention_heads, attn.head_dim)
-        k_und = attn.to_k(und_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
-        v_und = attn.to_v(und_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
+        und_kv: list[torch.Tensor] | None = None,
+    ) -> tuple[torch.Tensor | None, torch.Tensor]:
+        cos_und, sin_und, cos_gen, sin_gen = rotary_emb
+
+        # Causal pathway (understanding): und tokens self-attend with causal masking and never read gen tokens, so
+        # the und keys/values used by the gen pathway only depend on the text. When `und_kv` is given it is filled
+        # with them; when `und_seq` is None they are taken from `und_kv` and the und pathway is skipped.
+        und_out = None
+        if und_seq is None:
+            k_und_for_gen, v_und = und_kv
+        else:
+            q_und = attn.to_q(und_seq).view(-1, attn.num_attention_heads, attn.head_dim)
+            k_und = attn.to_k(und_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
+            v_und = attn.to_v(und_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
+            q_und = attn.norm_q(q_und)
+            k_und = attn.norm_k(k_und)
+            k_und_for_gen = attn.k_norm_und_for_gen(k_und) if attn.k_norm_und_for_gen is not None else k_und
+            cos_und = cos_und.unsqueeze(1)
+            sin_und = sin_und.unsqueeze(1)
+            q_und = q_und * cos_und + _rotate_half(q_und) * sin_und
+            k_und = k_und * cos_und + _rotate_half(k_und) * sin_und
+            k_und_for_gen = k_und_for_gen * cos_und + _rotate_half(k_und_for_gen) * sin_und
+            causal_out = dispatch_attention_fn(
+                q_und.unsqueeze(0),
+                k_und.unsqueeze(0),
+                v_und.unsqueeze(0),
+                is_causal=True,
+                enable_gqa=True,
+                backend=self._attention_backend,
+                parallel_config=self._parallel_config,
+            )
+            und_out = attn.to_out(causal_out.squeeze(0).flatten(-2, -1))
+            if und_kv is not None:
+                und_kv[:] = [k_und_for_gen, v_und]
+
         q_gen = attn.add_q_proj(gen_seq).view(-1, attn.num_attention_heads, attn.head_dim)
         k_gen = attn.add_k_proj(gen_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
         v_gen = attn.add_v_proj(gen_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
-
-        q_und = attn.norm_q(q_und)
-        k_und = attn.norm_k(k_und)
-        k_und_for_gen = attn.k_norm_und_for_gen(k_und) if attn.k_norm_und_for_gen is not None else k_und
         q_gen = attn.norm_added_q(q_gen)
         k_gen = attn.norm_added_k(k_gen)
-
-        # Apply rotary position embeddings per pathway
-        cos_und, sin_und, cos_gen, sin_gen = rotary_emb
-        cos_und = cos_und.unsqueeze(1)
-        sin_und = sin_und.unsqueeze(1)
-        q_und = q_und * cos_und + _rotate_half(q_und) * sin_und
-        k_und = k_und * cos_und + _rotate_half(k_und) * sin_und
-        k_und_for_gen = k_und_for_gen * cos_und + _rotate_half(k_und_for_gen) * sin_und
         cos_gen = cos_gen.unsqueeze(1)
         sin_gen = sin_gen.unsqueeze(1)
         q_gen = q_gen * cos_gen + _rotate_half(q_gen) * sin_gen
         k_gen = k_gen * cos_gen + _rotate_half(k_gen) * sin_gen
-
-        # Causal pathway (understanding): und tokens self-attend with causal masking.
-        causal_out = dispatch_attention_fn(
-            q_und.unsqueeze(0),
-            k_und.unsqueeze(0),
-            v_und.unsqueeze(0),
-            is_causal=True,
-            enable_gqa=True,
-            backend=self._attention_backend,
-            parallel_config=self._parallel_config,
-        )
-        causal_out = causal_out.squeeze(0).flatten(-2, -1)
 
         # Full pathway (generation): gen tokens cross-attend to all (und + gen) keys/values.
         all_k = torch.cat([k_und_for_gen, k_gen], dim=0)
@@ -115,9 +121,6 @@ class Cosmos3AttnProcessor:
             parallel_config=self._parallel_config,
         )
         full_out = full_out.squeeze(0).flatten(-2, -1)
-
-        # Per-pathway output projection
-        und_out = attn.to_out(causal_out)
         gen_out = attn.to_add_out(full_out)
         return und_out, gen_out
 
@@ -294,11 +297,14 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
 
     def forward(
         self,
-        und_seq: torch.Tensor,
+        und_seq: torch.Tensor | None,
         gen_seq: torch.Tensor,
         rotary_emb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        return self.processor(self, und_seq, gen_seq, rotary_emb)
+        und_kv: list[torch.Tensor] | None = None,
+    ) -> tuple[torch.Tensor | None, torch.Tensor]:
+        if und_kv is None:
+            return self.processor(self, und_seq, gen_seq, rotary_emb)
+        return self.processor(self, und_seq, gen_seq, rotary_emb, und_kv=und_kv)
 
 
 class Cosmos3VLTextMoTDecoderLayer(nn.Module):
@@ -354,20 +360,23 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
 
     def forward(
         self,
-        und_seq: torch.Tensor,
+        und_seq: torch.Tensor | None,
         gen_seq: torch.Tensor,
         rotary_emb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        und_norm = self.input_layernorm(und_seq)
+        und_kv: list[torch.Tensor] | None = None,
+    ) -> tuple[torch.Tensor | None, torch.Tensor]:
+        # `und_seq` is None when the und keys/values come from `und_kv` (see `Cosmos3AttnProcessor`).
+        und_norm = self.input_layernorm(und_seq) if und_seq is not None else None
         gen_norm = self.input_layernorm_moe_gen(gen_seq)
 
-        und_attn_out, gen_attn_out = self.self_attn(und_norm, gen_norm, rotary_emb)
-        residual_und = und_seq + und_attn_out
+        und_attn_out, gen_attn_out = self.self_attn(und_norm, gen_norm, rotary_emb, und_kv=und_kv)
         residual_gen = gen_seq + gen_attn_out
-
-        mlp_out_und = self.mlp(self.post_attention_layernorm(residual_und))
         mlp_out_gen = self.mlp_moe_gen(self.post_attention_layernorm_moe_gen(residual_gen))
+        if und_seq is None:
+            return None, residual_gen + mlp_out_gen
 
+        residual_und = und_seq + und_attn_out
+        mlp_out_und = self.mlp(self.post_attention_layernorm(residual_und))
         return residual_und + mlp_out_und, residual_gen + mlp_out_gen
 
 
@@ -387,6 +396,11 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
     # expressed as diffusers' declarative `_cp_plan`, so CP lives outside the model.
     _cp_shard_fn = None
     _cp_gather_fn = None
+    # Optional reuse of the text (und) pathway across denoising steps. The und tokens never attend to the gen tokens,
+    # so for the same `input_ids` / `position_ids` every layer's und keys/values are the same on every step.
+    # `Cosmos3OmniPipeline` sets this to an empty dict for the duration of one `__call__`; `None` disables it.
+    _und_kv_cache = None
+    _skip_keys = ["und_kv"]
     # `dtype` is injected into init_dict by ModelMixin.from_pretrained (configuration_utils.py:289),
     # so __init__ must accept it. Excluding it here keeps save_pretrained from writing it into
     # config.json — the value is a load-time runtime hint, not part of the model architecture.
@@ -652,16 +666,22 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         und_seq: torch.Tensor,
         gen_seq: torch.Tensor,
         rotary_emb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        for decoder_layer in self.layers:
+        und_kv: list[list[torch.Tensor]] | None = None,
+    ) -> tuple[torch.Tensor | None, torch.Tensor]:
+        # `und_kv`: one list per layer. Empty lists are filled by this pass; filled lists replace the und pathway.
+        if und_kv is not None and und_kv[-1]:
+            und_seq = None
+        for i, decoder_layer in enumerate(self.layers):
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 und_seq, gen_seq = self._gradient_checkpointing_func(
                     decoder_layer.__call__, und_seq, gen_seq, rotary_emb
                 )
-            else:
+            elif und_kv is None:
                 und_seq, gen_seq = decoder_layer(und_seq, gen_seq, rotary_emb)
+            else:
+                und_seq, gen_seq = decoder_layer(und_seq, gen_seq, rotary_emb, und_kv=und_kv[i])
 
-        return self.norm(und_seq), self.norm_moe_gen(gen_seq)
+        return self.norm(und_seq) if und_seq is not None else None, self.norm_moe_gen(gen_seq)
 
     # -------------------------------------------------------------------------
     # forward: full per-step pass — encode text/vision/sound/action → run layers →
@@ -815,7 +835,22 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         if self._cp_shard_fn is not None:
             und_seq, gen_seq, rotary_emb = self._cp_shard_fn(und_seq, gen_seq, rotary_emb)
 
-        und_out, gen_out = self._run_decoder_stack(und_seq, gen_seq, rotary_emb)
+        und_kv = None
+        if self._und_kv_cache is not None and self._cp_shard_fn is None and not torch.is_grad_enabled():
+            # Keyed on the identity of the per-call text inputs. The entry holds references to them, so their ids
+            # cannot be reused by other tensors while the cache lives. One entry per CFG branch at most: if the
+            # inputs are new tensors on every step (e.g. copied by a hook), the extra calls run uncached.
+            key = (id(input_ids), id(position_ids), und_len)
+            entry = self._und_kv_cache.get(key)
+            if entry is None and len(self._und_kv_cache) < 2:
+                entry = self._und_kv_cache[key] = (input_ids, position_ids, [[] for _ in self.layers])
+            if entry is not None:
+                und_kv = entry[2]
+
+        if und_kv is None:
+            und_out, gen_out = self._run_decoder_stack(und_seq, gen_seq, rotary_emb)
+        else:
+            und_out, gen_out = self._run_decoder_stack(und_seq, gen_seq, rotary_emb, und_kv=und_kv)
 
         # Optional context-parallelism gather seam: re-gather the full per-pathway
         # sequence on every rank (and drop the padding) before the global-index decode
@@ -823,6 +858,10 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         # sequence. No-op unless `_cp_shard_fn`'s counterpart is set.
         if self._cp_gather_fn is not None:
             und_out, gen_out = self._cp_gather_fn(und_out, gen_out)
+
+        # The und pathway was reused from `und_kv`; predictions are only read at gen positions.
+        if und_out is None:
+            und_out = gen_out.new_zeros(und_len, gen_out.shape[-1])
 
         last_hidden_state = torch.cat([und_out, gen_out], dim=0)
 
