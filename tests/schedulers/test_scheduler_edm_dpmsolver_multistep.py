@@ -1,14 +1,14 @@
 import tempfile
-import unittest
 
+import pytest
 import torch
 
 from diffusers import EDMDPMSolverMultistepScheduler
 
-from .test_schedulers import SchedulerCommonTest
+from .test_schedulers import SchedulerTesterMixin
 
 
-class EDMDPMSolverMultistepSchedulerTest(SchedulerCommonTest):
+class TestEDMDPMSolverMultistepScheduler(SchedulerTesterMixin):
     scheduler_classes = (EDMDPMSolverMultistepScheduler,)
     forward_default_kwargs = (("num_inference_steps", 25),)
 
@@ -61,7 +61,7 @@ class EDMDPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
                 assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-    @unittest.skip("Test not supported.")
+    @pytest.mark.skip(reason="Test not supported.")
     def test_from_save_pretrained(self):
         pass
 
@@ -139,8 +139,8 @@ class EDMDPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             output_0 = scheduler.step(residual, time_step_0, sample, **kwargs).prev_sample
             output_1 = scheduler.step(residual, time_step_1, sample, **kwargs).prev_sample
 
-            self.assertEqual(output_0.shape, sample.shape)
-            self.assertEqual(output_0.shape, output_1.shape)
+            assert output_0.shape == sample.shape
+            assert output_0.shape == output_1.shape
 
     def test_timesteps(self):
         for timesteps in [25, 50, 100, 999, 1000]:
@@ -166,7 +166,7 @@ class EDMDPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             self.check_over_configs(prediction_type=prediction_type)
 
     # TODO (patil-suraj): Fix this test
-    @unittest.skip("Skip for now, as it failing currently but works with the actual model")
+    @pytest.mark.skip(reason="Skip for now, as it failing currently but works with the actual model")
     def test_solver_order_and_type(self):
         for algorithm_type in ["dpmsolver++", "sde-dpmsolver++"]:
             for solver_type in ["midpoint", "heun"]:
@@ -257,6 +257,6 @@ class EDMDPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             scheduler.set_timesteps(scheduler.config.num_train_timesteps)
             assert len(scheduler.timesteps) == scheduler.num_inference_steps
 
-    @unittest.skip("Test not supported.")
+    @pytest.mark.skip(reason="Test not supported.")
     def test_trained_betas(self):
         pass

@@ -1,16 +1,15 @@
 import inspect
-import tempfile
-import unittest
 from typing import Dict, List, Tuple
 
+import pytest
 import torch
 
 from diffusers import EDMEulerScheduler
 
-from .test_schedulers import SchedulerCommonTest
+from .test_schedulers import SchedulerTesterMixin
 
 
-class EDMEulerSchedulerTest(SchedulerCommonTest):
+class TestEDMEulerScheduler(SchedulerTesterMixin):
     scheduler_classes = (EDMEulerScheduler,)
     forward_default_kwargs = (("num_inference_steps", 10),)
 
@@ -81,7 +80,7 @@ class EDMEulerSchedulerTest(SchedulerCommonTest):
         assert abs(result_mean.item() - 0.044) < 1e-3
 
     # Override test_from_save_pretrained to use EDMEulerScheduler-specific logic
-    def test_from_save_pretrained(self):
+    def test_from_save_pretrained(self, tmp_path):
         kwargs = dict(self.forward_default_kwargs)
         num_inference_steps = kwargs.pop("num_inference_steps", None)
 
@@ -89,9 +88,8 @@ class EDMEulerSchedulerTest(SchedulerCommonTest):
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
+            scheduler.save_config(tmp_path)
+            new_scheduler = scheduler_class.from_pretrained(tmp_path)
 
             scheduler.set_timesteps(num_inference_steps)
             new_scheduler.set_timesteps(num_inference_steps)
@@ -134,8 +132,8 @@ class EDMEulerSchedulerTest(SchedulerCommonTest):
         output_0 = scheduler.step(residual, timestep_0, sample).prev_sample
         output_1 = scheduler.step(residual, timestep_1, sample).prev_sample
 
-        self.assertEqual(output_0.shape, sample.shape)
-        self.assertEqual(output_0.shape, output_1.shape)
+        assert output_0.shape == sample.shape
+        assert output_0.shape == output_1.shape
 
     # Override test_from_save_pretrained to use EDMEulerScheduler-specific logic
     def test_scheduler_outputs_equivalence(self):
@@ -153,16 +151,13 @@ class EDMEulerSchedulerTest(SchedulerCommonTest):
             elif tuple_object is None:
                 return
             else:
-                self.assertTrue(
-                    torch.allclose(
-                        set_nan_tensor_to_zero(tuple_object), set_nan_tensor_to_zero(dict_object), atol=1e-5
-                    ),
-                    msg=(
-                        "Tuple and dict output are not equal. Difference:"
-                        f" {torch.max(torch.abs(tuple_object - dict_object))}. Tuple has `nan`:"
-                        f" {torch.isnan(tuple_object).any()} and `inf`: {torch.isinf(tuple_object)}. Dict has"
-                        f" `nan`: {torch.isnan(dict_object).any()} and `inf`: {torch.isinf(dict_object)}."
-                    ),
+                assert torch.allclose(
+                    set_nan_tensor_to_zero(tuple_object), set_nan_tensor_to_zero(dict_object), atol=1e-5
+                ), (
+                    "Tuple and dict output are not equal. Difference:"
+                    f" {torch.max(torch.abs(tuple_object - dict_object))}. Tuple has `nan`:"
+                    f" {torch.isnan(tuple_object).any()} and `inf`: {torch.isinf(tuple_object)}. Dict has"
+                    f" `nan`: {torch.isnan(dict_object).any()} and `inf`: {torch.isinf(dict_object)}."
                 )
 
         kwargs = dict(self.forward_default_kwargs)
@@ -198,6 +193,6 @@ class EDMEulerSchedulerTest(SchedulerCommonTest):
 
             recursive_check(outputs_tuple, outputs_dict)
 
-    @unittest.skip(reason="EDMEulerScheduler does not support beta schedules.")
+    @pytest.mark.skip(reason="EDMEulerScheduler does not support beta schedules.")
     def test_trained_betas(self):
         pass

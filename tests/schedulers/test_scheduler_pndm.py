@@ -1,14 +1,14 @@
 import tempfile
-import unittest
 
+import pytest
 import torch
 
 from diffusers import PNDMScheduler
 
-from .test_schedulers import SchedulerCommonTest
+from .test_schedulers import SchedulerTesterMixin
 
 
-class PNDMSchedulerTest(SchedulerCommonTest):
+class TestPNDMScheduler(SchedulerTesterMixin):
     scheduler_classes = (PNDMScheduler,)
     forward_default_kwargs = (("num_inference_steps", 50),)
 
@@ -54,7 +54,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-    @unittest.skip("Test not supported.")
+    @pytest.mark.skip(reason="Test not supported.")
     def test_from_save_pretrained(self):
         pass
 
@@ -136,14 +136,14 @@ class PNDMSchedulerTest(SchedulerCommonTest):
             output_0 = scheduler.step_prk(residual, 0, sample, **kwargs).prev_sample
             output_1 = scheduler.step_prk(residual, 1, sample, **kwargs).prev_sample
 
-            self.assertEqual(output_0.shape, sample.shape)
-            self.assertEqual(output_0.shape, output_1.shape)
+            assert output_0.shape == sample.shape
+            assert output_0.shape == output_1.shape
 
             output_0 = scheduler.step_plms(residual, 0, sample, **kwargs).prev_sample
             output_1 = scheduler.step_plms(residual, 1, sample, **kwargs).prev_sample
 
-            self.assertEqual(output_0.shape, sample.shape)
-            self.assertEqual(output_0.shape, output_1.shape)
+            assert output_0.shape == sample.shape
+            assert output_0.shape == output_1.shape
 
     def test_timesteps(self):
         for timesteps in [100, 1000]:
@@ -202,7 +202,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
                 sample = scheduler.step_prk(residual, t, sample).prev_sample
 
     def test_inference_plms_no_past_residuals(self):
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             scheduler_class = self.scheduler_classes[0]
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
