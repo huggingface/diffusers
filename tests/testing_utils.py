@@ -45,6 +45,7 @@ from diffusers.utils.import_utils import (
     is_sdnq_available,
     is_timm_available,
     is_torch_available,
+    is_torch_mlu_available,
     is_torch_neuronx_available,
     is_torch_tpu_available,
     is_torch_version,
@@ -102,6 +103,8 @@ if is_torch_available():
     else:
         if torch.cuda.is_available():
             torch_device = "cuda"
+        elif is_torch_mlu_available() and hasattr(torch, "mlu") and torch.mlu.is_available():
+            torch_device = "mlu"
         elif torch.xpu.is_available():
             torch_device = "xpu"
         elif is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available():
