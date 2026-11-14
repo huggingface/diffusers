@@ -3813,6 +3813,31 @@ def _prepare_additive_attn_mask(
     return attn_mask
 
 
+# On ROCm, SDPA runs AOTriton kernels whose configs are tuned for contiguous (B, H, S, D) inputs. When K/V reach SDPA as
+# the strided (B, H, S, D) view of a (B, S, H, D) tensor and no longer fit in the on-die cache, the kernel gets several
+# times slower, and copying K/V first is much faster and bit-identical. For small K/V the copy costs more than it saves.
+# Values are the K+V size (bytes) from which copying was measured to be faster; architectures not listed are unchanged.
+_ROCM_SDPA_PACK_KV_MIN_BYTES = {
+    # Radeon PRO W7800 (64 MB Infinity Cache): copying was slower at 54 MiB of K/V and faster from 63.8 MiB up.
+    "gfx1100": 60 * 1024**2,
+}
+
+
+@functools.lru_cache(maxsize=None)
+def _rocm_sdpa_pack_kv_min_bytes(device: torch.device) -> int | None:
+    arch = torch.cuda.get_device_properties(device).gcnArchName.split(":")[0]
+    return _ROCM_SDPA_PACK_KV_MIN_BYTES.get(arch)
+
+
+def _maybe_pack_kv_for_rocm_sdpa(key: torch.Tensor, value: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    if torch.version.hip is None or key.device.type != "cuda" or torch.compiler.is_compiling():
+        return key, value
+    min_bytes = _rocm_sdpa_pack_kv_min_bytes(key.device)
+    if min_bytes is None or (key.numel() + value.numel()) * key.element_size() < min_bytes:
+        return key, value
+    return key.contiguous(), value.contiguous()
+
+
 @_AttentionBackendRegistry.register(
     AttentionBackendName.NATIVE,
     constraints=[_check_device, _check_shape],
@@ -3847,6 +3872,7 @@ def _native_attention(
 
     if _parallel_config is None:
         query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
+        key, value = _maybe_pack_kv_for_rocm_sdpa(key, value)
         out = torch.nn.functional.scaled_dot_product_attention(
             query=query,
             key=key,
