@@ -198,11 +198,9 @@ class Wan22VaceBlocks(SequentialPipelineBlocks):
     ]
     # `vace_encoder` defaults `num_frames` to 81 and the denoise step declares it without a default (it fills it in
     # from the latents or the components), so the pipeline declares it itself
-    input_overrides = {
-        "num_frames": InputParam(
-            "num_frames", type_hint=int, default=81, description="The number of frames in the generated video."
-        )
-    }
+    input_overrides = [
+        InputParam("num_frames", type_hint=int, default=81, description="The number of frames in the generated video.")
+    ]
 
     @property
     def description(self):

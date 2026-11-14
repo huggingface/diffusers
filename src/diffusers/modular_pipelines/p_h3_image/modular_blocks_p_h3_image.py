@@ -453,8 +453,8 @@ class PH3ImageBlocks(SequentialPipelineBlocks):
     # `before_encode` reads `height`/`width` with no default (an edit derives them from the image) and the prompt
     # upsampler defaults them to 2912, so the pipeline declares them itself: optional, no default, each workflow keeps
     # its own
-    input_overrides = {
-        "height": InputParam.template(
+    input_overrides = [
+        InputParam.template(
             "height",
             description=(
                 "Height of the generated image in pixels, rounded to a multiple of 32. Defaults to 2912 for "
@@ -462,7 +462,7 @@ class PH3ImageBlocks(SequentialPipelineBlocks):
                 "least `canvas_min_pixels`, and works best at 4 or 8 megapixels."
             ),
         ),
-        "width": InputParam.template(
+        InputParam.template(
             "width",
             description=(
                 "Width of the generated image in pixels, rounded to a multiple of 32. Defaults to 2912 for "
@@ -470,7 +470,7 @@ class PH3ImageBlocks(SequentialPipelineBlocks):
                 "least `canvas_min_pixels`, and works best at 4 or 8 megapixels."
             ),
         ),
-    }
+    ]
     _workflow_map = {
         "text2image": {"prompt": True},
         "image_conditioned": {"prompt": True, "image": True},

@@ -369,8 +369,8 @@ class LTX25AutoBlocks(SequentialPipelineBlocks):
     ]
     # `condition_encoder` declares `num_frames` without a default (the duration head predicts it) and `decode`
     # defaults it to 121, so the pipeline declares it itself: no default, auto-predicted when omitted
-    input_overrides = {
-        "num_frames": InputParam(
+    input_overrides = [
+        InputParam(
             "num_frames",
             type_hint=int,
             default=None,
@@ -379,7 +379,7 @@ class LTX25AutoBlocks(SequentialPipelineBlocks):
                 "(see `LTX2AutoDurationStep`)."
             ),
         )
-    }
+    ]
     # `num_frames` on `in_context` is a requirement, not a trigger: the in-context checkpoints ship without a
     # `duration_head`, so the workflow drops `LTX2AutoDurationStep` and `LTX2ConditionEncoderStep` raises if
     # `num_frames` is still `None`. Matches `LTX2InContextBlocks`, which omits the duration step outright.

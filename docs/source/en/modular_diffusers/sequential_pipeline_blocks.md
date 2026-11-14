@@ -110,7 +110,7 @@ class ImageProcessingStep(SequentialPipelineBlocks):
             " - Encodes the image into latent space."
         )
 ```
-When you create a [`~modular_pipelines.SequentialPipelineBlocks`], `inputs`, `intermediate_outputs`, `expected_components` and `expected_configs` are aggregated from the sub-blocks, so there is no need to define them again. The sequence cannot add or remove any of them, but it can redefine how an input, a component or a config is declared with `input_overrides`, `component_overrides` and `config_overrides`. That lets you reuse the same sub-blocks with another default for an input, or other repo info for a component. Each is a `{name: declaration}` dict: the name must already be in the aggregated list, and the declaration takes the aggregated entry's place.
+When you create a [`~modular_pipelines.SequentialPipelineBlocks`], `inputs`, `intermediate_outputs`, `expected_components` and `expected_configs` are aggregated from the sub-blocks, so there is no need to define them again. The sequence cannot add or remove any of them, but it can redefine how an input, a component or a config is declared with `input_overrides`, `component_overrides` and `config_overrides`. That lets you reuse the same sub-blocks with another default for an input, or other repo info for a component. Each is a list of declarations: the name of a declaration must already be in the aggregated list, and the declaration takes the aggregated entry's place.
 
 ```py
 class ImageProcessingStep(SequentialPipelineBlocks):
@@ -121,11 +121,11 @@ class ImageProcessingStep(SequentialPipelineBlocks):
     block_classes = [InputBlock(), ImageEncoderBlock()]
     block_names = ["input", "image_encoder"]
     # `InputBlock` declares `num_images_per_prompt` without a default; this step defaults it to 1
-    input_overrides = {
-        "num_images_per_prompt": InputParam(
+    input_overrides = [
+        InputParam(
             name="num_images_per_prompt", type_hint=int, default=1, description="number of images per prompt"
         )
-    }
+    ]
 ```
 
 When two sub-blocks declare different defaults for the same input, the sequence keeps the first one and warns; an `input_overrides` entry states the default the whole sequence uses. When the input belongs to a conditional sub-block whose branches declare different defaults, the override gives the sequence one value for every workflow instead of the per-branch ones.

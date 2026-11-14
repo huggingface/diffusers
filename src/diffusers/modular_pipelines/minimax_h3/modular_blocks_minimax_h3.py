@@ -759,8 +759,8 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
     ]
     # `ref2va` requires `num_frames` (the references are truncated to it) while `t2va` and `fl2va` default it to 124,
     # so the pipeline declares it itself: optional, no default, each workflow keeps its own
-    input_overrides = {
-        "num_frames": InputParam(
+    input_overrides = [
+        InputParam(
             name="num_frames",
             type_hint=int,
             description=(
@@ -769,7 +769,7 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
                 "as long as a reference soundtrack, pass `round(samples / sample_rate * 24)`."
             ),
         )
-    }
+    ]
     # One repository holds both checkpoint partitions (`transformer/` for `t2va`/`fl2va`, `transformer_ref/` for
     # `ref2va`), so the tasks are workflows over one shared `modular_model_index.json`, each declaring only the
     # components its own half loads. The keys below are the task names a `workflow=` argument to

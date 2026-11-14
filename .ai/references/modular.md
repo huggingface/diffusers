@@ -300,14 +300,14 @@ The other two ways to declare an input:
 (1) `required=True` when the block cannot work without the value, so the caller has to pass it; the block raises `ValueError("Required input 'x' is missing")` when it is not passed or `None`.
 (2) Optional with no default when the block works with `None`. Most often that is the computed case above, and the block should then also declare the value as an output.
 
-**An assembled block derives its declarations from its sub-blocks, and can redefine them with `*_overrides`.** Inputs, outputs, components and configs are declared on leaf blocks. A composite (`SequentialPipelineBlocks`, `ConditionalPipelineBlocks`, `LoopSequentialPipelineBlocks`) derives its own from its sub-blocks. It cannot add or remove any of them, they are part of the blocks' logic, but it can redefine how one is declared: the default or description of an input, the repo and loading info of a component, the value of a config. You set these as class attributes on the composite, or pass them to `from_blocks_dict`: `input_overrides`, `component_overrides` and `config_overrides`, each a `{name: declaration}` dict. The name must be one the composite already derives, and the declaration takes the derived entry's place (gotcha #13). `intermediate_outputs` has no override: a composite can define the `outputs` property to choose the ones it lists and how it describes them.
+**An assembled block derives its declarations from its sub-blocks, and can redefine them with `*_overrides`.** Inputs, outputs, components and configs are declared on leaf blocks. A composite (`SequentialPipelineBlocks`, `ConditionalPipelineBlocks`, `LoopSequentialPipelineBlocks`) derives its own from its sub-blocks. It cannot add or remove any of them, they are part of the blocks' logic, but it can redefine how one is declared: the default or description of an input, the repo and loading info of a component, the value of a config. You set these as class attributes on the composite, or pass them to `from_blocks_dict`: `input_overrides`, `component_overrides` and `config_overrides`, each a list of declarations. The name of a declaration must be one the composite already derives, and the declaration takes the derived entry's place (gotcha #13). `intermediate_outputs` has no override: a composite can define the `outputs` property to choose the ones it lists and how it describes them.
 
 ```python
 class DistilledCoreDenoiseStep(SequentialPipelineBlocks):
     block_classes = [...]
     block_names = [...]
     # The distilled checkpoint samples in few steps.
-    input_overrides = {"num_inference_steps": InputParam.template("num_inference_steps", default=10)}
+    input_overrides = [InputParam.template("num_inference_steps", default=10)]
 ```
 
 `component_overrides` and `config_overrides` work the same way with a `ComponentSpec` / `ConfigSpec`, see the ComponentSpec section below. Typical uses: set a preset's default as above, settle a default two sub-blocks disagree on, or reword a description from the composite's point of view.
@@ -343,10 +343,10 @@ class DistilledBlocks(SequentialPipelineBlocks):
     block_classes = [TextEncoderStep, DenoiseStep, DecodeStep]
     block_names = ["text_encoder", "denoise", "decode"]
     # the distilled checkpoint has its own transformer weights and skips guidance
-    component_overrides = {
-        "transformer": ComponentSpec("transformer", YourTransformerModel, repo="org/model-distilled", subfolder="transformer"),
-    }
-    config_overrides = {"is_distilled": ConfigSpec("is_distilled", default=True)}
+    component_overrides = [
+        ComponentSpec("transformer", YourTransformerModel, repo="org/model-distilled", subfolder="transformer"),
+    ]
+    config_overrides = [ConfigSpec("is_distilled", default=True)]
 ```
 
 ## Gotchas
@@ -378,7 +378,7 @@ class DistilledBlocks(SequentialPipelineBlocks):
 
 12. **Helpers taking `components`.** Prefer explicit args, for example, `get_xx_prompt_embeds(text_encoder, tokenizer, prompt)` instead of `get_xx_prompt_embeds(components, prompt)`. Helpers and block methods should take only what they use so dependencies are visible and they can run without an assembled pipeline. Leave the full `components` object to `__call__`, which unpacks what its helpers need. See `get_qwen_prompt_embeds` in `qwenimage/encoders.py`.
 
-13. **An override declaration that restates less than the derived entry.** `input_overrides = {"num_inference_steps": InputParam("num_inference_steps", default=10)}` replaces the derived entry whole, so the type hint and description the sub-block declared are gone. Build the override from the template, `InputParam.template("num_inference_steps", default=10)`, or restate everything.
+13. **An override declaration that restates less than the derived entry.** `input_overrides = [InputParam("num_inference_steps", default=10)]` replaces the derived entry whole, so the type hint and description the sub-block declared are gone. Build the override from the template, `InputParam.template("num_inference_steps", default=10)`, or restate everything.
 
 ## Conversion checklist
 

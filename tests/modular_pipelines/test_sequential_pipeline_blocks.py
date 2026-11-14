@@ -655,7 +655,7 @@ class TestDefaultConflicts:
         class Blocks(SequentialPipelineBlocks):
             block_classes = [FirstBlock, SecondBlock]
             block_names = ["first", "second"]
-            input_overrides = {"strength": InputParam("strength", default=0.9999)}
+            input_overrides = [InputParam("strength", default=0.9999)]
 
         with quiet():
             inputs = Blocks().inputs
@@ -696,7 +696,7 @@ class TestDefaultConflicts:
         with quiet():
             inputs = Loop.from_blocks_dict(
                 {"first": FirstBlock(), "second": SecondBlock()},
-                input_overrides={"strength": InputParam("strength", default=0.9999)},
+                input_overrides=[InputParam("strength", default=0.9999)],
             ).inputs
         assert [inp.default for inp in inputs if inp.name == "strength"] == [0.9999]
 
@@ -821,14 +821,14 @@ class TestOverrides:
         return Blocks()
 
     def test_input_override_replaces_the_derived_declaration(self):
-        blocks = self._sequential(input_overrides={"batch_size": InputParam("batch_size", default=1)})
+        blocks = self._sequential(input_overrides=[InputParam("batch_size", default=1)])
         (batch_size,) = [inp for inp in blocks.inputs if inp.name == "batch_size"]
         assert batch_size.default == 1
         assert batch_size.required is False
         assert "batch_size" not in blocks.required_inputs
 
     def test_override_does_not_mutate_the_sub_block_declaration(self):
-        blocks = self._sequential(input_overrides={"batch_size": InputParam("batch_size", default=1)})
+        blocks = self._sequential(input_overrides=[InputParam("batch_size", default=1)])
         _ = blocks.inputs
         (batch_size,) = [inp for inp in blocks.sub_blocks["prepare_latents"].inputs if inp.name == "batch_size"]
         assert batch_size.required is True
@@ -836,37 +836,49 @@ class TestOverrides:
 
     def test_component_and_config_overrides(self):
         blocks = self._sequential(
-            component_overrides={"unet": ComponentSpec("unet", description="any UNet2DConditionModel")},
-            config_overrides={"scale": ConfigSpec("scale", default=16)},
+            component_overrides=[ComponentSpec("unet", description="any UNet2DConditionModel")],
+            config_overrides=[ConfigSpec("scale", default=16)],
         )
         assert [c.description for c in blocks.expected_components if c.name == "unet"] == ["any UNet2DConditionModel"]
         assert [c.default for c in blocks.expected_configs if c.name == "scale"] == [16]
 
     def test_unknown_name_raises(self):
-        blocks = self._sequential(input_overrides={"strenght": InputParam("strenght", default=0.5)})
+        blocks = self._sequential(input_overrides=[InputParam("strenght", default=0.5)])
         with pytest.raises(ValueError, match="strenght"):
             blocks.inputs
-        blocks = self._sequential(component_overrides={"vae": ComponentSpec("vae", description="x")})
+        blocks = self._sequential(component_overrides=[ComponentSpec("vae", description="x")])
         with pytest.raises(ValueError, match="vae"):
             blocks.expected_components
 
-    def test_partial_dict_override_raises(self):
-        blocks = self._sequential(input_overrides={"batch_size": {"default": 1}})
+    def test_entry_that_is_not_a_declaration_raises(self):
+        # a partial dict, or the `{name: declaration}` shape, is not a list of declarations
+        for overrides in ([{"default": 1}], {"batch_size": InputParam("batch_size", default=1)}):
+            blocks = self._sequential(input_overrides=overrides)
+            with pytest.raises(TypeError, match="must be a list of declarations"):
+                blocks.inputs
+        blocks = self._sequential(input_overrides=[ConfigSpec("batch_size", default=1)])
         with pytest.raises(TypeError, match="must be of type InputParam"):
+            blocks.inputs
+
+    def test_name_declared_twice_raises(self):
+        blocks = self._sequential(
+            input_overrides=[InputParam("batch_size", default=1), InputParam("batch_size", default=2)]
+        )
+        with pytest.raises(ValueError, match="more than once"):
             blocks.inputs
 
     def test_from_blocks_dict_accepts_overrides(self):
         blocks = SequentialPipelineBlocks.from_blocks_dict(
             {"prepare_latents": PrepareLatentsBlock(), "unet": UNetBlock()},
-            input_overrides={"batch_size": InputParam("batch_size", default=2)},
-            config_overrides={"scale": ConfigSpec("scale", default=16)},
+            input_overrides=[InputParam("batch_size", default=2)],
+            config_overrides=[ConfigSpec("scale", default=16)],
         )
         assert [inp.default for inp in blocks.inputs if inp.name == "batch_size"] == [2]
         assert [c.default for c in blocks.expected_configs if c.name == "scale"] == [16]
 
         loop = LoopSequentialPipelineBlocks.from_blocks_dict(
             {"unet": UNetBlock()},
-            component_overrides={"unet": ComponentSpec("unet", description="any UNet2DConditionModel")},
+            component_overrides=[ComponentSpec("unet", description="any UNet2DConditionModel")],
         )
         assert [c.description for c in loop.expected_components if c.name == "unet"] == ["any UNet2DConditionModel"]
 
@@ -878,7 +890,7 @@ class TestOverrides:
         assert strength.defaults_by_block == {"inpaint": 0.9999, "img2img": 0.3}
 
         class AutoWithDefault(Auto):
-            input_overrides = {"strength": InputParam("strength", default=0.5)}
+            input_overrides = [InputParam("strength", default=0.5)]
 
         (strength,) = [inp for inp in AutoWithDefault().inputs if inp.name == "strength"]
         assert strength.default == 0.5

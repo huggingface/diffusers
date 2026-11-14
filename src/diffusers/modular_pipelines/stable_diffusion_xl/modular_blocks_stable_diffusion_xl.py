@@ -128,7 +128,7 @@ class StableDiffusionXLInpaintBeforeDenoiseStep(SequentialPipelineBlocks):
     ]
     block_names = ["set_timesteps", "prepare_latents", "prepare_add_cond"]
     # set_timesteps is shared with img2img and declares 0.3; inpainting starts from (almost) pure noise
-    input_overrides = {"strength": InputParam.template("strength", default=0.9999)}
+    input_overrides = [InputParam.template("strength", default=0.9999)]
 
     @property
     def description(self):

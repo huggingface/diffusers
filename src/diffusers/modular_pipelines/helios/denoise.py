@@ -1062,14 +1062,14 @@ class HeliosPyramidDistilledChunkDenoiseStep(HeliosChunkLoopWrapper):
     ]
     block_names = ["history_slice", "noise_gen", "denoise_inner", "update_chunk"]
     # the shared noise-gen step declares the non-distilled schedule; the distilled denoiser runs 2 steps per stage
-    input_overrides = {
-        "pyramid_num_inference_steps_list": InputParam(
+    input_overrides = [
+        InputParam(
             "pyramid_num_inference_steps_list",
             default=[2, 2, 2],
             type_hint=list,
             description="Number of denoising steps per pyramid stage.",
         )
-    }
+    ]
 
     @property
     def description(self) -> str:
@@ -1090,14 +1090,14 @@ class HeliosPyramidDistilledI2VChunkDenoiseStep(HeliosChunkLoopWrapper):
     ]
     block_names = ["history_slice", "noise_gen", "denoise_inner", "update_chunk"]
     # the shared noise-gen step declares the non-distilled schedule; the distilled denoiser runs 2 steps per stage
-    input_overrides = {
-        "pyramid_num_inference_steps_list": InputParam(
+    input_overrides = [
+        InputParam(
             "pyramid_num_inference_steps_list",
             default=[2, 2, 2],
             type_hint=list,
             description="Number of denoising steps per pyramid stage.",
         )
-    }
+    ]
 
     @property
     def description(self) -> str:
