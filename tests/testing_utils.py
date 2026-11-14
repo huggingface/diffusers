@@ -597,18 +597,42 @@ def require_torch_multi_gpu(test_case):
     return pytest.mark.skipif(torch.cuda.device_count() <= 1, reason="test requires multiple GPUs")(test_case)
 
 
-def require_torch_multi_accelerator(test_case):
+def require_torch_multi_accelerator(test_case=None, *, include_neuron: bool = False, include_tpu: bool = False):
     """
     Decorator marking a test that requires a multi-accelerator setup (in PyTorch). These tests are skipped on a machine
     without multiple hardware accelerators.
+
+    Neuron devices and TPU chips only count with `include_neuron=True` and `include_tpu=True` respectively, because some
+    multi-accelerator tester mixins do not run on them yet.
     """
+    if test_case is None:
+        return functools.partial(
+            require_torch_multi_accelerator, include_neuron=include_neuron, include_tpu=include_tpu
+        )
+
     if not is_torch_available():
         return pytest.mark.skip(reason="test requires PyTorch")(test_case)
 
     import torch
 
+    neuron_device_count = (
+        torch.neuron.device_count()
+        if include_neuron and is_torch_neuronx_available() and hasattr(torch, "neuron") and torch.neuron.is_available()
+        else 0
+    )
+    tpu_device_count = 0
+    if include_tpu and is_torch_tpu_available():
+        from torch_tpu._internal.utils import hardware
+
+        tpu_device_count = hardware.get_tpu_device_count()
+
     return pytest.mark.skipif(
-        not (torch.cuda.device_count() > 1 or torch.xpu.device_count() > 1),
+        not (
+            torch.cuda.device_count() > 1
+            or torch.xpu.device_count() > 1
+            or neuron_device_count > 1
+            or tpu_device_count > 1
+        ),
         reason="test requires multiple hardware accelerators",
     )(test_case)
 
