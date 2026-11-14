@@ -1030,30 +1030,6 @@ def _prepare_ucpe_ray_transforms(
     return P, P.transpose(-1, -2), _invert_SE3(P), rotary_emb_cam
 
 
-def flip_and_shift(x, dim=2, shift_val=0.0):
-    """Flip a sequence and shift it right by one step.
-
-    The operation reverses the sequence, drops the last element, and pads the front with ``shift_val``.
-
-    Example:
-        [x0, x1, x2, x3] -> flip [x3, x2, x1, x0] -> shift [v, x3, x2, x1]
-
-    Args:
-        x: Input tensor with a time dimension at ``dim``.
-        dim: Dimension to flip and shift.
-        shift_val: Value used for the padded step.
-
-    Returns:
-        Tensor with the same shape as ``x``.
-    """
-    x_flip = torch.flip(x, dims=[dim])
-    x_shifted = x_flip.narrow(dim, 0, x.shape[dim] - 1)
-    pad_shape = list(x.shape)
-    pad_shape[dim] = 1
-    padding = torch.full(pad_shape, shift_val, device=x.device, dtype=x.dtype)
-    return torch.cat([padding, x_shifted], dim=dim)
-
-
 def torch_chunk_sana_gdn(
     q,
     k,
@@ -1066,7 +1042,14 @@ def torch_chunk_sana_gdn(
     chunk_size: int | None = 21,
     eps: float = 1e-6,
     return_components: bool = False,
+    bidirectional: bool = False,
 ):
+    """Chunked gated delta-rule scan over the temporal axis.
+
+    With `bidirectional=True` the backward pass (exclusive: frames `t+1..T`) is added to the forward one (inclusive:
+    frames `1..t`). It reuses the per-frame transition matrices of the forward pass in reverse frame order, which
+    gives the same result as running this scan on flipped and shifted inputs.
+    """
     del recall_gate  # Accepted so the chunk and fused scan share one signature; unused by this rule.
 
     B, H, D, N = q.shape
@@ -1085,6 +1068,7 @@ def torch_chunk_sana_gdn(
     def to_frame_seq(x):
         return x.view(B, H, D, T, S).permute(0, 1, 3, 2, 4)
 
+    k_flat = k
     q, k, v = to_frame_seq(q), to_frame_seq(k), to_frame_seq(v)
     q_rot, k_rot = to_frame_seq(q_rot), to_frame_seq(k_rot)
 
@@ -1102,14 +1086,19 @@ def torch_chunk_sana_gdn(
     I = torch.eye(D, device=q.device, dtype=q.dtype).view(1, 1, 1, D, D)
 
     # KV State Matrices: W = g * (I - c * K @ K^T)
+    k_rot_t = k_rot.transpose(-1, -2).contiguous()
     k_rot_beta = k_rot * beta
-    W_kv = decay * (I - scale * torch.matmul(k_rot_beta, k_rot.transpose(-1, -2)))
-    U_kv = torch.matmul(v * beta, k_rot.transpose(-1, -2))
+    W_kv = decay * (I - scale * torch.matmul(k_rot_beta, k_rot_t))
+    U_kv = torch.matmul(v * beta, k_rot_t)
 
     # Z State Matrices: W = g * (I - c * K @ K^T)
     k_beta = k * beta
     W_z = decay * (I - scale * torch.matmul(k_beta, k.transpose(-1, -2)))
     U_z = target_z * k_beta.sum(dim=-1, keepdim=True)  # Equivalent to Kt @ bt^T over spatial dim
+    if bidirectional:
+        # The backward pass used to read a contiguous flipped copy of `k`; reduce over the same layout so the
+        # summation order does not change.
+        U_z_bwd = target_z * (to_frame_seq(k_flat.contiguous()) * beta).sum(dim=-1, keepdim=True)
 
     # =========================================================================
     # 2. CHUNKING LOGIC
@@ -1157,12 +1146,31 @@ def torch_chunk_sana_gdn(
     S_kv_all = torch.cat(out_S_kv, dim=2)
     S_z_all = torch.cat(out_S_z, dim=2)
 
+    if bidirectional:
+        # Backward pass: its first step is a padded frame (W = I, U = 0), so its state stays zero; step t >= 1
+        # reads frame T - t. The states are collected back in forward frame order.
+        s_kv = torch.zeros(B, H, D, D, device=q.device, dtype=q.dtype)
+        s_z = torch.zeros(B, H, D, 1, device=q.device, dtype=q.dtype)
+        bwd_S_kv, bwd_S_z = [s_kv], [s_z]
+        for t in range(T - 1, 0, -1):
+            s_kv = torch.matmul(s_kv, W_kv[:, :, t]) + U_kv[:, :, t]
+            s_z = torch.matmul(W_z[:, :, t], s_z) + U_z_bwd[:, :, t]
+            bwd_S_kv.append(s_kv)
+            bwd_S_z.append(s_z)
+        bwd_S_kv_all = torch.stack(bwd_S_kv[::-1], dim=2)
+        bwd_S_z_all = torch.stack(bwd_S_z[::-1], dim=2)
+        # Both passes read the same queries.
+        q, q_rot = q.contiguous(), q_rot.contiguous()
+
     # =========================================================================
     # 4. PARALLEL OUTPUT PROJECTION
     # =========================================================================
 
     out_num = torch.matmul(S_kv_all, q_rot)
     out_den = torch.matmul(S_z_all.transpose(-1, -2), q)
+    if bidirectional:
+        out_num = out_num + torch.matmul(bwd_S_kv_all, q_rot)
+        out_den = out_den + torch.matmul(bwd_S_z_all.transpose(-1, -2), q)
 
     final_num = out_num.permute(0, 1, 3, 2, 4).reshape(B, H, D, N)
     final_den = out_den.permute(0, 1, 3, 2, 4).reshape(B, H, 1, N)
@@ -1197,6 +1205,7 @@ def torch_chunk_cam_single_path_delta_rule(
     beta: torch.Tensor,
     decay: torch.Tensor,
     chunk_size: int | None = 21,
+    bidirectional: bool = False,
 ) -> torch.Tensor:
     """Parallel chunk-scan version of the single-path delta-rule recurrence.
 
@@ -1211,6 +1220,9 @@ def torch_chunk_cam_single_path_delta_rule(
         state[t] = state[t-1] @ W[t] + U[t]
     with:
         W[t] = g[t] * (I - beta[t] * k_rot[t] @ k_rot[t]^T) U[t] = beta[t] * v[t] @ k_rot[t]^T
+
+    With `bidirectional=True` the backward pass (exclusive: frames t+1..T) is added to the output. It reuses W and U
+    in reverse frame order, which gives the same result as running this scan on flipped and shifted inputs.
     """
     B, H, D, N = q_rot.shape
     if beta.ndim not in (3, 4):
@@ -1240,9 +1252,10 @@ def torch_chunk_cam_single_path_delta_rule(
     # =========================================================================
     I = torch.eye(D, device=q_rot.device, dtype=q_rot.dtype).view(1, 1, 1, D, D)
 
+    k_rot_t = k_rot.transpose(-1, -2).contiguous()
     k_rot_beta = k_rot * beta
-    W_kv = decay * (I - torch.matmul(k_rot_beta, k_rot.transpose(-1, -2)))
-    U_kv = torch.matmul(v * beta, k_rot.transpose(-1, -2))
+    W_kv = decay * (I - torch.matmul(k_rot_beta, k_rot_t))
+    U_kv = torch.matmul(v * beta, k_rot_t)
 
     # =========================================================================
     # Phase 2: CHUNKED SCAN over D x D state space
@@ -1278,10 +1291,24 @@ def torch_chunk_cam_single_path_delta_rule(
 
     S_kv_all = torch.cat(out_S_kv, dim=2)
 
+    if bidirectional:
+        # Backward pass: its first step is a padded frame (W = I, U = 0), so its state stays zero; step t >= 1
+        # reads frame T - t. The states are collected back in forward frame order.
+        s_kv = torch.zeros(B, H, D, D, device=q_rot.device, dtype=q_rot.dtype)
+        bwd_S_kv = [s_kv]
+        for t in range(T - 1, 0, -1):
+            s_kv = torch.matmul(s_kv, W_kv[:, :, t]) + U_kv[:, :, t]
+            bwd_S_kv.append(s_kv)
+        bwd_S_kv_all = torch.stack(bwd_S_kv[::-1], dim=2)
+        # Both passes read the same queries.
+        q_rot = q_rot.contiguous()
+
     # =========================================================================
     # Phase 3: PARALLEL OUTPUT PROJECTION  (no denominator)
     # =========================================================================
     out = torch.matmul(S_kv_all, q_rot)  # (B, H, T, D, S)
+    if bidirectional:
+        out = out + torch.matmul(bwd_S_kv_all, q_rot)
 
     return out.permute(0, 1, 3, 2, 4).reshape(B, H, D, N)
 
@@ -1457,8 +1484,8 @@ class SanaWMBidirectionalGDNAttention(nn.Module):
         decay = decay.float()
         recall_gate = recall_gate.float()
 
-        # Forward pass (inclusive: 1..t).
-        num_fwd, den_fwd = torch_chunk_sana_gdn(
+        # Forward (inclusive: 1..t) and backward (exclusive: t+1..T) passes.
+        total_num, total_den = torch_chunk_sana_gdn(
             query,
             key,
             value,
@@ -1470,45 +1497,8 @@ class SanaWMBidirectionalGDNAttention(nn.Module):
             chunk_size=self.chunk_size,
             eps=self.eps,
             return_components=True,
+            bidirectional=True,
         )
-
-        # Backward pass (exclusive: t+1..T).
-        def to_time_structure(tensor: torch.Tensor) -> torch.Tensor:
-            return tensor.view(batch_size, num_heads, head_dim, num_frames, spatial_size).permute(0, 1, 3, 2, 4)
-
-        def from_time_structure(tensor: torch.Tensor) -> torch.Tensor:
-            return tensor.permute(0, 1, 3, 2, 4).reshape(batch_size, num_heads, head_dim, seq_len)
-
-        query_bwd = torch.flip(to_time_structure(query), dims=[2])
-        query_rot_bwd = torch.flip(to_time_structure(query_rot), dims=[2])
-        key_bwd = flip_and_shift(to_time_structure(key), dim=2, shift_val=0.0)
-        value_bwd = flip_and_shift(to_time_structure(value), dim=2, shift_val=0.0)
-        key_rot_bwd = flip_and_shift(to_time_structure(key_rot), dim=2, shift_val=0.0)
-        beta_bwd = flip_and_shift(beta, dim=2, shift_val=0.0)
-        decay_bwd = flip_and_shift(decay, dim=2, shift_val=1.0)
-
-        num_bwd_flipped, den_bwd_flipped = torch_chunk_sana_gdn(
-            from_time_structure(query_bwd),
-            from_time_structure(key_bwd),
-            from_time_structure(value_bwd),
-            from_time_structure(query_rot_bwd),
-            from_time_structure(key_rot_bwd),
-            beta_bwd,
-            decay_bwd,
-            recall_gate=recall_gate,
-            chunk_size=self.chunk_size,
-            eps=self.eps,
-            return_components=True,
-        )
-
-        def flip_back(tensor: torch.Tensor) -> torch.Tensor:
-            # The denominator stream carries a single channel, hence the runtime `dim` lookup.
-            dim = tensor.shape[2]
-            tensor = tensor.view(batch_size, num_heads, dim, num_frames, spatial_size)
-            return torch.flip(tensor, dims=[3]).reshape(batch_size, num_heads, dim, seq_len)
-
-        total_num = num_fwd + flip_back(num_bwd_flipped)
-        total_den = den_fwd + flip_back(den_bwd_flipped)
 
         hidden_states = total_num / (total_den + self.eps)
 
@@ -1625,43 +1615,17 @@ class SanaWMBidirectionalGDNCamAttention(nn.Module):
             decay_mask = decay_valid_mask.to(decay.dtype)
             decay = decay * decay_mask + (1.0 - decay_mask)
 
-        # Forward pass (inclusive: 1..t). Force FP32 to preserve recurrent stability.
-        out_fwd = torch_chunk_cam_single_path_delta_rule(
+        # Forward (inclusive: 1..t) and backward (exclusive: t+1..T) passes. Force FP32 to preserve recurrent
+        # stability.
+        hidden_states = torch_chunk_cam_single_path_delta_rule(
             query_ucpe.float(),
             key_ucpe.float(),
             value_ucpe.float(),
             beta.float(),
             decay.float(),
             chunk_size=self.chunk_size,
+            bidirectional=True,
         )
-
-        # Backward pass (exclusive: t+1..T).
-        def to_time_structure(tensor: torch.Tensor) -> torch.Tensor:
-            return tensor.view(batch_size, num_heads, head_dim, num_frames, spatial_size).permute(0, 1, 3, 2, 4)
-
-        def from_time_structure(tensor: torch.Tensor) -> torch.Tensor:
-            return tensor.permute(0, 1, 3, 2, 4).reshape(batch_size, num_heads, head_dim, seq_len)
-
-        query_bwd = torch.flip(to_time_structure(query_ucpe), dims=[2])
-        key_bwd = flip_and_shift(to_time_structure(key_ucpe), dim=2, shift_val=0.0)
-        value_bwd = flip_and_shift(to_time_structure(value_ucpe), dim=2, shift_val=0.0)
-        beta_bwd = flip_and_shift(beta, dim=2, shift_val=0.0)
-        decay_bwd = flip_and_shift(decay, dim=2, shift_val=1.0)
-
-        out_bwd_flipped = torch_chunk_cam_single_path_delta_rule(
-            from_time_structure(query_bwd).float(),
-            from_time_structure(key_bwd).float(),
-            from_time_structure(value_bwd).float(),
-            beta_bwd.float(),
-            decay_bwd.float(),
-            chunk_size=self.chunk_size,
-        )
-        out_bwd = torch.flip(
-            out_bwd_flipped.view(batch_size, num_heads, head_dim, num_frames, spatial_size),
-            dims=[3],
-        ).reshape(batch_size, num_heads, head_dim, seq_len)
-
-        hidden_states = out_fwd + out_bwd
 
         if dtype_orig != torch.float32:
             hidden_states = hidden_states.to(dtype_orig)
