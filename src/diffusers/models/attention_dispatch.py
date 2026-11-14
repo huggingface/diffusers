@@ -3716,12 +3716,13 @@ def _native_flex_attention(
     batch_size, seq_len_q, num_heads, _ = query.shape
     _, seq_len_kv, _, _ = key.shape
 
-    if attn_mask is None or isinstance(attn_mask, flex_attention.BlockMask):
+    if attn_mask is None:
+        if is_causal:
+            block_mask = flex_attention.create_block_mask(
+                _flex_attention_causal_mask_mod, batch_size, num_heads, seq_len_q, seq_len_kv, query.device
+            )
+    elif isinstance(attn_mask, flex_attention.BlockMask):
         block_mask = attn_mask
-    elif is_causal:
-        block_mask = flex_attention.create_block_mask(
-            _flex_attention_causal_mask_mod, batch_size, num_heads, seq_len_q, seq_len_kv, query.device
-        )
     elif torch.is_tensor(attn_mask):
         if attn_mask.ndim == 2:
             attn_mask = attn_mask.view(attn_mask.size(0), 1, attn_mask.size(1), 1)
