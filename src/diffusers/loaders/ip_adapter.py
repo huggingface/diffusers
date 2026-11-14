@@ -288,12 +288,12 @@ class IPAdapterMixin:
             if isinstance(
                 attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0, IPAdapterXFormersAttnProcessor)
             ):
-                if len(scale_configs) != len(attn_processor.scale):
+                if len(scale_configs) == 1:
+                    scale_configs = scale_configs * len(attn_processor.scale)
+                elif len(scale_configs) != len(attn_processor.scale):
                     raise ValueError(
                         f"Cannot assign {len(scale_configs)} scale_configs to {len(attn_processor.scale)} IP-Adapter."
                     )
-                elif len(scale_configs) == 1:
-                    scale_configs = scale_configs * len(attn_processor.scale)
                 for i, scale_config in enumerate(scale_configs):
                     if isinstance(scale_config, dict):
                         for k, s in scale_config.items():
@@ -540,12 +540,12 @@ class ModularIPAdapterMixin:
             if isinstance(
                 attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0, IPAdapterXFormersAttnProcessor)
             ):
-                if len(scale_configs) != len(attn_processor.scale):
+                if len(scale_configs) == 1:
+                    scale_configs = scale_configs * len(attn_processor.scale)
+                elif len(scale_configs) != len(attn_processor.scale):
                     raise ValueError(
                         f"Cannot assign {len(scale_configs)} scale_configs to {len(attn_processor.scale)} IP-Adapter."
                     )
-                elif len(scale_configs) == 1:
-                    scale_configs = scale_configs * len(attn_processor.scale)
                 for i, scale_config in enumerate(scale_configs):
                     if isinstance(scale_config, dict):
                         for k, s in scale_config.items():
