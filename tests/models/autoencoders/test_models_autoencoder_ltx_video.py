@@ -117,6 +117,30 @@ class TestAutoencoderKLLTXVideo090SlicingTiling(AutoencoderKLLTXVideo090TesterCo
     def test_forward_with_norm_groups(self):
         super().test_forward_with_norm_groups()
 
+    def test_framewise_decode_keeps_frames_aligned(self):
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict()).to(torch_device)
+        model.eval()
+
+        # 13 latent frames, tiles of 4 latent frames and a stride of 2, so several tiles are decoded.
+        ratio = model.temporal_compression_ratio
+        model.tile_sample_min_num_frames = 4 * ratio
+        model.tile_sample_stride_num_frames = 2 * ratio
+        z = randn_tensor((1, model.config.latent_channels, 13, 4, 4), generator=self.generator, device=torch_device)
+
+        with torch.no_grad():
+            untiled = model.decode(z).sample
+            model.use_framewise_decoding = True
+            tiled = model.decode(z).sample
+
+        assert tiled.shape == untiled.shape
+
+        # Past the first tile, the output must be closer to the same untiled frames than to the previous ones.
+        start = model.tile_sample_stride_num_frames + 1
+        same_frame_error = (tiled[:, :, start:] - untiled[:, :, start:]).pow(2).mean()
+        previous_frame_error = (tiled[:, :, start:] - untiled[:, :, start - 1 : -1]).pow(2).mean()
+        assert same_frame_error < previous_frame_error
+
 
 class AutoencoderKLLTXVideo091TesterConfig(BaseModelTesterConfig):
     @property

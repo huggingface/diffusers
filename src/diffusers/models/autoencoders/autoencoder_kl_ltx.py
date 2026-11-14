@@ -1496,7 +1496,9 @@ class AutoencoderKLLTXVideo(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrigi
             else:
                 decoded = self.decoder(tile, temb)
             if i > 0:
-                decoded = decoded[:, :, :-1, :, :]
+                # The first decoded frame comes from the first latent frame of the tile, which the previous tile
+                # already decoded. Drop this duplicate and keep the last frame.
+                decoded = decoded[:, :, 1:, :, :]
             row.append(decoded)
 
         result_row = []
