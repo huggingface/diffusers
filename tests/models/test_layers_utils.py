@@ -21,7 +21,7 @@ import torch
 from torch import nn
 
 from diffusers.models.attention import GEGLU, AdaLayerNorm, ApproximateGELU
-from diffusers.models.embeddings import get_timestep_embedding
+from diffusers.models.embeddings import apply_rotary_emb, get_timestep_embedding
 from diffusers.models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
 from diffusers.models.transformers.transformer_2d import Transformer2DModel
 
@@ -107,6 +107,36 @@ class EmbeddingsTests(unittest.TestCase):
             torch.tensor([-0.9801, -0.9464, -0.9349, -0.3952, 0.8887, -0.9709, 0.5299, -0.2853, -0.9927]),
             1e-3,
         )
+
+    def test_apply_rotary_emb_matches_float32_reference(self):
+        # Must equal the explicit float32 formula bit for bit, for every input dtype and layout.
+        def reference(x, cos, sin, unbind_dim):
+            if unbind_dim == -1:
+                x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)
+                x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(3)
+            else:
+                x_real, x_imag = x.reshape(*x.shape[:-1], 2, -1).unbind(-2)
+                x_rotated = torch.cat([-x_imag, x_real], dim=-1)
+            return (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+
+        generator = torch.Generator().manual_seed(0)
+        seq_len, dim = 16, 8
+        angles = torch.rand(seq_len, dim, generator=generator) * 10
+        cos, sin = angles.cos().to(torch_device), angles.sin().to(torch_device)
+        for dtype in (torch.float32, torch.float16, torch.bfloat16):
+            for unbind_dim in (-1, -2):
+                for sequence_dim in (1, 2):
+                    shape = (2, seq_len, 3, dim) if sequence_dim == 1 else (2, 3, seq_len, dim)
+                    x = torch.randn(shape, generator=generator).to(torch_device, dtype)
+                    if sequence_dim == 1:
+                        cos_b, sin_b = cos[None, :, None], sin[None, :, None]
+                    else:
+                        cos_b, sin_b = cos[None, None], sin[None, None]
+
+                    out = apply_rotary_emb(x, (cos, sin), use_real_unbind_dim=unbind_dim, sequence_dim=sequence_dim)
+
+                    assert out.dtype == dtype
+                    assert torch.equal(out, reference(x, cos_b, sin_b, unbind_dim)), (dtype, unbind_dim, sequence_dim)
 
 
 class Upsample2DBlockTests(unittest.TestCase):
