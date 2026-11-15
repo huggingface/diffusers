@@ -220,6 +220,98 @@ class TestMiniMaxH3ImageTransformerAdaLNCurve(MiniMaxH3ImageTransformerTesterCon
             torch.testing.assert_close(ends, torch.stack([table[0], table[-1]]))
 
 
+class TestMiniMaxH3ImageTransformerComfySingleFile(MiniMaxH3ImageTransformerTesterConfig):
+    """Loading the ComfyUI single files of MiniMax-H3-Image, which are pruned and stack the PDD heads."""
+
+    NUM_GRID_POINTS = 5
+
+    def get_pruned_model(self):
+        model = self.model_class(**self.get_init_dict(), adaln_curve_grid=self.NUM_GRID_POINTS)
+        with torch.no_grad():
+            model.time_embedder.table.normal_(generator=self.generator)
+        return model.to(torch_device).eval()
+
+    def get_comfy_state_dict(self, model):
+        """
+        `model`'s weights in the layout of the Comfy-Org single files: the released key names, a fused `[q; k; v]`
+        projection, a `[gate; value]` SwiGLU input, the timestep curve as `adaln_t_table`, and the PDD heads as a bank
+        of the first head followed by every later head's offset from it.
+        """
+        state_dict = dict(model.state_dict())
+        num_heads = model.config.num_pdd_heads
+        comfy_state_dict = {
+            "adaln_t_table": state_dict.pop("time_embedder.table"),
+            "rope.inv_freq": model.rope.inv_freq,
+            # the attention-backend settings some releases store beside the weights
+            "blocks.0.attn.comfy_attention.config": torch.zeros(37, dtype=torch.uint8),
+        }
+        for suffix in ("weight", "bias"):
+            heads = [state_dict.pop(f"pdd_proj_out.{step}.{suffix}") for step in range(num_heads)]
+            bank = [heads[0], *[head - heads[0] for head in heads[1:]]]
+            comfy_state_dict[f"final_layer.video_out.{suffix}"] = torch.cat(bank)
+
+        renames = {
+            "transformer_blocks.": "blocks.",
+            "token_refiner.refiner_blocks.": "token_refiner.blocks.",
+            "proj_in.": "video_patch_proj.",
+            "context_embedder.": "condition_proj.",
+            "norm_out.norm.": "final_layer.norm.",
+            "norm_out.linear.": "final_layer.adaln_proj.linear.",
+            ".attn.norm_q.": ".attn.q_norm.",
+            ".attn.norm_k.": ".attn.k_norm.",
+            ".attn.to_out.0.": ".attn.out_proj.",
+            ".ff.net.2.": ".mlp.fc2.",
+        }
+        for key, value in state_dict.items():
+            if key.endswith((".attn.to_k.weight", ".attn.to_v.weight")):
+                continue
+            if key.endswith(".attn.to_q.weight"):
+                prefix = key[: -len("to_q.weight")]
+                value = torch.cat([value, state_dict[prefix + "to_k.weight"], state_dict[prefix + "to_v.weight"]])
+                key = prefix + "qkv_proj.weight"
+            elif key.endswith(".ff.net.0.proj.weight"):
+                value, gate = value.chunk(2, dim=0)
+                value = torch.cat([gate, value], dim=0)
+                key = key.replace(".ff.net.0.proj.", ".mlp.fc1.")
+            for diffusers_name, comfy_name in renames.items():
+                key = key.replace(diffusers_name, comfy_name)
+            comfy_state_dict[key] = value
+        return comfy_state_dict
+
+    def test_single_file_reproduces_the_pruned_model(self, tmp_path):
+        # The repository's config describes the released, unpruned model; the curve and the head count come from the
+        # checkpoint.
+        with torch.device("meta"):
+            self.model_class(**self.get_init_dict()).save_config(tmp_path)
+        model = self.get_pruned_model()
+
+        loaded = self.model_class.from_single_file(self.get_comfy_state_dict(model), config=str(tmp_path))
+        loaded = loaded.to(torch_device).eval()
+
+        assert loaded.config.adaln_curve_grid == self.NUM_GRID_POINTS
+        assert loaded.config.num_pdd_heads == model.config.num_pdd_heads
+        inputs = self.get_dummy_inputs()
+        with torch.no_grad():
+            torch.testing.assert_close(loaded(**inputs).sample, model(**inputs).sample)
+
+    def test_single_file_is_told_apart_from_the_video_model(self):
+        from diffusers.loaders.single_file_utils import infer_diffusers_model_type
+
+        comfy_state_dict = self.get_comfy_state_dict(self.get_pruned_model())
+        assert infer_diffusers_model_type(comfy_state_dict) == "minimax-h3-image"
+        comfy_state_dict["audio_patch_proj.weight"] = torch.zeros(24, 32)
+        assert infer_diffusers_model_type(comfy_state_dict) == "minimax-h3"
+
+    def test_quantized_single_file_is_refused(self, tmp_path):
+        with torch.device("meta"):
+            self.model_class(**self.get_init_dict()).save_config(tmp_path)
+        comfy_state_dict = self.get_comfy_state_dict(self.get_pruned_model())
+        comfy_state_dict["blocks.0.attn.qkv_proj.comfy_quant"] = torch.zeros(19, dtype=torch.uint8)
+
+        with pytest.raises(ValueError, match="quantized ComfyUI checkpoint"):
+            self.model_class.from_single_file(comfy_state_dict, config=str(tmp_path))
+
+
 class TestMiniMaxH3ImageTransformerMemory(MiniMaxH3ImageTransformerTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for the MiniMax-H3-Image transformer."""
 

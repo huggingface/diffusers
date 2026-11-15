@@ -32,9 +32,27 @@ transformer = MiniMaxH3Transformer3DModel.from_pretrained(
 
 The checkpoint is mixed precision: the two input patch projections, the timestep MLP and the two output heads are float32 while the block stack is bfloat16. `from_pretrained` keeps that layout through `_keep_in_fp32_modules`, so pass `dtype=torch.bfloat16` and let it place the float32 modules rather than casting the model with `.to(torch.bfloat16)` afterwards.
 
+## ComfyUI checkpoints
+
+[`~loaders.FromOriginalModelMixin.from_single_file`] loads the single-file checkpoints of [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3), including the *pruned* ones. A pruned checkpoint replaces the timestep MLP and the wide AdaLN projections, about 40% of the parameters, with the activated timestep curve sampled on a 1025-point grid (`adaln_t_table`) and 8-input AdaLN projections; the loader reads the curve's shape off the checkpoint and sizes the model for it (`adaln_curve_grid`). Only the `bf16` files load: the quantized ones (`int8_convrot`, `w6a8`, ...) pack their weights in layouts diffusers has no kernels for.
+
+```python
+import torch
+from diffusers import MiniMaxH3Transformer3DModel
+
+transformer = MiniMaxH3Transformer3DModel.from_single_file(
+    "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_fl2va_pruned_bf16.safetensors",
+    dtype=torch.bfloat16,
+)
+```
+
 ## MiniMaxH3Transformer3DModel
 
 [[autodoc]] MiniMaxH3Transformer3DModel
+
+## MiniMaxH3TimestepCurve
+
+[[autodoc]] models.transformers.transformer_minimax_h3.MiniMaxH3TimestepCurve
 
 ## MiniMaxH3TransformerOutput
 

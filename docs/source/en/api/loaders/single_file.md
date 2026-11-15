@@ -52,6 +52,8 @@ The [`~loaders.FromSingleFileMixin.from_single_file`] method allows you to load:
 - [`ControlNetModel`]
 - [`SD3Transformer2DModel`]
 - [`FluxTransformer2DModel`]
+- [`MiniMaxH3Transformer3DModel`]
+- [`MiniMaxH3ImageTransformer2DModel`]
 
 ## FromSingleFileMixin
 

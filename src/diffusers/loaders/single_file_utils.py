@@ -255,6 +255,7 @@ DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "qwen-image-2.1": {"pretrained_model_name_or_path": "Qwen/Qwen-Image-2.1"},
     "krea2": {"pretrained_model_name_or_path": "krea/Krea-2-Raw"},
     "minimax-h3": {"pretrained_model_name_or_path": "MiniMaxAI/MiniMax-H3"},
+    "minimax-h3-image": {"pretrained_model_name_or_path": "MiniMaxAI/MiniMax-H3-Image"},
 }
 
 # Use to configure model sample size when original config is provided
@@ -851,7 +852,8 @@ def infer_diffusers_model_type(checkpoint):
         model_type = "ltx2-dev"
 
     elif CHECKPOINT_KEY_NAMES["minimax-h3"] in checkpoint:
-        model_type = "minimax-h3"
+        # MiniMax-H3-Image is the same transformer without the audio stream, so without the audio patch projection.
+        model_type = "minimax-h3" if "audio_patch_proj.weight" in checkpoint else "minimax-h3-image"
 
     else:
         model_type = "v1"
@@ -4324,17 +4326,19 @@ def convert_minimax_h3_transformer_checkpoint_to_diffusers(checkpoint, config, q
             'from it). "interleaved" is the per-head `[q k v]` row order of the MiniMaxAI/MiniMax-H3 shards, for a '
             "file merged from those shards by hand. The two cannot be told apart from the checkpoint itself."
         )
-    if "adaln_t_table" in checkpoint:
+    if any(key.endswith(".comfy_quant") for key in checkpoint):
         raise ValueError(
-            "This is a pruned MiniMax-H3 checkpoint: it replaces `time_embedder` with `adaln_t_table` of shape "
-            f"{tuple(checkpoint['adaln_t_table'].shape)}, which `MiniMaxH3Transformer3DModel` does not support. "
-            "Use the unpruned checkpoint from https://huggingface.co/MiniMaxAI/MiniMax-H3."
+            "This is a quantized ComfyUI checkpoint: its `*.comfy_quant` tensors describe a packed weight layout "
+            "(int8_convrot, w4a8, nvfp4, ...) that diffusers cannot load. Use the `bf16` file of the same release."
         )
 
     MINIMAX_H3_KEYS_RENAME_DICT = {
         "token_refiner.blocks.": "token_refiner.refiner_blocks.",
         "time_embedder.proj_in.": "time_embedder.linear_1.",
         "time_embedder.proj_out.": "time_embedder.linear_2.",
+        # A pruned checkpoint ships the sampled timestep curve in place of the timestep MLP (see
+        # `MiniMaxH3TimestepCurve`); `minimax_h3_config_from_checkpoint` sizes the model for it.
+        "adaln_t_table": "time_embedder.table",
         "video_patch_proj.": "proj_in.",
         "audio_patch_proj.": "audio_proj_in.",
         "condition_proj.": "context_embedder.",
@@ -4382,6 +4386,10 @@ def convert_minimax_h3_transformer_checkpoint_to_diffusers(checkpoint, config, q
 
     # `MiniMaxH3RotaryPosEmbed` recomputes this buffer from the config.
     converted_state_dict.pop("rope.inv_freq", None)
+    # ComfyUI's attention-backend settings, stored beside the weights of some releases.
+    for key in list(converted_state_dict.keys()):
+        if key.endswith(".comfy_attention.config"):
+            converted_state_dict.pop(key)
 
     for key in list(converted_state_dict.keys()):
         new_key = key[:]
@@ -4397,6 +4405,40 @@ def convert_minimax_h3_transformer_checkpoint_to_diffusers(checkpoint, config, q
             if special_key not in key:
                 continue
             handler_fn_inplace(key, converted_state_dict)
+
+    return converted_state_dict
+
+
+def minimax_h3_config_from_checkpoint(checkpoint):
+    """The config entries a MiniMax-H3 single file sets itself: the shape of a pruned checkpoint's timestep curve."""
+    table = checkpoint.get("adaln_t_table")
+    if table is None:
+        return {}
+    return {"adaln_curve_grid": table.shape[0], "time_embed_dim": table.shape[1]}
+
+
+def convert_minimax_h3_image_transformer_checkpoint_to_diffusers(checkpoint, config, qkv_layout="stacked", **kwargs):
+    converted_state_dict = convert_minimax_h3_transformer_checkpoint_to_diffusers(
+        checkpoint, config, qkv_layout=qkv_layout
+    )
+
+    # The single file stacks the per-step PDD output heads into one `final_layer.video_out` bank, in the layout
+    # ComfyUI reads: row block 0 is the head of the first step and every later block is that step's head minus the
+    # first. `MiniMaxH3ImageTransformer2DModel` keeps one `pdd_proj_out.{i}` head per step, as the released shards do.
+    num_heads = config["num_pdd_heads"]
+    patch_size = config["patch_size"]
+    patch_dim = config["in_channels"] * patch_size[0] * patch_size[1] * patch_size[2]
+    for suffix in ("weight", "bias"):
+        bank = converted_state_dict.pop(f"proj_out.{suffix}")
+        if bank.shape[0] != num_heads * patch_dim:
+            raise ValueError(
+                f"`final_layer.video_out.{suffix}` has {bank.shape[0]} rows, not the {num_heads} heads of "
+                f"{patch_dim} rows the config describes."
+            )
+        bank = bank.unflatten(0, (num_heads, patch_dim))
+        converted_state_dict[f"pdd_proj_out.0.{suffix}"] = bank[0]
+        for step in range(1, num_heads):
+            converted_state_dict[f"pdd_proj_out.{step}.{suffix}"] = bank[0] + bank[step]
 
     return converted_state_dict
 
