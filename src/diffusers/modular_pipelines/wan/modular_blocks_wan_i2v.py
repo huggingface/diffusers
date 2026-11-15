@@ -14,7 +14,7 @@
 
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import InputParam, OutputParam
+from ..modular_pipeline_utils import OutputParam
 from .before_denoise import (
     WanAdditionalInputsStep,
     WanPrepareLatentsStep,
@@ -58,9 +58,9 @@ class WanImage2VideoImageEncoderStep(SequentialPipelineBlocks):
           image (`Image`):
               TODO: Add description.
           height (`int`, *optional*, defaults to 480):
-              TODO: Add description.
+              The target height of the video.
           width (`int`, *optional*, defaults to 832):
-              TODO: Add description.
+              The target width of the video.
 
       Outputs:
           resized_image (`Image`):
@@ -96,9 +96,9 @@ class WanFLF2VImageEncoderStep(SequentialPipelineBlocks):
           image (`Image`):
               TODO: Add description.
           height (`int`, *optional*, defaults to 480):
-              TODO: Add description.
+              The target height of the video.
           width (`int`, *optional*, defaults to 832):
-              TODO: Add description.
+              The target width of the video.
           last_image (`Image`):
               The last frameimage
 
@@ -140,9 +140,9 @@ class WanAutoImageEncoderStep(AutoPipelineBlocks):
           image (`Image`, *optional*, depends on the workflow):
               TODO: Add description.
           height (`int`, *optional*, defaults to 480):
-              TODO: Add description.
+              The target height of the video.
           width (`int`, *optional*, defaults to 832):
-              TODO: Add description.
+              The target width of the video.
           last_image (`Image`, *optional*, depends on the workflow):
               The last frameimage
 
@@ -194,11 +194,11 @@ class WanImage2VideoVaeEncoderStep(SequentialPipelineBlocks):
           image (`Image`):
               TODO: Add description.
           height (`int`, *optional*, defaults to 480):
-              TODO: Add description.
+              The target height of the video.
           width (`int`, *optional*, defaults to 832):
-              TODO: Add description.
+              The target width of the video.
           num_frames (`int`, *optional*, defaults to 81):
-              TODO: Add description.
+              The number of frames in the generated video.
           generator (`None`, *optional*):
               TODO: Add description.
 
@@ -238,13 +238,13 @@ class WanFLF2VVaeEncoderStep(SequentialPipelineBlocks):
           image (`Image`):
               TODO: Add description.
           height (`int`, *optional*, defaults to 480):
-              TODO: Add description.
+              The target height of the video.
           width (`int`, *optional*, defaults to 832):
-              TODO: Add description.
+              The target width of the video.
           last_image (`Image`):
               The last frameimage
           num_frames (`int`, *optional*, defaults to 81):
-              TODO: Add description.
+              The number of frames in the generated video.
           generator (`None`, *optional*):
               TODO: Add description.
 
@@ -293,13 +293,13 @@ class WanAutoVaeEncoderStep(AutoPipelineBlocks):
           image (`Image`, *optional*, depends on the workflow):
               TODO: Add description.
           height (`int`, *optional*, defaults to 480):
-              TODO: Add description.
+              The target height of the video.
           width (`int`, *optional*, defaults to 832):
-              TODO: Add description.
+              The target width of the video.
           last_image (`Image`, *optional*, depends on the workflow):
               The last frameimage
           num_frames (`int`, *optional*, defaults to 81):
-              TODO: Add description.
+              The number of frames in the generated video.
           generator (`None`, *optional*):
               TODO: Add description.
 
@@ -497,17 +497,6 @@ class WanImage2VideoAutoBlocks(SequentialPipelineBlocks):
         "vae_encoder",
         "denoise",
         "decode",
-    ]
-    # `image_encoder` and `vae_encoder` default `height`/`width` to 480/832 (the target area, the image sets the
-    # aspect ratio) and `num_frames` to 81, while the denoise step declares them without a default (it fills them in
-    # from the latents or the components). Both encoders are auto blocks the walk cannot count on, so the pipeline
-    # declares the three itself
-    input_overrides = [
-        InputParam("height", type_hint=int, default=480, description="The target height of the video."),
-        InputParam("width", type_hint=int, default=832, description="The target width of the video."),
-        InputParam(
-            "num_frames", type_hint=int, default=81, description="The number of frames in the generated video."
-        ),
     ]
 
     _workflow_map = {

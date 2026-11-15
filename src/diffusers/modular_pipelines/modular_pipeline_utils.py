@@ -1129,63 +1129,6 @@ def combine_outputs(*named_output_lists: list[tuple[str, list[OutputParam]]]) ->
     return list(combined_dict.values())
 
 
-def override_attribute(items: list, overrides: list, attr_name: str, block_name: str) -> list:
-    """
-    Apply a composite block's `*_overrides` to the list it derived from its sub-blocks.
-
-    Args:
-        items: the derived `InputParam`, `ComponentSpec` or `ConfigSpec` list
-        overrides: a list of declarations; the name of each must be in `items`, and the declaration, an object of the
-            same class as the entry it replaces, takes that entry's place whole
-        attr_name: the overrides attribute being applied, e.g. `"input_overrides"`, for error messages
-        block_name: the composite's class name, for error messages
-
-    Returns:
-        `items` with each overridden entry replaced by the composite's own declaration; the sub-blocks' declarations
-        are not touched.
-
-    Example:
-        ```python
-        inputs = [InputParam("strength", default=0.3), InputParam("prompt", required=True)]
-        override_attribute(
-            inputs, [InputParam.template("strength", default=0.9999)], "input_overrides", "InpaintStep"
-        )
-        # [<strength: optional, default=0.9999>, <prompt: required, default=None>]
-        ```
-    """
-    if not overrides:
-        return items
-    # kwargs inputs/outputs have no name and are keyed by "*_<kwargs_type>", like `ConditionalPipelineBlocks` does
-    index = {
-        item.name if item.name is not None else f"*_{item.kwargs_type}": position
-        for position, item in enumerate(items)
-    }
-    replaced = set()
-    for declaration in overrides:
-        if not isinstance(declaration, (InputParam, ComponentSpec, ConfigSpec)):
-            raise TypeError(
-                f"{block_name}.{attr_name} must be a list of declarations, e.g. "
-                f'`[InputParam("strength", default=0.5)]`; got an entry of type {type(declaration).__name__}.'
-            )
-        name = declaration.name if declaration.name is not None else f"*_{declaration.kwargs_type}"
-        if name in replaced:
-            raise ValueError(f"{block_name}.{attr_name} declares '{name}' more than once.")
-        replaced.add(name)
-        if name not in index:
-            raise ValueError(
-                f"{block_name}.{attr_name} has an entry for '{name}', which this block does not derive from its "
-                f"sub-blocks. Available: {sorted(k for k in index if not k.startswith('*_'))}"
-            )
-        expected = type(items[index[name]])
-        if not isinstance(declaration, expected):
-            raise TypeError(
-                f"The entry for '{name}' in {block_name}.{attr_name} must be of type {expected.__name__}, replacing "
-                f"the derived one; got {type(declaration).__name__}."
-            )
-        items[index[name]] = declaration
-    return items
-
-
 def generate_modular_model_card_content(blocks) -> dict[str, Any]:
     """
     Generate model card content for a modular pipeline.

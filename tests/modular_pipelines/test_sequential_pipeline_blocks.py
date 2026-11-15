@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import contextlib
-import re
 
 import pytest
 
@@ -34,14 +33,6 @@ from diffusers.utils.testing_utils import CaptureLogger
 
 
 logger = logging.get_logger("diffusers.modular_pipelines.modular_pipeline")
-
-
-@contextlib.contextmanager
-def warns(pattern):
-    """The body must log a warning matching `pattern`."""
-    with CaptureLogger(logger) as logs:
-        yield
-    assert re.search(pattern, logs.out), logs.out
 
 
 @contextlib.contextmanager
@@ -617,20 +608,20 @@ class TestDefaultConflicts:
         return FirstBlock, SecondBlock
 
     def test_two_explicit_values_first_wins(self):
-        # two explicit values for one shared input: the sequence keeps the first and says so
+        # two explicit values for one shared input: the sequence keeps the first (and logs the other at debug level)
         FirstBlock, SecondBlock = self._blocks(0.3, 0.9999)
 
         class Blocks(SequentialPipelineBlocks):
             block_classes = [FirstBlock, SecondBlock]
             block_names = ["first", "second"]
 
-        with warns("'second' declares default 0.9999 for input 'strength'.*keeps the earlier declaration"):
+        with quiet():
             inputs = Blocks().inputs
         assert [inp.default for inp in inputs if inp.name == "strength"] == [0.3]
 
-    def test_none_after_a_value_is_not_a_conflict_a_value_after_none_is(self):
-        # a later block with no default takes whatever is set, nothing to say; a later block with a default that is not
-        # the one in use is told
+    def test_a_value_and_an_open_declaration_are_not_a_conflict_either_way(self):
+        # a later block with no default takes whatever is set; a later block with a default after an earlier block
+        # that leaves the input open has a fallback the sequence does not use. Neither is a conflict
         FirstBlock, SecondBlock = self._blocks(0.3, None)
 
         class Blocks(SequentialPipelineBlocks):
@@ -638,7 +629,8 @@ class TestDefaultConflicts:
             block_names = ["first", "second"]
 
         with quiet():
-            Blocks().inputs
+            inputs = Blocks().inputs
+        assert [inp.default for inp in inputs if inp.name == "strength"] == [0.3]
 
         FirstBlock, SecondBlock = self._blocks(None, 0.3)
 
@@ -646,22 +638,26 @@ class TestDefaultConflicts:
             block_classes = [FirstBlock, SecondBlock]
             block_names = ["first", "second"]
 
-        with warns("'second' declares default 0.3 for input 'strength'"):
-            Blocks().inputs
+        with quiet():
+            inputs = Blocks().inputs
+        # the sequence keeps the input open
+        assert [inp.default for inp in inputs if inp.name == "strength"] == [None]
 
-    def test_default_override_settles_the_conflict(self):
+    def test_new_on_a_sub_block_settles_the_conflict(self):
         FirstBlock, SecondBlock = self._blocks(0.3, 0.9999)
 
         class Blocks(SequentialPipelineBlocks):
-            block_classes = [FirstBlock, SecondBlock]
+            # the shared block is right elsewhere with 0.3; this sequence wants 0.9999
+            block_classes = [FirstBlock().new(inputs=[InputParam("strength", default=0.9999)]), SecondBlock]
             block_names = ["first", "second"]
-            input_overrides = [InputParam("strength", default=0.9999)]
 
         with quiet():
             inputs = Blocks().inputs
         assert [inp.default for inp in inputs if inp.name == "strength"] == [0.9999]
+        # the sub-block fills in the settled default at run time, it is its own declaration
+        assert [inp.default for inp in Blocks().sub_blocks["first"].inputs] == [0.9999]
 
-    def test_loop_input_without_default_is_a_conflict(self):
+    def test_loop_input_without_default_is_kept_open(self):
         FirstBlock, _ = self._blocks(0.9999, None)
 
         class Loop(LoopSequentialPipelineBlocks):
@@ -673,12 +669,12 @@ class TestDefaultConflicts:
             def loop_inputs(self):
                 return [InputParam("timesteps", required=True), InputParam("strength")]
 
-        with warns("'first' declares default 0.9999 for input 'strength'"):
+        with quiet():
             inputs = Loop().inputs
-        # the loop declaration comes first and wins
+        # the loop declaration comes first and wins; the sub-block's default is a fallback, not a conflict
         assert [inp.default for inp in inputs if inp.name == "strength"] == [None]
 
-    def test_loop_blocks_log_and_accept_the_override(self):
+    def test_loop_blocks_keep_the_earlier_declaration(self):
         FirstBlock, SecondBlock = self._blocks(0.3, 0.9999)
 
         class Loop(LoopSequentialPipelineBlocks):
@@ -690,19 +686,20 @@ class TestDefaultConflicts:
             def loop_inputs(self):
                 return [InputParam("timesteps", required=True)]
 
-        with warns("'second' declares default 0.9999 for input 'strength'.*The loop keeps the earlier declaration"):
-            Loop().inputs
+        with quiet():
+            inputs = Loop().inputs
+        assert [inp.default for inp in inputs if inp.name == "strength"] == [0.3]
 
         with quiet():
             inputs = Loop.from_blocks_dict(
-                {"first": FirstBlock(), "second": SecondBlock()},
-                input_overrides=[InputParam("strength", default=0.9999)],
+                {"first": FirstBlock().new(inputs=[InputParam("strength", default=0.9999)]), "second": SecondBlock()}
             ).inputs
         assert [inp.default for inp in inputs if inp.name == "strength"] == [0.9999]
 
-    def test_value_after_branch_defaults_is_a_conflict_the_reverse_is_not(self):
-        # the running branch fills in its default first, so a later leaf default is never the one in use: the composite
-        # is told. A conditional block after a value declares fallbacks for when the input is still unset, nothing to say
+    def test_value_after_branch_defaults_keeps_the_branch_defaults(self):
+        # the running branch fills in its default first, so a later leaf default is never the one in use and the
+        # per-branch record stays. A conditional block after a value declares fallbacks for when the input is still
+        # unset: the value stays
         FirstBlock, _ = self._blocks(0.5, None)
         Auto = strength_auto_blocks(0.3, 0.9999)
 
@@ -710,8 +707,11 @@ class TestDefaultConflicts:
             block_classes = [Auto, FirstBlock]
             block_names = ["auto", "first"]
 
-        with warns("'first' declares default 0.5 .* declares per-branch defaults"):
-            AutoThenValue().inputs
+        with quiet():
+            inputs = AutoThenValue().inputs
+        assert [(inp.default, inp.defaults_by_block) for inp in inputs if inp.name == "strength"] == [
+            (None, {"auto.inpaint": 0.9999, "auto.img2img": 0.3})
+        ]
 
         class ValueThenAuto(SequentialPipelineBlocks):
             block_classes = [FirstBlock, Auto]
@@ -748,10 +748,9 @@ class TestDefaultConflicts:
         with quiet():
             AutoThenAuto().inputs
 
-    def test_value_after_a_required_branch_is_a_conflict(self):
+    def test_value_after_a_required_branch_keeps_the_record(self):
         # one branch requires the input and the other does not declare it, so the auto block records
-        # {"img2img": REQUIRED} with default `None`; the rule compares defaults only, so a later 0.5 is told it is not
-        # the one in use (it is, in the branch that does not declare the input: a known imprecision of the rule)
+        # {"img2img": REQUIRED} with default `None`; a later 0.5 does not change that
         FirstBlock, _ = self._blocks(0.5, None)
         Auto = strength_auto_blocks(REQUIRED, ...)
 
@@ -759,7 +758,7 @@ class TestDefaultConflicts:
             block_classes = [Auto, FirstBlock]
             block_names = ["auto", "first"]
 
-        with warns("'first' declares default 0.5 .* per-branch defaults {'auto.img2img': required}"):
+        with quiet():
             (strength,) = [inp for inp in Blocks().inputs if inp.name == "strength"]
         assert (strength.required, strength.default, strength.defaults_by_block) == (
             False,
@@ -810,88 +809,77 @@ class UNetBlock(ModularPipelineBlocks):
         return components, state
 
 
-class TestOverrides:
-    def _sequential(self, **overrides):
+class TestNew:
+    """`ModularPipelineBlocks.new()`: a copy of a block with some of its declarations replaced."""
+
+    def test_replaces_the_listed_declarations_and_leaves_the_block_alone(self):
+        block = PrepareLatentsBlock()
+        copy_ = block.new(
+            description="prepares latents for a fixed batch",
+            inputs=[InputParam("batch_size", default=1)],
+            intermediate_outputs=[OutputParam("latents", description="initial latents")],
+        )
+
+        assert copy_.description == "prepares latents for a fixed batch"
+        (batch_size,) = [inp for inp in copy_.inputs if inp.name == "batch_size"]
+        assert batch_size.default == 1 and batch_size.required is False
+        assert "batch_size" not in copy_.required_inputs
+        assert [out.description for out in copy_.intermediate_outputs if out.name == "latents"] == ["initial latents"]
+        # the other entries are the block's own
+        assert [inp.name for inp in copy_.inputs] == [inp.name for inp in block.inputs]
+        # the block itself is untouched, and still the class the copy derives from
+        (batch_size,) = [inp for inp in block.inputs if inp.name == "batch_size"]
+        assert batch_size.required is True and batch_size.default is None
+        assert isinstance(copy_, PrepareLatentsBlock) and type(copy_).__name__ == "PrepareLatentsBlock"
+
+    def test_components_configs_and_outputs(self):
+        block = UNetBlock()
+        copy_ = block.new(
+            components=[ComponentSpec("unet", description="any UNet2DConditionModel")],
+            configs=[ConfigSpec("scale", default=16)],
+            outputs=[OutputParam("latents", description="the final latents")],
+        )
+        assert [c.description for c in copy_.expected_components if c.name == "unet"] == ["any UNet2DConditionModel"]
+        assert [c.default for c in copy_.expected_configs if c.name == "scale"] == [16]
+        assert [out.description for out in copy_.outputs if out.name == "latents"] == ["the final latents"]
+        assert [c.default for c in block.expected_configs if c.name == "scale"] == [8]
+
+    def test_keeps_what_the_block_was_created_with(self):
+        class RenamingBlock(ModularPipelineBlocks):
+            model_name = "test"
+
+            def __init__(self, latents_name="latents"):
+                super().__init__()
+                self.latents_name = latents_name
+
+            @property
+            def inputs(self):
+                return [InputParam(self.latents_name), InputParam("strength", default=0.3)]
+
+            def __call__(self, components, state):
+                return components, state
+
+        copy_ = RenamingBlock(latents_name="image_latents").new(inputs=[InputParam("strength", default=0.9)])
+        assert [(inp.name, inp.default) for inp in copy_.inputs] == [("image_latents", None), ("strength", 0.9)]
+
+    def test_unknown_name_raises(self):
+        with pytest.raises(ValueError, match="does not declare an input 'strenght'"):
+            PrepareLatentsBlock().new(inputs=[InputParam("strenght", default=0.5)])
+        with pytest.raises(ValueError, match="does not declare a component 'vae'"):
+            UNetBlock().new(components=[ComponentSpec("vae", description="x")])
+
+    def test_a_block_with_sub_blocks_raises(self):
         class Blocks(SequentialPipelineBlocks):
             block_classes = [PrepareLatentsBlock, UNetBlock]
             block_names = ["prepare_latents", "unet"]
 
-        for name, value in overrides.items():
-            setattr(Blocks, name, value)
-        return Blocks()
+        with pytest.raises(TypeError, match="derives its declarations from its sub-blocks"):
+            Blocks().new(inputs=[InputParam("batch_size", default=1)])
 
-    def test_input_override_replaces_the_derived_declaration(self):
-        blocks = self._sequential(input_overrides=[InputParam("batch_size", default=1)])
-        (batch_size,) = [inp for inp in blocks.inputs if inp.name == "batch_size"]
-        assert batch_size.default == 1
-        assert batch_size.required is False
-        assert "batch_size" not in blocks.required_inputs
+        class Loop(LoopSequentialPipelineBlocks):
+            model_name = "test"
+            block_classes = [UNetBlock]
+            block_names = ["unet"]
 
-    def test_override_does_not_mutate_the_sub_block_declaration(self):
-        blocks = self._sequential(input_overrides=[InputParam("batch_size", default=1)])
-        _ = blocks.inputs
-        (batch_size,) = [inp for inp in blocks.sub_blocks["prepare_latents"].inputs if inp.name == "batch_size"]
-        assert batch_size.required is True
-        assert batch_size.default is None
-
-    def test_component_and_config_overrides(self):
-        blocks = self._sequential(
-            component_overrides=[ComponentSpec("unet", description="any UNet2DConditionModel")],
-            config_overrides=[ConfigSpec("scale", default=16)],
-        )
-        assert [c.description for c in blocks.expected_components if c.name == "unet"] == ["any UNet2DConditionModel"]
-        assert [c.default for c in blocks.expected_configs if c.name == "scale"] == [16]
-
-    def test_unknown_name_raises(self):
-        blocks = self._sequential(input_overrides=[InputParam("strenght", default=0.5)])
-        with pytest.raises(ValueError, match="strenght"):
-            blocks.inputs
-        blocks = self._sequential(component_overrides=[ComponentSpec("vae", description="x")])
-        with pytest.raises(ValueError, match="vae"):
-            blocks.expected_components
-
-    def test_entry_that_is_not_a_declaration_raises(self):
-        # a partial dict, or the `{name: declaration}` shape, is not a list of declarations
-        for overrides in ([{"default": 1}], {"batch_size": InputParam("batch_size", default=1)}):
-            blocks = self._sequential(input_overrides=overrides)
-            with pytest.raises(TypeError, match="must be a list of declarations"):
-                blocks.inputs
-        blocks = self._sequential(input_overrides=[ConfigSpec("batch_size", default=1)])
-        with pytest.raises(TypeError, match="must be of type InputParam"):
-            blocks.inputs
-
-    def test_name_declared_twice_raises(self):
-        blocks = self._sequential(
-            input_overrides=[InputParam("batch_size", default=1), InputParam("batch_size", default=2)]
-        )
-        with pytest.raises(ValueError, match="more than once"):
-            blocks.inputs
-
-    def test_from_blocks_dict_accepts_overrides(self):
-        blocks = SequentialPipelineBlocks.from_blocks_dict(
-            {"prepare_latents": PrepareLatentsBlock(), "unet": UNetBlock()},
-            input_overrides=[InputParam("batch_size", default=2)],
-            config_overrides=[ConfigSpec("scale", default=16)],
-        )
-        assert [inp.default for inp in blocks.inputs if inp.name == "batch_size"] == [2]
-        assert [c.default for c in blocks.expected_configs if c.name == "scale"] == [16]
-
-        loop = LoopSequentialPipelineBlocks.from_blocks_dict(
-            {"unet": UNetBlock()},
-            component_overrides=[ComponentSpec("unet", description="any UNet2DConditionModel")],
-        )
-        assert [c.description for c in loop.expected_components if c.name == "unet"] == ["any UNet2DConditionModel"]
-
-    def test_auto_blocks_override_replaces_the_per_block_defaults(self):
-        Auto = strength_auto_blocks(0.3, 0.9999)
-
-        (strength,) = [inp for inp in Auto().inputs if inp.name == "strength"]
-        assert strength.default is None
-        assert strength.defaults_by_block == {"inpaint": 0.9999, "img2img": 0.3}
-
-        class AutoWithDefault(Auto):
-            input_overrides = [InputParam("strength", default=0.5)]
-
-        (strength,) = [inp for inp in AutoWithDefault().inputs if inp.name == "strength"]
-        assert strength.default == 0.5
-        assert strength.defaults_by_block is None
+        with pytest.raises(TypeError, match="derives its declarations from its sub-blocks"):
+            Loop().new(configs=[ConfigSpec("scale", default=16)])

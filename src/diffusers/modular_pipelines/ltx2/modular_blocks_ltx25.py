@@ -15,7 +15,7 @@
 import torch
 
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import InputParam, OutputParam
+from ..modular_pipeline_utils import OutputParam
 from .decoders import (
     LTX2AudioDecoderStep,
     LTX2DiffusionVaeDecoderStep,
@@ -366,19 +366,6 @@ class LTX25AutoBlocks(SequentialPipelineBlocks):
         "reference_encoder",
         "denoise",
         "decode",
-    ]
-    # `condition_encoder` declares `num_frames` without a default (the duration head predicts it) and `decode`
-    # defaults it to 121, so the pipeline declares it itself: no default, auto-predicted when omitted
-    input_overrides = [
-        InputParam(
-            "num_frames",
-            type_hint=int,
-            default=None,
-            description=(
-                "The number of frames in the generated video. Omit to auto-predict via the `duration_head` "
-                "(see `LTX2AutoDurationStep`)."
-            ),
-        )
     ]
     # `num_frames` on `in_context` is a requirement, not a trigger: the in-context checkpoints ship without a
     # `duration_head`, so the workflow drops `LTX2AutoDurationStep` and `LTX2ConditionEncoderStep` raises if

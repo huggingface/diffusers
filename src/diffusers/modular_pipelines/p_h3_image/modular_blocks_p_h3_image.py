@@ -15,7 +15,7 @@
 import torch
 
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import InputParam, OutputParam
+from ..modular_pipeline_utils import OutputParam
 from .before_denoise import (
     PH3ImageEditPrepareLatentsStep,
     PH3ImageEditPrepareLayoutStep,
@@ -450,27 +450,6 @@ class PH3ImageBlocks(SequentialPipelineBlocks):
         PH3ImageDecodeStep,
     ]
     block_names = ["before_encode", "prompt_upsampler", "text_encoder", "vae_encoder", "denoise", "decode"]
-    # `before_encode` reads `height`/`width` with no default (an edit derives them from the image) and the prompt
-    # upsampler defaults them to 2912, so the pipeline declares them itself: optional, no default, each workflow keeps
-    # its own
-    input_overrides = [
-        InputParam.template(
-            "height",
-            description=(
-                "Height of the generated image in pixels, rounded to a multiple of 32. Defaults to 2912 for "
-                "`text2image`, which works best at 8 megapixels. An edit defaults to the first image's size, at "
-                "least `canvas_min_pixels`, and works best at 4 or 8 megapixels."
-            ),
-        ),
-        InputParam.template(
-            "width",
-            description=(
-                "Width of the generated image in pixels, rounded to a multiple of 32. Defaults to 2912 for "
-                "`text2image`, which works best at 8 megapixels. An edit defaults to the first image's size, at "
-                "least `canvas_min_pixels`, and works best at 4 or 8 megapixels."
-            ),
-        ),
-    ]
     _workflow_map = {
         "text2image": {"prompt": True},
         "image_conditioned": {"prompt": True, "image": True},

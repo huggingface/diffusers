@@ -311,8 +311,8 @@ class WanImageResizeStep(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam("image", type_hint=PIL.Image.Image, required=True),
-            InputParam("height", type_hint=int, default=480),
-            InputParam("width", type_hint=int, default=832),
+            InputParam("height", type_hint=int, default=480, description="The target height of the video."),
+            InputParam("width", type_hint=int, default=832, description="The target width of the video."),
         ]
 
     @property
@@ -505,7 +505,9 @@ class WanVaeEncoderStep(ModularPipelineBlocks):
             InputParam("resized_image", type_hint=PIL.Image.Image, required=True),
             InputParam("height"),
             InputParam("width"),
-            InputParam("num_frames", type_hint=int, default=81),
+            InputParam(
+                "num_frames", type_hint=int, default=81, description="The number of frames in the generated video."
+            ),
             InputParam("generator"),
         ]
 
@@ -626,7 +628,9 @@ class WanVaceEncoderStep(ModularPipelineBlocks):
             ),
             InputParam("height"),
             InputParam("width"),
-            InputParam("num_frames", type_hint=int, default=81),
+            InputParam(
+                "num_frames", type_hint=int, default=81, description="The number of frames in the generated video."
+            ),
             InputParam("generator"),
         ]
 
@@ -966,7 +970,9 @@ class WanFirstLastFrameVaeEncoderStep(ModularPipelineBlocks):
             InputParam("resized_last_image", type_hint=PIL.Image.Image, required=True),
             InputParam("height"),
             InputParam("width"),
-            InputParam("num_frames", type_hint=int, default=81),
+            InputParam(
+                "num_frames", type_hint=int, default=81, description="The number of frames in the generated video."
+            ),
             InputParam("generator"),
         ]
 

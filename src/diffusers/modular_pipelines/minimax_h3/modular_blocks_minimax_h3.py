@@ -15,7 +15,7 @@
 import torch
 
 from ..modular_pipeline import ConditionalPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import InputParam, OutputParam
+from ..modular_pipeline_utils import OutputParam
 from .before_denoise import (
     MiniMaxH3FL2VAPrepareLatentsStep,
     MiniMaxH3NoKeyframeAnchorsStep,
@@ -692,7 +692,7 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
               Height of the generated video in pixels, a multiple of 32.
           width (`int`, *optional*):
               Width of the generated video in pixels, a multiple of 32.
-          num_frames (`int`, *optional*):
+          num_frames (`int`, *optional*, depends on the workflow):
               Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video VAE can
               decode; the resulting duration must stay between 5 and 15 seconds. To generate a video as long as a
               reference soundtrack, pass `round(samples / sample_rate * 24)`.
@@ -756,19 +756,6 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
         "vae_encoder",
         "denoise",
         "decode",
-    ]
-    # `ref2va` requires `num_frames` (the references are truncated to it) while `t2va` and `fl2va` default it to 124,
-    # so the pipeline declares it itself: optional, no default, each workflow keeps its own
-    input_overrides = [
-        InputParam(
-            name="num_frames",
-            type_hint=int,
-            description=(
-                "Number of frames to generate, at the fixed 24 fps. Snapped up to the next `17 * n + 5` the video "
-                "VAE can decode; the resulting duration must stay between 5 and 15 seconds. To generate a video "
-                "as long as a reference soundtrack, pass `round(samples / sample_rate * 24)`."
-            ),
-        )
     ]
     # One repository holds both checkpoint partitions (`transformer/` for `t2va`/`fl2va`, `transformer_ref/` for
     # `ref2va`), so the tasks are workflows over one shared `modular_model_index.json`, each declaring only the
