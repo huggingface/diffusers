@@ -111,6 +111,7 @@ class GroupOffloadingConfig:
     block_modules: list[str] | None = None
     exclude_kwargs: list[str] | None = None
     num_resident_blocks: int = 0
+    keep_non_block_modules_resident: bool = False
     module_prefix: str = ""
 
 
@@ -579,6 +580,7 @@ def apply_group_offloading(
     block_modules: list[str] | None = None,
     exclude_kwargs: list[str] | None = None,
     num_resident_blocks: int = 0,
+    keep_non_block_modules_resident: bool = False,
 ) -> None:
     r"""
     Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is, and
@@ -647,6 +649,10 @@ def apply_group_offloading(
             Only for `offload_type="block_level"`. The first `num_resident_blocks` block groups (in module order)
             are kept permanently on `onload_device`: they are never offloaded or re-transferred, so every forward
             pass streams fewer weights, at the cost of the device memory those blocks occupy.
+        keep_non_block_modules_resident (`bool`, defaults to `False`):
+            Only for `offload_type="block_level"`. Modules, parameters and buffers that are not part of a block group
+            (embedders, norms, refiners, ...) normally are copied to the device and back synchronously on every
+            forward pass. If `True`, they stay on `onload_device` instead.
 
     Example:
         ```python
@@ -696,8 +702,12 @@ def apply_group_offloading(
         exclude_kwargs = getattr(module, "_skip_keys", None)
     if num_resident_blocks < 0:
         raise ValueError("`num_resident_blocks` must be >= 0.")
-    if num_resident_blocks > 0 and offload_type != GroupOffloadingType.BLOCK_LEVEL:
-        raise ValueError("`num_resident_blocks` is only supported with `offload_type='block_level'`.")
+    uses_resident = num_resident_blocks > 0 or keep_non_block_modules_resident
+    if uses_resident and offload_type != GroupOffloadingType.BLOCK_LEVEL:
+        raise ValueError(
+            "`num_resident_blocks` and `keep_non_block_modules_resident` are only supported with "
+            "`offload_type='block_level'`."
+        )
 
     config = GroupOffloadingConfig(
         onload_device=onload_device,
@@ -712,6 +722,7 @@ def apply_group_offloading(
         block_modules=block_modules,
         exclude_kwargs=exclude_kwargs,
         num_resident_blocks=num_resident_blocks,
+        keep_non_block_modules_resident=keep_non_block_modules_resident,
     )
     _apply_group_offloading(module, config)
 
@@ -813,7 +824,18 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
     # Create a group for the remaining unmatched submodules of the top-level
     # module so that they are on the correct device when the forward pass is called.
     unmatched_modules = [unmatched_module for _, unmatched_module in unmatched_modules]
-    if len(unmatched_modules) > 0 or len(parameters) > 0 or len(buffers) > 0:
+
+    if config.keep_non_block_modules_resident:
+        # Place them on the device once. The group below stays as an empty anchor for the top-level hook.
+        for unmatched_module in unmatched_modules:
+            unmatched_module.to(config.onload_device)
+        for param in parameters:
+            param.data = param.data.to(config.onload_device)
+        for buffer in buffers:
+            buffer.data = buffer.data.to(config.onload_device)
+        unmatched_modules, parameters, buffers = [], [], []
+
+    if len(unmatched_modules) > 0 or len(parameters) > 0 or len(buffers) > 0 or config.keep_non_block_modules_resident:
         unmatched_group = ModuleGroup(
             modules=unmatched_modules,
             offload_device=config.offload_device,

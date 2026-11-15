@@ -539,6 +539,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         block_modules: str | None = None,
         exclude_kwargs: str | None = None,
         num_resident_blocks: int = 0,
+        keep_non_block_modules_resident: bool = False,
     ) -> None:
         r"""
         Activates group offloading for the current model.
@@ -601,6 +602,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             block_modules=block_modules,
             exclude_kwargs=exclude_kwargs,
             num_resident_blocks=num_resident_blocks,
+            keep_non_block_modules_resident=keep_non_block_modules_resident,
         )
 
     def set_attention_backend(self, backend: str) -> None:

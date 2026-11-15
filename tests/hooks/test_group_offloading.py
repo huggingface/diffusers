@@ -401,6 +401,31 @@ class TestGroupOffload:
             assert all(p.device.type == device_type for p in block.parameters()) == (i < 2)
         assert all(p.device.type == "cpu" for p in resident.blocks[2].parameters())
 
+    @pytest.mark.parametrize("use_stream", [False, True])
+    def test_block_level_keep_non_block_modules_resident(self, use_stream):
+        if torch.device(torch_device).type not in ["cuda", "xpu"]:
+            return
+
+        def build():
+            torch.manual_seed(0)
+            return DummyModel(self.in_features, self.hidden_features, self.out_features, num_layers=4)
+
+        kwargs = {"offload_type": "block_level", "num_blocks_per_group": 1, "use_stream": use_stream}
+        baseline = build()
+        baseline.enable_group_offload(torch_device, **kwargs)
+        model = build()
+        model.enable_group_offload(torch_device, keep_non_block_modules_resident=True, **kwargs)
+
+        with torch.no_grad():
+            expected = baseline(self.input).cpu()
+            for _ in range(3):
+                assert torch.equal(model(self.input).cpu(), expected)
+
+        device_type = torch.device(torch_device).type
+        for module in (model.linear_1, model.linear_2):
+            assert all(p.device.type == device_type for p in module.parameters())
+        assert all(p.device.type == "cpu" for p in model.blocks[0].parameters())
+
     def test_error_raised_for_invalid_num_resident_blocks(self):
         with pytest.raises(ValueError, match="must be >= 0"):
             self.model.enable_group_offload(
@@ -408,6 +433,10 @@ class TestGroupOffload:
             )
         with pytest.raises(ValueError, match="only supported with"):
             self.model.enable_group_offload(torch_device, offload_type="leaf_level", num_resident_blocks=1)
+        with pytest.raises(ValueError, match="only supported with"):
+            self.model.enable_group_offload(
+                torch_device, offload_type="leaf_level", keep_non_block_modules_resident=True
+            )
 
     def test_block_level_stream_with_invocation_order_different_from_initialization_order(self):
         if torch.device(torch_device).type not in ["cuda", "xpu"]:
