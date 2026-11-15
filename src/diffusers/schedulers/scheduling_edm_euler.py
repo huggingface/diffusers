@@ -285,22 +285,24 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
             sigmas (`torch.Tensor | list[float]`, *optional*):
-                Custom sigmas to use for the denoising process. If not defined, the default behavior when
-                `num_inference_steps` is passed will be used.
+                Custom sigmas to use for the denoising process, in the same order the default schedule produces
+                them: from the largest sigma down to the smallest. They are used as given, without going through
+                `sigma_schedule`. If not defined, the default behavior when `num_inference_steps` is passed will be
+                used.
         """
         self.num_inference_steps = num_inference_steps
 
         sigmas_dtype = torch.float32 if torch.backends.mps.is_available() else torch.float64
         if sigmas is None:
             sigmas = torch.linspace(0, 1, self.num_inference_steps, dtype=sigmas_dtype)
+            if self.config.sigma_schedule == "karras":
+                sigmas = self._compute_karras_sigmas(sigmas)
+            elif self.config.sigma_schedule == "exponential":
+                sigmas = self._compute_exponential_sigmas(sigmas)
         elif isinstance(sigmas, float):
             sigmas = torch.tensor(sigmas, dtype=sigmas_dtype)
         else:
-            sigmas = sigmas.to(sigmas_dtype)
-        if self.config.sigma_schedule == "karras":
-            sigmas = self._compute_karras_sigmas(sigmas)
-        elif self.config.sigma_schedule == "exponential":
-            sigmas = self._compute_exponential_sigmas(sigmas)
+            sigmas = torch.as_tensor(sigmas, dtype=sigmas_dtype)
         sigmas = sigmas.to(dtype=torch.float32, device=device)
 
         self.timesteps = self.precondition_noise(sigmas)
