@@ -172,6 +172,53 @@ class TestMiniMaxH3Transformer(MiniMaxH3TransformerTesterConfig, ModelTesterMixi
         torch.testing.assert_close(output.audio_sample, output_tuple[1])
 
 
+class TestMiniMaxH3TransformerAdaLNCurve(MiniMaxH3TransformerTesterConfig):
+    """The timestep curve that stands in for the time MLP in a pruned MiniMax-H3 checkpoint."""
+
+    # A 5-point grid over `[0, 1]`: rows at 0, 0.25, 0.5, 0.75 and 1.
+    NUM_GRID_POINTS = 5
+
+    def get_curve_model(self, model):
+        """
+        Prune `model` exactly.
+
+        The released pruned checkpoints project the activated timestep curve onto an 8-dimensional basis; a basis that
+        spans the whole `time_embed_dim` keeps the fold exact, so the curve model has to agree with `model` at every
+        grid point.
+        """
+        curve_model = self.model_class(**self.get_init_dict(), adaln_curve_grid=self.NUM_GRID_POINTS)
+        curve_model = curve_model.to(torch_device).eval()
+        state_dict = {
+            name: value for name, value in model.state_dict().items() if not name.startswith("time_embedder.")
+        }
+        grid = torch.linspace(0.0, 1.0, self.NUM_GRID_POINTS, device=torch_device)
+        with torch.no_grad():
+            state_dict["time_embedder.table"] = torch.nn.functional.silu(model.time_embedder(model.time_proj(grid)))
+        curve_model.load_state_dict(state_dict)
+        return curve_model
+
+    def test_curve_model_matches_the_time_mlp_on_its_grid(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        curve_model = self.get_curve_model(model)
+        inputs = {**self.get_dummy_inputs(), "timestep": torch.tensor([0.75, 0.25], device=torch_device)}
+
+        with torch.no_grad():
+            output, curve_output = model(**inputs), curve_model(**inputs)
+        torch.testing.assert_close(curve_output.sample, output.sample)
+        torch.testing.assert_close(curve_output.audio_sample, output.audio_sample)
+
+    def test_curve_interpolates_between_grid_points_and_clamps_outside(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        curve = self.get_curve_model(model).time_embedder
+        table = curve.table
+
+        with torch.no_grad():
+            midpoint = curve(torch.tensor([0.125], device=torch_device))
+            torch.testing.assert_close(midpoint, (0.5 * (table[0] + table[1])).unsqueeze(0))
+            ends = curve(torch.tensor([-1.0, 2.0], device=torch_device))
+            torch.testing.assert_close(ends, torch.stack([table[0], table[-1]]))
+
+
 class TestMiniMaxH3TransformerMemory(MiniMaxH3TransformerTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for the MiniMax-H3 transformer."""
 
