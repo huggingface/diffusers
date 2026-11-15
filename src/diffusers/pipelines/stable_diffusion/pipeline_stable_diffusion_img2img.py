@@ -742,6 +742,11 @@ class StableDiffusionImg2ImgPipeline(
 
         batch_size = batch_size * num_images_per_prompt
 
+        # With one image per prompt, each prompt's `num_images_per_prompt` outputs must start from that prompt's
+        # image. The prompt embeddings are ordered [p0, p0, p1, p1], so repeat the images the same way.
+        if num_images_per_prompt > 1 and image.shape[0] > 1 and image.shape[0] * num_images_per_prompt == batch_size:
+            image = image.repeat_interleave(num_images_per_prompt, dim=0)
+
         if image.shape[1] == 4:
             init_latents = image
 
