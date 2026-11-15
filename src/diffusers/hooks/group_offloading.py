@@ -110,6 +110,7 @@ class GroupOffloadingConfig:
     stream: torch.cuda.Stream | torch.Stream | None = None
     block_modules: list[str] | None = None
     exclude_kwargs: list[str] | None = None
+    num_resident_blocks: int = 0
     module_prefix: str = ""
 
 
@@ -577,6 +578,7 @@ def apply_group_offloading(
     offload_to_disk_path: str | None = None,
     block_modules: list[str] | None = None,
     exclude_kwargs: list[str] | None = None,
+    num_resident_blocks: int = 0,
 ) -> None:
     r"""
     Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is, and
@@ -641,6 +643,10 @@ def apply_group_offloading(
             List of kwarg keys that should not be processed by send_to_device. This is useful for mutable state like
             caching lists that need to maintain their object identity across forward passes. If not provided, will be
             inferred from the module's `_skip_keys` attribute if it exists.
+        num_resident_blocks (`int`, defaults to `0`):
+            Only for `offload_type="block_level"`. The first `num_resident_blocks` block groups (in module order)
+            are kept permanently on `onload_device`: they are never offloaded or re-transferred, so every forward
+            pass streams fewer weights, at the cost of the device memory those blocks occupy.
 
     Example:
         ```python
@@ -688,6 +694,10 @@ def apply_group_offloading(
 
     if exclude_kwargs is None:
         exclude_kwargs = getattr(module, "_skip_keys", None)
+    if num_resident_blocks < 0:
+        raise ValueError("`num_resident_blocks` must be >= 0.")
+    if num_resident_blocks > 0 and offload_type != GroupOffloadingType.BLOCK_LEVEL:
+        raise ValueError("`num_resident_blocks` is only supported with `offload_type='block_level'`.")
 
     config = GroupOffloadingConfig(
         onload_device=onload_device,
@@ -701,6 +711,7 @@ def apply_group_offloading(
         offload_to_disk_path=offload_to_disk_path,
         block_modules=block_modules,
         exclude_kwargs=exclude_kwargs,
+        num_resident_blocks=num_resident_blocks,
     )
     _apply_group_offloading(module, config)
 
@@ -714,7 +725,7 @@ def _apply_group_offloading(module: torch.nn.Module, config: GroupOffloadingConf
         assert False
 
 
-def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOffloadingConfig) -> None:
+def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOffloadingConfig) -> int:
     r"""
     This function applies offloading to groups of torch.nn.ModuleList or torch.nn.Sequential blocks, and explicitly
     defined block modules. In comparison to the "leaf_level" offloading, which is more fine-grained, this offloading is
@@ -735,6 +746,7 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
     modules_with_group_offloading = set()
     unmatched_modules = []
     matched_module_groups = []
+    resident_left = config.num_resident_blocks
 
     for name, submodule in module.named_children():
         # Check if this is an explicitly defined block module
@@ -743,9 +755,9 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
             # Without this, submodules sharing the same model class would be assigned identical
             # filenames (derived from the class name).
             prefix = f"{config.module_prefix}{name}." if config.module_prefix else f"{name}."
-            submodule_config = replace(config, module_prefix=prefix)
+            submodule_config = replace(config, module_prefix=prefix, num_resident_blocks=resident_left)
 
-            _apply_group_offloading_block_level(submodule, submodule_config)
+            resident_left -= _apply_group_offloading_block_level(submodule, submodule_config)
             modules_with_group_offloading.add(name)
 
         elif isinstance(submodule, (torch.nn.ModuleList, torch.nn.Sequential)):
@@ -753,6 +765,14 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
             for i in range(0, len(submodule), config.num_blocks_per_group):
                 current_modules = list(submodule[i : i + config.num_blocks_per_group])
                 if len(current_modules) == 0:
+                    continue
+
+                if resident_left > 0:
+                    # Resident block: placed on the device once and left without hooks, so it is never offloaded.
+                    for resident_module in current_modules:
+                        resident_module.to(config.onload_device)
+                    resident_left -= 1
+                    modules_with_group_offloading.update(f"{name}.{j}" for j in range(i, i + len(current_modules)))
                     continue
 
                 group_id = f"{config.module_prefix}{name}_{i}_{i + len(current_modules) - 1}"
@@ -813,6 +833,8 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
             _apply_group_offloading_hook(module, unmatched_group, config=config)
         else:
             _apply_lazy_group_offloading_hook(module, unmatched_group, config=config)
+
+    return config.num_resident_blocks - resident_left
 
 
 def _apply_group_offloading_leaf_level(module: torch.nn.Module, config: GroupOffloadingConfig) -> None:
