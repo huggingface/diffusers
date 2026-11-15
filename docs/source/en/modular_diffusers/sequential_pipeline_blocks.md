@@ -138,6 +138,6 @@ A few properties you set yourself:
 
 - `description`: We recommend adding a description for the assembled block to explain what the combined step does.
 - `model_name`: This is automatically derived from the sub-blocks but isn't always correct, so you may need to override it.
-- `outputs`: By default this is the same as `intermediate_outputs`. Set it to list only the values the step is for, so the doc shows the final outputs instead of every intermediate value. Everything stays in the pipeline state either way.
+- `outputs`: By default this is the same as `intermediate_outputs`. Set it to list only the values the step is for, so the doc shows the final outputs instead of every intermediate value. Everything stays in the pipeline state either way. The blocks `get_execution_blocks` and `get_workflow` return keep this list too, minus any output their selected blocks don't produce.
 
 These properties, together with the aggregated `inputs`, `intermediate_outputs`, and `expected_components`, are used to automatically generate the `doc` property.

@@ -1244,7 +1244,8 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
     @property
     def description(self):
-        return ""
+        # default to empty string; set by `from_blocks_dict(description=...)` or overridden in child classes
+        return self._description if self._description is not None else ""
 
     @property
     def model_name(self):
@@ -1303,12 +1304,15 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         cls,
         blocks_dict: dict[str, Any],
         description: str | None = None,
+        outputs: list[OutputParam] | None = None,
     ) -> "SequentialPipelineBlocks":
         """Creates a SequentialPipelineBlocks instance from a dictionary of blocks.
 
         Args:
             blocks_dict: Dictionary mapping block names to block classes or instances
             description: Description of the new block
+            outputs: the outputs the new block lists in its docs, in place of every intermediate output. Each must be
+                an intermediate output of one of the blocks
 
         Returns:
             A new SequentialPipelineBlocks instance
@@ -1328,11 +1332,22 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         instance.sub_blocks = sub_blocks
 
         if description is not None:
-            instance.description = description
+            instance._description = description
+        if outputs is not None:
+            produced = {out.name for out in instance.intermediate_outputs}
+            unknown = sorted(out.name for out in outputs if out.name not in produced)
+            if unknown:
+                raise ValueError(
+                    f"`from_blocks_dict(outputs=...)`: {unknown} are not intermediate outputs of the given blocks."
+                )
+            instance._outputs = list(outputs)
 
         return instance
 
     def __init__(self):
+        # set by `from_blocks_dict(description=..., outputs=...)`, `None` otherwise
+        self._description = None
+        self._outputs = None
         sub_blocks = InsertableDict()
         for block_name, block in zip(self.block_names, self.block_classes):
             if inspect.isclass(block):
@@ -1443,10 +1458,11 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         return [replace(out, _maybe=out.name not in always) for out in combined_outputs]
 
     # `outputs` is what `doc` and the model card list as the block's outputs. By default that is every intermediate
-    # output; a composite overrides it to show only what the step is for, e.g. just `latents` for the `denoise` block.
+    # output; a composite overrides it to show only what the step is for, e.g. just `latents` for the `denoise` block,
+    # either by overriding the property in a child class or with `from_blocks_dict(outputs=...)`.
     @property
     def outputs(self) -> list[str]:
-        return self.intermediate_outputs
+        return self._outputs if self._outputs is not None else self.intermediate_outputs
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> tuple["ModularPipeline", PipelineState]:
@@ -1536,7 +1552,12 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             nested_blocks = fn_recursive_traverse(block, block_name, active_inputs)
             all_blocks.update(nested_blocks)
 
-        return SequentialPipelineBlocks.from_blocks_dict(all_blocks)
+        # if `outputs` is set on the composite block, it applies to the selected execution blocks as well, minus the
+        # ones they don't produce
+        produced = {out.name for block in all_blocks.values() for out in block.intermediate_outputs}
+        return SequentialPipelineBlocks.from_blocks_dict(
+            all_blocks, outputs=[out for out in self.outputs if out.name in produced]
+        )
 
     def __repr__(self):
         class_name = self.__class__.__name__

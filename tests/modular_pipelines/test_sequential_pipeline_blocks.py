@@ -883,3 +883,52 @@ class TestNew:
 
         with pytest.raises(TypeError, match="derives its declarations from its sub-blocks"):
             Loop().new(configs=[ConfigSpec("scale", default=16)])
+
+
+class TestFromBlocksDict:
+    def test_description_and_outputs(self):
+        blocks = SequentialPipelineBlocks.from_blocks_dict(
+            {"prepare_latents": PrepareLatentsBlock(), "unet": UNetBlock()},
+            description="prepares and denoises",
+            outputs=[OutputParam("latents", description="denoised latents")],
+        )
+        assert blocks.description == "prepares and denoises"
+        assert [out.name for out in blocks.outputs] == ["latents"]
+        # without them: no description, every intermediate output
+        blocks = SequentialPipelineBlocks.from_blocks_dict(
+            {"prepare_latents": PrepareLatentsBlock(), "unet": UNetBlock()}
+        )
+        assert blocks.description == ""
+        assert [out.name for out in blocks.outputs] == [out.name for out in blocks.intermediate_outputs]
+
+    def test_an_output_no_block_produces_raises(self):
+        with pytest.raises(ValueError, match="\\['images'\\] are not intermediate outputs"):
+            SequentialPipelineBlocks.from_blocks_dict({"unet": UNetBlock()}, outputs=[OutputParam("images")])
+
+    def test_execution_blocks_keep_the_outputs_of_the_full_blocks(self):
+        class DecodeBlock(ModularPipelineBlocks):
+            model_name = "test"
+
+            @property
+            def inputs(self):
+                return [InputParam("latents", required=True)]
+
+            @property
+            def intermediate_outputs(self):
+                return [OutputParam("images")]
+
+            def __call__(self, components, state):
+                return components, state
+
+        class Blocks(SequentialPipelineBlocks):
+            block_classes = [strength_auto_blocks(0.3, 0.9999), UNetBlock, DecodeBlock]
+            block_names = ["auto", "unet", "decode"]
+
+            @property
+            def outputs(self):
+                # what the pipeline is for, plus one that only the img2img branch produces
+                return [OutputParam("images"), OutputParam("image_latents")]
+
+        workflow = Blocks().get_execution_blocks(mask=True)
+        assert [out.name for out in workflow.outputs] == ["images"]
+        assert len(workflow.intermediate_outputs) > 1
