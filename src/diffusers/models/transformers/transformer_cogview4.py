@@ -28,7 +28,7 @@ from ..cache_utils import CacheMixin
 from ..embeddings import CogView3CombinedTimestepSizeEmbeddings
 from ..modeling_outputs import Transformer2DModelOutput
 from ..modeling_utils import ModelMixin
-from ..normalization import LayerNorm, RMSNorm
+from ..normalization import RMSNorm
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -48,7 +48,9 @@ class CogView4PatchEmbed(nn.Module):
         self.proj = nn.Linear(in_channels * patch_size**2, hidden_size)
         self.text_proj = nn.Linear(text_hidden_size, hidden_size)
 
-    def forward(self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, hidden_states: torch.Tensor, encoder_hidden_states: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         batch_size, channel, height, width = hidden_states.shape
         post_patch_height = height // self.patch_size
         post_patch_width = width // self.patch_size
@@ -598,7 +600,7 @@ class CogView4AdaLayerNormContinuous(nn.Module):
         super().__init__()
         self.linear = nn.Linear(conditioning_embedding_dim, embedding_dim * 2, bias=bias)
         if norm_type == "layer_norm":
-            self.norm = LayerNorm(embedding_dim, eps, elementwise_affine, bias)
+            self.norm = nn.LayerNorm(embedding_dim, eps, elementwise_affine, bias)
         elif norm_type == "rms_norm":
             self.norm = RMSNorm(embedding_dim, eps, elementwise_affine)
         else:

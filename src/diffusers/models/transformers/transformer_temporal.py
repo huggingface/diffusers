@@ -129,7 +129,7 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         num_frames: int = 1,
         cross_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> TransformerTemporalModelOutput:
+    ) -> TransformerTemporalModelOutput | tuple[torch.Tensor]:
         """
         The [`TransformerTemporal`] forward method.
 

@@ -132,7 +132,9 @@ class CogVideoXCausalConv3d(nn.Module):
                 inputs = torch.cat(cached_inputs + [inputs], dim=2)
         return inputs
 
-    def forward(self, inputs: torch.Tensor, conv_cache: torch.Tensor | None = None) -> torch.Tensor:
+    def forward(
+        self, inputs: torch.Tensor, conv_cache: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         inputs = self.fake_context_parallel_forward(inputs, conv_cache)
 
         if self.pad_mode == "replicate":
@@ -1176,7 +1178,7 @@ class AutoencoderKLCogVideoX(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
             return (posterior,)
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
+    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor]:
         batch_size, num_channels, num_frames, height, width = z.shape
 
         if self.use_tiling and (width > self.tile_latent_min_width or height > self.tile_latent_min_height):
@@ -1205,7 +1207,7 @@ class AutoencoderKLCogVideoX(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         return DecoderOutput(sample=dec)
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor]:
         """
         Decode a batch of images.
 
@@ -1319,7 +1321,7 @@ class AutoencoderKLCogVideoX(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         enc = torch.cat(result_rows, dim=3)
         return enc
 
-    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
+    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor]:
         r"""
         Decode a batch of images using a tiled decoder.
 
@@ -1408,7 +1410,7 @@ class AutoencoderKLCogVideoX(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: torch.Generator | None = None,
-    ) -> torch.Tensor | torch.Tensor:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

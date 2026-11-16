@@ -913,7 +913,7 @@ class AutoencoderKLKVAEVideo(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         return torch.cat(recs, dim=2)
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, tuple[torch.Tensor]]:
         """
         Decode a batch of videos.
 
@@ -941,7 +941,7 @@ class AutoencoderKLKVAEVideo(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> Union[DecoderOutput, tuple[torch.Tensor]]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.
