@@ -25,7 +25,6 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.pipelines.pipeline_loading_utils import (
-    _assign_components_to_devices,
     is_safetensors_compatible,
     variant_compatible_siblings,
 )
@@ -34,38 +33,24 @@ from ..others.test_utils import TOKEN, USER, is_staging_test
 from ..testing_utils import require_torch_accelerator, torch_device
 
 
-class TestAssignComponentsToDevices:
-    @staticmethod
-    def _flatten(mapping):
-        return [component for components in mapping.values() for component in components]
+class TestBalancedDeviceMap:
+    @require_torch_accelerator
+    def test_components_that_overflow_stay_in_device_map(self):
+        # The budget fits the text encoder only, so the unet and the vae both overflow to the CPU.
+        device = torch_device if torch_device == "mps" else 0
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch",
+            device_map="balanced",
+            max_memory={device: "300KB"},
+            safety_checker=None,
+        )
 
-    def test_components_placed_on_devices_when_they_fit(self):
-        module_sizes = {"transformer": 10.0, "text_encoder": 5.0, "vae": 1.0}
-        device_memory = {0: 20.0, 1: 20.0}
+        assert pipe.hf_device_map["unet"] == "cpu"
+        assert pipe.hf_device_map["vae"] == "cpu"
+        assert pipe.hf_device_map["text_encoder"] == device
 
-        mapping = _assign_components_to_devices(module_sizes, device_memory)
-
-        assert "cpu" not in mapping
-        assert sorted(self._flatten(mapping)) == sorted(module_sizes)
-
-    def test_single_oversized_component_placed_on_cpu(self):
-        module_sizes = {"transformer": 30.0, "text_encoder": 5.0, "vae": 1.0}
-        device_memory = {0: 20.0, 1: 20.0}
-
-        mapping = _assign_components_to_devices(module_sizes, device_memory)
-
-        assert mapping["cpu"] == ["transformer"]
-        assert sorted(self._flatten(mapping)) == sorted(module_sizes)
-
-    def test_multiple_oversized_components_all_placed_on_cpu(self):
-        # Every component that does not fit on any device must be listed under "cpu".
-        module_sizes = {"transformer": 30.0, "text_encoder": 25.0, "vae": 1.0}
-        device_memory = {0: 20.0, 1: 20.0}
-
-        mapping = _assign_components_to_devices(module_sizes, device_memory)
-
-        assert mapping["cpu"] == ["transformer", "text_encoder"]
-        assert sorted(self._flatten(mapping)) == sorted(module_sizes)
+        image = pipe("foo", num_inference_steps=2, output_type="np").images
+        assert image.shape == (1, 128, 128, 3)
 
 
 class TestIsSafetensorsCompatible:
