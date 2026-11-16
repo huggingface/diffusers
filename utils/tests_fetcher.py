@@ -21,7 +21,7 @@ forward dependency graph for the repo, invert it to a reverse map (file → test
 it), and select the impacted tests.
 
 There is no automatic full-suite trigger. If a change is in territory the import graph can't see
-correctly (dynamic dispatch via auto-mappings, lazy `_import_structure`, etc.), pass `--force_full_suite`
+correctly (dynamic dispatch via auto-mappings, lazy `_import_structure`, etc.), pass `--force-full-suite`
 to bypass selection.
 
 Pipeline-specific note: diffusers' `__init__.py` files use the `_import_structure = {...}` lazy-loading
@@ -45,8 +45,8 @@ Usage:
 
 ```bash
 python utils/tests_fetcher.py                         # PR mode: diff against main
-python utils/tests_fetcher.py --diff_with_last_commit # main mode: diff against last commit
-python utils/tests_fetcher.py --force_full_suite      # bypass selection, run everything
+python utils/tests_fetcher.py --diff-with-last-commit # main mode: diff against last commit
+python utils/tests_fetcher.py --force-full-suite      # bypass selection, run everything
 ```
 """
 
@@ -366,26 +366,24 @@ def create_reverse_dependency_map(direct_deps: Dict[str, List[str]]) -> Dict[str
        via the root init).
     2. Invert.
     """
-    all_modules = list(direct_deps)
-    one_hop_deps = direct_deps
-    direct_deps = {m: list(deps) for m, deps in direct_deps.items()}
+    closed = {m: list(deps) for m, deps in direct_deps.items()}
 
     # Each pass propagates dependency info one level deeper. Loop until a full pass adds nothing.
     changed = True
     while changed:
         changed = False
-        for m in all_modules:
-            if _merged_nested_deps(m, direct_deps):
+        for m in closed:
+            if _merged_nested_deps(m, closed):
                 changed = True
 
     reverse_map: Dict[str, List[str]] = collections.defaultdict(list)
-    for m in all_modules:
-        for d in direct_deps[m]:
+    for m, deps in closed.items():
+        for d in deps:
             reverse_map[d].append(m)
 
     # For inits, do the forward direction: editing an init impacts everything it re-exports.
-    for init in [m for m in all_modules if m.endswith("__init__.py")]:
-        deps = one_hop_deps[init]
+    for init in [m for m in direct_deps if m.endswith("__init__.py")]:
+        deps = direct_deps[init]
         impacted = set(deps)
         for d in deps:
             if not d.endswith("__init__.py"):
@@ -470,6 +468,11 @@ def _selection_routes(changed: str, tests: set, direct_deps: Dict[str, List[str]
     return direct, sorted(via.items(), key=lambda kv: (-len(kv[1]), kv[0]))
 
 
+def _suite_of(test_file: str) -> str:
+    parts = test_file.split("/")
+    return f"{parts[0]}/{parts[1]}/" if len(parts) > 2 else f"{parts[0]}/"
+
+
 def _suite_lines(tests: List[str], suite_totals: Dict[str, int]) -> List[str]:
     """Summarise many tests as suite coverage: `tests/models/: 80 of 104 test files`. A suite only brushed by
     the group (fewer than ten tests and under a quarter of the suite) is folded into one `N test files
@@ -482,11 +485,6 @@ def _suite_lines(tests: List[str], suite_totals: Dict[str, int]) -> List[str]:
     if minor:
         lines.append(f"{sum(n for _, n in minor)} test files across " + ", ".join(suite for suite, _ in minor))
     return lines
-
-
-def _suite_of(test_file: str) -> str:
-    parts = test_file.split("/")
-    return f"{parts[0]}/{parts[1]}/" if len(parts) > 2 else f"{parts[0]}/"
 
 
 def _selection_tree(
@@ -509,14 +507,21 @@ def _selection_tree(
     branches += [(f"via {hop}", leaves(ts)) for hop, ts in via[:NAME_FOLDERS_UP_TO]]
     if len(via) > NAME_FOLDERS_UP_TO:
         rest = via[NAME_FOLDERS_UP_TO:]
-        by_package: Dict[str, List] = collections.defaultdict(lambda: [0, 0, collections.Counter()])
+        by_package: Dict[str, List[Tuple[str, List[str]]]] = collections.defaultdict(list)
         for hop, ts in rest:
-            entry = by_package["/".join(hop.split("/")[:-1][:3]) + "/"]
-            entry[0] += 1
-            entry[1] += len(ts)
-            entry[2].update(name for target, names in _extract_imports(hop) if target == changed for name in names)
+            by_package["/".join(hop.split("/")[:-1][:3]) + "/"].append((hop, ts))
         children = []
-        for pkg, (n, t, names) in sorted(by_package.items(), key=lambda kv: -kv[1][1])[:NAME_FOLDERS_UP_TO]:
+        for pkg, routes in sorted(by_package.items(), key=lambda kv: -sum(len(ts) for _, ts in kv[1]))[
+            :NAME_FOLDERS_UP_TO
+        ]:
+            n, t = len(routes), sum(len(ts) for _, ts in routes)
+            names = collections.Counter(
+                name
+                for hop, _ in routes
+                for target, syms in _extract_imports(hop)
+                if target == changed
+                for name in syms
+            )
             imported = ", ".join(name for name, _ in names.most_common(3))
             children.append(
                 f"{n} module{'s' if n != 1 else ''} in {pkg} → {t} test{'s' if t != 1 else ''}"
@@ -550,8 +555,14 @@ def _write_summary(
     changed file with the import tree that explains its selection. The import chain for every selected test
     is in the stdout report, kept as a CI artifact.
     """
-    selected_by = {f: _tests_triggered_by(f, reverse_map) for f in modified_files if (PATH_TO_REPO / f).exists()}
-    selected_by = {f: t for f, t in selected_by.items() if t or f.startswith("src/")}
+    # Deleted files select nothing; files outside src/ that select nothing (conftest, helpers) have nothing to say.
+    selected_by = {
+        f: tests
+        for f in modified_files
+        if (PATH_TO_REPO / f).exists()
+        for tests in [_tests_triggered_by(f, reverse_map)]
+        if tests or f.startswith("src/")
+    }
     suite_totals = collections.Counter(_suite_of(t) for t in _all_test_files())
     self_only = [f for f, tests in selected_by.items() if tests == {f}]
     no_tests = sorted(f for f, tests in selected_by.items() if not tests)
@@ -601,10 +612,8 @@ def _write_summary(
         (t, d, len(direct_deps[d]))
         for t in test_files
         if t in modified_files
-        for d in direct_deps.get(t, [])
-        if not d.endswith("__init__.py")
-        and "/testing_utils" not in d
-        and len(direct_deps.get(d, [])) >= WIDE_IMPORT_FANOUT
+        for d in direct_deps[t]
+        if not d.endswith("__init__.py") and "/testing_utils" not in d and len(direct_deps[d]) >= WIDE_IMPORT_FANOUT
     ]
     if wide_imports:
         lines += ["", "**Imports that make a test depend on most of the library**", ""]
@@ -701,9 +710,8 @@ def _class_markers(test_file: str, bucket: str, mixin_markers: Dict[str, List[st
 def _feature_groups_for(paths: List[str], bucket: str, mixin_markers: Dict[str, List[str]]) -> List[str]:
     """Names of the feature groups (including `core`) that at least one test class in `paths` would land in."""
     class_markers = [m for p in paths for m in _class_markers(p, bucket, mixin_markers)]
-    non_core = NON_CORE_MARKERS
     groups = []
-    if any(not m & non_core for m in class_markers):
+    if any(not m & NON_CORE_MARKERS for m in class_markers):
         groups.append("core")
     for group, markers in FEATURE_GROUPS.items():
         if any(m & set(markers) for m in class_markers):
@@ -743,13 +751,7 @@ def fetch_tests_to_run(json_output_file: str, summary_file: str, diff_with_last_
     direct_deps = create_direct_dependency_map()
     reverse_map = create_reverse_dependency_map(direct_deps)
 
-    # Each modified file contributes itself (if it's a test) plus tests transitively impacted by it.
-    selected = set()
-    for f in modified_files:
-        if _is_test_file(f):
-            selected.add(f)
-        selected.update(t for t in reverse_map.get(f, []) if _is_test_file(t))
-
+    selected = set().union(*(_tests_triggered_by(f, reverse_map) for f in modified_files))
     test_files_to_run = sorted(p for p in selected if (PATH_TO_REPO / p).exists())
     _print_selection_report(test_files_to_run, modified_files, direct_deps)
     _write_summary(summary_file, modified_files, test_files_to_run, direct_deps, reverse_map)
@@ -757,15 +759,10 @@ def fetch_tests_to_run(json_output_file: str, summary_file: str, diff_with_last_
 
 
 def _all_test_files() -> List[str]:
-    """Enumerate every `tests/.../test_*.py` (used for the full-suite path)."""
+    """Every `tests/.../test_*.py`: the full suite, and the denominator for suite coverage in the summary."""
     return sorted(
         str(p.relative_to(PATH_TO_REPO)) for p in PATH_TO_TESTS.glob("**/test_*.py") if "__pycache__" not in p.parts
     )
-
-
-def _write_full_suite(json_output_file: str):
-    """Schedule the entire test suite. Used by `--force_full_suite` and as exception fallback."""
-    _write_matrix(json_output_file, _all_test_files())
 
 
 # ============================================================
@@ -776,24 +773,24 @@ def _write_full_suite(json_output_file: str):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--json_output_file",
+        "--json-output-file",
         type=str,
         default="test_map.json",
         help="Where to store the list of matrix entries (name / paths / markers) consumed by CI.",
     )
     parser.add_argument(
-        "--summary_output_file",
+        "--summary-output-file",
         type=str,
         default="test_fetcher_summary.md",
         help="Where to store the markdown report appended to the CI job summary.",
     )
     parser.add_argument(
-        "--diff_with_last_commit",
+        "--diff-with-last-commit",
         action="store_true",
         help="Diff against the previous commit instead of main (use on main branch jobs)",
     )
     parser.add_argument(
-        "--force_full_suite",
+        "--force-full-suite",
         action="store_true",
         help="Bypass selection and write outputs that schedule the entire test suite.",
     )
@@ -801,7 +798,7 @@ if __name__ == "__main__":
 
     if args.force_full_suite:
         print("Forcing full test suite.")
-        _write_full_suite(args.json_output_file)
+        _write_matrix(args.json_output_file, _all_test_files())
         raise SystemExit(0)
 
     repo = Repo(PATH_TO_REPO)
@@ -818,4 +815,4 @@ if __name__ == "__main__":
         print(f"\nError when trying to grab the relevant tests: {e}\n")
         traceback.print_exc()
         print("\nRunning all tests.")
-        _write_full_suite(args.json_output_file)
+        _write_matrix(args.json_output_file, _all_test_files())
