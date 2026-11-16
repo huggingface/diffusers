@@ -73,6 +73,7 @@ class KandinskyS2VModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     params = frozenset(["image", "audio", "prompt", "height", "width", "num_latent_frames"])
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "output_type"])
+    required_params = frozenset(["audio", "image"])
     output_name = "videos"
     latents_output_name = "latent_chunks"
     # One chunk, channels last: (num_latent_frames, latent_height, latent_width, channels).

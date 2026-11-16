@@ -44,7 +44,12 @@ class BaseModularPipelineTesterConfig:
 
     # Canonical parameters that are passed to `__call__` regardless of the type of pipeline. They are always
     # optional and have common sense default values.
-    optional_params = frozenset(["num_inference_steps", "num_images_per_prompt", "latents", "output_type"])
+    optional_params = frozenset(
+        ["num_inference_steps", "num_images_per_prompt", "latents", "output_type", "generator", "height", "width"]
+    )
+    # Canonical parameters the pipeline cannot run without. `test_pipeline_required_parameters` asserts the blocks mark
+    # them required; a pipeline that does not take a prompt overrides this with its own, e.g. `{"audio", "image"}`
+    required_params = frozenset(["prompt"])
     # Parameters the pipeline deliberately does NOT accept — e.g. `negative_prompt` on a
     # guidance-distilled pipeline. `test_pipeline_call_signature` asserts they are absent,
     # so accidentally (re)introducing one fails the test.
@@ -206,6 +211,7 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
     """
 
     def test_pipeline_call_signature(self):
+        # test all the `params` are present in the pipeline inputs and `not_params` are not present
         blocks = self.pipeline_blocks_class()
         input_parameters = set(blocks.input_names)
         assert self.params <= input_parameters, self.params - input_parameters
@@ -216,9 +222,9 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
         )
 
     def test_no_input_is_both_required_and_has_a_default(self):
-        # `InputParam` warns and drops `required` when a declaration is both required and has a default (see the
-        # pitfalls list in `.ai/references/modular.md`). Building the blocks and reading their `inputs` constructs
-        # every `InputParam` of every sub-block, so a clean log means no block in this pipeline declares one
+        # `InputParam` warns and drops `required` when a declaration is both required and has a default,
+        # e.g. `InputParam("num_inference_steps", default=20, required=True)` (see the pitfalls list in
+        # `.ai/references/modular.md`). This test makes sure no block of an official pipeline declares one
         logger = logging.get_logger("diffusers.modular_pipelines.modular_pipeline_utils")
         with CaptureLogger(logger) as cap_logger:
             blocks = self.pipeline_blocks_class()
@@ -226,11 +232,23 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
         assert "is required and declares a default" not in cap_logger.out, cap_logger.out
 
     def test_pipeline_optional_parameters(self):
+        # test to make sure all `self.optional_params` are present in the pipeline inputs and are marked as optional.
+        # `optional_params` is the set of optional parameters common to all pipelines, e.g. "num_inference_steps",
+        # "num_images_per_prompt", "latents", "output_type", "generator", "height", "width"; a subclass can override it
         blocks = self.pipeline_blocks_class()
         optional_parameters = {param.name for param in blocks.inputs if param.name is not None and not param.required}
         assert self.optional_params <= optional_parameters, self.optional_params - optional_parameters
 
+    def test_pipeline_required_parameters(self):
+        # test to make sure all `self.required_params` are present in the pipeline inputs and are marked as required.
+        # `required_params` is "prompt" by default; a pipeline that does not take a prompt overrides it
+        blocks = self.pipeline_blocks_class()
+        required_parameters = {param.name for param in blocks.inputs if param.name is not None and param.required}
+        assert self.required_params <= required_parameters, self.required_params - required_parameters
+
     def test_pipeline_required_inputs(self):
+        # this test makes sure the `inputs[].required` flag is consistent with the `required_inputs` property, on the
+        # pipeline blocks and on every sub-block. The two used to disagree on composite blocks, see #15009
         blocks_to_check = [self.pipeline_blocks_class()]
         for blocks in blocks_to_check:
             required_inputs = set(blocks.required_inputs)
@@ -241,6 +259,18 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
                 if param.required:
                     assert param.default is None, (type(blocks).__name__, param)
             blocks_to_check.extend(blocks.sub_blocks.values())
+
+    def test_required_inputs_are_required(self):
+        # this test makes sure all the inputs marked as required are indeed required: an input the blocks mark
+        # required is one the pipeline cannot run without, so leave each one out in turn and the block that needs it
+        # raises
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
+        required = [param.name for param in pipe.blocks.inputs if param.required]
+        assert set(required) <= set(inputs), set(required) - set(inputs)
+        for name in required:
+            with pytest.raises(ValueError, match=f"Required input '{name}' is missing"):
+                pipe(**{k: v for k, v in inputs.items() if k != name}, output=self.output_name)
 
     def test_inference_batch_consistent(self, batch_sizes=[2], batch_generator=True):
         pipe = self.get_pipeline().to(torch_device)
