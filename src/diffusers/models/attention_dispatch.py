@@ -3833,6 +3833,8 @@ def _maybe_pack_kv_for_rocm_sdpa(key: torch.Tensor, value: torch.Tensor) -> tupl
     if torch.version.hip is None or key.device.type != "cuda" or torch.compiler.is_compiling():
         return key, value
     min_bytes = _rocm_sdpa_pack_kv_min_bytes(key.device)
+    # Below the threshold K/V still fit in the on-die cache, where reading the strided view is cheap and the copy only
+    # adds time. Architectures without a measured threshold keep the current path.
     if min_bytes is None or (key.numel() + value.numel()) * key.element_size() < min_bytes:
         return key, value
     return key.contiguous(), value.contiguous()
