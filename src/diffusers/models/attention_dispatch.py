@@ -863,7 +863,11 @@ def _native_attention_forward_op(
 ):
     # Native attention does not return_lse
     if return_lse:
-        raise ValueError("Native attention does not support return_lse=True")
+        raise ValueError(
+            "Ring attention (`ring_degree > 1`) needs the attention LSE, which `scaled_dot_product_attention` does not "
+            "return. Set a backend that returns it, such as `_native_flash`, `_native_cudnn` or `flash`, with "
+            "`set_attention_backend()`."
+        )
 
     # used for backward pass
     if _save_ctx:

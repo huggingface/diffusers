@@ -231,6 +231,14 @@ class TestAttentionModuleSetAttentionBackend:
 
 
 @is_attention
+class TestNativeAttentionRingError:
+    def test_lse_request_names_compatible_backends(self):
+        query = key = value = torch.randn(1, 8, 2, 4)
+        with pytest.raises(ValueError, match="ring_degree > 1.*_native_flash"):
+            attention_dispatch._native_attention_forward_op(None, query, key, value, return_lse=True, _save_ctx=False)
+
+
+@is_attention
 class TestVarlenAttentionCompile:
     """Op-level tests for the varlen backends under `torch.compile` with dynamic shapes, model independent."""
 
