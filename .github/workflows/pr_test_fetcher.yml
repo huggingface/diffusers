@@ -74,6 +74,7 @@ jobs:
   run_pr_tests:
     permissions:
       contents: read
+      id-token: write
     name: ${{ matrix.name }}
     needs: setup_pr_tests
     if: needs.setup_pr_tests.outputs.matrix != '[]'
@@ -106,6 +107,12 @@ jobs:
         diffusers-cli env
 
     - name: Run all selected tests on CPU
+      # The gated single-file checkpoints need a Hub token, obtained through OIDC like the nightly and release
+      # workflows. Only runs that can mint an id token get the resource: a fork PR cannot, and huggingface_hub
+      # raises rather than falling back when `HF_OIDC_RESOURCE` is set with no id token, so there it is left
+      # empty and the `require_hf_token` tests skip instead.
+      env:
+        HF_OIDC_RESOURCE: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'Diffusers-CI-Bot' || '' }}
       run: |
         pytest -n 2 --dist=loadfile -m "${{ matrix.markers }}" --make-reports=${{ matrix.name }}_tests_cpu ${{ matrix.paths }}
 

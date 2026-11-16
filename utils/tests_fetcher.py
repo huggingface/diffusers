@@ -84,7 +84,7 @@ FEATURE_GROUPS = {
     "memory": ["memory", "cpu_offload", "group_offload"],
     "cache": ["cache"],
     "ip_adapter": ["ip_adapter"],
-    # Needs only an HF token (gated checkpoints), which the CPU job provides; skips on fork PRs.
+    # Needs only a Hub token for gated checkpoints, which the CPU job obtains through OIDC; skips on fork PRs.
     "single_file": ["single_file"],
 }
 FEATURE_MARKERS = [m for markers in FEATURE_GROUPS.values() for m in markers]
