@@ -444,8 +444,8 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         """
         Creates a copy of this block with some of its declarations replaced, e.g. another default for an input, so the
         same block can be reused where only what it declares differs. The block's code is not changed and the copy
-        keeps what this block was created with. An entry cannot be added or removed: a block that reads other inputs
-        or runs other code is a block of its own.
+        keeps what this block was created with. An entry cannot be added or removed: a block that reads other inputs or
+        runs other code is a block of its own.
 
         Args:
             description: the description of the new block, in place of this block's
