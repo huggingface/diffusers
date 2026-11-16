@@ -753,9 +753,11 @@ def fetch_tests_to_run(json_output_file: str, summary_file: str, diff_with_last_
 
     selected = set().union(*(_tests_triggered_by(f, reverse_map) for f in modified_files))
     test_files_to_run = sorted(p for p in selected if (PATH_TO_REPO / p).exists())
+    # The matrix is what CI runs; write it before the reports so a rendering bug in them cannot fall into the
+    # full-suite fallback in `__main__`.
+    _write_matrix(json_output_file, test_files_to_run)
     _print_selection_report(test_files_to_run, modified_files, direct_deps)
     _write_summary(summary_file, modified_files, test_files_to_run, direct_deps, reverse_map)
-    _write_matrix(json_output_file, test_files_to_run)
 
 
 def _all_test_files() -> List[str]:
