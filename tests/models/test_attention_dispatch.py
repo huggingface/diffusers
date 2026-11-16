@@ -121,6 +121,65 @@ def _attention_backward_parity_worker(rank, world_size, master_port, cp_dict, at
             dist.destroy_process_group()
 
 
+def _ulysses_anything_mask_worker(rank, world_size, master_port, return_dict):
+    try:
+        os.environ["MASTER_ADDR"] = "localhost"
+        os.environ["MASTER_PORT"] = str(master_port)
+        os.environ["RANK"] = str(rank)
+        os.environ["WORLD_SIZE"] = str(world_size)
+        dist.init_process_group(backend="cpu:gloo", rank=rank, world_size=world_size)
+
+        mesh = dist.device_mesh.init_device_mesh("cpu", (1, world_size), mesh_dim_names=("ring", "ulysses"))
+        cp_config = ContextParallelConfig(ulysses_degree=world_size, ulysses_anything=True)
+        cp_config.setup(rank, world_size, torch.device("cpu"), mesh)
+        parallel_config = ParallelConfig(context_parallel_config=cp_config)
+
+        # 10 tokens on 3 ranks shard as [4, 3, 3], so two ranks pad their mask before the all-gather.
+        B, S, H, D = 1, 10, 3, 8
+        torch.manual_seed(0)
+        query, key, value = (torch.randn(B, S, H, D) for _ in range(3))
+        attn_mask = torch.ones(B, 1, 1, S, dtype=torch.bool)
+        attn_mask[..., 1::3] = False
+        ref = F.scaled_dot_product_attention(
+            query.transpose(1, 2), key.transpose(1, 2), value.transpose(1, 2), attn_mask=attn_mask
+        ).transpose(1, 2)
+
+        sizes = [t.shape[1] for t in query.tensor_split(world_size, dim=1)]
+        start = sum(sizes[:rank])
+        shard = slice(start, start + sizes[rank])
+        out = dispatch_attention_fn(
+            query[:, shard],
+            key[:, shard],
+            value[:, shard],
+            attn_mask=attn_mask[..., shard],
+            backend="native",
+            parallel_config=parallel_config,
+        )
+        return_dict[rank] = (out - ref[:, shard]).abs().max().item()
+    except Exception as e:
+        return_dict[rank] = repr(e)
+    finally:
+        if dist.is_initialized():
+            dist.destroy_process_group()
+
+
+@is_attention
+@is_context_parallel
+class TestUlyssesAnythingAttentionMask:
+    def test_uneven_shards_match_full_attention(self):
+        world_size = 3
+        return_dict = mp.Manager().dict()
+        mp.spawn(
+            _ulysses_anything_mask_worker,
+            args=(world_size, _find_free_port(), return_dict),
+            nprocs=world_size,
+            join=True,
+        )
+        for rank in range(world_size):
+            assert isinstance(return_dict[rank], float), return_dict[rank]
+            assert return_dict[rank] < 1e-5, f"rank {rank}: max abs error {return_dict[rank]}"
+
+
 @is_attention
 @is_context_parallel
 @require_torch_multi_accelerator

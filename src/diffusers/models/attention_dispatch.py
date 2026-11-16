@@ -2789,8 +2789,7 @@ class TemplatedUlyssesAnythingAttention(torch.autograd.Function):
                 attn_mask = F.pad(attn_mask, (0, max_local - attn_mask.shape[-1]))
             mask_list = [torch.empty_like(attn_mask) for _ in range(dist.get_world_size(group=group))]
             dist.all_gather(mask_list, attn_mask, group=group)
-            attn_mask = torch.cat(mask_list, dim=-1)
-            attn_mask = attn_mask[..., : sum(mask_local_sizes)]
+            attn_mask = torch.cat([mask[..., :size] for mask, size in zip(mask_list, mask_local_sizes)], dim=-1)
 
         out = forward_op(
             ctx,
