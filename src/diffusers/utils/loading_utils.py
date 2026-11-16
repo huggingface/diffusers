@@ -143,6 +143,8 @@ def load_video(
 
     if convert_method is not None:
         pil_images = convert_method(pil_images)
+    else:
+        pil_images = [image.convert("RGB") for image in pil_images]
 
     if return_fps:
         if fps is None:
