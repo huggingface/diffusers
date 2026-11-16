@@ -20,6 +20,7 @@ import pytest
 import torch
 
 from diffusers import BitsAndBytesConfig, FluxTransformer2DModel, GGUFQuantizationConfig
+from diffusers.loaders import FluxLoraLoaderMixin
 from diffusers.models.embeddings import ImageProjection
 from diffusers.models.transformers.transformer_flux import FluxIPAdapterAttnProcessor
 from diffusers.utils.torch_utils import randn_tensor
@@ -310,6 +311,39 @@ class TestFluxTransformerIPAdapter(FluxTransformerTesterConfig, IPAdapterTesterM
 
 class TestFluxTransformerLoRA(FluxTransformerTesterConfig, LoraTesterMixin):
     """LoRA adapter tests for Flux Transformer."""
+
+    def test_lora_bfl_control_final_layer_modulation(self):
+        # The original final layer orders its modulation (shift, scale) and diffusers' `norm_out` (scale, shift). Only
+        # lora_B's rows are the layer's outputs, so the converted update must be the original one with its halves swapped.
+        rank, inner_dim, mlp_dim = 1, 3072, 4 * 3072
+        modules = ["img_in", "txt_in", "time_in.in_layer", "time_in.out_layer", "vector_in.in_layer"]
+        modules += ["vector_in.out_layer", "final_layer.linear"]
+        for i in range(19):
+            for stream in ("img", "txt"):
+                modules += [f"double_blocks.{i}.{stream}_{name}" for name in ("mod.lin", "attn.qkv", "attn.proj")]
+                modules += [f"double_blocks.{i}.{stream}_mlp.{j}" for j in (0, 2)]
+        for i in range(38):
+            modules += [f"single_blocks.{i}.{name}" for name in ("modulation.lin", "linear1", "linear2")]
+        state_dict = {}
+        for module in modules:
+            state_dict[f"{module}.lora_A.weight"] = torch.zeros(rank, 1)
+            state_dict[f"{module}.lora_B.weight"] = torch.zeros(3 * inner_dim + mlp_dim, rank)
+        norms = [f"double_blocks.{i}.{s}_attn.norm" for i in range(19) for s in ("img", "txt")]
+        norms += [f"single_blocks.{i}.norm" for i in range(38)]
+        for norm in norms:
+            state_dict[f"{norm}.query_norm.scale"] = state_dict[f"{norm}.key_norm.scale"] = torch.ones(1)
+
+        torch.manual_seed(0)
+        lora_A, lora_B = torch.randn(2, 16), torch.randn(32, 2)
+        state_dict["final_layer.adaLN_modulation.1.lora_A.weight"] = lora_A
+        state_dict["final_layer.adaLN_modulation.1.lora_B.weight"] = lora_B
+        converted = FluxLoraLoaderMixin.lora_state_dict(state_dict)
+        delta = (
+            converted["transformer.norm_out.linear.lora_B.weight"]
+            @ converted["transformer.norm_out.linear.lora_A.weight"]
+        )
+        shift, scale = (lora_B @ lora_A).chunk(2, dim=0)
+        assert torch.allclose(delta, torch.cat([scale, shift]))
 
 
 class TestFluxTransformerLoRAHotSwap(FluxTransformerTesterConfig, LoraHotSwappingForModelTesterMixin):
