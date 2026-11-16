@@ -3,8 +3,9 @@ from dataclasses import dataclass
 
 import numpy as np
 import PIL.Image
+import pytest
 
-from diffusers.utils.outputs import BaseOutput
+from diffusers.utils.outputs import BaseOutput, is_tensor
 
 from ..testing_utils import require_torch
 
@@ -12,6 +13,18 @@ from ..testing_utils import require_torch
 @dataclass
 class CustomOutput(BaseOutput):
     images: list[PIL.Image.Image] | np.ndarray
+
+
+@dataclass
+class MultiFieldOutput(BaseOutput):
+    images: list[PIL.Image.Image] | np.ndarray
+    latents: np.ndarray | None = None
+    prompt_embeds: np.ndarray | None = None
+
+
+@dataclass
+class EmptyOutput(BaseOutput):
+    pass
 
 
 class TestOutputs:
@@ -89,4 +102,33 @@ class TestOutputs:
         assert expected_tree_spec == actual_tree_spec
 
         unflattened_x = torch.utils._pytree.tree_unflatten(actual_flat_outs, actual_tree_spec)
-        assert x == unflattened_x
+        assert np.array_equal(x.images, unflattened_x.images)
+
+    def test_outputs_immutable_dict_methods(self):
+        outputs = CustomOutput(images=np.random.rand(1, 3, 4, 4))
+        with pytest.raises(Exception, match="cannot use ``__delitem__``"):
+            del outputs["images"]
+        with pytest.raises(Exception, match="cannot use ``setdefault``"):
+            outputs.setdefault("extra", None)
+        with pytest.raises(Exception, match="cannot use ``pop``"):
+            outputs.pop("images")
+        with pytest.raises(Exception, match="cannot use ``update``"):
+            outputs.update({"images": None})
+
+    def test_outputs_empty_fields_error(self):
+        with pytest.raises(ValueError, match="has no fields"):
+            _ = EmptyOutput()
+
+    def test_outputs_to_tuple_omits_none(self):
+        data = np.random.rand(1, 3, 4, 4)
+        outputs = MultiFieldOutput(images=data, latents=None, prompt_embeds=None)
+        t = outputs.to_tuple()
+        assert len(t) == 1
+        assert np.array_equal(t[0], data)
+        assert list(outputs.keys()) == ["images"]
+
+    def test_is_tensor(self):
+        assert is_tensor(np.zeros((2, 2)))
+        assert not is_tensor([1, 2, 3])
+        assert not is_tensor("not_a_tensor")
+        assert not is_tensor(123)
