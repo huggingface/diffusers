@@ -34,10 +34,22 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 
 def marker_decorators():
-    """Map each `is_*` decorator in testing_utils.py to the pytest marker it applies.
+    """Map each `is_*` decorator in `tests/testing_utils.py` to the pytest marker it applies.
 
-    Read from the source with `ast` rather than imported, so `utils/tests_fetcher.py` can call this without
-    importing torch. Matches `def is_x(test_case): return pytest.mark.<marker>(test_case)`.
+    Only that file is read: it is where the marker decorators are defined. The `testing_utils/` packages
+    under `tests/models/` and `tests/pipelines/` hold the tester mixins that *use* these decorators, and the
+    per-pipeline `testing_utils.py` files hold test helpers; neither defines markers. Read from the source
+    with `ast` rather than imported, so `utils/tests_fetcher.py` can call this without importing torch.
+    Matches `def is_x(test_case): return pytest.mark.<marker>(test_case)`, so with
+
+        def is_lora(test_case):
+            return pytest.mark.lora(test_case)
+
+        def is_torch_compile(test_case):
+            return pytest.mark.compile(test_case)
+
+    in `tests/testing_utils.py` the result is `{"is_lora": "lora", "is_torch_compile": "compile"}`. A new `is_*`
+    decorator is picked up automatically; nothing else needs registering.
     """
     tree = ast.parse(open(join(dirname(__file__), "testing_utils.py"), encoding="utf-8").read())
     decorators = {}
@@ -89,7 +101,14 @@ def pytest_configure(config):
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(items):
-    """Mark every test with no feature marker as `core`, before `-m` deselection runs."""
+    """Mark every test carrying none of `NON_CORE_MARKERS` as `core`.
+
+    CI runs the feature jobs with `-m lora`, `-m memory`, ... and everything else with `-m core`. A positive
+    marker is the only way to say "everything else" to pytest: `-m "not (lora or memory or ...)"` would have
+    to list every feature marker and silently go stale. Adding the marker here, to every collected test
+    without a feature marker, keeps `core` exhaustive by construction. `tryfirst` runs this before pytest's
+    own `-m` deselection, which happens in the same hook.
+    """
     for item in items:
         if not any(m.name in NON_CORE_MARKERS for m in item.iter_markers()):
             item.add_marker("core")
