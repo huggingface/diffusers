@@ -50,7 +50,7 @@ class MiniMaxH3ImageAutoBeforeEncodeStep(AutoPipelineBlocks):
           (default: 1024) vision_max_short_edge (default: 1024)
 
       Inputs:
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, depends on the workflow):
               The reference image of the edit, or a list of them. The prompt refers to them in order as `<Picture 1>`,
               `<Picture 2>`, ...
 
@@ -89,7 +89,7 @@ class MiniMaxH3ImageAutoTextEncoderStep(AutoPipelineBlocks):
       Inputs:
           prompt (`str`):
               The prompt to guide generation, a single string.
-          vision_images (`list`, *optional*):
+          vision_images (`list`, *optional*, depends on the workflow):
               The reference images resized for the text encoder.
 
       Outputs:
@@ -127,7 +127,7 @@ class MiniMaxH3ImageAutoVaeEncoderStep(AutoPipelineBlocks):
           vae (`AutoencoderKLMiniMaxH3Image`)
 
       Inputs:
-          reference_images (`list`, *optional*):
+          reference_images (`list`, *optional*, depends on the workflow):
               The reference images resized for the VAE.
           generator (`Generator`, *optional*):
               The generator of the request. One posterior sample per reference is drawn from it.
@@ -321,9 +321,9 @@ class MiniMaxH3ImageAutoDenoiseStep(AutoPipelineBlocks):
           0.23200887441635132, 0.0]): The sampling grid the checkpoint's per-step output heads were distilled on.
 
       Inputs:
-          height (`int`):
+          height (`int`, *optional*, defaults to 2048):
               Height of the returned image in pixels.
-          width (`int`):
+          width (`int`, *optional*, defaults to 2048):
               Width of the returned image in pixels.
           min_generation_area (`int`, *optional*, defaults to 4194304):
               The smallest area, in pixels, an image is generated at. A smaller `height x width` is generated on a
@@ -331,12 +331,12 @@ class MiniMaxH3ImageAutoDenoiseStep(AutoPipelineBlocks):
               generate at the requested size.
           text_token_tags (`Tensor`):
               The modality tag of every row of `prompt_embeds`.
-          reference_latents (`list`, *optional*):
+          reference_latents (`list`, *optional*, depends on the workflow):
               The conditioning latents of the reference images. Their shape is where every reference's geometry comes
               from.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noise of shape `(1, latent_channels, latent_height, latent_width)`, used instead of the
               draw.
           reference_noise (`list`, *optional*):
@@ -389,29 +389,29 @@ class MiniMaxH3ImageBlocks(SequentialPipelineBlocks):
           per-step output heads were distilled on.
 
       Inputs:
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, depends on the workflow):
               The reference image of the edit, or a list of them. The prompt refers to them in order as `<Picture 1>`,
               `<Picture 2>`, ...
           prompt (`str`):
               The prompt to guide generation, a single string.
-          vision_images (`list`, *optional*):
+          vision_images (`list`, *optional*, depends on the workflow):
               The reference images resized for the text encoder.
-          reference_images (`list`, *optional*):
+          reference_images (`list`, *optional*, depends on the workflow):
               The reference images resized for the VAE.
           generator (`Generator`, *optional*):
               The generator of the request. One posterior sample per reference is drawn from it.
-          height (`int`):
+          height (`int`, *optional*, defaults to 2048):
               Height of the returned image in pixels.
-          width (`int`):
+          width (`int`, *optional*, defaults to 2048):
               Width of the returned image in pixels.
           min_generation_area (`int`, *optional*, defaults to 4194304):
               The smallest area, in pixels, an image is generated at. A smaller `height x width` is generated on a
               canvas scaled up to this area and resized back to `height x width` after decoding. Pass 1024 to always
               generate at the requested size.
-          reference_latents (`list`, *optional*):
+          reference_latents (`list`, *optional*, depends on the workflow):
               The conditioning latents of the reference images. Their shape is where every reference's geometry comes
               from.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noise of shape `(1, latent_channels, latent_height, latent_width)`, used instead of the
               draw.
           reference_noise (`list`, *optional*):
