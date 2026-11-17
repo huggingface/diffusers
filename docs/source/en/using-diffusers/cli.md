@@ -22,7 +22,7 @@ installed as `diffusers`, so `diffusers serve` and `diffusers-cli serve` are the
 | [`env`](#env) | Print environment info for bug reports. |
 | [`schema`](#schema) | Inspect a pipeline's `__call__` signature without downloading weights. |
 | [`run`](#run) | Run a pipeline locally or in a Hugging Face Sandbox. |
-| [`serve`](#serve) | Serve a pipeline over HTTP with the Generative Media Spec API. |
+| [`serve`](#serve) | Serve a pipeline over HTTP with the [Generative Media Spec](./gms) API. |
 | [`custom_blocks`](#customblocks) | Package a local `ModularPipelineBlocks` subclass for the Hub. |
 | [`fp16_safetensors`](#fp16safetensors) | Convert a checkpoint to fp16 `.safetensors`. |
 | [`skills`](#skills) | Install pre-authored skill bundles into your AI coding agent. |
@@ -291,7 +291,7 @@ hf sandbox kill <id>
 
 ## `serve`
 
-Serve a pipeline over HTTP with the Generative Media Spec API. See [Serving](./serve) for the full guide.
+Serve a pipeline over HTTP with the [Generative Media Spec](./gms) API. See [Serving](./serve) for the full guide.
 
 ```bash
 pip install "diffusers[serve]"

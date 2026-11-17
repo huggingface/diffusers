@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Serving
 
-`diffusers serve` serves a pipeline over HTTP with the Generative Media Spec (GMS) API: clients discover what the
+`diffusers serve` serves a pipeline over HTTP with the [Generative Media Spec](./gms) (GMS) API: clients discover what the
 model accepts, create a generation, follow it while it runs, and download the results.
 
 ```bash
@@ -141,7 +141,7 @@ curl localhost:8000/v1/models/black-forest-labs/FLUX.1-dev
 ```
 
 `serve` uses the file passed with `--manifest`, else a `gms.json` in the model repo, else a manifest derived from the
-pipeline's `__call__` signature. Publish a `gms.json` to add value ranges, presets, or a duration in seconds. The
+pipeline's `__call__` signature. [Publish a `gms.json`](./gms#publishing-a-manifest) to add value ranges, presets, or a duration in seconds. The
 server checks the manifest at startup and refuses to start if it declares something the pipeline can't do.
 
 `x-diffusers` maps a manifest's names to pipeline arguments, and `capabilities` lists what the server supports:
