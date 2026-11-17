@@ -35,6 +35,7 @@ from diffusers.utils import logging
 
 from ...testing_utils import CaptureLogger
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularMemoryTesterMixin,
@@ -161,7 +162,7 @@ class PH3ImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     batch_params = frozenset()
     # No guidance, one image per request, fixed sampling grid: no `guidance_scale`, `num_images_per_prompt` or
     # `num_inference_steps`.
-    optional_params = frozenset(["latents", "output_type"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt", "num_inference_steps"}
     output_name = "images"
     expected_workflow_blocks = P_H3_IMAGE_WORKFLOWS
     expected_workflow_defaults = P_H3_IMAGE_WORKFLOW_DEFAULTS

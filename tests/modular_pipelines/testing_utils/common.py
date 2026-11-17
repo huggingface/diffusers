@@ -32,6 +32,12 @@ from ...testing_utils import (
 )
 
 
+# the optional inputs every pipeline is expected to take; see `BaseModularPipelineTesterConfig.optional_params`
+OPTIONAL_PARAMS = frozenset(
+    ["num_inference_steps", "num_images_per_prompt", "latents", "output_type", "generator", "height", "width"]
+)
+
+
 class BaseModularPipelineTesterConfig:
     """
     Base class defining the configuration interface for modular pipeline testing.
@@ -44,10 +50,9 @@ class BaseModularPipelineTesterConfig:
     """
 
     # Canonical parameters that are passed to `__call__` regardless of the type of pipeline. They are always
-    # optional and have common sense default values.
-    optional_params = frozenset(
-        ["num_inference_steps", "num_images_per_prompt", "latents", "output_type", "generator", "height", "width"]
-    )
+    # optional and have common sense default values. A pipeline that lacks or renames one composes its own set from
+    # the constant, e.g. `OPTIONAL_PARAMS - {"num_images_per_prompt"} | {"num_videos_per_prompt"}`
+    optional_params = OPTIONAL_PARAMS
     # Canonical parameters the pipeline cannot run without. `test_pipeline_required_parameters` asserts the blocks mark
     # them required; a pipeline that does not take a prompt overrides this with its own, e.g. `{"audio", "image"}`
     required_params = frozenset(["prompt"])

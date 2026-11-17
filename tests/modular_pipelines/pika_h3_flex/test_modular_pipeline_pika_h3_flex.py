@@ -31,6 +31,7 @@ from diffusers.modular_pipelines.pika_h3_flex.before_encoder import PikaH3FlexRe
 from diffusers.modular_pipelines.pika_h3_flex.modular_pipeline import PIKA_H3_FLEX_FPS, resolve_tier_rule
 
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularLoraTesterMixin,
@@ -160,7 +161,7 @@ class PikaH3FlexModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     batch_params = frozenset()
     # The adapters are guidance-distilled and run a fixed six-step schedule, so neither `guidance_scale` nor
     # `num_inference_steps` exists, and one request generates one video.
-    optional_params = frozenset(["latents", "output_type"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt", "num_inference_steps"}
     not_params = frozenset(["num_inference_steps", "guidance_scale", "negative_prompt"])
     output_name = "videos"
     expected_workflow_blocks = PIKA_H3_FLEX_WORKFLOWS
@@ -390,7 +391,7 @@ class PikaH3FlexRef2VAModularPipelineTesterConfig(BaseModularPipelineTesterConfi
     batch_params = frozenset()
     # The adapters are guidance-distilled and run a fixed six-step schedule, so neither `guidance_scale` nor
     # `num_inference_steps` exists, and one request generates one video.
-    optional_params = frozenset(["latents", "output_type"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt", "num_inference_steps"}
     not_params = frozenset(["num_inference_steps", "guidance_scale", "negative_prompt"])
     output_name = "videos"
     expected_workflow_blocks = PIKA_H3_FLEX_REF2VA_WORKFLOWS

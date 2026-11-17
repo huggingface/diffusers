@@ -30,6 +30,7 @@ from diffusers.modular_pipelines.kandinsky_s2v.modular_pipeline import DEFAULT_P
 
 from ...testing_utils import numpy_cosine_similarity_distance, require_accelerator, torch_device
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularGuiderTesterMixin,
     ModularLoadingTesterMixin,
@@ -72,7 +73,7 @@ class KandinskyS2VModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pretrained_model_name_or_path = TINY_REPO
     # one prompt per call: batching is not supported
     batch_params = frozenset()
-    optional_params = frozenset(["num_inference_steps", "output_type"])
+    optional_params = OPTIONAL_PARAMS - {"latents", "num_images_per_prompt"}
     required_params = frozenset(["audio", "image"])
     output_name = "videos"
     latents_output_name = "latent_chunks"

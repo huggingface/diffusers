@@ -26,6 +26,7 @@ from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
 from diffusers.pipelines.ltx2.pipeline_ltx2_ic_lora import LTX2ReferenceCondition
 
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularMemoryTesterMixin,
@@ -104,7 +105,7 @@ class LTX2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = LTX2ModularPipeline
     pipeline_blocks_class = LTX2AutoBlocks
     pretrained_model_name_or_path = LTX2_REPO_ID
-    optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {"num_videos_per_prompt"}
     expected_workflow_blocks = LTX2_WORKFLOWS
     output_name = "videos"
 

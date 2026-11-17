@@ -42,6 +42,7 @@ from diffusers.utils import is_peft_available, logging
 
 from ...testing_utils import CaptureLogger
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularLoraTesterMixin,
@@ -176,7 +177,7 @@ class MiniMaxH3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     batch_params = frozenset()
     # The checkpoint is guidance-distilled and generates a video, so neither `guidance_scale` nor
     # `num_images_per_prompt` exists.
-    optional_params = frozenset(["num_inference_steps", "latents", "output_type"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"}
     output_name = "videos"
     expected_workflow_blocks = MINIMAX_H3_WORKFLOWS
     expected_workflow_defaults = MINIMAX_H3_WORKFLOW_DEFAULTS
@@ -608,7 +609,7 @@ class MiniMaxH3Ref2VAModularPipelineTesterConfig(BaseModularPipelineTesterConfig
     batch_params = frozenset()
     # The checkpoint is guidance-distilled and generates a video, so neither `guidance_scale` nor
     # `num_images_per_prompt` exists.
-    optional_params = frozenset(["num_inference_steps", "latents", "output_type"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"}
     output_name = "videos"
     expected_workflow_blocks = MINIMAX_H3_REF2VA_WORKFLOWS
     expected_workflow_defaults = MINIMAX_H3_REF2VA_WORKFLOW_DEFAULTS

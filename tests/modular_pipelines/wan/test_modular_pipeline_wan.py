@@ -18,6 +18,7 @@ import pytest
 from diffusers.modular_pipelines import WanBlocks, WanModularPipeline
 
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularMemoryTesterMixin,
@@ -31,7 +32,7 @@ class WanModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = WanBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-wan-modular-pipe"
     expected_latents_shape = (1, 16, 3, 2, 2)
-    optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {"num_videos_per_prompt"}
     output_name = "videos"
 
     def get_dummy_inputs(self, seed=0):

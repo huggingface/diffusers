@@ -26,6 +26,7 @@ from diffusers import (
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularMemoryTesterMixin,
@@ -71,7 +72,7 @@ class MiniMaxMusic3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     # The pipeline generates a single waveform per call; `prompt` and `lyrics` are single strings.
     # one music description per call: the encoder raises on a list
     batch_params = frozenset()
-    optional_params = frozenset(["num_inference_steps", "output_type"])
+    optional_params = OPTIONAL_PARAMS - {"height", "latents", "num_images_per_prompt", "width"}
     output_name = "audios"
     latents_output_name = "latent_chunks"
     expected_latents_shape = (1, 8, 17)

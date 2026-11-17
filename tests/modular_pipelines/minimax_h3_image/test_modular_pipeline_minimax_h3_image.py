@@ -25,6 +25,7 @@ from diffusers.modular_pipelines.minimax_h3_image.encoders import (
 )
 
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularMemoryTesterMixin,
@@ -114,7 +115,7 @@ class MiniMaxH3ImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig)
     # One request is one packed sequence, so prompts are not batched.
     # one request per call: the text encoder raises on a list of prompts
     batch_params = frozenset()
-    optional_params = frozenset(["latents", "output_type"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt", "num_inference_steps"}
     output_name = "images"
     expected_workflow_blocks = MINIMAX_H3_IMAGE_WORKFLOWS
     expected_workflow_defaults = MINIMAX_H3_IMAGE_WORKFLOW_DEFAULTS

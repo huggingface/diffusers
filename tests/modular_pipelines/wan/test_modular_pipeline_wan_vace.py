@@ -21,6 +21,7 @@ from PIL import Image
 from diffusers.modular_pipelines import Wan22VaceBlocks, Wan22VaceModularPipeline
 
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularMemoryTesterMixin,
@@ -37,7 +38,7 @@ class Wan22VaceModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
     # a list of prompts is not yet supported: `WanVaceAdditionalInputsStep` raises on one
     batch_params = frozenset()
-    optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {"num_videos_per_prompt"}
     output_name = "videos"
 
     def get_dummy_inputs(self, seed=0):

@@ -27,6 +27,7 @@ from diffusers.modular_pipelines.pan2.encoders import (
 
 from ...testing_utils import torch_device
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularGuiderTesterMixin,
     ModularLoadingTesterMixin,
@@ -109,7 +110,7 @@ class PAN2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     expected_latents_shape = (1, 48, 2, 2, 2)
     # one prompt per call: the text encoder raises on a list
     batch_params = frozenset()
-    optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {"num_videos_per_prompt"}
     expected_workflow_blocks = PAN2_WORKFLOWS
     expected_workflow_defaults = PAN2_WORKFLOW_DEFAULTS
     output_name = "videos"

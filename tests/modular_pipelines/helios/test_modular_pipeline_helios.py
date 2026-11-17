@@ -23,6 +23,7 @@ from diffusers.modular_pipelines import (
 )
 
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularMemoryTesterMixin,
@@ -72,7 +73,7 @@ class HeliosModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = HeliosAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-helios-modular-pipe"
     expected_latents_shape = (1, 16, 9, 2, 2)
-    optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {"num_videos_per_prompt"}
     output_name = "videos"
     expected_workflow_blocks = HELIOS_WORKFLOWS
 
@@ -147,7 +148,10 @@ class HeliosPyramidModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = HeliosPyramidAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-helios-pyramid-modular-pipe"
     expected_latents_shape = (1, 16, 9, 8, 8)
-    optional_params = frozenset(["pyramid_num_inference_steps_list", "num_videos_per_prompt", "latents"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt", "num_inference_steps"} | {
+        "num_videos_per_prompt",
+        "pyramid_num_inference_steps_list",
+    }
     output_name = "videos"
     expected_workflow_blocks = HELIOS_PYRAMID_WORKFLOWS
 

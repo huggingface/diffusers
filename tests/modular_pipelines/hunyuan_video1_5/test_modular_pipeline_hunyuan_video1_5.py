@@ -18,6 +18,7 @@ import pytest
 from diffusers.modular_pipelines import HunyuanVideo15AutoBlocks, HunyuanVideo15ModularPipeline
 
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularMemoryTesterMixin,
@@ -56,7 +57,7 @@ class HunyuanVideo15ModularPipelineTesterConfig(BaseModularPipelineTesterConfig)
     expected_latents_shape = (1, 32, 3, 2, 2)
     # the text encoder encodes an empty prompt when none is given, so no input is required
     required_params = frozenset()
-    optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {"num_videos_per_prompt"}
     expected_workflow_blocks = HUNYUANVIDEO15_WORKFLOWS
     output_name = "videos"
 

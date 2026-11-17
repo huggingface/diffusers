@@ -25,6 +25,7 @@ from diffusers.modular_pipelines import (
 )
 
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularGuiderTesterMixin,
     ModularLoadingTesterMixin,
@@ -88,7 +89,7 @@ class WanAnimate2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
     # one prompt per call: the text encoder raises on a list
     batch_params = frozenset()
-    optional_params = frozenset(["num_inference_steps", "height", "width", "output_type"])
+    optional_params = OPTIONAL_PARAMS - {"latents", "num_images_per_prompt"}
     output_name = "videos"
     expected_workflow_defaults = WAN_ANIMATE_2_DEFAULTS
 
