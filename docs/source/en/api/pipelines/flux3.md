@@ -181,7 +181,7 @@ It serves the same two workflows as the base model. `num_inference_steps` defaul
 
 ## Reproducible generation
 
-A `generator` fixes the noise the pipeline draws (see [Reproducibility](../../using-diffusers/reusing_seeds)). To reuse noise drawn elsewhere, pass it as `latents` with shape `(batch_size, 128, height // 16, width // 16)`. For example, the [BFL implementation](https://github.com/black-forest-labs/flux-3) draws its noise as image tokens on the CPU and casts it to bf16; this reproduces its sample for a given seed:
+A `generator` fixes the noise the pipeline draws (see [Reproducibility](../../using-diffusers/reusing_seeds)). To reuse noise drawn elsewhere, pass it as `latents` with shape `(batch_size, 128, height // 16, width // 16)`. For example, the [BFL implementation](https://github.com/black-forest-labs/flux-3-image-klein) draws its noise as image tokens on the CPU and casts it to bf16; this reproduces its sample for a given seed:
 
 ```python
 height, width = 1024, 1024

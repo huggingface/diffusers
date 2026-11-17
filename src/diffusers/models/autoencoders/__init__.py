@@ -20,6 +20,7 @@ from .autoencoder_kl_ltx2_audio import AutoencoderKLLTX2Audio
 from .autoencoder_kl_magvit import AutoencoderKLMagvit
 from .autoencoder_kl_minimax_h3 import AutoencoderKLMiniMaxH3
 from .autoencoder_kl_minimax_h3_audio import AutoencoderKLMiniMaxH3Audio
+from .autoencoder_kl_minimax_h3_image import AutoencoderKLMiniMaxH3Image
 from .autoencoder_kl_mochi import AutoencoderKLMochi
 from .autoencoder_kl_p_h3_image import AutoencoderKLPH3Image
 from .autoencoder_kl_qwenimage import AutoencoderKLQwenImage
