@@ -50,6 +50,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_magvit"] = ["AutoencoderKLMagvit"]
     _import_structure["autoencoders.autoencoder_kl_minimax_h3"] = ["AutoencoderKLMiniMaxH3"]
     _import_structure["autoencoders.autoencoder_kl_minimax_h3_audio"] = ["AutoencoderKLMiniMaxH3Audio"]
+    _import_structure["autoencoders.autoencoder_kl_minimax_h3_image"] = ["AutoencoderKLMiniMaxH3Image"]
     _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
     _import_structure["autoencoders.autoencoder_kl_p_h3_image"] = ["AutoencoderKLPH3Image"]
     _import_structure["autoencoders.autoencoder_kl_qwenimage"] = ["AutoencoderKLQwenImage"]
@@ -159,6 +160,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_ltx2"] = ["LTX2VideoTransformer3DModel"]
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
     _import_structure["transformers.transformer_minimax_h3"] = ["MiniMaxH3Transformer3DModel"]
+    _import_structure["transformers.transformer_minimax_h3_image"] = ["MiniMaxH3ImageTransformer2DModel"]
     _import_structure["transformers.transformer_minimax_music3"] = ["MiniMaxMusic3Transformer1DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
     _import_structure["transformers.transformer_motif_video"] = ["MotifVideoTransformer3DModel"]
@@ -222,6 +224,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLMagvit,
             AutoencoderKLMiniMaxH3,
             AutoencoderKLMiniMaxH3Audio,
+            AutoencoderKLMiniMaxH3Image,
             AutoencoderKLMochi,
             AutoencoderKLPH3Image,
             AutoencoderKLQwenImage,
@@ -328,6 +331,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
+            MiniMaxH3ImageTransformer2DModel,
             MiniMaxH3Transformer3DModel,
             MiniMaxMusic3RVQDepthDecoder,
             MiniMaxMusic3Transformer1DModel,
