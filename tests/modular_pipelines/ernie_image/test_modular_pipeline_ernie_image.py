@@ -42,6 +42,7 @@ class ErnieImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = ErnieImageModularPipeline
     pipeline_blocks_class = ErnieImageAutoBlocks
     pretrained_model_name_or_path = "akshan-main/tiny-ernie-image-modular-pipe"
+    expected_latents_shape = (1, 16, 2, 2)
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_images_per_prompt", "latents"])

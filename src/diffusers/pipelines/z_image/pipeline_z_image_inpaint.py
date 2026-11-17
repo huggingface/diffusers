@@ -852,6 +852,7 @@ class ZImageInpaintPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingle
                     latent_model_input_list,
                     timestep_model_input,
                     prompt_embeds_model_input,
+                    joint_attention_kwargs=self.joint_attention_kwargs,
                 )[0]
 
                 if apply_cfg:

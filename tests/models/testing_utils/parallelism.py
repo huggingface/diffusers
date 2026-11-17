@@ -21,7 +21,15 @@ import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
-from diffusers.models._modeling_parallel import ContextParallelConfig, TensorParallelConfig
+from diffusers.configuration_utils import ConfigMixin, register_to_config
+from diffusers.models import ModelMixin
+from diffusers.models._modeling_parallel import (
+    Conditional,
+    ContextParallelConfig,
+    ContextParallelInput,
+    ContextParallelOutput,
+    TensorParallelConfig,
+)
 from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
 from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME
 
@@ -31,6 +39,7 @@ from ...testing_utils import (
     is_kernels_available,
     is_tensor_parallel,
     require_torch_multi_accelerator,
+    require_torch_neuron,
     require_torch_tpu,
     torch_device,
 )
@@ -43,6 +52,7 @@ DEVICE_CONFIG = {
     "cuda": {"backend": "nccl", "module": torch.cuda},
     "xpu": {"backend": "xccl", "module": torch.xpu},
     "tpu": {"backend": "tpu_dist", "module": None},
+    "neuron": {"backend": "neuron", "module": getattr(torch, "neuron", None)},
 }
 
 
@@ -53,6 +63,63 @@ def _find_free_port():
         s.listen(1)
         port = s.getsockname()[1]
     return port
+
+
+class DummyConditionalPlanBlock(torch.nn.Module):
+    def __init__(self, hidden_dim: int, use_conditional_layers: bool):
+        super().__init__()
+        self.up_proj = torch.nn.Linear(hidden_dim, 2 * hidden_dim)
+        self.gate_proj = torch.nn.Linear(hidden_dim, 2 * hidden_dim) if use_conditional_layers else None
+        self.down_proj = torch.nn.Linear(2 * hidden_dim, hidden_dim)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        projected = torch.nn.functional.silu(self.up_proj(hidden_states))
+        if self.gate_proj is not None:
+            projected = projected * self.gate_proj(hidden_states)
+        return hidden_states + self.down_proj(projected)
+
+
+class DummyConditionalPlanModel(ModelMixin, ConfigMixin):
+    """A tiny model whose `_cp_plan` and `_tp_plan` have `Conditional` entries.
+
+    The conditional layers exist only with `use_conditional_layers=True`. Without it, `pos_embed` is not created and
+    each block's `gate_proj` is `None`, which are the two ways a layer can be absent. The forward breaks on a shape
+    mismatch if a conditional layer exists but its plan entry is not applied.
+    """
+
+    _cp_plan = {
+        "": {"hidden_states": ContextParallelInput(split_dim=1, expected_dims=3)},
+        "pos_embed": Conditional({0: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True)}),
+        "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+    }
+    _tp_plan = {
+        "blocks.*.up_proj": "colwise",
+        "blocks.*.gate_proj": Conditional("colwise"),
+        "blocks.*.down_proj": "rowwise",
+    }
+
+    @register_to_config
+    def __init__(
+        self,
+        hidden_dim: int = 8,
+        num_layers: int = 2,
+        max_positions: int = 16,
+        use_conditional_layers: bool = True,
+    ):
+        super().__init__()
+        if use_conditional_layers:
+            self.pos_embed = torch.nn.Embedding(max_positions, hidden_dim)
+        self.blocks = torch.nn.ModuleList(
+            [DummyConditionalPlanBlock(hidden_dim, use_conditional_layers) for _ in range(num_layers)]
+        )
+        self.proj_out = torch.nn.Linear(hidden_dim, hidden_dim)
+
+    def forward(self, hidden_states: torch.Tensor, position_ids: torch.Tensor) -> torch.Tensor:
+        if self.config.use_conditional_layers:
+            hidden_states = hidden_states + self.pos_embed(position_ids)
+        for block in self.blocks:
+            hidden_states = block(hidden_states)
+        return self.proj_out(hidden_states)
 
 
 def _context_parallel_worker(
@@ -555,6 +622,59 @@ class TensorParallelTPUTesterMixin:
             f"Tensor parallel inference failed: {return_dict.get('error', 'Unknown error')}"
         )
         tp_output = torch.tensor(return_dict["output"])
+        torch.testing.assert_close(ref_output, tp_output, atol=atol, rtol=rtol)
+
+
+@is_tensor_parallel
+@require_torch_neuron
+class TensorParallelNeuronTesterMixin:
+    """Same check as `TensorParallelTesterMixin`, spawning one process per Neuron core.
+
+    Run these tests in their own pytest process (e.g. `-k TensorParallelNeuron`): an earlier test that allocates a
+    Neuron tensor initializes the Neuron runtime in the pytest process, and the spawned workers then fail to initialize
+    theirs.
+    """
+
+    tp_world_size = 2
+
+    def test_tensor_parallel_neuron_inference(self, atol=2e-2, rtol=2e-2):
+        if getattr(self.model_class, "_tp_plan", None) is None:
+            pytest.skip("Model does not define a `_tp_plan` for tensor parallel inference.")
+
+        world_size = self.tp_world_size
+        init_dict = self.get_init_dict()
+        num_heads = init_dict.get("num_attention_heads")
+        if num_heads is not None and num_heads % world_size != 0:
+            pytest.skip(f"`num_attention_heads` ({num_heads}) is not divisible by tp_degree ({world_size}).")
+
+        # Reference on CPU: touching the Neuron device here would break the spawned workers.
+        inputs_dict = self.get_dummy_inputs(device="cpu")
+        model = self.model_class(**init_dict).eval()
+        with torch.no_grad():
+            ref_output = model(**inputs_dict, return_dict=False)[0].float()
+
+        return_dict = mp.Manager().dict()
+        mp.spawn(
+            _tensor_parallel_worker,
+            args=(
+                world_size,
+                _find_free_port(),
+                self.model_class,
+                init_dict,
+                inputs_dict,
+                return_dict,
+                model.state_dict(),
+                "neuron",
+            ),
+            nprocs=world_size,
+            join=True,
+        )
+
+        assert return_dict.get("status") == "success", (
+            f"Tensor parallel inference failed: {return_dict.get('error', 'Unknown error')}"
+        )
+        tp_output = torch.tensor(return_dict["output"])
+        # Neuron runs matmuls in bf16 internally, so compare with a bf16-level tolerance.
         torch.testing.assert_close(ref_output, tp_output, atol=atol, rtol=rtol)
 
 

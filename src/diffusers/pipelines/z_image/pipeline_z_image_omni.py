@@ -680,6 +680,7 @@ class ZImageOmniPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFil
                     cap_feats=prompt_embeds_model_input,
                     siglip_feats=condition_siglip_embeds_model_input,
                     image_noise_mask=image_noise_mask,
+                    joint_attention_kwargs=self.joint_attention_kwargs,
                     return_dict=False,
                 )[0]
 

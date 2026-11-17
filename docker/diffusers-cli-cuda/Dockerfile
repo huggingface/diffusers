@@ -46,7 +46,7 @@ RUN python -c "import torch, torchvision, torchaudio"
 # other build) can install over it with `--dependencies` or point `--image` at a custom image.
 RUN uv pip install --system --break-system-packages --no-cache-dir \
     "huggingface_hub[hf_xet]>=1.32" \
-    diffusers \
+    "diffusers>=0.41.0" \
     accelerate \
     transformers \
     "tokenizers>=0.14.0" \

@@ -411,7 +411,9 @@ class ComponentsManager:
             if comp == component:
                 comp_name = self._id_to_name(comp_id)
                 if comp_name == name:
-                    logger.warning(f"ComponentsManager: component '{name}' already exists as '{comp_id}'")
+                    # The same object registered again under its name: a second pipeline sharing it, or a collection
+                    # it joins below. Nothing is duplicated, so this is not worth a warning.
+                    logger.debug(f"ComponentsManager: component '{name}' is already registered as '{comp_id}'")
                     component_id = comp_id
                     is_new_component = False
                     break
@@ -454,7 +456,7 @@ class ComponentsManager:
                 logger.info(
                     f"ComponentsManager: added component '{name}' in collection '{collection}': {component_id}"
                 )
-        else:
+        elif is_new_component:
             logger.info(f"ComponentsManager: added component '{name}' as '{component_id}'")
 
         if self._auto_offload_enabled and is_new_component:

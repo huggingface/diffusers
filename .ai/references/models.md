@@ -8,6 +8,7 @@ Shared reference for model-related conventions, patterns, and gotchas.
 - Prefer descriptive variable names over short ones. For example, prefer spelling out `query` over `q`.
 - Avoid graph breaks for `torch.compile` compatibility — do not insert NumPy operations in forward implementations and any other patterns that can break `torch.compile` compatibility with `fullgraph=True`.
 - No new mandatory dependency without discussion (e.g. `einops`). Optional deps guarded with `is_X_available()` and a dummy in `utils/dummy_*.py`.
+- Pass `forward` inputs by name and return a dataclass with named fields rather than a dict of tensors, and keep `__init__` arguments flat (plain values, not nested dicts) — a dict hides what a signature takes and makes you validate the keys by hand. There are a few standard exceptions, such as `attention_kwargs` and `RFD4ProteinaPipeline`'s `conditioning_features`; use your judgment and bring it up in review if your case needs one.
 
 ## Common model conventions
 
@@ -196,6 +197,22 @@ _cp_plan = {
 ```
 
 If `None` (default), `enable_parallelism()` with `context_parallel_config` raises `ValueError` unless a `cp_plan` is passed explicitly as an argument. To derive a plan for a new model, study the mechanism in `hooks/context_parallel.py` and `_modeling_parallel.py`, compare existing plans in `transformer_flux.py` and `transformer_wan.py`, then test and adjust — correct plans depend on the model's data flow and require validation.
+
+### `_tp_plan`
+
+**API:** Prefer `Model.from_pretrained(..., parallel_config=TensorParallelConfig(tp_degree=...))`: it shards weights while loading, so each rank reads only its own slice of planned parameters. `model.enable_parallelism(config=TensorParallelConfig(tp_degree=...))` shards a model already in memory, which requires full checkpoint memory on every rank first. Both also accept a `ParallelConfig` containing `tensor_parallel_config`.
+
+The `_tp_plan` maps module paths to sharding styles that determine how each layer's weights and activations are split across ranks:
+
+- **`"colwise"`** shards output features (`weight` dim 0), leaving each rank with a slice of the activation. Use for Q/K/V and unfused FFN input projections.
+- **`"rowwise"`** shards input features (`weight` dim 1), consumes the preceding column-sharded activation, and reduces partial results to a replicated output. Use for attention and FFN output projections.
+- **`"rowwise_split_input"`** uses the same weight split but accepts a replicated input, slicing it on each rank. Use for standalone projections whose inputs are not already sharded.
+
+For fused projections, use `PackedColwiseParallel` / `PackedRowwiseParallel` from `hooks.tensor_parallel` so each logical block is sharded independently. For example, `PackedColwiseParallel([1, 1])` handles an equal-sized SwiGLU gate/up pair. The `blocks` argument gives proportional sizes; when sizes depend on the config, omit it and set `_tp_packed_col_blocks` / `_tp_packed_row_blocks` to the absolute sizes on the `Linear` in `__init__`. Plain sharding across a packed dimension can misalign the pieces.
+
+If `None` (default), both APIs raise `ValueError` when tensor parallelism is requested. `tp_degree` must divide the attention head count and every sharded dimension, including each packed block individually. Attention reshapes and fused splits must use the local activation dimensions — for example, infer the local head count with `query.unflatten(-1, (-1, attn.head_dim))` instead of using the full head count from the config.
+
+To derive a plan, study `hooks/tensor_parallel.py` and the plans in `transformer_flux.py` and `transformer_flux2.py`. Leave layers that need the full hidden dimension replicated unless their data flow supports sharding. Compare outputs numerically against an unsharded model with the same weights and inputs; a plan that runs without shape errors can still produce incorrect results. See [Writing a tensor parallelism plan](https://huggingface.co/docs/diffusers/main/en/training/distributed_inference#writing-a-tensor-parallelism-plan) for more examples.
 
 ### `_supports_gradient_checkpointing`
 

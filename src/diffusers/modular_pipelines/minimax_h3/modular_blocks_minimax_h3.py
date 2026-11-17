@@ -261,7 +261,7 @@ class MiniMaxH3CoreDenoiseStep(SequentialPipelineBlocks):
               instead of the draw.
           audio_latents (`Tensor`, *optional*):
               Pre-generated audio noise of shape `(2, 32, num_audio_latents)`.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
@@ -360,7 +360,7 @@ class MiniMaxH3FL2VACoreDenoiseStep(SequentialPipelineBlocks):
               instead of the draw.
           audio_latents (`Tensor`, *optional*):
               Pre-generated audio noise of shape `(2, 32, num_audio_latents)`.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
@@ -459,7 +459,7 @@ class MiniMaxH3Ref2VACoreDenoiseStep(SequentialPipelineBlocks):
               instead of the draw.
           audio_latents (`Tensor`, *optional*):
               Pre-generated audio noise of shape `(2, 32, num_audio_latents)`.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
@@ -564,7 +564,7 @@ class MiniMaxH3AutoDenoiseStep(ConditionalPipelineBlocks):
               instead of the draw.
           audio_latents (`Tensor`):
               Pre-generated audio noise of shape `(2, 32, num_audio_latents)`.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
@@ -721,7 +721,7 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
               instead of the draw.
           audio_latents (`Tensor`):
               Pre-generated audio noise of shape `(2, 32, num_audio_latents)`.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           **denoiser_input_fields (`None`, *optional*):
               The structural description of the packed sequence the transformer reads by name: `token_tags`,

@@ -24,6 +24,7 @@ from diffusers import ModularPipeline, ModularPipelineBlocks
 from diffusers.utils import logging
 
 from ...testing_utils import (
+    CaptureLogger,
     backend_empty_cache,
     numpy_cosine_similarity_distance,
     require_accelerator,
@@ -53,6 +54,20 @@ class BaseModularPipelineTesterConfig:
     # Output type for the pipeline (e.g., "images" for image pipelines, "videos" for video pipelines)
     # Subclasses can override this to change the expected output type
     output_name = "images"
+    # State name of the latents the denoise group hands to the decoder. Chunked families that hand over a list of
+    # per-chunk latents (e.g. `latent_chunks`) are checked chunk by chunk. A family that leaves no latents in the
+    # state, or not yet in its canonical form, skips `test_latents_output_in_canonical_form` with a reason.
+    latents_output_name = "latents"
+
+    @property
+    def expected_latents_shape(self) -> tuple:
+        raise NotImplementedError(
+            "You need to set the attribute `expected_latents_shape` in the child test class: the one canonical form "
+            "this family keeps latents in after the denoise group, for the geometry `get_dummy_inputs()` produces. "
+            "That is the form the VAE encoder blocks produce and the decoder step takes: the plain grid (e.g. "
+            "`(1, 4, 32, 32)`) for most families, or the patchified grid for families whose VAE statistics are "
+            "defined over patchified channels (e.g. `AutoencoderKLFlux2`)."
+        )
 
     # ==================== Required interface ====================
 
@@ -208,6 +223,16 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
         assert len(unsupported_parameters) == 0, (
             f"Parameters declared in `not_params` unexpectedly present in the pipeline inputs: {unsupported_parameters}"
         )
+
+    def test_no_input_is_both_required_and_has_a_default(self):
+        # `InputParam` warns and drops `required` when a declaration is both required and has a default (see the
+        # pitfalls list in `.ai/references/modular.md`). Building the blocks and reading their `inputs` constructs
+        # every `InputParam` of every sub-block, so a clean log means no block in this pipeline declares one
+        logger = logging.get_logger("diffusers.modular_pipelines.modular_pipeline_utils")
+        with CaptureLogger(logger) as cap_logger:
+            blocks = self.pipeline_blocks_class()
+            blocks.inputs
+        assert "is required and declares a default" not in cap_logger.out, cap_logger.out
 
     def test_inference_batch_consistent(self, batch_sizes=[2], batch_generator=True):
         pipe = self.get_pipeline().to(torch_device)
@@ -371,3 +396,17 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
                 images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt, output=self.output_name)
 
                 assert images.shape[0] == batch_size * num_images_per_prompt
+
+    def test_latents_output_in_canonical_form(self):
+        # The denoise group must hand latents back in the family's one canonical form, so any block (a decoder, a
+        # latent upsampler, a second denoise group) can consume them without geometry inputs. The decoder reads
+        # the latents without removing them, so they are checked in the state after a full run.
+        pipe = self.get_pipeline().to(torch_device)
+        latents = pipe(**self.get_dummy_inputs(), output=self.latents_output_name)
+        chunks = list(latents) if isinstance(latents, (list, tuple)) else [latents]
+        shapes = sorted({tuple(chunk.shape) for chunk in chunks})
+
+        assert shapes == [tuple(self.expected_latents_shape)], (
+            f"Latents left in the state have shape {shapes}, expected the canonical "
+            f"{tuple(self.expected_latents_shape)}"
+        )

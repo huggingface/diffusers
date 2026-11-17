@@ -1189,6 +1189,16 @@ class TestStableDiffusionPipelineDeviceMap:
         gc.collect()
         backend_empty_cache(torch_device)
 
+    @pytest.fixture
+    def deterministic_algorithms(self):
+        enabled = torch.are_deterministic_algorithms_enabled()
+        warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+        torch.use_deterministic_algorithms(True)
+        try:
+            yield
+        finally:
+            torch.use_deterministic_algorithms(enabled, warn_only=warn_only)
+
     def get_inputs(self, generator_device="cpu", seed=0):
         generator = torch.Generator(device=generator_device).manual_seed(seed)
         inputs = {
@@ -1212,7 +1222,7 @@ class TestStableDiffusionPipelineDeviceMap:
 
         return no_device_map_image
 
-    def test_forward_pass_balanced_device_map(self):
+    def test_forward_pass_balanced_device_map(self, deterministic_algorithms):
         no_device_map_image = self.get_pipeline_output_without_device_map()
 
         sd_pipe_with_device_map = StableDiffusionPipeline.from_pretrained(
@@ -1232,7 +1242,7 @@ class TestStableDiffusionPipelineDeviceMap:
 
         assert len(set(sd_pipe_with_device_map.hf_device_map.values())) >= 2
 
-    def test_max_memory(self):
+    def test_max_memory(self, deterministic_algorithms):
         no_device_map_image = self.get_pipeline_output_without_device_map()
 
         sd_pipe_with_device_map = StableDiffusionPipeline.from_pretrained(

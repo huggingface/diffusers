@@ -71,6 +71,7 @@ class HeliosModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = HeliosModularPipeline
     pipeline_blocks_class = HeliosAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-helios-modular-pipe"
+    expected_latents_shape = (1, 16, 9, 2, 2)
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
@@ -147,6 +148,7 @@ class HeliosPyramidModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = HeliosPyramidModularPipeline
     pipeline_blocks_class = HeliosPyramidAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-helios-pyramid-modular-pipe"
+    expected_latents_shape = (1, 16, 9, 8, 8)
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["pyramid_num_inference_steps_list", "num_videos_per_prompt", "latents"])

@@ -633,7 +633,7 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> Union[Transformer2DModelOutput, Tuple]:
+    ) -> Union[Transformer2DModelOutput, Tuple[torch.Tensor]]:
         """
         Bidirectional flow-map forward pass. ``hidden_states`` is laid out as ``(B, F, C, H, W)`` (per-frame latents).
         The input is patchified with the standard ``patch_embedding`` (kernel = stride = ``patch_size``) and denoised

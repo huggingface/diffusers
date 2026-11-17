@@ -30,12 +30,12 @@ from transformers import (
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import FromSingleFileMixin, LTX2LoraLoaderMixin
 from ...models.autoencoders import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
+from ...models.condition_embedders import LTX2TextConnectors
 from ...models.transformers import LTX2VideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .connectors import LTX2TextConnectors
 from .image_processor import LTX2VideoHDRProcessor
 from .pipeline_output import LTX2PipelineOutput
 from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
@@ -1375,7 +1375,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
                 audio_timestep = t_audio.expand(latent_model_input.shape[0])
 
                 # --- Main forward pass (cond + uncond for CFG) ---
-                with self.transformer.cache_context("cond_uncond"):
+                with self.transformer.cache_context("cond_uncond", timestep=t):
                     noise_pred_video, noise_pred_audio = self.transformer(
                         hidden_states=latent_model_input,
                         audio_hidden_states=audio_latent_model_input,
@@ -1445,7 +1445,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
 
                 # --- STG forward pass (video only — audio output discarded) ---
                 if self.do_spatio_temporal_guidance:
-                    with self.transformer.cache_context("uncond_stg"):
+                    with self.transformer.cache_context("uncond_stg", timestep=t):
                         noise_pred_video_uncond_stg, noise_pred_audio_uncond_stg = self.transformer(
                             hidden_states=latents.to(dtype=connector_prompt_embeds.dtype),
                             audio_hidden_states=audio_latents.to(dtype=connector_prompt_embeds.dtype),
@@ -1483,7 +1483,7 @@ class LTX2HDRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
 
                 # --- Modality isolation guidance forward pass ---
                 if self.do_modality_isolation_guidance:
-                    with self.transformer.cache_context("uncond_modality"):
+                    with self.transformer.cache_context("uncond_modality", timestep=t):
                         noise_pred_video_uncond_mod, noise_pred_audio_uncond_mod = self.transformer(
                             hidden_states=latents.to(dtype=connector_prompt_embeds.dtype),
                             audio_hidden_states=audio_latents.to(dtype=connector_prompt_embeds.dtype),

@@ -76,6 +76,7 @@ else:
     _import_structure["scheduling_piflow"] = ["PiflowScheduler"]
     _import_structure["scheduling_pndm"] = ["PNDMScheduler"]
     _import_structure["scheduling_repaint"] = ["RePaintScheduler"]
+    _import_structure["scheduling_rfd4_proteina"] = ["RFD4ProteinaScheduler"]
     _import_structure["scheduling_sasolver"] = ["SASolverScheduler"]
     _import_structure["scheduling_scm"] = ["SCMScheduler"]
     _import_structure["scheduling_sde_ve"] = ["ScoreSdeVeScheduler"]
@@ -161,6 +162,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_piflow import PiflowScheduler
         from .scheduling_pndm import PNDMScheduler
         from .scheduling_repaint import RePaintScheduler
+        from .scheduling_rfd4_proteina import RFD4ProteinaScheduler
         from .scheduling_sasolver import SASolverScheduler
         from .scheduling_scm import SCMScheduler
         from .scheduling_sde_ve import ScoreSdeVeScheduler

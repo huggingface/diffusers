@@ -91,7 +91,7 @@ class Krea2LoopDenoiser(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam(name="latents", required=True, type_hint=torch.Tensor, description="Packed image latents."),
-            InputParam.template("num_inference_steps", required=True),
+            InputParam.template("num_inference_steps", required=True, default=None),
             InputParam(
                 name="prompt_embeds",
                 required=True,
@@ -264,7 +264,7 @@ class Krea2DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="Denoising timesteps from set_timesteps.",
             ),
-            InputParam.template("num_inference_steps", required=True),
+            InputParam.template("num_inference_steps", required=True, default=None),
             InputParam.template("attention_kwargs"),
         ]
 

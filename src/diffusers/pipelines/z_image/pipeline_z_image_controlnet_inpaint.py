@@ -699,6 +699,7 @@ class ZImageControlNetInpaintPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, 
                     timestep_model_input,
                     prompt_embeds_model_input,
                     controlnet_block_samples=controlnet_block_samples,
+                    joint_attention_kwargs=self.joint_attention_kwargs,
                 )[0]
 
                 if apply_cfg:

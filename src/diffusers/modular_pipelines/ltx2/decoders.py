@@ -161,7 +161,7 @@ class LTX2DiffusionVaeDecoderStep(ModularPipelineBlocks):
                 "num_frames", type_hint=int, default=121, description="The number of frames in the generated video."
             ),
             InputParam.template("generator"),
-            InputParam.template("dtype", required=True),
+            InputParam.template("dtype", required=True, default=None),
         ]
 
     @property
@@ -251,7 +251,7 @@ class LTX2VaeDecoderStep(ModularPipelineBlocks):
             ),
             InputParam.template("generator"),
             InputParam.template("batch_size"),
-            InputParam.template("dtype", required=True),
+            InputParam.template("dtype", required=True, default=None),
         ]
 
     @property

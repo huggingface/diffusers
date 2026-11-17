@@ -81,9 +81,21 @@ else:
         "Flux2KleinModularPipeline",
         "Flux2KleinBaseModularPipeline",
     ]
+    _import_structure["flux3"] = [
+        "Flux3AutoBlocks",
+        "Flux3DistilledAutoBlocks",
+        "Flux3DistilledModularPipeline",
+        "Flux3ModularPipeline",
+    ]
     _import_structure["ideogram4"] = [
         "Ideogram4AutoBlocks",
         "Ideogram4ModularPipeline",
+    ]
+    _import_structure["kandinsky_s2v"] = [
+        "KandinskyS2VAutoBlocks",
+        "KandinskyS2VDistilledAutoBlocks",
+        "KandinskyS2VDistilledModularPipeline",
+        "KandinskyS2VModularPipeline",
     ]
     _import_structure["krea2"] = [
         "Krea2AutoBlocks",
@@ -100,6 +112,12 @@ else:
         "QwenImageEditPlusAutoBlocks",
         "QwenImageLayeredModularPipeline",
         "QwenImageLayeredAutoBlocks",
+    ]
+    _import_structure["qwenimage21"] = [
+        "QwenImage21AutoBlocks",
+        "QwenImage21ModularPipeline",
+        "QwenImage21TurboAutoBlocks",
+        "QwenImage21TurboModularPipeline",
     ]
     _import_structure["anima"] = [
         "AnimaAutoBlocks",
@@ -137,9 +155,26 @@ else:
         "MiniMaxH3Blocks",
         "MiniMaxH3ModularPipeline",
     ]
+    _import_structure["minimax_h3_image"] = [
+        "MiniMaxH3ImageBlocks",
+        "MiniMaxH3ImageModularPipeline",
+    ]
     _import_structure["minimax_music3"] = [
         "MiniMaxMusic3Blocks",
         "MiniMaxMusic3ModularPipeline",
+    ]
+    _import_structure["pan2"] = [
+        "PAN2Blocks",
+        "PAN2ModularPipeline",
+        "PAN2SafetyChecker",
+    ]
+    _import_structure["p_h3_image"] = [
+        "PH3ImageBlocks",
+        "PH3ImageModularPipeline",
+    ]
+    _import_structure["pika_h3_flex"] = [
+        "PikaH3FlexBlocks",
+        "PikaH3FlexModularPipeline",
     ]
     _import_structure["z_image"] = [
         "ZImageAutoBlocks",
@@ -173,6 +208,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Flux2KleinModularPipeline,
             Flux2ModularPipeline,
         )
+        from .flux3 import (
+            Flux3AutoBlocks,
+            Flux3DistilledAutoBlocks,
+            Flux3DistilledModularPipeline,
+            Flux3ModularPipeline,
+        )
         from .helios import (
             HeliosAutoBlocks,
             HeliosModularPipeline,
@@ -189,6 +230,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Ideogram4AutoBlocks,
             Ideogram4ModularPipeline,
         )
+        from .kandinsky_s2v import (
+            KandinskyS2VAutoBlocks,
+            KandinskyS2VDistilledAutoBlocks,
+            KandinskyS2VDistilledModularPipeline,
+            KandinskyS2VModularPipeline,
+        )
         from .krea2 import (
             Krea2AutoBlocks,
             Krea2ModularPipeline,
@@ -200,6 +247,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .minimax_h3 import (
             MiniMaxH3Blocks,
             MiniMaxH3ModularPipeline,
+        )
+        from .minimax_h3_image import (
+            MiniMaxH3ImageBlocks,
+            MiniMaxH3ImageModularPipeline,
         )
         from .minimax_music3 import (
             MiniMaxMusic3Blocks,
@@ -216,6 +267,15 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SequentialPipelineBlocks,
         )
         from .modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, InsertableDict, OutputParam
+        from .p_h3_image import (
+            PH3ImageBlocks,
+            PH3ImageModularPipeline,
+        )
+        from .pan2 import PAN2Blocks, PAN2ModularPipeline, PAN2SafetyChecker
+        from .pika_h3_flex import (
+            PikaH3FlexBlocks,
+            PikaH3FlexModularPipeline,
+        )
         from .qwenimage import (
             QwenImageAutoBlocks,
             QwenImageEditAutoBlocks,
@@ -225,6 +285,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageLayeredAutoBlocks,
             QwenImageLayeredModularPipeline,
             QwenImageModularPipeline,
+        )
+        from .qwenimage21 import (
+            QwenImage21AutoBlocks,
+            QwenImage21ModularPipeline,
+            QwenImage21TurboAutoBlocks,
+            QwenImage21TurboModularPipeline,
         )
         from .stable_diffusion_3 import StableDiffusion3AutoBlocks, StableDiffusion3ModularPipeline
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline

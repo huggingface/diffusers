@@ -20,12 +20,12 @@ jobs:
       REPO: ${{ github.repository }}
     steps:
       # label
-      - uses: actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9  # v5
+      - uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13  # v7.0.0
         with:
           sync-labels: true
 
       # missing-tests
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         id: checkout
         if: ${{ !cancelled() }}
         with:
@@ -52,6 +52,7 @@ jobs:
 
       # fixes-issue
       - name: Check for linked closing issues
+        # An issue the PR author opened after the PR does not count as linked.
         if: ${{ !cancelled() }}
         run: |
           OWNER="${REPO%/*}"
@@ -62,13 +63,18 @@ jobs:
               query($owner: String!, $name: String!, $number: Int!) {
                 repository(owner: $owner, name: $name) {
                   pullRequest(number: $number) {
-                    closingIssuesReferences(first: 1) {
-                      totalCount
+                    createdAt
+                    author { login }
+                    closingIssuesReferences(first: 50) {
+                      nodes { createdAt author { login } }
                     }
                   }
                 }
               }' \
-            --jq '.data.repository.pullRequest.closingIssuesReferences.totalCount')
+            --jq '.data.repository.pullRequest as $pr
+                  | [$pr.closingIssuesReferences.nodes[]
+                     | select(.author.login != $pr.author.login or .createdAt < $pr.createdAt)]
+                  | length')
           HAS_LABEL=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/labels" --jq 'any(.[]; .name == "fixes-issue")')
           if [ "${COUNT:-0}" -gt 0 ]; then
             if [ "$HAS_LABEL" != "true" ]; then

@@ -31,11 +31,12 @@ from transformers import (
     VitsTokenizer,
 )
 
+from ...dependency_versions_table import deps
 from ...models import AutoencoderKL
+from ...models.condition_embedders import AudioLDM2ProjectionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     is_accelerate_available,
-    is_accelerate_version,
     is_librosa_available,
     logging,
     replace_example_docstring,
@@ -43,7 +44,7 @@ from ...utils import (
 from ...utils.import_utils import is_transformers_version
 from ...utils.torch_utils import empty_device_cache, randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
-from .modeling_audioldm2 import AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
+from .modeling_audioldm2 import AudioLDM2UNet2DConditionModel
 
 
 if is_librosa_available():
@@ -229,10 +230,12 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
         `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
         """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+        if is_accelerate_available():
             from accelerate import cpu_offload_with_hook
         else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+            raise ImportError(
+                f"`enable_model_cpu_offload` requires `{deps['accelerate']}`: `pip install -U '{deps['accelerate']}'`"
+            )
 
         torch_device = torch.device(device)
         device_index = torch_device.index

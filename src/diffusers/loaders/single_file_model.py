@@ -27,7 +27,7 @@ from ..models.model_loading_utils import (
     _expand_device_map,
 )
 from ..quantizers import DiffusersAutoQuantizer
-from ..utils import deprecate, is_accelerate_available, is_torch_version, logging
+from ..utils import deprecate, is_accelerate_available, logging
 from ..utils.torch_utils import empty_device_cache
 from .single_file_utils import (
     SingleFileComponentError,
@@ -39,6 +39,7 @@ from .single_file_utils import (
     convert_cosmos_transformer_checkpoint_to_diffusers,
     convert_ernie_image_transformer_checkpoint_to_diffusers,
     convert_flux2_transformer_checkpoint_to_diffusers,
+    convert_flux3_transformer_checkpoint_to_diffusers,
     convert_flux_transformer_checkpoint_to_diffusers,
     convert_hidream_transformer_to_diffusers,
     convert_hunyuan_video_transformer_to_diffusers,
@@ -79,7 +80,7 @@ if is_accelerate_available():
 
     from ..models.model_loading_utils import load_model_dict_into_meta
 
-if is_torch_version(">=", "1.9.0") and is_accelerate_available():
+if is_accelerate_available():
     _LOW_CPU_MEM_USAGE_DEFAULT = True
 else:
     _LOW_CPU_MEM_USAGE_DEFAULT = False
@@ -206,6 +207,10 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "Flux2Transformer2DModel": {
         "checkpoint_mapping_fn": convert_flux2_transformer_checkpoint_to_diffusers,
+        "default_subfolder": "transformer",
+    },
+    "Flux3Transformer2DModel": {
+        "checkpoint_mapping_fn": convert_flux3_transformer_checkpoint_to_diffusers,
         "default_subfolder": "transformer",
     },
     "ZImageTransformer2DModel": {
@@ -409,9 +414,12 @@ class FromOriginalModelMixin:
                 user_agent=user_agent,
             )
         if quantization_config is not None:
+            if not low_cpu_mem_usage:
+                raise ValueError("`low_cpu_mem_usage` cannot be False when using quantization.")
             hf_quantizer = DiffusersAutoQuantizer.from_config(quantization_config)
             hf_quantizer.validate_environment()
             torch_dtype = hf_quantizer.update_torch_dtype(torch_dtype)
+            checkpoint = hf_quantizer.maybe_update_state_dict(checkpoint)
 
         else:
             hf_quantizer = None

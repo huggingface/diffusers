@@ -195,6 +195,7 @@ class PiflowScheduler(SchedulerMixin, ConfigMixin):
         self.final_step_size_scale = float(final_step_size_scale)
         self.num_policy_substeps = int(num_policy_substeps)
         self._piflow_raw_timesteps = torch.empty(0)
+        self._piflow_segments = []
 
     @property
     def step_index(self):
@@ -243,10 +244,18 @@ class PiflowScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(f"num_inference_steps must be positive, got {num_inference_steps}")
         one_minus_final = 1.0 - self.final_step_size_scale
         segment = 1.0 / (num_inference_steps - one_minus_final)
-        raw = 1.0 - torch.arange(num_inference_steps, dtype=torch.float32, device=device) * segment
+        segments = [segment] * (num_inference_steps - 1) + [segment * self.final_step_size_scale]
+        # Walked one segment at a time, as the native samplers do; `1 - i * segment` differs in the last bits.
+        raw_t = torch.ones((), dtype=torch.float32, device=device)
+        raws = []
+        for segment in segments:
+            raws.append(raw_t)
+            raw_t = (raw_t - segment).clamp(min=self.eps)
+        raw = torch.stack(raws)
         sigmas = shift_timesteps(raw, float(self.config.shift))
         self.num_inference_steps = int(num_inference_steps)
         self._piflow_raw_timesteps = raw
+        self._piflow_segments = segments
         self.timesteps = sigmas * self.config.num_train_timesteps
         self.sigmas = torch.cat([sigmas, sigmas.new_zeros(1)])
         self._step_index = None
@@ -273,15 +282,13 @@ class PiflowScheduler(SchedulerMixin, ConfigMixin):
     def _policy_step(self, model_output: torch.Tensor, sample: torch.Tensor, step_index: int) -> torch.Tensor:
         model_output = self._to_grid(model_output, sample)
         raw_src = self._piflow_raw_timesteps[step_index].to(device=sample.device)
-        raw_dst = (
-            self._piflow_raw_timesteps[step_index + 1]
-            if step_index + 1 < self._piflow_raw_timesteps.numel()
-            else self._piflow_raw_timesteps.new_full((), self.eps)
-        ).to(device=sample.device)
+        # The policy sees the nominal segment, so the final one ends at 0; only the rollout stops at eps.
+        segment = self._piflow_segments[step_index]
+        raw_dst = (raw_src - segment).clamp(min=self.eps)
         sigma_src = self.sigmas[step_index].to(device=sample.device)
         token_shape = (sample.shape[0], *((sample.ndim - 1) * [1]))
         sigma = sigma_src.expand(sample.shape[0]).reshape(token_shape)
-        segment = (raw_src - raw_dst).expand(sample.shape[0])
+        segment = raw_src.new_full((sample.shape[0],), segment)
         policy = DXPolicy(
             model_output,
             sample,
