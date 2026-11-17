@@ -66,7 +66,7 @@ image = pipe(prompt=wave_prompt).images[0]
 image
 ```
 > [!WARNING]
-> For text-to-image we use `stabilityai/stable-diffusion-2-1-unclip-small` as it was trained on CLIP ViT-L/14 embedding, the same as the Karlo model prior. [stabilityai/stable-diffusion-2-1-unclip](https://hf.co/stabilityai/stable-diffusion-2-1-unclip) was trained on OpenCLIP ViT-H, so we don't recommend its use.
+> For text-to-image we use `stabilityai/stable-diffusion-2-1-unclip-small` as it was trained on CLIP ViT-L/14 embedding, the same as the Karlo model prior. [sd2-community/stable-diffusion-2-1-unclip](https://hf.co/sd2-community/stable-diffusion-2-1-unclip) was trained on OpenCLIP ViT-H, so we don't recommend its use.
 
 ### Text guided Image-to-Image Variation
 

@@ -7,7 +7,6 @@ from ...utils import (
     get_objects_from_module,
     is_torch_available,
     is_transformers_available,
-    is_transformers_version,
 )
 
 
@@ -15,7 +14,7 @@ _dummy_objects = {}
 _import_structure = {}
 
 try:
-    if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.27.0")):
+    if not (is_transformers_available() and is_torch_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from ...utils import dummy_torch_and_transformers_objects
@@ -28,7 +27,7 @@ else:
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
-        if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.27.0")):
+        if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *

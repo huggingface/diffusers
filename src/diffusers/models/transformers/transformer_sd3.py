@@ -256,7 +256,7 @@ class SD3Transformer2DModel(
         joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
         skip_layers: list[int] | None = None,
-    ) -> torch.Tensor | Transformer2DModelOutput:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`SD3Transformer2DModel`] forward method.
 

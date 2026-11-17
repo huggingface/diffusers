@@ -758,4 +758,4 @@ To speed-up your inference code even more, use [`torch_compile`](../optimization
 pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
-Learn more in the [Reduce memory usage](../optimization/memory) and [Accelerate inference](../optimization/fp16) guides.
+Learn more in [Optimize and scale](../optimization/overview#optimization-techniques).
