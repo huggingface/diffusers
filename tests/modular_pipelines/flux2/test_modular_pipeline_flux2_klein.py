@@ -56,7 +56,6 @@ class Flux2KleinModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     params = frozenset(["prompt", "height", "width"])
     # the text encoder encodes an empty prompt when none is given, so no input is required
     required_params = frozenset()
-    batch_params = frozenset(["prompt"])
     not_params = frozenset(["negative_prompt"])
     expected_workflow_blocks = FLUX2_KLEIN_WORKFLOWS
 

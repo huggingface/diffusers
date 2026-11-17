@@ -42,7 +42,6 @@ _SAMPLING_SKIP = (
     "(dtype, offload-induced kernel changes) legitimately flips sampled tokens, so value-equality "
     "comparisons cannot hold. Shape and determinism-at-fixed-seed are covered by the other tests."
 )
-_UNBATCHED_SKIP = "MiniMax Music 3 generates a single waveform per call; `prompt` and `lyrics` are single strings."
 
 
 class MiniMaxMusic3ConditionEncoderFastTests(unittest.TestCase):
@@ -71,6 +70,7 @@ class MiniMaxMusic3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pretrained_model_name_or_path = "hf-internal-testing/tiny-minimax-music3-modular-pipe"
     params = frozenset(["prompt", "lyrics", "audio_duration"])
     # The pipeline generates a single waveform per call; `prompt` and `lyrics` are single strings.
+    # one music description per call: the encoder raises on a list
     batch_params = frozenset()
     optional_params = frozenset(["num_inference_steps", "output_type"])
     output_name = "audios"
@@ -117,14 +117,6 @@ class TestMiniMaxMusic3ModularPipelineFast(MiniMaxMusic3ModularPipelineTesterCon
 
     @pytest.mark.skip(reason="The pipeline generates a single waveform per call; there is no num_images_per_prompt.")
     def test_num_images_per_prompt(self):
-        pass
-
-    @pytest.mark.skip(reason=_UNBATCHED_SKIP)
-    def test_inference_batch_consistent(self):
-        pass
-
-    @pytest.mark.skip(reason=_UNBATCHED_SKIP)
-    def test_inference_batch_single_identical(self):
         pass
 
     def test_output_is_stereo_waveform(self):

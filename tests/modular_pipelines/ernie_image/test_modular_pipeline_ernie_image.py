@@ -46,7 +46,6 @@ class ErnieImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     params = frozenset(["prompt", "height", "width"])
     # the text encoder encodes an empty prompt when none is given, so no input is required
     required_params = frozenset()
-    batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_images_per_prompt", "latents"])
     expected_workflow_blocks = ERNIE_IMAGE_WORKFLOWS
 

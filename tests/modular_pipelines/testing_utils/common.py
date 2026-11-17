@@ -50,12 +50,13 @@ class BaseModularPipelineTesterConfig:
     # Canonical parameters the pipeline cannot run without. `test_pipeline_required_parameters` asserts the blocks mark
     # them required; a pipeline that does not take a prompt overrides this with its own, e.g. `{"audio", "image"}`
     required_params = frozenset(["prompt"])
+    # Parameters the batch tests pass as lists. A pipeline that does not take a batch of prompts overrides this with
+    # `frozenset()`; a pipeline that batches an image as well adds it
+    batch_params = frozenset(["prompt"])
     # Parameters the pipeline deliberately does NOT accept — e.g. `negative_prompt` on a
     # guidance-distilled pipeline. `test_pipeline_call_signature` asserts they are absent,
     # so accidentally (re)introducing one fails the test.
     not_params = frozenset()
-    # this is modular specific: generator needs to be a intermediate input because it's mutable
-    intermediate_params = frozenset(["generator"])
     # Output type for the pipeline (e.g., "images" for image pipelines, "videos" for video pipelines)
     # Subclasses can override this to change the expected output type
     output_name = "images"
@@ -114,20 +115,6 @@ class BaseModularPipelineTesterConfig:
             "do not make modifications to the existing common sets of arguments. I.e. a text to image pipeline "
             "with non-configurable height and width arguments should set the attribute as "
             "`params = TEXT_TO_IMAGE_PARAMS - {'height', 'width'}`. "
-            "See existing pipeline tests for reference."
-        )
-
-    @property
-    def batch_params(self) -> frozenset:
-        raise NotImplementedError(
-            "You need to set the attribute `batch_params` in the child test class. "
-            "`batch_params` are the parameters required to be batched when passed to the pipeline's "
-            "`__call__` method. `pipeline_params.py` provides some common sets of parameters such as "
-            "`TEXT_TO_IMAGE_BATCH_PARAMS`, `IMAGE_VARIATION_BATCH_PARAMS`, etc... If your pipeline's "
-            "set of batch arguments has minor changes from one of the common sets of batch arguments, "
-            "do not make modifications to the existing common sets of batch arguments. I.e. a text to "
-            "image pipeline `negative_prompt` is not batched should set the attribute as "
-            "`batch_params = TEXT_TO_IMAGE_BATCH_PARAMS - {'negative_prompt'}`. "
             "See existing pipeline tests for reference."
         )
 
@@ -273,6 +260,8 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
                 pipe(**{k: v for k, v in inputs.items() if k != name}, output=self.output_name)
 
     def test_inference_batch_consistent(self, batch_sizes=[2], batch_generator=True):
+        if not self.batch_params:
+            pytest.skip("the pipeline takes one prompt per call")
         pipe = self.get_pipeline().to(torch_device)
 
         inputs = self.get_dummy_inputs()
@@ -312,6 +301,8 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
         batch_size=2,
         expected_max_diff=1e-4,
     ):
+        if not self.batch_params:
+            pytest.skip("the pipeline takes one prompt per call")
         pipe = self.get_pipeline().to(torch_device)
         inputs = self.get_dummy_inputs()
 

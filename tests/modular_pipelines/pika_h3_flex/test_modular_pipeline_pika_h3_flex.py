@@ -157,6 +157,7 @@ class PikaH3FlexModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     expected_latents_shape = (1, 4, 37, 2, 2)
     params = frozenset(["prompt", "image", "last_image", "height", "width", "num_frames"])
     # Pika H3 Flex packs one request into one sequence and rejects a list of prompts, so nothing is batched.
+    # one request per call: the text encoder raises on a list of prompts
     batch_params = frozenset()
     # The adapters are guidance-distilled and run a fixed six-step schedule, so neither `guidance_scale` nor
     # `num_inference_steps` exists, and one request generates one video.
@@ -181,14 +182,6 @@ class PikaH3FlexModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestPikaH3FlexModularPipelineFast(PikaH3FlexModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    @pytest.mark.skip(reason="Pika H3 Flex packs one request into one sequence, so a batch of prompts is not a thing.")
-    def test_inference_batch_consistent(self):
-        pass
-
-    @pytest.mark.skip(reason="Pika H3 Flex packs one request into one sequence, so a batch of prompts is not a thing.")
-    def test_inference_batch_single_identical(self):
-        pass
-
     @pytest.mark.skip(reason="One request generates one video, so there is no `num_images_per_prompt`.")
     def test_num_images_per_prompt(self):
         pass
@@ -395,6 +388,7 @@ class PikaH3FlexRef2VAModularPipelineTesterConfig(BaseModularPipelineTesterConfi
     expected_latents_shape = (1, 4, 37, 2, 2)
     params = frozenset(["prompt", "references", "height", "width", "num_frames"])
     # Pika H3 Flex packs one request into one sequence and rejects a list of prompts, so nothing is batched.
+    # one request per call: the text encoder raises on a list of prompts
     batch_params = frozenset()
     # The adapters are guidance-distilled and run a fixed six-step schedule, so neither `guidance_scale` nor
     # `num_inference_steps` exists, and one request generates one video.
@@ -423,14 +417,6 @@ class PikaH3FlexRef2VAModularPipelineTesterConfig(BaseModularPipelineTesterConfi
 
 
 class TestPikaH3FlexRef2VAModularPipelineFast(PikaH3FlexRef2VAModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    @pytest.mark.skip(reason="Pika H3 Flex packs one request into one sequence, so a batch of prompts is not a thing.")
-    def test_inference_batch_consistent(self):
-        pass
-
-    @pytest.mark.skip(reason="Pika H3 Flex packs one request into one sequence, so a batch of prompts is not a thing.")
-    def test_inference_batch_single_identical(self):
-        pass
-
     @pytest.mark.skip(reason="One request generates one video, so there is no `num_images_per_prompt`.")
     def test_num_images_per_prompt(self):
         pass

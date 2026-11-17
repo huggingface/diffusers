@@ -158,6 +158,7 @@ class PH3ImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     expected_latents_shape = (1, 4, 1, 2, 2)
     params = frozenset(["prompt", "image", "height", "width"])
     # One request is one packed sequence, so prompts are not batched.
+    # one prompt per call: the prompt upsampler raises on a list
     batch_params = frozenset()
     # No guidance, one image per request, fixed sampling grid: no `guidance_scale`, `num_images_per_prompt` or
     # `num_inference_steps`.
@@ -188,14 +189,6 @@ class PH3ImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestPH3ImageModularPipelineFast(PH3ImageModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    @pytest.mark.skip(reason="P-H3-Image packs one request into one sequence, so a batch of prompts is not a thing.")
-    def test_inference_batch_consistent(self):
-        pass
-
-    @pytest.mark.skip(reason="P-H3-Image packs one request into one sequence, so a batch of prompts is not a thing.")
-    def test_inference_batch_single_identical(self):
-        pass
-
     @pytest.mark.skip(reason="One request generates one image, so there is no `num_images_per_prompt`.")
     def test_num_images_per_prompt(self):
         pass

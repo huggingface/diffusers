@@ -73,6 +73,7 @@ class Cosmos3DistilledModularPipelineTesterConfig(BaseModularPipelineTesterConfi
     pretrained_model_name_or_path = TINY_DISTILLED_REPO
     expected_latents_shape = (1, 4, 2, 4, 4)
     params = frozenset(["prompt", "height", "width", "num_frames"])
+    # one prompt per call: the text encoder raises on a list
     batch_params = frozenset()
     optional_params = frozenset(["num_inference_steps", "output_type"])
     output_name = "videos"
@@ -96,14 +97,6 @@ class Cosmos3DistilledModularPipelineTesterConfig(BaseModularPipelineTesterConfi
 
 
 class TestCosmos3DistilledModularPipelineFast(Cosmos3DistilledModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    @pytest.mark.skip(reason="Cosmos3 does not support batched prompts.")
-    def test_inference_batch_consistent(self):
-        pass
-
-    @pytest.mark.skip(reason="Cosmos3 does not support batched prompts.")
-    def test_inference_batch_single_identical(self):
-        pass
-
     @pytest.mark.skip(reason="Cosmos3 does not support multiple videos per prompt.")
     def test_num_images_per_prompt(self):
         pass

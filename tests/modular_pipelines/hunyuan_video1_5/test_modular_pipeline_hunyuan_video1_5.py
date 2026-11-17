@@ -57,7 +57,6 @@ class HunyuanVideo15ModularPipelineTesterConfig(BaseModularPipelineTesterConfig)
     params = frozenset(["prompt", "height", "width", "num_frames"])
     # the text encoder encodes an empty prompt when none is given, so no input is required
     required_params = frozenset()
-    batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
     expected_workflow_blocks = HUNYUANVIDEO15_WORKFLOWS
     output_name = "videos"

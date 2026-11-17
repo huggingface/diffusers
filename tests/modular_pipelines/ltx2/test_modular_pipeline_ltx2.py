@@ -104,7 +104,6 @@ class LTX2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = LTX2ModularPipeline
     pipeline_blocks_class = LTX2AutoBlocks
     pretrained_model_name_or_path = LTX2_REPO_ID
-    batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
     expected_workflow_blocks = LTX2_WORKFLOWS
     output_name = "videos"

@@ -45,7 +45,6 @@ class Krea2TurboModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pretrained_model_name_or_path = "hf-internal-testing/tiny-krea2-turbo-modular-pipe"
     expected_latents_shape = (1, 4, 1, 8, 8)
     params = frozenset(["prompt", "height", "width"])
-    batch_params = frozenset(["prompt"])
     expected_workflow_blocks = KREA2_TURBO_WORKFLOWS
 
     def get_dummy_inputs(self, seed=0):

@@ -59,7 +59,6 @@ class LTXModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pretrained_model_name_or_path = "akshan-main/tiny-ltx-modular-pipe"
     expected_latents_shape = (1, 8, 5, 16, 16)
     params = frozenset(["prompt", "height", "width", "num_frames"])
-    batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
     expected_workflow_blocks = LTX_WORKFLOWS
     output_name = "videos"

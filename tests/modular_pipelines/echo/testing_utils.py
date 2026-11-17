@@ -39,7 +39,6 @@ class EchoModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
             "sigmas",
         ]
     )
-    batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_videos_per_prompt", "latents", "audio_latents", "output_type"])
     not_params = frozenset(["negative_prompt", "guidance_scale", "num_inference_steps"])
     expected_workflow_blocks = {}

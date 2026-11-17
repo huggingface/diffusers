@@ -181,6 +181,7 @@ class Flux3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     # The patchified grid: `AutoencoderKLFlux2` defines its latent statistics over patchified channels.
     expected_latents_shape = (1, 16, 16, 16)
     params = frozenset(["prompt", "height", "width"])
+    # one prompt per call: the prompt upsampler raises on a list
     batch_params = frozenset()
     expected_workflow_blocks = FLUX3_WORKFLOWS
     expected_workflow_defaults = FLUX3_WORKFLOW_DEFAULTS
@@ -205,14 +206,6 @@ class Flux3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestFlux3ModularPipelineFast(Flux3ModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    @pytest.mark.skip(reason="FLUX.3 takes one prompt per call; batched prompts are not supported.")
-    def test_inference_batch_consistent(self):
-        pass
-
-    @pytest.mark.skip(reason="FLUX.3 takes one prompt per call; batched prompts are not supported.")
-    def test_inference_batch_single_identical(self):
-        pass
-
     def test_num_images_per_prompt(self):
         # one prompt per call, several images from it
         super().test_num_images_per_prompt(batch_sizes=[1])
@@ -377,14 +370,6 @@ class Flux3DistilledModularPipelineTesterConfig(Flux3ModularPipelineTesterConfig
 
 
 class TestFlux3DistilledModularPipelineFast(Flux3DistilledModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    @pytest.mark.skip(reason="FLUX.3 takes one prompt per call; batched prompts are not supported.")
-    def test_inference_batch_consistent(self):
-        pass
-
-    @pytest.mark.skip(reason="FLUX.3 takes one prompt per call; batched prompts are not supported.")
-    def test_inference_batch_single_identical(self):
-        pass
-
     def test_num_images_per_prompt(self):
         super().test_num_images_per_prompt(batch_sizes=[1])
 

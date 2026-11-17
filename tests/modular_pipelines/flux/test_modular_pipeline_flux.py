@@ -61,7 +61,6 @@ class FluxModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     expected_latents_shape = (1, 1, 8, 8)
 
     params = frozenset(["prompt", "height", "width", "guidance_scale"])
-    batch_params = frozenset(["prompt"])
     expected_workflow_blocks = FLUX_TEXT2IMAGE_WORKFLOWS
 
     def get_dummy_inputs(self, seed=0):
