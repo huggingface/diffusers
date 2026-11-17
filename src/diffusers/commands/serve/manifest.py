@@ -426,7 +426,7 @@ class Manifest:
             if capability == "adapters":
                 raise SystemExit(
                     message + f"but request adapters are off: {self._pipeline_name} cannot load LoRAs, or the server "
-                    "was started with --compile, --lora or --context-parallel."
+                    "was started with --compile or --lora."
                 )
             raise SystemExit(
                 message + f"which this server does not provide. It provides: {list(supported_capabilities)}."

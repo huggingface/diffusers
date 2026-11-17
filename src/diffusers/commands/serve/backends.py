@@ -12,13 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""The backends that execute a resolved generation: in the server process, or in one worker process per GPU.
-
-`DiffusersBackend` runs the pipeline in the server process. `ParallelBackend` serves `--context-parallel`: one worker
-process per GPU, all running every generation together. The server process never touches CUDA. It spawns the workers,
-sends each generation to all of them over a pipe, and reads the progress and result back from rank 0. Idle workers
-wait on their pipe rather than inside a collective, so the process group cannot time out between requests.
-"""
+"""The backend that executes a resolved generation in the server process."""
 
 from __future__ import annotations
 
@@ -27,15 +21,9 @@ import contextlib
 import inspect
 import io
 import mimetypes
-import multiprocessing
-import os
-import signal
-import socket
 import tempfile
-import threading
 import wave
 from argparse import Namespace
-from multiprocessing.connection import Connection, wait
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -54,7 +42,7 @@ from ..run import (
     _get_generator,
     _load_pipeline,
 )
-from .manifest import GMSError, Manifest, ResolvedRequest, blocks_signature
+from .manifest import GMSError, Manifest, blocks_signature
 from .scheduler import GenerationJob
 
 
@@ -77,14 +65,8 @@ _SAMPLE_RATE_ATTRIBUTES = (
 def backend_capabilities(args: Namespace, pipeline_cls: type) -> list[str]:
     capabilities = ["sse", "wait"]
     # Swapping adapter weights retraces a compiled denoiser on every request, and LoRAs passed at
-    # startup are part of the deployment rather than something a request may replace. Under context
-    # parallelism every rank would have to swap them in lockstep, which is untested.
-    if (
-        hasattr(pipeline_cls, "load_lora_weights")
-        and args.compile is None
-        and not args.lora
-        and not args.context_parallel
-    ):
+    # startup are part of the deployment rather than something a request may replace.
+    if hasattr(pipeline_cls, "load_lora_weights") and args.compile is None and not args.lora:
         capabilities.append("adapters")
     return capabilities
 
@@ -132,26 +114,8 @@ def _sample_rate(pipeline: Any) -> int:
     )
 
 
-def load_request_media(request: ResolvedRequest) -> dict[str, Any]:
-    """The pipeline kwargs of a request, with its media inputs fetched and decoded."""
-    kwargs = dict(request.kwargs)
-    for kwarg, (name, kind, value) in request.media.items():
-        if isinstance(value, list):
-            loaded = [_load_media(name, item, f"/inputs/{name}/{index}") for index, item in enumerate(value)]
-        else:
-            loaded = [_load_media(name, value, f"/inputs/{name}")]
-        if kind == "audio":
-            if kwarg == "initial_audio_waveforms":
-                kwargs.setdefault("initial_audio_sampling_rate", loaded[0][1])
-            loaded = [waveform for waveform, _ in loaded]
-        kwargs[kwarg] = loaded if isinstance(value, list) else loaded[0]
-    return kwargs
-
-
 class DiffusersBackend:
-    def __init__(self, args: Namespace, manifest: Manifest, save_outputs: bool = True):
-        # Under context parallelism every rank runs the call, and only rank 0 writes the files.
-        self._save_outputs = save_outputs
+    def __init__(self, args: Namespace, manifest: Manifest):
         self.pipeline = _load_pipeline(args)
         self._modular = isinstance(self.pipeline, ModularPipeline)
         if self._modular:
@@ -165,18 +129,21 @@ class DiffusersBackend:
                 if spec["type"] == "audio":
                     self._sample_rate = _sample_rate(self.pipeline)
 
-    def close(self) -> None:
-        pass
-
-    def failure(self) -> str | None:
-        return None
-
     def generate(self, generation: GenerationJob) -> dict[str, list[dict[str, Any]]]:
-        return self.run(load_request_media(generation.request), generation)
-
-    def run(self, kwargs: dict[str, Any], generation: Any) -> dict[str, list[dict[str, Any]]]:
-        """Call the pipeline with the request's kwargs, media already loaded, and save its outputs."""
+        """Call the pipeline with the request's kwargs and media, and save its outputs."""
         request = generation.request
+        kwargs = dict(request.kwargs)
+        for kwarg, (name, kind, value) in request.media.items():
+            if isinstance(value, list):
+                loaded = [_load_media(name, item, f"/inputs/{name}/{index}") for index, item in enumerate(value)]
+            else:
+                loaded = [_load_media(name, value, f"/inputs/{name}")]
+            if kind == "audio":
+                if kwarg == "initial_audio_waveforms":
+                    kwargs.setdefault("initial_audio_sampling_rate", loaded[0][1])
+                loaded = [waveform for waveform, _ in loaded]
+            kwargs[kwarg] = loaded if isinstance(value, list) else loaded[0]
+
         device = self.pipeline.device if hasattr(self.pipeline, "device") else torch.device("cpu")
         if request.seed is not None:
             # A CUDA generator must sit on the pipeline's own GPU, which is `cuda:1` and up with --data-parallel.
@@ -213,8 +180,7 @@ class DiffusersBackend:
         finally:
             if request.adapters:
                 self.pipeline.unload_lora_weights()
-        # Read first: under context parallelism `cancel_requested` is a collective every rank must join.
-        if generation.cancel_requested or not self._save_outputs:
+        if generation.cancel_requested:
             return {}
 
         outputs = {}
@@ -301,192 +267,3 @@ class DiffusersBackend:
                 f"task {request.task!r}",
             )
         return outputs
-
-
-_POLL_SECONDS = 0.1
-_SHUTDOWN_SECONDS = 30.0
-
-
-class _WorkerJob:
-    """The parts of a generation `DiffusersBackend.run` reads, inside a worker.
-
-    `cancel_requested` is a collective: rank 0 reads the flag the server sets and broadcasts it, so every rank
-    interrupts at the same step. A rank that stopped alone would leave the others waiting in the next collective.
-    """
-
-    def __init__(self, job: dict[str, Any], rank: int, conn: Connection, cancel_flag: Any):
-        self.request = job["request"]
-        self.directory = Path(job["directory"])
-        self._rank = rank
-        self._conn = conn
-        self._cancel_flag = cancel_flag
-
-    def report_progress(self, step: int, total_steps: int) -> None:
-        if self._rank == 0:
-            self._conn.send(("progress", step, total_steps))
-
-    @property
-    def cancel_requested(self) -> bool:
-        flag = torch.tensor([self._cancel_flag.value if self._rank == 0 else 0], dtype=torch.uint8)
-        torch.distributed.broadcast(flag, src=0)
-        return bool(flag.item())
-
-
-def _serve_jobs(backend: Any, rank: int, conn: Connection, cancel_flag: Any) -> None:
-    while True:
-        job = conn.recv()
-        if job is None:
-            return
-        generation = _WorkerJob(job, rank, conn, cancel_flag)
-        try:
-            reply = ("complete", backend.run(job["kwargs"], generation))
-        except GMSError as e:
-            reply = ("failed", e.code, e.message, e.pointer)
-        # The helpers shared with `run` raise SystemExit, which must not end the worker.
-        except (Exception, SystemExit) as e:
-            logger.error(f"generation failed on rank {rank}", exc_info=True)
-            reply = ("failed", "internal", f"{type(e).__name__}: {e}", None)
-        if rank == 0:
-            conn.send(reply)
-
-
-def _worker_main(
-    rank: int, world_size: int, port: int, args: Namespace, manifest: Manifest, conn: Connection, cancel_flag: Any
-) -> None:
-    # The server process decides when workers stop, so Ctrl-C in the terminal must not interrupt them mid-call.
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
-    os.environ.update(
-        MASTER_ADDR="127.0.0.1",
-        MASTER_PORT=str(port),
-        RANK=str(rank),
-        LOCAL_RANK=str(rank),
-        WORLD_SIZE=str(world_size),
-    )
-    if args.log_level is not None:
-        logging.set_verbosity(logging.get_log_levels_dict()[args.log_level])
-    # Loading applies `--context-parallel`, which joins the process group of all ranks.
-    backend = DiffusersBackend(args, manifest, save_outputs=rank == 0)
-    conn.send(("ready",))
-    try:
-        _serve_jobs(backend, rank, conn, cancel_flag)
-    finally:
-        torch.distributed.destroy_process_group()
-
-
-class ParallelBackend:
-    def __init__(self, args: Namespace, manifest: Manifest):
-        world_size = torch.cuda.device_count()
-        if world_size < 2:
-            raise SystemExit(f"--context-parallel needs at least 2 visible GPUs, found {world_size}.")
-        with socket.socket() as probe:
-            probe.bind(("127.0.0.1", 0))
-            port = probe.getsockname()[1]
-
-        self._failure: str | None = None
-        self._failed = threading.Event()
-        self._closing = False
-        # Spawned rather than forked: a forked child inherits whatever CUDA state its parent has.
-        context = multiprocessing.get_context("spawn")
-        # Lock-free: a worker killed while holding the lock would leave the server blocked on its next write.
-        self._cancel_flag = context.Value("b", 0, lock=False)
-        self._conns: list[Connection] = []
-        self._processes = []
-        for rank in range(world_size):
-            parent_conn, child_conn = context.Pipe()
-            process = context.Process(
-                target=_worker_main,
-                args=(rank, world_size, port, args, manifest, child_conn, self._cancel_flag),
-                name=f"diffusers-serve-rank-{rank}",
-                daemon=True,
-            )
-            process.start()
-            child_conn.close()
-            self._conns.append(parent_conn)
-            self._processes.append(process)
-
-        logger.info(f"loading the pipeline on {world_size} GPUs...")
-        # Every rank is watched at once: a rank that dies while loading leaves the others stuck in the process
-        # group setup, so waiting on one rank at a time could hang forever.
-        loading = dict(zip(self._conns, self._processes))
-        while loading:
-            sentinels = {process.sentinel: process for process in loading.values()}
-            for ready in wait([*loading, *sentinels]):
-                if ready in sentinels:
-                    process = sentinels[ready]
-                else:
-                    process = loading.pop(ready)
-                    try:
-                        if ready.recv() == ("ready",):
-                            continue
-                    except EOFError:
-                        pass
-                self.close()
-                raise SystemExit(
-                    f"Context-parallel worker {process.name} exited with code {process.exitcode} while loading "
-                    "the pipeline. Its error is in the log above."
-                )
-        threading.Thread(target=self._monitor, name="diffusers-serve-workers", daemon=True).start()
-
-    def _monitor(self) -> None:
-        sentinels = {process.sentinel: process for process in self._processes}
-        dead = sentinels[wait(list(sentinels))[0]]
-        if self._closing:
-            return
-        # `exitcode` polls without waiting, so it can still be None just after the sentinel fires.
-        dead.join()
-        self._failure = f"context-parallel worker {dead.name} exited with code {dead.exitcode}"
-        self._failed.set()
-        logger.error(f"{self._failure}; the remaining workers are stopped and the server no longer generates.")
-        # The other ranks would wait forever in their next collective, so the group is not reused.
-        self.close()
-
-    def failure(self) -> str | None:
-        return self._failure
-
-    def generate(self, generation: GenerationJob) -> dict[str, list[dict[str, Any]]]:
-        if self._failure is not None:
-            raise GMSError("internal", self._failure)
-        job = {
-            "request": generation.request,
-            "kwargs": load_request_media(generation.request),
-            "directory": str(generation.directory),
-        }
-        self._cancel_flag.value = 0
-        for conn in self._conns:
-            conn.send(job)
-
-        rank_0 = self._conns[0]
-        while True:
-            if generation.cancel_requested:
-                self._cancel_flag.value = 1
-            try:
-                if not rank_0.poll(_POLL_SECONDS):
-                    if self._failure is not None:
-                        raise GMSError("internal", self._failure)
-                    continue
-                message = rank_0.recv()
-            except (EOFError, OSError) as e:
-                # Rank 0's pipe only breaks once it has exited. Only the monitor reaps workers: a second
-                # thread joining the same process can read its exit code before it is recorded.
-                self._failed.wait()
-                raise GMSError("internal", self._failure) from e
-            if message[0] == "progress":
-                generation.report_progress(*message[1:])
-            elif message[0] == "complete":
-                return message[1]
-            else:
-                _, code, text, pointer = message
-                raise GMSError(code, text, pointer)
-
-    def close(self) -> None:
-        self._closing = True
-        for conn in self._conns:
-            try:
-                conn.send(None)
-            except OSError:
-                pass
-        for process in self._processes:
-            process.join(timeout=_SHUTDOWN_SECONDS)
-            if process.is_alive():
-                process.kill()
-                process.join()

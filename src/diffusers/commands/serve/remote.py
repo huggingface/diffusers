@@ -25,8 +25,9 @@ from typing import Any
 
 from huggingface_hub import HfApi, get_token
 from huggingface_hub.cli._output import out
-from huggingface_hub.utils import httpx
+from huggingface_hub.utils import httpx, send_telemetry
 
+from ... import __version__
 from ...utils import logging
 from ...utils.constants import DIFFUSERS_TRUST_REMOTE_KERNELS
 from ..run import _DEFAULT_REMOTE_DEPS, _DEFAULT_REMOTE_IMAGE, _build_task_kwargs, _kwargs_to_argv
@@ -148,6 +149,7 @@ def serve_remote(args: Namespace, task: str) -> None:
         expose=[JOB_PORT],
         namespace=args.namespace,
     )
+    send_telemetry(topic="diffusers/cli/serve/remote", library_name="diffusers", library_version=__version__)
 
     stage = None
     stopped = threading.Event()

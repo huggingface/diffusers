@@ -226,17 +226,14 @@ class ServeCommand(BaseDiffusersCLICommand):
         if args.log_level is not None:
             logging.set_verbosity(logging.get_log_levels_dict()[args.log_level])
 
-        if args.context_parallel and args.device_map is not None:
+        # TODO(DN6): support --context-parallel once the encoders and the VAE decode are not repeated on every rank.
+        if args.context_parallel:
             raise SystemExit(
-                "--device-map does not apply with --context-parallel: each worker loads the pipeline on its own GPU."
+                "--context-parallel is not supported by `diffusers-cli serve` yet. Use --data-parallel N to serve "
+                "on multiple GPUs."
             )
         if args.data_parallel < 1:
             raise SystemExit(f"--data-parallel must be at least 1, got {args.data_parallel}.")
-        if args.data_parallel > 1 and args.context_parallel:
-            raise SystemExit(
-                "--data-parallel and --context-parallel cannot be combined: --context-parallel already uses "
-                "every visible GPU for each generation."
-            )
         if args.data_parallel > 1 and args.compile is not None:
             raise SystemExit(
                 "--compile is not supported with --data-parallel yet: the copies of the pipeline would compile "
@@ -265,7 +262,7 @@ class ServeCommand(BaseDiffusersCLICommand):
             ) from e
 
         from .app import create_app
-        from .backends import DiffusersBackend, ParallelBackend, backend_capabilities
+        from .backends import DiffusersBackend, backend_capabilities
         from .manifest import load_manifest
         from .scheduler import Scheduler
 
@@ -282,9 +279,7 @@ class ServeCommand(BaseDiffusersCLICommand):
             token=args.token,
         )
 
-        if args.context_parallel:
-            backends = [ParallelBackend(args, manifest)]
-        elif args.data_parallel > 1:
+        if args.data_parallel > 1:
             backends = []
             for index in range(args.data_parallel):
                 replica_args = copy.copy(args)
@@ -293,38 +288,34 @@ class ServeCommand(BaseDiffusersCLICommand):
         else:
             backends = [DiffusersBackend(args, manifest)]
 
-        try:
-            seed = args.seed if args.seed is not None else secrets.randbelow(2**32)
-            # Seeds the generator `Manifest.resolve` draws request seeds from, like vLLM's `--seed`.
-            random.seed(seed)
-            timeout = None if args.generation_timeout is None else _duration_to_seconds(args.generation_timeout)
-            scheduler = Scheduler(backends, args.output_dir, timeout=timeout)
-            app = create_app(
-                manifest,
-                scheduler,
-                enable_cors=args.enable_cors,
-                public_url=args.public_url,
-            )
-            out.result(
-                self.task,
-                url=f"http://{args.host}:{args.port}",
-                model=manifest.id,
-                pipeline_class=pipeline_cls.__name__,
-                tasks=list(manifest.tasks),
-                capabilities=manifest.capabilities,
-                seed=seed,
-            )
-            server = uvicorn.Server(
-                uvicorn.Config(app, host=args.host, port=args.port, log_level=args.log_level or "info")
-            )
-            if args.idle_timeout is not None:
-                threading.Thread(
-                    target=_shut_down_when_idle,
-                    args=(server, app, scheduler, args.idle_timeout),
-                    name="diffusers-serve-idle",
-                    daemon=True,
-                ).start()
-            server.run()
-        finally:
-            for backend in backends:
-                backend.close()
+        seed = args.seed if args.seed is not None else secrets.randbelow(2**32)
+        # Seeds the generator `Manifest.resolve` draws request seeds from, like vLLM's `--seed`.
+        random.seed(seed)
+        timeout = None if args.generation_timeout is None else _duration_to_seconds(args.generation_timeout)
+        scheduler = Scheduler(backends, args.output_dir, timeout=timeout)
+        app = create_app(
+            manifest,
+            scheduler,
+            enable_cors=args.enable_cors,
+            public_url=args.public_url,
+        )
+        out.result(
+            self.task,
+            url=f"http://{args.host}:{args.port}",
+            model=manifest.id,
+            pipeline_class=pipeline_cls.__name__,
+            tasks=list(manifest.tasks),
+            capabilities=manifest.capabilities,
+            seed=seed,
+        )
+        server = uvicorn.Server(
+            uvicorn.Config(app, host=args.host, port=args.port, log_level=args.log_level or "info")
+        )
+        if args.idle_timeout is not None:
+            threading.Thread(
+                target=_shut_down_when_idle,
+                args=(server, app, scheduler, args.idle_timeout),
+                name="diffusers-serve-idle",
+                daemon=True,
+            ).start()
+        server.run()

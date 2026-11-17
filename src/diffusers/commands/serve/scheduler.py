@@ -49,7 +49,8 @@ class GenerationJob:
         self.usage: dict[str, Any] | None = None
         self.error: GMSError | None = None
         self.canceled = False
-        # When a running generation must stop, from `--generation-timeout`; None when it has no limit.
+        # The `time.monotonic()` time a running generation must stop by, from `--generation-timeout`; None when it has
+        # no limit.
         self.deadline: float | None = None
         self.directory: Path | None = None
         self.events: list[tuple[str, dict[str, Any] | None]] = []
@@ -125,7 +126,6 @@ class Scheduler:
     """
 
     def __init__(self, backends: list[Any], output_dir: str, timeout: float | None = None):
-        self._backends = backends
         self._output_dir = Path(output_dir)
         self._timeout = timeout
         self._generations: dict[str, GenerationJob] = {}
@@ -140,10 +140,6 @@ class Scheduler:
             ).start()
 
     def failure(self) -> str | None:
-        for backend in self._backends:
-            failure = backend.failure()
-            if failure is not None:
-                return failure
         if self._timeout is None:
             return None
         # A timed out generation stops at its next step. One still running long after that is stuck inside a step,

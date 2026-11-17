@@ -155,12 +155,10 @@ server checks the manifest at startup and refuses to start if it declares someth
 ## Multiple GPUs
 
 `--data-parallel N` loads a copy of the pipeline on each of N GPUs and runs up to N generations at once.
-`--context-parallel` splits each generation across all visible GPUs with
-[context parallelism](../training/distributed_inference#context-parallelism). Don't launch it with `torchrun`.
+`--context-parallel` is not supported by `serve` yet.
 
 ```bash
 diffusers serve black-forest-labs/FLUX.1-dev --data-parallel 4
-diffusers serve black-forest-labs/FLUX.1-dev --context-parallel
 ```
 
 ## Remote serving
