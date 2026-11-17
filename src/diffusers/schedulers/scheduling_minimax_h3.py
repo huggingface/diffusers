@@ -38,6 +38,11 @@ six steps, which their pipeline passes to `set_timesteps` as explicit `sigmas`; 
 scheduler shifts that grid like its own `linspace` grid. Explicit sigmas used to be taken verbatim; that default is
 deprecated and flips in 0.44.0.
 
+`euler_update_form` selects how that one Euler update is evaluated: `"blend"` is the `x_t` / `x0` blend above, and
+`"velocity"` is `x_next = x_t + (sigma - sigma_next) * v`. The two are the same update and differ only in float32
+rounding, but MiniMax-H3-Image's per-step output heads were distilled with the velocity form, and a last-bit difference
+in the latents is amplified by the bfloat16 transformer into a visibly different image.
+
 MiniMax-H3 runs **two schedules per request**, one per modality (`shift=12.0` for video, `shift=3.0` for audio). The
 modality is not a property of the scheduler: a pipeline holds two instances, e.g. `scheduler` and `audio_scheduler`.
 """
@@ -81,6 +86,10 @@ class MiniMaxH3Scheduler(SchedulerMixin, ConfigMixin):
             Whether explicit `sigmas` passed to [`~MiniMaxH3Scheduler.set_timesteps`] are a base grid the scheduler
             shifts, like its `linspace` grid, or a finished schedule taken verbatim. Unset means verbatim with a
             deprecation warning; the default becomes `True` in 0.44.0.
+        euler_update_form (`str`, defaults to `"blend"`):
+            How the Euler update is evaluated. `"blend"` is the `x_t` / `x0` blend `x_next = r*x_t + (1 - r)*x0`;
+            `"velocity"` is `x_next = x_t + (sigma - sigma_next) * v`, in float32. They are the same update and differ
+            only in float32 rounding; MiniMax-H3-Image was distilled with the velocity form.
     """
 
     _compatibles = []
@@ -88,10 +97,21 @@ class MiniMaxH3Scheduler(SchedulerMixin, ConfigMixin):
 
     @register_to_config
     def __init__(
-        self, shift: float = 12.0, stochastic_sampling: bool = False, shift_provided_sigmas: bool | None = None
+        self,
+        shift: float = 12.0,
+        stochastic_sampling: bool = False,
+        shift_provided_sigmas: bool | None = None,
+        euler_update_form: str = "blend",
     ):
         if shift <= 0:
             raise ValueError(f"`shift` must be positive, got {shift}.")
+        if euler_update_form not in ("blend", "velocity"):
+            raise ValueError(f"`euler_update_form` must be 'blend' or 'velocity', got {euler_update_form!r}.")
+        if stochastic_sampling and euler_update_form != "blend":
+            raise ValueError(
+                "`stochastic_sampling` replaces the Euler update, so `euler_update_form` has no effect with it; leave "
+                "it at 'blend'."
+            )
 
         self.num_inference_steps: int | None = None
         self.sigmas: torch.Tensor | None = None
@@ -270,7 +290,8 @@ class MiniMaxH3Scheduler(SchedulerMixin, ConfigMixin):
         the opposite of the usual flow-match convention. The update is then the blend `x_next = r*x_t + (1 - r)*x0`
         with `r = sigma_next / sigma`, evaluated in float32 for half-precision samples. With `stochastic_sampling` the
         update is `x_next = (1 - sigma_next) * x0 + sigma_next * noise` with fresh noise from `generator`, everything
-        in float32, so the last step (`sigma_next = 0`) returns `x0`.
+        in float32, so the last step (`sigma_next = 0`) returns `x0`. With `euler_update_form="velocity"` the same
+        Euler update is evaluated as `x_next = x_t + (sigma - sigma_next) * v` in float32.
 
         Args:
             model_output (`torch.FloatTensor`):
@@ -305,6 +326,18 @@ class MiniMaxH3Scheduler(SchedulerMixin, ConfigMixin):
             denoised = sample.to(torch.float32) + sigma * model_output.to(torch.float32)
             noise = randn_tensor(sample.shape, generator=generator, device=sample.device, dtype=torch.float32)
             prev_sample = ((1.0 - sigma_next) * denoised + sigma_next * noise).to(dtype=sample.dtype)
+            self._step_index += 1
+            if not return_dict:
+                return (prev_sample,)
+            return MiniMaxH3SchedulerOutput(prev_sample=prev_sample)
+
+        if self.config.euler_update_form == "velocity":
+            # The Euler update along the data-ward velocity, on the grid sigmas, in float32.
+            sigma = self.sigmas[self._step_index].to(device=sample.device, dtype=torch.float32)
+            sigma_next = self.sigmas[self._step_index + 1].to(device=sample.device, dtype=torch.float32)
+            prev_sample = sample.to(torch.float32) + (sigma - sigma_next) * model_output.to(torch.float32)
+            prev_sample = prev_sample.to(dtype=sample.dtype)
+
             self._step_index += 1
             if not return_dict:
                 return (prev_sample,)

@@ -741,7 +741,7 @@ class AutoencoderKLHunyuanImageRefiner(ModelMixin, AutoencoderMixin, ConfigMixin
         return dec
 
     @apply_forward_hook
-    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | torch.Tensor:
+    def decode(self, z: torch.Tensor, return_dict: bool = True) -> DecoderOutput | tuple[torch.Tensor]:
         r"""
         Decode a batch of images.
 
@@ -896,7 +896,7 @@ class AutoencoderKLHunyuanImageRefiner(ModelMixin, AutoencoderMixin, ConfigMixin
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: torch.Generator | None = None,
-    ) -> DecoderOutput | torch.Tensor:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

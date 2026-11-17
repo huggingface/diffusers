@@ -55,7 +55,7 @@ output = pipeline(
 
 Official callbacks set their own tensor inputs. For a custom function, pass `callback_on_step_end_tensor_inputs` as in [Display intermediate images](#display-intermediate-images).
 
-If you want to add a new official callback, feel free to open a [feature request](https://github.com/huggingface/diffusers/issues/new/choose) or [submit a PR](https://huggingface.co/docs/diffusers/main/en/conceptual/contribution#how-to-open-a-pr). Otherwise, you can also create your own callback as shown below.
+If you want to add a new official callback, feel free to open a [feature request](https://github.com/huggingface/diffusers/issues/new/choose) or [submit a PR](../conceptual/contribution#how-to-open-a-pr). Otherwise, you can also create your own callback as shown below.
 
 ## Early stopping
 

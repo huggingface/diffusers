@@ -783,25 +783,6 @@ neg_prompt = "lowres, bad_anatomy, error_body, error_hair, error_arm, error_hand
 pipe.text2img(prompt, negative_prompt=neg_prompt, width=512, height=512, max_embeddings_multiples=3).images[0]
 ```
 
-#### onnxruntime
-
-```python
-from diffusers import DiffusionPipeline
-import torch
-
-pipe = DiffusionPipeline.from_pretrained(
-    'CompVis/stable-diffusion-v1-4',
-    custom_pipeline="lpw_stable_diffusion_onnx",
-    revision="onnx",
-    provider="CUDAExecutionProvider"
-)
-
-prompt = "a photo of an astronaut riding a horse on mars, best quality"
-neg_prompt = "lowres, bad anatomy, error body, error hair, error arm, error hands, bad hands, error fingers, bad fingers, missing fingers, error legs, bad legs, multiple legs, missing legs, error lighting, error shadow, error reflection, text, error, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry"
-
-pipe.text2img(prompt, negative_prompt=neg_prompt, width=512, height=512, max_embeddings_multiples=3).images[0]
-```
-
 If you see `Token indices sequence length is longer than the specified maximum sequence length for this model ( *** > 77 ) . Running this sequence through the model will result in indexing errors`. Do not worry, it is normal.
 
 ### Speech to Image

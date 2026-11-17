@@ -186,26 +186,8 @@ if _CAN_USE_XFORMERS_ATTN:
 else:
     xops = None
 
-# Version guard for PyTorch compatibility - custom_op was added in PyTorch 2.4
-if torch.__version__ >= "2.4.0":
-    _custom_op = torch.library.custom_op
-    _register_fake = torch.library.register_fake
-else:
-
-    def custom_op_no_op(name, fn=None, /, *, mutates_args, device_types=None, schema=None):
-        def wrap(func):
-            return func
-
-        return wrap if fn is None else fn
-
-    def register_fake_no_op(op, fn=None, /, *, lib=None, _stacklevel=1):
-        def wrap(func):
-            return func
-
-        return wrap if fn is None else fn
-
-    _custom_op = custom_op_no_op
-    _register_fake = register_fake_no_op
+_custom_op = torch.library.custom_op
+_register_fake = torch.library.register_fake
 
 
 # TODO(aryan): Add support for the following:
@@ -344,16 +326,16 @@ _HUB_KERNELS_REGISTRY: dict["AttentionBackendName", _HubKernelConfig] = {
     AttentionBackendName.FLASH_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_func",
-        wrapped_forward_attr="flash_attn_interface._flash_attn_forward",
-        wrapped_backward_attr="flash_attn_interface._flash_attn_backward",
-        version=3,
+        wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_forward",
+        wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_backward",
+        version=4,
     ),
     AttentionBackendName.FLASH_VARLEN_HUB: _HubKernelConfig(
         repo_id="kernels-community/flash-attn2",
         function_attr="flash_attn_varlen_func",
-        wrapped_forward_attr="flash_attn_interface._flash_attn_varlen_forward",
-        wrapped_backward_attr="flash_attn_interface._flash_attn_varlen_backward",
-        version=3,
+        wrapped_forward_attr="flash_attn_interface._wrapped_flash_attn_varlen_forward",
+        wrapped_backward_attr="flash_attn_interface._wrapped_flash_attn_varlen_backward",
+        version=4,
     ),
     AttentionBackendName.SAGE_HUB: _HubKernelConfig(
         repo_id="SageAttention/sage-attention",
@@ -3833,6 +3815,33 @@ def _prepare_additive_attn_mask(
     return attn_mask
 
 
+# On ROCm, SDPA runs AOTriton kernels whose configs are tuned for contiguous (B, H, S, D) inputs. When K/V reach SDPA as
+# the strided (B, H, S, D) view of a (B, S, H, D) tensor and no longer fit in the on-die cache, the kernel gets several
+# times slower, and copying K/V first is much faster and bit-identical. For small K/V the copy costs more than it saves.
+# Values are the K+V size (bytes) from which copying was measured to be faster; architectures not listed are unchanged.
+_ROCM_SDPA_PACK_KV_MIN_BYTES = {
+    # Radeon PRO W7800 (64 MB Infinity Cache): copying was slower at 54 MiB of K/V and faster from 63.8 MiB up.
+    "gfx1100": 60 * 1024**2,
+}
+
+
+@functools.lru_cache(maxsize=None)
+def _rocm_sdpa_pack_kv_min_bytes(device: torch.device) -> int | None:
+    arch = torch.cuda.get_device_properties(device).gcnArchName.split(":")[0]
+    return _ROCM_SDPA_PACK_KV_MIN_BYTES.get(arch)
+
+
+def _maybe_pack_kv_for_rocm_sdpa(key: torch.Tensor, value: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    if torch.version.hip is None or key.device.type != "cuda" or torch.compiler.is_compiling():
+        return key, value
+    min_bytes = _rocm_sdpa_pack_kv_min_bytes(key.device)
+    # Below the threshold K/V still fit in the on-die cache, where reading the strided view is cheap and the copy only
+    # adds time. Architectures without a measured threshold keep the current path.
+    if min_bytes is None or (key.numel() + value.numel()) * key.element_size() < min_bytes:
+        return key, value
+    return key.contiguous(), value.contiguous()
+
+
 @_AttentionBackendRegistry.register(
     AttentionBackendName.NATIVE,
     constraints=[_check_device, _check_shape],
@@ -3867,6 +3876,7 @@ def _native_attention(
 
     if _parallel_config is None:
         query, key, value = (x.permute(0, 2, 1, 3) for x in (query, key, value))
+        key, value = _maybe_pack_kv_for_rocm_sdpa(key, value)
         out = torch.nn.functional.scaled_dot_product_attention(
             query=query,
             key=key,
