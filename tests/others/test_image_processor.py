@@ -18,7 +18,52 @@ import PIL.Image
 import pytest
 import torch
 
-from diffusers.image_processor import InpaintProcessor, VaeImageProcessor
+from diffusers.image_processor import InpaintProcessor, PixArtImageProcessor, VaeImageProcessor
+
+
+class TestPixArtImageProcessor:
+    @pytest.mark.parametrize(
+        "source_size, target_size",
+        [
+            ((832, 1152), (960, 1280)),
+            ((1152, 832), (1280, 960)),
+            ((832, 1216), (448, 696)),
+            ((1216, 832), (696, 448)),
+            ((448, 896), (128, 488)),
+            ((896, 448), (488, 128)),
+            ((12, 20), (8, 8)),
+            ((8, 8), (16, 24)),
+            ((8, 16), (8, 16)),
+            ((13, 17), (23, 31)),
+        ],
+    )
+    def test_resize_and_crop_tensor_output_size(self, source_size, target_size):
+        samples = torch.zeros(2, 3, *source_size)
+        height, width = target_size
+
+        output = PixArtImageProcessor.resize_and_crop_tensor(samples, width, height)
+
+        assert output.shape == (2, 3, height, width)
+
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    def test_resize_and_crop_tensor_centered_values(self, dtype):
+        samples = torch.arange(15, dtype=dtype).reshape(1, 1, 3, 5)
+
+        output = PixArtImageProcessor.resize_and_crop_tensor(samples, 4, 4)
+
+        expected = torch.tensor(
+            [
+                [0.75, 19 / 12, 29 / 12, 3.25],
+                [3.875, 113 / 24, 133 / 24, 6.375],
+                [7.625, 203 / 24, 223 / 24, 10.125],
+                [10.75, 139 / 12, 149 / 12, 13.25],
+            ],
+            dtype=dtype,
+        ).reshape(1, 1, 4, 4)
+        assert output.dtype == dtype
+        assert output.device == samples.device
+        torch.testing.assert_close(output, expected)
+        torch.testing.assert_close(samples, torch.arange(15, dtype=dtype).reshape(1, 1, 3, 5))
 
 
 class TestImageProcessor:
