@@ -49,7 +49,7 @@ dataset = load_dataset("imagefolder", data_files="path_to_zip_file")
 # example 3: remote files (supported formats are tar, gzip, zip, xz, rar, zstd)
 dataset = load_dataset(
     "imagefolder",
-    data_files="https://download.microsoft.com/download/3/E/1/3E1C3F21-ECDB-4869-8368-6DEBA77B919F/kagglecatsanddogs_3367a.zip",
+    data_files="https://download.microsoft.com/download/3/E/1/3E1C3F21-ECDB-4869-8368-6DEBA77B919F/kagglecatsanddogs_5340.zip",
 )
 
 # example 4: providing several splits

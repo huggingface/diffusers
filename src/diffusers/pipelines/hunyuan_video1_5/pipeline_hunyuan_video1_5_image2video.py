@@ -896,7 +896,7 @@ class HunyuanVideo15ImageToVideoPipeline(DiffusionPipeline):
 
                     # e.g. "pred_cond"/"pred_uncond"
                     context_name = getattr(guider_state_batch, self.guider._identifier_key)
-                    with self.transformer.cache_context(context_name):
+                    with self.transformer.cache_context(context_name, timestep=t):
                         # Run denoiser and store noise prediction in this batch
                         guider_state_batch.noise_pred = self.transformer(
                             hidden_states=latent_model_input,
