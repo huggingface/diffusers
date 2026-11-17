@@ -225,7 +225,7 @@ Two consequences for input plumbing:
 1. **Encoder / VAE-encoder blocks accept raw inputs only** (`prompt`, `image`, ...) and emit per-prompt outputs (`prompt_embeds`, `image_latents`). They do **not** bake in `num_images_per_prompt`.
 2. **Per-prompt expansion happens in a dedicated input step** inside the core denoise sequence (e.g. `<Model>TextInputStep`). That keeps pre-encoded embeds reusable across runs with different `num_images_per_prompt`. See `qwenimage/before_denoise.py` for the canonical input step.
 
-Standard pipelines accept `prompt_embeds` / `image_latents` as `__call__` inputs so users can skip encoding. In modular pipelines this is unnecessary — users just pop out the encoder block and run it standalone. Don't accept pre-computed encoder outputs as `__call__` inputs of an encoder block.
+Standard pipelines accept `prompt_embeds` / `image_latents` as `__call__` inputs so users can skip encoding. In modular pipelines this is unnecessary — users just pop out the encoder block and run it standalone. Don't accept pre-computed encoder outputs as `__call__` inputs of an encoder block. For the same reason, don't wrap the text encoder in an `AutoPipelineBlocks` triggered by `prompt` so that it can be skipped. `QwenImageAutoTextEncoderStep` does this and is kept only for backward compatibility.
 
 ## Key pattern: Flat blocksets
 

@@ -139,6 +139,9 @@ class QwenImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = QwenImageAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-modular"
     expected_latents_shape = (1, 4, 1, 8, 8)
+    # `QwenImageAutoTextEncoderStep` skips the text encoder when no `prompt` is passed, so the preset lists `prompt` as
+    # optional. Kept for backward compatibility, new pipelines should not copy this
+    required_params = frozenset()
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
     expected_workflow_blocks = QWEN_IMAGE_TEXT2IMAGE_WORKFLOWS
 
