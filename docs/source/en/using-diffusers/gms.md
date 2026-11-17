@@ -17,7 +17,7 @@ video, and audio generation models. Any GMS client works with any GMS server, an
 everywhere it is hosted. [`diffusers serve`](./serve) is a GMS server.
 
 > [!TIP]
-> GMS is a draft (`gms/0.1`). The full specification, the [OpenAPI definition](https://github.com/huggingface/gms-alpha/blob/main/openapi.yaml)
+> GMS is in alpha. The full specification, the [OpenAPI definition](https://github.com/huggingface/gms-alpha/blob/main/openapi.yaml)
 > and the [manifest JSON Schema](https://github.com/huggingface/gms-alpha/blob/main/schemas/manifest.schema.json)
 > live in the [GMS repository](https://github.com/huggingface/gms-alpha). Feedback is welcome there.
 
