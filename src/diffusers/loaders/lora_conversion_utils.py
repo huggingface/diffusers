@@ -1071,8 +1071,13 @@ def _custom_replace(key: str, substrings: list[str]) -> str:
 def _convert_bfl_flux_control_lora_to_diffusers(original_state_dict):
     converted_state_dict = {}
     original_state_dict_keys = list(original_state_dict.keys())
-    num_layers = 19
-    num_single_layers = 38
+    num_layers = 0
+    num_single_layers = 0
+    for key in original_state_dict_keys:
+        if key.startswith("single_blocks."):
+            num_single_layers = max(num_single_layers, int(key.split(".")[1]) + 1)
+        elif key.startswith("double_blocks."):
+            num_layers = max(num_layers, int(key.split(".")[1]) + 1)
     inner_dim = 3072
     mlp_ratio = 4.0
 
