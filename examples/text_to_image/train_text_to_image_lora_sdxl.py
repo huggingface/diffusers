@@ -51,6 +51,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.loaders import StableDiffusionLoraLoaderMixin
+from diffusers.models.attention_processor import AttnProcessorNPU
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import _set_state_dict_into_text_encoder, cast_training_params, compute_snr
 from diffusers.utils import (
@@ -679,7 +680,7 @@ def main(args):
     if args.enable_npu_flash_attention:
         if is_torch_npu_available():
             logger.info("npu flash attention enabled.")
-            unet.enable_npu_flash_attention()
+            unet.set_attn_processor(AttnProcessorNPU())
         else:
             raise ValueError("npu flash attention requires torch_npu extensions and is supported only on npu devices.")
 

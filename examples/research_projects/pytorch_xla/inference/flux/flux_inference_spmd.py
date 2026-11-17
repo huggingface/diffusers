@@ -104,7 +104,7 @@ def main(args):
             spec[largest_dim] = "model"
             xs.mark_sharding(param, mesh, tuple(spec))
 
-    flux_pipe.transformer.enable_xla_flash_attention(partition_spec=("data", None, None, None), is_flux=True)
+    flux_pipe.transformer.set_attention_backend("_native_xla")
     FlashAttention.DEFAULT_BLOCK_SIZES = {
         "block_q": 1536,
         "block_k_major": 1536,
