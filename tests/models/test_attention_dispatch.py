@@ -35,6 +35,7 @@ from diffusers.models.attention_dispatch import attention_backend as attention_b
 from diffusers.models.transformers.transformer_flux import FluxAttention
 
 from ..testing_utils import (
+    IS_ROCM_SYSTEM,
     is_attention,
     is_context_parallel,
     is_kernels_available,
@@ -350,3 +351,40 @@ class TestAiterSageHubKernel:
         assert not torch.equal(out, ref)
         cos = F.cosine_similarity(out.float().flatten(), ref.float().flatten(), dim=0)
         assert cos > 0.99
+
+
+@is_attention
+@require_torch_accelerator
+@pytest.mark.skipif(not IS_ROCM_SYSTEM, reason="K/V are only copied before native SDPA on ROCm.")
+class TestNativeAttentionRocmKVPacking:
+    """On ROCm, the native backend copies strided K/V before SDPA once K+V reach the architecture's threshold."""
+
+    @pytest.fixture
+    def kv_contiguity(self, monkeypatch):
+        seen = []
+        sdpa = F.scaled_dot_product_attention
+
+        def recording_sdpa(query, key, value, **kwargs):
+            seen.append((key.is_contiguous(), value.is_contiguous()))
+            return sdpa(query, key, value, **kwargs)
+
+        monkeypatch.setattr(F, "scaled_dot_product_attention", recording_sdpa)
+        return seen
+
+    # K+V of the (1, 64, 2, 64) bf16 inputs below take 32 KiB.
+    @pytest.mark.parametrize(
+        "min_bytes, packed",
+        [(32 * 1024, True), (32 * 1024 + 1, False), (None, False)],
+        ids=["at_threshold", "below_threshold", "arch_not_listed"],
+    )
+    def test_kv_copied_only_from_threshold(self, monkeypatch, kv_contiguity, min_bytes, packed):
+        torch.manual_seed(0)
+        query, key, value = (torch.randn(1, 64, 2, 64, device=torch_device, dtype=torch.bfloat16) for _ in range(3))
+
+        monkeypatch.setattr(attention_dispatch, "_rocm_sdpa_pack_kv_min_bytes", lambda device: min_bytes)
+        out = dispatch_attention_fn(query, key, value, backend=AttentionBackendName.NATIVE)
+        assert kv_contiguity == [(packed, packed)]
+
+        monkeypatch.setattr(attention_dispatch, "_rocm_sdpa_pack_kv_min_bytes", lambda device: None)
+        ref = dispatch_attention_fn(query, key, value, backend=AttentionBackendName.NATIVE)
+        assert torch.equal(out, ref)
