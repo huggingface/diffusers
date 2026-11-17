@@ -282,14 +282,7 @@ if block_state.num_frames is None:
     block_state.num_frames = 189
 ```
 
-A declared default is part of the block's contract, so the assembled pipeline is aware of it. The generated docstring shows it:
-
-```
-num_frames (`int`, *optional*, defaults to 189):
-    Number of frames to generate.
-```
-
-and `default_call_parameters` reports it. If you resolve it inside the body instead, the input renders as `*optional*` with no default, and nothing at the pipeline level can report what the block will actually do. Resolve inside `__call__` only when the default is *computed*, derived from other inputs or component config:
+A declared default is part of the block's contract: it shows in the generated docstring and in `default_call_parameters`; one resolved in the body does not. Resolve inside `__call__` only when the default is *computed*, derived from other inputs or component config:
 
 ```python
 if block_state.height is None:
@@ -300,25 +293,13 @@ The other two ways to declare an input:
 (1) `required=True` when the block cannot work without the value, so the caller has to pass it; the block raises `ValueError("Required input 'x' is missing")` when it is not passed or `None`.
 (2) Optional with no default when the block works with `None`. Most often that is the computed case above, and the block should then also declare the value as an output.
 
-**An assembled block derives its declarations from its sub-blocks; to change one, change the sub-block with `new()`.** Inputs, outputs, components and configs are declared on leaf blocks. A composite (`SequentialPipelineBlocks`, `ConditionalPipelineBlocks`, `LoopSequentialPipelineBlocks`) derives its own from its sub-blocks and cannot add, remove or redefine any of them. To reuse a leaf block where only what it declares differs (the default or description of an input, the repo and loading info of a component, the value of a config) create it with `new()`: `block.new(description=..., inputs=[...], intermediate_outputs=[...], outputs=[...], components=[...], configs=[...])` returns a copy of the block with the listed entries replaced by name. It cannot add or remove an entry, and it only works on a block without sub-blocks. The block's code is unchanged, so a block that reads other inputs or runs other code is a block of its own, not a `new()` of another (gotcha #13). `intermediate_outputs` of a composite has no override: a composite can define the `outputs` property to choose the ones it lists and how it describes them.
+**A composite block derives its declarations from its sub-blocks; don't change them on the composite.** A composite (`SequentialPipelineBlocks`, `ConditionalPipelineBlocks`, `LoopSequentialPipelineBlocks`) derives its inputs, intermediate outputs, components and configs from its sub-blocks, so don't override `inputs`, `intermediate_outputs`, `expected_components` or `expected_configs` on it. Instead, create the sub-block with the declaration you need using `new()` (see "Reusing a block with `new()`" below). `outputs` is the exception, see below.
 
-```python
-class DistilledCoreDenoiseStep(SequentialPipelineBlocks):
-    block_classes = [
-        # The distilled checkpoint samples in few steps.
-        SetTimestepsStep().new(inputs=[InputParam.template("num_inference_steps", default=10)]),
-        ...,
-    ]
-    block_names = [...]
-```
+How the composite derives a shared input:
 
-`components=` and `configs=` work the same way with a `ComponentSpec` / `ConfigSpec`, see the ComponentSpec section below. Typical uses: set a preset's default as above, settle a default two sub-blocks disagree on, or reword a description.
-
-How the composite derives a shared input, and when you need an override:
-
-- In a conditional block, the sub-blocks may declare different defaults for the same input, and each is respected: e.g. for `strength`, the img2img branch defaults to 0.3 and the inpaint branch to 0.9999, the docstring of the conditional block says "depends on the workflow", and at runtime the branch that runs fills in its own. To give every branch one value, use `new()` on the branch blocks that declare it.
-- In a sequential block, the first sub-block that declares a default sets it for every sub-block after it. When a later sub-block declares a different default, the sequence keeps the first one and logs the other at debug level; make the two sub-blocks agree, with `new()` on one of them if the shared block is right elsewhere. A later default after a sub-block that leaves the input open (no default) is not a conflict: the sequence keeps the input open.
-- The `required` flag the composite reports is its own view, whether the caller has to pass the value. In a sequential block, a sub-block may require an input that an earlier sub-block defaults or may produce; the composite then lists it as optional. In a conditional block, an input is required only when every branch requires it and the block always runs. The sub-blocks' own declarations are untouched and still checked at runtime in `get_block_state`.
+- In a sequential block, the first sub-block that declares a default sets it for every sub-block after it. If two sub-blocks declare different defaults, make them agree, with `new()` on one of them.
+- In a conditional block, each branch keeps its own default, and the docstring says "depends on the workflow".
+- An input a sub-block requires is listed as optional on the composite when an earlier sub-block gives it a default or may produce it.
 
 **`outputs` is what the assembled block presents as its product.** By default it is every intermediate output. Override the property to list only what the step is for, so the docstring shows the product instead of every internal intermediate (Wan-Animate-2's core denoise lists only `segment_frames`). It changes the docstring and `output_names` only: everything stays in the pipeline state, and `pipe(..., output=<name>)` still fetches any intermediate, listed or not.
 
@@ -338,13 +319,19 @@ ComponentSpec(
 )
 ```
 
-A composite inherits its sub-blocks' `ComponentSpec`s and `ConfigSpec`s. To point one at another repo, loading method or config value for the assembled pipeline, create the sub-block that declares it with `new(components=[...])` / `new(configs=[...])`, the same way `new(inputs=[...])` redeclares an input (see InputParam / OutputParam above).
+A composite inherits its sub-blocks' `ComponentSpec`s and `ConfigSpec`s. To point one at another repo, loading method or config value for the assembled pipeline, see "Reusing a block with `new()`" below.
+
+## Reusing a block with `new()`
+
+A common case: a block does what you need, but one of its declarations does not fit, e.g. the default or description of an input, the repo and loading info of a component, the value of a config. Don't copy or subclass the block for that, create it with `new()`:
 
 ```python
 class DistilledBlocks(SequentialPipelineBlocks):
     block_classes = [
         TextEncoderStep,
-        # the distilled checkpoint has its own transformer weights and skips guidance
+        # the distilled checkpoint samples in few steps
+        SetTimestepsStep().new(inputs=[InputParam.template("num_inference_steps", default=10)]),
+        # it has its own transformer weights and skips guidance
         DenoiseStep().new(
             components=[
                 ComponentSpec("transformer", YourTransformerModel, repo="org/model-distilled", subfolder="transformer")
@@ -353,8 +340,16 @@ class DistilledBlocks(SequentialPipelineBlocks):
         ),
         DecodeStep,
     ]
-    block_names = ["text_encoder", "denoise", "decode"]
+    block_names = ["text_encoder", "set_timesteps", "denoise", "decode"]
 ```
+
+`block.new(description=..., inputs=[...], intermediate_outputs=[...], outputs=[...], components=[...], configs=[...])` returns a copy of the block with the listed entries replaced by name. Typical uses: set a preset's default or checkpoint as above, settle a default two sub-blocks disagree on, or reword a description.
+
+What `new()` does not do:
+
+- It cannot add or remove an entry, only replace one the block already declares.
+- It only works on a block without sub-blocks.
+- It does not change the block's code. A block that reads other inputs or runs other code is a block of its own, not a `new()` of another (gotcha #13).
 
 ## Gotchas
 
@@ -385,7 +380,7 @@ class DistilledBlocks(SequentialPipelineBlocks):
 
 12. **Helpers taking `components`.** Prefer explicit args, for example, `get_xx_prompt_embeds(text_encoder, tokenizer, prompt)` instead of `get_xx_prompt_embeds(components, prompt)`. Helpers and block methods should take only what they use so dependencies are visible and they can run without an assembled pipeline. Leave the full `components` object to `__call__`, which unpacks what its helpers need. See `get_qwen_prompt_embeds` in `qwenimage/encoders.py`.
 
-13. **A `new()` entry that restates less than the block's own.** `block.new(inputs=[InputParam("num_inference_steps", default=10)])` replaces the entry whole, so the type hint and description the block declared are gone. Build it from the template, `InputParam.template("num_inference_steps", default=10)`, or restate everything. And `new()` is only for declarations: a block that reads other inputs or runs other code is written as its own class, not as a subclass or a `new()` of another.
+13. **A `new()` entry that restates less than the block's own.** `block.new(inputs=[InputParam("num_inference_steps", default=10)])` replaces the entry whole, so the type hint and description the block declared are gone. Build it from the template, `InputParam.template("num_inference_steps", default=10)`, or restate everything.
 
 ## Conversion checklist
 
