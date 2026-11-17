@@ -293,15 +293,11 @@ The other two ways to declare an input:
 (1) `required=True` when the block cannot work without the value, so the caller has to pass it; the block raises `ValueError("Required input 'x' is missing")` when it is not passed or `None`.
 (2) Optional with no default when the block works with `None`. Most often that is the computed case above, and the block should then also declare the value as an output.
 
-**A composite block derives its declarations from its sub-blocks; don't change them on the composite.** A composite (`SequentialPipelineBlocks`, `ConditionalPipelineBlocks`, `LoopSequentialPipelineBlocks`) derives its inputs, intermediate outputs, components and configs from its sub-blocks, so don't override `inputs`, `intermediate_outputs`, `expected_components` or `expected_configs` on it. Instead, create the sub-block with the declaration you need using `new()` (see "Reusing a block with `new()`" below). `outputs` is the exception, see below.
+A composite (`SequentialPipelineBlocks`, `ConditionalPipelineBlocks`, `LoopSequentialPipelineBlocks`) derives its inputs, intermediate outputs, components and configs from its sub-blocks, so don't override `inputs`, `intermediate_outputs`, `expected_components` or `expected_configs` on it. Instead, create the sub-block with the declaration you need using `new()` (see "Reusing a block with `new()`" below).
 
-How the composite derives a shared input:
+The exception is `outputs`, which is what the composite presents as its product. By default it is every intermediate output. Override the property to list only what the step is for, so the docstring shows the product instead of every internal intermediate (Wan-Animate-2's core denoise lists only `segment_frames`). It changes the docstring and `output_names` only: everything stays in the pipeline state, and `pipe(..., output=<name>)` still fetches any intermediate, listed or not.
 
-- In a sequential block, the first sub-block that declares a default sets it for every sub-block after it. If two sub-blocks declare different defaults, make them agree, with `new()` on one of them.
-- In a conditional block, each branch keeps its own default, and the docstring says "depends on the workflow".
-- An input a sub-block requires is listed as optional on the composite when an earlier sub-block gives it a default or may produce it.
-
-**`outputs` is what the assembled block presents as its product.** By default it is every intermediate output. Override the property to list only what the step is for, so the docstring shows the product instead of every internal intermediate (Wan-Animate-2's core denoise lists only `segment_frames`). It changes the docstring and `output_names` only: everything stays in the pipeline state, and `pipe(..., output=<name>)` still fetches any intermediate, listed or not.
+When two sub-blocks of a sequence declare different defaults for the same input, the sequence uses the first one; make sure every sub-block has the intended default, with `new()` where it does not. An input a sub-block requires can show as optional on the composite, when an earlier sub-block gives it a default or may produce it; that is expected.
 
 ## ComponentSpec patterns
 

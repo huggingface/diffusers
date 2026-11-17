@@ -132,7 +132,7 @@ class ImageProcessingStep(SequentialPipelineBlocks):
     block_names = ["input", "image_encoder"]
 ```
 
-When two sub-blocks declare different defaults for the same input, the sequence keeps the first one (the other is logged at debug level). Make them agree: `new()` on the block whose default is right elsewhere gives it the value this sequence needs. A later default after a sub-block that leaves the input open is not a conflict; the sequence keeps the input open.
+When two sub-blocks declare different defaults for the same input, the sequence uses the first one. To remove the ambiguity, make sure every sub-block that declares the input has the intended default, creating it with `new()` where it does not.
 
 A few properties you set yourself:
 
