@@ -320,8 +320,8 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
           force_zeros_for_empty_prompt (default: True) requires_aesthetics_score (default: False)
 
       Inputs:
-          prompt (`None`, *optional*):
-              TODO: Add description.
+          prompt (`str`):
+              The prompt or prompts to guide image generation.
           prompt_2 (`None`, *optional*):
               TODO: Add description.
           negative_prompt (`None`, *optional*):

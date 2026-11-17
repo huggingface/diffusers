@@ -302,8 +302,8 @@ class StableDiffusion3AutoBlocks(SequentialPipelineBlocks):
           (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer (`SD3Transformer2DModel`)
 
       Inputs:
-          prompt (`None`, *optional*):
-              The prompt or prompts to guide the image generation.
+          prompt (`str`):
+              The prompt or prompts to guide image generation.
           prompt_2 (`None`, *optional*):
               The prompt or prompts to be sent to tokenizer_2 and text_encoder_2.
           prompt_3 (`None`, *optional*):

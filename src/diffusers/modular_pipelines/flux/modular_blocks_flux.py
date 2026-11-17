@@ -537,8 +537,8 @@ class FluxAutoBlocks(SequentialPipelineBlocks):
           (`FlowMatchEulerDiscreteScheduler`) transformer (`FluxTransformer2DModel`)
 
       Inputs:
-          prompt (`None`, *optional*):
-              TODO: Add description.
+          prompt (`str`):
+              The prompt or prompts to guide image generation.
           prompt_2 (`None`, *optional*):
               TODO: Add description.
           max_sequence_length (`int`, *optional*, defaults to 512):
