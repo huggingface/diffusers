@@ -111,7 +111,6 @@ class MiniMaxH3ImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig)
     pretrained_model_name_or_path = "hf-internal-testing/tiny-minimax-h3-image-modular-pipe"
     # 4 latent channels at a quarter of a 32 x 32 image: the tiny VAE compresses 4x.
     expected_latents_shape = (1, 4, 8, 8)
-    params = frozenset(["prompt", "image", "height", "width"])
     # One request is one packed sequence, so prompts are not batched.
     # one request per call: the text encoder raises on a list of prompts
     batch_params = frozenset()

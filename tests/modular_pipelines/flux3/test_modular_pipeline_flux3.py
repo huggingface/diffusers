@@ -180,7 +180,6 @@ class Flux3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pretrained_model_name_or_path = FLUX3_TINY_REPO
     # The patchified grid: `AutoencoderKLFlux2` defines its latent statistics over patchified channels.
     expected_latents_shape = (1, 16, 16, 16)
-    params = frozenset(["prompt", "height", "width"])
     # one prompt per call: the prompt upsampler raises on a list
     batch_params = frozenset()
     expected_workflow_blocks = FLUX3_WORKFLOWS

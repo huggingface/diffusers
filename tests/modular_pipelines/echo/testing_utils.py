@@ -25,20 +25,6 @@ class EchoModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = EchoBlocks
     pretrained_model_name_or_path = "Echo-Team/tiny-echo-modular-pipe"
     expected_latents_shape = (1, 4, 3, 16, 16)
-    params = frozenset(
-        [
-            "prompt",
-            "image",
-            "memory_images",
-            "memory_audio_waveforms",
-            "height",
-            "width",
-            "num_frames",
-            "frame_rate",
-            "model_frame_rate",
-            "sigmas",
-        ]
-    )
     optional_params = frozenset(["num_videos_per_prompt", "latents", "audio_latents", "output_type"])
     not_params = frozenset(["negative_prompt", "guidance_scale", "num_inference_steps"])
     expected_workflow_blocks = {}

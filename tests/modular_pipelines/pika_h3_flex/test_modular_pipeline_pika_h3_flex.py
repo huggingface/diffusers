@@ -155,7 +155,6 @@ class PikaH3FlexModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = PikaH3FlexBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-pika-h3-flex-modular-pipe"
     expected_latents_shape = (1, 4, 37, 2, 2)
-    params = frozenset(["prompt", "image", "last_image", "height", "width", "num_frames"])
     # Pika H3 Flex packs one request into one sequence and rejects a list of prompts, so nothing is batched.
     # one request per call: the text encoder raises on a list of prompts
     batch_params = frozenset()
@@ -386,7 +385,6 @@ class PikaH3FlexRef2VAModularPipelineTesterConfig(BaseModularPipelineTesterConfi
     pipeline_blocks_class = PikaH3FlexBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-pika-h3-flex-modular-pipe"
     expected_latents_shape = (1, 4, 37, 2, 2)
-    params = frozenset(["prompt", "references", "height", "width", "num_frames"])
     # Pika H3 Flex packs one request into one sequence and rejects a list of prompts, so nothing is batched.
     # one request per call: the text encoder raises on a list of prompts
     batch_params = frozenset()

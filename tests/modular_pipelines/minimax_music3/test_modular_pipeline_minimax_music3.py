@@ -68,7 +68,6 @@ class MiniMaxMusic3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = MiniMaxMusic3ModularPipeline
     pipeline_blocks_class = MiniMaxMusic3Blocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-minimax-music3-modular-pipe"
-    params = frozenset(["prompt", "lyrics", "audio_duration"])
     # The pipeline generates a single waveform per call; `prompt` and `lyrics` are single strings.
     # one music description per call: the encoder raises on a list
     batch_params = frozenset()

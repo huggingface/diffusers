@@ -35,7 +35,6 @@ class Wan22VaceModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pretrained_model_name_or_path = "akshan-main/tiny-wan22-vace-modular-pipe"
     expected_latents_shape = (1, 16, 3, 2, 2)
 
-    params = frozenset(["prompt", "height", "width", "num_frames", "video", "mask", "reference_images"])
     # a list of prompts is not yet supported: `WanVaceAdditionalInputsStep` raises on one
     batch_params = frozenset()
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])

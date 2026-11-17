@@ -111,7 +111,6 @@ class AnimaModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = AnimaAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-anima-modular-pipe"
     expected_latents_shape = (1, 4, 1, 8, 8)
-    params = frozenset(["prompt", "height", "width", "negative_prompt"])
     batch_params = frozenset(["prompt", "negative_prompt"])
     expected_workflow_blocks = ANIMA_TEXT2IMAGE_WORKFLOWS
 
@@ -257,7 +256,6 @@ class AnimaImg2ImgModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = AnimaAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-anima-modular-pipe"
     expected_latents_shape = (1, 4, 1, 8, 8)
-    params = frozenset(["prompt", "image", "strength", "height", "width", "negative_prompt"])
     batch_params = frozenset(["prompt", "negative_prompt"])
     expected_workflow_blocks = ANIMA_IMG2IMG_WORKFLOWS
 

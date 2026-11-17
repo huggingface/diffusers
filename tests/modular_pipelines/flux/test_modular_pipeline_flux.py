@@ -60,7 +60,6 @@ class FluxModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-modular"
     expected_latents_shape = (1, 1, 8, 8)
 
-    params = frozenset(["prompt", "height", "width", "guidance_scale"])
     expected_workflow_blocks = FLUX_TEXT2IMAGE_WORKFLOWS
 
     def get_dummy_inputs(self, seed=0):
@@ -136,7 +135,6 @@ class FluxImg2ImgModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-modular"
     expected_latents_shape = (1, 1, 8, 8)
 
-    params = frozenset(["prompt", "height", "width", "guidance_scale", "image"])
     batch_params = frozenset(["prompt", "image"])
     expected_workflow_blocks = FLUX_IMAGE2IMAGE_WORKFLOWS
 
@@ -236,7 +234,6 @@ class FluxKontextModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-kontext-pipe"
     expected_latents_shape = (1, 1, 8, 8)
 
-    params = frozenset(["prompt", "height", "width", "guidance_scale", "image"])
     batch_params = frozenset(["prompt", "image"])
     expected_workflow_blocks = FLUX_KONTEXT_WORKFLOWS
 

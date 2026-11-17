@@ -99,7 +99,7 @@ LTX2_WORKFLOWS = {
 
 
 class LTX2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
-    """Shared configuration for every LTX2 workflow; a variant config adds its own `params` and dummy inputs."""
+    """Shared configuration for every LTX2 workflow; a variant config adds its own dummy inputs."""
 
     pipeline_class = LTX2ModularPipeline
     pipeline_blocks_class = LTX2AutoBlocks
@@ -140,13 +140,7 @@ class LTX2ModularPipelineFastTesterMixin(ModularPipelineTesterMixin):
         super().test_inference_batch_single_identical(expected_max_diff=1e-3)
 
 
-class LTX2Text2VideoModularPipelineTesterConfig(LTX2ModularPipelineTesterConfig):
-    params = frozenset(["prompt", "height", "width", "num_frames"])
-
-
-class TestLTX2Text2VideoModularPipelineFast(
-    LTX2Text2VideoModularPipelineTesterConfig, LTX2ModularPipelineFastTesterMixin
-):
+class TestLTX2Text2VideoModularPipelineFast(LTX2ModularPipelineTesterConfig, LTX2ModularPipelineFastTesterMixin):
     def test_audio_output(self):
         pipe = self.get_pipeline().to("cpu")
 
@@ -173,7 +167,7 @@ class TestLTX2Text2VideoModularPipelineFast(
         assert 0 < num_frames <= round(2.0 * inputs["frame_rate"])
 
 
-class TestLTX2Text2VideoModularPipelineLoading(LTX2Text2VideoModularPipelineTesterConfig, ModularLoadingTesterMixin):
+class TestLTX2Text2VideoModularPipelineLoading(LTX2ModularPipelineTesterConfig, ModularLoadingTesterMixin):
     def test_guiders_round_trip_as_pretrained_components(self, tmp_path):
         # `guider` and `audio_guider` default to `from_config`, so a checkpoint that ships non-default guidance
         # scales has to declare them as `from_pretrained` components instead. That path records the class as a
@@ -208,18 +202,16 @@ class TestLTX2Text2VideoModularPipelineLoading(LTX2Text2VideoModularPipelineTest
         assert loaded_pipe.audio_guider.config.guidance_scale == 8.0
 
 
-class TestLTX2Text2VideoModularPipelineMemory(LTX2Text2VideoModularPipelineTesterConfig, ModularMemoryTesterMixin):
+class TestLTX2Text2VideoModularPipelineMemory(LTX2ModularPipelineTesterConfig, ModularMemoryTesterMixin):
     pass
 
 
 # The four workflows share `LTX2AutoBlocks` and the same repo, so one workflow test class covers all of them.
-class TestLTX2ModularPipelineWorkflow(LTX2Text2VideoModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+class TestLTX2ModularPipelineWorkflow(LTX2ModularPipelineTesterConfig, ModularWorkflowTesterMixin):
     pass
 
 
 class LTX2Image2VideoModularPipelineTesterConfig(LTX2ModularPipelineTesterConfig):
-    params = frozenset(["prompt", "image", "height", "width", "num_frames"])
-
     def get_dummy_inputs(self, seed=0):
         inputs = super().get_dummy_inputs(seed)
         rng = np.random.default_rng(seed)
@@ -245,8 +237,6 @@ class TestLTX2Image2VideoModularPipelineMemory(LTX2Image2VideoModularPipelineTes
 
 
 class LTX2ConditionModularPipelineTesterConfig(LTX2ModularPipelineTesterConfig):
-    params = frozenset(["prompt", "conditions", "height", "width", "num_frames"])
-
     def get_dummy_inputs(self, seed=0):
         inputs = super().get_dummy_inputs(seed)
         image = torch.rand((1, 3, 32, 32), generator=torch.Generator("cpu").manual_seed(seed))
@@ -270,8 +260,6 @@ class TestLTX2ConditionModularPipelineMemory(LTX2ConditionModularPipelineTesterC
 
 
 class LTX2InContextModularPipelineTesterConfig(LTX2ModularPipelineTesterConfig):
-    params = frozenset(["prompt", "reference_conditions", "height", "width", "num_frames"])
-
     def get_dummy_inputs(self, seed=0):
         inputs = super().get_dummy_inputs(seed)
         video = torch.rand((1, 5, 3, 32, 32), generator=torch.Generator("cpu").manual_seed(seed))

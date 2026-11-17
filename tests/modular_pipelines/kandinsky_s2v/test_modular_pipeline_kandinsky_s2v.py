@@ -70,7 +70,6 @@ class KandinskyS2VModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = KandinskyS2VModularPipeline
     pipeline_blocks_class = KandinskyS2VAutoBlocks
     pretrained_model_name_or_path = TINY_REPO
-    params = frozenset(["image", "audio", "prompt", "height", "width", "num_latent_frames"])
     # one prompt per call: batching is not supported
     batch_params = frozenset()
     optional_params = frozenset(["num_inference_steps", "output_type"])

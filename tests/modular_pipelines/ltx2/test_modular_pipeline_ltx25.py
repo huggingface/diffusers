@@ -97,7 +97,7 @@ LTX25_WORKFLOWS = {
 
 
 class LTX25ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
-    """Shared configuration for every LTX-2.5 workflow; a variant config adds its own `params` and dummy inputs."""
+    """Shared configuration for every LTX-2.5 workflow; a variant config adds its own dummy inputs."""
 
     pipeline_class = LTX25ModularPipeline
     pipeline_blocks_class = LTX25AutoBlocks
@@ -138,13 +138,7 @@ class LTX25ModularPipelineFastTesterMixin(ModularPipelineTesterMixin):
         super().test_inference_batch_single_identical(expected_max_diff=1e-3)
 
 
-class LTX25Text2VideoModularPipelineTesterConfig(LTX25ModularPipelineTesterConfig):
-    params = frozenset(["prompt", "height", "width", "num_frames"])
-
-
-class TestLTX25Text2VideoModularPipelineFast(
-    LTX25Text2VideoModularPipelineTesterConfig, LTX25ModularPipelineFastTesterMixin
-):
+class TestLTX25Text2VideoModularPipelineFast(LTX25ModularPipelineTesterConfig, LTX25ModularPipelineFastTesterMixin):
     def test_diffusion_decoder_output(self):
         pipe = self.get_pipeline().to("cpu")
 
@@ -211,22 +205,20 @@ class TestLTX25Text2VideoModularPipelineFast(
             pipe(**self.get_dummy_inputs(), motion_speed=0.0, output="videos")
 
 
-class TestLTX25Text2VideoModularPipelineLoading(LTX25Text2VideoModularPipelineTesterConfig, ModularLoadingTesterMixin):
+class TestLTX25Text2VideoModularPipelineLoading(LTX25ModularPipelineTesterConfig, ModularLoadingTesterMixin):
     pass
 
 
-class TestLTX25Text2VideoModularPipelineMemory(LTX25Text2VideoModularPipelineTesterConfig, ModularMemoryTesterMixin):
+class TestLTX25Text2VideoModularPipelineMemory(LTX25ModularPipelineTesterConfig, ModularMemoryTesterMixin):
     pass
 
 
 # The four workflows share `LTX25AutoBlocks` and the same repo, so one workflow test class covers all of them.
-class TestLTX25ModularPipelineWorkflow(LTX25Text2VideoModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+class TestLTX25ModularPipelineWorkflow(LTX25ModularPipelineTesterConfig, ModularWorkflowTesterMixin):
     pass
 
 
 class LTX25Image2VideoModularPipelineTesterConfig(LTX25ModularPipelineTesterConfig):
-    params = frozenset(["prompt", "image", "height", "width", "num_frames"])
-
     def get_dummy_inputs(self, seed=0):
         inputs = super().get_dummy_inputs(seed)
         rng = np.random.default_rng(seed)
@@ -254,8 +246,6 @@ class TestLTX25Image2VideoModularPipelineMemory(LTX25Image2VideoModularPipelineT
 
 
 class LTX25ConditionModularPipelineTesterConfig(LTX25ModularPipelineTesterConfig):
-    params = frozenset(["prompt", "conditions", "height", "width", "num_frames"])
-
     def get_dummy_inputs(self, seed=0):
         inputs = super().get_dummy_inputs(seed)
         image = torch.rand((1, 3, 32, 32), generator=torch.Generator("cpu").manual_seed(seed))
@@ -279,8 +269,6 @@ class TestLTX25ConditionModularPipelineMemory(LTX25ConditionModularPipelineTeste
 
 
 class LTX25InContextModularPipelineTesterConfig(LTX25ModularPipelineTesterConfig):
-    params = frozenset(["prompt", "reference_conditions", "height", "width", "num_frames"])
-
     def get_dummy_inputs(self, seed=0):
         inputs = super().get_dummy_inputs(seed)
         video = torch.rand((1, 5, 3, 32, 32), generator=torch.Generator("cpu").manual_seed(seed))

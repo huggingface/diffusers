@@ -37,9 +37,10 @@ class BaseModularPipelineTesterConfig:
     Base class defining the configuration interface for modular pipeline testing.
 
     A concrete config must set `pipeline_blocks_class` and `pretrained_model_name_or_path` and implement
-    `get_dummy_inputs()`; `params` and `batch_params` declare which inputs the blocks are expected to accept and which
-    of them are batched. This class only declares the testing contract; the pipeline builder and the cached reference
-    output live on `BaseModularPipelineOutputMixin` (mirroring the non-modular `BasePipelineTesterConfig`).
+    `get_dummy_inputs()`; `required_params`, `optional_params`, `not_params` and `batch_params` declare what the blocks
+    are expected to require, accept, reject and batch. This class only declares the testing contract; the pipeline
+    builder and the cached reference output live on `BaseModularPipelineOutputMixin` (mirroring the non-modular
+    `BasePipelineTesterConfig`).
     """
 
     # Canonical parameters that are passed to `__call__` regardless of the type of pipeline. They are always
@@ -54,7 +55,7 @@ class BaseModularPipelineTesterConfig:
     # `frozenset()`; a pipeline that batches an image as well adds it
     batch_params = frozenset(["prompt"])
     # Parameters the pipeline deliberately does NOT accept — e.g. `negative_prompt` on a
-    # guidance-distilled pipeline. `test_pipeline_call_signature` asserts they are absent,
+    # guidance-distilled pipeline. `test_pipeline_not_parameters` asserts they are absent,
     # so accidentally (re)introducing one fails the test.
     not_params = frozenset()
     # Output type for the pipeline (e.g., "images" for image pipelines, "videos" for video pipelines)
@@ -100,21 +101,6 @@ class BaseModularPipelineTesterConfig:
     def get_dummy_inputs(self, seed=0):
         raise NotImplementedError(
             "You need to implement `get_dummy_inputs(self, device, seed)` in the child test class. "
-            "See existing pipeline tests for reference."
-        )
-
-    @property
-    def params(self) -> frozenset:
-        raise NotImplementedError(
-            "You need to set the attribute `params` in the child test class. "
-            "`params` are checked for if all values are present in `__call__`'s signature."
-            " You can set `params` using one of the common set of parameters defined in `pipeline_params.py`"
-            " e.g., `TEXT_TO_IMAGE_PARAMS` defines the common parameters used in text to  "
-            "image pipelines, including prompts and prompt embedding overrides."
-            "If your pipeline's set of arguments has minor changes from one of the common sets of arguments, "
-            "do not make modifications to the existing common sets of arguments. I.e. a text to image pipeline "
-            "with non-configurable height and width arguments should set the attribute as "
-            "`params = TEXT_TO_IMAGE_PARAMS - {'height', 'width'}`. "
             "See existing pipeline tests for reference."
         )
 
@@ -197,12 +183,11 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
     `pretrained_model_name_or_path`, `get_dummy_inputs()` and the shared fixtures).
     """
 
-    def test_pipeline_call_signature(self):
-        # test all the `params` are present in the pipeline inputs and `not_params` are not present
+    def test_pipeline_not_parameters(self):
+        # test to make sure none of `self.not_params` is a pipeline input, e.g. `negative_prompt` on a distilled
+        # pipeline
         blocks = self.pipeline_blocks_class()
         input_parameters = set(blocks.input_names)
-        assert self.params <= input_parameters, self.params - input_parameters
-
         unsupported_parameters = {param for param in self.not_params if param in input_parameters}
         assert len(unsupported_parameters) == 0, (
             f"Parameters declared in `not_params` unexpectedly present in the pipeline inputs: {unsupported_parameters}"

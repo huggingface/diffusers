@@ -54,7 +54,6 @@ class HunyuanVideo15ModularPipelineTesterConfig(BaseModularPipelineTesterConfig)
     pipeline_blocks_class = HunyuanVideo15AutoBlocks
     pretrained_model_name_or_path = "akshan-main/tiny-hunyuanvideo1_5-modular-pipe"
     expected_latents_shape = (1, 32, 3, 2, 2)
-    params = frozenset(["prompt", "height", "width", "num_frames"])
     # the text encoder encodes an empty prompt when none is given, so no input is required
     required_params = frozenset()
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])

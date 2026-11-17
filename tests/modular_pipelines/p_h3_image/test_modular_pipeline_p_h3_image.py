@@ -156,7 +156,6 @@ class PH3ImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pretrained_model_name_or_path = "hf-internal-testing/tiny-p-h3-image-modular-pipe"
     # One 4-channel latent frame for a 32 x 32 image.
     expected_latents_shape = (1, 4, 1, 2, 2)
-    params = frozenset(["prompt", "image", "height", "width"])
     # One request is one packed sequence, so prompts are not batched.
     # one prompt per call: the prompt upsampler raises on a list
     batch_params = frozenset()

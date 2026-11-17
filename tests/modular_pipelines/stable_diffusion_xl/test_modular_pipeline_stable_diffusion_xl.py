@@ -337,15 +337,6 @@ class SDXLModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = StableDiffusionXLAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-sdxl-modular"
     expected_latents_shape = (1, 4, 32, 32)
-    params = frozenset(
-        [
-            "prompt",
-            "height",
-            "width",
-            "negative_prompt",
-            "cross_attention_kwargs",
-        ]
-    )
     batch_params = frozenset(["prompt", "negative_prompt"])
     expected_image_output_shape = (1, 3, 64, 64)
 
@@ -466,16 +457,6 @@ class SDXLImg2ImgModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = StableDiffusionXLAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-sdxl-modular"
     expected_latents_shape = (1, 4, 32, 32)
-    params = frozenset(
-        [
-            "prompt",
-            "height",
-            "width",
-            "negative_prompt",
-            "cross_attention_kwargs",
-            "image",
-        ]
-    )
     batch_params = frozenset(["prompt", "negative_prompt", "image"])
     expected_image_output_shape = (1, 3, 64, 64)
     expected_workflow_blocks = IMAGE2IMAGE_WORKFLOWS
@@ -611,17 +592,6 @@ class SDXLInpaintingModularPipelineFastTests(
     pipeline_blocks_class = StableDiffusionXLAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-sdxl-modular"
     expected_latents_shape = (1, 4, 32, 32)
-    params = frozenset(
-        [
-            "prompt",
-            "height",
-            "width",
-            "negative_prompt",
-            "cross_attention_kwargs",
-            "image",
-            "mask_image",
-        ]
-    )
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
     expected_image_output_shape = (1, 3, 64, 64)
     expected_workflow_blocks = INPAINTING_WORKFLOWS

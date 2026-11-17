@@ -52,7 +52,6 @@ class StableDiffusion3ModularPipelineTesterConfig(BaseModularPipelineTesterConfi
     pipeline_blocks_class = StableDiffusion3AutoBlocks
     pretrained_model_name_or_path = "AlanPonnachan/tiny-sd3-modular"
     expected_latents_shape = (1, 4, 32, 32)
-    params = frozenset(["prompt", "height", "width"])
     expected_workflow_blocks = SD3_TEXT2IMAGE_WORKFLOWS
 
     def get_dummy_inputs(self, seed=0):
@@ -69,11 +68,6 @@ class StableDiffusion3ModularPipelineTesterConfig(BaseModularPipelineTesterConfi
 
 
 class TestStableDiffusion3ModularPipelineFast(StableDiffusion3ModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    def test_pipeline_call_signature(self):
-        # Override to prevent signature check failure for guider configurations
-        # (guidance_scale) which are intentionally omitted from pipeline inputs.
-        pass
-
     def test_float16_inference(self):
         super().test_float16_inference(9e-2)
 
@@ -144,7 +138,6 @@ class StableDiffusion3Img2ImgModularPipelineTesterConfig(BaseModularPipelineTest
     pipeline_blocks_class = StableDiffusion3AutoBlocks
     pretrained_model_name_or_path = "AlanPonnachan/tiny-sd3-modular"
     expected_latents_shape = (1, 4, 32, 32)
-    params = frozenset(["prompt", "height", "width", "image"])
     batch_params = frozenset(["prompt", "image"])
     expected_workflow_blocks = SD3_IMAGE2IMAGE_WORKFLOWS
 
@@ -175,11 +168,6 @@ class StableDiffusion3Img2ImgModularPipelineTesterConfig(BaseModularPipelineTest
 class TestStableDiffusion3Img2ImgModularPipelineFast(
     StableDiffusion3Img2ImgModularPipelineTesterConfig, ModularPipelineTesterMixin
 ):
-    def test_pipeline_call_signature(self):
-        # Override to prevent signature check failure for guider configurations
-        # (guidance_scale) which are intentionally omitted from pipeline inputs.
-        pass
-
     def test_float16_inference(self):
         super().test_float16_inference(9e-2)
 

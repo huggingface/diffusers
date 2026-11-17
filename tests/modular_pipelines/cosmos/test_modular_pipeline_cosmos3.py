@@ -133,7 +133,6 @@ class Cosmos3OmniModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = Cosmos3OmniBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-cosmos3-modular-pipe"
     expected_latents_shape = (1, 4, 2, 4, 4)
-    params = frozenset(["prompt", "height", "width", "num_frames", "guidance_scale"])
     # one prompt per call: the text encoder raises on a list
     batch_params = frozenset()
     optional_params = frozenset(["num_inference_steps", "output_type"])
