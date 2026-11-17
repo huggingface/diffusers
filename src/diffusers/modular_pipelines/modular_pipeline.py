@@ -1372,8 +1372,13 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         inputs = {}  # input_name -> InputParam, e.g. {"num_inference_steps": InputParam("num_inference_steps", default=50)}
         outputs = set()  # produced by an earlier block
         # maybe produced by an earlier block: a ConditionalPipelineBlocks that can be skipped, or whose branches do not
-        # all produce the output, at any depth
+        # all produce the output, at any depth. e.g. `image_latents` from a skippable `image_encoder`
         maybe_outputs = set()
+        # could be produced by an earlier block, but only when the block receives the same input.
+        # `requires_same_input` is used to determine if an output can stand in for an input the caller did not pass,
+        # e.g. a skippable prompt enhancer writes `prompt` but also requires `prompt` as an input, so it cannot stand
+        # in for a `prompt` the caller did not pass
+        requires_same_input = set()
         for block_name, block in self.sub_blocks.items():
             for inp in block.inputs:
                 # kwargs inputs have no name, key them by "*_<kwargs_type>"
@@ -1393,7 +1398,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
                         inputs[key].defaults_by_block = {
                             f"{block_name}.{k}": v for k, v in inp.defaults_by_block.items()
                         }
-                    if key in maybe_outputs:
+                    if key in maybe_outputs and key not in requires_same_input:
                         # an earlier conditional block can produce it, so the caller does not have to pass it even if
                         # this block requires it.
                         # e.g. `prepare_latents` lists `image_latents` as a required input, but `image_encoder` (a
@@ -1415,7 +1420,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
                     has_default = existing.default is not None or any(
                         d is not None and d is not REQUIRED for d in (existing.defaults_by_block or {}).values()
                     )
-                    if key not in maybe_outputs and not has_default:
+                    if not (key in maybe_outputs and key not in requires_same_input) and not has_default:
                         existing.required = True
                 elif (
                     not inp.required
@@ -1439,9 +1444,29 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
                         f"earlier declaration."
                     )
             # an output the block always produces goes to `outputs`, one marked `_maybe` (see `OutputParam`) to
-            # `maybe_outputs`, e.g. `image_encoder` may be skipped, so `image_latents` is only produced if it runs
+            # `maybe_outputs`, e.g. `image_encoder` may be skipped, so `image_latents` is only produced if it runs.
+            # A maybe-output also goes to `requires_same_input` unless the block is able to produce it without
+            # requiring it as an input: we look through its sub-blocks, at any depth, for one that does
             for out in block.intermediate_outputs:
-                (maybe_outputs if out._maybe else outputs).add(out.name)
+                if not out._maybe:
+                    outputs.add(out.name)
+                    continue
+                to_visit = [block]
+                produced_on_its_own = False
+                while to_visit and not produced_on_its_own:
+                    current = to_visit.pop()
+                    if isinstance(current, (SequentialPipelineBlocks, ConditionalPipelineBlocks)):
+                        to_visit.extend(current.sub_blocks.values())
+                    else:
+                        produced_on_its_own = out.name in {o.name for o in current.intermediate_outputs} and (
+                            out.name not in {i.name for i in current.inputs if i.required}
+                        )
+                if produced_on_its_own:
+                    # another block can produce it on its own, so it can stand in for the input
+                    requires_same_input.discard(out.name)
+                elif out.name not in maybe_outputs:
+                    requires_same_input.add(out.name)
+                maybe_outputs.add(out.name)
 
         return list(inputs.values())
 

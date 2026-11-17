@@ -233,7 +233,7 @@ class LTX25AutoBlocks(SequentialPipelineBlocks):
           audio_guider (`LTX2Guidance`) diffusion_decoder (`LTX2VideoDiffusionDecoderModel`) vocoder (`LTX2Vocoder`)
 
       Inputs:
-          prompt (`str`, *optional*, depends on the workflow):
+          prompt (`str`):
               The prompt or prompts to guide image generation.
           conditions (`list`, *optional*):
               `LTX2VideoCondition` (or list of them) placing image/video conditions at latent frame indices of the

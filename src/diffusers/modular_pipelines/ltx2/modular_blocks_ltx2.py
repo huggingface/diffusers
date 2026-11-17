@@ -1268,7 +1268,7 @@ class LTX2Blocks(SequentialPipelineBlocks):
           (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) vocoder (`LTX2Vocoder`)
 
       Inputs:
-          prompt (`str`, *optional*, depends on the workflow):
+          prompt (`str`):
               The prompt or prompts to guide image generation.
           conditions (`list`, *optional*):
               `LTX2VideoCondition` (or list of them) placing image/video conditions at latent frame indices of the
@@ -1380,7 +1380,7 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
           audio_guider (`LTX2Guidance`) vocoder (`LTX2Vocoder`)
 
       Inputs:
-          prompt (`str`, *optional*, depends on the workflow):
+          prompt (`str`):
               The prompt or prompts to guide image generation.
           conditions (`list`, *optional*):
               `LTX2VideoCondition` (or list of them) placing image/video conditions at latent frame indices of the
@@ -1501,7 +1501,7 @@ class LTX2ConditionBlocks(SequentialPipelineBlocks):
           (`LTX2Guidance`) video_processor (`VideoProcessor`) vocoder (`LTX2Vocoder`)
 
       Inputs:
-          prompt (`str`, *optional*, depends on the workflow):
+          prompt (`str`):
               The prompt or prompts to guide image generation.
           conditions (`list`, *optional*):
               `LTX2VideoCondition` (or list of them) placing image/video conditions at latent frame indices of the
@@ -1621,7 +1621,7 @@ class LTX2InContextBlocks(SequentialPipelineBlocks):
           (`LTX2Guidance`) vocoder (`LTX2Vocoder`)
 
       Inputs:
-          prompt (`str`, *optional*, depends on the workflow):
+          prompt (`str`):
               The prompt or prompts to guide image generation.
           conditions (`list`, *optional*):
               `LTX2VideoCondition` (or list of them) placing image/video conditions at latent frame indices of the
@@ -1777,7 +1777,7 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
           audio_guider (`LTX2Guidance`) vocoder (`LTX2Vocoder`)
 
       Inputs:
-          prompt (`str`, *optional*, depends on the workflow):
+          prompt (`str`):
               The prompt or prompts to guide image generation.
           conditions (`list`, *optional*):
               `LTX2VideoCondition` (or list of them) placing image/video conditions at latent frame indices of the

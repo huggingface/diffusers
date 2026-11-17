@@ -313,6 +313,98 @@ class TestSequentialPipelineBlocksRequiredInputs:
         assert required_flags(blocks, "image", "image_latents") == {"image": False, "image_latents": False}
         assert blocks.required_inputs == []
 
+    def test_skippable_block_that_rewrites_its_own_input_does_not_supply_it(self):
+        class EnhancePromptBlock(ModularPipelineBlocks):
+            model_name = "test"
+
+            @property
+            def inputs(self):
+                return [InputParam("prompt", required=True), InputParam("enhance", default=False)]
+
+            @property
+            def intermediate_outputs(self):
+                return [OutputParam("prompt")]
+
+            def __call__(self, components, state):
+                return components, state
+
+        class SkippableEnhance(ConditionalPipelineBlocks):
+            block_classes = [EnhancePromptBlock]
+            block_names = ["enhance"]
+            block_trigger_inputs = ["enhance"]
+            default_block_name = None
+
+            def select_block(self, enhance=None):
+                return "enhance" if enhance else None
+
+        class EncodePromptBlock(ModularPipelineBlocks):
+            model_name = "test"
+
+            @property
+            def inputs(self):
+                return [InputParam("prompt", required=True)]
+
+            def __call__(self, components, state):
+                return components, state
+
+        blocks = SequentialPipelineBlocks.from_blocks_dict(
+            {"enhance": SkippableEnhance(), "encode": EncodePromptBlock()}
+        )
+        # the enhancer only rewrites the `prompt` it was given: skipped, nothing produces it; run, the caller passed
+        # it. So the encoder's requirement stands and `prompt` is a required input
+        assert required_flags(blocks, "prompt") == {"prompt": True}
+        assert blocks.required_inputs == ["prompt"]
+
+        # same answer when the enhancer sits one level down, inside another sequence
+        nested = SequentialPipelineBlocks.from_blocks_dict(
+            {
+                "prepare": SequentialPipelineBlocks.from_blocks_dict({"enhance": SkippableEnhance()}),
+                "encode": EncodePromptBlock(),
+            }
+        )
+        assert required_flags(nested, "prompt") == {"prompt": True}
+
+    def test_skippable_block_that_reads_its_output_optionally_supplies_it(self):
+        class ResolveSizeBlock(ModularPipelineBlocks):
+            model_name = "test"
+
+            @property
+            def inputs(self):
+                return [InputParam("image", required=True), InputParam("height")]
+
+            @property
+            def intermediate_outputs(self):
+                return [OutputParam("height")]
+
+            def __call__(self, components, state):
+                return components, state
+
+        class SkippableResolveSize(ConditionalPipelineBlocks):
+            block_classes = [ResolveSizeBlock]
+            block_names = ["resolve"]
+            block_trigger_inputs = ["image"]
+            default_block_name = None
+
+            def select_block(self, image=None):
+                return "resolve" if image is not None else None
+
+        class NeedsHeightBlock(ModularPipelineBlocks):
+            model_name = "test"
+
+            @property
+            def inputs(self):
+                return [InputParam("height", required=True)]
+
+            def __call__(self, components, state):
+                return components, state
+
+        blocks = SequentialPipelineBlocks.from_blocks_dict(
+            {"resolve": SkippableResolveSize(), "consume": NeedsHeightBlock()}
+        )
+        # `resolve` reads `height` only optionally and works it out from `image` otherwise, so it can supply it: the
+        # caller passes `image` or `height`
+        assert required_flags(blocks, "image", "height") == {"image": False, "height": False}
+
     def test_output_of_some_branches_only_keeps_required_input_listed_but_optional(self):
         class EncodeImageAndCountBlock(EncodeImageBlock):
             @property
