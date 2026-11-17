@@ -124,7 +124,7 @@ pipeline(prompt).images[0]
 
 ## Quantization and optimizations
 
-Large models often need less memory or more speed. Use [quantization](./quantization/overview) to shrink weights in memory, and [`~ModelMixin.compile_repeated_blocks`] to speed up later generates. For [model offloading](./optimization/memory#model-offloading) and other options, see [Optimize and scale](./stable_diffusion).
+Large models often need less memory or more speed. Use [quantization](./quantization/overview) to shrink weights in memory, and [`~ModelMixin.compile_repeated_blocks`] to speed up later generates. For [model offloading](./optimization/memory#model-offloading) and other options, see [Optimize and scale](./optimization/overview).
 
 To use less memory, load in 4-bit with bitsandbytes.
 
@@ -173,7 +173,7 @@ pipeline(prompt).images[0]
 ## Next steps
 
 - [Inference](./using-diffusers/loading) — pipelines, prompting, and adapters
-- [Optimize and scale](./stable_diffusion) — memory, speed, quantization, and serving
+- [Optimize and scale](./optimization/overview) — memory, speed, quantization, and serving
 - [Modular Diffusers](./modular_diffusers/overview) — composable blocks and custom pipelines
 - [Train and fine-tune](./training/overview) — training scripts and adapters
 - [CLI](./using-diffusers/cli) — generate from the command line

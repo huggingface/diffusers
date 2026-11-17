@@ -449,7 +449,7 @@ class JoyImageEditPlusTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin
         encoder_hidden_states_mask: torch.Tensor | None = None,
         shape_list: list[list[tuple[int, int, int]]] = None,
         return_dict: bool = True,
-    ) -> torch.Tensor | tuple:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         Args:
             hidden_states: [B, max_patches, C, pt, ph, pw] - patchified latent input.

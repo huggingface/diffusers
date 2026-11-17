@@ -77,3 +77,38 @@ def test_mixed_ranks_with_per_module_alphas_unchanged():
     kwargs = get_peft_kwargs(_rank_dict(module_ranks), network_alphas, _peft_state_dict(module_ranks))
     for module in module_ranks:
         assert _effective_scale(kwargs, module) == 1.0
+
+
+def test_text_encoder_alpha_pattern_names_lora_modules():
+    # Regression test for https://github.com/huggingface/diffusers/issues/14970:
+    # text-encoder `alpha_pattern` keys must name the LoRA module itself (e.g. `k_proj`),
+    # not its parent block, otherwise PEFT's end-of-name matching misses and the
+    # default (most common) alpha is applied to every module.
+    peft_state_dict = {
+        "text_model.encoder.layers.0.self_attn.q_proj.lora_A.weight": None,
+        "text_model.encoder.layers.0.self_attn.q_proj.lora_B.weight": None,
+        "text_model.encoder.layers.1.self_attn.k_proj.lora_A.weight": None,
+        "text_model.encoder.layers.1.self_attn.k_proj.lora_B.weight": None,
+    }
+    rank_dict = {k.replace(".lora_A.", ".lora_B."): 4 for k in peft_state_dict if ".lora_A." in k}
+    network_alphas = {
+        "text_model.encoder.layers.0.self_attn.to_q_lora.down.weight.alpha": 4.0,
+        "text_model.encoder.layers.1.self_attn.to_k_lora.down.weight.alpha": 8.0,
+    }
+    kwargs = get_peft_kwargs(rank_dict, network_alphas, peft_state_dict, is_unet=False)
+    assert kwargs["lora_alpha"] == 4.0
+    assert kwargs["alpha_pattern"] == {"encoder.layers.1.self_attn.k_proj": 8.0}
+    assert _effective_scale(kwargs, "encoder.layers.1.self_attn.k_proj") == 2.0
+    assert _effective_scale(kwargs, "encoder.layers.0.self_attn.q_proj") == 1.0
+
+
+def test_text_encoder_alpha_pattern_handles_mlp_and_text_projection():
+    peft_state_dict = {"m.lora_A.weight": None, "m.lora_B.weight": None}
+    network_alphas = {
+        "text_model.encoder.layers.0.mlp.fc1.lora_linear_layer.down.weight.alpha": 8.0,
+        "text_model.text_projection.alpha": 8.0,
+        "text_model.encoder.layers.0.mlp.fc2.lora_linear_layer.down.weight.alpha": 4.0,
+    }
+    kwargs = get_peft_kwargs({"m.lora_B.weight": 4}, network_alphas, peft_state_dict, is_unet=False)
+    assert kwargs["lora_alpha"] == 8.0
+    assert kwargs["alpha_pattern"] == {"encoder.layers.0.mlp.fc2": 4.0}
