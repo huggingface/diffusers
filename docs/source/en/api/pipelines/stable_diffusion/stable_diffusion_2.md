@@ -25,11 +25,11 @@ Stable Diffusion 2 is available for tasks like text-to-image, inpainting, super-
 
 | Task                    | Repository                                                                                                    |
 |-------------------------|---------------------------------------------------------------------------------------------------------------|
-| text-to-image (512x512) | [stabilityai/stable-diffusion-2-base](https://huggingface.co/stabilityai/stable-diffusion-2-base)             |
-| text-to-image (768x768) | [stabilityai/stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2)                       |
-| inpainting              | [stabilityai/stable-diffusion-2-inpainting](https://huggingface.co/stabilityai/stable-diffusion-2-inpainting) |
+| text-to-image (512x512) | [sd2-community/stable-diffusion-2-base](https://huggingface.co/sd2-community/stable-diffusion-2-base)             |
+| text-to-image (768x768) | [sd2-community/stable-diffusion-2](https://huggingface.co/sd2-community/stable-diffusion-2)                       |
+| inpainting              | [sd2-community/stable-diffusion-2-inpainting](https://huggingface.co/sd2-community/stable-diffusion-2-inpainting) |
 | super-resolution        | [stable-diffusion-x4-upscaler](https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler)               |
-| depth-to-image          | [stabilityai/stable-diffusion-2-depth](https://huggingface.co/stabilityai/stable-diffusion-2-depth)           |
+| depth-to-image          | [sd2-community/stable-diffusion-2-depth](https://huggingface.co/sd2-community/stable-diffusion-2-depth)           |
 
 Here are some examples for how to use Stable Diffusion 2 for each task:
 
