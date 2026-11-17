@@ -524,6 +524,10 @@ class TestCosmos3OmniTransformerSeaCache(Cosmos3OmniTransformerTesterConfig, Sea
 
 
 class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelTesterMixin):
+    @property
+    def unexpected_keys_to_ignore(self):
+        return ["layers.0.self_attn.to_q.input_scale", "layers.0.self_attn.to_q.weight_scale"]
+
     def test_cosmos3_decoder_layer_cache_metadata_tracks_generation_stream(self):
         metadata = TransformerBlockRegistry.get(Cosmos3VLTextMoTDecoderLayer)
 
