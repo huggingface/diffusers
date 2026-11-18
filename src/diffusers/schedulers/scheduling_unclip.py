@@ -183,10 +183,14 @@ class UnCLIPScheduler(SchedulerMixin, ConfigMixin):
 
         Args:
             num_inference_steps (`int`):
-                The number of diffusion steps used when generating samples with a pre-trained model.
+                The number of diffusion steps used when generating samples with a pre-trained model. Must be at
+                least 2: the step ratio interpolates between the two ends of the training schedule
+                (`num_train_timesteps - 1` divided by `num_inference_steps - 1`).
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps are moved. If `None`, the timesteps are not moved.
         """
+        if num_inference_steps < 2:
+            raise ValueError(f"`set_timesteps` requires `num_inference_steps` >= 2, but got {num_inference_steps}.")
         self.num_inference_steps = num_inference_steps
         step_ratio = (self.config.num_train_timesteps - 1) / (self.num_inference_steps - 1)
         timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
