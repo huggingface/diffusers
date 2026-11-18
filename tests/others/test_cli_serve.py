@@ -463,7 +463,7 @@ class TestServeApp:
 
         events = client.get(f"/v1/generations/{generation['id']}/events").text
         assert events.count("event: progress") == 3, events
-        assert 'data: {"step": 3, "total_steps": 3, "fraction": 1.0}' in events
+        assert 'data: {"step": 3, "total_steps": 3}' in events
         assert events.rstrip().split("\n\n")[-1].startswith("id: 4\nevent: complete\n")
         # Resuming after the last progress event replays only what followed it.
         resumed = client.get(f"/v1/generations/{generation['id']}/events", headers={"Last-Event-ID": "3"}).text

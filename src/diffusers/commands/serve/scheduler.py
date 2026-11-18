@@ -66,7 +66,7 @@ class GenerationJob:
 
     def report_progress(self, step: int, total_steps: int) -> None:
         with self._lock:
-            self.progress = {"step": step, "total_steps": total_steps, "fraction": round(step / total_steps, 4)}
+            self.progress = {"step": step, "total_steps": total_steps}
             self.events.append(("progress", self.progress))
             self._notify_waiting_requests()
 

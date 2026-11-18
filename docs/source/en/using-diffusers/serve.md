@@ -86,7 +86,7 @@ curl -N localhost:8000/v1/generations/gen_3f9a1c2b7d4e/events
 ```text
 id: 1
 event: progress
-data: {"step": 1, "total_steps": 28, "fraction": 0.0357}
+data: {"step": 1, "total_steps": 28}
 
 ...
 
