@@ -9,6 +9,8 @@
     title: Command line interface
   - local: using-diffusers/serve
     title: Serving
+  - local: using-diffusers/gms
+    title: Generative Media Spec
   title: Get started
 - isExpanded: true
   sections:
