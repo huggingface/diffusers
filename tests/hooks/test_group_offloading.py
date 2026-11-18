@@ -725,6 +725,10 @@ class TestDirectBufferAccessGroupOffload:
     out_features = 64
     num_layers = 2
 
+    def teardown_method(self):
+        gc.collect()
+        backend_empty_cache(torch_device)
+
     def get_model(self):
         torch.manual_seed(0)
         return DummyModelWithStandaloneBatchNorm(
@@ -732,11 +736,17 @@ class TestDirectBufferAccessGroupOffload:
         )
 
     @pytest.mark.parametrize("offload_type", ["leaf_level", "block_level"])
+    @pytest.mark.parametrize("use_stream", [False, True], ids=["no_stream", "stream"])
     @pytest.mark.parametrize("offload_to_disk", [False, True], ids=["memory", "disk"])
-    def test_buffers_read_without_forward_keep_their_values(self, offload_type: str, offload_to_disk: bool, tmp_path):
-        """Buffers of a module whose forward is never called are never onloaded, so their offloaded copy must hold
-        the real values.
+    def test_buffers_read_without_forward_keep_their_values(
+        self, offload_type: str, use_stream: bool, offload_to_disk: bool, tmp_path
+    ):
+        """Buffers read directly, without calling the forward of the module that owns them, must hold their real
+        values while offloaded.
         """
+        if use_stream and torch.device(torch_device).type not in ["cuda", "xpu"]:
+            pytest.skip("Test requires a CUDA or XPU device for streams.")
+
         model = self.get_model()
         running_mean = model.bn.running_mean.clone()
         running_var = model.bn.running_var.clone()
@@ -745,6 +755,7 @@ class TestDirectBufferAccessGroupOffload:
             torch_device,
             offload_type=offload_type,
             num_blocks_per_group=1,
+            use_stream=use_stream,
             offload_to_disk_path=str(tmp_path) if offload_to_disk else None,
         )
 
