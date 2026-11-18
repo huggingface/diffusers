@@ -21,7 +21,12 @@ _HF_KERNEL_REPO = "rootonchair/nunchaku-lite-kernels"
 _HF_KERNEL_VERSION = 2
 
 
-if is_kernels_available():
+def _fetch_kernel_ops():
+    if not is_kernels_available():
+        raise ImportError(
+            "Loading Nunchaku checkpoints requires the Hugging Face `kernels` package. "
+            "Install it with `pip install kernels`."
+        )
     from kernels import get_kernel
 
     if not DIFFUSERS_TRUST_REMOTE_KERNELS:
@@ -31,14 +36,31 @@ if is_kernels_available():
         )
     # `kernels<0.14.0` has no `trust_remote_code` argument and executes the downloaded code unconditionally.
     trust_kwargs = {"trust_remote_code": True} if is_kernels_version(">=", "0.14.0") else {}
-    ops = get_kernel(
+    return get_kernel(
         _HF_KERNEL_REPO, version=_HF_KERNEL_VERSION, user_agent={"diffusers": __version__}, **trust_kwargs
     ).ops
-else:
-    raise ImportError(
-        "Loading Nunchaku checkpoints requires the Hugging Face `kernels` package. "
-        "Install it with `pip install kernels`."
-    )
+
+
+class _LazyKernelOps:
+    """Defers the kernels package/network fetch to the first actual kernel call.
+
+    Constructing `SVDQW4A4Linear`/`AWQW4A16Linear` modules and running data-free
+    quantize-on-load (`quantize_linear_data_free`, pure PyTorch) never touch these
+    ops; only a packed module's `.forward()` does. This lets `nunchaku/utils.py` be
+    imported - and a checkpoint quantized and exported - on a machine with no GPU
+    and no `kernels` package installed, while keeping identical error behavior
+    (`ImportError`/`ValueError`) once inference is actually attempted.
+    """
+
+    _ops = None
+
+    def __getattr__(self, name):
+        if self._ops is None:
+            self._ops = _fetch_kernel_ops()
+        return getattr(self._ops, name)
+
+
+ops = _LazyKernelOps()
 
 
 def _gemm_w4a4(
