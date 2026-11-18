@@ -142,7 +142,6 @@ class WanAnimatePipelineTesterConfig(BasePipelineTesterConfig):
             "prev_segment_conditioning_frames": 1,
             "generator": self.get_generator(0),
             "guidance_scale": 1.0,
-            # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
             "max_sequence_length": 16,
         }
