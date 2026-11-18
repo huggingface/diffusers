@@ -694,3 +694,63 @@ class TestConditionalModuleGroupOffload(TestGroupOffload):
             assert torch.allclose(out_ref_no_opt2, out_no_opt2, atol=1e-5), (
                 f"[{offload_type}] Outputs do not match on third pass (back to no optional_input)."
             )
+
+
+# Model whose batch norm running statistics are read directly, without calling the batch norm's forward, like
+# pipelines reading `vae.bn.running_mean` / `vae.bn.running_var` of `AutoencoderKLFlux2`.
+class DummyModelWithStandaloneBatchNorm(ModelMixin):
+    def __init__(self, in_features: int, hidden_features: int, out_features: int, num_layers: int) -> None:
+        super().__init__()
+
+        self.linear_1 = torch.nn.Linear(in_features, hidden_features)
+        self.blocks = torch.nn.ModuleList(
+            [DummyBlock(hidden_features, hidden_features, hidden_features) for _ in range(num_layers)]
+        )
+        self.linear_2 = torch.nn.Linear(hidden_features, out_features)
+        self.bn = torch.nn.BatchNorm1d(out_features, affine=False, track_running_stats=True)
+        self.bn.running_mean.copy_(torch.linspace(-1.0, 1.0, out_features))
+        self.bn.running_var.copy_(torch.linspace(0.5, 2.0, out_features))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.linear_1(x)
+        for block in self.blocks:
+            x = block(x)
+        return self.linear_2(x)
+
+
+@require_torch_accelerator
+class TestDirectBufferAccessGroupOffload:
+    in_features = 64
+    hidden_features = 256
+    out_features = 64
+    num_layers = 2
+
+    def get_model(self):
+        torch.manual_seed(0)
+        return DummyModelWithStandaloneBatchNorm(
+            self.in_features, self.hidden_features, self.out_features, self.num_layers
+        )
+
+    @pytest.mark.parametrize("offload_type", ["leaf_level", "block_level"])
+    @pytest.mark.parametrize("offload_to_disk", [False, True], ids=["memory", "disk"])
+    def test_buffers_read_without_forward_keep_their_values(self, offload_type: str, offload_to_disk: bool, tmp_path):
+        """Buffers of a module whose forward is never called are never onloaded, so their offloaded copy must hold
+        the real values.
+        """
+        model = self.get_model()
+        running_mean = model.bn.running_mean.clone()
+        running_var = model.bn.running_var.clone()
+
+        model.enable_group_offload(
+            torch_device,
+            offload_type=offload_type,
+            num_blocks_per_group=1,
+            offload_to_disk_path=str(tmp_path) if offload_to_disk else None,
+        )
+
+        x = torch.randn(4, self.in_features).to(torch_device)
+        with torch.no_grad():
+            for _ in range(2):
+                model(x)
+                assert torch.equal(model.bn.running_mean.cpu(), running_mean)
+                assert torch.equal(model.bn.running_var.cpu(), running_var)
