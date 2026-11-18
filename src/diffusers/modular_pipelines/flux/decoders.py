@@ -136,25 +136,32 @@ class FluxDecodeStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> tuple[FluxModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
+        if block_state.output_type == "latent":
+            deprecate(
+                "output_type='latent'",
+                "0.47.0",
+                "Passing `output_type='latent'` to the decode step is deprecated. To get the latents, use "
+                "`output='latents'` or run the pipeline without the decode step.",
+            )
+            block_state.images = block_state.latents
+            self.set_block_state(state, block_state)
+            return components, state
         vae = components.vae
 
-        if not block_state.output_type == "latent":
-            latents = block_state.latents
-            if latents.ndim == 3:
-                deprecate(
-                    "packed latents",
-                    "0.47.0",
-                    "Passing packed latents of shape `[B, S, C]` to the decode step is deprecated; the denoise group "
-                    "now unpacks them. Pass latents of shape `[B, C, H, W]` instead.",
-                )
-                latents = _unpack_latents(latents, block_state.height, block_state.width, components.vae_scale_factor)
-            latents = (latents / vae.config.scaling_factor) + vae.config.shift_factor
-            block_state.images = vae.decode(latents, return_dict=False)[0]
-            block_state.images = components.image_processor.postprocess(
-                block_state.images, output_type=block_state.output_type
+        latents = block_state.latents
+        if latents.ndim == 3:
+            deprecate(
+                "packed latents",
+                "0.47.0",
+                "Passing packed latents of shape `[B, S, C]` to the decode step is deprecated; the denoise group "
+                "now unpacks them. Pass latents of shape `[B, C, H, W]` instead.",
             )
-        else:
-            block_state.images = block_state.latents
+            latents = _unpack_latents(latents, block_state.height, block_state.width, components.vae_scale_factor)
+        latents = (latents / vae.config.scaling_factor) + vae.config.shift_factor
+        block_state.images = vae.decode(latents, return_dict=False)[0]
+        block_state.images = components.image_processor.postprocess(
+            block_state.images, output_type=block_state.output_type
+        )
 
         self.set_block_state(state, block_state)
 

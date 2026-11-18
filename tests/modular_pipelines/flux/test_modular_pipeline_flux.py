@@ -93,6 +93,18 @@ class TestFluxModularPipelineFast(FluxModularPipelineTesterConfig, ModularPipeli
 
         assert images.shape == (1, 3, 8, 8)
 
+    def test_decode_output_type_latent_is_deprecated(self):
+        # `output_type="latent"` still returns the latents unchanged for a deprecation window.
+        decoder = self.pipeline_blocks_class().sub_blocks["decode"].init_pipeline(self.pretrained_model_name_or_path)
+        decoder.load_components(dtype=torch.float32)
+        decoder.to(torch_device)
+
+        latents = torch.randn(1, 1, 8, 8, generator=self.get_generator()).to(torch_device)
+        with pytest.warns(FutureWarning, match="output_type='latent'"):
+            images = decoder(latents=latents, output_type="latent", output="images")
+
+        assert torch.equal(images, latents)
+
     def test_float16_inference(self):
         super().test_float16_inference(9e-2)
 

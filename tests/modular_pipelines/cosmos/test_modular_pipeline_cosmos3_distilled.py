@@ -91,7 +91,7 @@ class Cosmos3DistilledModularPipelineTesterConfig(BaseModularPipelineTesterConfi
             "height": 32,
             "width": 32,
             "num_frames": 5,
-            "output_type": "latent",
+            "output_type": "pt",
         }
 
 

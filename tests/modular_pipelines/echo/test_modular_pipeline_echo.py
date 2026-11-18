@@ -19,7 +19,7 @@ import pytest
 import torch
 
 from diffusers.modular_pipelines.echo.before_denoise import EchoInputsStep, EchoPrepareConditioningStep
-from diffusers.modular_pipelines.echo.decoders import EchoAudioDecoderStep
+from diffusers.modular_pipelines.echo.decoders import _denormalize_audio_latents
 from diffusers.modular_pipelines.echo.encoders import EchoVaeEncoderStep
 from diffusers.modular_pipelines.echo.modular_blocks_echo import EchoDecoderStep
 
@@ -73,15 +73,13 @@ class TestEchoModularPipelineFast(EchoModularPipelineTesterConfig, ModularPipeli
     def test_seeded_dmd_renoising_is_deterministic(self):
         pipe = self.get_pipeline()
         inputs = self.get_dummy_inputs(seed=1)
-        inputs["output_type"] = "latent"
-        first = pipe(**inputs, output=["videos", "audio"])
+        first = pipe(**inputs, output=["latents", "audio_latents"])
 
         inputs = self.get_dummy_inputs(seed=1)
-        inputs["output_type"] = "latent"
-        second = pipe(**inputs, output=["videos", "audio"])
+        second = pipe(**inputs, output=["latents", "audio_latents"])
 
-        assert torch.equal(first["videos"], second["videos"])
-        assert torch.equal(first["audio"], second["audio"])
+        assert torch.equal(first["latents"], second["latents"])
+        assert torch.equal(first["audio_latents"], second["audio_latents"])
 
     def test_audio_decoder_supports_mixed_precision(self):
         pipe = self.get_pipeline()
@@ -94,7 +92,6 @@ class TestEchoModularPipelineFast(EchoModularPipelineTesterConfig, ModularPipeli
     def test_user_latents_are_not_modified(self):
         pipe = self.get_pipeline()
         inputs = self.get_dummy_inputs()
-        inputs["output_type"] = "latent"
         latent_num_frames = 1 + (inputs["num_frames"] - 1) // pipe.vae_temporal_compression_ratio
         latent_height = inputs["height"] // pipe.vae_spatial_compression_ratio
         latent_width = inputs["width"] // pipe.vae_spatial_compression_ratio
@@ -115,7 +112,6 @@ class TestEchoModularPipelineFast(EchoModularPipelineTesterConfig, ModularPipeli
             None if length is None else torch.rand(2, length) for length in waveform_lengths
         ]
         inputs["memory_audio_sample_rates"] = 16000
-        inputs["output_type"] = "latent"
 
         output = pipe(**inputs, output=["videos", "audio"])
 
@@ -196,10 +192,9 @@ class TestEchoModularBlocks(EchoModularPipelineTesterConfig, BaseModularPipeline
         expected = (raw_latents.transpose(1, 2).flatten(2) - mean) / std
         torch.testing.assert_close(normalized.transpose(1, 2).flatten(2), expected.float(), rtol=0, atol=0)
 
-        decoder = EchoAudioDecoderStep().init_pipeline(self.pretrained_model_name_or_path)
-        decoder.load_components(dtype=torch.float32)
-        decoder.update_components(audio_vae=normalized_vae)
-        decoded = decoder(audio_latents=normalized.to(dtype), output_type="latent", output="audio")
+        decoded = _denormalize_audio_latents(
+            normalized.to(dtype), normalized_vae.latents_mean, normalized_vae.latents_std
+        )
         expected_decoded = (
             (expected * std + mean).unflatten(2, (raw_latents.shape[1], raw_latents.shape[3])).transpose(1, 2)
         )

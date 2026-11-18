@@ -18,7 +18,7 @@ import torch
 from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL
-from ...utils import logging
+from ...utils import deprecate, logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import StableDiffusion3ModularPipeline
@@ -65,16 +65,23 @@ class StableDiffusion3DecodeStep(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(self, components, state: PipelineState) -> tuple[StableDiffusion3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
+        if block_state.output_type == "latent":
+            deprecate(
+                "output_type='latent'",
+                "0.47.0",
+                "Passing `output_type='latent'` to the decode step is deprecated. To get the latents, use "
+                "`output='latents'` or run the pipeline without the decode step.",
+            )
+            block_state.images = block_state.latents
+            self.set_block_state(state, block_state)
+            return components, state
         vae = components.vae
 
-        if not block_state.output_type == "latent":
-            latents = (block_state.latents / vae.config.scaling_factor) + vae.config.shift_factor
-            block_state.images = vae.decode(latents, return_dict=False)[0]
-            block_state.images = components.image_processor.postprocess(
-                block_state.images, output_type=block_state.output_type
-            )
-        else:
-            block_state.images = block_state.latents
+        latents = (block_state.latents / vae.config.scaling_factor) + vae.config.shift_factor
+        block_state.images = vae.decode(latents, return_dict=False)[0]
+        block_state.images = components.image_processor.postprocess(
+            block_state.images, output_type=block_state.output_type
+        )
 
         self.set_block_state(state, block_state)
         return components, state
