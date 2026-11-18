@@ -67,6 +67,10 @@ class Cosmos3KVLayerCache:
             raise RuntimeError("KV cache has not been populated yet.")
         return self.k, self.v
 
+    def clear(self):
+        self.k = None
+        self.v = None
+
 
 class Cosmos3KVCache:
     """Container for all decoder layers' text-prefix KV caches."""
@@ -76,6 +80,10 @@ class Cosmos3KVCache:
 
     def get_layer(self, layer_idx: int) -> Cosmos3KVLayerCache:
         return self.layer_caches[layer_idx]
+
+    def clear(self):
+        for cache in self.layer_caches:
+            cache.clear()
 
 
 class Cosmos3AttnProcessor:

@@ -29,6 +29,7 @@ from diffusers import (
     UniPCMultistepScheduler,
     apply_sea_cache,
 )
+from diffusers.models.transformers.transformer_cosmos3 import Cosmos3KVCache
 from diffusers.pipelines.cosmos.pipeline_cosmos3_omni import _preprocess_conditioning_image
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -245,7 +246,17 @@ class TestCosmos3OmniPipeline(Cosmos3OmniPipelineTesterConfig, PipelineTesterMix
 
         # Two calls with different prompts: the text keys/values of the first call must not leak into the second.
         prompts = ["a dog", "a cat sitting on a red mat"]
-        reused = [run(prompt, use_kv_cache=True) for prompt in prompts]
+        # The caches are cleared after the denoising loop, before decoding.
+        original_clear = Cosmos3KVCache.clear
+        cleared = []
+
+        def tracking_clear(cache):
+            original_clear(cache)
+            cleared.append(all(layer.k is None and layer.v is None for layer in cache.layer_caches))
+
+        with mock.patch.object(Cosmos3KVCache, "clear", tracking_clear):
+            reused = [run(prompt, use_kv_cache=True) for prompt in prompts]
+        assert cleared == [True] * (len(prompts) * num_branches)
         assert text_mlp_calls == len(prompts) * num_branches
         # Reference: the text pathway recomputed on every step.
         text_mlp_calls = 0

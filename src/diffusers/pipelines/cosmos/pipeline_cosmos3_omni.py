@@ -1918,8 +1918,12 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                         progress_bar.update()
         finally:
             reset_cosmos3_mixed_precision(self.transformer, mixed_precision)
-            # Free the cached keys/values before decoding so they do not raise the peak memory.
-            cond_kv_cache = uncond_kv_cache = None
+
+        # Clean up KV cache
+        if cond_kv_cache is not None:
+            cond_kv_cache.clear()
+        if uncond_kv_cache is not None:
+            uncond_kv_cache.clear()
 
         self._current_timestep = None
 
