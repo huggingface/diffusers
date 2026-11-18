@@ -41,7 +41,7 @@ RUN python3.10 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
         hf_xet \
         Jinja2 \
         librosa \
-        numpy==1.26.4 \
+        "numpy>=2" \
         scipy \
         tensorboard \
         transformers
