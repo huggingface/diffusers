@@ -21,11 +21,13 @@ that clients poll or follow over server-sent events.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import inspect
 import random
 import secrets
 import threading
 import time
+import typing
 from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter, _SubParsersAction
 from pathlib import Path
 from typing import Any
@@ -33,7 +35,7 @@ from typing import Any
 import torch
 from huggingface_hub.cli._output import out
 
-from ...utils import logging
+from ...utils import BaseOutput, logging
 from .. import BaseDiffusersCLICommand
 from ..run import _add_loading_arguments, _add_optimization_arguments, _duration_to_seconds
 from .remote import add_remote_arguments, serve_remote
@@ -44,8 +46,9 @@ logger = logging.get_logger("diffusers-cli/serve")
 DEFAULT_OUTPUT_DIR = str(Path.home() / ".diffusers" / "cli" / "serve" / "outputs")
 
 
-def _resolve_pipeline(args: Namespace) -> tuple[type, inspect.Signature, str | None]:
-    """Return the pipeline class, the signature of its call, and the commit hash of a standard Hub repo."""
+def _resolve_pipeline(args: Namespace) -> tuple[type, inspect.Signature, set[str] | None, str | None]:
+    """Return the pipeline class, the signature of its call, the fields of its output, and the commit hash of a
+    standard Hub repo. The output fields are None when the pipeline doesn't annotate what it returns."""
     import diffusers
 
     from .manifest import blocks_signature
@@ -73,7 +76,10 @@ def _resolve_pipeline(args: Namespace) -> tuple[type, inspect.Signature, str | N
                 signature = inspect.signature(pipeline_cls.__call__, eval_str=True)
             except (NameError, TypeError):
                 signature = inspect.signature(pipeline_cls.__call__)
-            return pipeline_cls, signature, commit_hash
+            returned = typing.get_args(signature.return_annotation) or (signature.return_annotation,)
+            outputs = [cls for cls in returned if isinstance(cls, type) and issubclass(cls, BaseOutput)]
+            output_fields = {field.name for field in dataclasses.fields(outputs[0])} if outputs else None
+            return pipeline_cls, signature, output_fields, commit_hash
 
     try:
         pipeline = diffusers.ModularPipeline.from_pretrained(
@@ -81,7 +87,8 @@ def _resolve_pipeline(args: Namespace) -> tuple[type, inspect.Signature, str | N
         )
     except OSError as e:
         raise SystemExit(f"Could not read a pipeline config for {args.model!r}: {e}") from e
-    return type(pipeline), blocks_signature(pipeline.blocks), commit_hash
+    output_fields = {output.name for output in pipeline.blocks.intermediate_outputs}
+    return type(pipeline), blocks_signature(pipeline.blocks), output_fields, commit_hash
 
 
 def _shut_down_when_idle(server: Any, app: Any, scheduler: Any, idle_timeout: str) -> None:
@@ -282,7 +289,7 @@ class ServeCommand(BaseDiffusersCLICommand):
         from .manifest import load_manifest
         from .scheduler import Scheduler
 
-        pipeline_cls, signature, commit_hash = _resolve_pipeline(args)
+        pipeline_cls, signature, output_fields, commit_hash = _resolve_pipeline(args)
         capabilities = backend_capabilities(args, pipeline_cls)
         manifest = load_manifest(
             args.model,
@@ -293,6 +300,7 @@ class ServeCommand(BaseDiffusersCLICommand):
             revision=args.revision,
             commit_hash=commit_hash,
             token=args.token,
+            output_fields=output_fields,
         )
 
         if args.data_parallel > 1:

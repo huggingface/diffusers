@@ -48,7 +48,11 @@ from ...pipelines.auto_pipeline import (
     AUTO_TEXT2VIDEO_PIPELINES_MAPPING,
     AUTO_VIDEO2VIDEO_PIPELINES_MAPPING,
 )
+from ...utils import logging
 from ..run import _AUDIO_INPUT_KEYS, _IMAGE_INPUT_KEYS, _VIDEO_INPUT_KEYS
+
+
+logger = logging.get_logger("diffusers-cli/serve")
 
 
 # ---------------------------------------------------------------------------
@@ -60,8 +64,17 @@ MANIFEST_FILENAME = "gms.json"
 EXTENSION_KEY = "x-diffusers"
 
 MAX_ADAPTERS = 4
+# The frame rate videos are encoded at when neither the pipeline nor the manifest gives one. Native rates range from 8
+# fps (CogVideoX) to 30 (Mochi), so this is a guess; a `duration` frame lattice in a published manifest sets the real one.
+DEFAULT_FPS = 16
 
 # First entry of each tuple is the default when the request names no `output_format`.
+# The fields of a pipeline's output that hold each output type, tried in order.
+OUTPUT_FIELDS = {
+    "image": ("images", "image"),
+    "video": ("frames", "videos", "video"),
+    "audio": ("audios", "audio", "sound"),
+}
 OUTPUT_FORMATS = {
     "image": ("image/png", "image/jpeg", "image/webp"),
     "video": ("video/mp4",),
@@ -168,6 +181,7 @@ def load_manifest(
     revision: str | None = None,
     commit_hash: str | None = None,
     token: str | None = None,
+    output_fields: set[str] | None = None,
 ) -> Manifest:
     """Load the model's manifest and bind it to the pipeline: `--manifest`, else the repo's `gms.json`, else derived.
 
@@ -202,9 +216,18 @@ def load_manifest(
             raise SystemExit(f"GMS manifest {origin!r} declares no `tasks`, so there is nothing to serve.")
     else:
         model_id = Path(model).name if Path(model).is_dir() else model
-        data = derive_manifest(model_id, pipeline_cls, signature, capabilities)
+        data = derive_manifest(model_id, pipeline_cls, signature, capabilities, output_fields)
         raw = json.dumps(data).encode()
-    return Manifest(raw, data, pipeline_cls, signature, capabilities, source=source, revision=commit_hash)
+    return Manifest(
+        raw,
+        data,
+        pipeline_cls,
+        signature,
+        capabilities,
+        source=source,
+        revision=commit_hash,
+        output_fields=output_fields,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -228,9 +251,16 @@ def blocks_signature(blocks: Any) -> inspect.Signature:
 
 
 def derive_manifest(
-    model_id: str, pipeline_cls: type, signature: inspect.Signature, capabilities: list[str]
+    model_id: str,
+    pipeline_cls: type,
+    signature: inspect.Signature,
+    capabilities: list[str],
+    output_fields: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Build a server-authored manifest from the pipeline call `signature`, declaring the server's `capabilities`."""
+    """Build a server-authored manifest from the pipeline call `signature`, declaring the server's `capabilities`.
+
+    `output_fields`, the fields of the pipeline's output when it annotates them, decides the output type.
+    """
     # Sort the call kwargs into GMS inputs and parameters, and record the ones whose GMS name differs.
     inputs: dict[str, dict[str, Any]] = {}
     parameters: dict[str, dict[str, Any]] = {}
@@ -296,7 +326,10 @@ def derive_manifest(
         extension["parameters"] = parameter_kwargs
 
     registered = [entry for entry in _AUTO_TASKS if pipeline_cls in entry[1].values()]
-    if registered:
+    returned = [kind for kind, fields in OUTPUT_FIELDS.items() if output_fields and set(fields) & output_fields]
+    if returned:
+        output = returned[0]
+    elif registered:
         output = registered[0][3]
     elif "num_frames" in signature.parameters or "Video" in pipeline_cls.__name__:
         output = "video"
@@ -395,6 +428,7 @@ class Manifest:
         supported_capabilities: list[str],
         source: str | None = None,
         revision: str | None = None,
+        output_fields: set[str] | None = None,
     ):
         # The bytes are kept as published: discovery serves them unchanged, and the hash is computed over them.
         self.raw = raw
@@ -451,6 +485,15 @@ class Manifest:
                     f"The GMS manifest for {self.id!r} declares {unsupported} outputs on task {name!r}; this server "
                     f"produces {list(OUTPUT_FORMATS)} outputs."
                 )
+            # `output_fields` is None when the pipeline doesn't annotate what it returns.
+            if output_fields is not None:
+                for spec in task["outputs"].values():
+                    if not set(OUTPUT_FIELDS[spec["type"]]) & output_fields:
+                        raise SystemExit(
+                            f"Task {name!r} outputs {spec['type']}, read from one of "
+                            f"{list(OUTPUT_FIELDS[spec['type']])}, but {self._pipeline_name} returns "
+                            f"{sorted(output_fields)}. `diffusers serve` only serves image, video and audio outputs."
+                        )
             parameters = task.get("parameters", {})
             if "duration" in parameters and _frame_lattice(parameters["duration"]) is None:
                 raise SystemExit(
@@ -459,12 +502,11 @@ class Manifest:
                 )
             produces_video = any(spec["type"] == "video" for spec in task["outputs"].values())
             if produces_video and self._default_fps is None and "duration" not in parameters:
-                raise SystemExit(
-                    f"The GMS manifest for {self.id!r} declares a video output on task {name!r}, but "
-                    f"{self._pipeline_name} has no default `fps` or `frame_rate` argument, so the frame rate to encode "
-                    "at is unknown. Declare `duration` with a frame lattice at the model's native fps, e.g. "
-                    '"duration": {"type": "number", "lattice": {"frames": "4k+1", "fps": 16}}, and pass the manifest '
-                    "with --manifest."
+                logger.warning(
+                    f"{self._pipeline_name} has no default `fps` or `frame_rate` argument, so task {name!r} encodes "
+                    f"videos at {DEFAULT_FPS} fps, which may not be the model's native rate. To set it, declare "
+                    '`duration` with a frame lattice in a manifest, e.g. "duration": {"type": "number", "lattice": '
+                    '{"frames": "4k+1", "fps": 24}}, and pass it with --manifest.'
                 )
             for preset, body in task.get("presets", {}).items():
                 for key in body.get("parameters", {}):
@@ -668,11 +710,11 @@ class Manifest:
         }
         fps = None
         if any(kind == "video" for kind, _ in outputs.values()):
-            # The startup check guarantees a frame lattice when the pipeline has no default frame rate.
+            duration = declared_parameters.get("duration")
             fps = (
                 kwargs.get(self._fps_kwargs[task])
                 or self._default_fps
-                or _frame_lattice(declared_parameters.get("duration"))[2]
+                or (_frame_lattice(duration)[2] if duration is not None else DEFAULT_FPS)
             )
 
         response_format = body.get("response_format", "url")

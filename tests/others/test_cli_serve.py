@@ -303,6 +303,16 @@ class TestManifest:
         assert manifest["capabilities"] == ["sse", "wait", "adapters"]
         assert manifest["adapters"] == {"lora": {"targets": ["transformer", "text_encoder"]}}
 
+    def test_output_type_comes_from_the_pipeline_output_fields(self):
+        manifest = derive_manifest(MODEL_ID, FakePipeline, FAKE_SIGNATURE, [], output_fields={"frames"})
+        assert list(manifest["modalities"]["out"]) == ["video"], "a pipeline returning `frames` should output video"
+
+        manifest = derive_manifest(MODEL_ID, FakePipeline, FAKE_SIGNATURE, [], output_fields={"coords_nm"})
+        with pytest.raises(SystemExit, match=re.escape("but FakePipeline returns ['coords_nm']")):
+            Manifest(
+                json.dumps(manifest).encode(), manifest, FakePipeline, FAKE_SIGNATURE, [], output_fields={"coords_nm"}
+            )
+
     def test_derive_manifest_keeps_the_scalar_members_of_unions(self):
         def __call__(
             self,

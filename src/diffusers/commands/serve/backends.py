@@ -39,7 +39,7 @@ from ...modular_pipelines import InputParam, LoopSequentialPipelineBlocks, Modul
 from ...utils import export_to_video, load_image, load_video, logging, numpy_to_pil
 from ...utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 from ..run import _as_audio_arrays, _as_pil_list, _get_generator, _load_pipeline
-from .manifest import GMSError, Manifest, blocks_signature
+from .manifest import OUTPUT_FIELDS, GMSError, Manifest, blocks_signature
 from .scheduler import GenerationJob
 
 
@@ -51,7 +51,6 @@ PNG_COMPRESS_LEVEL = 1
 # Caps each media URL download, like vLLM's `VLLM_MAX_MEDIA_DOWNLOAD_SIZE_MB`, so a request can't make the server read
 # an unbounded file into memory.
 MAX_MEDIA_DOWNLOAD_BYTES = 256 * 2**20
-_OUTPUT_FIELDS = {"image": ("images",), "video": ("frames", "videos"), "audio": ("audios", "audio")}
 _SAMPLE_RATE_ATTRIBUTES = (
     "sample_rate",
     "vocoder.config.output_sampling_rate",
@@ -247,7 +246,7 @@ class DiffusersBackend:
         outputs = {}
         for name, (kind, media_type) in request.outputs.items():
             value = None
-            for field in _OUTPUT_FIELDS[kind]:
+            for field in OUTPUT_FIELDS[kind]:
                 # A modular pipeline returns its `PipelineState`; a standard one returns an output object.
                 value = result.get(field) if self._modular else getattr(result, field, None)
                 if value is not None:
