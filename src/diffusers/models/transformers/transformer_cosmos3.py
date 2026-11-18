@@ -388,6 +388,9 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         **{f"layers.*.{mlp}.gate_proj": Conditional("colwise") for mlp in ("mlp", "mlp_moe_gen")},
         **{f"layers.*.{mlp}.down_proj": "rowwise" for mlp in ("mlp", "mlp_moe_gen")},
     }
+    # These scale tensors are exported for vLLM-Omni/SGLang and are unused
+    # by Diffusers. ModelOpt restores its quantizer state separately.
+    _keys_to_ignore_on_load_unexpected = [r"\.(?:input_scale|weight_scale)$"]
     # Optional context-parallelism seams. They default to ``None`` (no-op) so the
     # model itself carries no CP logic. `forward` applies `_cp_shard_fn` to the
     # per-pathway hidden states + rotary embeddings before the decoder layers, and
