@@ -1846,7 +1846,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                                 action_noisy_frame_indexes=uncond_packed_static.get("action_noisy_frame_indexes"),
                                 action_domain_ids=[action_domain_id] if action_domain_id is not None else None,
                                 kv_cache=uncond_kv_cache,
-                                kv_cache_mode=kv_cache_mode,
+                                kv_cache_mode=kv_cache_mode if uncond_kv_cache is not None else None,
                                 return_dict=False,
                             )
                         uncond_v_vision, uncond_v_sound, uncond_v_action = self._mask_velocity_predictions(
