@@ -44,9 +44,6 @@ _DEFAULT_REMOTE_IDLE_TIMEOUT = "30m"
 _JOB_TIMEOUT = "24h"
 _READY_POLL_SECONDS = 5.0
 
-# Flags the Job command sets itself. `_build_task_kwargs` already drops the flags that say how the Job is set up.
-_JOB_SET_KEYS = ("host", "port", "public_url", "output_dir")
-
 
 def add_remote_arguments(parser: ArgumentParser) -> None:
     parser.add_argument(
@@ -112,16 +109,12 @@ def serve_remote(args: Namespace, task: str) -> None:
             "remote server will use it."
         )
 
-    if args.idle_timeout is None:
-        args.idle_timeout = _DEFAULT_REMOTE_IDLE_TIMEOUT
-
-    # The Job installs the dependencies, then starts the server in the foreground.
+    # The Job installs the dependencies, then starts the server in the foreground. A local --output-dir means nothing
+    # inside the Job, and --public-url is set from the Job id below.
     task_kwargs = _build_task_kwargs(args)
-    for key in _JOB_SET_KEYS:
-        task_kwargs.pop(key, None)
-    task_kwargs["host"] = "0.0.0.0"
-    task_kwargs["port"] = JOB_PORT
-    task_kwargs["idle_timeout"] = args.idle_timeout
+    task_kwargs.pop("output_dir", None)
+    task_kwargs.pop("public_url", None)
+    task_kwargs.update(host="0.0.0.0", port=JOB_PORT, idle_timeout=args.idle_timeout or _DEFAULT_REMOTE_IDLE_TIMEOUT)
     dependencies = [*_DEFAULT_REMOTE_DEPS, *_SERVE_DEPS, *(args.dependencies or [])]
     install = shlex.join(["uv", "pip", "install", "--system", "--break-system-packages", *dependencies])
     # An `--image` can put another environment first on PATH, with its own older `diffusers-cli`, so the server

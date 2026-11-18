@@ -20,12 +20,14 @@ import base64
 import contextlib
 import inspect
 import io
+import ipaddress
 import mimetypes
+import socket
 import tempfile
 import wave
 from argparse import Namespace
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlparse
 
 import numpy as np
@@ -33,15 +35,10 @@ import torch
 from huggingface_hub.utils import httpx
 from PIL import Image
 
-from ...modular_pipelines import ModularPipeline
+from ...modular_pipelines import InputParam, LoopSequentialPipelineBlocks, ModularPipeline, ModularPipelineBlocks
 from ...utils import export_to_video, load_image, load_video, logging, numpy_to_pil
 from ...utils.constants import DIFFUSERS_REQUEST_TIMEOUT
-from ..run import (
-    _as_audio_arrays,
-    _as_pil_list,
-    _get_generator,
-    _load_pipeline,
-)
+from ..run import _as_audio_arrays, _as_pil_list, _get_generator, _load_pipeline
 from .manifest import GMSError, Manifest, blocks_signature
 from .scheduler import GenerationJob
 
@@ -51,6 +48,9 @@ logger = logging.get_logger("diffusers-cli/serve")
 # zlib level for PNG outputs. Pillow's default of 6 takes close to four times as long to encode a
 # 1024x1024 image for a file about 7% smaller; the output is lossless either way.
 PNG_COMPRESS_LEVEL = 1
+# Caps each media URL download, like vLLM's `VLLM_MAX_MEDIA_DOWNLOAD_SIZE_MB`, so a request can't make the server read
+# an unbounded file into memory.
+MAX_MEDIA_DOWNLOAD_BYTES = 256 * 2**20
 _OUTPUT_FIELDS = {"image": ("images",), "video": ("frames", "videos"), "audio": ("audios", "audio")}
 _SAMPLE_RATE_ATTRIBUTES = (
     "sample_rate",
@@ -71,15 +71,36 @@ def backend_capabilities(args: Namespace, pipeline_cls: type) -> list[str]:
     return capabilities
 
 
-def _load_media(name: str, value: dict[str, Any], pointer: str) -> Any:
+def _load_media(name: str, value: dict[str, Any], pointer: str, allowed_domains: list[str] | None) -> Any:
     try:
         if "base64" in value:
             content = base64.b64decode(value["base64"], validate=True)
         else:
-            response = httpx.get(value["url"], follow_redirects=True, timeout=DIFFUSERS_REQUEST_TIMEOUT)
-            response.raise_for_status()
-            content = response.content
-    except (ValueError, httpx.HTTPError) as e:
+            url = urlparse(value["url"])
+            if allowed_domains is not None:
+                if url.hostname not in allowed_domains:
+                    raise ValueError(f"host {url.hostname!r} is not in --allowed-media-domains {allowed_domains}")
+            else:
+                # Only public addresses are fetched, so a request can't reach the server's own network, e.g. a cloud
+                # metadata endpoint. The operator vouches for the hosts on an allowlist.
+                default_port = 443 if url.scheme == "https" else 80
+                for info in socket.getaddrinfo(url.hostname, url.port or default_port):
+                    if not ipaddress.ip_address(info[4][0].split("%")[0]).is_global:
+                        raise ValueError(
+                            f"host {url.hostname!r} resolves to the non-public address {info[4][0]}. Pass "
+                            "--allowed-media-domains to fetch from it."
+                        )
+            # Redirects are not followed, so a public URL can't send the server to an address on its own network.
+            with httpx.stream(
+                "GET", value["url"], follow_redirects=False, timeout=DIFFUSERS_REQUEST_TIMEOUT
+            ) as response:
+                response.raise_for_status()
+                content = bytearray()
+                for chunk in response.iter_bytes():
+                    content += chunk
+                    if len(content) > MAX_MEDIA_DOWNLOAD_BYTES:
+                        raise ValueError(f"the download is larger than {MAX_MEDIA_DOWNLOAD_BYTES // 2**20} MB")
+    except (ValueError, OSError, httpx.HTTPError) as e:
         raise GMSError("invalid_request", f"could not read input {name!r}: {e}", pointer) from e
 
     try:
@@ -114,20 +135,52 @@ def _sample_rate(pipeline: Any) -> int:
     )
 
 
+class _Canceled(BaseException):
+    """Stops a modular pipeline from its step callback. Not an `Exception`, so the blocks don't log it as an error."""
+
+
+# TODO(DN6): remove once modular pipelines stream their steps with `pipe.stream()` (#14159).
+class _StepCallback(ModularPipelineBlocks):
+    """Calls `callback_on_step_end` after each denoising step of a modular pipeline, as a `DiffusionPipeline` does.
+
+    Modular pipelines have no `num_timesteps` attribute, so the step count is passed in `callback_kwargs`.
+    """
+
+    @property
+    def inputs(self):
+        return [InputParam("callback_on_step_end", type_hint=Callable), InputParam("timesteps")]
+
+    def __call__(self, components, block_state, i, t):
+        if block_state.callback_on_step_end is not None:
+            block_state.callback_on_step_end(components, i, t, {"num_timesteps": len(block_state.timesteps)})
+        return components, block_state
+
+
+def _denoise_loops(block: ModularPipelineBlocks) -> list[LoopSequentialPipelineBlocks]:
+    loops = []
+    if isinstance(block, LoopSequentialPipelineBlocks) and "denoiser" in block.sub_blocks:
+        loops.append(block)
+    for sub_block in getattr(block, "sub_blocks", {}).values():
+        loops.extend(_denoise_loops(sub_block))
+    return loops
+
+
 class DiffusersBackend:
     def __init__(self, args: Namespace, manifest: Manifest):
         self.pipeline = _load_pipeline(args)
+        self._allowed_media_domains = args.allowed_media_domains
         self._modular = isinstance(self.pipeline, ModularPipeline)
         if self._modular:
+            # `pipeline.blocks` returns a copy, and the pipeline is already built, so the loops are edited in place.
+            for loop in _denoise_loops(self.pipeline._blocks):
+                loop.sub_blocks["step_callback"] = _StepCallback()
             parameters = blocks_signature(self.pipeline.blocks).parameters
         else:
             parameters = inspect.signature(type(self.pipeline).__call__).parameters
         self._reports_steps = "callback_on_step_end" in parameters
         self._sample_rate = None
-        for task in manifest.tasks.values():
-            for spec in task["outputs"].values():
-                if spec["type"] == "audio":
-                    self._sample_rate = _sample_rate(self.pipeline)
+        if any(spec["type"] == "audio" for task in manifest.tasks.values() for spec in task["outputs"].values()):
+            self._sample_rate = _sample_rate(self.pipeline)
 
     def generate(self, generation: GenerationJob) -> dict[str, list[dict[str, Any]]]:
         """Call the pipeline with the request's kwargs and media, and save its outputs."""
@@ -135,9 +188,12 @@ class DiffusersBackend:
         kwargs = dict(request.kwargs)
         for kwarg, (name, kind, value) in request.media.items():
             if isinstance(value, list):
-                loaded = [_load_media(name, item, f"/inputs/{name}/{index}") for index, item in enumerate(value)]
+                loaded = [
+                    _load_media(name, item, f"/inputs/{name}/{index}", self._allowed_media_domains)
+                    for index, item in enumerate(value)
+                ]
             else:
-                loaded = [_load_media(name, value, f"/inputs/{name}")]
+                loaded = [_load_media(name, value, f"/inputs/{name}", self._allowed_media_domains)]
             if kind == "audio":
                 if kwarg == "initial_audio_waveforms":
                     kwargs.setdefault("initial_audio_sampling_rate", loaded[0][1])
@@ -152,10 +208,13 @@ class DiffusersBackend:
         if self._reports_steps:
 
             def on_step_end(pipeline, step, timestep, callback_kwargs):
-                total_steps = getattr(pipeline, "num_timesteps", None)
+                total_steps = callback_kwargs.get("num_timesteps", getattr(pipeline, "num_timesteps", None))
                 if total_steps:
                     generation.report_progress(step + 1, total_steps)
                 if generation.cancel_requested:
+                    # A block can't end the loop it runs in, so a modular pipeline is stopped by raising.
+                    if self._modular:
+                        raise _Canceled
                     pipeline._interrupt = True
                 return callback_kwargs
 
@@ -177,6 +236,8 @@ class DiffusersBackend:
             # Worker threads start on GPU 0, and with --data-parallel this pipeline may sit on another one.
             with torch.cuda.device(device) if device.type == "cuda" else contextlib.nullcontext():
                 result = self.pipeline(**kwargs)
+        except _Canceled:
+            return {}
         finally:
             if request.adapters:
                 self.pipeline.unload_lora_weights()

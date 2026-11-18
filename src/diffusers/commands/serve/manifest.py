@@ -29,6 +29,8 @@ import operator
 import os
 import random
 import re
+import types
+import typing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -104,7 +106,8 @@ _MEDIA_KWARGS = {
 }
 _SKIPPED_KWARGS = frozenset({"output_type", "return_dict", "callback_steps", "callback_on_step_end_tensor_inputs"})
 _AUDIO_OUTPUT_KWARGS = frozenset({"audio_length_in_s", "audio_end_in_s", "num_waveforms_per_prompt"})
-_SCALAR_TYPES = {"float": "number", "int": "integer", "bool": "boolean", "str": "string"}
+# In order of preference when an annotation allows several, so `int | float` is a number.
+_SCALAR_TYPES = {float: "number", int: "integer", bool: "boolean", str: "string"}
 _PYTHON_TYPES = {"number": (int, float), "integer": int, "boolean": bool, "string": str}
 _COMPARISONS = {
     "eq": operator.eq,
@@ -216,10 +219,10 @@ def blocks_signature(blocks: Any) -> inspect.Signature:
         if input_param.name is None:
             continue
         annotation = inspect.Parameter.empty if input_param.type_hint is None else input_param.type_hint
+        # A required input is given no default, as a required argument of a `__call__` has none.
+        default = inspect.Parameter.empty if input_param.required else input_param.default
         parameters.append(
-            inspect.Parameter(
-                input_param.name, inspect.Parameter.KEYWORD_ONLY, default=input_param.default, annotation=annotation
-            )
+            inspect.Parameter(input_param.name, inspect.Parameter.KEYWORD_ONLY, default=default, annotation=annotation)
         )
     return inspect.Signature(parameters)
 
@@ -235,12 +238,9 @@ def derive_manifest(
     parameter_kwargs: dict[str, str] = {}
     # Pipeline kwarg -> its GMS parameter name. `num_frames` keeps its name: `duration` is in seconds, which only a
     # written manifest's frame lattice converts.
-    kwarg_parameters = {}
-    for name, kwargs in _PARAMETER_KWARGS.items():
-        if name == "duration":
-            continue
-        for kwarg in kwargs:
-            kwarg_parameters[kwarg] = name
+    kwarg_parameters = {
+        kwarg: name for name, kwargs in _PARAMETER_KWARGS.items() if name != "duration" for kwarg in kwargs
+    }
 
     for kwarg, parameter in signature.parameters.items():
         if kwarg == "self" or kwarg in _SKIPPED_KWARGS:
@@ -267,38 +267,10 @@ def derive_manifest(
             parameter_kwargs["seed"] = kwarg
             continue
 
-        # The GMS schema of the annotation, if it is a scalar or a list of scalars.
         annotation = parameter.annotation
-        if annotation is inspect.Parameter.empty:
-            text = type(default).__name__ if default is not None else ""
-        elif isinstance(annotation, str):
-            text = annotation
-        elif type(annotation) is type:
-            text = annotation.__name__
-        else:
-            text = str(annotation)
-        text = text.replace("typing.", "")
-        # The type names in the annotation, without the wrappers around them: {"str"} for `Optional[List[str]]`.
-        type_names = set(re.findall(r"[A-Za-z_][\w.]*", text)) - {
-            "Optional",
-            "Union",
-            "None",
-            "NoneType",
-            "list",
-            "List",
-        }
-        schema = None
-        if type_names and type_names <= set(_SCALAR_TYPES):
-            for python_type, gms_type in _SCALAR_TYPES.items():
-                if python_type in type_names:
-                    scalar_type = gms_type
-                    break
-            # `str | list[str]` is a scalar that also accepts a batch; only a bare list is an array parameter.
-            outside_lists = re.sub(r"\b[Ll]ist\[[^\[\]]*\]", "", text)
-            if outside_lists == text or set(re.findall(r"[A-Za-z_][\w.]*", outside_lists)) & set(_SCALAR_TYPES):
-                schema = {"type": scalar_type}
-            else:
-                schema = {"type": "array", "items": {"type": scalar_type}}
+        if annotation is inspect.Parameter.empty and default is not None:
+            annotation = type(default)
+        schema = _parameter_schema(annotation)
         # Modular blocks often declare `prompt` without a type hint or a default to infer one from.
         if schema is None and kwarg == "prompt" and annotation is inspect.Parameter.empty:
             schema = {"type": "string"}
@@ -379,6 +351,26 @@ def derive_manifest(
     if "adapters" in capabilities:
         manifest["adapters"] = {"lora": {"targets": list(getattr(pipeline_cls, "_lora_loadable_modules", []))}}
     return manifest
+
+
+def _parameter_schema(annotation: Any) -> dict[str, Any] | None:
+    """The GMS schema of a scalar annotation, a list of scalars, or a union of them; None for anything else."""
+    if typing.get_origin(annotation) in (typing.Union, types.UnionType):
+        # Any member's values are valid, so members that aren't scalars or lists of them, like a tensor, are left out.
+        options = [schema for schema in map(_parameter_schema, typing.get_args(annotation)) if schema is not None]
+        # `str | list[str]` is a scalar that also accepts a batch; only a bare list is an array parameter.
+        options = [option for option in options if option["type"] != "array"] or options
+        order = list(_SCALAR_TYPES.values())
+        return min(options, key=lambda option: order.index(option.get("items", option)["type"]), default=None)
+    if typing.get_origin(annotation) is list:
+        args = typing.get_args(annotation)
+        items = _parameter_schema(args[0]) if args else None
+        if items is None or items["type"] == "array":
+            return None
+        return {"type": "array", "items": items}
+    if annotation in _SCALAR_TYPES:
+        return {"type": _SCALAR_TYPES[annotation]}
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -483,14 +475,8 @@ class Manifest:
                         )
 
     def _pipeline_kwarg(self, name: str, aliases: dict[str, tuple[str, ...]], declared: dict[str, str]) -> str | None:
-        if name in declared:
-            candidates = [declared[name]]
-        else:
-            candidates = [*aliases.get(name, ()), name]
-        for kwarg in candidates:
-            if kwarg in self._kwarg_names:
-                return kwarg
-        return None
+        candidates = [declared[name]] if name in declared else [*aliases.get(name, ()), name]
+        return next((kwarg for kwarg in candidates if kwarg in self._kwarg_names), None)
 
     def _require_kwarg(
         self, task: str, kind: str, name: str, aliases: dict[str, tuple[str, ...]], declared: dict[str, str]
@@ -537,6 +523,8 @@ class Manifest:
                     f"task {task!r} is not hosted for {self.id!r}; hosted tasks: {list(self.tasks)}",
                     "/task",
                 )
+        elif len(self.tasks) == 1:
+            task = next(iter(self.tasks))
         else:
             candidates = []
             for name, spec in self.tasks.items():
@@ -545,8 +533,6 @@ class Manifest:
                     candidates.append(name)
             if len(candidates) == 1:
                 task = candidates[0]
-            elif len(self.tasks) == 1:
-                task = list(self.tasks)[0]
             else:
                 raise GMSError(
                     "invalid_request",
@@ -668,10 +654,9 @@ class Manifest:
             produced = {spec["type"] for spec in self.tasks[task]["outputs"].values()}
             # The startup check limits output types to those in OUTPUT_FORMATS.
             if kind not in produced or output_format not in OUTPUT_FORMATS[kind]:
-                supported = []
-                for produced_kind in produced:
-                    supported.extend(OUTPUT_FORMATS[produced_kind])
-                supported.sort()
+                supported = sorted(
+                    media_type for produced_kind in produced for media_type in OUTPUT_FORMATS[produced_kind]
+                )
                 raise GMSError(
                     "invalid_request",
                     f"output_format must be one of {supported} for task {task!r}, got {output_format!r}",

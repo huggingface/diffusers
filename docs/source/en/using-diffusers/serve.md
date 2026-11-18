@@ -26,7 +26,7 @@ option.
 
 ## Generations
 
-Create a generation. `Prefer: wait` holds the response until it finishes, for up to 120 seconds here:
+Create a generation. `Prefer: wait` holds the response until it finishes, for up to 120 seconds here (the server caps it at 300):
 
 ```bash
 curl localhost:8000/v1/generations -H 'Prefer: wait=120' -d '{
@@ -58,6 +58,22 @@ curl localhost:8000/v1/generations -H 'Prefer: wait=120' -d '{
   "seed": 42,
   "usage": {"compute_seconds": 11.84}
 }
+```
+
+Query the server from Python with [httpx](https://www.python-httpx.org/):
+
+```py
+import httpx
+
+response = httpx.post(
+    "http://localhost:8000/v1/generations",
+    headers={"Prefer": "wait=120"},
+    json={"model": "black-forest-labs/FLUX.1-dev", "inputs": {"prompt": "an astronaut riding a horse"}},
+    timeout=130,
+)
+image_url = response.json()["outputs"]["image"][0]["url"]
+with open("image.png", "wb") as f:
+    f.write(httpx.get(image_url).content)
 ```
 
 Without `Prefer: wait`, the response comes back at once with `"status": "queued"`. Follow its progress as
@@ -151,6 +167,20 @@ server checks the manifest at startup and refuses to start if it declares someth
 
 - `--generation-timeout 10m` fails a generation that runs longer than 10 minutes.
 - `--idle-timeout 30m` shuts the server down after 30 minutes without requests.
+
+## Security
+
+The server has no authentication and listens on `127.0.0.1`. Before exposing it, put it behind a proxy that
+authenticates requests. With `--remote`, requests already need your Hugging Face token.
+
+The server downloads media inputs given as URLs. By default it only fetches public addresses, up to 256 MB, and doesn't
+follow redirects. To allow only specific hosts, list them:
+
+```bash
+diffusers serve black-forest-labs/FLUX.1-dev --allowed-media-domains upload.wikimedia.org
+```
+
+Listed hosts are fetched even when they're private, such as `localhost` while testing.
 
 ## Multiple GPUs
 

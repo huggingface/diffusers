@@ -32,14 +32,15 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 import torch
+from huggingface_hub.utils import httpx
 from PIL import Image
 
 from diffusers.commands.run import _DEFAULT_REMOTE_IMAGE
 from diffusers.commands.serve import ServeCommand, _shut_down_when_idle
-from diffusers.commands.serve.backends import DiffusersBackend, backend_capabilities
+from diffusers.commands.serve.backends import DiffusersBackend, _load_media, backend_capabilities
 from diffusers.commands.serve.manifest import GMSError, Manifest, blocks_signature, derive_manifest
 from diffusers.commands.serve.scheduler import GenerationJob, Scheduler
-from diffusers.modular_pipelines import InputParam, ModularPipelineBlocks, OutputParam
+from diffusers.modular_pipelines import InputParam, LoopSequentialPipelineBlocks, ModularPipelineBlocks, OutputParam
 
 
 MODEL_ID = "test-org/fake-model"
@@ -145,10 +146,49 @@ class FakeImageBlock(ModularPipelineBlocks):
         return components, state
 
 
+class FakeDenoiser(ModularPipelineBlocks):
+    @property
+    def inputs(self):
+        return []
+
+    def __call__(self, components, block_state, i, t):
+        return components, block_state
+
+
+class FakeDenoiseLoop(LoopSequentialPipelineBlocks):
+    """A modular pipeline whose denoising loop, like the built-in ones, has no step callback of its own."""
+
+    model_name = "fake"
+    block_classes = [FakeDenoiser]
+    block_names = ["denoiser"]
+
+    @property
+    def description(self):
+        return "Denoises for `num_inference_steps` steps."
+
+    @property
+    def loop_inputs(self):
+        return [InputParam("prompt"), InputParam("num_inference_steps", default=3)]
+
+    @property
+    def loop_intermediate_outputs(self):
+        return [OutputParam("images")]
+
+    def __call__(self, components, state):
+        block_state = self.get_block_state(state)
+        block_state.timesteps = list(range(block_state.num_inference_steps))
+        for i, t in enumerate(block_state.timesteps):
+            components, block_state = self.loop_step(components, block_state, i=i, t=t)
+        block_state.images = [Image.new("RGB", (32, 32), "red")]
+        self.set_block_state(state, block_state)
+        return components, state
+
+
 def _args(**overrides):
     values = {
         "compile": None,
         "lora": None,
+        "allowed_media_domains": None,
     }
     return Namespace(**{**values, **overrides})
 
@@ -262,6 +302,35 @@ class TestManifest:
         }
         assert manifest["capabilities"] == ["sse", "wait", "adapters"]
         assert manifest["adapters"] == {"lora": {"targets": ["transformer", "text_encoder"]}}
+
+    def test_derive_manifest_keeps_the_scalar_members_of_unions(self):
+        def __call__(
+            self,
+            prompt: str | list[str],
+            strength: float | torch.Tensor = 0.5,
+            control_mode: int | list[int] | list[list[int]] | None = None,
+            boxes: list[list[float]] | None = None,
+            latents: torch.Tensor | None = None,
+        ):
+            pass
+
+        manifest = derive_manifest(MODEL_ID, FakePipeline, inspect.signature(__call__), [])
+        assert manifest["tasks"]["text_to_image"]["parameters"] == {
+            "strength": {"type": "number", "default": 0.5},
+            "control_mode": {"type": "integer"},
+        }, "a union should keep its scalar members, and nested lists and tensors should be left out"
+
+    def test_derive_manifest_marks_required_modular_inputs(self):
+        class RequiredImageBlock(FakeImageBlock):
+            @property
+            def inputs(self):
+                return [InputParam("prompt", required=True), InputParam("image", required=True)]
+
+        pipeline = RequiredImageBlock().init_pipeline()
+        manifest = derive_manifest(MODEL_ID, type(pipeline), blocks_signature(pipeline.blocks), [])
+        assert list(manifest["tasks"]) == ["image_to_image"], (
+            "a required modular `image` should not yield text_to_image"
+        )
 
     @pytest.mark.parametrize(
         "body, code, pointer",
@@ -429,6 +498,48 @@ class TestServeApp:
         (artifact,) = generation["outputs"]["image"]
         assert artifact["media_type"] == "image/jpeg" and "url" not in artifact
         assert Image.open(io.BytesIO(base64.b64decode(artifact["base64"]))).format == "JPEG"
+
+    def test_media_urls_are_capped_and_not_redirected(self, monkeypatch):
+        def respond(request):
+            if request.url.path == "/redirect":
+                return httpx.Response(302, headers={"location": "http://169.254.169.254/"})
+            return httpx.Response(200, content=b"x" * 16)
+
+        client = httpx.Client(transport=httpx.MockTransport(respond))
+        monkeypatch.setattr("diffusers.commands.serve.backends.httpx.stream", client.stream)
+        monkeypatch.setattr("diffusers.commands.serve.backends.MAX_MEDIA_DOWNLOAD_BYTES", 8)
+        public = [(None, None, None, "", ("93.184.215.14", 443))]
+        monkeypatch.setattr("diffusers.commands.serve.backends.socket.getaddrinfo", lambda host, port: public)
+        for path, message in (("/redirect", "Redirect response"), ("/large", "larger than")):
+            with pytest.raises(GMSError, match=message) as error:
+                _load_media("image", {"type": "image", "url": f"https://example.com{path}"}, "/inputs/image", None)
+            assert error.value.pointer == "/inputs/image", f"{path} should be rejected as a bad input"
+
+    @pytest.mark.parametrize(
+        "address, allowed_domains, message",
+        [
+            ("169.254.169.254", None, "non-public address"),
+            ("127.0.0.1", None, "non-public address"),
+            ("93.184.215.14", ["upload.wikimedia.org"], "not in --allowed-media-domains"),
+        ],
+    )
+    def test_media_urls_are_limited_to_public_or_allowed_hosts(self, monkeypatch, address, allowed_domains, message):
+        resolved = [(None, None, None, "", (address, 80))]
+        monkeypatch.setattr("diffusers.commands.serve.backends.socket.getaddrinfo", lambda host, port: resolved)
+        value = {"type": "image", "url": "http://media.example/cat.png"}
+        with pytest.raises(GMSError, match=message):
+            _load_media("image", value, "/inputs/image", allowed_domains)
+
+    def test_allowed_media_domains_may_be_private(self, monkeypatch):
+        buffer = io.BytesIO()
+        Image.new("RGB", (8, 8), "blue").save(buffer, format="PNG")
+        client = httpx.Client(
+            transport=httpx.MockTransport(lambda request: httpx.Response(200, content=buffer.getvalue()))
+        )
+        monkeypatch.setattr("diffusers.commands.serve.backends.httpx.stream", client.stream)
+        value = {"type": "image", "url": "http://localhost:9000/cat.png"}
+        image = _load_media("image", value, "/inputs/image", ["localhost"])
+        assert image.size == (8, 8), "a host on --allowed-media-domains should be fetched even when it is private"
 
     def test_joint_video_and_audio_outputs(self, serve, monkeypatch):
         monkeypatch.setattr(
@@ -612,6 +723,24 @@ class TestModularPipeline:
         assert generation["seed"] == 3
         (artifact,) = generation["outputs"]["image"]
         assert (artifact["media_type"], artifact["width"], artifact["height"]) == ("image/png", 32, 32)
+
+    def test_modular_pipeline_reports_steps_and_stops_on_cancel(self, monkeypatch, tmp_path):
+        pipeline = FakeDenoiseLoop().init_pipeline()
+        monkeypatch.setattr("diffusers.commands.serve.backends._load_pipeline", lambda args: pipeline)
+        manifest = _manifest(pipeline_cls=type(pipeline), signature=blocks_signature(pipeline.blocks))
+        backend = DiffusersBackend(_args(), manifest)
+
+        def generate(cancel):
+            generation = GenerationJob(manifest.resolve({"model": MODEL_ID, "inputs": {"prompt": "a cat"}}))
+            generation.directory = tmp_path
+            generation.canceled = cancel
+            return backend.generate(generation), [event["step"] for _, event in generation.events]
+
+        outputs, steps = generate(cancel=False)
+        assert steps == [1, 2, 3], "every denoising step of a modular pipeline should be reported"
+        assert outputs["image"], outputs
+        assert generate(cancel=True) == ({}, [1]), "a canceled modular pipeline should stop at its next step"
+        assert generate(cancel=False)[1] == [1, 2, 3], "the pipeline should stay usable after a cancel"
 
 
 class FakeJobsApi:

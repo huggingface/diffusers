@@ -14,8 +14,8 @@
 
 """`diffusers-cli serve` — serve a pipeline over HTTP with the Generative Media Spec (GMS) API.
 
-Generations run one at a time on a background worker: a request returns immediately with a queued generation that
-clients poll or follow over server-sent events.
+Generations run on background workers, one per pipeline copy: a request returns immediately with a queued generation
+that clients poll or follow over server-sent events.
 """
 
 from __future__ import annotations
@@ -67,7 +67,13 @@ def _resolve_pipeline(args: Namespace) -> tuple[type, inspect.Signature, str | N
                 "exported by the installed diffusers."
             )
         if not issubclass(pipeline_cls, diffusers.ModularPipeline):
-            return pipeline_cls, inspect.signature(pipeline_cls.__call__), commit_hash
+            # Evaluated, so a module with `from __future__ import annotations` gives types rather than strings. A
+            # kwarg whose annotation doesn't evaluate is left out of a derived manifest.
+            try:
+                signature = inspect.signature(pipeline_cls.__call__, eval_str=True)
+            except (NameError, TypeError):
+                signature = inspect.signature(pipeline_cls.__call__)
+            return pipeline_cls, signature, commit_hash
 
     try:
         pipeline = diffusers.ModularPipeline.from_pretrained(
@@ -168,6 +174,16 @@ class ServeCommand(BaseDiffusersCLICommand):
             help=(
                 "Seed for the generator that picks the seed of each request that does not set one. "
                 "Defaults to a random seed chosen at startup."
+            ),
+        )
+        parser.add_argument(
+            "--allowed-media-domains",
+            action="append",
+            default=None,
+            metavar="HOST",
+            help=(
+                "Only fetch media input URLs from this host (e.g. upload.wikimedia.org). Repeat to allow several. "
+                "Defaults to any host with a public address."
             ),
         )
         parser.add_argument(
