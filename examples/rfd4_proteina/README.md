@@ -128,6 +128,7 @@ from rfd4_proteina_prep import prepare_cif, write_cif
 
 pipe = RFD4ProteinaPipeline.from_pretrained("nvidia/RFD4-Proteina-Diffusers", dtype=torch.bfloat16).to("cuda")
 pipe.load_lora_weights("rfd4-proteina-lora")
+pipe.transformer.eval()
 
 features, atom_array = prepare_cif("input.cif", seed=0, device=pipe.device)
 named = (
@@ -171,4 +172,5 @@ pipe = RFD4ProteinaPipeline.from_pretrained(
     "nvidia/RFD4-Proteina-Diffusers", revision="pretrain-base", dtype=torch.bfloat16
 ).to("cuda")
 pipe.load_lora_weights("rfd4-proteina-lora-converted")
+pipe.transformer.eval()
 ```

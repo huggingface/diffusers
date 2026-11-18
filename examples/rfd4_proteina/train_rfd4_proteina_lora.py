@@ -41,7 +41,7 @@ from diffusers import RFD4ProteinaAutoencoder, RFD4ProteinaPipeline, RFD4Protein
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import _collate_lora_metadata, cast_training_params
 from diffusers.utils import check_min_version, convert_unet_state_dict_to_peft
-from diffusers.utils.hub_utils import MODEL_CARD_TEMPLATE_PATH, populate_model_card
+from diffusers.utils.hub_utils import populate_model_card
 
 
 check_min_version("0.42.0.dev0")
@@ -256,6 +256,7 @@ pipe = RFD4ProteinaPipeline.from_pretrained(
     {args.pretrained_model_name_or_path!r}, revision={args.revision!r}, variant={args.variant!r}, dtype=torch.bfloat16
 ).to("cuda")
 pipe.load_lora_weights({adapter_id!r})
+pipe.transformer.eval()
 features, atom_array = prepare_cif("input.cif", seed=0, device=pipe.device)
 named = {PIPELINE_INPUTS!r}
 inputs = {{name: features[name] for name in named}}
@@ -273,7 +274,7 @@ for CIF preparation and generation. Follow the base model and dataset licenses w
 """
     card = ModelCard.from_template(
         ModelCardData(library_name="diffusers", base_model=args.pretrained_model_name_or_path, inference=False),
-        template_path=MODEL_CARD_TEMPLATE_PATH,
+        template_str="---\n{{ card_data }}\n---\n{{ model_description }}",
         model_description=model_description,
     )
     card = populate_model_card(card, tags=["diffusers-training", "lora", "rfd4-proteina"])
