@@ -21,7 +21,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import SchedulerMixin, multinomial_with_generator, rand_with_generator, randint_with_generator
 
 
 @dataclass
@@ -117,7 +117,7 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
             token = flat_logits.argmax(dim=-1, keepdim=True)
         else:
             scaled_probs = torch.softmax(flat_logits.float() / temperature, dim=-1)
-            token = torch.multinomial(scaled_probs, num_samples=1, generator=generator)
+            token = multinomial_with_generator(scaled_probs, num_samples=1, generator=generator)
 
         token_prob = torch.gather(probs, -1, token)
         return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
@@ -200,9 +200,11 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
 
         route_probs = torch.stack([clean_mass, stay_mass, noise_mass], dim=-1)
         route_probs = route_probs / route_probs.sum(dim=-1, keepdim=True)
-        routes = torch.multinomial(route_probs.view(-1, 3), num_samples=1, generator=generator).view_as(sample)
+        routes = multinomial_with_generator(route_probs.view(-1, 3), num_samples=1, generator=generator).view_as(
+            sample
+        )
 
-        random_tokens = torch.randint(
+        random_tokens = randint_with_generator(
             low=0, high=vocab_size, size=sample.shape, device=sample.device, generator=generator
         )
         prev_sample = torch.where(routes == 0, sampled_tokens, sample)
@@ -226,7 +228,7 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
         k_eff = min(max(1, int(self.config.corrector_k)), seq_len)
 
         if selection == "random":
-            scores = torch.rand(batch_size, seq_len, device=sample.device, generator=generator)
+            scores = rand_with_generator((batch_size, seq_len), device=sample.device, generator=generator)
             return torch.topk(scores, k=k_eff, dim=-1).indices
 
         if selection == "lowest_maxprob":
@@ -241,7 +243,7 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(f"Unknown `corrector_selection`: {selection!r}.")
 
         keys = confidence / float(self.config.corrector_selection_tau)
-        u = torch.rand(keys.shape, device=keys.device, generator=generator).clamp_(1e-12, 1.0 - 1e-12)
+        u = rand_with_generator(keys.shape, device=keys.device, generator=generator).clamp_(1e-12, 1.0 - 1e-12)
         keys = keys + (-torch.log(-torch.log(u)))
         return torch.topk(keys, k=k_eff, dim=-1).indices
 
@@ -295,7 +297,7 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
         positions = self._select_positions(sample, cond_log_probs, generator)
         rows = torch.arange(sample.shape[0], device=sample.device).unsqueeze(-1).expand_as(positions)
         chosen_probs = cond_log_probs[rows, positions].exp()
-        resampled = torch.multinomial(
+        resampled = multinomial_with_generator(
             chosen_probs.reshape(-1, vocab_size), num_samples=1, generator=generator
         ).view_as(positions)
 

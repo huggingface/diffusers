@@ -27,6 +27,42 @@ from ..utils import BaseOutput, PushToHubMixin
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
 
 
+def _draw_device(generator: torch.Generator | None, device: torch.device) -> torch.device:
+    """Device a random draw must happen on for `generator` to be accepted.
+
+    PyTorch requires a generator's device to match the device a random op draws on, so a CPU
+    generator cannot draw directly on a GPU/MPS tensor. Like `randn_tensor`, draw on the
+    generator's device and move the result to `device` instead.
+    """
+    if generator is not None:
+        return generator.device
+    return device
+
+
+def randint_with_generator(
+    low: int, high: int, size: tuple[int, ...], device: torch.device, generator: torch.Generator | None = None
+) -> torch.LongTensor:
+    """`torch.randint` that honours a CPU generator when `device` is a GPU/MPS device."""
+    rand_device = _draw_device(generator, device)
+    return torch.randint(low, high, size, device=rand_device, generator=generator).to(device)
+
+
+def rand_with_generator(
+    size: tuple[int, ...], device: torch.device, generator: torch.Generator | None = None
+) -> torch.Tensor:
+    """`torch.rand` that honours a CPU generator when `device` is a GPU/MPS device."""
+    rand_device = _draw_device(generator, device)
+    return torch.rand(size, device=rand_device, generator=generator).to(device)
+
+
+def multinomial_with_generator(
+    probs: torch.Tensor, num_samples: int, generator: torch.Generator | None = None
+) -> torch.LongTensor:
+    """`torch.multinomial` that honours a CPU generator when `probs` lives on a GPU/MPS device."""
+    rand_device = _draw_device(generator, probs.device)
+    return torch.multinomial(probs.to(rand_device), num_samples=num_samples, generator=generator).to(probs.device)
+
+
 # NOTE: We make this type an enum because it simplifies usage in docs and prevents
 # circular imports when used for `_compatibles` within the schedulers module.
 # When it's used as a type in pipelines, it really is a Union because the actual

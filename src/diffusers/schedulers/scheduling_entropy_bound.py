@@ -20,7 +20,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import SchedulerMixin, multinomial_with_generator, randint_with_generator
 
 
 @dataclass
@@ -110,7 +110,7 @@ class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
             token = flat_logits.argmax(dim=-1, keepdim=True)
         else:
             scaled_probs = torch.softmax(flat_logits.float() / temperature, dim=-1)
-            token = torch.multinomial(scaled_probs, num_samples=1, generator=generator)
+            token = multinomial_with_generator(scaled_probs, num_samples=1, generator=generator)
 
         token_prob = torch.gather(probs, -1, token)
         return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
@@ -166,7 +166,7 @@ class EntropyBoundScheduler(SchedulerMixin, ConfigMixin):
             input=torch.zeros_like(sorted_accepted), dim=-1, index=sorted_indices, src=sorted_accepted
         )
 
-        random_tokens = torch.randint(
+        random_tokens = randint_with_generator(
             low=0, high=model_output.shape[-1], size=sample.shape, device=sample.device, generator=generator
         )
         prev_sample = torch.where(accepted_index, sampled_tokens, random_tokens)

@@ -20,7 +20,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import SchedulerMixin, multinomial_with_generator, rand_with_generator, randint_with_generator
 
 
 @dataclass
@@ -173,7 +173,7 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
         filtered = BlockRefinementScheduler._top_p_filtering(filtered, top_p=top_p)
 
         probs = torch.softmax(filtered.float(), dim=-1)
-        token = torch.multinomial(probs, num_samples=1, generator=generator)
+        token = multinomial_with_generator(probs, num_samples=1, generator=generator)
         token_prob = torch.gather(probs, -1, token)
 
         return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
@@ -285,7 +285,7 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
 
             prev_sample = torch.where(transfer_index | editing_transfer_index, sampled_tokens, sample)
             self._committed = committed | transfer_index
-            random_tokens = torch.randint(
+            random_tokens = randint_with_generator(
                 low=0, high=model_output.shape[-1], size=sample.shape, device=sample.device, generator=generator
             )
             prev_sample = torch.where(self._committed, prev_sample, random_tokens)
@@ -504,8 +504,8 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
             if seg_len <= 0:
                 continue
 
-            p_mask = torch.rand((batch_size, 1), device=device, generator=generator)
-            seg = torch.rand((batch_size, seg_len), device=device, generator=generator) < p_mask
+            p_mask = rand_with_generator((batch_size, 1), device=device, generator=generator)
+            seg = rand_with_generator((batch_size, seg_len), device=device, generator=generator) < p_mask
             seg = seg & valid[:, block_start:block_end]
             seg_rev = (~seg) & valid[:, block_start:block_end]
 

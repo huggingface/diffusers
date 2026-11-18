@@ -54,3 +54,19 @@ class EntropyBoundSchedulerTest(unittest.TestCase):
         out = scheduler.step(logits, timestep=0, sample=sample)
         self.assertEqual(out.prev_sample.shape, sample.shape)
         self.assertEqual(out.accepted_index.shape, sample.shape)
+
+    def test_step_with_cpu_generator(self):
+        # Regression test for huggingface/diffusers#15285: the step samples candidates via
+        # `torch.multinomial` and renoises rejected positions via `torch.randint`; both must honour
+        # a CPU generator when the sample lives on another device (GPU/MPS on CI).
+        scheduler = self.get_scheduler()
+        sample = torch.randint(0, 100, (3, 16))
+        logits = torch.randn(3, 16, 100)
+        gen = torch.Generator("cpu").manual_seed(0)
+        out = scheduler.step(logits, timestep=0, sample=sample, generator=gen)
+        self.assertEqual(out.prev_sample.shape, sample.shape)
+        self.assertEqual(out.prev_sample.device, sample.device)
+        # Same seed reproduces the same draw: the generator is consumed, not ignored.
+        gen = torch.Generator("cpu").manual_seed(0)
+        out_again = scheduler.step(logits, timestep=0, sample=sample, generator=gen)
+        self.assertTrue(torch.equal(out.prev_sample, out_again.prev_sample))
