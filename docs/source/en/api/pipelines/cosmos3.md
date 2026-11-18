@@ -766,7 +766,7 @@ torchrun --nproc_per_node=4 examples/cosmos3/inference_cosmos3.py \
 
 CP shards *activations* but replicates every weight on every rank, so it does not reduce a model's weight footprint — a model that doesn't fit on one GPU still won't fit under CP alone.
 
-For TP-only inference, follow the [tensor parallelism guide](../../training/distributed_inference#tensor-parallelism)
+For TP-only inference, follow the [tensor parallelism guide](../../optimization/tensor_parallelism)
 for distributed setup, launching, seeding, and rank-zero output handling. After initializing the process group
 and selecting each rank's CUDA device, load the modular pipeline as follows:
 
