@@ -27,14 +27,17 @@ class StableDiffusionXLWatermarker:
             return images
 
         images = (255 * (images / 2 + 0.5)).cpu().permute(0, 2, 3, 1).float().numpy()
+        # `dwtDct` expects uint8 BGR (as Stability's detect.py reads via cv2.imread).
+        # Passing float32 skips OpenCV's chroma +128 offset and often fails decode after PNG save.
+        images = np.clip(np.round(images), 0, 255).astype(np.uint8)
 
         # Convert RGB to BGR, which is the channel order expected by the watermark encoder.
         images = images[:, :, :, ::-1]
 
         # Add watermark and convert BGR back to RGB
-        images = [self.encoder.encode(image, "dwtDct")[:, :, ::-1] for image in images]
+        images = [self.encoder.encode(np.ascontiguousarray(image), "dwtDct")[:, :, ::-1] for image in images]
 
-        images = np.array(images)
+        images = np.array(images).astype(np.float32)
 
         images = torch.from_numpy(images).permute(0, 3, 1, 2)
 
