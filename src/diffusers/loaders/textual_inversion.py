@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 import safetensors
 import torch
@@ -165,15 +166,32 @@ class TextualInversionLoaderMixin:
         """
         tokens = tokenizer.tokenize(prompt)
         unique_tokens = set(tokens)
-        for token in unique_tokens:
-            if token in tokenizer.added_tokens_encoder:
-                replacement = token
-                i = 1
-                while f"{token}_{i}" in tokenizer.added_tokens_encoder:
-                    replacement += f" {token}_{i}"
-                    i += 1
+        added_tokens = tokenizer.added_tokens_encoder
+        # Recent tokenizers match added tokens case-insensitively and return their lowercased form, so the tokenized
+        # string is not necessarily the one the embedding was registered under.
+        lowered_added_tokens = None
 
-                prompt = prompt.replace(token, replacement)
+        for token in unique_tokens:
+            if token in added_tokens:
+                token_name = token
+            else:
+                if lowered_added_tokens is None:
+                    lowered_added_tokens = {}
+                    for added_token in added_tokens:
+                        lowered_added_tokens.setdefault(added_token.lower(), added_token)
+                token_name = lowered_added_tokens.get(token.lower())
+                if token_name is None:
+                    continue
+
+            replacement = token_name
+            i = 1
+            while f"{token_name}_{i}" in added_tokens:
+                replacement += f" {token_name}_{i}"
+                i += 1
+
+            # a single vector token is not rewritten: the prompt already tokenizes the way it should
+            if i > 1:
+                prompt = re.sub(re.escape(token), lambda _: replacement, prompt, flags=re.IGNORECASE)
 
         return prompt
 
