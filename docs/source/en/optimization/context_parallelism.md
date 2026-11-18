@@ -92,6 +92,9 @@ torchrun --nproc-per-node 2 ring_attention.py
 
 To try the other variants, replace the `enable_parallelism` call in `ring_attention.py` with the one from their section.
 
+> [!NOTE]
+> [`~ModelMixin.enable_parallelism`] only applies to the model you call it on. If a pipeline has more than one transformer, such as `transformer` and `transformer_2`, call it on each one. Otherwise, the steps the other transformers run aren't split across GPUs.
+
 ## Ulysses Attention
 
 [Ulysses Attention](https://huggingface.co/papers/2309.14509) uses *all-to-all* communication, where every GPU exchanges data with every other GPU. The first all-to-all regroups the data so each GPU holds every token for a subset of attention heads. Each GPU computes attention for its heads, and a second all-to-all regroups the results by token for the next layer.
