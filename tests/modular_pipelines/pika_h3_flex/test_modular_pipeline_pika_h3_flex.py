@@ -161,7 +161,11 @@ class PikaH3FlexModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     batch_params = frozenset()
     # The adapters are guidance-distilled and run a fixed six-step schedule, so neither `guidance_scale` nor
     # `num_inference_steps` exists, and one request generates one video.
-    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt", "num_inference_steps"}
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt", "num_inference_steps"} | {
+        "image",
+        "last_image",
+        "num_frames",
+    }
     not_params = frozenset(["num_inference_steps", "guidance_scale", "negative_prompt"])
     output_name = "videos"
     expected_workflow_blocks = PIKA_H3_FLEX_WORKFLOWS
@@ -391,7 +395,7 @@ class PikaH3FlexRef2VAModularPipelineTesterConfig(BaseModularPipelineTesterConfi
     batch_params = frozenset()
     # The adapters are guidance-distilled and run a fixed six-step schedule, so neither `guidance_scale` nor
     # `num_inference_steps` exists, and one request generates one video.
-    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt", "num_inference_steps"}
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt", "num_inference_steps"} | {"num_frames", "references"}
     not_params = frozenset(["num_inference_steps", "guidance_scale", "negative_prompt"])
     output_name = "videos"
     expected_workflow_blocks = PIKA_H3_FLEX_REF2VA_WORKFLOWS

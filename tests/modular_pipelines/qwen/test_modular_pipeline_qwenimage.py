@@ -28,6 +28,7 @@ from diffusers.modular_pipelines import (
 
 from ...testing_utils import torch_device
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularGuiderTesterMixin,
     ModularLoadingTesterMixin,
@@ -139,6 +140,7 @@ class QwenImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = QwenImageAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-modular"
     expected_latents_shape = (1, 4, 1, 8, 8)
+    optional_params = OPTIONAL_PARAMS | {"attention_kwargs", "image", "mask_image", "negative_prompt", "prompt"}
     # `QwenImageAutoTextEncoderStep` skips the text encoder when no `prompt` is passed, so the preset lists `prompt` as
     # optional. Kept for backward compatibility, new pipelines should not copy this
     required_params = frozenset()
@@ -224,6 +226,8 @@ class QwenImageEditModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = QwenImageEditAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-edit-modular"
     expected_latents_shape = (1, 4, 1, 8, 8)
+    optional_params = OPTIONAL_PARAMS | {"attention_kwargs", "mask_image", "negative_prompt"}
+    required_params = frozenset(["image", "prompt"])
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
     expected_workflow_blocks = QWEN_IMAGE_EDIT_WORKFLOWS
 
@@ -272,6 +276,8 @@ class QwenImageEditPlusModularPipelineTesterConfig(BaseModularPipelineTesterConf
     pipeline_blocks_class = QwenImageEditPlusAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-edit-plus-modular"
     expected_latents_shape = (1, 4, 1, 8, 8)
+    optional_params = OPTIONAL_PARAMS | {"attention_kwargs", "negative_prompt"}
+    required_params = frozenset(["image", "prompt"])
     # No `mask_image` yet.
     batch_params = frozenset(["prompt", "negative_prompt", "image"])
 

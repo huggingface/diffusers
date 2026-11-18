@@ -18,6 +18,7 @@ import pytest
 from diffusers.modular_pipelines import ErnieImageAutoBlocks, ErnieImageModularPipeline
 
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularMemoryTesterMixin,
@@ -43,6 +44,7 @@ class ErnieImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = ErnieImageAutoBlocks
     pretrained_model_name_or_path = "akshan-main/tiny-ernie-image-modular-pipe"
     expected_latents_shape = (1, 16, 2, 2)
+    optional_params = OPTIONAL_PARAMS | {"prompt"}
     # the text encoder encodes an empty prompt when none is given, so no input is required
     required_params = frozenset()
     expected_workflow_blocks = ERNIE_IMAGE_WORKFLOWS

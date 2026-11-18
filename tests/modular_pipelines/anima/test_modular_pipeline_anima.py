@@ -30,6 +30,7 @@ from diffusers.modular_pipelines.anima.modular_blocks_anima import AnimaCoreDeno
 
 from ...testing_utils import enable_full_determinism, is_lora, require_peft_backend
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineOutputMixin,
     BaseModularPipelineTesterConfig,
     ModularGuiderTesterMixin,
@@ -111,6 +112,7 @@ class AnimaModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = AnimaAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-anima-modular-pipe"
     expected_latents_shape = (1, 4, 1, 8, 8)
+    optional_params = OPTIONAL_PARAMS | {"negative_prompt"}
     batch_params = frozenset(["prompt", "negative_prompt"])
     expected_workflow_blocks = ANIMA_TEXT2IMAGE_WORKFLOWS
 
@@ -256,6 +258,7 @@ class AnimaImg2ImgModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = AnimaAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-anima-modular-pipe"
     expected_latents_shape = (1, 4, 1, 8, 8)
+    optional_params = OPTIONAL_PARAMS | {"image", "negative_prompt", "strength"}
     batch_params = frozenset(["prompt", "negative_prompt"])
     expected_workflow_blocks = ANIMA_IMG2IMG_WORKFLOWS
 

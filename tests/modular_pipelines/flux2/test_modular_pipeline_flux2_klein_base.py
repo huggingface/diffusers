@@ -26,6 +26,7 @@ from diffusers.modular_pipelines import (
 
 from ...testing_utils import floats_tensor, torch_device
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularMemoryTesterMixin,
@@ -53,6 +54,7 @@ class Flux2KleinBaseModularPipelineTesterConfig(BaseModularPipelineTesterConfig)
     pipeline_blocks_class = Flux2KleinBaseAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux2-klein-base-modular"
     expected_latents_shape = (1, 4, 16, 16)
+    optional_params = OPTIONAL_PARAMS | {"prompt"}
     # the text encoder encodes an empty prompt when none is given, so no input is required
     required_params = frozenset()
     expected_workflow_blocks = FLUX2_KLEIN_BASE_WORKFLOWS
@@ -112,6 +114,7 @@ class Flux2KleinBaseImageConditionedModularPipelineTesterConfig(BaseModularPipel
     pipeline_blocks_class = Flux2KleinBaseAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux2-klein-base-modular"
     expected_latents_shape = (1, 4, 16, 16)
+    optional_params = OPTIONAL_PARAMS | {"image", "prompt"}
     # the text encoder encodes an empty prompt when none is given, so no input is required
     required_params = frozenset()
     batch_params = frozenset(["prompt", "image"])

@@ -85,6 +85,7 @@ class WanAnimate2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = WanAnimate2ModularPipeline
     pipeline_blocks_class = WanAnimate2Blocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-wan-animate-2-modular"
+    required_params = frozenset(["driving_video", "image", "prompt"])
     # Each segment is decoded inside the denoise loop, so no latents are left in the state.
 
     # one prompt per call: the text encoder raises on a list

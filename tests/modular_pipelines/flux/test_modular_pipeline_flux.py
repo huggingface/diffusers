@@ -31,6 +31,7 @@ from diffusers.modular_pipelines import (
 
 from ...testing_utils import floats_tensor, torch_device
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularAutoOffloadTesterMixin,
     ModularLoadingTesterMixin,
@@ -59,6 +60,7 @@ class FluxModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = FluxAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-modular"
     expected_latents_shape = (1, 1, 8, 8)
+    optional_params = OPTIONAL_PARAMS | {"guidance_scale"}
 
     expected_workflow_blocks = FLUX_TEXT2IMAGE_WORKFLOWS
 
@@ -134,6 +136,7 @@ class FluxImg2ImgModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = FluxAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-modular"
     expected_latents_shape = (1, 1, 8, 8)
+    optional_params = OPTIONAL_PARAMS | {"guidance_scale", "image"}
 
     batch_params = frozenset(["prompt", "image"])
     expected_workflow_blocks = FLUX_IMAGE2IMAGE_WORKFLOWS
@@ -233,6 +236,7 @@ class FluxKontextModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = FluxKontextAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux-kontext-pipe"
     expected_latents_shape = (1, 1, 8, 8)
+    optional_params = OPTIONAL_PARAMS | {"guidance_scale", "image"}
 
     batch_params = frozenset(["prompt", "image"])
     expected_workflow_blocks = FLUX_KONTEXT_WORKFLOWS

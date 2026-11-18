@@ -177,7 +177,7 @@ class MiniMaxH3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     batch_params = frozenset()
     # The checkpoint is guidance-distilled and generates a video, so neither `guidance_scale` nor
     # `num_images_per_prompt` exists.
-    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"}
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {"image", "last_image", "num_frames"}
     output_name = "videos"
     expected_workflow_blocks = MINIMAX_H3_WORKFLOWS
     expected_workflow_defaults = MINIMAX_H3_WORKFLOW_DEFAULTS
@@ -609,7 +609,7 @@ class MiniMaxH3Ref2VAModularPipelineTesterConfig(BaseModularPipelineTesterConfig
     batch_params = frozenset()
     # The checkpoint is guidance-distilled and generates a video, so neither `guidance_scale` nor
     # `num_images_per_prompt` exists.
-    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"}
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {"num_frames", "references"}
     output_name = "videos"
     expected_workflow_blocks = MINIMAX_H3_REF2VA_WORKFLOWS
     expected_workflow_defaults = MINIMAX_H3_REF2VA_WORKFLOW_DEFAULTS

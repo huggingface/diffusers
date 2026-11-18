@@ -136,7 +136,7 @@ class Cosmos3OmniModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     expected_latents_shape = (1, 4, 2, 4, 4)
     # one prompt per call: the text encoder raises on a list
     batch_params = frozenset()
-    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"}
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {"guidance_scale", "num_frames"}
     output_name = "videos"
     expected_workflow_blocks = COSMOS3_OMNI_WORKFLOWS
 

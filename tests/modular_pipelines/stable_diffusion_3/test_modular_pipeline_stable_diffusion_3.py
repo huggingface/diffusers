@@ -27,6 +27,7 @@ from diffusers.modular_pipelines.stable_diffusion_3 import (
 
 from ...testing_utils import floats_tensor, torch_device
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularMemoryTesterMixin,
@@ -138,6 +139,7 @@ class StableDiffusion3Img2ImgModularPipelineTesterConfig(BaseModularPipelineTest
     pipeline_blocks_class = StableDiffusion3AutoBlocks
     pretrained_model_name_or_path = "AlanPonnachan/tiny-sd3-modular"
     expected_latents_shape = (1, 4, 32, 32)
+    optional_params = OPTIONAL_PARAMS | {"image"}
     batch_params = frozenset(["prompt", "image"])
     expected_workflow_blocks = SD3_IMAGE2IMAGE_WORKFLOWS
 

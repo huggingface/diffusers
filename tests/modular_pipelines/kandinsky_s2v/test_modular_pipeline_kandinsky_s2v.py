@@ -73,7 +73,7 @@ class KandinskyS2VModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pretrained_model_name_or_path = TINY_REPO
     # one prompt per call: batching is not supported
     batch_params = frozenset()
-    optional_params = OPTIONAL_PARAMS - {"latents", "num_images_per_prompt"}
+    optional_params = OPTIONAL_PARAMS - {"latents", "num_images_per_prompt"} | {"num_latent_frames", "prompt"}
     required_params = frozenset(["audio", "image"])
     output_name = "videos"
     latents_output_name = "latent_chunks"

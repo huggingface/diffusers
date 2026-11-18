@@ -57,7 +57,7 @@ class HunyuanVideo15ModularPipelineTesterConfig(BaseModularPipelineTesterConfig)
     expected_latents_shape = (1, 32, 3, 2, 2)
     # the text encoder encodes an empty prompt when none is given, so no input is required
     required_params = frozenset()
-    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {"num_videos_per_prompt"}
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {"num_frames", "num_videos_per_prompt", "prompt"}
     expected_workflow_blocks = HUNYUANVIDEO15_WORKFLOWS
     output_name = "videos"
 

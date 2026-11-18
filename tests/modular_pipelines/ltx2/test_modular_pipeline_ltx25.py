@@ -103,7 +103,7 @@ class LTX25ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = LTX25ModularPipeline
     pipeline_blocks_class = LTX25AutoBlocks
     pretrained_model_name_or_path = LTX25_REPO_ID
-    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {"num_videos_per_prompt"}
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {"num_frames", "num_videos_per_prompt"}
     expected_workflow_blocks = LTX25_WORKFLOWS
     output_name = "videos"
 
@@ -220,6 +220,8 @@ class TestLTX25ModularPipelineWorkflow(LTX25ModularPipelineTesterConfig, Modular
 
 
 class LTX25Image2VideoModularPipelineTesterConfig(LTX25ModularPipelineTesterConfig):
+    optional_params = LTX25ModularPipelineTesterConfig.optional_params | {"image"}
+
     def get_dummy_inputs(self, seed=0):
         inputs = super().get_dummy_inputs(seed)
         rng = np.random.default_rng(seed)
@@ -247,6 +249,8 @@ class TestLTX25Image2VideoModularPipelineMemory(LTX25Image2VideoModularPipelineT
 
 
 class LTX25ConditionModularPipelineTesterConfig(LTX25ModularPipelineTesterConfig):
+    optional_params = LTX25ModularPipelineTesterConfig.optional_params | {"conditions"}
+
     def get_dummy_inputs(self, seed=0):
         inputs = super().get_dummy_inputs(seed)
         image = torch.rand((1, 3, 32, 32), generator=torch.Generator("cpu").manual_seed(seed))
@@ -270,6 +274,8 @@ class TestLTX25ConditionModularPipelineMemory(LTX25ConditionModularPipelineTeste
 
 
 class LTX25InContextModularPipelineTesterConfig(LTX25ModularPipelineTesterConfig):
+    optional_params = LTX25ModularPipelineTesterConfig.optional_params | {"reference_conditions"}
+
     def get_dummy_inputs(self, seed=0):
         inputs = super().get_dummy_inputs(seed)
         video = torch.rand((1, 5, 3, 32, 32), generator=torch.Generator("cpu").manual_seed(seed))

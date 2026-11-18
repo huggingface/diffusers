@@ -38,7 +38,13 @@ class Wan22VaceModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
     # a list of prompts is not yet supported: `WanVaceAdditionalInputsStep` raises on one
     batch_params = frozenset()
-    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {"num_videos_per_prompt"}
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {
+        "mask",
+        "num_frames",
+        "num_videos_per_prompt",
+        "reference_images",
+        "video",
+    }
     output_name = "videos"
 
     def get_dummy_inputs(self, seed=0):
