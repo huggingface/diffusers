@@ -45,7 +45,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import CogView4ControlPipeline
 
-        >>> pipe = CogView4ControlPipeline.from_pretrained("THUDM/CogView4-6B-Control", torch_dtype=torch.bfloat16)
+        >>> pipe = CogView4ControlPipeline.from_pretrained("THUDM/CogView4-6B-Control", dtype=torch.bfloat16)
         >>> control_image = load_image(
         ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
         ... )

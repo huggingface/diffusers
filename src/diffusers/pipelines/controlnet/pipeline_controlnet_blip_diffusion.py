@@ -45,7 +45,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
 
         >>> blip_diffusion_pipe = BlipDiffusionControlNetPipeline.from_pretrained(
-        ...     "Salesforce/blipdiffusion-controlnet", torch_dtype=torch.float16
+        ...     "Salesforce/blipdiffusion-controlnet", dtype=torch.float16
         ... ).to("cuda")
 
         >>> style_subject = "flower"

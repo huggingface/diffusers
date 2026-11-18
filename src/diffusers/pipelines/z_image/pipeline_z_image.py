@@ -37,7 +37,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import ZImagePipeline
 
-        >>> pipe = ZImagePipeline.from_pretrained("Z-a-o/Z-Image-Turbo", torch_dtype=torch.bfloat16)
+        >>> pipe = ZImagePipeline.from_pretrained("Z-a-o/Z-Image-Turbo", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> # Optionally, set the attention backend to flash-attn 2 or 3, default is SDPA in PyTorch.

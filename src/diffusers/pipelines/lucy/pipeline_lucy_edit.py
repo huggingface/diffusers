@@ -79,8 +79,8 @@ EXAMPLE_DOC_STRING = """
 
         >>> # Load model
         >>> model_id = "decart-ai/Lucy-Edit-Dev"
-        >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-        >>> pipe = LucyEditPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
+        >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
+        >>> pipe = LucyEditPipeline.from_pretrained(model_id, vae=vae, dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> # Generate video

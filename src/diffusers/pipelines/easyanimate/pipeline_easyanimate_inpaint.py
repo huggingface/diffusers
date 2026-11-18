@@ -57,7 +57,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_video, load_image
 
         >>> pipe = EasyAnimateInpaintPipeline.from_pretrained(
-        ...     "alibaba-pai/EasyAnimateV5.1-12b-zh-InP-diffusers", torch_dtype=torch.bfloat16
+        ...     "alibaba-pai/EasyAnimateV5.1-12b-zh-InP-diffusers", dtype=torch.bfloat16
         ... )
         >>> pipe.to("cuda")
 

@@ -46,7 +46,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import CogView4Pipeline
 
-        >>> pipe = CogView4Pipeline.from_pretrained("THUDM/CogView4-6B", torch_dtype=torch.bfloat16)
+        >>> pipe = CogView4Pipeline.from_pretrained("THUDM/CogView4-6B", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A photo of an astronaut riding a horse on mars"

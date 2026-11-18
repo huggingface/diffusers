@@ -58,7 +58,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import AutoPipelineForInpainting
 
         >>> pipe = AutoPipelineForInpainting.from_pretrained(
-        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16, enable_pag=True
+        ...     "stable-diffusion-v1-5/stable-diffusion-v1-5", dtype=torch.float16, enable_pag=True
         ... )
         >>> pipe = pipe.to("cuda")
         >>> img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"

@@ -48,7 +48,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import QwenImageLayeredPipeline
         >>> from diffusers.utils import load_image
 
-        >>> pipe = QwenImageLayeredPipeline.from_pretrained("Qwen/Qwen-Image-Layered", torch_dtype=torch.bfloat16)
+        >>> pipe = QwenImageLayeredPipeline.from_pretrained("Qwen/Qwen-Image-Layered", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> image = load_image(
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/yarn-art-pikachu.png"

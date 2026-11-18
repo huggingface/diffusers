@@ -87,7 +87,7 @@ EXAMPLE_DOC_STRING = """
 
 
         >>> model_ckpt = "CompVis/stable-diffusion-v1-4"
-        >>> pipeline = StableDiffusionPix2PixZeroPipeline.from_pretrained(model_ckpt, torch_dtype=torch.float16)
+        >>> pipeline = StableDiffusionPix2PixZeroPipeline.from_pretrained(model_ckpt, dtype=torch.float16)
         >>> pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
         >>> pipeline.to("cuda")
 
@@ -125,7 +125,7 @@ EXAMPLE_INVERT_DOC_STRING = """
         >>> captioner_id = "Salesforce/blip-image-captioning-base"
         >>> processor = BlipProcessor.from_pretrained(captioner_id)
         >>> model = BlipForConditionalGeneration.from_pretrained(
-        ...     captioner_id, torch_dtype=torch.float16, low_cpu_mem_usage=True
+        ...     captioner_id, dtype=torch.float16, low_cpu_mem_usage=True
         ... )
 
         >>> sd_model_ckpt = "CompVis/stable-diffusion-v1-4"
@@ -133,7 +133,7 @@ EXAMPLE_INVERT_DOC_STRING = """
         ...     sd_model_ckpt,
         ...     caption_generator=model,
         ...     caption_processor=processor,
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ...     safety_checker=None,
         ... )
 

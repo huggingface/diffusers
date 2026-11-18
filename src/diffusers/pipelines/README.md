@@ -112,7 +112,7 @@ from diffusers import StableDiffusionImg2ImgPipeline
 device = "cuda"
 pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-v1-5",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 ).to(device)
 
 # let's download an initial image
@@ -159,7 +159,7 @@ mask_image = download_image(mask_url).resize((512, 512))
 
 pipe = StableDiffusionInpaintPipeline.from_pretrained(
     "stable-diffusion-v1-5/stable-diffusion-inpainting",
-    torch_dtype=torch.float16,
+    dtype=torch.float16,
 )
 pipe = pipe.to("cuda")
 

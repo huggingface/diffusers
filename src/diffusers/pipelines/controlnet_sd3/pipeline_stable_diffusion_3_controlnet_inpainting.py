@@ -70,7 +70,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = StableDiffusion3ControlNetInpaintingPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-3-medium-diffusers",
         ...     controlnet=controlnet,
-        ...     torch_dtype=torch.float16,
+        ...     dtype=torch.float16,
         ... )
         >>> pipe.text_encoder.to(torch.float16)
         >>> pipe.controlnet.to(torch.float16)

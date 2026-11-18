@@ -45,7 +45,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import QwenImagePipeline
 
-        >>> pipe = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", torch_dtype=torch.bfloat16)
+        >>> pipe = QwenImagePipeline.from_pretrained("Qwen/Qwen-Image", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
         >>> prompt = "A cat holding a sign that says hello world"
         >>> # Depending on the variant being used, the pipeline call will slightly vary.

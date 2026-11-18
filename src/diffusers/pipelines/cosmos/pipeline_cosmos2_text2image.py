@@ -66,7 +66,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # Available checkpoints: nvidia/Cosmos-Predict2-2B-Text2Image, nvidia/Cosmos-Predict2-14B-Text2Image
         >>> model_id = "nvidia/Cosmos-Predict2-2B-Text2Image"
-        >>> pipe = Cosmos2TextToImagePipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16)
+        >>> pipe = Cosmos2TextToImagePipeline.from_pretrained(model_id, dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A close-up shot captures a vibrant yellow scrubber vigorously working on a grimy plate, its bristles moving in circular motions to lift stubborn grease and food residue. The dish, once covered in remnants of a hearty meal, gradually reveals its original glossy surface. Suds form and bubble around the scrubber, creating a satisfying visual of cleanliness in progress. The sound of scrubbing fills the air, accompanied by the gentle clinking of the dish against the sink. As the scrubber continues its task, the dish transforms, gleaming under the bright kitchen lights, symbolizing the triumph of cleanliness over mess."

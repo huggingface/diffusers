@@ -50,7 +50,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import load_image
 
         >>> pipe = KolorsImg2ImgPipeline.from_pretrained(
-        ...     "Kwai-Kolors/Kolors-diffusers", variant="fp16", torch_dtype=torch.float16
+        ...     "Kwai-Kolors/Kolors-diffusers", variant="fp16", dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
         >>> url = (

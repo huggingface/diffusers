@@ -117,7 +117,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = SanaControlNetPipeline.from_pretrained(
         ...     "ishan24/Sana_600M_1024px_ControlNetPlus_diffusers",
         ...     variant="fp16",
-        ...     torch_dtype={"default": torch.bfloat16, "controlnet": torch.float16, "transformer": torch.float16},
+        ...     dtype={"default": torch.bfloat16, "controlnet": torch.float16, "transformer": torch.float16},
         ...     device_map="balanced",
         ... )
         >>> cond_image = load_image(

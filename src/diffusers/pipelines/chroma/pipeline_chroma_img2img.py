@@ -57,7 +57,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = ChromaImg2ImgPipeline.from_pretrained(
         ...     model_id,
         ...     transformer=transformer,
-        ...     torch_dtype=torch.bfloat16,
+        ...     dtype=torch.bfloat16,
         ... )
         >>> pipe.enable_model_cpu_offload()
         >>> init_image = load_image(

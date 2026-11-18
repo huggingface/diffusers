@@ -55,8 +55,8 @@ EXAMPLE_DOC_STRING = """
 
         >>> # Available models: Wan-AI/Wan2.1-T2V-14B-Diffusers, Wan-AI/Wan2.1-T2V-1.3B-Diffusers
         >>> model_id = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
-        >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float32)
-        >>> pipe = WanVideoToVideoPipeline.from_pretrained(model_id, vae=vae, torch_dtype=torch.bfloat16)
+        >>> vae = AutoencoderKLWan.from_pretrained(model_id, subfolder="vae", dtype=torch.float32)
+        >>> pipe = WanVideoToVideoPipeline.from_pretrained(model_id, vae=vae, dtype=torch.bfloat16)
         >>> flow_shift = 3.0  # 5.0 for 720P, 3.0 for 480P
         >>> pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config, flow_shift=flow_shift)
         >>> pipe.to("cuda")

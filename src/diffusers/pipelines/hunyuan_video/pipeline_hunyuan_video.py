@@ -49,9 +49,9 @@ EXAMPLE_DOC_STRING = """
 
         >>> model_id = "hunyuanvideo-community/HunyuanVideo"
         >>> transformer = HunyuanVideoTransformer3DModel.from_pretrained(
-        ...     model_id, subfolder="transformer", torch_dtype=torch.bfloat16
+        ...     model_id, subfolder="transformer", dtype=torch.bfloat16
         ... )
-        >>> pipe = HunyuanVideoPipeline.from_pretrained(model_id, transformer=transformer, torch_dtype=torch.float16)
+        >>> pipe = HunyuanVideoPipeline.from_pretrained(model_id, transformer=transformer, dtype=torch.float16)
         >>> pipe.vae.enable_tiling()
         >>> pipe.to("cuda")
 

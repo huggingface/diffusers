@@ -43,7 +43,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
 
         >>> blip_diffusion_pipe = BlipDiffusionPipeline.from_pretrained(
-        ...     "Salesforce/blipdiffusion", torch_dtype=torch.float16
+        ...     "Salesforce/blipdiffusion", dtype=torch.float16
         ... ).to("cuda")
 
 
