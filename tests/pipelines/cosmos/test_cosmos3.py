@@ -25,7 +25,9 @@ from diffusers import (
     AutoencoderKLWan,
     Cosmos3OmniPipeline,
     Cosmos3OmniTransformer,
+    SeaCacheConfig,
     UniPCMultistepScheduler,
+    apply_sea_cache,
 )
 from diffusers.pipelines.cosmos.pipeline_cosmos3_omni import _preprocess_conditioning_image
 
@@ -220,25 +222,49 @@ class TestCosmos3OmniPipeline(Cosmos3OmniPipelineTesterConfig, PipelineTesterMix
         pipeline = self.get_pipeline().to(torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
-        def run(prompt):
+        def run(prompt, use_kv_cache):
             inputs = self.get_dummy_inputs()
-            inputs.update(prompt=prompt, guidance_scale=guidance_scale, num_inference_steps=3, output_type="latent")
+            inputs.update(
+                prompt=prompt,
+                guidance_scale=guidance_scale,
+                num_inference_steps=3,
+                output_type="latent",
+                use_kv_cache=use_kv_cache,
+            )
             return pipeline(**inputs).video
+
+        # Count the text-pathway MLP calls of one layer to check that the cache is actually used.
+        text_mlp_calls = 0
+
+        def count_text_mlp_calls(_module, _args, _output):
+            nonlocal text_mlp_calls
+            text_mlp_calls += 1
+
+        pipeline.transformer.layers[0].mlp.register_forward_hook(count_text_mlp_calls)
+        num_branches = 2 if guidance_scale > 1.0 else 1
 
         # Two calls with different prompts: the text keys/values of the first call must not leak into the second.
         prompts = ["a dog", "a cat sitting on a red mat"]
-        reused = [run(prompt) for prompt in prompts]
-        assert getattr(pipeline.transformer, "_und_kv_cache", None) is None
-
+        reused = [run(prompt, use_kv_cache=True) for prompt in prompts]
+        assert text_mlp_calls == len(prompts) * num_branches
         # Reference: the text pathway recomputed on every step.
-        handle = pipeline.transformer.register_forward_pre_hook(
-            lambda module, _args: setattr(module, "_und_kv_cache", None)
-        )
-        recomputed = [run(prompt) for prompt in prompts]
-        handle.remove()
+        text_mlp_calls = 0
+        recomputed = [run(prompt, use_kv_cache=False) for prompt in prompts]
+        assert text_mlp_calls == len(prompts) * num_branches * 3
 
         for reused_video, recomputed_video in zip(reused, recomputed):
             assert torch.equal(reused_video, recomputed_video)
+
+    def test_text_kv_reuse_off_with_cache_hooks(self):
+        # Hooks added with `apply_*` (not only `enable_cache`) must turn the text KV cache off instead of failing.
+        pipeline = self.get_pipeline().to(torch_device)
+        pipeline.set_progress_bar_config(disable=None)
+        apply_sea_cache(pipeline.transformer, SeaCacheConfig())
+        assert pipeline.transformer._has_kv_cache_incompatible_hooks()
+
+        inputs = self.get_dummy_inputs()
+        inputs.update(guidance_scale=2.0, num_inference_steps=3, output_type="latent")
+        assert pipeline(**inputs).video is not None
 
     @pytest.mark.skip("Cosmos3 currently supports one prompt per pipeline call.")
     def test_inference_batch_consistent(self):

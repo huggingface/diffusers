@@ -22,6 +22,7 @@ from diffusers.hooks._helpers import TransformerBlockRegistry
 from diffusers.hooks.sea_cache import _SEA_CACHE_ROOT_HOOK
 from diffusers.models.cache_utils import CacheMixin
 from diffusers.models.transformers.transformer_cosmos3 import (
+    Cosmos3KVCache,
     Cosmos3NemotronRMSNorm,
     Cosmos3OmniTransformerOutput,
     Cosmos3PackedMoTAttention,
@@ -677,7 +678,7 @@ class TestCosmos3OmniTransformerModel(Cosmos3OmniTransformerTesterConfig, ModelT
 
 
 class TestCosmos3OmniTransformerTextKVReuse(Cosmos3OmniTransformerTesterConfig):
-    """`_und_kv_cache` (set by `Cosmos3OmniPipeline` for one call) reuses the text-prefix keys/values across steps."""
+    """`kv_cache` / `kv_cache_mode` reuse the text-prefix keys/values across denoising steps."""
 
     num_steps = 3
 
@@ -697,23 +698,24 @@ class TestCosmos3OmniTransformerTextKVReuse(Cosmos3OmniTransformerTesterConfig):
             "vision_noisy_frame_indexes": [torch.tensor([0], device=torch_device)],
         }
 
-    def run_steps(self, model, branches, und_kv_cache):
-        model._und_kv_cache = und_kv_cache
+    def run_steps(self, model, branches, use_kv_cache):
+        # One cache per CFG branch, as in the pipeline: "extract" on the first step, "cached" afterwards.
+        kv_caches = [Cosmos3KVCache(len(model.layers)) if use_kv_cache else None for _ in branches]
         outputs = []
-        try:
-            for step in range(self.num_steps):
-                for branch_index, text_inputs in enumerate(branches):
-                    generator = torch.Generator("cpu").manual_seed(10 * step + branch_index)
-                    vision_tokens = randn_tensor((1, 2, 1, 2, 2), generator=generator, device=torch_device)
-                    with torch.no_grad():
-                        output = model(
-                            **text_inputs,
-                            vision_tokens=[vision_tokens],
-                            vision_timesteps=torch.full((4,), 1.0 - 0.3 * step, device=torch_device),
-                        )
-                    outputs.append(output.sample[0])
-        finally:
-            model._und_kv_cache = None
+        for step in range(self.num_steps):
+            kv_cache_mode = ("extract" if step == 0 else "cached") if use_kv_cache else None
+            for branch_index, (text_inputs, kv_cache) in enumerate(zip(branches, kv_caches)):
+                generator = torch.Generator("cpu").manual_seed(10 * step + branch_index)
+                vision_tokens = randn_tensor((1, 2, 1, 2, 2), generator=generator, device=torch_device)
+                with torch.no_grad():
+                    output = model(
+                        **text_inputs,
+                        vision_tokens=[vision_tokens],
+                        vision_timesteps=torch.full((4,), 1.0 - 0.3 * step, device=torch_device),
+                        kv_cache=kv_cache,
+                        kv_cache_mode=kv_cache_mode,
+                    )
+                outputs.append(output.sample[0])
         return outputs
 
     def get_model_and_branches(self, use_und_k_norm_for_gen, guidance):
@@ -730,8 +732,8 @@ class TestCosmos3OmniTransformerTextKVReuse(Cosmos3OmniTransformerTesterConfig):
     def test_text_kv_reuse_matches_full_pass(self, use_und_k_norm_for_gen, guidance):
         model, branches = self.get_model_and_branches(use_und_k_norm_for_gen, guidance)
 
-        recomputed = self.run_steps(model, branches, und_kv_cache=None)
-        reused = self.run_steps(model, branches, und_kv_cache={})
+        recomputed = self.run_steps(model, branches, use_kv_cache=False)
+        reused = self.run_steps(model, branches, use_kv_cache=True)
 
         assert len(reused) == len(recomputed) == self.num_steps * len(branches)
         for reused_output, recomputed_output in zip(reused, recomputed):
@@ -749,12 +751,18 @@ class TestCosmos3OmniTransformerTextKVReuse(Cosmos3OmniTransformerTesterConfig):
         for layer in model.layers:
             layer.mlp.register_forward_hook(count_text_mlp_calls)
 
-        self.run_steps(model, branches, und_kv_cache=None)
+        self.run_steps(model, branches, use_kv_cache=False)
         assert text_mlp_calls == len(model.layers) * self.num_steps * len(branches)
 
         text_mlp_calls = 0
-        self.run_steps(model, branches, und_kv_cache={})
+        self.run_steps(model, branches, use_kv_cache=True)
         assert text_mlp_calls == len(model.layers) * len(branches)
+
+    def test_kv_cache_mode_requires_kv_cache(self):
+        model, branches = self.get_model_and_branches(use_und_k_norm_for_gen=True, guidance=False)
+        vision_tokens = randn_tensor((1, 2, 1, 2, 2), device=torch_device)
+        with pytest.raises(ValueError, match="no kv_cache"):
+            model(**branches[0], vision_tokens=[vision_tokens], vision_timesteps=torch.ones(4), kv_cache_mode="cached")
 
 
 class TestCosmos3OmniTransformerMemory(Cosmos3OmniTransformerTesterConfig, MemoryTesterMixin):

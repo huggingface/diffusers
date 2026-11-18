@@ -47,6 +47,37 @@ class Cosmos3OmniTransformerOutput(BaseOutput):
     action: list[torch.Tensor] | None = None
 
 
+class Cosmos3KVLayerCache:
+    """Per-layer KV cache for the text (understanding) prefix.
+
+    Stores the und keys (post-RoPE, as read by the generation pathway) and values extracted during the first denoising
+    step. Tensor format: ``(und_len, num_key_value_heads, head_dim)``.
+    """
+
+    def __init__(self):
+        self.k: torch.Tensor | None = None
+        self.v: torch.Tensor | None = None
+
+    def store(self, k: torch.Tensor, v: torch.Tensor):
+        self.k = k
+        self.v = v
+
+    def get(self) -> tuple[torch.Tensor, torch.Tensor]:
+        if self.k is None:
+            raise RuntimeError("KV cache has not been populated yet.")
+        return self.k, self.v
+
+
+class Cosmos3KVCache:
+    """Container for all decoder layers' text-prefix KV caches."""
+
+    def __init__(self, num_layers: int):
+        self.layer_caches = [Cosmos3KVLayerCache() for _ in range(num_layers)]
+
+    def get_layer(self, layer_idx: int) -> Cosmos3KVLayerCache:
+        return self.layer_caches[layer_idx]
+
+
 class Cosmos3AttnProcessor:
     """Dual-pathway attention processor for Cosmos3.
 
@@ -63,16 +94,17 @@ class Cosmos3AttnProcessor:
         und_seq: torch.Tensor | None,
         gen_seq: torch.Tensor,
         rotary_emb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-        und_kv: list[torch.Tensor] | None = None,
+        layer_cache: Cosmos3KVLayerCache | None = None,
+        kv_cache_mode: str | None = None,
     ) -> tuple[torch.Tensor | None, torch.Tensor]:
         cos_und, sin_und, cos_gen, sin_gen = rotary_emb
 
         # Causal pathway (understanding): und tokens self-attend with causal masking and never read gen tokens, so
-        # the und keys/values used by the gen pathway only depend on the text. When `und_kv` is given it is filled
-        # with them; when `und_seq` is None they are taken from `und_kv` and the und pathway is skipped.
+        # the und keys/values used by the gen pathway only depend on the text. "extract" stores them in
+        # `layer_cache`; "cached" reads them from it and skips the und pathway.
         und_out = None
-        if und_seq is None:
-            k_und_for_gen, v_und = und_kv
+        if kv_cache_mode == "cached":
+            k_und_for_gen, v_und = layer_cache.get()
         else:
             q_und = attn.to_q(und_seq).view(-1, attn.num_attention_heads, attn.head_dim)
             k_und = attn.to_k(und_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
@@ -95,8 +127,8 @@ class Cosmos3AttnProcessor:
                 parallel_config=self._parallel_config,
             )
             und_out = attn.to_out(causal_out.squeeze(0).flatten(-2, -1))
-            if und_kv is not None:
-                und_kv[:] = [k_und_for_gen, v_und]
+            if kv_cache_mode == "extract":
+                layer_cache.store(k_und_for_gen, v_und)
 
         q_gen = attn.add_q_proj(gen_seq).view(-1, attn.num_attention_heads, attn.head_dim)
         k_gen = attn.add_k_proj(gen_seq).view(-1, attn.num_key_value_heads, attn.head_dim)
@@ -300,11 +332,12 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
         und_seq: torch.Tensor | None,
         gen_seq: torch.Tensor,
         rotary_emb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-        und_kv: list[torch.Tensor] | None = None,
+        layer_cache: Cosmos3KVLayerCache | None = None,
+        kv_cache_mode: str | None = None,
     ) -> tuple[torch.Tensor | None, torch.Tensor]:
-        if und_kv is None:
+        if kv_cache_mode is None:
             return self.processor(self, und_seq, gen_seq, rotary_emb)
-        return self.processor(self, und_seq, gen_seq, rotary_emb, und_kv=und_kv)
+        return self.processor(self, und_seq, gen_seq, rotary_emb, layer_cache=layer_cache, kv_cache_mode=kv_cache_mode)
 
 
 class Cosmos3VLTextMoTDecoderLayer(nn.Module):
@@ -363,13 +396,16 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
         und_seq: torch.Tensor | None,
         gen_seq: torch.Tensor,
         rotary_emb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-        und_kv: list[torch.Tensor] | None = None,
+        layer_cache: Cosmos3KVLayerCache | None = None,
+        kv_cache_mode: str | None = None,
     ) -> tuple[torch.Tensor | None, torch.Tensor]:
-        # `und_seq` is None when the und keys/values come from `und_kv` (see `Cosmos3AttnProcessor`).
+        # `und_seq` is None in "cached" mode: the und keys/values come from `layer_cache` (see `Cosmos3AttnProcessor`).
         und_norm = self.input_layernorm(und_seq) if und_seq is not None else None
         gen_norm = self.input_layernorm_moe_gen(gen_seq)
 
-        und_attn_out, gen_attn_out = self.self_attn(und_norm, gen_norm, rotary_emb, und_kv=und_kv)
+        und_attn_out, gen_attn_out = self.self_attn(
+            und_norm, gen_norm, rotary_emb, layer_cache=layer_cache, kv_cache_mode=kv_cache_mode
+        )
         residual_gen = gen_seq + gen_attn_out
         mlp_out_gen = self.mlp_moe_gen(self.post_attention_layernorm_moe_gen(residual_gen))
         if und_seq is None:
@@ -399,11 +435,15 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
     # expressed as diffusers' declarative `_cp_plan`, so CP lives outside the model.
     _cp_shard_fn = None
     _cp_gather_fn = None
-    # Optional reuse of the text (und) pathway across denoising steps. The und tokens never attend to the gen tokens,
-    # so for the same `input_ids` / `position_ids` every layer's und keys/values are the same on every step.
-    # `Cosmos3OmniPipeline` sets this to an empty dict for the duration of one `__call__`; `None` disables it.
-    _und_kv_cache = None
-    _skip_keys = ["und_kv"]
+    _skip_keys = ["kv_cache"]
+    # Hooks that only move or cast weights. Any other diffusers hook (cache, layer skip, guidance, context parallel)
+    # may skip, replace or reshard blocks, which `kv_cache` does not support.
+    _kv_cache_compatible_hooks = {
+        "group_offloading",
+        "lazy_prefetch_group_offloading",
+        "layerwise_casting",
+        "peft_autocast_disable",
+    }
     # `dtype` is injected into init_dict by ModelMixin.from_pretrained (configuration_utils.py:289),
     # so __init__ must accept it. Excluding it here keeps save_pretrained from writing it into
     # config.json — the value is a load-time runtime hint, not part of the model architecture.
@@ -664,25 +704,35 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             unpacked.append(output)
         return unpacked
 
+    def _has_kv_cache_incompatible_hooks(self) -> bool:
+        # Also catches hooks added with `apply_*` functions, which do not set `_cache_config`.
+        for module in self.modules():
+            registry = getattr(module, "_diffusers_hook", None)
+            if registry is not None and set(registry.hooks) - self._kv_cache_compatible_hooks:
+                return True
+        return False
+
     def _run_decoder_stack(
         self,
         und_seq: torch.Tensor,
         gen_seq: torch.Tensor,
         rotary_emb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-        und_kv: list[list[torch.Tensor]] | None = None,
+        kv_cache: Cosmos3KVCache | None = None,
+        kv_cache_mode: str | None = None,
     ) -> tuple[torch.Tensor | None, torch.Tensor]:
-        # `und_kv`: one list per layer. Empty lists are filled by this pass; filled lists replace the und pathway.
-        if und_kv is not None and und_kv[-1]:
+        # In "cached" mode the und pathway is skipped: every layer reads the und keys/values from `kv_cache`.
+        if kv_cache_mode == "cached":
             und_seq = None
-        for i, decoder_layer in enumerate(self.layers):
+        for index_block, decoder_layer in enumerate(self.layers):
+            layer_cache = kv_cache.get_layer(index_block) if kv_cache is not None else None
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 und_seq, gen_seq = self._gradient_checkpointing_func(
-                    decoder_layer.__call__, und_seq, gen_seq, rotary_emb
+                    decoder_layer.__call__, und_seq, gen_seq, rotary_emb, layer_cache, kv_cache_mode
                 )
-            elif und_kv is None:
-                und_seq, gen_seq = decoder_layer(und_seq, gen_seq, rotary_emb)
             else:
-                und_seq, gen_seq = decoder_layer(und_seq, gen_seq, rotary_emb, und_kv=und_kv[i])
+                und_seq, gen_seq = decoder_layer(
+                    und_seq, gen_seq, rotary_emb, layer_cache=layer_cache, kv_cache_mode=kv_cache_mode
+                )
 
         return self.norm(und_seq) if und_seq is not None else None, self.norm_moe_gen(gen_seq)
 
@@ -717,6 +767,8 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         action_timesteps: torch.Tensor | None = None,
         action_noisy_frame_indexes: list[torch.Tensor] | None = None,
         action_domain_ids: list[torch.Tensor] | None = None,
+        kv_cache: Cosmos3KVCache | None = None,
+        kv_cache_mode: str | None = None,
         return_dict: bool = True,
     ) -> (
         Cosmos3OmniTransformerOutput | tuple[list[torch.Tensor], list[torch.Tensor] | None, list[torch.Tensor] | None]
@@ -748,12 +800,29 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             action_timesteps: Optional per-token diffusion timesteps for action tokens.
             action_noisy_frame_indexes: Optional noisy frame indices per action item.
             action_domain_ids: Optional per-item domain IDs selecting the action head weights.
+            kv_cache: Optional ``Cosmos3KVCache`` holding the text-prefix keys/values. Pass together with
+                ``kv_cache_mode``. Valid because the und tokens never attend to the generation tokens, so their
+                keys/values only depend on ``input_ids`` and ``position_ids``.
+            kv_cache_mode: ``"extract"`` (run the und pathway and store its keys/values in ``kv_cache``) or
+                ``"cached"`` (skip the und pathway and read them from ``kv_cache``). Use one cache per text input,
+                e.g. one per CFG branch.
             return_dict: Whether to return a [`Cosmos3OmniTransformerOutput`] instead of a tuple.
 
         Returns:
             A [`Cosmos3OmniTransformerOutput`] or a tuple of per-modality prediction lists. Optional modalities return
             ``None`` when their inputs are omitted.
         """
+        if kv_cache is not None and kv_cache_mode not in ("extract", "cached"):
+            raise ValueError(
+                f"kv_cache_mode must be 'extract' or 'cached' when kv_cache is provided, got {kv_cache_mode!r}."
+            )
+        if kv_cache is None and kv_cache_mode is not None:
+            raise ValueError(f"kv_cache_mode is {kv_cache_mode!r} but no kv_cache was passed to hold the prefix.")
+        if kv_cache is not None and self._cp_shard_fn is not None:
+            raise ValueError("kv_cache is not supported with context parallelism.")
+        if kv_cache is not None and self._has_kv_cache_incompatible_hooks():
+            raise ValueError("kv_cache cannot be combined with cache, layer-skip or context-parallel hooks.")
+
         has_sound = sound_tokens is not None and sound_sequence_indexes is not None
         has_action = action_tokens is not None and action_sequence_indexes is not None
 
@@ -838,22 +907,14 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         if self._cp_shard_fn is not None:
             und_seq, gen_seq, rotary_emb = self._cp_shard_fn(und_seq, gen_seq, rotary_emb)
 
-        und_kv = None
-        if self._und_kv_cache is not None and self._cp_shard_fn is None and not torch.is_grad_enabled():
-            # Keyed on the identity of the per-call text inputs. The entry holds references to them, so their ids
-            # cannot be reused by other tensors while the cache lives. One entry per CFG branch at most: if the
-            # inputs are new tensors on every step (e.g. copied by a hook), the extra calls run uncached.
-            key = (id(input_ids), id(position_ids), und_len)
-            entry = self._und_kv_cache.get(key)
-            if entry is None and len(self._und_kv_cache) < 2:
-                entry = self._und_kv_cache[key] = (input_ids, position_ids, [[] for _ in self.layers])
-            if entry is not None:
-                und_kv = entry[2]
-
-        if und_kv is None:
+        # Cache hooks (e.g. SeaCache) replace `_run_decoder_stack` with a 3-argument version, so the KV-cache
+        # arguments are only passed when a cache is used (rejected above together with such hooks).
+        if kv_cache is None:
             und_out, gen_out = self._run_decoder_stack(und_seq, gen_seq, rotary_emb)
         else:
-            und_out, gen_out = self._run_decoder_stack(und_seq, gen_seq, rotary_emb, und_kv=und_kv)
+            und_out, gen_out = self._run_decoder_stack(
+                und_seq, gen_seq, rotary_emb, kv_cache=kv_cache, kv_cache_mode=kv_cache_mode
+            )
 
         # Optional context-parallelism gather seam: re-gather the full per-pathway
         # sequence on every rank (and drop the padding) before the global-index decode
@@ -862,7 +923,7 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         if self._cp_gather_fn is not None:
             und_out, gen_out = self._cp_gather_fn(und_out, gen_out)
 
-        # The und pathway was reused from `und_kv`; predictions are only read at gen positions.
+        # The und pathway was skipped ("cached" mode); predictions are only read at gen positions.
         if und_out is None:
             und_out = gen_out.new_zeros(und_len, gen_out.shape[-1])
 
