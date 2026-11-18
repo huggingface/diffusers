@@ -288,21 +288,28 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
         # Regression test for #15263: UniPCMultistepScheduler returns NaN on the last step
         # with final_sigmas_type="zero" when solver_type="bh1" or lower_order_final=False
         for solver_type in ["bh1", "bh2"]:
-            for lower_order_final in [True, False]:
-                for steps in [3, 9, 20]:
-                    scheduler = UniPCMultistepScheduler(
-                        solver_type=solver_type,
-                        lower_order_final=lower_order_final,
-                        final_sigmas_type="zero",
-                    )
-                    scheduler.set_timesteps(steps)
-                    sample = torch.randn(1, 4, 8, 8, generator=torch.Generator().manual_seed(0))
-                    for t in scheduler.timesteps:
-                        sample = scheduler.step(torch.zeros_like(sample), t, sample).prev_sample
-                        assert torch.isfinite(sample).all(), (
-                            f"Non-finite sample produced with solver_type={solver_type}, "
-                            f"lower_order_final={lower_order_final}, steps={steps} at timestep {t}"
+            for solver_order in [1, 2, 3]:
+                for lower_order_final in [True, False]:
+                    for steps in [3, 9, 20]:
+                        scheduler = UniPCMultistepScheduler(
+                            solver_type=solver_type,
+                            solver_order=solver_order,
+                            lower_order_final=lower_order_final,
+                            final_sigmas_type="zero",
                         )
+                        scheduler.set_timesteps(steps)
+                        sample = torch.randn(1, 4, 8, 8, generator=torch.Generator().manual_seed(0))
+                        for t in scheduler.timesteps:
+                            sample = scheduler.step(torch.zeros_like(sample), t, sample).prev_sample
+                            assert torch.isfinite(sample).all(), (
+                                f"Non-finite sample produced with solver_type={solver_type}, "
+                                f"solver_order={solver_order}, lower_order_final={lower_order_final}, "
+                                f"steps={steps} at timestep {t}"
+                            )
+
+    def test_final_sigmas_type_zero_predict_x0_false_raises(self):
+        with self.assertRaises(ValueError):
+            UniPCMultistepScheduler(predict_x0=False, final_sigmas_type="zero")
 
 
 class UniPCMultistepScheduler1DTest(UniPCMultistepSchedulerTest):

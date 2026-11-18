@@ -276,6 +276,10 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                 raise NotImplementedError(f"{solver_type} is not implemented for {self.__class__}")
 
         self.predict_x0 = predict_x0
+        if not predict_x0 and final_sigmas_type == "zero":
+            raise ValueError(
+                f"`final_sigmas_type` '{final_sigmas_type}' is not supported when `predict_x0=False`. Please choose 'sigma_min' instead."
+            )
         # setable values
         self.num_inference_steps = None
         timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=np.float32)[::-1].copy()
