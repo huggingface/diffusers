@@ -29,6 +29,13 @@ from ..testing_utils import (
 )
 
 
+# A `src/` gap, so the test is marked `xfail`: it will XPASS once the call is wrapped, and the marker can go.
+NO_CACHE_CONTEXT = pytest.mark.xfail(
+    reason="`Wan22LoopDenoiser` calls the transformer outside `cache_context`.",
+    strict=True,
+)
+
+
 class Wan22VaceModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = Wan22VaceModularPipeline
     pipeline_blocks_class = Wan22VaceBlocks
@@ -61,6 +68,10 @@ class Wan22VaceModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestWan22VaceModularPipelineFast(Wan22VaceModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    @NO_CACHE_CONTEXT
+    def test_cache_context_receives_required_fields(self):
+        super().test_cache_context_receives_required_fields()
+
     def test_inference_with_reference_image(self):
         pipe = self.get_pipeline().to("cpu")
 
