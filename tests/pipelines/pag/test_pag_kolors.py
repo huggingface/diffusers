@@ -194,9 +194,14 @@ class TestKolorsPAGPipelineMemory(KolorsPAGPipelineTesterConfig, MemoryTesterMix
 
 
 class TestKolorsPAGPipelineLoRA(KolorsPAGPipelineTesterConfig, LoraTesterMixin, UNetLoraTesterMixin):
-    """LoRA tests for the Kolors PAG pipeline."""
+    """LoRA tests for the Kolors PAG pipeline.
 
-    # The ChatGLM text encoder has no registered LoRA target modules in these tests, so only the UNet is covered.
+    The pipeline advertises `text_encoder` as LoRA-loadable, but a ChatGLM text-encoder LoRA cannot round-trip through
+    the public API these tests drive: `load_lora_weights` fails in `convert_state_dict_to_peft` ("Could not
+    automatically infer state dict type"), and `encode_prompt` never applies the LoRA scale to the text encoder. Scope
+    the tests to the UNet until that closes.
+    """
+
     lora_loadable_components = ["unet"]
 
 
