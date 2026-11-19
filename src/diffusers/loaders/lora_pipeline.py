@@ -3572,10 +3572,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
         is_original_hunyuan_video = any("img_attn_qkv" in k for k in state_dict)
-        is_musubi_hunyuan_video = any(
-            k.startswith(("lora_unet_double_blocks_", "lora_unet_single_blocks_")) for k in state_dict
-        )
-        if is_musubi_hunyuan_video:
+        if any(k.startswith("lora_unet_") for k in state_dict):
             state_dict = _convert_musubi_hunyuan_video_lora_to_diffusers(state_dict)
         elif is_original_hunyuan_video:
             state_dict = _convert_hunyuan_video_lora_to_diffusers(state_dict)
