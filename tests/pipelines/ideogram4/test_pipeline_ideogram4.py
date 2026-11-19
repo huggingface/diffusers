@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
+
 import pytest
 import torch
 from transformers import Qwen2Tokenizer, Qwen3VLConfig, Qwen3VLModel
@@ -278,6 +280,47 @@ class TestIdeogram4Pipeline(Ideogram4PipelineTesterConfig, PipelineTesterMixin):
 
         with pytest.raises(ValueError, match="requires the `prompt_enhancer_head` component"):
             pipe(**inputs)
+
+    def test_prompt_enhancer_head_deprecation(self):
+        with pytest.warns(FutureWarning, match="Ideogram4PromptEnhancerHead.*deprecated") as warnings:
+            Ideogram4PromptEnhancerHead(hidden_size=4, vocab_size=3)
+
+        assert "https://huggingface.co/diffusers/ideogram4-prompt-enhancer" in str(warnings[0].message)
+        assert "trust_remote_code=True" in str(warnings[0].message)
+
+    def test_upsample_prompt_deprecation(self):
+        pipe = self.get_pipeline().to(torch_device)
+
+        with pytest.warns(FutureWarning, match="generate_captions.*deprecated") as warnings:
+            captions = pipe.upsample_prompt(
+                "a cat", max_new_tokens=1, generator=self.get_generator(0), device=torch.device(torch_device)
+            )
+
+        assert "https://huggingface.co/diffusers/ideogram4-prompt-enhancer" in str(warnings[0].message)
+        assert "without `prompt_upsampling`" in str(warnings[0].message)
+        assert len(captions) == 1
+        assert isinstance(captions[0], str)
+
+    @pytest.mark.parametrize("prompt_upsampling", [None, False, True], ids=["omitted", "false", "true"])
+    def test_prompt_upsampling_argument_deprecation(self, prompt_upsampling):
+        pipe = self.get_pipeline()
+        inputs = self.get_dummy_inputs()
+        inputs["height"] += 1
+        if prompt_upsampling is not None:
+            inputs["prompt_upsampling"] = prompt_upsampling
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            with pytest.raises(ValueError, match="must both be divisible"):
+                pipe(**inputs)
+
+        messages = [str(w.message) for w in caught if issubclass(w.category, FutureWarning)]
+        if prompt_upsampling is None:
+            assert not messages
+        else:
+            assert len(messages) == 1
+            assert "`prompt_upsampling` is deprecated" in messages[0]
+            assert "https://huggingface.co/diffusers/ideogram4-prompt-enhancer" in messages[0]
 
 
 class TestIdeogram4PipelineMemory(Ideogram4PipelineTesterConfig, MemoryTesterMixin):

@@ -124,8 +124,9 @@ class Ideogram4AutoBlocks(SequentialPipelineBlocks):
       Inputs:
           prompt (`str`):
               The prompt or prompts to guide image generation.
-          prompt_upsampling (`bool`, *optional*, defaults to False):
-              If True, rewrite the prompt into Ideogram4's native JSON caption before encoding.
+          prompt_upsampling (`bool`, *optional*):
+              Deprecated. Use https://huggingface.co/diffusers/ideogram4-prompt-enhancer to expand the prompt before
+              calling this pipeline without `prompt_upsampling`. Upsampling is disabled when omitted.
           prompt_upsampling_temperature (`float`, *optional*, defaults to 1.0):
               Sampling temperature for prompt upsampling.
           height (`int`, *optional*):
