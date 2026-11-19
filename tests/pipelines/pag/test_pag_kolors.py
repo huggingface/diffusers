@@ -31,7 +31,13 @@ from ..pipeline_params import (
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
-from ..testing_utils import BasePipelineTesterConfig, FromPipeTesterMixin, MemoryTesterMixin
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    FromPipeTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
+    UNetLoraTesterMixin,
+)
 from .testing_utils import PAGPipelineTesterMixin
 
 
@@ -185,6 +191,13 @@ class TestKolorsPAGPipeline(KolorsPAGPipelineTesterConfig, PAGPipelineTesterMixi
 
 class TestKolorsPAGPipelineMemory(KolorsPAGPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Kolors PAG pipeline."""
+
+
+class TestKolorsPAGPipelineLoRA(KolorsPAGPipelineTesterConfig, LoraTesterMixin, UNetLoraTesterMixin):
+    """LoRA tests for the Kolors PAG pipeline."""
+
+    # The ChatGLM text encoder has no registered LoRA target modules in these tests, so only the UNet is covered.
+    lora_loadable_components = ["unet"]
 
 
 class TestKolorsPAGPipelineFromPipe(KolorsPAGPipelineTesterConfig, FromPipeTesterMixin):
