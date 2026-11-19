@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Prompt-enhancement assets for Ideogram4.
+"""Deprecated prompt-enhancement assets for Ideogram4.
+
+Use the modular prompt enhancer at https://huggingface.co/diffusers/ideogram4-prompt-enhancer instead.
 
 Ideogram4 is trained on a *structured JSON caption* rather than a free-form prompt. The optional prompt enhancer
 rewrites a short user idea into that native caption schema by combining the head-less Qwen3-VL text encoder with the
@@ -31,16 +33,23 @@ from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.modeling_utils import ModelMixin
-from ...utils import logging
+from ...utils import deprecate, logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 PROMPT_UPSAMPLE_TEMPERATURE = 1.0
+_PROMPT_ENHANCER_DEPRECATION_MESSAGE = (
+    "Use the modular prompt enhancer at https://huggingface.co/diffusers/ideogram4-prompt-enhancer instead. "
+    "Load it with `ModularPipeline.from_pretrained('diffusers/ideogram4-prompt-enhancer', trust_remote_code=True)`, "
+    "enhance the prompt, and pass the result as `prompt` to the image pipeline without `prompt_upsampling`."
+)
 
 
 class Ideogram4PromptEnhancerHead(ModelMixin, ConfigMixin):
     """LM head that makes the head-less Qwen3-VL `text_encoder` generative for prompt upsampling.
+
+    Deprecated in favor of the modular prompt enhancer at https://huggingface.co/diffusers/ideogram4-prompt-enhancer.
 
     An optional pipeline component (`prompt_enhancer_head`): its weights load via a normal `from_pretrained` (its own
     small repo, or bundled in the model repo) rather than an in-pipeline download. At upsample time the pipeline
@@ -49,6 +58,7 @@ class Ideogram4PromptEnhancerHead(ModelMixin, ConfigMixin):
 
     @register_to_config
     def __init__(self, hidden_size: int = 4096, vocab_size: int = 151936):
+        deprecate("Ideogram4PromptEnhancerHead", "1.0.0", _PROMPT_ENHANCER_DEPRECATION_MESSAGE)
         super().__init__()
         self.lm_head = nn.Linear(hidden_size, vocab_size, bias=False)
 
@@ -177,6 +187,7 @@ def generate_captions(
     Pass `generator` to make sampling reproducible (a seed is derived from it and used inside a forked RNG so the
     caller's own RNG stream is untouched).
     """
+    deprecate("generate_captions", "1.0.0", _PROMPT_ENHANCER_DEPRECATION_MESSAGE)
     device = device or prompt_enhancer.device
     prompts = [prompt] if isinstance(prompt, str) else list(prompt)
     divisor = math.gcd(width, height) or 1

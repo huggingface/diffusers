@@ -31,7 +31,7 @@ Key inference-time knobs are exposed via the pipeline call:
 import torch
 from diffusers import Ideogram4Pipeline
 
-pipe = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-v4", dtype=torch.bfloat16)
+pipe = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-4-nf4-diffusers", dtype=torch.bfloat16)
 pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 prompt = "A photo of a cat holding a sign that says hello world"
@@ -56,7 +56,7 @@ import requests
 import torch
 from diffusers import Ideogram4Pipeline
 
-pipe = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-4-nf4", dtype=torch.bfloat16)
+pipe = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-4-nf4-diffusers", dtype=torch.bfloat16)
 pipe.to("cuda")  # or "mps", "xpu", "cpu"
 
 # Expand the prompt into a structured JSON caption with Ideogram's hosted magic-prompt API.
@@ -74,33 +74,60 @@ image.save("ideogram4_upsampled.png")
 
 ### Local (on-device)
 
-For a fully local pipeline, load a small [`Ideogram4PromptEnhancerHead`] (the Qwen3-VL LM head) as the optional
-`prompt_enhancer_head` component and pass `prompt_upsampling=True`. The head is grafted onto the shared
-`text_encoder`, so no second text encoder is loaded. Install `outlines` for schema-constrained captions (the nf4
-checkpoint also needs `bitsandbytes`):
+Use the [modular prompt enhancer](https://huggingface.co/diffusers/ideogram4-prompt-enhancer) to expand prompts on your
+device. It reuses the image pipeline's `text_encoder` and `tokenizer`, so only the LM head is loaded separately.
+Install `outlines` for schema-constrained captions; the nf4 image checkpoint also needs `bitsandbytes`.
+
+<Tip warning={true}>
+
+The built-in `Ideogram4PromptEnhancerHead`, `upsample_prompt()` method, and `prompt_upsampling` argument are deprecated.
+Use the hosted modular block and pass its output as `prompt` to the image pipeline. Omit `prompt_upsampling`; built-in
+upsampling is disabled by default.
+
+</Tip>
+
+The block and head load code from the Hub and execute it locally. Both loading calls require `trust_remote_code=True`.
 
 ```python
 import torch
-from diffusers import Ideogram4Pipeline, Ideogram4PromptEnhancerHead
+from diffusers import Ideogram4Pipeline, ModularPipeline
 
-prompt_enhancer_head = Ideogram4PromptEnhancerHead.from_pretrained(
-    "diffusers/qwen3-vl-8b-instruct-lm-head", dtype=torch.bfloat16
+pipe = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-4-nf4-diffusers", dtype=torch.bfloat16)
+pipe.to("cuda") # or "mps", "xpu", "cpu"
+
+enhancer = ModularPipeline.from_pretrained(
+    "diffusers/ideogram4-prompt-enhancer", trust_remote_code=True
 )
-pipe = Ideogram4Pipeline.from_pretrained(
-    "ideogram-ai/ideogram-4-nf4", prompt_enhancer_head=prompt_enhancer_head, dtype=torch.bfloat16
+enhancer.update_components(text_encoder=pipe.text_encoder, tokenizer=pipe.tokenizer)
+enhancer.load_components(
+    names="prompt_enhancer_head", dtype=torch.bfloat16, trust_remote_code=True
 )
-pipe.to("cuda")  # or "mps", "xpu", "cpu"
+enhancer.to("cuda") # or "mps", "xpu", "cpu"
 
 prompt = "A photo of a cat holding a sign that says hello world"
-image = pipe(
-    prompt,
+prompt = enhancer(
+    prompt=prompt,
     height=1024,
     width=1024,
-    prompt_upsampling=True,
+    generator=torch.Generator("cuda").manual_seed(0),
+    output="prompt",
+)[0]
+image = pipe(
+    prompt=prompt,
+    height=1024,
+    width=1024,
     generator=torch.Generator("cuda").manual_seed(0),
 ).images[0]
 image.save("ideogram4_upsampled.png")
 ```
+
+The enhancer returns a list of structured JSON prompt strings, one per input prompt. The example selects the first
+result with `[0]` and passes it through the image pipeline's existing `prompt` argument. For a batch, pass the whole
+list as `prompt`. Use the same `height` and `width` for enhancement and image generation so the expanded prompt describes
+the intended aspect ratio. Keep the shared encoder and the head on the same device with compatible dtypes.
+
+You can also share the encoder and tokenizer from an `Ideogram4ModularPipeline` and pass the expanded prompts to it as
+`prompt`, omitting `prompt_upsampling`.
 
 ## Ideogram4Pipeline
 
@@ -109,6 +136,8 @@ image.save("ideogram4_upsampled.png")
 	- __call__
 
 ## Ideogram4PromptEnhancerHead
+
+Deprecated. Use the [modular prompt enhancer](https://huggingface.co/diffusers/ideogram4-prompt-enhancer) instead.
 
 [[autodoc]] Ideogram4PromptEnhancerHead
 
