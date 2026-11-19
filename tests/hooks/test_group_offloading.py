@@ -694,3 +694,47 @@ class TestConditionalModuleGroupOffload(TestGroupOffload):
             assert torch.allclose(out_ref_no_opt2, out_no_opt2, atol=1e-5), (
                 f"[{offload_type}] Outputs do not match on third pass (back to no optional_input)."
             )
+
+
+class DummyModelWithRootBufferAndNestedBlocks(ModelMixin):
+    _group_offload_block_modules = ["encoder", "decoder"]
+
+    def __init__(self, features: int) -> None:
+        super().__init__()
+        self.encoder = NestedContainer(features)
+        self.decoder = NestedContainer(features)
+        self.register_buffer("latents_mean", torch.zeros(features))
+        self.register_buffer("latents_std", torch.ones(features))
+
+    def decode(self, x: torch.Tensor) -> torch.Tensor:
+        return self.decoder(x)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.decoder(self.encoder(x))
+
+
+@require_torch_accelerator
+class TestGroupOffloadingNestedBlockModules:
+    def test_nested_block_modules_with_root_buffers_and_streams(self):
+        model = DummyModelWithRootBufferAndNestedBlocks(16).eval()
+        model_ref = DummyModelWithRootBufferAndNestedBlocks(16).eval()
+        model_ref.load_state_dict(model.state_dict(), strict=True)
+        model_ref.to(torch_device)
+
+        model.enable_group_offload(
+            torch_device,
+            offload_type="block_level",
+            num_blocks_per_group=1,
+            use_stream=True,
+            low_cpu_mem_usage=True,
+        )
+
+        # Root unmatched group must honor `low_cpu_mem_usage=True` instead of pre-pinning.
+        root_hook = model._diffusers_hook.get_hook("group_offloading")
+        assert root_hook.group.low_cpu_mem_usage is True
+
+        x = torch.randn(4, 16, device=torch_device)
+        with torch.no_grad():
+            for _ in range(2):
+                assert torch.allclose(model.decode(x), model_ref.decode(x), atol=1e-5)
+                assert torch.allclose(model(x), model_ref(x), atol=1e-5)

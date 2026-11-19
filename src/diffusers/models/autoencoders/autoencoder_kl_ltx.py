@@ -1073,6 +1073,7 @@ class AutoencoderKLLTXVideo(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrigi
     """
 
     _supports_gradient_checkpointing = True
+    _group_offload_block_modules = ["encoder", "decoder"]
 
     @register_to_config
     def __init__(

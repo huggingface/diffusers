@@ -37,6 +37,7 @@ enable_full_determinism()
 
 
 class LTXConditionPipelineTesterConfig(BasePipelineTesterConfig):
+    group_offloading_block_level_exclude_modules = []
     pipeline_class = LTXConditionPipeline
     required_input_params_in_call_signature = frozenset(
         [
