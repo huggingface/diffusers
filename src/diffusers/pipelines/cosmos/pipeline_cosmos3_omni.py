@@ -30,6 +30,8 @@ from ...models.autoencoders.autoencoder_cosmos3_audio import Cosmos3AVAEAudioTok
 from ...models.autoencoders.autoencoder_kl_wan import AutoencoderKLWan
 from ...models.modeling_utils import get_parameter_device
 from ...models.transformers.transformer_cosmos3 import (
+    Cosmos3AttnProcessor,
+    Cosmos3KVCache,
     Cosmos3OmniTransformer,
 )
 from ...schedulers import UniPCMultistepScheduler
@@ -1350,6 +1352,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         mixed_precision_first_steps: int | None = None,
         mixed_precision_last_steps: int | None = None,
         mixed_precision_reasoner_policy: str | None = None,
+        use_kv_cache: bool = True,
     ) -> Cosmos3OmniPipelineOutput | tuple:
         r"""
         Run the Cosmos 3 omni pipeline end-to-end: encode the (optional) conditioning image/video, denoise vision and
@@ -1455,6 +1458,11 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 Optional trailing W8A16 step count.
             mixed_precision_reasoner_policy (`str`, *optional*):
                 Optional reasoner path: `"high_precision"` (W8A16) or `"base_precision"` (native W8A8).
+            use_kv_cache (`bool`, *optional*, defaults to `True`):
+                Cache the text-prefix keys and values of each CFG branch after the first step and skip the text
+                pathway on later steps. Valid because the text tokens never attend to the video, sound or action
+                tokens, so their keys and values are the same on every step. Not used with mixed precision, cache
+                or layer-skip hooks, context parallelism or custom attention processors.
 
         Returns:
             [`Cosmos3OmniPipelineOutput`] or `tuple`:
@@ -1715,6 +1723,19 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         )
         self._mixed_precision_config = mixed_precision
         self._mixed_precision_trace = []
+        # The text (und) keys and values are the same on every step, so the first step extracts them and later steps
+        # only run the generation pathway. Not with step-dependent precision, cache / layer-skip hooks, context
+        # parallelism or custom attention processors.
+        cache_enabled = (
+            use_kv_cache
+            and not mixed_precision.enabled
+            and not self.transformer._has_kv_cache_incompatible_hooks()
+            and self.transformer._cp_shard_fn is None
+            and all(type(p) is Cosmos3AttnProcessor for p in self.transformer.attn_processors.values())
+        )
+        num_layers = len(self.transformer.layers)
+        cond_kv_cache = Cosmos3KVCache(num_layers) if cache_enabled else None
+        uncond_kv_cache = Cosmos3KVCache(num_layers) if cache_enabled and self.do_classifier_free_guidance else None
         try:
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 for i, t in enumerate(timesteps):
@@ -1729,6 +1750,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                         continue
 
                     self._current_timestep = t
+                    kv_cache_mode = None if cond_kv_cache is None else ("extract" if i == 0 else "cached")
                     sigma = float(self.scheduler.sigmas[i])
                     timestep = t.item()
 
@@ -1778,6 +1800,8 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                             action_timesteps=action_timesteps,
                             action_noisy_frame_indexes=cond_packed_static.get("action_noisy_frame_indexes"),
                             action_domain_ids=[action_domain_id] if action_domain_id is not None else None,
+                            kv_cache=cond_kv_cache,
+                            kv_cache_mode=kv_cache_mode,
                             return_dict=False,
                         )
                     cond_v_vision, cond_v_sound, cond_v_action = self._mask_velocity_predictions(
@@ -1821,6 +1845,8 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                                 action_timesteps=action_timesteps,
                                 action_noisy_frame_indexes=uncond_packed_static.get("action_noisy_frame_indexes"),
                                 action_domain_ids=[action_domain_id] if action_domain_id is not None else None,
+                                kv_cache=uncond_kv_cache,
+                                kv_cache_mode=kv_cache_mode if uncond_kv_cache is not None else None,
                                 return_dict=False,
                             )
                         uncond_v_vision, uncond_v_sound, uncond_v_action = self._mask_velocity_predictions(
@@ -1892,6 +1918,12 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                         progress_bar.update()
         finally:
             reset_cosmos3_mixed_precision(self.transformer, mixed_precision)
+
+        # Clean up KV cache
+        if cond_kv_cache is not None:
+            cond_kv_cache.clear()
+        if uncond_kv_cache is not None:
+            uncond_kv_cache.clear()
 
         self._current_timestep = None
 
