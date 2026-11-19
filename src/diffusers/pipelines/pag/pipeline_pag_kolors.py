@@ -969,7 +969,7 @@ class KolorsPAGPipeline(
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
-            image_embeds = self.prepare_ip_adapter_image_embeds(
+            ip_adapter_image_embeds = self.prepare_ip_adapter_image_embeds(
                 ip_adapter_image,
                 ip_adapter_image_embeds,
                 device,
@@ -1039,8 +1039,8 @@ class KolorsPAGPipeline(
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
-                if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
-                    added_cond_kwargs["image_embeds"] = image_embeds
+                if ip_adapter_image_embeds is not None:
+                    added_cond_kwargs["image_embeds"] = ip_adapter_image_embeds
 
                 noise_pred = self.unet(
                     latent_model_input,
