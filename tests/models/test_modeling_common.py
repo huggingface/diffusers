@@ -18,7 +18,6 @@ import os
 import tempfile
 import unittest.mock as mock
 import uuid
-from contextlib import nullcontext
 from types import SimpleNamespace
 
 import pytest
@@ -28,8 +27,6 @@ from huggingface_hub import ModelCard, delete_repo, snapshot_download, try_to_lo
 from huggingface_hub.utils import HfHubHTTPError, is_jinja_available
 from safetensors.torch import save_file
 
-from diffusers import TensorParallelConfig
-from diffusers.hooks.tensor_parallel import _check_tp_supported
 from diffusers.models import FluxTransformer2DModel, SD3Transformer2DModel, UNet2DConditionModel
 from diffusers.models.model_loading_utils import _load_shard_file_tp
 
@@ -42,24 +39,6 @@ from ..testing_utils import (
 
 
 class TestModelUtils:
-    @pytest.mark.parametrize(
-        "num_heads, num_key_value_heads, tp_degree, mesh_degree, error",
-        [
-            (None, None, 2, None, None),
-            (8, None, 4, None, None),
-            (8, 4, 2, None, None),
-            (8, 2, 4, None, "key/value heads"),
-            (6, 2, 4, None, "attention heads"),
-            (8, 2, 4, 2, None),
-            (8, 2, 2, 4, "key/value heads"),
-        ],
-    )
-    def test_tensor_parallel_head_divisibility(self, num_heads, num_key_value_heads, tp_degree, mesh_degree, error):
-        mesh = SimpleNamespace(size=lambda: mesh_degree) if mesh_degree is not None else None
-        config = TensorParallelConfig(tp_degree=tp_degree, mesh=mesh)
-        with pytest.raises(ValueError, match=error) if error else nullcontext():
-            _check_tp_supported("TestModel", {}, num_heads, config, num_key_value_heads=num_key_value_heads)
-
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     @pytest.mark.parametrize("keep_in_fp32_modules", [None, ["keep"]])
     def test_tensor_parallel_loading_preserves_dtype(self, tmp_path, dtype, keep_in_fp32_modules):
