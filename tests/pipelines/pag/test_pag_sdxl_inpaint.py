@@ -32,7 +32,6 @@ from transformers import (
 
 from diffusers import (
     AutoencoderKL,
-    AutoPipelineForInpainting,
     EulerDiscreteScheduler,
     StableDiffusionXLInpaintPipeline,
     StableDiffusionXLPAGInpaintPipeline,
@@ -267,7 +266,7 @@ class TestStableDiffusionXLPAGInpaintPipelineIntegration:
         return inputs
 
     def test_pag_cfg(self):
-        pipeline = AutoPipelineForInpainting.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
+        pipeline = StableDiffusionXLPAGInpaintPipeline.from_pretrained(self.repo_id, torch_dtype=torch.float16)
         pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.set_progress_bar_config(disable=None)
 
@@ -284,7 +283,7 @@ class TestStableDiffusionXLPAGInpaintPipelineIntegration:
         )
 
     def test_pag_uncond(self):
-        pipeline = AutoPipelineForInpainting.from_pretrained(self.repo_id, enable_pag=True, torch_dtype=torch.float16)
+        pipeline = StableDiffusionXLPAGInpaintPipeline.from_pretrained(self.repo_id, torch_dtype=torch.float16)
         pipeline.enable_model_cpu_offload(device=torch_device)
         pipeline.set_progress_bar_config(disable=None)
 

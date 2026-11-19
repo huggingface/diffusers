@@ -685,8 +685,6 @@
         title: Sana
       - local: api/pipelines/sana_sprint
         title: Sana Sprint
-      - local: api/pipelines/shap_e
-        title: Shap-E
       - local: api/pipelines/stable_cascade
         title: Stable Cascade
       - sections:
