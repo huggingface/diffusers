@@ -113,6 +113,9 @@ else:
             "PIAPipeline",
             "PaintByExamplePipeline",
             "SemanticStableDiffusionPipeline",
+            "ShapEImg2ImgPipeline",
+            "ShapEPipeline",
+            "shap_e",
             "StableDiffusionAttendAndExcitePipeline",
             "StableDiffusionControlNetXSPipeline",
             "StableDiffusionDiffEditPipeline",
@@ -394,7 +397,6 @@ else:
         "SanaWMLTX2Refiner",
         "SanaWMPipelineOutput",
     ]
-    _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
     _import_structure["stable_audio"] = [
         "StableAudioProjectionModel",
         "StableAudioPipeline",
@@ -658,6 +660,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PaintByExamplePipeline,
             PIAPipeline,
             SemanticStableDiffusionPipeline,
+            ShapEImg2ImgPipeline,
+            ShapEPipeline,
             StableDiffusionAttendAndExcitePipeline,
             StableDiffusionControlNetXSPipeline,
             StableDiffusionDiffEditPipeline,
@@ -689,6 +693,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
+            shap_e,
         )
         from .diffusion_gemma import DiffusionGemmaPipeline, DiffusionGemmaPipelineOutput
         from .dreamlite import (
@@ -872,7 +877,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaWMPipeline,
             SanaWMPipelineOutput,
         )
-        from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
         from .stable_audio_3 import (
             StableAudio3AudioToAudioPipeline,
