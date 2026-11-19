@@ -34,6 +34,7 @@ from ..pipeline_params import (
 from ..testing_utils import (
     BasePipelineTesterConfig,
     FromPipeTesterMixin,
+    LoraMemoryTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
     UNetLoraTesterMixin,
@@ -201,6 +202,12 @@ class TestKolorsPAGPipelineLoRA(KolorsPAGPipelineTesterConfig, LoraTesterMixin, 
     automatically infer state dict type"), and `encode_prompt` never applies the LoRA scale to the text encoder. Scope
     the tests to the UNet until that closes.
     """
+
+    lora_loadable_components = ["unet"]
+
+
+class TestKolorsPAGPipelineLoRAMemory(KolorsPAGPipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests (group offload, CPU offload) for the Kolors PAG pipeline."""
 
     lora_loadable_components = ["unet"]
 
