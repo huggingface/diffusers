@@ -26,6 +26,7 @@ from diffusers import (
     HunyuanVideoTransformer3DModel,
 )
 
+from ...models.testing_utils.lora import check_if_lora_correctly_set
 from ...testing_utils import (
     Expectations,
     assert_tensors_close,
@@ -270,6 +271,40 @@ class TestHunyuanVideoPipelineTaylorSeerCache(HunyuanVideoPipelineTesterConfig, 
 
 class TestHunyuanVideoPipelineLoRA(HunyuanVideoPipelineTesterConfig, LoraTesterMixin):
     """LoRA tests for the HunyuanVideo pipeline."""
+
+    def test_lora_musubi_state_dict(self, base_pipe_output):
+        # musubi-tuner keys (`lora_unet_*` with `lora_down` / `lora_up` / `alpha`), as in the LoRA used by the
+        # HunyuanVideo docs. The loaded update must be the original one scaled by `alpha / rank`.
+        pipe = self.get_pipeline().to(torch_device)
+        inner_dim = pipe.transformer.config.num_attention_heads * pipe.transformer.config.attention_head_dim
+        rank, alpha = 4, 1.0
+
+        torch.manual_seed(0)
+        qkv_down, qkv_up = torch.randn(rank, inner_dim), torch.randn(3 * inner_dim, rank)
+        fc1_down, fc1_up = torch.randn(rank, inner_dim), torch.randn(4 * inner_dim, rank)
+        state_dict = {
+            "lora_unet_double_blocks_0_img_attn_qkv.lora_down.weight": qkv_down,
+            "lora_unet_double_blocks_0_img_attn_qkv.lora_up.weight": qkv_up,
+            "lora_unet_double_blocks_0_img_attn_qkv.alpha": torch.tensor(alpha),
+            "lora_unet_double_blocks_0_img_mlp_fc1.lora_down.weight": fc1_down,
+            "lora_unet_double_blocks_0_img_mlp_fc1.lora_up.weight": fc1_up,
+            "lora_unet_double_blocks_0_img_mlp_fc1.alpha": torch.tensor(alpha),
+        }
+        pipe.load_lora_weights(state_dict, adapter_name="musubi")
+        assert check_if_lora_correctly_set(pipe.transformer), "Lora not correctly set in transformer"
+
+        block = pipe.transformer.transformer_blocks[0]
+        expected_q, expected_k, expected_v = (alpha / rank * qkv_up @ qkv_down).chunk(3, dim=0)
+        for module, expected in [
+            (block.attn.to_q, expected_q),
+            (block.attn.to_k, expected_k),
+            (block.attn.to_v, expected_v),
+            (block.ff.net[0].proj, alpha / rank * fc1_up @ fc1_down),
+        ]:
+            assert_tensors_close(module.get_delta_weight("musubi").cpu(), expected)
+
+        output_lora = self.run_pipe(pipe)
+        assert not torch.allclose(output_lora, base_pipe_output, atol=1e-3, rtol=1e-3), "Lora should change the output"
 
 
 class TestHunyuanVideoPipelineLoRAMemory(HunyuanVideoPipelineTesterConfig, LoraMemoryTesterMixin):

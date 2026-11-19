@@ -1793,9 +1793,9 @@ def _convert_musubi_hunyuan_video_lora_to_diffusers(state_dict):
 
         down_weight = original_state_dict.pop(f"{module_key}.lora_down.weight")
         up_weight = original_state_dict.pop(f"{module_key}.lora_up.weight")
-        alpha = original_state_dict.pop(f"{module_key}.alpha", None)
+        alpha = original_state_dict.pop(f"{module_key}.alpha").item()
         # LoRA is scaled by `alpha / rank` in the forward pass, so fold that scale into the weights.
-        scale = alpha.item() / down_weight.shape[0] if alpha is not None else 1.0
+        scale = alpha / down_weight.shape[0]
         scale_down = scale
         scale_up = 1.0
         while scale_down * 2 < scale_up:
