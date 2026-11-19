@@ -424,6 +424,7 @@ def _check_tp_supported(
     num_heads: "int | None",
     tp_config,
     *,
+    num_key_value_heads: "int | None" = None,
     model: "torch.nn.Module | None" = None,
     device_map=None,
     hf_quantizer=None,
@@ -448,6 +449,10 @@ def _check_tp_supported(
     tp_degree = _tp_degree(tp_config)
     if num_heads is not None and num_heads % tp_degree != 0:
         raise ValueError(f"`tp_degree` ({tp_degree}) must divide the number of attention heads ({num_heads}).")
+    if num_key_value_heads is not None and num_key_value_heads % tp_degree != 0:
+        raise ValueError(
+            f"`tp_degree` ({tp_degree}) must divide the number of key/value heads ({num_key_value_heads})."
+        )
 
     if device_map is not None:
         raise ValueError(

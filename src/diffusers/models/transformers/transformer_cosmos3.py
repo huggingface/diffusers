@@ -21,7 +21,7 @@ import torch.nn as nn
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import PeftAdapterMixin
 from ...utils import BaseOutput
-from .._modeling_parallel import Conditional, TensorParallelConfig
+from .._modeling_parallel import Conditional
 from ..attention import AttentionMixin, AttentionModuleMixin
 from ..attention_dispatch import dispatch_attention_fn
 from ..cache_utils import CacheMixin
@@ -405,14 +405,6 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
     # so __init__ must accept it. Excluding it here keeps save_pretrained from writing it into
     # config.json — the value is a load-time runtime hint, not part of the model architecture.
     ignore_for_config = ["dtype"]
-
-    def _resolve_parallel_config(self, config):
-        tp = config if isinstance(config, TensorParallelConfig) else getattr(config, "tensor_parallel_config", None)
-        if tp is not None:
-            degree = tp.mesh.size() if tp.mesh is not None else tp.tp_degree
-            if self.config.num_attention_heads % degree or self.config.num_key_value_heads % degree:
-                raise ValueError("Cosmos3 TP degree must divide both query and KV head counts.")
-        return super()._resolve_parallel_config(config)
 
     @register_to_config
     def __init__(
