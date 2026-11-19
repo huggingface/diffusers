@@ -207,7 +207,10 @@ class TestKolorsPAGPipelineLoRA(KolorsPAGPipelineTesterConfig, LoraTesterMixin, 
 
 
 class TestKolorsPAGPipelineLoRAMemory(KolorsPAGPipelineTesterConfig, LoraMemoryTesterMixin):
-    """LoRA x memory-optimization tests (group offload, CPU offload) for the Kolors PAG pipeline."""
+    """LoRA x memory-optimization tests (group offload, CPU offload) for the Kolors PAG pipeline.
+
+    Scoped to the UNet for the same reason as `TestKolorsPAGPipelineLoRA`.
+    """
 
     lora_loadable_components = ["unet"]
 
