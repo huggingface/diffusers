@@ -20,10 +20,10 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import BaseOutput
-from ..modeling_utils import ModelMixin
-from .camera_shap_e import create_pan_cameras
+from ....configuration_utils import ConfigMixin, register_to_config
+from ....models import ModelMixin
+from ....utils import BaseOutput
+from .camera import create_pan_cameras
 
 
 def sample_pmf(pmf: torch.Tensor, n_samples: int) -> torch.Tensor:
@@ -221,7 +221,7 @@ class VoidNeRFModel(nn.Module):
 
         self.register_buffer("background", background)
 
-    def forward(self, position: torch.Tensor) -> torch.Tensor:
+    def forward(self, position):
         background = self.background[None].to(position.device)
 
         shape = position.shape[:-1]
@@ -494,7 +494,7 @@ class MeshDecoder(nn.Module):
         self.register_buffer("cases", cases)
         self.register_buffer("masks", masks)
 
-    def forward(self, field: torch.Tensor, min_point: torch.Tensor, size: torch.Tensor) -> MeshDecoderOutput:
+    def forward(self, field: torch.Tensor, min_point: torch.Tensor, size: torch.Tensor):
         """
         For a signed distance field, produce a mesh using marching cubes.
 
@@ -658,33 +658,7 @@ class MLPNeRSTFModel(ModelMixin, ConfigMixin):
 
         return mapped_output
 
-    def forward(
-        self,
-        *,
-        position: torch.Tensor,
-        direction: torch.Tensor,
-        ts: torch.Tensor,
-        nerf_level: str = "coarse",
-        rendering_mode: str = "nerf",
-    ) -> MLPNeRFModelOutput:
-        r"""
-        Args:
-            position (`torch.Tensor`):
-                Query points of shape `(..., 3)`.
-            direction (`torch.Tensor`):
-                Viewing directions of shape `(..., 3)`, matching `position`.
-            ts (`torch.Tensor`):
-                Ray parameters of the query points, passed through to the output.
-            nerf_level (`str`, *optional*, defaults to `"coarse"`):
-                Which density/color head to read, `"coarse"` or `"fine"`.
-            rendering_mode (`str`, *optional*, defaults to `"nerf"`):
-                `"nerf"` reads the NeRF color head, `"stf"` reads the signed distance and texture field (STF) color
-                head.
-
-        Returns:
-            [`MLPNeRFModelOutput`]:
-                The density, signed distance, channels and ray parameters at the query points.
-        """
+    def forward(self, *, position, direction, ts, nerf_level="coarse", rendering_mode="nerf"):
         h = encode_position(position)
 
         h_preact = h
@@ -794,16 +768,7 @@ class ShapEParamsProjModel(ModelMixin, ConfigMixin):
                 d_latent=d_latent,
             )
 
-    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
-        r"""
-        Args:
-            x (`torch.Tensor`):
-                Latent vectors of shape `(batch_size, sum(vectors), d_latent)`, one slice per projected parameter.
-
-        Returns:
-            `dict[str, torch.Tensor]`:
-                The projected MLP parameters, keyed by parameter name, each reshaped to its `param_shapes` entry.
-        """
+    def forward(self, x: torch.Tensor):
         out = {}
         start = 0
         for k, shape in zip(self.config.param_names, self.config.param_shapes):

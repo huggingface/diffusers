@@ -73,7 +73,6 @@ if is_torch_available():
     _import_structure["autoencoders.ltx2_diffusion_decoder"] = ["LTX2VideoDiffusionDecoderModel"]
     _import_structure["autoencoders.minimax_music3_vocoder"] = ["MiniMaxMusic3Vocoder"]
     _import_structure["autoencoders.mmaudio_vocoder"] = ["MMAudioVocoder"]
-    _import_structure["autoencoders.renderer_shap_e"] = ["ShapERenderer"]
     _import_structure["autoencoders.vocoder_ltx2"] = ["LTX2Vocoder", "LTX2VocoderWithBWE"]
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
     _import_structure["cache_utils"] = ["CacheMixin"]
@@ -257,7 +256,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MMAudioVAE,
             MMAudioVocoder,
             RFD4ProteinaAutoencoder,
-            ShapERenderer,
             VQModel,
         )
         from .cache_utils import CacheMixin

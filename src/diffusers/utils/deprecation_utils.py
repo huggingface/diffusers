@@ -83,7 +83,6 @@ _RELOCATED_PIPELINE_CLASSES = {
     ("ltx2", "LTX2TextConnectors"),
     ("ltx2", "LTX2Vocoder"),
     ("ltx2", "LTX2VocoderWithBWE"),
-    ("shap_e", "ShapERenderer"),
     ("stable_audio", "StableAudioProjectionModel"),
     ("stable_audio_3", "StableAudio3DurationEmbedder"),
     ("stable_diffusion", "CLIPImageProjection"),

@@ -58,7 +58,6 @@ RELOCATED_CLASSES = [
     ("ltx2", "diffusers.pipelines.ltx2.connectors", "LTX2TextConnectors", {}),
     ("ltx2", "diffusers.pipelines.ltx2.vocoder", "LTX2Vocoder", {}),
     ("ltx2", "diffusers.pipelines.ltx2.vocoder", "LTX2VocoderWithBWE", {}),
-    ("shap_e", "diffusers.pipelines.shap_e.renderer", "ShapERenderer", {}),
     (
         "stable_audio",
         "diffusers.pipelines.stable_audio.modeling_stable_audio",
@@ -83,8 +82,6 @@ IDS = [name for _, _, name, _ in RELOCATED_CLASSES]
 
 # Relocated symbols that are not top-level `diffusers` exports and so are not in `_RELOCATED_PIPELINE_CLASSES`:
 # (deprecated module path, new module path, symbol name, call kwargs)
-_SHAP_E_RENDERER = "diffusers.models.autoencoders.renderer_shap_e"
-_SHAP_E_CAMERA = "diffusers.models.autoencoders.camera_shap_e"
 RELOCATED_HELPERS = [
     (
         "diffusers.pipelines.ace_step.modeling_ace_step",
@@ -98,55 +95,6 @@ RELOCATED_HELPERS = [
         "AceStepTimbreEncoder",
         {},
     ),
-    ("diffusers.pipelines.shap_e.renderer", _SHAP_E_RENDERER, "MLPNeRSTFModel", {}),
-    ("diffusers.pipelines.shap_e.renderer", _SHAP_E_RENDERER, "ShapEParamsProjModel", {}),
-    (
-        "diffusers.pipelines.shap_e.renderer",
-        _SHAP_E_RENDERER,
-        "VoidNeRFModel",
-        {"background": [0.0, 0.0, 0.0], "channel_scale": 1.0},
-    ),
-    (
-        "diffusers.pipelines.shap_e.renderer",
-        _SHAP_E_RENDERER,
-        "BoundingBoxVolume",
-        {"bbox_min": [-1.0, -1.0, -1.0], "bbox_max": [1.0, 1.0, 1.0]},
-    ),
-    ("diffusers.pipelines.shap_e.renderer", _SHAP_E_RENDERER, "StratifiedRaySampler", {}),
-    (
-        "diffusers.pipelines.shap_e.renderer",
-        _SHAP_E_RENDERER,
-        "ImportanceRaySampler",
-        {"volume_range": None, "ts": torch.zeros(1, 1, 2, 1), "weights": torch.ones(1, 1, 2, 1)},
-    ),
-    (
-        "diffusers.pipelines.shap_e.renderer",
-        _SHAP_E_RENDERER,
-        "MLPNeRFModelOutput",
-        {
-            "density": torch.zeros(1),
-            "signed_distance": torch.zeros(1),
-            "channels": torch.zeros(1),
-            "ts": torch.zeros(1),
-        },
-    ),
-    (
-        "diffusers.pipelines.shap_e.camera",
-        _SHAP_E_CAMERA,
-        "DifferentiableProjectiveCamera",
-        {
-            "origin": torch.zeros(1, 3),
-            "x": torch.zeros(1, 3),
-            "y": torch.zeros(1, 3),
-            "z": torch.zeros(1, 3),
-            "width": 4,
-            "height": 4,
-            "x_fov": 0.7,
-            "y_fov": 0.7,
-            "shape": (1,),
-        },
-    ),
-    ("diffusers.pipelines.shap_e.camera", _SHAP_E_CAMERA, "create_pan_cameras", {"size": 4}),
 ]
 HELPER_IDS = [name for _, _, name, _ in RELOCATED_HELPERS]
 
