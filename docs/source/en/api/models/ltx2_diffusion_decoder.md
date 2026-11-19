@@ -138,31 +138,6 @@ video = decode_pipe(
 ).frames
 ```
 
-### Modular workflow
-
-[`LTX2DiffusionVaeDecoderStep`] (the LTX-2.5 decode block) declares the same inputs. Packed denoised latents are
-unpacked and denormalized as usual; `keyframe_latents` are already denormalized 5-D planes, matching
-`LTX2DFRPipelineOutput.keyframes`. They are optional, so they do not change automatic workflow selection.
-
-```python
-from diffusers.modular_pipelines.ltx2.decoders import LTX2DiffusionVaeDecoderStep
-
-decode = LTX2DiffusionVaeDecoderStep().init_pipeline("Lightricks/LTX-2.5-Diffusers")
-# Keep the trained keyframe tag `decoder.type_emb`; the dict form passes the flag to the decoder only.
-decode.load_components(dtype=torch.bfloat16, decoder_keyframe_type_embedding={"diffusion_decoder": True})
-videos = decode(
-    latents=packed_latents,
-    height=512,
-    width=704,
-    num_frames=121,
-    dtype=torch.bfloat16,
-    generator=torch.Generator("cuda").manual_seed(0),
-    keyframe_latents=out.keyframes,
-    keyframe_frame_indices=out.keyframe_positions,
-    output="videos",
-)
-```
-
 ## LTX2VideoDiffusionDecoderModel
 
 [[autodoc]] LTX2VideoDiffusionDecoderModel

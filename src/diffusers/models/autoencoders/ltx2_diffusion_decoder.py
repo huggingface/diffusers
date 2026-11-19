@@ -816,26 +816,31 @@ class LTX2VideoVaeNeighborhoodAttention(nn.Module, AttentionModuleMixin):
         num_frames, height, width = hidden_states.shape[1:4]
         return _neighborhood_block_mask(num_frames, height, width, self.kernel_size, hidden_states.device)
 
-    def forward(self, hidden_states: torch.Tensor, block_mask=None) -> torch.Tensor:
-        """Channels-last in and out: `(B, T, H, W, C)`."""
-        num_frames, height, width = hidden_states.shape[1:4]
-        kernel_t, kernel_h, kernel_w = self.kernel_size
-        if num_frames < kernel_t or height < kernel_h or width < kernel_w:
-            raise ValueError(
-                f"Neighborhood attention requires each spatial dim to be at least its kernel size; got "
-                f"(T, H, W) = ({num_frames}, {height}, {width}) with kernel_size {self.kernel_size}."
-            )
-        return self.processor(self, hidden_states, block_mask)
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        block_mask=None,
+        keyframe_hidden_states: torch.Tensor | None = None,
+        keyframe_times: torch.Tensor | None = None,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        """Channels-last in and out: `(B, T, H, W, C)`.
 
-    def forward_with_keyframes(
-        self, hidden_states: torch.Tensor, keyframe_hidden_states: torch.Tensor, keyframe_times: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Joint attention over the video `(B, T, H, W, C)` and the keyframe planes `(B, P, H, W, C)`.
-
-        This bypasses the attention processor: neither FlexAttention's neighborhood mask nor NATTEN expresses the joint
-        window, so a keyframe decode always runs [`_joint_neighborhood_attention`], whatever processor is set.
-        `keyframe_times` are the planes' `(P,)` temporal RoPE positions, in the video stream's tile-local origin.
+        With `keyframe_hidden_states` `(B, P, H, W, C)`, this is joint attention over the video and the keyframe
+        planes, and both streams are returned. That path bypasses the attention processor: neither FlexAttention's
+        neighborhood mask nor NATTEN expresses the joint window, so a keyframe decode always runs
+        [`_joint_neighborhood_attention`], whatever processor is set. `keyframe_times` are the planes' `(P,)` temporal
+        RoPE positions, in the video stream's tile-local origin.
         """
+        if keyframe_hidden_states is None:
+            num_frames, height, width = hidden_states.shape[1:4]
+            kernel_t, kernel_h, kernel_w = self.kernel_size
+            if num_frames < kernel_t or height < kernel_h or width < kernel_w:
+                raise ValueError(
+                    f"Neighborhood attention requires each spatial dim to be at least its kernel size; got "
+                    f"(T, H, W) = ({num_frames}, {height}, {width}) with kernel_size {self.kernel_size}."
+                )
+            return self.processor(self, hidden_states, block_mask)
+
         batch_size, num_frames, height, width, channels = hidden_states.shape
         num_planes = keyframe_hidden_states.shape[1]
         query, key, value = self.project_qkv(hidden_states)
@@ -913,17 +918,24 @@ class LTX2VideoVaeNABlock(nn.Module):
         self.norm2 = nn.RMSNorm(dim, eps=1e-6)
         self.mlp = LTX2VideoVaeSwiGLU(dim, _swiglu_hidden_dim(dim, mlp_ratio))
 
-    def forward(self, hidden_states: torch.Tensor, block_mask=None) -> torch.Tensor:
-        hidden_states = hidden_states + self.attn(self.norm1(hidden_states), block_mask)
-        hidden_states = hidden_states + self.mlp(self.norm2(hidden_states))
-        return hidden_states
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        block_mask=None,
+        keyframe_hidden_states: torch.Tensor | None = None,
+        keyframe_times: torch.Tensor | None = None,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        """With `keyframe_hidden_states`, both streams go through the same weights and are both returned; they only
+        meet inside the joint attention softmax."""
+        if keyframe_hidden_states is None:
+            hidden_states = hidden_states + self.attn(self.norm1(hidden_states), block_mask)
+            hidden_states = hidden_states + self.mlp(self.norm2(hidden_states))
+            return hidden_states
 
-    def forward_with_keyframes(
-        self, hidden_states: torch.Tensor, keyframe_hidden_states: torch.Tensor, keyframe_times: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Both streams through the same weights; they only meet inside the joint attention softmax."""
-        attn_output, keyframe_attn_output = self.attn.forward_with_keyframes(
-            self.norm1(hidden_states), self.norm1(keyframe_hidden_states), keyframe_times
+        attn_output, keyframe_attn_output = self.attn(
+            self.norm1(hidden_states),
+            keyframe_hidden_states=self.norm1(keyframe_hidden_states),
+            keyframe_times=keyframe_times,
         )
         hidden_states = hidden_states + attn_output
         keyframe_hidden_states = keyframe_hidden_states + keyframe_attn_output
@@ -983,36 +995,29 @@ class LTX2VideoVaeDiffusionNABlock(nn.Module):
         latent_context: torch.Tensor,
         modulation: tuple[torch.Tensor, ...],
         block_mask=None,
-    ) -> torch.Tensor:
+        keyframe_hidden_states: torch.Tensor | None = None,
+        keyframe_latent_context: torch.Tensor | None = None,
+        keyframe_times: torch.Tensor | None = None,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        """With `keyframe_hidden_states`, both streams go through the same weights and the same modulation, each with
+        its own context, and both are returned."""
         scale_msa, shift_msa, _, scale_mlp, shift_mlp, _, _ = [
             modulation[i] + self.scale_shift_table[i].view(1, 1, 1, 1, -1) for i in range(self.num_mod_params)
         ]
 
         hidden_states = hidden_states + self.context_proj(latent_context)
-        hidden_states = hidden_states + self.attn(self.norm1(hidden_states) * (1 + scale_msa) + shift_msa, block_mask)
-        hidden_states = hidden_states + self.mlp(self.norm2(hidden_states) * (1 + scale_mlp) + shift_mlp)
-        return hidden_states
+        if keyframe_hidden_states is None:
+            hidden_states = hidden_states + self.attn(
+                self.norm1(hidden_states) * (1 + scale_msa) + shift_msa, block_mask
+            )
+            hidden_states = hidden_states + self.mlp(self.norm2(hidden_states) * (1 + scale_mlp) + shift_mlp)
+            return hidden_states
 
-    def forward_with_keyframes(
-        self,
-        hidden_states: torch.Tensor,
-        latent_context: torch.Tensor,
-        keyframe_hidden_states: torch.Tensor,
-        keyframe_latent_context: torch.Tensor,
-        modulation: tuple[torch.Tensor, ...],
-        keyframe_times: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Both streams through the same weights and the same modulation, each with its own context."""
-        scale_msa, shift_msa, _, scale_mlp, shift_mlp, _, _ = [
-            modulation[i] + self.scale_shift_table[i].view(1, 1, 1, 1, -1) for i in range(self.num_mod_params)
-        ]
-
-        hidden_states = hidden_states + self.context_proj(latent_context)
         keyframe_hidden_states = keyframe_hidden_states + self.context_proj(keyframe_latent_context)
-        attn_output, keyframe_attn_output = self.attn.forward_with_keyframes(
+        attn_output, keyframe_attn_output = self.attn(
             self.norm1(hidden_states) * (1 + scale_msa) + shift_msa,
-            self.norm1(keyframe_hidden_states) * (1 + scale_msa) + shift_msa,
-            keyframe_times,
+            keyframe_hidden_states=self.norm1(keyframe_hidden_states) * (1 + scale_msa) + shift_msa,
+            keyframe_times=keyframe_times,
         )
         hidden_states = hidden_states + attn_output
         keyframe_hidden_states = keyframe_hidden_states + keyframe_attn_output
@@ -1278,8 +1283,8 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
         for stage_idx, (blocks, upsample) in enumerate(zip(self.det_stages[:-1], self.upsamples[:-1])):
             keyframe_times = _keyframe_stage_times(keyframe_frame_indices, self.keyframe_time_strides[stage_idx])
             for block in blocks:
-                hidden_states, keyframe_hidden_states = block.forward_with_keyframes(
-                    hidden_states, keyframe_hidden_states, keyframe_times
+                hidden_states, keyframe_hidden_states = block(
+                    hidden_states, keyframe_hidden_states=keyframe_hidden_states, keyframe_times=keyframe_times
                 )
             hidden_states = upsample(hidden_states)
             keyframe_hidden_states = _upsample_keyframe_planes(upsample, keyframe_hidden_states)
@@ -1308,8 +1313,8 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
             _keyframe_stage_times(keyframe_frame_indices, self.keyframe_time_strides[-2]) - stage_4_time_origin
         )
         for block in self.det_stages[-1]:
-            hidden_states, keyframe_hidden_states = block.forward_with_keyframes(
-                hidden_states, keyframe_hidden_states, keyframe_times
+            hidden_states, keyframe_hidden_states = block(
+                hidden_states, keyframe_hidden_states=keyframe_hidden_states, keyframe_times=keyframe_times
             )
         hidden_states = self.upsamples[-1](hidden_states, drop_leading_frame=drop_leading_frame)
         keyframe_hidden_states = _upsample_keyframe_planes(self.upsamples[-1], keyframe_hidden_states)
@@ -1350,13 +1355,13 @@ class LTX2VideoDiffusionDecoder3d(nn.Module):
         hidden_states = self.conv_in_x_t(_patchify(x_t, self.patch_size).permute(0, 2, 3, 4, 1))
         keyframe_hidden_states = self.conv_in_x_t(_patchify(keyframe_x_t, self.patch_size).permute(0, 2, 3, 4, 1))
         for block in self.diff_blocks:
-            hidden_states, keyframe_hidden_states = block.forward_with_keyframes(
+            hidden_states, keyframe_hidden_states = block(
                 hidden_states,
                 latent_context,
-                keyframe_hidden_states,
-                keyframe_latent_context,
                 modulation,
-                keyframe_times,
+                keyframe_hidden_states=keyframe_hidden_states,
+                keyframe_latent_context=keyframe_latent_context,
+                keyframe_times=keyframe_times,
             )
 
         outputs = []
