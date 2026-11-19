@@ -15,6 +15,7 @@
 import torch
 
 from diffusers import HunyuanVideoTransformer3DModel
+from diffusers.loaders import HunyuanVideoLoraLoaderMixin
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -305,4 +306,30 @@ class TestHunyuanVideoTokenReplaceTransformer(HunyuanVideoTokenReplaceTransforme
 
 
 class TestHunyuanVideoTransformerLoRA(HunyuanVideoTransformerTesterConfig, LoraTesterMixin):
-    pass
+    def test_lora_musubi_state_dict(self):
+        # musubi-tuner / kohya keys (`lora_unet_*`, `lora_down` / `lora_up` / `alpha`), as in the LoRA used by the
+        # HunyuanVideo docs. The converted update must be the original one scaled by `alpha / rank`.
+        torch.manual_seed(0)
+        rank, alpha = 4, 1.0
+        qkv_down, qkv_up = torch.randn(rank, 16), torch.randn(48, rank)
+        fc1_down, fc1_up = torch.randn(rank, 16), torch.randn(64, rank)
+        state_dict = {
+            "lora_unet_double_blocks_0_img_attn_qkv.lora_down.weight": qkv_down,
+            "lora_unet_double_blocks_0_img_attn_qkv.lora_up.weight": qkv_up,
+            "lora_unet_double_blocks_0_img_attn_qkv.alpha": torch.tensor(alpha),
+            "lora_unet_double_blocks_0_img_mlp_fc1.lora_down.weight": fc1_down,
+            "lora_unet_double_blocks_0_img_mlp_fc1.lora_up.weight": fc1_up,
+            "lora_unet_double_blocks_0_img_mlp_fc1.alpha": torch.tensor(alpha),
+        }
+        converted = HunyuanVideoLoraLoaderMixin.lora_state_dict(state_dict)
+
+        def delta(module):
+            prefix = f"transformer.transformer_blocks.0.{module}"
+            return converted[f"{prefix}.lora_B.weight"] @ converted[f"{prefix}.lora_A.weight"]
+
+        expected_q, expected_k, expected_v = (alpha / rank * qkv_up @ qkv_down).chunk(3, dim=0)
+        assert torch.allclose(delta("attn.to_q"), expected_q, atol=1e-6)
+        assert torch.allclose(delta("attn.to_k"), expected_k, atol=1e-6)
+        assert torch.allclose(delta("attn.to_v"), expected_v, atol=1e-6)
+        assert torch.allclose(delta("ff.net.0.proj"), alpha / rank * fc1_up @ fc1_down, atol=1e-6)
+        assert len(converted) == 8
