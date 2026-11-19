@@ -520,7 +520,7 @@ def _parallel_rng_sync_worker(
         dist.all_gather(gathered_noise, noise)
         if rank == 0:
             return_dict["status"] = "success"
-            return_dict["same_noise"] = all(torch.equal(noise, other) for other in gathered_noise)
+            return_dict["same_noise_as_rank_0"] = [torch.equal(noise, other) for other in gathered_noise]
             # Redraw from rank 0's seed, which is what a non-parallel run with that seed would draw.
             torch.manual_seed(rank)
             seeded_noise = randn_tensor(noise.shape, device=device, dtype=noise.dtype)
@@ -588,9 +588,11 @@ def _check_parallel_rng_sync(
         f"Parallel RNG sync failed: {return_dict.get('error', 'Unknown error')}"
     )
     # Independent replicas are outside each other's mesh, so they must keep their own seeds.
-    expect_same_noise = parallelism != "tensor_parallel_submesh"
-    assert return_dict["same_noise"] == expect_same_noise, (
-        f"Ranks drew {'different' if expect_same_noise else 'the same'} inputs from the default RNG."
+    rank_0_group_size = 1 if parallelism == "tensor_parallel_submesh" else world_size
+    expected = [rank < rank_0_group_size for rank in range(world_size)]
+    assert return_dict["same_noise_as_rank_0"] == expected, (
+        f"Ranks drawing the same input as rank 0 from the default RNG: {return_dict['same_noise_as_rank_0']}, "
+        f"expected {expected}."
     )
     assert return_dict["rank_0_seed_kept"], "Rank 0 did not draw the input a non-parallel run with its seed draws."
 
@@ -783,8 +785,10 @@ class TensorParallelTPUTesterMixin:
         tp_output = torch.tensor(return_dict["output"])
         torch.testing.assert_close(ref_output, tp_output, atol=atol, rtol=rtol)
 
-    def test_tensor_parallel_tpu_rng_sync(self, tmp_path, atol=2e-2, rtol=2e-2):
-        """Enabling TP gives every rank of the TP mesh the same default RNG."""
+    @pytest.mark.parametrize("loading", ["enable_parallelism", "from_pretrained"])
+    @pytest.mark.parametrize("parallelism", ["tensor_parallel", "tensor_parallel_submesh"], ids=["mesh", "submesh"])
+    def test_tensor_parallel_tpu_rng_sync(self, tmp_path, parallelism, loading, atol=2e-2, rtol=2e-2):
+        """Loading with a TP config gives every rank of the TP mesh the same default RNG, and only those ranks."""
         from torch_tpu._internal.distributed.launchers.singlehost_wrapper import prepare_tpu_environment
         from torch_tpu._internal.utils import hardware
 
@@ -802,8 +806,8 @@ class TensorParallelTPUTesterMixin:
                 self,
                 self.get_dummy_inputs(device="cpu"),
                 tmp_path,
-                "tensor_parallel",
-                "enable_parallelism",
+                parallelism,
+                loading,
                 world_size=world_size,
                 device_type="tpu",
                 atol=atol,
@@ -866,15 +870,17 @@ class TensorParallelNeuronTesterMixin:
         # Neuron runs matmuls in bf16 internally, so compare with a bf16-level tolerance.
         torch.testing.assert_close(ref_output, tp_output, atol=atol, rtol=rtol)
 
-    def test_tensor_parallel_neuron_rng_sync(self, tmp_path, atol=2e-2, rtol=2e-2):
-        """Enabling TP gives every rank of the TP mesh the same default RNG."""
+    @pytest.mark.parametrize("loading", ["enable_parallelism", "from_pretrained"])
+    @pytest.mark.parametrize("parallelism", ["tensor_parallel", "tensor_parallel_submesh"], ids=["mesh", "submesh"])
+    def test_tensor_parallel_neuron_rng_sync(self, tmp_path, parallelism, loading, atol=2e-2, rtol=2e-2):
+        """Loading with a TP config gives every rank of the TP mesh the same default RNG, and only those ranks."""
         # Inputs, and so the reference, stay on CPU: touching the Neuron device here would break the spawned workers.
         _check_parallel_rng_sync(
             self,
             self.get_dummy_inputs(device="cpu"),
             tmp_path,
-            "tensor_parallel",
-            "enable_parallelism",
+            parallelism,
+            loading,
             world_size=self.tp_world_size,
             device_type="neuron",
             atol=atol,
