@@ -234,6 +234,7 @@ jobs:
 
     - name: Extract tests
       id: extract_tests
+      if: matrix.module != 'lora'
       run: |
         pattern=$(python utils/extract_tests_from_mixin.py --type ${{ matrix.module }})
         echo "$pattern" > /tmp/test_pattern.txt
@@ -245,13 +246,13 @@ jobs:
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
-        pattern=$(cat ${{ steps.extract_tests.outputs.pattern_file }})
-        if [ -z "$pattern" ]; then
-          pytest -n 1  --max-worker-restart=0 --dist=loadfile tests/${{ matrix.module }} \
-          --make-reports=tests_torch_cuda_${{ matrix.module }}
+        if [ "${{ matrix.module }}" = "lora" ]; then
+          pytest -n 1 --max-worker-restart=0 --dist=loadfile -m lora tests/ \
+            --make-reports=tests_torch_cuda_lora
         else
-          pytest -n 1  --max-worker-restart=0 --dist=loadfile -k "$pattern" tests/${{ matrix.module }} \
-          --make-reports=tests_torch_cuda_${{ matrix.module }}
+          pattern=$(cat "${{ steps.extract_tests.outputs.pattern_file }}")
+          pytest -n 1 --max-worker-restart=0 --dist=loadfile -k "$pattern" tests/${{ matrix.module }} \
+            --make-reports=tests_torch_cuda_${{ matrix.module }}
         fi
 
     - name: Failure short reports
