@@ -152,17 +152,28 @@ class TestConditionalBlocksInputs:
         ]
 
     def test_nested_requirements_stay_optional(self):
-        # both sub-blocks are conditional blocks with one branch requiring x and another silent on it, so each is
-        # optional with a record; the records agree (REQUIRED, REQUIRED) but x is still not required of the user
-        blocks = conditional_blocks(
+        # each sub-block is a conditional block where one branch requires x and the other does not use it, so x is
+        # not required of the user even though every record says REQUIRED
+        block_a = conditional_blocks(
             {
-                "block-a": InputsOnlyBlock([InputParam(name="x", defaults_by_block={"branch-a": REQUIRED})]),
-                "block-b": InputsOnlyBlock([InputParam(name="x", defaults_by_block={"branch-b": REQUIRED})]),
-            }
+                "branch-a": InputsOnlyBlock([InputParam(name="x", required=True)]),
+                "other": InputsOnlyBlock([InputParam(name="y")]),
+            },
+            default_block_name="branch-a",
         )
-        assert blocks.inputs == [
-            InputParam(name="x", defaults_by_block={"block-a.branch-a": REQUIRED, "block-b.branch-b": REQUIRED})
-        ]
+        block_b = conditional_blocks(
+            {
+                "branch-b": InputsOnlyBlock([InputParam(name="x", required=True)]),
+                "other": InputsOnlyBlock([InputParam(name="y")]),
+            },
+            default_block_name="branch-b",
+        )
+        blocks = conditional_blocks({"block-a": block_a, "block-b": block_b})
+
+        x = blocks.inputs[0]
+        assert x == InputParam(
+            name="x", defaults_by_block={"block-a.branch-a": REQUIRED, "block-b.branch-b": REQUIRED}
+        )
         assert blocks.required_inputs == []
 
 
