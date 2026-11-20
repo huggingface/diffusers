@@ -24,11 +24,6 @@ from diffusers.modular_pipelines import (
 from diffusers.modular_pipelines.modular_pipeline_utils import REQUIRED
 
 
-def per_branch(name, record, **kwargs):
-    """An `InputParam` carrying a per-branch record, the way `ConditionalPipelineBlocks` builds it."""
-    return InputParam(name=name, defaults_by_block=record, **kwargs)
-
-
 class InputsOnlyBlock(ModularPipelineBlocks):
     """A block that declares the given inputs and does nothing."""
 
@@ -87,7 +82,7 @@ class TestConditionalBlocksInputs:
                 "block-b": InputsOnlyBlock([InputParam(name="x", default=5)]),
             }
         )
-        assert blocks.inputs == [per_branch("x", {"block-a": None, "block-b": 5})]
+        assert blocks.inputs == [InputParam(name="x", defaults_by_block={"block-a": None, "block-b": 5})]
 
     def test_disagreement_records_every_block(self):
         blocks = conditional_blocks(
@@ -98,7 +93,7 @@ class TestConditionalBlocksInputs:
             }
         )
         # any disagreement records every block's default, including the ones that agree with each other
-        assert blocks.inputs == [per_branch("x", {"block-a": 1, "block-b": 2, "block-c": 1})]
+        assert blocks.inputs == [InputParam(name="x", defaults_by_block={"block-a": 1, "block-b": 2, "block-c": 1})]
 
     def test_required_everywhere_stays_required(self):
         blocks = conditional_blocks(
@@ -120,7 +115,7 @@ class TestConditionalBlocksInputs:
             },
             default_block_name=None,
         )
-        assert blocks.inputs == [per_branch("x", {"block-a": REQUIRED, "block-b": REQUIRED})]
+        assert blocks.inputs == [InputParam(name="x", defaults_by_block={"block-a": REQUIRED, "block-b": REQUIRED})]
         assert blocks.required_inputs == []
 
     def test_records_a_requirement_other_blocks_do_not_share(self):
@@ -132,7 +127,7 @@ class TestConditionalBlocksInputs:
                 "block-b": InputsOnlyBlock([InputParam(name="y")]),
             }
         )
-        assert blocks.inputs == [per_branch("x", {"block-a": REQUIRED}), InputParam(name="y")]
+        assert blocks.inputs == [InputParam(name="x", defaults_by_block={"block-a": REQUIRED}), InputParam(name="y")]
 
         # a requirement against a default is a disagreement like any other
         blocks = conditional_blocks(
@@ -141,7 +136,7 @@ class TestConditionalBlocksInputs:
                 "block-b": InputsOnlyBlock([InputParam(name="x", default=124)]),
             }
         )
-        assert blocks.inputs == [per_branch("x", {"block-a": REQUIRED, "block-b": 124})]
+        assert blocks.inputs == [InputParam(name="x", defaults_by_block={"block-a": REQUIRED, "block-b": 124})]
 
     def test_nested_defaults_prefixed(self):
         # block-b is itself a conditional block whose branches already disagree, so its param carries
@@ -149,21 +144,25 @@ class TestConditionalBlocksInputs:
         blocks = conditional_blocks(
             {
                 "block-a": InputsOnlyBlock([InputParam(name="x", default=3)]),
-                "block-b": InputsOnlyBlock([per_branch("x", {"branch-a": 1, "branch-b": 2})]),
+                "block-b": InputsOnlyBlock([InputParam(name="x", defaults_by_block={"branch-a": 1, "branch-b": 2})]),
             }
         )
-        assert blocks.inputs == [per_branch("x", {"block-a": 3, "block-b.branch-a": 1, "block-b.branch-b": 2})]
+        assert blocks.inputs == [
+            InputParam(name="x", defaults_by_block={"block-a": 3, "block-b.branch-a": 1, "block-b.branch-b": 2})
+        ]
 
     def test_nested_requirements_stay_optional(self):
         # both sub-blocks are conditional blocks with one branch requiring x and another silent on it, so each is
         # optional with a record; the records agree (REQUIRED, REQUIRED) but x is still not required of the user
         blocks = conditional_blocks(
             {
-                "block-a": InputsOnlyBlock([per_branch("x", {"branch-a": REQUIRED})]),
-                "block-b": InputsOnlyBlock([per_branch("x", {"branch-b": REQUIRED})]),
+                "block-a": InputsOnlyBlock([InputParam(name="x", defaults_by_block={"branch-a": REQUIRED})]),
+                "block-b": InputsOnlyBlock([InputParam(name="x", defaults_by_block={"branch-b": REQUIRED})]),
             }
         )
-        assert blocks.inputs == [per_branch("x", {"block-a.branch-a": REQUIRED, "block-b.branch-b": REQUIRED})]
+        assert blocks.inputs == [
+            InputParam(name="x", defaults_by_block={"block-a.branch-a": REQUIRED, "block-b.branch-b": REQUIRED})
+        ]
         assert blocks.required_inputs == []
 
 
@@ -440,7 +439,9 @@ class TestConditionalBlocksBranchDefaults:
         # and the per-block defaults are recorded in defaults_by_block
         strength_params = [p for p in AutoImageBlocks().inputs if p.name == "strength"]
         assert len(strength_params) == 1
-        assert strength_params[0] == per_branch("strength", {"inpaint": 0.9999, "img2img": 0.3}, type_hint=float)
+        assert strength_params[0] == InputParam(
+            name="strength", type_hint=float, defaults_by_block={"inpaint": 0.9999, "img2img": 0.3}
+        )
 
         # the docstring does not pick one of the per-block defaults
         doc = " ".join(AutoImageBlocks().doc.split())
@@ -471,8 +472,10 @@ class TestConditionalBlocksBranchDefaults:
     def test_nested_defaults_prefixed_with_sub_block_name(self):
         strength_params = [p for p in NestedImageBlocks().inputs if p.name == "strength"]
         assert len(strength_params) == 1
-        assert strength_params[0] == per_branch(
-            "strength", {"refine": 0.9999, "image.inpaint": 0.9999, "image.img2img": 0.3}, type_hint=float
+        assert strength_params[0] == InputParam(
+            name="strength",
+            type_hint=float,
+            defaults_by_block={"refine": 0.9999, "image.inpaint": 0.9999, "image.img2img": 0.3},
         )
 
         doc = " ".join(NestedImageBlocks().doc.split())
