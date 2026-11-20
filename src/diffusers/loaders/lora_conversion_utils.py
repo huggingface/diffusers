@@ -1766,6 +1766,52 @@ def _convert_hunyuan_video_lora_to_diffusers(original_state_dict):
     return converted_state_dict
 
 
+def _convert_musubi_hunyuan_video_lora_to_diffusers(state_dict):
+    # https://github.com/kohya-ss/musubi-tuner
+    # Keys look like `lora_unet_double_blocks_0_img_attn_qkv.lora_down.weight`. Rewrite them into the original
+    # HunyuanVideo layout (`double_blocks.0.img_attn_qkv.lora_A.weight`), fold `alpha / rank` into the weights and
+    # reuse `_convert_hunyuan_video_lora_to_diffusers` for the rest.
+    module_renames = {
+        "img_mod_linear": "img_mod.linear",
+        "txt_mod_linear": "txt_mod.linear",
+        "img_mlp_fc1": "img_mlp.fc1",
+        "img_mlp_fc2": "img_mlp.fc2",
+        "txt_mlp_fc1": "txt_mlp.fc1",
+        "txt_mlp_fc2": "txt_mlp.fc2",
+        "modulation_linear": "modulation.linear",
+    }
+    original_state_dict = {k[len("lora_unet_") :]: v for k, v in state_dict.items()}
+    converted_state_dict = {}
+
+    for key in [k for k in original_state_dict if k.endswith(".lora_down.weight")]:
+        module_key = key[: -len(".lora_down.weight")]
+        match = re.fullmatch(r"(double_blocks|single_blocks)_(\d+)_(\w+)", module_key)
+        if match is None:
+            continue
+        block_type, block_idx, module_name = match.groups()
+        module_name = module_renames.get(module_name, module_name)
+
+        down_weight = original_state_dict.pop(f"{module_key}.lora_down.weight")
+        up_weight = original_state_dict.pop(f"{module_key}.lora_up.weight")
+        alpha = original_state_dict.pop(f"{module_key}.alpha").item()
+        # LoRA is scaled by `alpha / rank` in the forward pass, so fold that scale into the weights.
+        scale = alpha / down_weight.shape[0]
+        scale_down = scale
+        scale_up = 1.0
+        while scale_down * 2 < scale_up:
+            scale_down *= 2
+            scale_up /= 2
+
+        new_key = f"{block_type}.{block_idx}.{module_name}"
+        converted_state_dict[f"{new_key}.lora_A.weight"] = down_weight * scale_down
+        converted_state_dict[f"{new_key}.lora_B.weight"] = up_weight * scale_up
+
+    if len(original_state_dict) > 0:
+        raise ValueError(f"`state_dict` should be empty at this point but has {original_state_dict.keys()=}")
+
+    return _convert_hunyuan_video_lora_to_diffusers(converted_state_dict)
+
+
 def _convert_non_diffusers_lumina2_lora_to_diffusers(state_dict):
     # Remove "diffusion_model." prefix from keys.
     state_dict = {k[len("diffusion_model.") :]: v for k, v in state_dict.items()}

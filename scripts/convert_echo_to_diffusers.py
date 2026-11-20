@@ -71,11 +71,11 @@ def write_modular_index(output_path: Path, base_model: str, repo_id: str | None)
         "_blocks_class_name": "EchoBlocks",
         "text_encoder": component_entry("transformers", "Gemma3ForConditionalGeneration", base_model, None),
         "tokenizer": component_entry("transformers", "GemmaTokenizerFast", base_model, None),
-        "connectors": component_entry("ltx2", "LTX2TextConnectors", echo_repo, "connectors"),
+        "connectors": component_entry("diffusers", "LTX2TextConnectors", echo_repo, "connectors"),
         "vae": component_entry("diffusers", "AutoencoderKLLTX2Video", echo_repo, "vae"),
         "audio_vae": component_entry("diffusers", "AutoencoderKLLTX2Audio", echo_repo, "audio_vae"),
         "transformer": component_entry("diffusers", "LTX2VideoTransformer3DModel", echo_repo, "transformer"),
-        "vocoder": component_entry("ltx2", "LTX2VocoderWithBWE", echo_repo, "vocoder"),
+        "vocoder": component_entry("diffusers", "LTX2VocoderWithBWE", echo_repo, "vocoder"),
     }
     (output_path / "modular_model_index.json").write_text(json.dumps(index, indent=2) + "\n", encoding="utf-8")
 
