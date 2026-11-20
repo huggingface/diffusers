@@ -137,7 +137,7 @@ class PAN2LoopDenoiser(ModularPipelineBlocks):
             cond_kwargs["encoder_hidden_states"] = cond_kwargs["encoder_hidden_states"].to(dtype)
 
             context_name = getattr(guider_state_batch, components.guider._identifier_key)
-            with components.transformer.cache_context(context_name):
+            with components.transformer.cache_context(context_name, timestep=t):
                 guider_state_batch.noise_pred = components.transformer(
                     hidden_states=latent_model_input,
                     timestep=timestep,

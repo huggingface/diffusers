@@ -1,4 +1,4 @@
-__version__ = "0.42.0.dev0"
+__version__ = "0.44.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -170,18 +170,6 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["quantizers.quantization_config"].append("SDNQConfig")
 
-try:
-    if not is_onnx_available():
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_onnx_objects  # noqa F403
-
-    _import_structure["utils.dummy_onnx_objects"] = [
-        name for name in dir(dummy_onnx_objects) if not name.startswith("_")
-    ]
-
-else:
-    _import_structure["pipelines"].extend(["OnnxRuntimeModel"])
 
 try:
     if not is_torch_available():
@@ -239,6 +227,8 @@ else:
     ]
     _import_structure["models"].extend(
         [
+            "AceStepAudioTokenDetokenizer",
+            "AceStepAudioTokenizer",
             "AceStepConditionEncoder",
             "AceStepTransformer1DModel",
             "AllegroTransformer3DModel",
@@ -248,6 +238,7 @@ else:
             "AsymmetricAutoencoderKL",
             "AttentionBackendName",
             "AudioLDM2ProjectionModel",
+            "AudioLDM2UNet2DConditionModel",
             "AuraFlowTransformer2DModel",
             "AutoencoderDC",
             "AutoencoderKL",
@@ -341,6 +332,8 @@ else:
             "LTX2TextConnectors",
             "LTX2VideoDiffusionDecoderModel",
             "LTX2VideoTransformer3DModel",
+            "LTX2Vocoder",
+            "LTX2VocoderWithBWE",
             "LTXLatentUpsamplerModel",
             "LTXVideoTransformer3DModel",
             "Lumina2Transformer2DModel",
@@ -390,6 +383,7 @@ else:
             "StableAudioDiTModel",
             "StableAudioProjectionModel",
             "StableCascadeUNet",
+            "StableUnCLIPImageNormalizer",
             "T2IAdapter",
             "T5FilmDecoder",
             "TensorParallelConfig",
@@ -655,8 +649,6 @@ else:
     )
     _import_structure["pipelines"].extend(
         [
-            "AceStepAudioTokenDetokenizer",
-            "AceStepAudioTokenizer",
             "AceStepPipeline",
             "AllegroPipeline",
             "AltDiffusionImg2ImgPipeline",
@@ -674,7 +666,6 @@ else:
             "AnyFlowFARPipeline",
             "AnyFlowPipeline",
             "AudioLDM2Pipeline",
-            "AudioLDM2UNet2DConditionModel",
             "AudioLDMPipeline",
             "AuraFlowPipeline",
             "BlipDiffusionControlNetPipeline",
@@ -988,27 +979,6 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipelines"].extend(["KolorsImg2ImgPipeline", "KolorsPAGPipeline", "KolorsPipeline"])
 
-try:
-    if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_torch_and_transformers_and_onnx_objects  # noqa F403
-
-    _import_structure["utils.dummy_torch_and_transformers_and_onnx_objects"] = [
-        name for name in dir(dummy_torch_and_transformers_and_onnx_objects) if not name.startswith("_")
-    ]
-
-else:
-    _import_structure["pipelines"].extend(
-        [
-            "OnnxStableDiffusionImg2ImgPipeline",
-            "OnnxStableDiffusionInpaintPipeline",
-            "OnnxStableDiffusionInpaintPipelineLegacy",
-            "OnnxStableDiffusionPipeline",
-            "OnnxStableDiffusionUpscalePipeline",
-            "StableDiffusionOnnxPipeline",
-        ]
-    )
 
 try:
     if not (is_torch_available() and is_librosa_available()):
@@ -1128,14 +1098,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .quantizers.quantization_config import SDNQConfig
 
     try:
-        if not is_onnx_available():
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from .utils.dummy_onnx_objects import *  # noqa F403
-    else:
-        from .pipelines import OnnxRuntimeModel
-
-    try:
         if not is_torch_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
@@ -1183,6 +1145,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VaeImageProcessorLDM3D,
         )
         from .models import (
+            AceStepAudioTokenDetokenizer,
+            AceStepAudioTokenizer,
             AceStepConditionEncoder,
             AceStepTransformer1DModel,
             AllegroTransformer3DModel,
@@ -1192,6 +1156,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AsymmetricAutoencoderKL,
             AttentionBackendName,
             AudioLDM2ProjectionModel,
+            AudioLDM2UNet2DConditionModel,
             AuraFlowTransformer2DModel,
             AutoencoderDC,
             AutoencoderKL,
@@ -1285,6 +1250,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTX2TextConnectors,
             LTX2VideoDiffusionDecoderModel,
             LTX2VideoTransformer3DModel,
+            LTX2Vocoder,
+            LTX2VocoderWithBWE,
             LTXLatentUpsamplerModel,
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
@@ -1333,6 +1300,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableAudio3DurationEmbedder,
             StableAudioDiTModel,
             StableAudioProjectionModel,
+            StableUnCLIPImageNormalizer,
             T2IAdapter,
             T5FilmDecoder,
             TensorParallelConfig,
@@ -1575,8 +1543,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageModularPipeline,
         )
         from .pipelines import (
-            AceStepAudioTokenDetokenizer,
-            AceStepAudioTokenizer,
             AceStepPipeline,
             AllegroPipeline,
             AltDiffusionImg2ImgPipeline,
@@ -1594,7 +1560,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AnyFlowFARPipeline,
             AnyFlowPipeline,
             AudioLDM2Pipeline,
-            AudioLDM2UNet2DConditionModel,
             AudioLDMPipeline,
             AuraFlowPipeline,
             BriaFibo2Pipeline,
@@ -1891,21 +1856,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_torch_and_transformers_and_opencv_objects import *  # noqa F403
     else:
         from .pipelines import ConsisIDPipeline
-
-    try:
-        if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from .utils.dummy_torch_and_transformers_and_onnx_objects import *  # noqa F403
-    else:
-        from .pipelines import (
-            OnnxStableDiffusionImg2ImgPipeline,
-            OnnxStableDiffusionInpaintPipeline,
-            OnnxStableDiffusionInpaintPipelineLegacy,
-            OnnxStableDiffusionPipeline,
-            OnnxStableDiffusionUpscalePipeline,
-            StableDiffusionOnnxPipeline,
-        )
 
     try:
         if not (is_torch_available() and is_librosa_available()):

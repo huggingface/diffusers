@@ -31,7 +31,7 @@ from transformers import (
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...image_processor import PipelineImageInput
 from ...loaders import FromSingleFileMixin, LTX2LoraLoaderMixin
-from ...models.autoencoders import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
+from ...models.autoencoders import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video, LTX2Vocoder, LTX2VocoderWithBWE
 from ...models.condition_embedders import LTX2TextConnectors
 from ...models.transformers import LTX2VideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler, LTXEulerAncestralRFScheduler
@@ -61,7 +61,6 @@ from .utils import (
     resolve_default_image_crf,
     trim_canvas,
 )
-from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
 
 
 if is_torch_xla_available():
@@ -1323,29 +1322,31 @@ class LTX2DFRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
             }
 
             if video_tile_plan is None:
-                noise_pred_video, noise_pred_audio = self.transformer(
-                    hidden_states=latents.to(prompt_embeds.dtype),
-                    audio_hidden_states=audio_latents.to(prompt_embeds.dtype),
-                    timestep=video_timestep,
-                    video_keyframes_mask=keyframes_mask,
-                    video_coords=video_coords,
-                    **transformer_kwargs,
-                )
+                with self.transformer.cache_context("inference", timestep=t):
+                    noise_pred_video, noise_pred_audio = self.transformer(
+                        hidden_states=latents.to(prompt_embeds.dtype),
+                        audio_hidden_states=audio_latents.to(prompt_embeds.dtype),
+                        timestep=video_timestep,
+                        video_keyframes_mask=keyframes_mask,
+                        video_coords=video_coords,
+                        **transformer_kwargs,
+                    )
             else:
                 # Blending the velocity is the same as blending x0: `x0 = x - v * sigma` is affine in `v`, every tile
                 # reads the same `latents` and the same per-token sigma, and the weights sum to one.
                 noise_pred_video = torch.zeros_like(latents, dtype=torch.float32)
                 noise_pred_audio = None
-                for tile in video_tile_plan:
+                for tile_idx, tile in enumerate(video_tile_plan):
                     keep = tile.keep
-                    tile_pred, tile_audio_pred = self.transformer(
-                        hidden_states=latents[:, keep].to(prompt_embeds.dtype),
-                        audio_hidden_states=audio_latents.to(prompt_embeds.dtype),
-                        timestep=video_timestep[:, keep],
-                        video_keyframes_mask=keyframes_mask[:, keep],
-                        video_coords=tile.coords,
-                        **transformer_kwargs,
-                    )
+                    with self.transformer.cache_context(f"tile_{tile_idx}", timestep=t):
+                        tile_pred, tile_audio_pred = self.transformer(
+                            hidden_states=latents[:, keep].to(prompt_embeds.dtype),
+                            audio_hidden_states=audio_latents.to(prompt_embeds.dtype),
+                            timestep=video_timestep[:, keep],
+                            video_keyframes_mask=keyframes_mask[:, keep],
+                            video_coords=tile.coords,
+                            **transformer_kwargs,
+                        )
                     noise_pred_video.index_add_(
                         1, keep, tile_pred.float() * tile.weights.to(torch.float32).view(1, -1, 1)
                     )

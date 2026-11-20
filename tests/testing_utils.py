@@ -2,6 +2,7 @@ import functools
 import glob
 import importlib
 import importlib.metadata
+import importlib.util
 import inspect
 import io
 import logging
@@ -782,6 +783,15 @@ def require_flashpack(test_case):
     Decorator marking a test that requires flashpack. These tests are skipped when flashpack isn't installed.
     """
     return pytest.mark.skipif(not is_flashpack_available(), reason="test requires flashpack")(test_case)
+
+
+def require_torchcodec(test_case):
+    """
+    Decorator marking a test that requires torchcodec. These tests are skipped when torchcodec isn't installed.
+    """
+    return pytest.mark.skipif(importlib.util.find_spec("torchcodec") is None, reason="test requires torchcodec")(
+        test_case
+    )
 
 
 def require_peft_version_greater(peft_version):

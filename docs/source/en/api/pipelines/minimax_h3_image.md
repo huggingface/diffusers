@@ -79,7 +79,7 @@ The prompt is used verbatim, with no chat template, and long, complete descripti
 
 ## Prompt enhancement
 
-[MiniMax-H3-Image-PE](https://huggingface.co/MiniMaxAI/MiniMax-H3-Image-PE) is MiniMax's prompt expansion model: it rewrites a short request into the kind of detailed description the image model works best with, and recommends an aspect ratio. The [diffusers/minimax-h3-image-pe-blocks](https://huggingface.co/diffusers/minimax-h3-image-pe-blocks) custom blocks run it as a pipeline of its own. They need `xgrammar`, and about 18 GB of GPU memory.
+[MiniMax-H3-Image-PE](https://huggingface.co/MiniMaxAI/MiniMax-H3-Image-PE) is MiniMax's prompt expansion model: it rewrites a short request into the kind of detailed description the image model works best with, and recommends an aspect ratio. The `diffusers/minimax-h3-image-pe-blocks` custom blocks run it as a pipeline of its own. They need `xgrammar`, and about 18 GB of GPU memory.
 
 ```py
 import torch

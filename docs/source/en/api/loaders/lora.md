@@ -17,31 +17,31 @@ LoRA is a fast and lightweight training method that inserts and trains a signifi
 - [`StableDiffusionLoraLoaderMixin`] provides functions for loading and unloading, fusing and unfusing, enabling and disabling, and more functions for managing LoRA weights. This class can be used with any model.
 - [`StableDiffusionXLLoraLoaderMixin`] is a [Stable Diffusion (SDXL)](../../api/pipelines/stable_diffusion/stable_diffusion_xl) version of the [`StableDiffusionLoraLoaderMixin`] class for loading and saving LoRA weights. It can only be used with the SDXL model.
 - [`SD3LoraLoaderMixin`] provides similar functions for [Stable Diffusion 3](https://huggingface.co/blog/sd3).
-- [`FluxLoraLoaderMixin`] provides similar functions for [Flux](https://huggingface.co/docs/diffusers/main/en/api/pipelines/flux).
-- [`CogVideoXLoraLoaderMixin`] provides similar functions for [CogVideoX](https://huggingface.co/docs/diffusers/main/en/api/pipelines/cogvideox).
-- [`Mochi1LoraLoaderMixin`] provides similar functions for [Mochi](https://huggingface.co/docs/diffusers/main/en/api/pipelines/mochi).
+- [`FluxLoraLoaderMixin`] provides similar functions for [Flux](../pipelines/flux).
+- [`CogVideoXLoraLoaderMixin`] provides similar functions for [CogVideoX](../pipelines/cogvideox).
+- [`Mochi1LoraLoaderMixin`] provides similar functions for [Mochi](../pipelines/mochi).
 - [`AuraFlowLoraLoaderMixin`] provides similar functions for [AuraFlow](https://huggingface.co/fal/AuraFlow).
-- [`LTXVideoLoraLoaderMixin`] provides similar functions for [LTX-Video](https://huggingface.co/docs/diffusers/main/en/api/pipelines/ltx_video).
-- [`SanaLoraLoaderMixin`] provides similar functions for [Sana](https://huggingface.co/docs/diffusers/main/en/api/pipelines/sana).
-- [`HeliosLoraLoaderMixin`] provides similar functions for [HunyuanVideo](https://huggingface.co/docs/diffusers/main/en/api/pipelines/helios).
-- [`HunyuanVideoLoraLoaderMixin`] provides similar functions for [HunyuanVideo](https://huggingface.co/docs/diffusers/main/en/api/pipelines/hunyuan_video).
-- [`Lumina2LoraLoaderMixin`] provides similar functions for [Lumina2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/lumina2).
-- [`WanLoraLoaderMixin`] provides similar functions for [Wan](https://huggingface.co/docs/diffusers/main/en/api/pipelines/wan).
-- [`SkyReelsV2LoraLoaderMixin`] provides similar functions for [SkyReels-V2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/skyreels_v2).
-- [`CogView4LoraLoaderMixin`] provides similar functions for [CogView4](https://huggingface.co/docs/diffusers/main/en/api/pipelines/cogview4).
+- [`LTXVideoLoraLoaderMixin`] provides similar functions for [LTX-Video](../pipelines/ltx_video).
+- [`SanaLoraLoaderMixin`] provides similar functions for [Sana](../pipelines/sana).
+- [`HeliosLoraLoaderMixin`] provides similar functions for [HunyuanVideo](../pipelines/helios).
+- [`HunyuanVideoLoraLoaderMixin`] provides similar functions for [HunyuanVideo](../pipelines/hunyuan_video).
+- [`Lumina2LoraLoaderMixin`] provides similar functions for [Lumina2](../pipelines/lumina2).
+- [`WanLoraLoaderMixin`] provides similar functions for [Wan](../pipelines/wan).
+- [`SkyReelsV2LoraLoaderMixin`] provides similar functions for [SkyReels-V2](../pipelines/skyreels_v2).
+- [`CogView4LoraLoaderMixin`] provides similar functions for [CogView4](../pipelines/cogview4).
 - [`AmusedLoraLoaderMixin`] is for the [`AmusedPipeline`].
-- [`AnimaLoraLoaderMixin`] provides similar functions for [Anima](https://huggingface.co/docs/diffusers/main/en/api/pipelines/anima).
-- [`AceStepLoraLoaderMixin`] provides similar functions for [ACE-Step](https://huggingface.co/docs/diffusers/main/en/api/pipelines/ace_step).
-- [`HiDreamImageLoraLoaderMixin`] provides similar functions for [HiDream Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/hidream)
-- [`QwenImageLoraLoaderMixin`] provides similar functions for [Qwen Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/qwen).
-- [`ZImageLoraLoaderMixin`] provides similar functions for [Z-Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/zimage).
-- [`Flux2LoraLoaderMixin`] provides similar functions for [Flux2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/flux2).
-- [`ErnieImageLoraLoaderMixin`] provides similar functions for [Ernie-Image](https://huggingface.co/docs/diffusers/main/en/api/pipelines/ernie_image).
-- [`LTX2LoraLoaderMixin`] provides similar functions for [Flux2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/ltx2).
-- [`MiniMaxH3LoraLoaderMixin`] provides similar functions for [MiniMax-H3](https://huggingface.co/docs/diffusers/main/en/api/pipelines/minimax_h3).
-- [`PikaH3FlexLoraLoaderMixin`] provides similar functions for [Pika H3 Flex](https://huggingface.co/docs/diffusers/main/en/api/pipelines/pika_h3_flex).
-- [`RFD4ProteinaLoraLoaderMixin`] provides similar functions for [RFD4-Proteína](https://huggingface.co/docs/diffusers/main/en/api/pipelines/rfd4_proteina).
-- [`BriaFibo2LoraLoaderMixin`] provides similar functions for [fibo-2](https://huggingface.co/docs/diffusers/main/en/api/pipelines/bria_fibo2).
+- [`AnimaLoraLoaderMixin`] provides similar functions for [Anima](../pipelines/anima).
+- [`AceStepLoraLoaderMixin`] provides similar functions for [ACE-Step](../pipelines/ace_step).
+- [`HiDreamImageLoraLoaderMixin`] provides similar functions for [HiDream Image](../pipelines/hidream)
+- [`QwenImageLoraLoaderMixin`] provides similar functions for [Qwen Image](../pipelines/qwenimage).
+- [`ZImageLoraLoaderMixin`] provides similar functions for [Z-Image](../pipelines/z_image).
+- [`Flux2LoraLoaderMixin`] provides similar functions for [Flux2](../pipelines/flux2).
+- [`ErnieImageLoraLoaderMixin`] provides similar functions for [Ernie-Image](../pipelines/ernie_image).
+- [`LTX2LoraLoaderMixin`] provides similar functions for [Flux2](../pipelines/ltx2).
+- [`MiniMaxH3LoraLoaderMixin`] provides similar functions for [MiniMax-H3](../pipelines/minimax_h3).
+- [`PikaH3FlexLoraLoaderMixin`] provides similar functions for [Pika H3 Flex](../pipelines/pika_h3_flex).
+- [`RFD4ProteinaLoraLoaderMixin`] provides similar functions for [RFD4-Proteína](../pipelines/rfd4_proteina).
+- [`BriaFibo2LoraLoaderMixin`] provides similar functions for [fibo-2](../pipelines/bria_fibo2).
 - [`LoraBaseMixin`] provides a base class with several utility methods to fuse, unfuse, unload, LoRAs and more.
 
 > [!TIP]

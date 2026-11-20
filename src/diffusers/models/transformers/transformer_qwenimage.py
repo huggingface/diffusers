@@ -493,7 +493,7 @@ class QwenDoubleStreamAttnProcessor2_0:
         encoder_hidden_states_mask: torch.FloatTensor = None,
         attention_mask: torch.FloatTensor | None = None,
         image_rotary_emb: torch.Tensor | None = None,
-    ) -> torch.FloatTensor:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         if encoder_hidden_states is None:
             raise ValueError("QwenDoubleStreamAttnProcessor2_0 requires encoder_hidden_states (text stream)")
 
@@ -878,7 +878,7 @@ class QwenImageTransformer2DModel(
         controlnet_block_samples=None,
         additional_t_cond=None,
         return_dict: bool = True,
-    ) -> torch.Tensor | Transformer2DModelOutput:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`QwenTransformer2DModel`] forward method.
 

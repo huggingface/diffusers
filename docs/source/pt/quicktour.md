@@ -299,4 +299,4 @@ Esperamos que você tenha gerado algumas imagens legais com o 🧨 Diffusers nes
 - Veja exemplos oficiais e da comunidade de [scripts de treinamento ou configuração fina](https://github.com/huggingface/diffusers/tree/main/examples#-diffusers-examples) para os mais variados casos de uso.
 - Aprenda sobre como carregar, acessar, mudar e comparar agendadores no guia [Usando diferentes agendadores](./using-diffusers/schedulers).
 - Explore engenharia de prompt, otimizações de velocidade e memória, e dicas e truques para gerar imagens de maior qualidade com o guia [Stable Diffusion](./stable_diffusion).
-- Se aprofunde em acelerar 🧨 Diffusers com guias sobre [PyTorch otimizado em uma GPU](./optimization/fp16), e guias de inferência para rodar [Stable Diffusion em Apple Silicon (M1/M2)](./optimization/mps) e [ONNX Runtime](./optimization/onnx).
+- Se aprofunde em acelerar 🧨 Diffusers com guias sobre [PyTorch otimizado em uma GPU](./optimization/fp16), e guias de inferência para rodar [Stable Diffusion em Apple Silicon (M1/M2)](./optimization/mps).

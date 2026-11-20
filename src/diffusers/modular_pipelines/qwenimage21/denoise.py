@@ -216,7 +216,7 @@ class QwenImage21LoopDenoiser(ModularPipelineBlocks):
                     kv_cache = QwenImage21KVCache(len(components.transformer.transformer_blocks))
                     block_state.kv_caches[context_name] = kv_cache
 
-            with components.transformer.cache_context(context_name):
+            with components.transformer.cache_context(context_name, timestep=t):
                 noise_pred = components.transformer(
                     hidden_states=block_state.latent_model_input,
                     timestep=block_state.timestep / 1000,
@@ -293,7 +293,7 @@ class QwenImage21TurboLoopDenoiser(ModularPipelineBlocks):
                 kv_cache = QwenImage21KVCache(len(components.transformer.transformer_blocks))
                 block_state.kv_caches["cond"] = kv_cache
 
-        with components.transformer.cache_context("cond"):
+        with components.transformer.cache_context("cond", timestep=t):
             noise_pred = components.transformer(
                 hidden_states=block_state.latent_model_input,
                 timestep=block_state.timestep / 1000,
