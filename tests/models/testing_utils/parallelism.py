@@ -522,26 +522,38 @@ def _parallel_rng_sync_worker(
         model.eval()
 
         inputs_on_device = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
-        noise = randn_tensor(
-            inputs_on_device[main_input_name].shape, device=device, dtype=inputs_on_device[main_input_name].dtype
-        )
-        inputs_on_device[main_input_name] = noise
+        for k, v in inputs_on_device.items():
+            if isinstance(v, list):
+                inputs_on_device[k] = [x.to(device) if isinstance(x, torch.Tensor) else x for x in v]
+
+        # The main input is a tensor, or a list of them for models that take one tensor per sample.
+        main_input = inputs_on_device[main_input_name]
+        is_list = isinstance(main_input, list)
+        noise = [
+            randn_tensor(sample.shape, device=device, dtype=sample.dtype)
+            for sample in (main_input if is_list else [main_input])
+        ]
+        inputs_on_device[main_input_name] = noise if is_list else noise[0]
         with torch.no_grad():
             output = model(**inputs_on_device, return_dict=False)[0]
+        if isinstance(output, (list, tuple)):
+            # Flatten list outputs to compare predictions with different shapes.
+            output = torch.cat([sample.flatten() for sample in output])
         if isinstance(output, DTensor):
             output = output.full_tensor()
 
-        gathered_noise = [torch.empty_like(noise) for _ in range(world_size)]
-        dist.all_gather(gathered_noise, noise)
+        flat_noise = torch.cat([sample.flatten() for sample in noise])
+        gathered_noise = [torch.empty_like(flat_noise) for _ in range(world_size)]
+        dist.all_gather(gathered_noise, flat_noise)
         if rank == 0:
             return_dict["status"] = "success"
-            return_dict["same_noise_as_rank_0"] = [torch.equal(noise, other) for other in gathered_noise]
+            return_dict["same_noise_as_rank_0"] = [torch.equal(flat_noise, other) for other in gathered_noise]
             # Redraw from rank 0's seed, which is what a non-parallel run with that seed would draw.
             torch.manual_seed(rank)
-            seeded_noise = randn_tensor(noise.shape, device=device, dtype=noise.dtype)
-            return_dict["rank_0_seed_kept"] = torch.equal(noise, seeded_noise)
+            seeded_noise = [randn_tensor(sample.shape, device=device, dtype=sample.dtype) for sample in noise]
+            return_dict["rank_0_seed_kept"] = all(torch.equal(a, b) for a, b in zip(noise, seeded_noise))
             # Serialise via nested list so the manager dict can transport it across processes.
-            return_dict["noise"] = noise.float().cpu().tolist()
+            return_dict["noise"] = [sample.float().cpu().tolist() for sample in noise]
             return_dict["output"] = output.float().cpu().tolist()
 
     except Exception as e:
@@ -576,10 +588,19 @@ def _check_parallel_rng_sync(
         pytest.skip(f"`num_attention_heads` ({num_heads}) is not divisible by tp_degree ({world_size}).")
 
     main_input_name = tester.main_input_name
-    reference_device = inputs_dict[main_input_name].device
+    # The main input is a tensor, or a list of them for models that take one tensor per sample.
+    is_list = isinstance(inputs_dict[main_input_name], list)
+    main_input = inputs_dict[main_input_name] if is_list else [inputs_dict[main_input_name]]
+    reference_device = main_input[0].device
     model = model_class(**init_dict).eval()
     checkpoint_dir = str(tmp_path / "checkpoint")
     model.save_pretrained(checkpoint_dir)
+
+    # Move all tensors to CPU for multiprocessing
+    cpu_inputs = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
+    for k, v in cpu_inputs.items():
+        if isinstance(v, list):
+            cpu_inputs[k] = [x.cpu() if isinstance(x, torch.Tensor) else x for x in v]
 
     return_dict = mp.Manager().dict()
     mp.spawn(
@@ -589,7 +610,7 @@ def _check_parallel_rng_sync(
             _find_free_port(),
             model_class,
             checkpoint_dir,
-            {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()},
+            cpu_inputs,
             main_input_name,
             parallelism,
             loading,
@@ -611,9 +632,15 @@ def _check_parallel_rng_sync(
     )
     assert return_dict["rank_0_seed_kept"], "Rank 0 did not draw the input a non-parallel run with its seed draws."
 
-    noise = torch.tensor(return_dict["noise"], dtype=inputs_dict[main_input_name].dtype, device=reference_device)
+    noise = [
+        torch.tensor(values, dtype=sample.dtype, device=reference_device)
+        for values, sample in zip(return_dict["noise"], main_input)
+    ]
+    reference_inputs = {**inputs_dict, main_input_name: noise if is_list else noise[0]}
     with torch.no_grad():
-        reference = model.to(reference_device)(**{**inputs_dict, main_input_name: noise}, return_dict=False)[0]
+        reference = model.to(reference_device)(**reference_inputs, return_dict=False)[0]
+    if isinstance(reference, (list, tuple)):
+        reference = torch.cat([sample.flatten() for sample in reference])
     torch.testing.assert_close(reference.float().cpu(), torch.tensor(return_dict["output"]), atol=atol, rtol=rtol)
 
 
