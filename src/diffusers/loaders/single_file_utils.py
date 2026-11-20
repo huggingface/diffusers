@@ -3736,6 +3736,22 @@ def convert_chroma_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     return converted_state_dict
 
 
+def convert_anima_text_conditioner_to_diffusers(checkpoint, **kwargs):
+    # If none of the keys has the `llm_adapter` prefix, we assume it is a diffusers-format file 
+    # containing ONLY the text conditioner weights and nothing else
+    has_prefix = any(key.startswith("llm_adapter") for key in checkpoint.keys())
+    if not has_prefix: 
+        return checkpoint
+    
+    converted_state_dict = {}
+    for k in list(checkpoint.keys()):
+        if "llm_adapter." in k:
+            converted_state_dict[k.split("llm_adapter.", 1)[1]] = checkpoint.pop(k)
+        else:
+            _ = checkpoint.pop(k)
+    return converted_state_dict
+
+
 def convert_cosmos_transformer_checkpoint_to_diffusers(checkpoint, **kwargs):
     converted_state_dict = {key: checkpoint.pop(key) for key in list(checkpoint.keys())}
 
