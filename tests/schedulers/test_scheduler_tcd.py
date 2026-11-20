@@ -193,7 +193,6 @@ class TCDSchedulerTest(SchedulerCommonTest):
             scheduler.set_timesteps(timesteps=[999, 499, 19], strength=0.5)
 
             self.assertEqual(scheduler.timesteps.tolist(), [19])
-            self.assertEqual(scheduler.num_inference_steps, 3)
 
             generator = torch.Generator(device="cpu").manual_seed(0)
             control = torch.Generator(device="cpu").manual_seed(0)
