@@ -92,6 +92,7 @@ query($owner: String!, $name: String!, $number: Int!) {
       createdAt
       author { login }
       closingIssuesReferences(first: 50) {
+        totalCount
         nodes {
           createdAt
           author { login }
@@ -103,7 +104,7 @@ query($owner: String!, $name: String!, $number: Int!) {
 """
 
 
-def has_linked_issue(token, owner, name, number):
+def has_linked_issue(token, owner, name, number, *, for_reminder):
     response = requests.post(
         GRAPHQL_URL,
         json={"query": GRAPHQL_QUERY, "variables": {"owner": owner, "name": name, "number": number}},
@@ -112,10 +113,11 @@ def has_linked_issue(token, owner, name, number):
     )
     response.raise_for_status()
     payload = response.json()
-    data = payload.get("data")
-    if not data:
-        return False
-    pr = data["repository"]["pullRequest"]
+    if payload.get("errors"):
+        raise RuntimeError(f"GitHub issue lookup failed: {payload['errors']}")
+    pr = payload["data"]["repository"]["pullRequest"]
+    if not for_reminder:
+        return pr["closingIssuesReferences"]["totalCount"] > 0
     pr_author = (pr["author"] or {}).get("login")
     return any(
         (issue["author"] or {}).get("login") != pr_author or issue["createdAt"] < pr["createdAt"]
@@ -258,7 +260,7 @@ def main():
                     continue
                 if author_checkbox_checked(pr):
                     continue
-                if has_linked_issue(token, owner, name, pr.number):
+                if has_linked_issue(token, owner, name, pr.number, for_reminder=True):
                     continue
                 comments = list(pr.get_issue_comments())
                 # Only a marker comment authored by the bot itself starts the
@@ -282,10 +284,14 @@ def main():
                 if warned_at.tzinfo is None:
                     warned_at = warned_at.replace(tzinfo=timezone.utc)
                 days_since_warning = (now - warned_at).days
+                if days_since_warning < SLACK_RESCUE_DAYS:
+                    continue
+                if has_linked_issue(token, owner, name, pr.number, for_reminder=False):
+                    continue
                 if days_since_warning >= AUTOCLOSE_DAYS:
                     pr.create_issue_comment(autoclose_body())
                     pr.edit(state="closed")
-                elif days_since_warning >= SLACK_RESCUE_DAYS and SLACK_NOTIFIED_MARKER not in (warning.body or ""):
+                elif SLACK_NOTIFIED_MARKER not in (warning.body or ""):
                     at_risk.append((pr, warning, AUTOCLOSE_DAYS - days_since_warning))
             except Exception as e:
                 logger.warning("Skipping PR #%s: %s", getattr(pr, "number", "?"), e)
