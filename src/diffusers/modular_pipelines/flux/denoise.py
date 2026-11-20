@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 from typing import Any
 
 import torch
@@ -217,19 +218,32 @@ class FluxLoopAfterDenoiser(ModularPipelineBlocks):
         )
 
     @property
+    def inputs(self) -> list[InputParam]:
+        return [InputParam("generator")]
+
+    @property
     def intermediate_outputs(self) -> list[OutputParam]:
         return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
+
+    @staticmethod
+    def prepare_extra_kwargs(func, **kwargs):
+        accepted = set(inspect.signature(func).parameters.keys())
+        return {k: v for k, v in kwargs.items() if k in accepted}
 
     @torch.no_grad()
     def __call__(
         self, components: FluxModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
     ) -> tuple[FluxModularPipeline, BlockState]:
+        extra_step_kwargs = self.prepare_extra_kwargs(
+            components.scheduler.step, generator=block_state.generator
+        )
         # Perform scheduler step using the predicted output
         latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(
             block_state.noise_pred,
             t,
             block_state.latents,
+            **extra_step_kwargs,
             return_dict=False,
         )[0]
 
