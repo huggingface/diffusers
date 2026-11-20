@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License. -->
 P-Image-OSS is an image model by Pruna AI based on [MiniMax-H3](./minimax_h3), for text-to-image generation and instruction-based image editing. You can find the checkpoint at [PrunaAI/P-Image-OSS](https://huggingface.co/PrunaAI/P-Image-OSS).
 
 > [!TIP]
-> P-Image-OSS was previously released as P-H3-Image. The former class names (`PH3ImageModularPipeline`, `PH3ImageBlocks`, `PH3ImageTextConnector`, and `AutoencoderKLPH3Image`) are kept as deprecated aliases of the new ones.
+> P-Image-OSS was previously released as P-H3-Image. The former class names (`PH3ImageModularPipeline`, `PH3ImageBlocks`, `PH3ImageTextConnector`, and `AutoencoderKLPH3Image`) are kept as aliases of the new ones.
 
 ```py
 import torch
