@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from ...utils import (
+from ....utils import (
     DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
@@ -17,7 +17,7 @@ try:
     if not (is_transformers_available() and is_torch_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ...utils import dummy_torch_and_transformers_objects  # noqa F403
+    from ....utils import dummy_torch_and_transformers_objects  # noqa F403
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
@@ -41,7 +41,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             raise OptionalDependencyNotAvailable()
 
     except OptionalDependencyNotAvailable:
-        from ...utils.dummy_torch_and_transformers_objects import *
+        from ....utils.dummy_torch_and_transformers_objects import *
     else:
         from .camera import create_pan_cameras
         from .pipeline_shap_e import ShapEPipeline

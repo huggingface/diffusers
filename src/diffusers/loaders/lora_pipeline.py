@@ -46,6 +46,7 @@ from .lora_conversion_utils import (
     _convert_kohya_flux2_lora_to_diffusers,
     _convert_kohya_flux_lora_to_diffusers,
     _convert_lycoris_flux2_lokr_to_diffusers,
+    _convert_musubi_hunyuan_video_lora_to_diffusers,
     _convert_musubi_wan_lora_to_diffusers,
     _convert_non_diffusers_ace_step_lora_to_diffusers,
     _convert_non_diffusers_anima_lora_to_diffusers,
@@ -3571,7 +3572,9 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
         is_original_hunyuan_video = any("img_attn_qkv" in k for k in state_dict)
-        if is_original_hunyuan_video:
+        if any(k.startswith("lora_unet_") for k in state_dict):
+            state_dict = _convert_musubi_hunyuan_video_lora_to_diffusers(state_dict)
+        elif is_original_hunyuan_video:
             state_dict = _convert_hunyuan_video_lora_to_diffusers(state_dict)
 
         out = (state_dict, metadata) if return_lora_metadata else state_dict
