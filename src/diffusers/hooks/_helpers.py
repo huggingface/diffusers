@@ -195,6 +195,7 @@ def _register_transformer_blocks_metadata():
         MotifVideoSingleTransformerBlock,
         MotifVideoTransformerBlock,
     )
+    from ..models.transformers.transformer_pan2 import PAN2TransformerBlock
     from ..models.transformers.transformer_qwenimage import QwenImageTransformerBlock
     from ..models.transformers.transformer_wan import WanTransformerBlock
     from ..models.transformers.transformer_z_image import ZImageTransformerBlock
@@ -334,6 +335,15 @@ def _register_transformer_blocks_metadata():
     )
     TransformerBlockRegistry.register(
         model_class=MotifVideoSingleTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=1,
+        ),
+    )
+
+    # PAN 2
+    TransformerBlockRegistry.register(
+        model_class=PAN2TransformerBlock,
         metadata=TransformerBlockMetadata(
             return_hidden_states_index=0,
             return_encoder_hidden_states_index=1,
