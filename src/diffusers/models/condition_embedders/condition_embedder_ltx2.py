@@ -42,6 +42,8 @@ def per_layer_masked_mean_norm(
     """
     batch_size, seq_len, hidden_dim, num_layers = text_hidden_states.shape
     original_dtype = text_hidden_states.dtype
+    # Reductions overflow float16 once hidden states exceed a few hundred. Gemma states do.
+    text_hidden_states = text_hidden_states.float()
 
     # Create padding mask
     token_indices = torch.arange(seq_len, device=device).unsqueeze(0)
@@ -78,9 +80,12 @@ def per_layer_masked_mean_norm(
 
 
 def per_token_rms_norm(text_encoder_hidden_states: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-    variance = torch.mean(text_encoder_hidden_states**2, dim=2, keepdim=True)
-    norm_text_encoder_hidden_states = text_encoder_hidden_states * torch.rsqrt(variance + eps)
-    return norm_text_encoder_hidden_states
+    # Square in float32. In float16, values above ~256 overflow x**2 and the token becomes 0 or NaN.
+    original_dtype = text_encoder_hidden_states.dtype
+    hidden_states = text_encoder_hidden_states.float()
+    variance = torch.mean(hidden_states**2, dim=2, keepdim=True)
+    norm_text_encoder_hidden_states = hidden_states * torch.rsqrt(variance + eps)
+    return norm_text_encoder_hidden_states.to(original_dtype)
 
 
 class LTX2RotaryPosEmbed1d(nn.Module):
