@@ -560,21 +560,23 @@ class ProducesLatentsBlock(ModularPipelineBlocks):
         return components, state
 
 
+class LatentsBlocks(ConditionalPipelineBlocks):
+    block_classes = [ProducesLatentsBlock, ProducesLatentsAndImageLatentsBlock]
+    block_names = ["img2img", "text2img"]
+    block_trigger_inputs = ["image"]
+    default_block_name = "text2img"
+
+    def select_block(self, image=None):
+        return "img2img" if image is not None else None
+
+
+class SkippableLatentsBlocks(LatentsBlocks):
+    default_block_name = None  # no default; block can be skipped
+
+
 class TestConditionalBlocksOptionalOutputs:
-    def _blocks(self, default_block_name="text2img"):
-        class Blocks(ConditionalPipelineBlocks):
-            block_classes = [ProducesLatentsBlock, ProducesLatentsAndImageLatentsBlock]
-            block_names = ["img2img", "text2img"]
-            block_trigger_inputs = ["image"]
-
-            def select_block(self, image=None):
-                return "img2img" if image is not None else None
-
-        Blocks.default_block_name = default_block_name
-        return Blocks()
-
     def test_output_is_always_produced_only_when_every_branch_produces_it(self):
-        blocks = self._blocks()
+        blocks = LatentsBlocks()
         # `latents` comes out of both branches, `image_latents` out of `text2img` only
         assert {out.name: out._maybe for out in blocks.intermediate_outputs} == {
             "latents": False,
@@ -584,7 +586,7 @@ class TestConditionalBlocksOptionalOutputs:
         assert all(not out._maybe for out in ProducesLatentsAndImageLatentsBlock().intermediate_outputs)
 
     def test_every_output_of_a_skippable_block_is_a_maybe(self):
-        blocks = self._blocks(default_block_name=None)
+        blocks = SkippableLatentsBlocks()
         assert {out.name: out._maybe for out in blocks.intermediate_outputs} == {
             "latents": True,
             "image_latents": True,

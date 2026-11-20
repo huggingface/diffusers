@@ -1827,10 +1827,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
                 )
 
     @classmethod
-    def from_blocks_dict(
-        cls,
-        blocks_dict: dict[str, Any],
-    ) -> "LoopSequentialPipelineBlocks":
+    def from_blocks_dict(cls, blocks_dict: dict[str, Any]) -> "LoopSequentialPipelineBlocks":
         """
         Creates a LoopSequentialPipelineBlocks instance from a dictionary of blocks.
 
