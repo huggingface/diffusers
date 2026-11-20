@@ -40,7 +40,7 @@ class PH3ImageAutoBeforeEncodeStep(AutoPipelineBlocks):
        - a `text2image` request skips this block.
 
       Components:
-          image_processor (`VaeImageProcessor`)
+          - image_processor (`VaeImageProcessor`)
 
       Configs:
           reference_min_pixels (default: 1048576) reference_max_pixels (default: 8388608) canvas_min_pixels (default:
@@ -91,8 +91,10 @@ class PH3ImageAutoTextEncoderStep(AutoPipelineBlocks):
        - `PH3ImageTextEncoderStep` runs otherwise (`text2image`).
 
       Components:
-          text_encoder (`Qwen3VLForConditionalGeneration`) text_connector (`PH3ImageTextConnector`) tokenizer
-          (`Qwen2Tokenizer`) processor (`Qwen3VLProcessor`)
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - text_connector (`PH3ImageTextConnector`)
+          - tokenizer (`Qwen2Tokenizer`)
+          - processor (`Qwen3VLProcessor`)
 
       Inputs:
           prompt (`str`):
@@ -129,7 +131,7 @@ class PH3ImageAutoVaeEncoderStep(AutoPipelineBlocks):
        - a `text2image` request skips this block.
 
       Components:
-          vae (`AutoencoderKLPH3Image`)
+          - vae (`AutoencoderKLPH3Image`)
 
       Inputs:
           reference_images (`list`, *optional*):
@@ -162,8 +164,9 @@ class PH3ImageCoreDenoiseStep(SequentialPipelineBlocks):
     unpacks the latents.
 
       Components:
-          scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`) transformer
-          (`MiniMaxH3Transformer3DModel`)
+          - scheduler (`MiniMaxH3Scheduler`)
+          - audio_scheduler (`MiniMaxH3Scheduler`)
+          - transformer (`MiniMaxH3Transformer3DModel`)
 
       Configs:
           sample_sigmas (default: [1.0, 0.984753, 0.967905, 0.951688, 0.925372, 0.881923, 0.810083, 0.528718, 0.0]):
@@ -234,8 +237,9 @@ class PH3ImageEditCoreDenoiseStep(SequentialPipelineBlocks):
     edit packed in front of the generated rows.
 
       Components:
-          scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`) transformer
-          (`MiniMaxH3Transformer3DModel`)
+          - scheduler (`MiniMaxH3Scheduler`)
+          - audio_scheduler (`MiniMaxH3Scheduler`)
+          - transformer (`MiniMaxH3Transformer3DModel`)
 
       Configs:
           sample_sigmas (default: [1.0, 0.984753, 0.967905, 0.951688, 0.925372, 0.881923, 0.810083, 0.528718, 0.0]):
@@ -319,8 +323,9 @@ class PH3ImageAutoDenoiseStep(AutoPipelineBlocks):
        - `PH3ImageCoreDenoiseStep` runs otherwise (`text2image`).
 
       Components:
-          scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`) transformer
-          (`MiniMaxH3Transformer3DModel`)
+          - scheduler (`MiniMaxH3Scheduler`)
+          - audio_scheduler (`MiniMaxH3Scheduler`)
+          - transformer (`MiniMaxH3Transformer3DModel`)
 
       Configs:
           sample_sigmas (default: [1.0, 0.984753, 0.967905, 0.951688, 0.925372, 0.881923, 0.810083, 0.528718, 0.0]):
@@ -384,11 +389,17 @@ class PH3ImageBlocks(SequentialPipelineBlocks):
         - `image_conditioned`: requires `prompt`, `image`
 
       Components:
-          image_processor (`VaeImageProcessor`) prompt_upsampler (`Qwen3_5ForConditionalGeneration`): The prompt
-          upsampler. prompt_upsampler_processor (`AutoProcessor`): Its processor. text_encoder
-          (`Qwen3VLForConditionalGeneration`) text_connector (`PH3ImageTextConnector`) tokenizer (`Qwen2Tokenizer`)
-          processor (`Qwen3VLProcessor`) vae (`AutoencoderKLPH3Image`) scheduler (`MiniMaxH3Scheduler`) audio_scheduler
-          (`MiniMaxH3Scheduler`) transformer (`MiniMaxH3Transformer3DModel`)
+          - image_processor (`VaeImageProcessor`)
+          - prompt_upsampler (`Qwen3_5ForConditionalGeneration`): The prompt upsampler.
+          - prompt_upsampler_processor (`AutoProcessor`): Its processor.
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - text_connector (`PH3ImageTextConnector`)
+          - tokenizer (`Qwen2Tokenizer`)
+          - processor (`Qwen3VLProcessor`)
+          - vae (`AutoencoderKLPH3Image`)
+          - scheduler (`MiniMaxH3Scheduler`)
+          - audio_scheduler (`MiniMaxH3Scheduler`)
+          - transformer (`MiniMaxH3Transformer3DModel`)
 
       Configs:
           reference_min_pixels (default: 1048576) reference_max_pixels (default: 8388608) canvas_min_pixels (default:

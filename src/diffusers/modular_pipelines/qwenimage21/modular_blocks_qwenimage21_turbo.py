@@ -54,8 +54,9 @@ class QwenImage21TurboVLEncoderStep(SequentialPipelineBlocks):
     Vision-language encoder step that resizes the condition images and encodes them together with the prompt.
 
       Components:
-          image_processor (`VaeImageProcessor`) text_encoder (`Qwen3VLForConditionalGeneration`) processor
-          (`Qwen3VLProcessor`)
+          - image_processor (`VaeImageProcessor`)
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - processor (`Qwen3VLProcessor`)
 
       Inputs:
           image (`Image | list`):
@@ -96,8 +97,9 @@ class QwenImage21TurboAutoTextEncoderStep(AutoPipelineBlocks):
        - `QwenImage21TurboTextEncoderStep` is used otherwise.
 
       Components:
-          image_processor (`VaeImageProcessor`) text_encoder (`Qwen3VLForConditionalGeneration`) processor
-          (`Qwen3VLProcessor`)
+          - image_processor (`VaeImageProcessor`)
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - processor (`Qwen3VLProcessor`)
 
       Inputs:
           image (`Image | list`, *optional*):
@@ -152,7 +154,8 @@ class QwenImage21TurboVaeEncoderSequentialStep(SequentialPipelineBlocks):
     VAE encoder step that resizes, preprocesses and encodes the condition images into latents.
 
       Components:
-          image_processor (`VaeImageProcessor`) vae (`AutoencoderKLQwenImage21`)
+          - image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage21`)
 
       Inputs:
           image (`Image | list`):
@@ -189,7 +192,8 @@ class QwenImage21TurboAutoVaeEncoderStep(AutoPipelineBlocks):
        - If `image` is not provided, step will be skipped.
 
       Components:
-          image_processor (`VaeImageProcessor`) vae (`AutoencoderKLQwenImage21`)
+          - image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage21`)
 
       Inputs:
           image (`Image | list`, *optional*):
@@ -245,7 +249,8 @@ class QwenImage21TurboCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoise step that performs the denoising process for text-to-image generation with the Turbo checkpoint.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`QwenImage21Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`QwenImage21Transformer2DModel`)
 
       Configs:
           sample_sigmas (default: None): Sampling grid the checkpoint ships with, used when `sigmas` is not passed.
@@ -321,7 +326,8 @@ class QwenImage21TurboImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoise step that performs the denoising process for image-conditioned generation with the Turbo checkpoint.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`QwenImage21Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`QwenImage21Transformer2DModel`)
 
       Configs:
           sample_sigmas (default: None): Sampling grid the checkpoint ships with, used when `sigmas` is not passed.
@@ -389,7 +395,8 @@ class QwenImage21TurboAutoCoreDenoiseStep(AutoPipelineBlocks):
        - `QwenImage21TurboCoreDenoiseStep` is used otherwise.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`QwenImage21Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`QwenImage21Transformer2DModel`)
 
       Configs:
           sample_sigmas (default: None): Sampling grid the checkpoint ships with, used when `sigmas` is not passed.
@@ -475,9 +482,12 @@ class QwenImage21TurboAutoBlocks(SequentialPipelineBlocks):
         - `image_conditioned`: requires `prompt`, `image`
 
       Components:
-          image_processor (`VaeImageProcessor`) text_encoder (`Qwen3VLForConditionalGeneration`) processor
-          (`Qwen3VLProcessor`) vae (`AutoencoderKLQwenImage21`) scheduler (`FlowMatchEulerDiscreteScheduler`)
-          transformer (`QwenImage21Transformer2DModel`)
+          - image_processor (`VaeImageProcessor`)
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - processor (`Qwen3VLProcessor`)
+          - vae (`AutoencoderKLQwenImage21`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`QwenImage21Transformer2DModel`)
 
       Configs:
           sample_sigmas (default: None): Sampling grid the checkpoint ships with, used when `sigmas` is not passed.

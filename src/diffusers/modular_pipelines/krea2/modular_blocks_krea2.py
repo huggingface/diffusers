@@ -49,8 +49,9 @@ class Krea2CoreDenoiseStep(SequentialPipelineBlocks):
     then runs the symmetric-CFG denoising loop, producing the denoised packed latents for the decoder.
 
       Components:
-          transformer (`Krea2Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`)
+          - transformer (`Krea2Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -112,9 +113,13 @@ class Krea2AutoBlocks(SequentialPipelineBlocks):
         - `text2image`: requires `prompt`
 
       Components:
-          text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`AutoTokenizer`): The tokenizer paired
-          with the text encoder. guider (`ClassifierFreeGuidance`) transformer (`Krea2Transformer2DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
+          - text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder.
+          - tokenizer (`AutoTokenizer`): The tokenizer paired with the text encoder.
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`Krea2Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - vae (`AutoencoderKLQwenImage`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           prompt (`str`):

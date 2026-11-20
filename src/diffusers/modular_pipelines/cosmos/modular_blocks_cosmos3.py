@@ -57,7 +57,8 @@ class Cosmos3TransferTextBlocks(SequentialPipelineBlocks):
     transfer mode using the per-chunk frame count.
 
       Components:
-          video_processor (`VideoProcessor`) text_tokenizer (`AutoTokenizer`)
+          - video_processor (`VideoProcessor`)
+          - text_tokenizer (`AutoTokenizer`)
 
       Inputs:
           control_videos (`dict`):
@@ -121,7 +122,8 @@ class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
        - Cosmos3TextEncoderStep runs otherwise.
 
       Components:
-          video_processor (`VideoProcessor`) text_tokenizer (`AutoTokenizer`)
+          - video_processor (`VideoProcessor`)
+          - text_tokenizer (`AutoTokenizer`)
 
       Configs:
           default_use_system_prompt (default: True) enable_safety_checker (default: True)
@@ -204,7 +206,8 @@ class Cosmos3AutoVaeEncoderStep(ConditionalPipelineBlocks):
        - when no action, image, or video conditioning is provided, this block is skipped.
 
       Components:
-          vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
 
       Inputs:
           action (`CosmosActionCondition`, *optional*):
@@ -280,7 +283,7 @@ class Cosmos3AutoSoundDecodeStep(AutoPipelineBlocks):
        - if sound_latents are not provided, this block is skipped.
 
       Components:
-          sound_tokenizer (`Cosmos3AVAEAudioTokenizer`)
+          - sound_tokenizer (`Cosmos3AVAEAudioTokenizer`)
 
       Inputs:
           sound_latents (`Tensor`, *optional*):
@@ -313,7 +316,9 @@ class Cosmos3DecodeStep(SequentialPipelineBlocks):
     Decodes denoised latents into modality outputs.
 
       Components:
-          vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`) sound_tokenizer (`Cosmos3AVAEAudioTokenizer`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
+          - sound_tokenizer (`Cosmos3AVAEAudioTokenizer`)
 
       Inputs:
           latents (`Tensor`):
@@ -368,7 +373,8 @@ class Cosmos3VisionCoreDenoiseStep(SequentialPipelineBlocks):
     Runs the text-and-vision Cosmos3 denoising workflow.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+          - transformer (`Cosmos3OmniTransformer`)
+          - scheduler (`UniPCMultistepScheduler`)
 
       Configs:
           use_native_flow_schedule (default: False)
@@ -448,7 +454,8 @@ class Cosmos3VisionSoundCoreDenoiseStep(SequentialPipelineBlocks):
     Runs the text, vision, and sound Cosmos3 denoising workflow.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+          - transformer (`Cosmos3OmniTransformer`)
+          - scheduler (`UniPCMultistepScheduler`)
 
       Configs:
           use_native_flow_schedule (default: False)
@@ -541,7 +548,8 @@ class Cosmos3VisionActionCoreDenoiseStep(SequentialPipelineBlocks):
     Runs the text, vision, and action Cosmos3 denoising workflow.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+          - transformer (`Cosmos3OmniTransformer`)
+          - scheduler (`UniPCMultistepScheduler`)
 
       Configs:
           use_native_flow_schedule (default: False)
@@ -638,7 +646,8 @@ class Cosmos3VisionSoundActionCoreDenoiseStep(SequentialPipelineBlocks):
     Runs the text, vision, sound, and action Cosmos3 denoising workflow.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+          - transformer (`Cosmos3OmniTransformer`)
+          - scheduler (`UniPCMultistepScheduler`)
 
       Configs:
           use_native_flow_schedule (default: False)
@@ -748,8 +757,10 @@ class Cosmos3TransferChunkDenoiseStep(SequentialPipelineBlocks):
     cross-carry (previous_output, output_chunks) lives on PipelineState.
 
       Components:
-          vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`) transformer (`Cosmos3OmniTransformer`) scheduler
-          (`UniPCMultistepScheduler`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
+          - transformer (`Cosmos3OmniTransformer`)
+          - scheduler (`UniPCMultistepScheduler`)
 
       Inputs:
           chunk_id (`int`, *optional*, defaults to 0):
@@ -903,8 +914,10 @@ class Cosmos3TransferCoreDenoiseStep(SequentialPipelineBlocks):
     Transfer denoise stage: prepare shared text segments once, then run the autoregressive chunk loop.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`) scheduler
-          (`UniPCMultistepScheduler`)
+          - transformer (`Cosmos3OmniTransformer`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
+          - scheduler (`UniPCMultistepScheduler`)
 
       Inputs:
           cond_input_ids (`None`):
@@ -1031,8 +1044,10 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
        - vision runs otherwise.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`) scheduler
-          (`UniPCMultistepScheduler`)
+          - transformer (`Cosmos3OmniTransformer`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
+          - scheduler (`UniPCMultistepScheduler`)
 
       Configs:
           use_native_flow_schedule (default: False)
@@ -1229,9 +1244,12 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
         - `action_inverse_dynamics`: requires `prompt`, `action`
 
       Components:
-          video_processor (`VideoProcessor`) text_tokenizer (`AutoTokenizer`) vae (`AutoencoderKLWan`) transformer
-          (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`) sound_tokenizer
-          (`Cosmos3AVAEAudioTokenizer`)
+          - video_processor (`VideoProcessor`)
+          - text_tokenizer (`AutoTokenizer`)
+          - vae (`AutoencoderKLWan`)
+          - transformer (`Cosmos3OmniTransformer`)
+          - scheduler (`UniPCMultistepScheduler`)
+          - sound_tokenizer (`Cosmos3AVAEAudioTokenizer`)
 
       Configs:
           default_use_system_prompt (default: True) enable_safety_checker (default: True) use_native_flow_schedule

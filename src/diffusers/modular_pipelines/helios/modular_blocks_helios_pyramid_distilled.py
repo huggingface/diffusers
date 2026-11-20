@@ -48,7 +48,8 @@ class HeliosPyramidDistilledAutoVaeEncoderStep(AutoPipelineBlocks):
        - If neither is provided, step will be skipped.
 
       Components:
-          vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
 
       Inputs:
           video (`None`, *optional*):
@@ -99,7 +100,9 @@ class HeliosPyramidDistilledCoreDenoiseStep(SequentialPipelineBlocks):
     T2V distilled pyramid denoise block with DMD scheduler and no CFG.
 
       Components:
-          transformer (`HeliosTransformer3DModel`) scheduler (`HeliosScheduler`) guider (`ClassifierFreeGuidance`)
+          - transformer (`HeliosTransformer3DModel`)
+          - scheduler (`HeliosScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -162,7 +165,9 @@ class HeliosPyramidDistilledI2VCoreDenoiseStep(SequentialPipelineBlocks):
     I2V distilled pyramid denoise block with DMD scheduler and no CFG.
 
       Components:
-          transformer (`HeliosTransformer3DModel`) scheduler (`HeliosScheduler`) guider (`ClassifierFreeGuidance`)
+          - transformer (`HeliosTransformer3DModel`)
+          - scheduler (`HeliosScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -252,7 +257,9 @@ class HeliosPyramidDistilledV2VCoreDenoiseStep(SequentialPipelineBlocks):
     V2V distilled pyramid denoise block with DMD scheduler and no CFG.
 
       Components:
-          transformer (`HeliosTransformer3DModel`) scheduler (`HeliosScheduler`) guider (`ClassifierFreeGuidance`)
+          - transformer (`HeliosTransformer3DModel`)
+          - scheduler (`HeliosScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -343,7 +350,9 @@ class HeliosPyramidDistilledAutoCoreDenoiseStep(ConditionalPipelineBlocks):
        - `HeliosPyramidDistilledCoreDenoiseStep` (text2video) for text-to-video tasks.
 
       Components:
-          transformer (`HeliosTransformer3DModel`) scheduler (`HeliosScheduler`) guider (`ClassifierFreeGuidance`)
+          - transformer (`HeliosTransformer3DModel`)
+          - scheduler (`HeliosScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -447,9 +456,13 @@ class HeliosPyramidDistilledAutoBlocks(SequentialPipelineBlocks):
         - `video2video`: requires `prompt`, `video`
 
       Components:
-          text_encoder (`UMT5EncoderModel`) tokenizer (`AutoTokenizer`) guider (`ClassifierFreeGuidance`) vae
-          (`AutoencoderKLWan`) video_processor (`VideoProcessor`) transformer (`HeliosTransformer3DModel`) scheduler
-          (`HeliosScheduler`)
+          - text_encoder (`UMT5EncoderModel`)
+          - tokenizer (`AutoTokenizer`)
+          - guider (`ClassifierFreeGuidance`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
+          - transformer (`HeliosTransformer3DModel`)
+          - scheduler (`HeliosScheduler`)
 
       Inputs:
           prompt (`str`):

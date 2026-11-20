@@ -49,7 +49,7 @@ class PikaH3FlexAutoBeforeEncodeStep(ConditionalPipelineBlocks):
        - a text-only request (`t2va`) skips this block, and the layout step falls back to the 768p 16:9 canvas.
 
       Components:
-          image_processor (`VaeImageProcessor`)
+          - image_processor (`VaeImageProcessor`)
 
       Configs:
           canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
@@ -138,7 +138,9 @@ class PikaH3FlexAutoTextEncoderStep(ConditionalPipelineBlocks):
        - `PikaH3FlexTextEncoderStep` runs otherwise (`t2va`), presenting the prompt alone.
 
       Components:
-          text_encoder (`Qwen3VLForConditionalGeneration`) tokenizer (`Qwen2Tokenizer`) processor (`Qwen3VLProcessor`)
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - tokenizer (`Qwen2Tokenizer`)
+          - processor (`Qwen3VLProcessor`)
 
       Inputs:
           prompt (`str`):
@@ -192,7 +194,8 @@ class PikaH3FlexAutoVaeEncoderStep(ConditionalPipelineBlocks):
        - a text-only request (`t2va`) skips this block.
 
       Components:
-          vae (`AutoencoderKLMiniMaxH3`) audio_vae (`AutoencoderKLMiniMaxH3Audio`)
+          - vae (`AutoencoderKLMiniMaxH3`)
+          - audio_vae (`AutoencoderKLMiniMaxH3Audio`)
 
       Inputs:
           normalized_references (`list`, *optional*):
@@ -242,8 +245,9 @@ class PikaH3FlexCoreDenoiseStep(SequentialPipelineBlocks):
     and unpacks the denoised rows back into latents.
 
       Components:
-          scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`) transformer
-          (`MiniMaxH3Transformer3DModel`)
+          - scheduler (`MiniMaxH3Scheduler`)
+          - audio_scheduler (`MiniMaxH3Scheduler`)
+          - transformer (`MiniMaxH3Transformer3DModel`)
 
       Configs:
           canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192) denoising_step_list (default: [1000,
@@ -334,8 +338,9 @@ class PikaH3FlexFL2VACoreDenoiseStep(SequentialPipelineBlocks):
     against the `transformer` partition with the `fl2va` adapter and unpacks the denoised rows back into latents.
 
       Components:
-          scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`) transformer
-          (`MiniMaxH3Transformer3DModel`)
+          - scheduler (`MiniMaxH3Scheduler`)
+          - audio_scheduler (`MiniMaxH3Scheduler`)
+          - transformer (`MiniMaxH3Transformer3DModel`)
 
       Configs:
           canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192) denoising_step_list (default: [1000,
@@ -435,8 +440,9 @@ class PikaH3FlexRef2VACoreDenoiseStep(SequentialPipelineBlocks):
     partition with the `ref2va` adapter and unpacks the denoised rows back into latents.
 
       Components:
-          scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`) transformer_ref
-          (`MiniMaxH3Transformer3DModel`)
+          - scheduler (`MiniMaxH3Scheduler`)
+          - audio_scheduler (`MiniMaxH3Scheduler`)
+          - transformer_ref (`MiniMaxH3Transformer3DModel`)
 
       Configs:
           denoising_step_list (default: [1000, 750, 500, 250, 100, 40, 0])
@@ -540,8 +546,10 @@ class PikaH3FlexAutoDenoiseStep(ConditionalPipelineBlocks):
          adapter.
 
       Components:
-          scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`) transformer_ref
-          (`MiniMaxH3Transformer3DModel`) transformer (`MiniMaxH3Transformer3DModel`)
+          - scheduler (`MiniMaxH3Scheduler`)
+          - audio_scheduler (`MiniMaxH3Scheduler`)
+          - transformer_ref (`MiniMaxH3Transformer3DModel`)
+          - transformer (`MiniMaxH3Transformer3DModel`)
 
       Configs:
           denoising_step_list (default: [1000, 750, 500, 250, 100, 40, 0]) canvas_short_edge (default: 768)
@@ -621,7 +629,9 @@ class PikaH3FlexDecodeStep(SequentialPipelineBlocks):
     Decodes the denoised rows of the packed sequence into the generated video and its soundtrack.
 
       Components:
-          vae (`AutoencoderKLMiniMaxH3`) video_processor (`VideoProcessor`) audio_vae (`AutoencoderKLMiniMaxH3Audio`)
+          - vae (`AutoencoderKLMiniMaxH3`)
+          - video_processor (`VideoProcessor`)
+          - audio_vae (`AutoencoderKLMiniMaxH3Audio`)
 
       Inputs:
           latents (`Tensor`):
@@ -680,11 +690,17 @@ class PikaH3FlexBlocks(SequentialPipelineBlocks):
         - `ref2va`: requires `prompt`, `references`
 
       Components:
-          image_processor (`VaeImageProcessor`) text_encoder (`Qwen3VLForConditionalGeneration`) tokenizer
-          (`Qwen2Tokenizer`) processor (`Qwen3VLProcessor`) vae (`AutoencoderKLMiniMaxH3`) audio_vae
-          (`AutoencoderKLMiniMaxH3Audio`) scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`)
-          transformer_ref (`MiniMaxH3Transformer3DModel`) transformer (`MiniMaxH3Transformer3DModel`) video_processor
-          (`VideoProcessor`)
+          - image_processor (`VaeImageProcessor`)
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - tokenizer (`Qwen2Tokenizer`)
+          - processor (`Qwen3VLProcessor`)
+          - vae (`AutoencoderKLMiniMaxH3`)
+          - audio_vae (`AutoencoderKLMiniMaxH3Audio`)
+          - scheduler (`MiniMaxH3Scheduler`)
+          - audio_scheduler (`MiniMaxH3Scheduler`)
+          - transformer_ref (`MiniMaxH3Transformer3DModel`)
+          - transformer (`MiniMaxH3Transformer3DModel`)
+          - video_processor (`VideoProcessor`)
 
       Configs:
           canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192) denoising_step_list (default: [1000,

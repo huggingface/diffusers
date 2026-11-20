@@ -47,7 +47,8 @@ class Flux2KleinBaseVaeEncoderSequentialStep(SequentialPipelineBlocks):
     VAE encoder step that preprocesses and encodes the image inputs into their latent representations.
 
       Components:
-          image_processor (`Flux2ImageProcessor`) vae (`AutoencoderKLFlux2`)
+          - image_processor (`Flux2ImageProcessor`)
+          - vae (`AutoencoderKLFlux2`)
 
       Inputs:
           image (`None`, *optional*):
@@ -85,7 +86,8 @@ class Flux2KleinBaseAutoVaeEncoderStep(AutoPipelineBlocks):
        - If `image` is not provided, step will be skipped.
 
       Components:
-          image_processor (`Flux2ImageProcessor`) vae (`AutoencoderKLFlux2`)
+          - image_processor (`Flux2ImageProcessor`)
+          - vae (`AutoencoderKLFlux2`)
 
       Inputs:
           image (`None`, *optional*):
@@ -140,8 +142,9 @@ class Flux2KleinBaseCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoise step that performs the denoising process for Flux2-Klein (base model), for text-to-image generation.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`Flux2Transformer2DModel`) guider
-          (`ClassifierFreeGuidance`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Flux2Transformer2DModel`)
+          - guider (`ClassifierFreeGuidance`)
 
       Configs:
           is_distilled (default: False)
@@ -213,8 +216,9 @@ class Flux2KleinBaseImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoise step that performs the denoising process for Flux2-Klein (base model) with image conditioning.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`Flux2Transformer2DModel`) guider
-          (`ClassifierFreeGuidance`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Flux2Transformer2DModel`)
+          - guider (`ClassifierFreeGuidance`)
 
       Configs:
           is_distilled (default: False)
@@ -274,8 +278,9 @@ class Flux2KleinBaseAutoCoreDenoiseStep(AutoPipelineBlocks):
        - `Flux2KleinBaseImageConditionedCoreDenoiseStep` is used for image-conditioned generation.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`Flux2Transformer2DModel`) guider
-          (`ClassifierFreeGuidance`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Flux2Transformer2DModel`)
+          - guider (`ClassifierFreeGuidance`)
 
       Configs:
           is_distilled (default: False)
@@ -343,9 +348,13 @@ class Flux2KleinBaseAutoBlocks(SequentialPipelineBlocks):
         - `image_conditioned`: requires `image`, `prompt`
 
       Components:
-          text_encoder (`Qwen3ForCausalLM`) tokenizer (`Qwen2Tokenizer`) guider (`ClassifierFreeGuidance`)
-          image_processor (`Flux2ImageProcessor`) vae (`AutoencoderKLFlux2`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) transformer (`Flux2Transformer2DModel`)
+          - text_encoder (`Qwen3ForCausalLM`)
+          - tokenizer (`Qwen2Tokenizer`)
+          - guider (`ClassifierFreeGuidance`)
+          - image_processor (`Flux2ImageProcessor`)
+          - vae (`AutoencoderKLFlux2`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Flux2Transformer2DModel`)
 
       Configs:
           is_distilled (default: False)

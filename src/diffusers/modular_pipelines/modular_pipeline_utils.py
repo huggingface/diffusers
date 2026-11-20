@@ -828,14 +828,14 @@ def format_params_markdown(params, header="Inputs"):
     return "\n".join(lines)
 
 
-def format_components(components, indent_level=4, max_line_length=115, add_empty_lines=True):
+def format_components(components, indent_level=4, *, add_empty_lines=True, list_marker=""):
     """Format a list of ComponentSpec objects into a readable string representation.
 
     Args:
         components: list of ComponentSpec objects to format
         indent_level: Number of spaces to indent each component line (default: 4)
-        max_line_length: Maximum length for each line before wrapping (default: 115)
         add_empty_lines: Whether to add empty lines between components (default: True)
+        list_marker: Prefix for each component name, such as `"- "` for a bullet. Defaults to an empty string.
 
     Returns:
         A formatted string representing all components
@@ -859,7 +859,7 @@ def format_components(components, indent_level=4, max_line_length=115, add_empty
             component.type_hint.__name__ if hasattr(component.type_hint, "__name__") else str(component.type_hint)
         )
 
-        component_desc = f"{component_indent}{component.name} (`{type_name}`)"
+        component_desc = f"{component_indent}{list_marker}{component.name} (`{type_name}`)"
         if component.description:
             component_desc += f": {component.description}"
 
@@ -883,13 +883,12 @@ def format_components(components, indent_level=4, max_line_length=115, add_empty
     return "\n".join(formatted_components)
 
 
-def format_configs(configs, indent_level=4, max_line_length=115, add_empty_lines=True):
+def format_configs(configs, indent_level=4, *, add_empty_lines=True):
     """Format a list of ConfigSpec objects into a readable string representation.
 
     Args:
         configs: list of ConfigSpec objects to format
         indent_level: Number of spaces to indent each config line (default: 4)
-        max_line_length: Maximum length for each line before wrapping (default: 115)
         add_empty_lines: Whether to add empty lines between configs (default: True)
 
     Returns:
@@ -986,7 +985,9 @@ def make_doc_string(
 
     # Add components section if provided
     if expected_components and len(expected_components) > 0:
-        components_str = format_components(expected_components, indent_level=2, add_empty_lines=False)
+        components_str = format_components(
+            expected_components, indent_level=2, add_empty_lines=False, list_marker="- "
+        )
         output += components_str + "\n\n"
 
     # Add configs section if provided
