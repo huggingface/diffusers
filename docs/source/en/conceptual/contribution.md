@@ -19,7 +19,7 @@ We ❤️ contributions from the open-source community! Everyone is welcome, and
 
 Everyone is encouraged to start by saying 👋 in our public Discord channel. We discuss the latest trends in diffusion models, ask questions, show off personal projects, help each other with contributions, or just hang out ☕. <a href="https://Discord.gg/G7tWnz98XR"><img alt="Join us on Discord" src="https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white"></a>
 
-Whichever way you choose to contribute, we strive to be part of an open, welcoming, and kind community. Please, read our [code of conduct](https://github.com/huggingface/diffusers/blob/main/CODE_OF_CONDUCT.md) and be mindful to respect it during your interactions. We also recommend you become familiar with the [ethical guidelines](https://huggingface.co/docs/diffusers/conceptual/ethical_guidelines) that guide our project and ask you to adhere to the same principles of transparency and responsibility.
+Whichever way you choose to contribute, we strive to be part of an open, welcoming, and kind community. Please, read our [code of conduct](https://github.com/huggingface/diffusers/blob/main/CODE_OF_CONDUCT.md) and be mindful to respect it during your interactions. We also recommend you become familiar with the [ethical guidelines](./ethical_guidelines) that guide our project and ask you to adhere to the same principles of transparency and responsibility.
 
 We enormously value feedback from the community, so please do not be afraid to speak up if you believe you have valuable feedback that can help improve the library - every message, comment, issue, and pull request (PR) is read and considered.
 
@@ -38,7 +38,7 @@ In the following, we give an overview of different ways to contribute, ranked by
 * 7. Contribute to the [examples](https://github.com/huggingface/diffusers/tree/main/examples).
 * 8. Fix a more difficult issue, marked by the "Good second issue" label, see [here](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22Good+second+issue%22).
 * 9. Take on an issue from the [Diffusers MVP program](https://github.com/huggingface/diffusers/issues/12635).
-* 10. Add a new pipeline, model, or scheduler to the library. For this contribution we usually work with the model authors directly; as a community contributor, start on the Hub (6) instead. See the open ["New Pipeline/Model"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22) and ["New scheduler"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+scheduler%22) issues, and read the [Design Philosophy](https://huggingface.co/docs/diffusers/main/en/conceptual/philosophy) first.
+* 10. Add a new pipeline, model, or scheduler to the library. For this contribution we usually work with the model authors directly; as a community contributor, start on the Hub (6) instead. See the open ["New Pipeline/Model"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22) and ["New scheduler"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+scheduler%22) issues, and read the [Design Philosophy](./philosophy) first.
 
 As said before, **all contributions are valuable to the community**.
 In the following, we will explain each contribution a bit more in detail.
@@ -129,7 +129,7 @@ You can open a feature request [here](https://github.com/huggingface/diffusers/i
 
 #### 2.3 Feedback
 
-Feedback about the library design and why it is good or not good helps the core maintainers immensely to build a user-friendly library. To understand the philosophy behind the current design philosophy, please have a look [here](https://huggingface.co/docs/diffusers/conceptual/philosophy). If you feel like a certain design choice does not fit with the current design philosophy, please explain why and how it should be changed. If a certain design choice follows the design philosophy too much, hence restricting use cases, explain why and how it should be changed.
+Feedback about the library design and why it is good or not good helps the core maintainers immensely to build a user-friendly library. To understand the philosophy behind the current design philosophy, please have a look [here](./philosophy). If you feel like a certain design choice does not fit with the current design philosophy, please explain why and how it should be changed. If a certain design choice follows the design philosophy too much, hence restricting use cases, explain why and how it should be changed.
 If a certain design choice is very useful for you, please also leave a note as this is great feedback for future design decisions.
 
 You can open an issue about feedback [here](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feedback.md&title=).
@@ -197,7 +197,7 @@ Contributing to the library can have many forms:
 - Update outdated code examples.
 - Translating the documentation to another language.
 
-Anything displayed on [the official Diffusers doc page](https://huggingface.co/docs/diffusers/index) is part of the official documentation and can be corrected, adjusted in the respective [documentation source](https://github.com/huggingface/diffusers/tree/main/docs/source).
+Anything displayed on [the official Diffusers doc page](../index) is part of the official documentation and can be corrected, adjusted in the respective [documentation source](https://github.com/huggingface/diffusers/tree/main/docs/source).
 
 Please have a look at [this page](https://github.com/huggingface/diffusers/tree/main/docs) on how to verify changes made to the documentation locally.
 

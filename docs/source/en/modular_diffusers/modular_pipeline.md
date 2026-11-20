@@ -431,9 +431,7 @@ The destination recorded in `modular_model_index.json` is wherever [`~ModularPip
 
 Moving the files any other way doesn't rewrite the index. A copy downloaded with `hf download --local-dir` still works: when a pipeline is loaded from a local directory, every component whose files are present in that directory is loaded from it instead of the recorded repository. A copy uploaded with `hf upload` keeps pointing at the old location, so update the index manually in that case.
 
-With `huggingface_hub>=1.32.0`, identical Xet-backed files can share one cached payload across any Hub repositories. This includes individual files in a sharded checkpoint: a shard with the same Xet hash can be reused even when other shards differ. Both downloads must use the same Hub cache directory with symlink support. Changing the dtype, serialization, or shard boundaries can change file hashes and prevent reuse. This saves download traffic and disk space, not the memory used by loaded components.
-
-Shared caching is best-effort. Setting `HF_HUB_DISABLE_SHARED_BLOBS=1` still supports loading, but caches separate copies. Existing component references in `modular_model_index.json` remain unchanged; keep external references for components that are not stored in the modular repository.
+A self-contained copy doesn't take extra disk space for files that are already in your cache. Identical files share one cached copy across repositories, so a component saved unchanged from its original repository reuses the files you already downloaded. See [Share files across repositories](../installation#share-files-across-repositories) for when files are shared.
 
 ### Referencing components in other repositories
 
@@ -443,7 +441,7 @@ We strongly prefer self-contained repositories: keeping all components together 
 
 Pass `overwrite_modular_index=False` to keep the loading specs in `modular_model_index.json` as they are. A saved component whose loading spec is empty is still filled in with the destination, since there is nothing to preserve.
 
-With `huggingface_hub>=1.32.0`, identical Xet-backed files can share one cached payload across repositories through symlinks, avoiding duplicate downloads and disk usage. Cross-repository references aren't needed for this. See [Save a self-contained copy](#save-a-self-contained-copy) for the shared cache requirements and limitations.
+With `huggingface_hub>=1.32.0`, identical Xet-backed files can share one cached payload across repositories through symlinks, avoiding duplicate downloads and disk usage. Cross-repository references aren't needed for this. See [Share files across repositories](../installation#share-files-across-repositories) for the requirements and limitations.
 
 #### Update an existing modular index
 

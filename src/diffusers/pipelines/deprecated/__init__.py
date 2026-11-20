@@ -61,6 +61,7 @@ else:
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pia"] = ["PIAPipeline"]
+    _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
     _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
     _import_structure["stable_diffusion_attend_and_excite"] = ["StableDiffusionAttendAndExcitePipeline"]
     _import_structure["stable_diffusion_diffedit"] = ["StableDiffusionDiffEditPipeline"]
@@ -154,6 +155,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
+        from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .spectrogram_diffusion import SpectrogramDiffusionPipeline
         from .stable_diffusion_attend_and_excite import StableDiffusionAttendAndExcitePipeline
         from .stable_diffusion_diffedit import StableDiffusionDiffEditPipeline

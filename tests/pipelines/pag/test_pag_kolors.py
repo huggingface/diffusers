@@ -31,7 +31,14 @@ from ..pipeline_params import (
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
-from ..testing_utils import BasePipelineTesterConfig, FromPipeTesterMixin, MemoryTesterMixin
+from ..testing_utils import (
+    BasePipelineTesterConfig,
+    FromPipeTesterMixin,
+    LoraMemoryTesterMixin,
+    LoraTesterMixin,
+    MemoryTesterMixin,
+    UNetLoraTesterMixin,
+)
 from .testing_utils import PAGPipelineTesterMixin
 
 
@@ -185,6 +192,27 @@ class TestKolorsPAGPipeline(KolorsPAGPipelineTesterConfig, PAGPipelineTesterMixi
 
 class TestKolorsPAGPipelineMemory(KolorsPAGPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Kolors PAG pipeline."""
+
+
+class TestKolorsPAGPipelineLoRA(KolorsPAGPipelineTesterConfig, LoraTesterMixin, UNetLoraTesterMixin):
+    """LoRA tests for the Kolors PAG pipeline.
+
+    The pipeline advertises `text_encoder` as LoRA-loadable, but a ChatGLM text-encoder LoRA cannot round-trip through
+    the public API these tests drive: `load_lora_weights` fails in `convert_state_dict_to_peft` ("Could not
+    automatically infer state dict type"), and `encode_prompt` never applies the LoRA scale to the text encoder. Scope
+    the tests to the UNet until that closes.
+    """
+
+    lora_loadable_components = ["unet"]
+
+
+class TestKolorsPAGPipelineLoRAMemory(KolorsPAGPipelineTesterConfig, LoraMemoryTesterMixin):
+    """LoRA x memory-optimization tests (group offload, CPU offload) for the Kolors PAG pipeline.
+
+    Scoped to the UNet for the same reason as `TestKolorsPAGPipelineLoRA`.
+    """
+
+    lora_loadable_components = ["unet"]
 
 
 class TestKolorsPAGPipelineFromPipe(KolorsPAGPipelineTesterConfig, FromPipeTesterMixin):

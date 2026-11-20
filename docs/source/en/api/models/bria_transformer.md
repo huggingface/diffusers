@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # BriaTransformer2DModel
 
-A modified flux Transformer model from [Bria](https://huggingface.co/briaai/BRIA-3.2)
+A modified flux Transformer model from [Bria](https://huggingface.co/briaai).
 
 ## BriaTransformer2DModel
 
