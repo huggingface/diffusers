@@ -29,49 +29,52 @@ def per_branch(name, record, **kwargs):
     return InputParam(name=name, defaults_by_block=record, **kwargs)
 
 
-def conditional_blocks(*named_inputs, default_block_name="block-a"):
-    """
-    A conditional block whose sub-blocks declare the given inputs, e.g.
-    `conditional_blocks(("block-a", [InputParam("x", default=5)]), ("block-b", [InputParam("x", default=5)]))`.
-    """
-    block_classes = []
-    for _, block_inputs in named_inputs:
+class InputsOnlyBlock(ModularPipelineBlocks):
+    """A block that declares the given inputs and does nothing."""
 
-        class Block(ModularPipelineBlocks):
-            model_name = "test"
+    model_name = "test"
 
-            @property
-            def inputs(self):
-                return list(self._inputs)
+    def __init__(self, inputs):
+        super().__init__()
+        self._inputs = inputs
 
-            def __call__(self, components, state):
-                return components, state
+    @property
+    def inputs(self):
+        return self._inputs
 
-        Block._inputs = block_inputs  # set after the class statement: a class body cannot see the loop variable
-        block_classes.append(Block)
+    def __call__(self, components, state):
+        return components, state
+
+
+def conditional_blocks(blocks, default_block_name="block-a"):
+    """A conditional block over the given `{name: block}` sub-blocks, each triggered by its own name."""
+    default = default_block_name
 
     class Conditional(ConditionalPipelineBlocks):
-        pass
+        block_classes = list(blocks.values())
+        block_names = list(blocks)
+        block_trigger_inputs = list(blocks)
+        default_block_name = default
 
-    Conditional.block_classes = block_classes
-    Conditional.block_names = [name for name, _ in named_inputs]
-    Conditional.block_trigger_inputs = Conditional.block_names
-    Conditional.default_block_name = default_block_name
     return Conditional()
 
 
 class TestConditionalBlocksInputs:
     def test_agreeing_defaults_stay_untouched(self):
         blocks = conditional_blocks(
-            ("block-a", [InputParam(name="x", default=5)]),
-            ("block-b", [InputParam(name="x", default=5)]),
+            {
+                "block-a": InputsOnlyBlock([InputParam(name="x", default=5)]),
+                "block-b": InputsOnlyBlock([InputParam(name="x", default=5)]),
+            }
         )
         assert blocks.inputs == [InputParam(name="x", default=5)]
 
     def test_first_occurrence_wins(self):
         blocks = conditional_blocks(
-            ("block-a", [InputParam(name="x", default=5, description="from block-a")]),
-            ("block-b", [InputParam(name="x", default=5, description="from block-b")]),
+            {
+                "block-a": InputsOnlyBlock([InputParam(name="x", default=5, description="from block-a")]),
+                "block-b": InputsOnlyBlock([InputParam(name="x", default=5, description="from block-b")]),
+            }
         )
         # duplicate inputs keep the first occurrence: block-b's description is dropped
         assert blocks.inputs == [InputParam(name="x", default=5, description="from block-a")]
@@ -79,24 +82,30 @@ class TestConditionalBlocksInputs:
     def test_none_default_counts_as_disagreement(self):
         # a None default is a sentinel ("user didn't pass this"), it must not be overridden by a sibling's default
         blocks = conditional_blocks(
-            ("block-a", [InputParam(name="x", default=None)]),
-            ("block-b", [InputParam(name="x", default=5)]),
+            {
+                "block-a": InputsOnlyBlock([InputParam(name="x", default=None)]),
+                "block-b": InputsOnlyBlock([InputParam(name="x", default=5)]),
+            }
         )
         assert blocks.inputs == [per_branch("x", {"block-a": None, "block-b": 5})]
 
     def test_disagreement_records_every_block(self):
         blocks = conditional_blocks(
-            ("block-a", [InputParam(name="x", default=1)]),
-            ("block-b", [InputParam(name="x", default=2)]),
-            ("block-c", [InputParam(name="x", default=1)]),
+            {
+                "block-a": InputsOnlyBlock([InputParam(name="x", default=1)]),
+                "block-b": InputsOnlyBlock([InputParam(name="x", default=2)]),
+                "block-c": InputsOnlyBlock([InputParam(name="x", default=1)]),
+            }
         )
         # any disagreement records every block's default, including the ones that agree with each other
         assert blocks.inputs == [per_branch("x", {"block-a": 1, "block-b": 2, "block-c": 1})]
 
     def test_required_everywhere_stays_required(self):
         blocks = conditional_blocks(
-            ("block-a", [InputParam(name="x", required=True)]),
-            ("block-b", [InputParam(name="x", required=True)]),
+            {
+                "block-a": InputsOnlyBlock([InputParam(name="x", required=True)]),
+                "block-b": InputsOnlyBlock([InputParam(name="x", required=True)]),
+            }
         )
         assert blocks.inputs == [InputParam(name="x", required=True)]
         assert blocks.required_inputs == ["x"]
@@ -105,8 +114,10 @@ class TestConditionalBlocksInputs:
         # no default block: the user can skip the whole block, so nothing it requires is required of the user; the
         # record still says which sub-blocks require it
         blocks = conditional_blocks(
-            ("block-a", [InputParam(name="x", required=True)]),
-            ("block-b", [InputParam(name="x", required=True)]),
+            {
+                "block-a": InputsOnlyBlock([InputParam(name="x", required=True)]),
+                "block-b": InputsOnlyBlock([InputParam(name="x", required=True)]),
+            },
             default_block_name=None,
         )
         assert blocks.inputs == [per_branch("x", {"block-a": REQUIRED, "block-b": REQUIRED})]
@@ -116,15 +127,19 @@ class TestConditionalBlocksInputs:
         # block-b does not declare x at all, so x is not required (only when every block requires it): the record is
         # the only place that says block-a requires it
         blocks = conditional_blocks(
-            ("block-a", [InputParam(name="x", required=True)]),
-            ("block-b", [InputParam(name="y")]),
+            {
+                "block-a": InputsOnlyBlock([InputParam(name="x", required=True)]),
+                "block-b": InputsOnlyBlock([InputParam(name="y")]),
+            }
         )
         assert blocks.inputs == [per_branch("x", {"block-a": REQUIRED}), InputParam(name="y")]
 
         # a requirement against a default is a disagreement like any other
         blocks = conditional_blocks(
-            ("block-a", [InputParam(name="x", required=True)]),
-            ("block-b", [InputParam(name="x", default=124)]),
+            {
+                "block-a": InputsOnlyBlock([InputParam(name="x", required=True)]),
+                "block-b": InputsOnlyBlock([InputParam(name="x", default=124)]),
+            }
         )
         assert blocks.inputs == [per_branch("x", {"block-a": REQUIRED, "block-b": 124})]
 
@@ -132,8 +147,10 @@ class TestConditionalBlocksInputs:
         # block-b is itself a conditional block whose branches already disagree, so its param carries
         # defaults_by_block; merging at the outer level prefixes those entries with the sub-block name
         blocks = conditional_blocks(
-            ("block-a", [InputParam(name="x", default=3)]),
-            ("block-b", [per_branch("x", {"branch-a": 1, "branch-b": 2})]),
+            {
+                "block-a": InputsOnlyBlock([InputParam(name="x", default=3)]),
+                "block-b": InputsOnlyBlock([per_branch("x", {"branch-a": 1, "branch-b": 2})]),
+            }
         )
         assert blocks.inputs == [per_branch("x", {"block-a": 3, "block-b.branch-a": 1, "block-b.branch-b": 2})]
 
@@ -141,8 +158,10 @@ class TestConditionalBlocksInputs:
         # both sub-blocks are conditional blocks with one branch requiring x and another silent on it, so each is
         # optional with a record; the records agree (REQUIRED, REQUIRED) but x is still not required of the user
         blocks = conditional_blocks(
-            ("block-a", [per_branch("x", {"branch-a": REQUIRED})]),
-            ("block-b", [per_branch("x", {"branch-b": REQUIRED})]),
+            {
+                "block-a": InputsOnlyBlock([per_branch("x", {"branch-a": REQUIRED})]),
+                "block-b": InputsOnlyBlock([per_branch("x", {"branch-b": REQUIRED})]),
+            }
         )
         assert blocks.inputs == [per_branch("x", {"block-a.branch-a": REQUIRED, "block-b.branch-b": REQUIRED})]
         assert blocks.required_inputs == []
