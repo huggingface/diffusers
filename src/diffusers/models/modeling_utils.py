@@ -61,7 +61,7 @@ from ..utils import (
     is_peft_available,
     logging,
 )
-from ..utils.distributed_utils import is_torch_dist_rank_zero
+from ..utils.distributed_utils import is_torch_dist_rank_zero, sync_default_rng_seed
 from ..utils.hub_utils import PushToHubMixin, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import empty_device_cache
 from ._modeling_parallel import (
@@ -1220,7 +1220,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             tp_config = (
                 parallel_config
                 if isinstance(parallel_config, TensorParallelConfig)
-                else parallel_config.tensor_parallel_config
+                else getattr(parallel_config, "tensor_parallel_config", None)
             )
             if tp_config is not None and tp_config.tp_degree == 1 and tp_config.mesh is None:
                 # Nothing to shard, so take the ordinary loader rather than building 1-rank DTensors.
@@ -1235,6 +1235,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 cls._tp_plan,
                 config.get("num_attention_heads"),
                 tp_config,
+                num_key_value_heads=config.get("num_key_value_heads"),
                 device_map=device_map,
                 low_cpu_mem_usage=low_cpu_mem_usage,
                 use_flashpack=use_flashpack,
@@ -1719,6 +1720,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # `config.setup()` records the mesh resolved above onto the config; see `ParallelConfig.setup`.
         config.setup(rank, world_size, device, mesh=mesh)
         self._parallel_config = config
+
+        if mesh is not None:
+            # Only the ranks of this mesh must draw the same numbers; replicas outside it keep their own seeds.
+            group = (mesh._flatten() if mesh.ndim > 1 else mesh).get_group()
+            sync_default_rng_seed(group=group, device=config._device)
         return config
 
     def enable_parallelism(
@@ -1756,6 +1762,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 self._tp_plan,
                 getattr(self.config, "num_attention_heads", None),
                 tp_config,
+                num_key_value_heads=getattr(self.config, "num_key_value_heads", None),
                 model=self,
             )
             resolve_tp_shard_specs(self, self._tp_plan, _tp_degree(tp_config))

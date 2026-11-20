@@ -298,4 +298,4 @@ DDPMScheduler {
 * 다양한 사용 사례는 공식 및 커뮤니티 [학습 또는 파인튜닝 스크립트](https://github.com/huggingface/diffusers/tree/main/examples#-diffusers-examples) 예시를 참조하세요.
 * 스케줄러 로드, 액세스, 변경 및 비교에 대한 자세한 내용은 [다른 스케줄러 사용](./using-diffusers/schedulers) 가이드에서 확인하세요.
 * [Stable Diffusion](./stable_diffusion) 가이드에서 프롬프트 엔지니어링, 속도 및 메모리 최적화, 고품질 이미지 생성을 위한 팁과 요령을 살펴보세요.
-* [GPU에서 파이토치 최적화](./optimization/fp16) 가이드와 [애플 실리콘(M1/M2)에서의 Stable Diffusion](./optimization/mps) 및 [ONNX 런타임](./optimization/onnx) 실행에 대한 추론 가이드를 통해 🧨 Diffuser 속도를 높이는 방법을 더 자세히 알아보세요.
+* [GPU에서 파이토치 최적화](./optimization/fp16) 가이드와 [애플 실리콘(M1/M2)에서의 Stable Diffusion](./optimization/mps) 실행에 대한 추론 가이드를 통해 🧨 Diffuser 속도를 높이는 방법을 더 자세히 알아보세요.
