@@ -220,32 +220,19 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
         block_state.batch_size = block_state.prompt_embeds.shape[0]
         block_state.dtype = block_state.prompt_embeds.dtype
 
-        _, seq_len, _ = block_state.prompt_embeds.shape
-
-        block_state.prompt_embeds = block_state.prompt_embeds.repeat(1, block_state.num_images_per_prompt, 1)
-        block_state.prompt_embeds = block_state.prompt_embeds.view(
-            block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1
+        block_state.prompt_embeds = block_state.prompt_embeds.repeat_interleave(
+            block_state.num_images_per_prompt, dim=0
         )
-
-        block_state.prompt_embeds_mask = block_state.prompt_embeds_mask.repeat(1, block_state.num_images_per_prompt, 1)
-        block_state.prompt_embeds_mask = block_state.prompt_embeds_mask.view(
-            block_state.batch_size * block_state.num_images_per_prompt, seq_len
+        block_state.prompt_embeds_mask = block_state.prompt_embeds_mask.repeat_interleave(
+            block_state.num_images_per_prompt, dim=0
         )
 
         if block_state.negative_prompt_embeds is not None:
-            _, seq_len, _ = block_state.negative_prompt_embeds.shape
-            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.repeat(
-                1, block_state.num_images_per_prompt, 1
+            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.repeat_interleave(
+                block_state.num_images_per_prompt, dim=0
             )
-            block_state.negative_prompt_embeds = block_state.negative_prompt_embeds.view(
-                block_state.batch_size * block_state.num_images_per_prompt, seq_len, -1
-            )
-
-            block_state.negative_prompt_embeds_mask = block_state.negative_prompt_embeds_mask.repeat(
-                1, block_state.num_images_per_prompt, 1
-            )
-            block_state.negative_prompt_embeds_mask = block_state.negative_prompt_embeds_mask.view(
-                block_state.batch_size * block_state.num_images_per_prompt, seq_len
+            block_state.negative_prompt_embeds_mask = block_state.negative_prompt_embeds_mask.repeat_interleave(
+                block_state.num_images_per_prompt, dim=0
             )
 
         self.set_block_state(state, block_state)
