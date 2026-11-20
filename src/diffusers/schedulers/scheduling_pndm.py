@@ -180,6 +180,12 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         """
 
+        if not self.config.skip_prk_steps and num_inference_steps < self.pndm_order:
+            raise ValueError(
+                f"`num_inference_steps` must be >= {self.pndm_order} when "
+                f"`skip_prk_steps` is False, got {num_inference_steps}."
+            )
+
         self.num_inference_steps = num_inference_steps
         # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://huggingface.co/papers/2305.08891
         if self.config.timestep_spacing == "linspace":
