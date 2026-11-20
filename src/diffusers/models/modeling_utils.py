@@ -1235,6 +1235,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 cls._tp_plan,
                 config.get("num_attention_heads"),
                 tp_config,
+                num_key_value_heads=config.get("num_key_value_heads"),
                 device_map=device_map,
                 low_cpu_mem_usage=low_cpu_mem_usage,
                 use_flashpack=use_flashpack,
@@ -1756,6 +1757,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 self._tp_plan,
                 getattr(self.config, "num_attention_heads", None),
                 tp_config,
+                num_key_value_heads=getattr(self.config, "num_key_value_heads", None),
                 model=self,
             )
             resolve_tp_shard_specs(self, self._tp_plan, _tp_degree(tp_config))
