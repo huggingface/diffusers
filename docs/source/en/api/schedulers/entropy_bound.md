@@ -19,8 +19,13 @@ roughly independent tokens are accepted together and the rest are renoised. It a
 
 This scheduler is used by [`DiffusionGemmaPipeline`].
 
+
+This scheduler follows the shared [discrete diffusion scheduler](overview#discrete-diffusion-schedulers) contract: a decreasing
+`float` corruption level in `(0, 1]`, `step(model_output, timestep, sample)`, sampling knobs on the config, and a
+[`DiscreteSchedulerOutput`] return.
+
 ## EntropyBoundScheduler
 [[autodoc]] EntropyBoundScheduler
 
-## EntropyBoundSchedulerOutput
-[[autodoc]] schedulers.scheduling_entropy_bound.EntropyBoundSchedulerOutput
+## DiscreteSchedulerOutput
+[[autodoc]] schedulers.scheduling_utils.DiscreteSchedulerOutput

@@ -18,8 +18,15 @@ token with high confidence.
 
 This scheduler is used by [`LLaDA2Pipeline`].
 
+For the uniform corruption process, which has no mask token, use [`UniformRefinementScheduler`] instead.
+
+
+This scheduler follows the shared [discrete diffusion scheduler](overview#discrete-diffusion-schedulers) contract: a decreasing
+`float` corruption level in `(0, 1]`, `step(model_output, timestep, sample)`, sampling knobs on the config, and a
+[`DiscreteSchedulerOutput`] return.
+
 ## BlockRefinementScheduler
 [[autodoc]] BlockRefinementScheduler
 
-## BlockRefinementSchedulerOutput
-[[autodoc]] schedulers.scheduling_block_refinement.BlockRefinementSchedulerOutput
+## DiscreteSchedulerOutput
+[[autodoc]] schedulers.scheduling_utils.DiscreteSchedulerOutput

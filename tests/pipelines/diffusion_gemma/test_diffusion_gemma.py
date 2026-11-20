@@ -6,10 +6,10 @@ import torch
 from PIL import Image
 
 from diffusers import (
-    BlockRefinementScheduler,
     DiffusionGemmaPipeline,
     DiscreteDDIMScheduler,
     EntropyBoundScheduler,
+    UniformRefinementScheduler,
 )
 from diffusers.utils.import_utils import is_peft_available
 
@@ -51,7 +51,7 @@ class _DummyModel(torch.nn.Module):
 
 def _make_dummy_pipeline(processor=None, canvas_length: int = 8):
     model = _DummyModel(vocab_size=32, canvas_length=canvas_length)
-    return DiffusionGemmaPipeline(model=model, scheduler=BlockRefinementScheduler(), processor=processor)
+    return DiffusionGemmaPipeline(model=model, scheduler=UniformRefinementScheduler(), processor=processor)
 
 
 class TestDiffusionGemmaPipelineInput:
@@ -88,7 +88,7 @@ def _load_pipeline():
         processor = AutoProcessor.from_pretrained(_MODEL_ID)
     except Exception as e:  # noqa: BLE001 - offline / hub errors should skip, not fail
         pytest.skip(f"tiny DiffusionGemma checkpoint unavailable: {e}")
-    pipe = DiffusionGemmaPipeline(model=model, scheduler=BlockRefinementScheduler(), processor=processor)
+    pipe = DiffusionGemmaPipeline(model=model, scheduler=UniformRefinementScheduler(), processor=processor)
     pipe.set_progress_bar_config(disable=True)
     return pipe, model.config.canvas_length
 
@@ -117,7 +117,6 @@ class TestDiffusionGemmaPipeline:
             prompt=self.prompt,
             gen_length=self.canvas_length * 2,
             num_inference_steps=4,
-            temperature=0.0,
             eos_early_stop=False,
             output_type="seq",
         )
@@ -128,7 +127,6 @@ class TestDiffusionGemmaPipeline:
             prompt=self.prompt,
             gen_length=self.canvas_length,
             num_inference_steps=4,
-            temperature=0.0,
             eos_early_stop=False,
             output_type="text",
             return_dict=False,
@@ -154,7 +152,7 @@ class TestDiffusionGemmaPipeline:
             return SimpleNamespace(logits=logits)
 
         self.pipe.model.forward = forward
-        self.pipe.scheduler = BlockRefinementScheduler()
+        self.pipe.scheduler = UniformRefinementScheduler()
         output = self._run_adaptive_stopping(["Short prompt.", "A somewhat longer prompt for the second batch row."])
 
         assert forward_calls == 4
@@ -193,7 +191,6 @@ class TestDiffusionGemmaPipeline:
             prompt=self.prompt,
             gen_length=self.canvas_length,
             num_inference_steps=2,
-            temperature=0.0,
             eos_early_stop=False,
             output_type="seq",
             callback_on_step_end=callback,
@@ -208,24 +205,56 @@ class TestDiffusionGemmaPipeline:
             image=image,
             gen_length=self.canvas_length,
             num_inference_steps=2,
-            temperature=0.0,
             eos_early_stop=False,
             output_type="seq",
         )
         assert out.sequences.shape == (1, self.canvas_length)
 
     def test_schedulers_are_interchangeable(self):
-        for scheduler in (DiscreteDDIMScheduler(), EntropyBoundScheduler(entropy_bound=0.1)):
+        for scheduler in (
+            UniformRefinementScheduler(),
+            DiscreteDDIMScheduler(),
+            EntropyBoundScheduler(entropy_bound=0.1),
+        ):
             self.pipe.scheduler = scheduler
             out = self.pipe(
                 prompt=self.prompt,
                 gen_length=self.canvas_length,
                 num_inference_steps=4,
-                temperature=0.0,
                 eos_early_stop=False,
                 output_type="seq",
             )
             assert out.sequences.shape == (1, self.canvas_length)
+
+    def test_schedule_is_reset_for_every_canvas(self):
+        """
+        `step_index` advances as the loop runs, so each canvas must get a fresh schedule (§5.3).
+
+        `UniformRefinementScheduler` keeps per-canvas state (which positions it has committed) that only
+        `set_timesteps` clears, and the counter it derives its commit quota from is the same one `step`
+        advances. Leak either across canvases and the output silently degrades.
+        """
+        num_inference_steps = 4
+        kwargs = {
+            "prompt": self.prompt,
+            "num_inference_steps": num_inference_steps,
+            "confidence_threshold": None,
+            "eos_early_stop": False,
+            "output_type": "seq",
+        }
+
+        two_canvases = self.pipe(
+            generator=torch.Generator().manual_seed(0), gen_length=self.canvas_length * 2, **kwargs
+        )
+
+        # The counter left behind is the *second* canvas's, so a leaked schedule would read 8 here.
+        assert self.pipe.scheduler.step_index == num_inference_steps
+        assert len(self.pipe.scheduler.timesteps) == num_inference_steps
+        assert two_canvases.sequences.shape == (1, self.canvas_length * 2)
+
+        # And the first canvas is unaffected by having run before: same seed, same tokens.
+        one_canvas = self.pipe(generator=torch.Generator().manual_seed(0), gen_length=self.canvas_length, **kwargs)
+        assert torch.equal(one_canvas.sequences, two_canvases.sequences[:, : self.canvas_length])
 
     def test_predictor_corrector_sampling(self):
         self.pipe.scheduler = DiscreteDDIMScheduler(corrector_steps=2, corrector_k=2)
@@ -233,7 +262,6 @@ class TestDiffusionGemmaPipeline:
             prompt=self.prompt,
             gen_length=self.canvas_length,
             num_inference_steps=4,
-            temperature=0.0,
             eos_early_stop=False,
             output_type="seq",
         )
@@ -255,7 +283,6 @@ class TestDiffusionGemmaPipeline:
             prompt=self.prompt,
             gen_length=self.canvas_length,
             num_inference_steps=2,
-            temperature=0.0,
             eos_early_stop=False,
             output_type="seq",
         )
@@ -271,7 +298,6 @@ class TestDiffusionGemmaPipeline:
             "prompt": self.prompt,
             "gen_length": self.canvas_length * 2,  # two canvases -> exercises the cache extension between blocks
             "num_inference_steps": 4,
-            "temperature": 0.0,
             "confidence_threshold": None,
             "eos_early_stop": False,
             "output_type": "seq",
