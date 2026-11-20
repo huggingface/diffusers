@@ -60,8 +60,8 @@ logger = logging.get_logger(__name__)
 # ====================
 
 
-# Kept for backward compatibility, do not copy this for new pipelines: wrapping the text encoder in an auto block makes
-# it skippable. Use the text encoder step directly, a user who has embeddings can drop the block
+# We normally don't wrap the text encoder in an auto block, since every workflow needs it.
+# `QwenImageAutoTextEncoderStep` is the only block that does this, kept for backward compatibility.
 # auto_docstring
 class QwenImageAutoTextEncoderStep(AutoPipelineBlocks):
     """

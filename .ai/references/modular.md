@@ -225,7 +225,7 @@ Two consequences for input plumbing:
 1. **Encoder / VAE-encoder blocks accept raw inputs only** (`prompt`, `image`, ...) and emit per-prompt outputs (`prompt_embeds`, `image_latents`). They do **not** bake in `num_images_per_prompt`.
 2. **Per-prompt expansion happens in a dedicated input step** inside the core denoise sequence (e.g. `<Model>TextInputStep`). That keeps pre-encoded embeds reusable across runs with different `num_images_per_prompt`. See `qwenimage/before_denoise.py` for the canonical input step.
 
-Standard pipelines accept `prompt_embeds` / `image_latents` as `__call__` inputs so users can skip encoding. In modular pipelines this is unnecessary — users just pop out the encoder block and run it standalone. Don't accept pre-computed encoder outputs as `__call__` inputs of an encoder block. For the same reason, don't wrap the text encoder in an `AutoPipelineBlocks` triggered by `prompt` so that it can be skipped. `QwenImageAutoTextEncoderStep` does this and is kept only for backward compatibility.
+Standard pipelines accept `prompt_embeds` / `image_latents` as `__call__` inputs so users can skip encoding. In modular pipelines this is unnecessary — users just pop out the encoder block and run it standalone. Don't accept pre-computed encoder outputs as `__call__` inputs of an encoder block.
 
 ## Key pattern: Flat blocksets
 
@@ -293,11 +293,11 @@ The other two ways to declare an input:
 (1) `required=True` when the block cannot work without the value, so the caller has to pass it; the block raises `ValueError("Required input 'x' is missing")` when it is not passed or `None`.
 (2) Optional with no default when the block works with `None`. Most often that is the computed case above, and the block should then also declare the value as an output.
 
-A composite (`SequentialPipelineBlocks`, `ConditionalPipelineBlocks`, `LoopSequentialPipelineBlocks`) derives its inputs, intermediate outputs, components and configs from its sub-blocks, so don't override `inputs`, `intermediate_outputs`, `expected_components` or `expected_configs` on it. Instead, create the sub-block with the declaration you need using `new()` (see "Reusing a block with `new()`" below).
+A composite (`SequentialPipelineBlocks`, `ConditionalPipelineBlocks`, `LoopSequentialPipelineBlocks`) derives its inputs and intermediate outputs from its sub-blocks. They are part of each sub-block's logic, the values its `__call__` reads and writes, so they can't be added or removed on the composite. Don't override `inputs` or `intermediate_outputs` there: to change the default of an input, create the sub-block with the default you need using `new()`. See "Reusing a block with `new()`" below.
 
-The exception is `outputs`, which is what the composite presents as its product. By default it is every intermediate output. Override the property to list only what the step is for, so the docstring shows the product instead of every internal intermediate (Wan-Animate-2's core denoise lists only `segment_frames`). It changes the docstring and `output_names` only: everything stays in the pipeline state, and `pipe(..., output=<name>)` still fetches any intermediate, listed or not.
+`outputs` is different: it is what the composite presents as its product. By default it is every intermediate output. Override the property to list only what the step is for, so the docstring shows the product instead of every internal intermediate (most core denoise steps list only `latents`). It changes the docstring and `output_names` only: everything stays in the pipeline state, and `pipe(..., output=<name>)` still fetches any intermediate, listed or not.
 
-When two sub-blocks of a sequence declare different defaults for the same input, the sequence uses the first one; make sure every sub-block has the intended default, with `new()` where it does not. An input a sub-block requires can show as optional on the composite, when an earlier sub-block gives it a default or may produce it; that is expected.
+When two sub-blocks of a sequence declare different defaults for the same input, the sequence uses the first one. The best practice is to make sure every sub-block you use has the intended default (use `new()` where it does not). An input a sub-block requires can show as optional on the composite, when an earlier sub-block gives it a default or may produce it; that is expected.
 
 ## ComponentSpec patterns
 
@@ -319,6 +319,8 @@ A composite inherits its sub-blocks' `ComponentSpec`s and `ConfigSpec`s. To poin
 
 ## Reusing a block with `new()`
 
+A composite's inputs, intermediate outputs, components and configs all derive from its sub-blocks, so you should change the declaration on the sub-block, not on the composite.
+
 A common case: a block does what you need, but one of its declarations does not fit, e.g. the default or description of an input, the repo and loading info of a component, the value of a config. Don't copy or subclass the block for that, create it with `new()`:
 
 ```python
@@ -339,7 +341,7 @@ class DistilledBlocks(SequentialPipelineBlocks):
     block_names = ["text_encoder", "set_timesteps", "denoise", "decode"]
 ```
 
-`block.new(description=..., inputs=[...], intermediate_outputs=[...], outputs=[...], components=[...], configs=[...])` returns a copy of the block with the listed entries replaced by name. Typical uses: set a preset's default or checkpoint as above, settle a default two sub-blocks disagree on, or reword a description.
+`block.new(description=..., inputs=[...], intermediate_outputs=[...], outputs=[...], components=[...], configs=[...])` returns a copy of the block where the entries you pass override the block's own, matched by name. Entries you don't list are unchanged; an entry you do list is replaced whole (gotcha #13). Typical uses: set a preset's default or checkpoint as above, settle a default two sub-blocks disagree on, or reword a description.
 
 What `new()` does not do:
 
@@ -376,7 +378,7 @@ What `new()` does not do:
 
 12. **Helpers taking `components`.** Prefer explicit args, for example, `get_xx_prompt_embeds(text_encoder, tokenizer, prompt)` instead of `get_xx_prompt_embeds(components, prompt)`. Helpers and block methods should take only what they use so dependencies are visible and they can run without an assembled pipeline. Leave the full `components` object to `__call__`, which unpacks what its helpers need. See `get_qwen_prompt_embeds` in `qwenimage/encoders.py`.
 
-13. **A `new()` entry that restates less than the block's own.** `block.new(inputs=[InputParam("num_inference_steps", default=10)])` replaces the entry whole, so the type hint and description the block declared are gone. Build it from the template, `InputParam.template("num_inference_steps", default=10)`, or restate everything.
+13. **`new()` replaces a whole entry, not a field.** List only the entries you want to change; the others stay as the block declared them. But each entry you list replaces the block's entry completely: `block.new(inputs=[InputParam("num_inference_steps", default=10)])` loses the type hint and description the block had. Build the entry from the template, `InputParam.template("num_inference_steps", default=10)`, or write out every field.
 
 ## Conversion checklist
 
