@@ -115,3 +115,20 @@ Launch one process per NeuronCore. Set `--nproc_per_node` to the number of Neuro
 ```bash
 torchrun --nproc_per_node=8 tensor_parallel_neuron.py
 ```
+
+
+## Native FLUX.2 Klein serving proof of concept
+
+The experimental `add-diffusers-support` branch of `vllm-omni-neuron` wraps
+`Flux2KleinPipeline` with vLLM-Omni's Diffusers adapter for single-device BF16
+inference. This is separate from the Optimum Neuron export workflow above.
+
+Diffusers owns model execution; the plugin owns worker initialization, placement,
+and compilation policy. The pinned serving runtime compiles the text encoder,
+transformer, VAE decoder, scheduler step, and tensor preparation regions.
+See that branch's `examples/diffusers/README.md` for setup and serving examples.
+
+The real `black-forest-labs/FLUX.2-klein-4B` checkpoint has completed offline Omni
+generation on Trainium2 at 256×256, four steps, BF16, and TP=1. HTTP serving,
+larger shapes, and tensor parallelism remain unvalidated; this is not production
+support.

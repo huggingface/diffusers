@@ -253,14 +253,10 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             use_cache=False,
         )
 
-        # Only use outputs from intermediate layers and stack them
-        out = torch.stack([output.hidden_states[k] for k in hidden_states_layers], dim=1)
-        out = out.to(dtype=dtype, device=device)
-
-        batch_size, num_channels, seq_len, hidden_dim = out.shape
-        prompt_embeds = out.permute(0, 2, 1, 3).reshape(batch_size, seq_len, num_channels * hidden_dim)
-
-        return prompt_embeds
+        # Concatenating the selected layers preserves their feature order without
+        # a non-contiguous intermediate from stack -> permute -> reshape.
+        prompt_embeds = torch.cat([output.hidden_states[k] for k in hidden_states_layers], dim=-1)
+        return prompt_embeds.to(dtype=dtype, device=device)
 
     @staticmethod
     # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._prepare_text_ids
@@ -425,6 +421,26 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             x_list.append(out)
 
         return torch.stack(x_list, dim=0)
+
+    @staticmethod
+    def _prepare_timestep(timestep: torch.Tensor, latents: torch.Tensor) -> torch.Tensor:
+        """Tensor-only timestep preparation, suitable for regional compilation."""
+        return timestep.expand(latents.shape[0]).to(latents.dtype)
+
+    def _prepare_vae_latents(self, latents, latent_ids, height, width):
+        """Unpack and denormalize latents before VAE decode."""
+        # Pass pre-computed latent height/width to avoid DtoH sync from torch.max().item()
+        latent_height = 2 * (int(height) // (self.vae_scale_factor * 2))
+        latent_width = 2 * (int(width) // (self.vae_scale_factor * 2))
+        latents = self._unpack_latents_with_ids(latents, latent_ids, latent_height // 2, latent_width // 2)
+
+        latents_bn_mean = self.vae.bn.running_mean.view(1, -1, 1, 1).to(latents.device, latents.dtype)
+        latents_bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + self.vae.config.batch_norm_eps).to(
+            latents.device, latents.dtype
+        )
+        latents = latents * latents_bn_std + latents_bn_mean
+        latents = self._unpatchify_latents(latents)
+        return latents
 
     def encode_prompt(
         self,
@@ -838,7 +854,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
                 self._current_timestep = t
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latents.shape[0]).to(latents.dtype)
+                timestep = self._prepare_timestep(t, latents)
 
                 latent_model_input = latents.to(self.transformer.dtype)
                 latent_image_ids = latent_ids
@@ -903,17 +919,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
         self._current_timestep = None
 
-        # Pass pre-computed latent height/width to avoid DtoH sync from torch.max().item()
-        latent_height = 2 * (int(height) // (self.vae_scale_factor * 2))
-        latent_width = 2 * (int(width) // (self.vae_scale_factor * 2))
-        latents = self._unpack_latents_with_ids(latents, latent_ids, latent_height // 2, latent_width // 2)
-
-        latents_bn_mean = self.vae.bn.running_mean.view(1, -1, 1, 1).to(latents.device, latents.dtype)
-        latents_bn_std = torch.sqrt(self.vae.bn.running_var.view(1, -1, 1, 1) + self.vae.config.batch_norm_eps).to(
-            latents.device, latents.dtype
-        )
-        latents = latents * latents_bn_std + latents_bn_mean
-        latents = self._unpatchify_latents(latents)
+        latents = self._prepare_vae_latents(latents, latent_ids, height, width)
         if output_type == "latent":
             image = latents
         else:
