@@ -26,6 +26,8 @@ import torch.nn as nn
 
 import diffusers
 from diffusers import DiffusionPipeline
+from diffusers.hooks.hooks import BaseState, HookRegistry, ModelHook, StateManager
+from diffusers.models.cache_utils import CacheMixin
 from diffusers.utils import logging
 from diffusers.utils.source_code_parsing_utils import ReturnNameVisitor
 
@@ -93,6 +95,67 @@ def assert_mean_pixel_difference(image, expected_image, expected_max_diff=10):
     expected_image = np.asarray(DiffusionPipeline.numpy_to_pil(expected_image)[0], dtype=np.float32)
     avg_diff = np.abs(image - expected_image).mean()
     assert avg_diff < expected_max_diff, f"Error image deviates {avg_diff} pixels on average"
+
+
+# `CacheContext` fields every denoiser call must be given. PAB and FasterCache read `timestep` from the context and
+# raise without it.
+REQUIRED_CACHE_CONTEXT_FIELDS = ("timestep",)
+
+
+class CacheContextProbeHook(ModelHook):
+    """Records the `CacheContext` in effect on every forward of the module it is registered on.
+
+    It is stateful and owns a `StateManager`, so the real `cache_context` hands it the context the same way it does
+    to a cache hook: what gets recorded is what a cache hook on that module would read.
+    """
+
+    _is_stateful = True
+
+    def __init__(self):
+        super().__init__()
+        self.state_manager = StateManager(BaseState)
+        self.contexts = []
+
+    def pre_forward(self, module, *args, **kwargs):
+        self.contexts.append(self.state_manager._context)
+        return args, kwargs
+
+    def reset_state(self, module):
+        self.state_manager.reset()
+        return module
+
+
+def register_cache_context_probes(pipe):
+    """Register a `CacheContextProbeHook` on every `CacheMixin` component of `pipe`, keyed by component name."""
+    probes = {}
+    for name, component in pipe.components.items():
+        if isinstance(component, CacheMixin):
+            probes[name] = CacheContextProbeHook()
+            HookRegistry.check_if_exists_or_initialize(component).register_hook(probes[name], "cache_context_probe")
+    return probes
+
+
+def assert_cache_contexts_have(probes, fields):
+    """Assert every forward the probes saw ran inside a `cache_context` that was given each of `fields`.
+
+    `fields` are `CacheContext` field names. A forward that ran outside any `cache_context` has none of them.
+    """
+    assert any(probe.contexts for probe in probes.values()), (
+        f"None of {sorted(probes)} was called, so no `cache_context` call was checked."
+    )
+    for name, probe in probes.items():
+        incomplete = []
+        for call, context in enumerate(probe.contexts):
+            if context is None:
+                incomplete.append(f"call {call} (no `cache_context`): {', '.join(fields)}")
+                continue
+            missing = [field for field in fields if getattr(context, field) is None]
+            if missing:
+                incomplete.append(f"call {call} (`{context.name}`): {', '.join(missing)}")
+        assert not incomplete, (
+            f"{len(incomplete)} of {len(probe.contexts)} `{name}` calls ran without cache context fields the cache "
+            f"hooks read. Pass them to `{name}.cache_context(name, ...)`. Missing: {'; '.join(incomplete)}"
+        )
 
 
 class BasePipelineTesterConfig:
@@ -651,6 +714,16 @@ class PipelineTesterMixin(BasePipelineOutputMixin):
         out_cfg = pipe(**inputs)[0]
 
         assert out_cfg.shape == out_no_cfg.shape
+
+    def test_cache_context_receives_required_fields(self):
+        pipe = self.get_pipeline().to(torch_device)
+        probes = register_cache_context_probes(pipe)
+        if not probes:
+            pytest.skip(f"Skipping test because {self.pipeline_class} has no `CacheMixin` component.")
+
+        pipe(**self.get_dummy_inputs())
+
+        assert_cache_contexts_have(probes, REQUIRED_CACHE_CONTEXT_FIELDS)
 
     def test_callback_inputs(self):
         sig = inspect.signature(self.pipeline_class.__call__)

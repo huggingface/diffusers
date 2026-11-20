@@ -255,9 +255,20 @@ class KandinskyS2VDistilledModularPipelineTesterConfig(KandinskyS2VModularPipeli
         return inputs
 
 
+# A `src/` gap, so the test is marked `xfail`: it will XPASS once the call is wrapped, and the marker can go.
+DISTILLED_NO_CACHE_CONTEXT = pytest.mark.xfail(
+    reason="`KandinskyS2VDistilledChunkDenoiseInner` calls the transformer outside `cache_context`.",
+    strict=True,
+)
+
+
 class TestKandinskyS2VDistilledModularPipelineFast(
     KandinskyS2VDistilledModularPipelineTesterConfig, ModularPipelineTesterMixin
 ):
+    @DISTILLED_NO_CACHE_CONTEXT
+    def test_cache_context_receives_required_fields(self):
+        super().test_cache_context_receives_required_fields()
+
     @pytest.mark.skip(reason=FAST_SKIPS["test_inference_batch_consistent"])
     def test_inference_batch_consistent(self):
         pass
