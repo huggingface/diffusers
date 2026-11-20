@@ -317,4 +317,4 @@ DDPMScheduler {
 * 查看官方和社区的[训练或微调脚本](https://github.com/huggingface/diffusers/tree/main/examples#-diffusers-examples)的例子，了解更多使用情况。
 * 在[使用不同的调度器](./using-diffusers/schedulers)指南中了解更多关于加载、访问、更改和比较调度器的信息。
 * 在[Stable Diffusion](./stable_diffusion)教程中探索提示工程、速度和内存优化，以及生成更高质量图像的技巧。
-* 通过[在GPU上优化PyTorch](./optimization/fp16)指南，以及运行[Apple (M1/M2)上的Stable Diffusion](./optimization/mps)和[ONNX Runtime](./optimization/onnx)的教程，更深入地了解如何加速🧨Diffuser。
+* 通过[在GPU上优化PyTorch](./optimization/fp16)指南，以及运行[Apple (M1/M2)上的Stable Diffusion](./optimization/mps)的教程，更深入地了解如何加速🧨Diffuser。

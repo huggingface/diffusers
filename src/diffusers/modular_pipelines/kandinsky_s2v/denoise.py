@@ -247,7 +247,7 @@ class KandinskyS2VChunkDenoiseInner(ModularPipelineBlocks):
                 components.guider.prepare_models(components.transformer)
                 cond_kwargs = {key: getattr(guider_state_batch, key) for key in guider_inputs}
                 context_name = getattr(guider_state_batch, components.guider._identifier_key)
-                with components.transformer.cache_context(context_name):
+                with components.transformer.cache_context(context_name, timestep=t):
                     guider_state_batch.noise_pred = components.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep,

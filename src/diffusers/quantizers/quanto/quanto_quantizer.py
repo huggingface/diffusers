@@ -1,12 +1,10 @@
 from typing import TYPE_CHECKING, Any
 
-from diffusers.utils.import_utils import is_optimum_quanto_version
-
+from ...dependency_versions_table import deps
 from ...utils import (
     deprecate,
     get_module_from_name,
     is_accelerate_available,
-    is_accelerate_version,
     is_optimum_quanto_available,
     is_torch_available,
     logging,
@@ -55,17 +53,12 @@ class QuantoQuantizer(DiffusersQuantizer):
 
         if not is_optimum_quanto_available():
             raise ImportError(
-                "Loading an optimum-quanto quantized model requires optimum-quanto library (`pip install optimum-quanto`)"
-            )
-        if not is_optimum_quanto_version(">=", "0.2.6"):
-            raise ImportError(
-                "Loading an optimum-quanto quantized model requires `optimum-quanto>=0.2.6`. "
-                "Please upgrade your installation with `pip install --upgrade optimum-quanto"
+                f"Loading an optimum-quanto quantized model requires `{deps['optimum_quanto']}` (`pip install -U '{deps['optimum_quanto']}'`)"
             )
 
         if not is_accelerate_available():
             raise ImportError(
-                "Loading an optimum-quanto quantized model requires accelerate library (`pip install accelerate`)"
+                f"Loading an optimum-quanto quantized model requires `{deps['accelerate']}` (`pip install -U '{deps['accelerate']}'`)"
             )
 
         device_map = kwargs.get("device_map", None)
@@ -121,16 +114,13 @@ class QuantoQuantizer(DiffusersQuantizer):
         return max_memory
 
     def adjust_target_dtype(self, target_dtype: "torch.dtype") -> "torch.dtype":
-        if is_accelerate_version(">=", "0.27.0"):
-            mapping = {
-                "int8": torch.int8,
-                "float8": CustomDtype.FP8,
-                "int4": CustomDtype.INT4,
-                "int2": CustomDtype.INT2,
-            }
-            target_dtype = mapping[self.quantization_config.weights_dtype]
-
-        return target_dtype
+        mapping = {
+            "int8": torch.int8,
+            "float8": CustomDtype.FP8,
+            "int4": CustomDtype.INT4,
+            "int2": CustomDtype.INT2,
+        }
+        return mapping[self.quantization_config.weights_dtype]
 
     def update_torch_dtype(self, torch_dtype: "torch.dtype" = None) -> "torch.dtype":
         if torch_dtype is None:

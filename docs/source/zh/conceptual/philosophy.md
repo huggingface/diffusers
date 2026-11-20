@@ -23,7 +23,7 @@ http://www.apache.org/licenses/LICENSE-2.0
 ## 可用性优先于性能
 
 - 尽管 Diffusers 包含众多性能优化特性（参见[内存与速度优化](https://huggingface.co/docs/diffusers/optimization/fp16)），模型默认总是以最高精度和最低优化级别加载。因此除非用户指定，扩散流程(pipeline)默认在CPU上以float32精度初始化。这确保了跨平台和加速器的可用性，意味着运行本库无需复杂安装。
-- Diffusers 追求**轻量化**，仅有少量必需依赖，但提供诸多可选依赖以提升性能（如`accelerate`、`safetensors`、`onnx`等）。我们竭力保持库的轻量级特性，使其能轻松作为其他包的依赖项。
+- Diffusers 追求**轻量化**，仅有少量必需依赖，但提供诸多可选依赖以提升性能（如`accelerate`、`safetensors`等）。我们竭力保持库的轻量级特性，使其能轻松作为其他包的依赖项。
 - Diffusers 偏好简单、自解释的代码而非浓缩的"魔法"代码。这意味着lambda函数等简写语法和高级PyTorch操作符通常不被采用。
 
 ## 简洁优于简易

@@ -74,7 +74,7 @@ class CosmosEmbedding(nn.Module):
         self.t_embedder = CosmosTimestepEmbedding(embedding_dim, condition_dim)
         self.norm = RMSNorm(embedding_dim, eps=1e-6, elementwise_affine=True)
 
-    def forward(self, hidden_states: torch.Tensor, timestep: torch.LongTensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, timestep: torch.LongTensor) -> tuple[torch.Tensor, torch.Tensor]:
         timesteps_proj = self.time_proj(timestep).type_as(hidden_states)
         temb = self.t_embedder(timesteps_proj)
         embedded_timestep = self.norm(timesteps_proj)
@@ -130,7 +130,7 @@ class CosmosAdaLayerNormZero(nn.Module):
         hidden_states: torch.Tensor,
         embedded_timestep: torch.Tensor,
         temb: torch.Tensor | None = None,
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         embedded_timestep = self.activation(embedded_timestep)
         embedded_timestep = self.linear_1(embedded_timestep)
         embedded_timestep = self.linear_2(embedded_timestep)

@@ -22,9 +22,11 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    FasterCacheTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    PyramidAttentionBroadcastTesterMixin,
     TrainingTesterMixin,
 )
 
@@ -143,6 +145,19 @@ class CogVideoX15TransformerTesterConfig(CogVideoXTransformerTesterConfig):
 
 class TestCogVideoXTransformer(CogVideoXTransformerTesterConfig, ModelTesterMixin):
     pass
+
+
+class TestCogVideoXTransformerPyramidAttentionBroadcast(
+    CogVideoXTransformerTesterConfig, PyramidAttentionBroadcastTesterMixin
+):
+    pass
+
+
+class TestCogVideoXTransformerFasterCache(CogVideoXTransformerTesterConfig, FasterCacheTesterMixin):
+    FASTER_CACHE_CONFIG = {
+        "spatial_attention_block_skip_range": 2,
+        "tensor_format": "BFCHW",
+    }
 
 
 class TestCogVideoXTransformerMemory(CogVideoXTransformerTesterConfig, MemoryTesterMixin):

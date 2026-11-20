@@ -476,7 +476,7 @@ class ChromaTransformer2DModel(
         controlnet_single_block_samples=None,
         return_dict: bool = True,
         controlnet_blocks_repeat: bool = False,
-    ) -> torch.Tensor | Transformer2DModelOutput:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`FluxTransformer2DModel`] forward method.
 

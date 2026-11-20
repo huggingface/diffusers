@@ -28,6 +28,10 @@ if is_torch_available():
     _import_structure["adapter"] = ["MultiAdapter", "T2IAdapter"]
     _import_structure["attention_dispatch"] = ["AttentionBackendName", "attention_backend"]
     _import_structure["auto_model"] = ["AutoModel"]
+    _import_structure["autoencoders.audio_tokenizer_ace_step"] = [
+        "AceStepAudioTokenDetokenizer",
+        "AceStepAudioTokenizer",
+    ]
     _import_structure["autoencoders.autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
     _import_structure["autoencoders.autoencoder_cosmos3_audio"] = ["Cosmos3AVAEAudioTokenizer"]
     _import_structure["autoencoders.autoencoder_dc"] = ["AutoencoderDC"]
@@ -50,6 +54,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_magvit"] = ["AutoencoderKLMagvit"]
     _import_structure["autoencoders.autoencoder_kl_minimax_h3"] = ["AutoencoderKLMiniMaxH3"]
     _import_structure["autoencoders.autoencoder_kl_minimax_h3_audio"] = ["AutoencoderKLMiniMaxH3Audio"]
+    _import_structure["autoencoders.autoencoder_kl_minimax_h3_image"] = ["AutoencoderKLMiniMaxH3Image"]
     _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
     _import_structure["autoencoders.autoencoder_kl_p_h3_image"] = ["AutoencoderKLPH3Image"]
     _import_structure["autoencoders.autoencoder_kl_qwenimage"] = ["AutoencoderKLQwenImage"]
@@ -68,6 +73,7 @@ if is_torch_available():
     _import_structure["autoencoders.ltx2_diffusion_decoder"] = ["LTX2VideoDiffusionDecoderModel"]
     _import_structure["autoencoders.minimax_music3_vocoder"] = ["MiniMaxMusic3Vocoder"]
     _import_structure["autoencoders.mmaudio_vocoder"] = ["MMAudioVocoder"]
+    _import_structure["autoencoders.vocoder_ltx2"] = ["LTX2Vocoder", "LTX2VocoderWithBWE"]
     _import_structure["autoencoders.vq_model"] = ["VQModel"]
     _import_structure["cache_utils"] = ["CacheMixin"]
     _import_structure["condition_embedders.condition_embedder_ace_step"] = ["AceStepConditionEncoder"]
@@ -80,6 +86,7 @@ if is_torch_available():
     _import_structure["condition_embedders.condition_embedder_p_h3_image"] = ["PH3ImageTextConnector"]
     _import_structure["condition_embedders.condition_embedder_stable_audio"] = ["StableAudioProjectionModel"]
     _import_structure["condition_embedders.condition_embedder_stable_audio_3"] = ["StableAudio3DurationEmbedder"]
+    _import_structure["condition_embedders.condition_embedder_stable_unclip"] = ["StableUnCLIPImageNormalizer"]
     _import_structure["controlnets.controlnet"] = ["ControlNetModel"]
     _import_structure["controlnets.controlnet_cosmos"] = ["CosmosControlNetModel"]
     _import_structure["controlnets.controlnet_flux"] = ["FluxControlNetModel", "FluxMultiControlNetModel"]
@@ -159,12 +166,14 @@ if is_torch_available():
     _import_structure["transformers.transformer_ltx2"] = ["LTX2VideoTransformer3DModel"]
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
     _import_structure["transformers.transformer_minimax_h3"] = ["MiniMaxH3Transformer3DModel"]
+    _import_structure["transformers.transformer_minimax_h3_image"] = ["MiniMaxH3ImageTransformer2DModel"]
     _import_structure["transformers.transformer_minimax_music3"] = ["MiniMaxMusic3Transformer1DModel"]
     _import_structure["transformers.transformer_mochi"] = ["MochiTransformer3DModel"]
     _import_structure["transformers.transformer_motif_video"] = ["MotifVideoTransformer3DModel"]
     _import_structure["transformers.transformer_nucleusmoe_image"] = ["NucleusMoEImageTransformer2DModel"]
     _import_structure["transformers.transformer_omnigen"] = ["OmniGenTransformer2DModel"]
     _import_structure["transformers.transformer_ovis_image"] = ["OvisImageTransformer2DModel"]
+    _import_structure["transformers.transformer_pan2"] = ["PAN2Transformer3DModel"]
     _import_structure["transformers.transformer_prx"] = ["PRXTransformer2DModel"]
     _import_structure["transformers.transformer_qwenimage"] = ["QwenImageTransformer2DModel"]
     _import_structure["transformers.transformer_qwenimage21"] = ["QwenImage21Transformer2DModel"]
@@ -184,6 +193,7 @@ if is_torch_available():
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
     _import_structure["unets.unet_2d"] = ["UNet2DModel"]
     _import_structure["unets.unet_2d_condition"] = ["UNet2DConditionModel"]
+    _import_structure["unets.unet_2d_condition_audioldm2"] = ["AudioLDM2UNet2DConditionModel"]
     _import_structure["unets.unet_3d_condition"] = ["UNet3DConditionModel"]
     _import_structure["unets.unet_dreamlite"] = ["DreamLiteUNetModel"]
     _import_structure["unets.unet_i2vgen_xl"] = ["I2VGenXLUNet"]
@@ -201,6 +211,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .attention_dispatch import AttentionBackendName, attention_backend
         from .auto_model import AutoModel
         from .autoencoders import (
+            AceStepAudioTokenDetokenizer,
+            AceStepAudioTokenizer,
             AsymmetricAutoencoderKL,
             AutoencoderDC,
             AutoencoderKL,
@@ -221,6 +233,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLMagvit,
             AutoencoderKLMiniMaxH3,
             AutoencoderKLMiniMaxH3Audio,
+            AutoencoderKLMiniMaxH3Image,
             AutoencoderKLMochi,
             AutoencoderKLPH3Image,
             AutoencoderKLQwenImage,
@@ -237,6 +250,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Kandinsky6SRVAE,
             LongCatAudioDiTVae,
             LTX2VideoDiffusionDecoderModel,
+            LTX2Vocoder,
+            LTX2VocoderWithBWE,
             MiniMaxMusic3Vocoder,
             MMAudioVAE,
             MMAudioVocoder,
@@ -255,6 +270,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ReduxImageEncoder,
             StableAudio3DurationEmbedder,
             StableAudioProjectionModel,
+            StableUnCLIPImageNormalizer,
         )
         from .controlnets import (
             ControlNetModel,
@@ -327,6 +343,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
+            MiniMaxH3ImageTransformer2DModel,
             MiniMaxH3Transformer3DModel,
             MiniMaxMusic3RVQDepthDecoder,
             MiniMaxMusic3Transformer1DModel,
@@ -335,6 +352,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             NucleusMoEImageTransformer2DModel,
             OmniGenTransformer2DModel,
             OvisImageTransformer2DModel,
+            PAN2Transformer3DModel,
             PixArtTransformer2DModel,
             PriorTransformer,
             PRXTransformer2DModel,
@@ -359,6 +377,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageTransformer2DModel,
         )
         from .unets import (
+            AudioLDM2UNet2DConditionModel,
             DreamLiteUNetModel,
             I2VGenXLUNet,
             Kandinsky3UNet,
