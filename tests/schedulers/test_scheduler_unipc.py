@@ -428,3 +428,35 @@ class UniPCMultistepScheduler1DTest(UniPCMultistepSchedulerTest):
         expected_timesteps = expected_timesteps[0:-1]
         self.assertTrue(torch.allclose(scheduler.sigmas, expected_sigmas))
         self.assertTrue(torch.all(expected_timesteps == scheduler.timesteps))
+
+    def test_custom_sigmas_list(self):
+        num_train_timesteps = 1000
+        sigmas_list = [1.0, 0.9, 0.8, 0.65, 0.5, 0.35, 0.2, 0.1]
+
+        # flow_shift with custom sigmas list
+        scheduler = UniPCMultistepScheduler(
+            use_flow_sigmas=True,
+            flow_shift=3.0,
+            num_train_timesteps=num_train_timesteps,
+        )
+        scheduler.set_timesteps(sigmas=sigmas_list)
+
+        scheduler_arr = UniPCMultistepScheduler(
+            use_flow_sigmas=True,
+            flow_shift=3.0,
+            num_train_timesteps=num_train_timesteps,
+        )
+        scheduler_arr.set_timesteps(sigmas=np.array(sigmas_list, dtype=np.float32))
+
+        self.assertTrue(torch.allclose(scheduler.sigmas, scheduler_arr.sigmas))
+        self.assertTrue(torch.equal(scheduler.timesteps, scheduler_arr.timesteps))
+
+        # use_dynamic_shifting with custom sigmas list
+        scheduler_dynamic = UniPCMultistepScheduler(
+            use_flow_sigmas=True,
+            use_dynamic_shifting=True,
+            time_shift_type="exponential",
+            num_train_timesteps=num_train_timesteps,
+        )
+        scheduler_dynamic.set_timesteps(sigmas=sigmas_list, mu=1.0)
+        self.assertEqual(len(scheduler_dynamic.timesteps), len(sigmas_list))
