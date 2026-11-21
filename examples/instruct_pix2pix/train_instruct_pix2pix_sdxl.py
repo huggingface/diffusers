@@ -872,15 +872,14 @@ def main():
     def compute_null_conditioning():
         null_conditioning_list = []
         for a_tokenizer, a_text_encoder in zip(tokenizers, text_encoders):
-            null_conditioning_list.append(
-                a_text_encoder(
-                    tokenize_captions([""], tokenizer=a_tokenizer).to(accelerator.device),
-                    output_hidden_states=True,
-                ).hidden_states[-2]
+            null_encoder_output = a_text_encoder(
+                tokenize_captions([""], tokenizer=a_tokenizer).to(accelerator.device),
+                output_hidden_states=True,
             )
-        return torch.concat(null_conditioning_list, dim=-1)
+            null_conditioning_list.append(null_encoder_output.hidden_states[-2])
+        return torch.concat(null_conditioning_list, dim=-1), null_encoder_output[0]
 
-    null_conditioning = compute_null_conditioning()
+    null_conditioning, null_pooled_text_embeds = compute_null_conditioning()
 
     def compute_time_ids():
         crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
@@ -1080,6 +1079,8 @@ def main():
                     prompt_mask = prompt_mask.reshape(bsz, 1, 1)
                     # Final text conditioning.
                     encoder_hidden_states = torch.where(prompt_mask, null_conditioning, encoder_hidden_states)
+                    pooled_prompt_mask = prompt_mask.reshape(bsz, 1)
+                    add_text_embeds = torch.where(pooled_prompt_mask, null_pooled_text_embeds, add_text_embeds)
 
                     # Sample masks for the original images.
                     image_mask_dtype = original_image_embeds.dtype
