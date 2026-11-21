@@ -207,6 +207,32 @@ class TestStableDiffusionImg2ImgPipeline(StableDiffusionImg2ImgPipelineTesterCon
         # fmt: on
         assert_tensors_close(image[-1, -1, -3:, -3:].flatten(), expected_slice, atol=1e-3)
 
+    def test_stable_diffusion_img2img_num_images_per_prompt_keeps_image_with_prompt(self):
+        # One init image per prompt with `num_images_per_prompt=2`: every output must come from its own
+        # prompt's image, in the same [p0, p0, p1, p1] order as the prompt embeddings.
+        sd_pipe = self.get_pipeline()
+
+        inputs = self.get_dummy_inputs()
+        inputs.pop("generator")
+        prompt_a = inputs.pop("prompt")
+        image_a = inputs.pop("image")
+        prompt_b, image_b = "a red cube on a table", 1 - image_a
+
+        batched = sd_pipe(
+            prompt=[prompt_a, prompt_b],
+            image=torch.cat([image_a, image_b]),
+            num_images_per_prompt=2,
+            generator=[self.get_generator(i) for i in range(4)],
+            **inputs,
+        ).images
+
+        expected = [(prompt_a, image_a), (prompt_a, image_a), (prompt_b, image_b), (prompt_b, image_b)]
+        for i, (prompt, image) in enumerate(expected):
+            single = sd_pipe(prompt=prompt, image=image, generator=self.get_generator(i), **inputs).images
+            assert_tensors_close(
+                batched[i], single[0], atol=1e-4, msg=f"Output {i} does not match its prompt and image."
+            )
+
     def test_stable_diffusion_img2img_k_lms(self):
         # Run on CPU: the expected slice below is CPU-specific.
         components = self.get_dummy_components()
