@@ -515,7 +515,7 @@ class QwenImage21ResidualDownBlock(nn.Module):
     def forward(self, x, feat_cache=None, feat_idx=None) -> torch.Tensor:
         if feat_idx is None:
             feat_idx = [0]
-        x_copy = x.clone()
+        x_copy = x
         for resnet in self.resnets:
             x = resnet(x, feat_cache=feat_cache, feat_idx=feat_idx)
         if self.downsampler is not None:
@@ -714,7 +714,7 @@ class QwenImage21ResidualUpBlock(nn.Module):
         Returns:
             torch.Tensor: Output tensor
         """
-        x_copy = x.clone()
+        x_copy = x
 
         for resnet in self.resnets:
             if feat_cache is not None:
