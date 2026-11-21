@@ -619,7 +619,7 @@ class SanaWMPipeline(DiffusionPipeline):
 
             B, C, F, H, W = latents.shape
             denoised = self.scheduler.step(
-                -noise_pred.reshape(B, C, -1).transpose(1, 2),
+                noise_pred.reshape(B, C, -1).transpose(1, 2),
                 t,
                 latents.reshape(B, C, -1).transpose(1, 2),
                 per_token_timesteps=timestep.reshape(B, C, -1)[:, 0],
