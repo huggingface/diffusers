@@ -508,7 +508,7 @@ class TestCosmos3OmniModularPipelineFast(Cosmos3OmniModularPipelineTesterConfig,
 
         expected_sigmas = torch.tensor([0.99, 0.7425, 0.495, 0.2475])
         torch.testing.assert_close(timesteps_pipe.scheduler.sigmas[:-1], expected_sigmas)
-        assert native_timesteps.tolist() == [99, 74, 49, 24]
+        assert native_timesteps.tolist() == [99.0, 74.25, 49.5, 24.75]
         assert not torch.equal(native_timesteps, default_timesteps)
 
 
