@@ -13,16 +13,21 @@ from diffusers import (
 )
 from diffusers.utils.import_utils import is_peft_available
 
-from ...testing_utils import require_peft_backend, require_peft_version_greater
+from ...testing_utils import (
+    enable_full_determinism,
+    require_peft_backend,
+    require_peft_version_greater,
+    torch_device,
+)
+from ..pipeline_params import TEXT_TO_TEXT_BATCH_PARAMS, TEXT_TO_TEXT_PARAMS
+from ..testing_utils import BasePipelineTesterConfig, PipelineTesterMixin
 
 
 if is_peft_available():
     from peft import LoraConfig
 
 
-# `DiffusionGemmaPipeline` is a discrete *text* diffusion pipeline: it returns token sequences rather than images,
-# so the image/video oriented `BasePipelineTesterConfig` + `PipelineTesterMixin` contract in `..testing_utils`
-# does not apply here. These are plain pytest classes instead.
+enable_full_determinism()
 
 
 # --- Lightweight stand-in for input-validation tests that never reach the model ---
@@ -78,28 +83,67 @@ class TestDiffusionGemmaPipelineInput:
 _MODEL_ID = "trl-internal-testing/tiny-DiffusionGemmaForBlockDiffusion"
 
 
-def _load_pipeline():
-    try:
-        from transformers import AutoProcessor, DiffusionGemmaForBlockDiffusion
-    except ImportError as e:
-        pytest.skip(f"transformers without DiffusionGemma: {e}")
-    try:
-        model = DiffusionGemmaForBlockDiffusion.from_pretrained(_MODEL_ID, dtype=torch.float32).eval()
-        processor = AutoProcessor.from_pretrained(_MODEL_ID)
-    except Exception as e:  # noqa: BLE001 - offline / hub errors should skip, not fail
-        pytest.skip(f"tiny DiffusionGemma checkpoint unavailable: {e}")
-    pipe = DiffusionGemmaPipeline(model=model, scheduler=BlockRefinementScheduler(), processor=processor)
-    pipe.set_progress_bar_config(disable=True)
-    return pipe, model.config.canvas_length
+class DiffusionGemmaPipelineTesterConfig(BasePipelineTesterConfig):
+    pipeline_class = DiffusionGemmaPipeline
+    required_input_params_in_call_signature = TEXT_TO_TEXT_PARAMS
+    batch_input_params = TEXT_TO_TEXT_BATCH_PARAMS
+    # DiffusionGemma has neither `num_images_per_prompt` (batching is over `prompt` only) nor `latents` (each
+    # canvas is freshly randomized inside `__call__`), and `output_type` is `"seq"`/`"text"`, not an image format.
+    optional_input_params = frozenset(["num_inference_steps", "generator", "output_type", "return_dict"])
+    # One canvas' worth of generated tokens for the tiny checkpoint's `canvas_length` (see `get_dummy_inputs`).
+    output_shape = (32,)
+
+    def get_dummy_components(self):
+        try:
+            from transformers import AutoProcessor, DiffusionGemmaForBlockDiffusion
+        except ImportError as e:
+            pytest.skip(f"transformers without DiffusionGemma: {e}")
+        try:
+            model = DiffusionGemmaForBlockDiffusion.from_pretrained(_MODEL_ID, dtype=torch.float32).eval()
+            processor = AutoProcessor.from_pretrained(_MODEL_ID)
+        except Exception as e:  # noqa: BLE001 - offline / hub errors should skip, not fail
+            pytest.skip(f"tiny DiffusionGemma checkpoint unavailable: {e}")
+        return {"model": model, "scheduler": BlockRefinementScheduler(), "processor": processor}
+
+    def get_dummy_inputs(self):
+        return {
+            "prompt": "Name a color.",
+            "generator": self.get_generator(0),
+            "gen_length": self.output_shape[0],
+            "num_inference_steps": 4,
+            "temperature": 0.0,
+            "eos_early_stop": False,
+            "output_type": "seq",
+        }
 
 
-class TestDiffusionGemmaPipeline:
+class TestDiffusionGemmaPipeline(DiffusionGemmaPipelineTesterConfig, PipelineTesterMixin):
     adaptive_stopping_vocab_size = 8
     prompt = "Name a color."
 
     @pytest.fixture(autouse=True)
     def pipeline(self):
-        self.pipe, self.canvas_length = _load_pipeline()
+        self.pipe = self.get_pipeline().to(torch_device)
+        self.canvas_length = self.pipe.model.config.canvas_length
+
+    # DiffusionGemma samples its canvas with a single `torch.randint(..., generator=generator)` call, unlike the
+    # `randn_tensor`-backed image pipelines the base test assumes, so it can't take a per-batch-row generator list.
+    def test_inference_batch_consistent(self):
+        super().test_inference_batch_consistent(batch_generator=False)
+
+    @pytest.mark.skip(
+        "Test not supported: passes a per-row generator list, which DiffusionGemma's single `torch.randint` "
+        "canvas init doesn't accept."
+    )
+    def test_inference_batch_single_identical(self):
+        pass
+
+    @pytest.mark.skip(
+        "Test not supported: assumes an image/video pipeline (`output_type='latent'`, tensor key `'latents'`), "
+        "neither of which DiffusionGemma's `check_inputs` accepts."
+    )
+    def test_callback_inputs(self):
+        pass
 
     def _run_adaptive_stopping(self, prompt):
         self.pipe.model.config.get_text_config(decoder=True).vocab_size = self.adaptive_stopping_vocab_size
