@@ -16,10 +16,10 @@ import torch
 
 from diffusers import DDIMParallelScheduler
 
-from .test_schedulers import SchedulerCommonTest
+from .test_schedulers import SchedulerTesterMixin
 
 
-class DDIMParallelSchedulerTest(SchedulerCommonTest):
+class TestDDIMParallelScheduler(SchedulerTesterMixin):
     scheduler_classes = (DDIMParallelScheduler,)
     forward_default_kwargs = (("eta", 0.0), ("num_inference_steps", 50))
 

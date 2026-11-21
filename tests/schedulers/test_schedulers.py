@@ -14,13 +14,12 @@
 # limitations under the License.
 import inspect
 import json
-import os
 import tempfile
-import unittest
 import uuid
 from typing import Dict, List, Tuple
 
 import numpy as np
+import pytest
 import torch
 from huggingface_hub import delete_repo
 
@@ -99,35 +98,32 @@ class SchedulerObject3(SchedulerMixin, ConfigMixin):
         pass
 
 
-class SchedulerBaseTests(unittest.TestCase):
-    def test_save_load_from_different_config(self):
+class TestSchedulerBase:
+    def test_save_load_from_different_config(self, tmp_path, monkeypatch):
         obj = SchedulerObject()
 
         # mock add obj class to `diffusers`
-        setattr(diffusers, "SchedulerObject", SchedulerObject)
+        monkeypatch.setattr(diffusers, "SchedulerObject", SchedulerObject, raising=False)
         logger = logging.get_logger("diffusers.configuration_utils")
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            obj.save_config(tmpdirname)
-            with CaptureLogger(logger) as cap_logger_1:
-                config = SchedulerObject2.load_config(tmpdirname)
-                new_obj_1 = SchedulerObject2.from_config(config)
+        obj.save_config(tmp_path)
+        with CaptureLogger(logger) as cap_logger_1:
+            config = SchedulerObject2.load_config(tmp_path)
+            new_obj_1 = SchedulerObject2.from_config(config)
 
-            # now save a config parameter that is not expected
-            with open(os.path.join(tmpdirname, SchedulerObject.config_name), "r") as f:
-                data = json.load(f)
-                data["unexpected"] = True
+        # now save a config parameter that is not expected
+        config_path = tmp_path / SchedulerObject.config_name
+        data = json.loads(config_path.read_text())
+        data["unexpected"] = True
+        config_path.write_text(json.dumps(data))
 
-            with open(os.path.join(tmpdirname, SchedulerObject.config_name), "w") as f:
-                json.dump(data, f)
+        with CaptureLogger(logger) as cap_logger_2:
+            config = SchedulerObject.load_config(tmp_path)
+            new_obj_2 = SchedulerObject.from_config(config)
 
-            with CaptureLogger(logger) as cap_logger_2:
-                config = SchedulerObject.load_config(tmpdirname)
-                new_obj_2 = SchedulerObject.from_config(config)
-
-            with CaptureLogger(logger) as cap_logger_3:
-                config = SchedulerObject2.load_config(tmpdirname)
-                new_obj_3 = SchedulerObject2.from_config(config)
+        with CaptureLogger(logger) as cap_logger_3:
+            config = SchedulerObject2.load_config(tmp_path)
+            new_obj_3 = SchedulerObject2.from_config(config)
 
         assert new_obj_1.__class__ == SchedulerObject2
         assert new_obj_2.__class__ == SchedulerObject
@@ -142,32 +138,29 @@ class SchedulerBaseTests(unittest.TestCase):
         )
         assert cap_logger_2.out.replace("SchedulerObject", "SchedulerObject2") == cap_logger_3.out
 
-    def test_save_load_compatible_schedulers(self):
-        SchedulerObject2._compatibles = ["SchedulerObject"]
-        SchedulerObject._compatibles = ["SchedulerObject2"]
+    def test_save_load_compatible_schedulers(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(SchedulerObject2, "_compatibles", ["SchedulerObject"])
+        monkeypatch.setattr(SchedulerObject, "_compatibles", ["SchedulerObject2"])
 
         obj = SchedulerObject()
 
         # mock add obj class to `diffusers`
-        setattr(diffusers, "SchedulerObject", SchedulerObject)
-        setattr(diffusers, "SchedulerObject2", SchedulerObject2)
+        monkeypatch.setattr(diffusers, "SchedulerObject", SchedulerObject, raising=False)
+        monkeypatch.setattr(diffusers, "SchedulerObject2", SchedulerObject2, raising=False)
         logger = logging.get_logger("diffusers.configuration_utils")
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            obj.save_config(tmpdirname)
+        obj.save_config(tmp_path)
 
-            # now save a config parameter that is expected by another class, but not origin class
-            with open(os.path.join(tmpdirname, SchedulerObject.config_name), "r") as f:
-                data = json.load(f)
-                data["f"] = [0, 0]
-                data["unexpected"] = True
+        # now save a config parameter that is expected by another class, but not origin class
+        config_path = tmp_path / SchedulerObject.config_name
+        data = json.loads(config_path.read_text())
+        data["f"] = [0, 0]
+        data["unexpected"] = True
+        config_path.write_text(json.dumps(data))
 
-            with open(os.path.join(tmpdirname, SchedulerObject.config_name), "w") as f:
-                json.dump(data, f)
-
-            with CaptureLogger(logger) as cap_logger:
-                config = SchedulerObject.load_config(tmpdirname)
-                new_obj = SchedulerObject.from_config(config)
+        with CaptureLogger(logger) as cap_logger:
+            config = SchedulerObject.load_config(tmp_path)
+            new_obj = SchedulerObject.from_config(config)
 
         assert new_obj.__class__ == SchedulerObject
 
@@ -178,34 +171,33 @@ class SchedulerBaseTests(unittest.TestCase):
             " be ignored. Please verify your config.json configuration file.\n"
         )
 
-    def test_save_load_from_different_config_comp_schedulers(self):
-        SchedulerObject3._compatibles = ["SchedulerObject", "SchedulerObject2"]
-        SchedulerObject2._compatibles = ["SchedulerObject", "SchedulerObject3"]
-        SchedulerObject._compatibles = ["SchedulerObject2", "SchedulerObject3"]
+    def test_save_load_from_different_config_comp_schedulers(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(SchedulerObject3, "_compatibles", ["SchedulerObject", "SchedulerObject2"])
+        monkeypatch.setattr(SchedulerObject2, "_compatibles", ["SchedulerObject", "SchedulerObject3"])
+        monkeypatch.setattr(SchedulerObject, "_compatibles", ["SchedulerObject2", "SchedulerObject3"])
 
         obj = SchedulerObject()
 
         # mock add obj class to `diffusers`
-        setattr(diffusers, "SchedulerObject", SchedulerObject)
-        setattr(diffusers, "SchedulerObject2", SchedulerObject2)
-        setattr(diffusers, "SchedulerObject3", SchedulerObject3)
+        monkeypatch.setattr(diffusers, "SchedulerObject", SchedulerObject, raising=False)
+        monkeypatch.setattr(diffusers, "SchedulerObject2", SchedulerObject2, raising=False)
+        monkeypatch.setattr(diffusers, "SchedulerObject3", SchedulerObject3, raising=False)
         logger = logging.get_logger("diffusers.configuration_utils")
         logger.setLevel(diffusers.logging.INFO)
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            obj.save_config(tmpdirname)
+        obj.save_config(tmp_path)
 
-            with CaptureLogger(logger) as cap_logger_1:
-                config = SchedulerObject.load_config(tmpdirname)
-                new_obj_1 = SchedulerObject.from_config(config)
+        with CaptureLogger(logger) as cap_logger_1:
+            config = SchedulerObject.load_config(tmp_path)
+            new_obj_1 = SchedulerObject.from_config(config)
 
-            with CaptureLogger(logger) as cap_logger_2:
-                config = SchedulerObject2.load_config(tmpdirname)
-                new_obj_2 = SchedulerObject2.from_config(config)
+        with CaptureLogger(logger) as cap_logger_2:
+            config = SchedulerObject2.load_config(tmp_path)
+            new_obj_2 = SchedulerObject2.from_config(config)
 
-            with CaptureLogger(logger) as cap_logger_3:
-                config = SchedulerObject3.load_config(tmpdirname)
-                new_obj_3 = SchedulerObject3.from_config(config)
+        with CaptureLogger(logger) as cap_logger_3:
+            config = SchedulerObject3.load_config(tmp_path)
+            new_obj_3 = SchedulerObject3.from_config(config)
 
         assert new_obj_1.__class__ == SchedulerObject
         assert new_obj_2.__class__ == SchedulerObject2
@@ -254,7 +246,7 @@ class SchedulerBaseTests(unittest.TestCase):
         assert pipe.scheduler.config.solver_type == "bh2"
 
 
-class SchedulerCommonTest(unittest.TestCase):
+class SchedulerTesterMixin:
     scheduler_classes = ()
     forward_default_kwargs = ()
 
@@ -472,7 +464,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-    def test_from_save_pretrained(self):
+    def test_from_save_pretrained(self, tmp_path):
         kwargs = dict(self.forward_default_kwargs)
 
         num_inference_steps = kwargs.pop("num_inference_steps", self.default_num_inference_steps)
@@ -498,9 +490,8 @@ class SchedulerCommonTest(unittest.TestCase):
                 sample = self.dummy_sample
                 residual = 0.1 * sample
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
+            scheduler.save_config(tmp_path)
+            new_scheduler = scheduler_class.from_pretrained(tmp_path)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 scheduler.set_timesteps(num_inference_steps)
@@ -542,15 +533,14 @@ class SchedulerCommonTest(unittest.TestCase):
             init_keys = inspect.signature(scheduler_class.__init__).parameters.keys()
             assert set(scheduler_diff.keys()).intersection(set(init_keys)) == set()
 
-    def test_from_pretrained(self):
+    def test_from_pretrained(self, tmp_path):
         for scheduler_class in self.scheduler_classes:
             scheduler_config = self.get_scheduler_config()
 
             scheduler = scheduler_class(**scheduler_config)
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                scheduler.save_pretrained(tmpdirname)
-                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
+            scheduler.save_pretrained(tmp_path)
+            new_scheduler = scheduler_class.from_pretrained(tmp_path)
 
             # `_use_default_values` should not exist for just saved & loaded scheduler
             scheduler_config = dict(scheduler.config)
@@ -591,8 +581,8 @@ class SchedulerCommonTest(unittest.TestCase):
             output_0 = scheduler.step(residual, timestep_0, sample, **kwargs).prev_sample
             output_1 = scheduler.step(residual, timestep_1, sample, **kwargs).prev_sample
 
-            self.assertEqual(output_0.shape, sample.shape)
-            self.assertEqual(output_0.shape, output_1.shape)
+            assert output_0.shape == sample.shape
+            assert output_0.shape == output_1.shape
 
     def test_scheduler_outputs_equivalence(self):
         def set_nan_tensor_to_zero(t):
@@ -609,16 +599,13 @@ class SchedulerCommonTest(unittest.TestCase):
             elif tuple_object is None:
                 return
             else:
-                self.assertTrue(
-                    torch.allclose(
-                        set_nan_tensor_to_zero(tuple_object), set_nan_tensor_to_zero(dict_object), atol=1e-5
-                    ),
-                    msg=(
-                        "Tuple and dict output are not equal. Difference:"
-                        f" {torch.max(torch.abs(tuple_object - dict_object))}. Tuple has `nan`:"
-                        f" {torch.isnan(tuple_object).any()} and `inf`: {torch.isinf(tuple_object)}. Dict has"
-                        f" `nan`: {torch.isnan(dict_object).any()} and `inf`: {torch.isinf(dict_object)}."
-                    ),
+                assert torch.allclose(
+                    set_nan_tensor_to_zero(tuple_object), set_nan_tensor_to_zero(dict_object), atol=1e-5
+                ), (
+                    "Tuple and dict output are not equal. Difference:"
+                    f" {torch.max(torch.abs(tuple_object - dict_object))}. Tuple has `nan`:"
+                    f" {torch.isnan(tuple_object).any()} and `inf`: {torch.isinf(tuple_object)}. Dict has"
+                    f" `nan`: {torch.isnan(dict_object).any()} and `inf`: {torch.isinf(dict_object)}."
                 )
 
         kwargs = dict(self.forward_default_kwargs)
@@ -676,20 +663,15 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler = scheduler_class(**scheduler_config)
 
             if scheduler_class != VQDiffusionScheduler:
-                self.assertTrue(
-                    hasattr(scheduler, "init_noise_sigma"),
-                    f"{scheduler_class} does not implement a required attribute `init_noise_sigma`",
+                assert hasattr(scheduler, "init_noise_sigma"), (
+                    f"{scheduler_class} does not implement a required attribute `init_noise_sigma`"
                 )
-                self.assertTrue(
-                    hasattr(scheduler, "scale_model_input"),
-                    (
-                        f"{scheduler_class} does not implement a required class method `scale_model_input(sample,"
-                        " timestep)`"
-                    ),
+                assert hasattr(scheduler, "scale_model_input"), (
+                    f"{scheduler_class} does not implement a required class method `scale_model_input(sample,"
+                    " timestep)`"
                 )
-            self.assertTrue(
-                hasattr(scheduler, "step"),
-                f"{scheduler_class} does not implement a required class method `step(...)`",
+            assert hasattr(scheduler, "step"), (
+                f"{scheduler_class} does not implement a required class method `step(...)`"
             )
 
             if scheduler_class != VQDiffusionScheduler:
@@ -702,7 +684,7 @@ class SchedulerCommonTest(unittest.TestCase):
                     scaled_sample = scheduler.scale_model_input(sample, scheduler.timesteps[-1])
                 else:
                     scaled_sample = scheduler.scale_model_input(sample, 0.0)
-                self.assertEqual(sample.shape, scaled_sample.shape)
+                assert sample.shape == scaled_sample.shape
 
     def test_add_noise_device(self):
         for scheduler_class in self.scheduler_classes:
@@ -721,12 +703,12 @@ class SchedulerCommonTest(unittest.TestCase):
                 scaled_sample = scheduler.scale_model_input(sample, scheduler.timesteps[-1])
             else:
                 scaled_sample = scheduler.scale_model_input(sample, 0.0)
-            self.assertEqual(sample.shape, scaled_sample.shape)
+            assert sample.shape == scaled_sample.shape
 
             noise = torch.randn(scaled_sample.shape).to(torch_device)
             t = scheduler.timesteps[5][None]
             noised = scheduler.add_noise(scaled_sample, noise, t)
-            self.assertEqual(noised.shape, scaled_sample.shape)
+            assert noised.shape == scaled_sample.shape
 
     def test_deprecated_kwargs(self):
         for scheduler_class in self.scheduler_classes:
@@ -749,7 +731,7 @@ class SchedulerCommonTest(unittest.TestCase):
                     " deprecated argument from `_deprecated_kwargs = [<deprecated_argument>]`"
                 )
 
-    def test_trained_betas(self):
+    def test_trained_betas(self, tmp_path):
         for scheduler_class in self.scheduler_classes:
             if scheduler_class in (VQDiffusionScheduler, CMStochasticIterativeScheduler):
                 continue
@@ -757,9 +739,8 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config, trained_betas=np.array([0.1, 0.3]))
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                scheduler.save_pretrained(tmpdirname)
-                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
+            scheduler.save_pretrained(tmp_path)
+            new_scheduler = scheduler_class.from_pretrained(tmp_path)
 
             assert scheduler.betas.tolist() == new_scheduler.betas.tolist()
 
@@ -796,25 +777,25 @@ class SchedulerCommonTest(unittest.TestCase):
             assert cap_logger.out == ""
 
             # warning should be thrown
-            with self.assertWarns(FutureWarning):
+            with pytest.warns(FutureWarning):
                 assert scheduler.test_attribute == 5
 
-            with self.assertWarns(FutureWarning):
+            with pytest.warns(FutureWarning):
                 assert getattr(scheduler, "test_attribute") == 5
 
-            with self.assertRaises(AttributeError) as error:
+            with pytest.raises(AttributeError) as error:
                 scheduler.does_not_exist
 
-            assert str(error.exception) == f"'{type(scheduler).__name__}' object has no attribute 'does_not_exist'"
+            assert str(error.value) == f"'{type(scheduler).__name__}' object has no attribute 'does_not_exist'"
 
 
 @is_staging_test
-class SchedulerPushToHubTester(unittest.TestCase):
+class TestSchedulerPushToHub:
     identifier = uuid.uuid4()
     repo_id = f"test-scheduler-{identifier}"
     org_repo_id = f"valid_org/{repo_id}-org"
 
-    def test_push_to_hub(self):
+    def test_push_to_hub(self, tmp_path):
         scheduler = DDIMScheduler(
             beta_start=0.00085,
             beta_end=0.012,
@@ -831,8 +812,7 @@ class SchedulerPushToHubTester(unittest.TestCase):
         delete_repo(token=TOKEN, repo_id=self.repo_id)
 
         # Push to hub via save_config
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            scheduler.save_config(tmp_dir, repo_id=self.repo_id, push_to_hub=True, token=TOKEN)
+        scheduler.save_config(str(tmp_path), repo_id=self.repo_id, push_to_hub=True, token=TOKEN)
 
         scheduler_loaded = DDIMScheduler.from_pretrained(f"{USER}/{self.repo_id}")
 
@@ -841,7 +821,7 @@ class SchedulerPushToHubTester(unittest.TestCase):
         # Reset repo
         delete_repo(token=TOKEN, repo_id=self.repo_id)
 
-    def test_push_to_hub_in_organization(self):
+    def test_push_to_hub_in_organization(self, tmp_path):
         scheduler = DDIMScheduler(
             beta_start=0.00085,
             beta_end=0.012,
@@ -858,8 +838,7 @@ class SchedulerPushToHubTester(unittest.TestCase):
         delete_repo(token=TOKEN, repo_id=self.org_repo_id)
 
         # Push to hub via save_config
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            scheduler.save_config(tmp_dir, repo_id=self.org_repo_id, push_to_hub=True, token=TOKEN)
+        scheduler.save_config(str(tmp_path), repo_id=self.org_repo_id, push_to_hub=True, token=TOKEN)
 
         scheduler_loaded = DDIMScheduler.from_pretrained(self.org_repo_id)
 

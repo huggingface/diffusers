@@ -1,14 +1,13 @@
-import unittest
-
+import pytest
 import torch
 import torch.nn.functional as F
 
 from diffusers import VQDiffusionScheduler
 
-from .test_schedulers import SchedulerCommonTest
+from .test_schedulers import SchedulerTesterMixin
 
 
-class VQDiffusionSchedulerTest(SchedulerCommonTest):
+class TestVQDiffusionScheduler(SchedulerTesterMixin):
     scheduler_classes = (VQDiffusionScheduler,)
 
     def get_scheduler_config(self, **kwargs):
@@ -54,6 +53,6 @@ class VQDiffusionSchedulerTest(SchedulerCommonTest):
         for t in [0, 50, 99]:
             self.check_over_forward(time_step=t)
 
-    @unittest.skip("Test not supported.")
+    @pytest.mark.skip(reason="Test not supported.")
     def test_add_noise_device(self):
         pass

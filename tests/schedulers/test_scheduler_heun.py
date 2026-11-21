@@ -3,10 +3,10 @@ import torch
 from diffusers import HeunDiscreteScheduler
 
 from ..testing_utils import torch_device
-from .test_schedulers import SchedulerCommonTest
+from .test_schedulers import SchedulerTesterMixin
 
 
-class HeunDiscreteSchedulerTest(SchedulerCommonTest):
+class TestHeunDiscreteScheduler(SchedulerTesterMixin):
     scheduler_classes = (HeunDiscreteScheduler,)
     num_inference_steps = 10
 

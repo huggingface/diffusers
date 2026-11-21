@@ -1,6 +1,6 @@
 import tempfile
-import unittest
 
+import pytest
 import torch
 
 from diffusers import (
@@ -10,10 +10,10 @@ from diffusers import (
     UniPCMultistepScheduler,
 )
 
-from .test_schedulers import SchedulerCommonTest
+from .test_schedulers import SchedulerTesterMixin
 
 
-class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
+class TestDPMSolverSinglestepScheduler(SchedulerTesterMixin):
     scheduler_classes = (DPMSolverSinglestepScheduler,)
     forward_default_kwargs = (("num_inference_steps", 25),)
 
@@ -66,7 +66,7 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
 
                 assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-    @unittest.skip("Test not supported.")
+    @pytest.mark.skip(reason="Test not supported.")
     def test_from_save_pretrained(self):
         pass
 
@@ -301,8 +301,8 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
             output_0 = scheduler.step(residual, time_step_0, sample, **kwargs).prev_sample
             output_1 = scheduler.step(residual, time_step_1, sample, **kwargs).prev_sample
 
-            self.assertEqual(output_0.shape, sample.shape)
-            self.assertEqual(output_0.shape, output_1.shape)
+            assert output_0.shape == sample.shape
+            assert output_0.shape == output_1.shape
 
     def test_full_loop_with_noise(self):
         scheduler_class = self.scheduler_classes[0]
