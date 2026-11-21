@@ -104,3 +104,44 @@ class DiscreteDDIMSchedulerTest(unittest.TestCase):
         out = scheduler.step_correct(logits, timestep=2, sample=sample, return_dict=False)
         self.assertIsInstance(out, tuple)
         self.assertEqual(len(out), 4)
+
+    def test_step_with_cpu_generator(self):
+        # Regression test for huggingface/diffusers#15285: with temperature > 0 the step samples via
+        # `torch.multinomial` and renoises via `torch.randint`; both must honour a CPU generator when
+        # the sample lives on another device (GPU/MPS on CI).
+        scheduler = self.get_scheduler()
+        scheduler.set_timesteps(8)
+        sample = torch.randint(0, 100, (3, 16))
+        logits = torch.randn(3, 16, 100)
+        gen = torch.Generator("cpu").manual_seed(0)
+        out = scheduler.step(logits, timestep=2, sample=sample, temperature=1.0, generator=gen)
+        self.assertEqual(out.prev_sample.shape, sample.shape)
+        self.assertEqual(out.prev_sample.device, sample.device)
+        # Same seed reproduces the same draw: the generator is consumed, not ignored.
+        gen = torch.Generator("cpu").manual_seed(0)
+        out_again = scheduler.step(logits, timestep=2, sample=sample, temperature=1.0, generator=gen)
+        self.assertTrue(torch.equal(out.prev_sample, out_again.prev_sample))
+
+    def test_step_correct_with_cpu_generator(self):
+        # Regression test for huggingface/diffusers#15285: the corrector selects positions with
+        # `torch.rand` (Gumbel-top-k) and resamples them with `torch.multinomial`.
+        scheduler = self.get_scheduler(corrector_steps=1, corrector_k=4)
+        scheduler.set_timesteps(8)
+        sample = torch.randint(0, 100, (3, 16))
+        logits = torch.randn(3, 16, 100)
+        gen = torch.Generator("cpu").manual_seed(0)
+        out = scheduler.step_correct(logits, timestep=2, sample=sample, generator=gen)
+        self.assertEqual(out.prev_sample.shape, sample.shape)
+        self.assertEqual(out.prev_sample.device, sample.device)
+
+    def test_step_correct_random_selection_with_cpu_generator(self):
+        # The "random" position selection draws its scores with `torch.rand`.
+        scheduler = self.get_scheduler(corrector_steps=1, corrector_k=4, corrector_selection="random")
+        scheduler.set_timesteps(8)
+        sample = torch.randint(0, 100, (3, 16))
+        logits = torch.randn(3, 16, 100)
+        gen = torch.Generator("cpu").manual_seed(0)
+        out = scheduler.step_correct(logits, timestep=2, sample=sample, generator=gen)
+        self.assertEqual(out.prev_sample.shape, sample.shape)
+        changed = (out.prev_sample != sample).sum(dim=-1)
+        self.assertTrue(torch.all(changed <= 4))
