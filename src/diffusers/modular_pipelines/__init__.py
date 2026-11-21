@@ -168,9 +168,11 @@ else:
         "PAN2ModularPipeline",
         "PAN2SafetyChecker",
     ]
-    _import_structure["p_h3_image"] = [
+    _import_structure["p_image_oss"] = [
         "PH3ImageBlocks",
         "PH3ImageModularPipeline",
+        "PImageOSSBlocks",
+        "PImageOSSModularPipeline",
     ]
     _import_structure["pika_h3_flex"] = [
         "PikaH3FlexBlocks",
@@ -267,9 +269,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SequentialPipelineBlocks,
         )
         from .modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, InsertableDict, OutputParam
-        from .p_h3_image import (
+        from .p_image_oss import (
             PH3ImageBlocks,
             PH3ImageModularPipeline,
+            PImageOSSBlocks,
+            PImageOSSModularPipeline,
         )
         from .pan2 import PAN2Blocks, PAN2ModularPipeline, PAN2SafetyChecker
         from .pika_h3_flex import (
