@@ -19,6 +19,7 @@ import pytest
 import torch
 
 from diffusers.image_processor import InpaintProcessor, VaeImageProcessor
+from diffusers.pipelines.flux2.image_processor import Flux2ImageProcessor
 
 
 class TestImageProcessor:
@@ -342,3 +343,33 @@ class TestImageProcessor:
             assert postprocessing_kwargs["crops_coords"] is None
             assert postprocessing_kwargs["original_image"] is None
             assert postprocessing_kwargs["original_mask"] is None
+
+    @pytest.mark.parametrize(
+        "image_size, crop_coords",
+        [
+            ((64, 64), (12, 12, 52, 52)),
+            ((64, 48), (5, 7, 28, 38)),
+            ((32, 48), (10, 12, 51, 41)),
+        ],
+    )
+    def test_flux2_image_processor_apply_overlay_with_crop_coords(self, image_size, crop_coords):
+        rng = np.random.default_rng(0)
+        init_image = PIL.Image.fromarray(rng.integers(0, 256, (64, 64, 3), dtype=np.uint8))
+        image = PIL.Image.fromarray(rng.integers(0, 256, (image_size[1], image_size[0], 3), dtype=np.uint8))
+        x, y, x2, y2 = crop_coords
+        mask = np.zeros((64, 64), dtype=np.uint8)
+        mask[y:y2, x:x2] = 255
+        mask = PIL.Image.fromarray(mask)
+
+        out = Flux2ImageProcessor().apply_overlay(mask, init_image, image, crop_coords)
+        expected = VaeImageProcessor().apply_overlay(mask, init_image, image, crop_coords)
+
+        assert np.array_equal(np.array(out), np.array(expected))
+
+    def test_flux2_image_processor_resize_crop_only_center_crops(self):
+        rng = np.random.default_rng(0)
+        image = PIL.Image.fromarray(rng.integers(0, 256, (40, 48, 3), dtype=np.uint8))
+
+        out = Flux2ImageProcessor().resize(image, height=32, width=32, resize_mode="crop")
+
+        assert np.array_equal(np.array(out), np.array(image.crop((8, 4, 40, 36))))
