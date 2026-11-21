@@ -130,7 +130,7 @@ def apply_rotary_emb_qwen(
         else:
             raise ValueError(f"`use_real_unbind_dim={use_real_unbind_dim}` but should be -1 or -2.")
 
-        # float32 math through type promotion, without float32 copies of the input
+        # cast `cos`/`sin` to at least float32 so that input is promoted to float32 inside the multiplication
         compute_dtype = torch.promote_types(torch.float32, cos.dtype)
         cos, sin = cos.to(compute_dtype), sin.to(compute_dtype)
         out = (x * cos + x_rotated * sin).to(x.dtype)

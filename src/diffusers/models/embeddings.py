@@ -994,8 +994,7 @@ def apply_rotary_emb(
         else:
             raise ValueError(f"`use_real_unbind_dim={use_real_unbind_dim}` but should be -1 or -2.")
 
-        # Compute in float32 through type promotion rather than `x.float()` / `x_rotated.float()`, which would
-        # materialize two float32 copies of x. Same values: bf16 / fp16 -> float32 is exact.
+        # cast `cos`/`sin` to at least float32 so that input is promoted to float32 inside the multiplication
         compute_dtype = torch.promote_types(torch.float32, cos.dtype)
         cos, sin = cos.to(compute_dtype), sin.to(compute_dtype)
         out = (x * cos + x_rotated * sin).to(x.dtype)
@@ -1017,7 +1016,7 @@ def apply_rotary_emb_allegro(x: torch.Tensor, freqs_cis, positions):
         sin = F.embedding(pos, sin)[:, None, :, :]
         x1, x2 = tokens[..., : tokens.shape[-1] // 2], tokens[..., tokens.shape[-1] // 2 :]
         tokens_rotated = torch.cat((-x2, x1), dim=-1)
-        # float32 math through type promotion, without float32 copies of the input
+        # cast `cos`/`sin` to at least float32 so that input is promoted to float32 inside the multiplication
         compute_dtype = torch.promote_types(torch.float32, cos.dtype)
         cos, sin = cos.to(compute_dtype), sin.to(compute_dtype)
         return (tokens * cos + tokens_rotated * sin).to(tokens.dtype)

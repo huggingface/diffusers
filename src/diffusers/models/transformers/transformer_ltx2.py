@@ -39,7 +39,7 @@ def apply_interleaved_rotary_emb(x: torch.Tensor, freqs: tuple[torch.Tensor, tor
     cos, sin = freqs
     x_real, x_imag = x.unflatten(2, (-1, 2)).unbind(-1)  # [B, S, C // 2]
     x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(2)
-    # float32 math through type promotion, without float32 copies of the input
+    # cast `cos`/`sin` to at least float32 so that input is promoted to float32 inside the multiplication
     compute_dtype = torch.promote_types(torch.float32, cos.dtype)
     cos, sin = cos.to(compute_dtype), sin.to(compute_dtype)
     out = (x * cos + x_rotated * sin).to(x.dtype)

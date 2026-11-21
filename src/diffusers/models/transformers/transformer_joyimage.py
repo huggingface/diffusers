@@ -51,7 +51,7 @@ def _apply_rotary_emb(
         x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)
         return torch.stack([-x_imag, x_real], dim=-1).flatten(3)
 
-    # float32 math through type promotion, without float32 copies of the input
+    # cast `cos`/`sin` to at least float32 so that input is promoted to float32 inside the multiplication
     compute_dtype = torch.promote_types(torch.float32, cos.dtype)
     cos, sin = cos.to(compute_dtype), sin.to(compute_dtype)
     xq_out = (xq * cos + _rotate_half(xq) * sin).type_as(xq)
