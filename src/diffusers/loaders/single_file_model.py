@@ -52,6 +52,7 @@ from .single_file_utils import (
     convert_ltx_transformer_checkpoint_to_diffusers,
     convert_ltx_vae_checkpoint_to_diffusers,
     convert_lumina2_to_diffusers,
+    convert_minimax_h3_image_transformer_checkpoint_to_diffusers,
     convert_minimax_h3_transformer_checkpoint_to_diffusers,
     convert_mochi_transformer_checkpoint_to_diffusers,
     convert_qwen_image21_transformer_checkpoint_to_diffusers,
@@ -69,6 +70,7 @@ from .single_file_utils import (
     fetch_diffusers_config,
     fetch_original_config,
     load_single_file_checkpoint,
+    minimax_h3_config_from_checkpoint,
 )
 
 
@@ -238,7 +240,13 @@ SINGLE_FILE_LOADABLE_CLASSES = {
     },
     "MiniMaxH3Transformer3DModel": {
         "checkpoint_mapping_fn": convert_minimax_h3_transformer_checkpoint_to_diffusers,
+        "config_from_checkpoint_fn": minimax_h3_config_from_checkpoint,
         "default_subfolder": "transformer",
+    },
+    "MiniMaxH3ImageTransformer2DModel": {
+        "checkpoint_mapping_fn": convert_minimax_h3_image_transformer_checkpoint_to_diffusers,
+        "config_from_checkpoint_fn": minimax_h3_config_from_checkpoint,
+        "default_subfolder": "transformer_diffusers",
     },
 }
 
@@ -482,6 +490,11 @@ class FromOriginalModelMixin:
                 token=token,
                 revision=config_revision,
             )
+            # A variant the repository's config does not describe but the checkpoint does, such as the sampled
+            # timestep curve that replaces the timestep MLP of a pruned MiniMax-H3 file. Explicit kwargs still win.
+            if "config_from_checkpoint_fn" in mapping_functions:
+                diffusers_model_config.update(mapping_functions["config_from_checkpoint_fn"](checkpoint))
+
             expected_kwargs, optional_kwargs = cls._get_signature_keys(cls)
 
             # Map legacy kwargs to new kwargs

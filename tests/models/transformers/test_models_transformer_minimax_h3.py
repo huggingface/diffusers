@@ -172,6 +172,119 @@ class TestMiniMaxH3Transformer(MiniMaxH3TransformerTesterConfig, ModelTesterMixi
         torch.testing.assert_close(output.audio_sample, output_tuple[1])
 
 
+class TestMiniMaxH3TransformerAdaLNCurve(MiniMaxH3TransformerTesterConfig):
+    """The timestep curve that stands in for the time MLP in a pruned MiniMax-H3 checkpoint."""
+
+    # A 5-point grid over `[0, 1]`: rows at 0, 0.25, 0.5, 0.75 and 1.
+    NUM_GRID_POINTS = 5
+
+    def get_curve_model(self, model):
+        """
+        Prune `model` exactly.
+
+        The released pruned checkpoints project the activated timestep curve onto an 8-dimensional basis; a basis that
+        spans the whole `time_embed_dim` keeps the fold exact, so the curve model has to agree with `model` at every
+        grid point.
+        """
+        curve_model = self.model_class(**self.get_init_dict(), adaln_curve_grid=self.NUM_GRID_POINTS)
+        curve_model = curve_model.to(torch_device).eval()
+        state_dict = {
+            name: value for name, value in model.state_dict().items() if not name.startswith("time_embedder.")
+        }
+        grid = torch.linspace(0.0, 1.0, self.NUM_GRID_POINTS, device=torch_device)
+        with torch.no_grad():
+            state_dict["time_embedder.table"] = torch.nn.functional.silu(model.time_embedder(model.time_proj(grid)))
+        curve_model.load_state_dict(state_dict)
+        return curve_model
+
+    def test_curve_model_matches_the_time_mlp_on_its_grid(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        curve_model = self.get_curve_model(model)
+        inputs = {**self.get_dummy_inputs(), "timestep": torch.tensor([0.75, 0.25], device=torch_device)}
+
+        with torch.no_grad():
+            output, curve_output = model(**inputs), curve_model(**inputs)
+        torch.testing.assert_close(curve_output.sample, output.sample)
+        torch.testing.assert_close(curve_output.audio_sample, output.audio_sample)
+
+    def test_curve_interpolates_between_grid_points_and_clamps_outside(self):
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        curve = self.get_curve_model(model).time_embedder
+        table = curve.table
+
+        with torch.no_grad():
+            midpoint = curve(torch.tensor([0.125], device=torch_device))
+            torch.testing.assert_close(midpoint, (0.5 * (table[0] + table[1])).unsqueeze(0))
+            ends = curve(torch.tensor([-1.0, 2.0], device=torch_device))
+            torch.testing.assert_close(ends, torch.stack([table[0], table[-1]]))
+
+
+class TestMiniMaxH3TransformerPrunedSingleFile(MiniMaxH3TransformerTesterConfig):
+    """Loading a pruned ComfyUI single file, whose `adaln_t_table` replaces the timestep MLP."""
+
+    NUM_GRID_POINTS = 5
+
+    def get_comfy_state_dict(self, model):
+        """
+        `model`'s weights in the layout of the Comfy-Org pruned single files: the released key names, a fused
+        `[q; k; v]` projection, a `[gate; value]` SwiGLU input and the timestep curve as `adaln_t_table`.
+        """
+        state_dict = dict(model.state_dict())
+        comfy_state_dict = {
+            "adaln_t_table": state_dict.pop("time_embedder.table"),
+            "rope.inv_freq": model.rope.inv_freq,
+        }
+        renames = {
+            "transformer_blocks.": "blocks.",
+            "token_refiner.refiner_blocks.": "token_refiner.blocks.",
+            "audio_proj_in.": "audio_patch_proj.",
+            "audio_proj_out.": "final_layer.audio_out.",
+            "proj_in.": "video_patch_proj.",
+            "proj_out.": "final_layer.video_out.",
+            "context_embedder.": "condition_proj.",
+            "norm_out.norm.": "final_layer.norm.",
+            "norm_out.linear.": "final_layer.adaln_proj.linear.",
+            ".attn.norm_q.": ".attn.q_norm.",
+            ".attn.norm_k.": ".attn.k_norm.",
+            ".attn.to_out.0.": ".attn.out_proj.",
+            ".ff.net.2.": ".mlp.fc2.",
+        }
+        for key, value in state_dict.items():
+            if key.endswith((".attn.to_k.weight", ".attn.to_v.weight")):
+                continue
+            if key.endswith(".attn.to_q.weight"):
+                prefix = key[: -len("to_q.weight")]
+                value = torch.cat([value, state_dict[prefix + "to_k.weight"], state_dict[prefix + "to_v.weight"]])
+                key = prefix + "qkv_proj.weight"
+            elif key.endswith(".ff.net.0.proj.weight"):
+                value, gate = value.chunk(2, dim=0)
+                value = torch.cat([gate, value], dim=0)
+                key = key.replace(".ff.net.0.proj.", ".mlp.fc1.")
+            for diffusers_name, comfy_name in renames.items():
+                key = key.replace(diffusers_name, comfy_name)
+            comfy_state_dict[key] = value
+        return comfy_state_dict
+
+    def test_single_file_reproduces_the_pruned_model(self, tmp_path):
+        # The repository's config describes the released, unpruned model; the curve comes from the checkpoint.
+        with torch.device("meta"):
+            self.model_class(**self.get_init_dict()).save_config(tmp_path)
+        model = self.model_class(**self.get_init_dict(), adaln_curve_grid=self.NUM_GRID_POINTS)
+        with torch.no_grad():
+            model.time_embedder.table.normal_(generator=self.generator)
+        model = model.to(torch_device).eval()
+
+        loaded = self.model_class.from_single_file(self.get_comfy_state_dict(model), config=str(tmp_path))
+        loaded = loaded.to(torch_device).eval()
+
+        assert loaded.config.adaln_curve_grid == self.NUM_GRID_POINTS
+        inputs = self.get_dummy_inputs()
+        with torch.no_grad():
+            output, loaded_output = model(**inputs), loaded(**inputs)
+        torch.testing.assert_close(loaded_output.sample, output.sample)
+        torch.testing.assert_close(loaded_output.audio_sample, output.audio_sample)
+
+
 class TestMiniMaxH3TransformerMemory(MiniMaxH3TransformerTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for the MiniMax-H3 transformer."""
 

@@ -101,6 +101,35 @@ class MiniMaxH3RotaryPosEmbed(nn.Module):
         return freqs.cos(), freqs.sin()
 
 
+class MiniMaxH3TimestepCurve(nn.Module):
+    r"""
+    The timestep conditioning of a *pruned* MiniMax-H3 checkpoint, in place of the timestep MLP.
+
+    Every AdaLN projection of the released checkpoint reads the same `silu(time_embedder(t))`: a curve through
+    `time_embed_dim`-dimensional space, parametrised by the scalar `t`. The pruned checkpoints published by Comfy-Org,
+    and the community files derived from them, project that curve onto a low-dimensional affine basis (8 dimensions
+    for the released models), fold the basis into the AdaLN projections — which then take 8 inputs instead of 2688 —
+    and ship the curve's coordinates sampled on a uniform grid over `t in [0, 1]` as a `(num_points, 8)` table. That
+    removes the timestep MLP and the wide AdaLN projections, about 40% of the parameters.
+
+    `forward` turns `timestep` into a fractional grid index and interpolates linearly between the two neighbouring
+    rows, as the ComfyUI reference does. The coordinates it returns stand for the *activated* embedding, so the AdaLN
+    projections consume them without a SiLU of their own.
+    """
+
+    def __init__(self, num_points: int, embed_dim: int):
+        super().__init__()
+        self.register_buffer("table", torch.zeros(num_points, embed_dim))
+
+    def forward(self, timestep: torch.Tensor) -> torch.Tensor:
+        num_points = self.table.shape[0]
+        position = timestep.to(self.table.dtype).clamp(0.0, 1.0) * (num_points - 1)
+        # `t = 1.0` lands on the last interval rather than past the table.
+        lower = position.floor().long().clamp(max=num_points - 2)
+        weight = (position - lower).unsqueeze(-1)
+        return torch.lerp(self.table[lower], self.table[lower + 1], weight)
+
+
 class MiniMaxH3AdaLayerNormModulation(nn.Module):
     r"""
     Projects the shared timestep embedding into the six per-(timestep, modality) modulation parameters of one
@@ -115,11 +144,15 @@ class MiniMaxH3AdaLayerNormModulation(nn.Module):
     either norm the way [`~models.normalization.AdaLayerNormZero`] does. It is therefore a block-level module of its
     own, named after the checkpoint's `adaln_proj`, with the modulation projection under the `linear` name diffusers
     uses inside every AdaLN module.
+
+    `apply_silu` is `False` for a pruned checkpoint, whose `temb` is the coordinates of the already activated curve
+    (see `MiniMaxH3TimestepCurve`).
     """
 
-    def __init__(self, time_embed_dim: int, hidden_size: int):
+    def __init__(self, time_embed_dim: int, hidden_size: int, apply_silu: bool = True):
         super().__init__()
         self.hidden_size = hidden_size
+        self.apply_silu = apply_silu
         self.linear = nn.Linear(time_embed_dim, 6 * hidden_size * MINIMAX_H3_MODALITY_NUM, bias=True)
 
     def forward(self, temb: torch.Tensor) -> tuple[torch.Tensor, ...]:
@@ -127,7 +160,9 @@ class MiniMaxH3AdaLayerNormModulation(nn.Module):
         # mixed-precision checkpoint — and only its result is cast down to the bfloat16 projection. Every block reads
         # the same `temb`, so a rounding applied before the activation biases every block's modulation parameters
         # identically at every sampling step, which accumulates coherently over the denoising trajectory.
-        temb = self.linear(nn.functional.silu(temb).to(get_parameter_dtype(self.linear)))
+        if self.apply_silu:
+            temb = nn.functional.silu(temb)
+        temb = self.linear(temb.to(get_parameter_dtype(self.linear)))
         temb = temb.view(-1, 6 * self.hidden_size)
         return temb.chunk(6, dim=-1)
 
@@ -141,16 +176,22 @@ class MiniMaxH3AdaLayerNormOut(nn.Module):
     holds one row per *timestep* and is addressed per row of the packed sequence rather than per batch item, and the
     two halves of the projection are `shift` then `scale`, the order `LTX2Transformer3DModel` and
     `WanTransformer3DModel` also use in their output layers.
+
+    `apply_silu` is `False` for a pruned checkpoint, whose `temb` is the coordinates of the already activated curve
+    (see `MiniMaxH3TimestepCurve`).
     """
 
-    def __init__(self, hidden_size: int, time_embed_dim: int, eps: float):
+    def __init__(self, hidden_size: int, time_embed_dim: int, eps: float, apply_silu: bool = True):
         super().__init__()
+        self.apply_silu = apply_silu
         self.norm = nn.RMSNorm(hidden_size, eps=eps)
         self.linear = nn.Linear(time_embed_dim, 2 * hidden_size, bias=True)
 
     def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor, timestep_indices: torch.Tensor) -> torch.Tensor:
         # As in `MiniMaxH3AdaLayerNormModulation`: activate at `temb`'s precision, cast to the projection's dtype after.
-        shift, scale = self.linear(nn.functional.silu(temb).to(get_parameter_dtype(self.linear))).chunk(2, dim=-1)
+        if self.apply_silu:
+            temb = nn.functional.silu(temb)
+        shift, scale = self.linear(temb.to(get_parameter_dtype(self.linear))).chunk(2, dim=-1)
         # The modulation itself stays at the block stack's precision; `forward` casts to the output heads' dtype.
         hidden_states = self.norm(hidden_states)
         return hidden_states * (1.0 + scale.index_select(0, timestep_indices)) + shift.index_select(
@@ -334,6 +375,7 @@ class MiniMaxH3TransformerBlock(nn.Module):
         time_embed_dim: int,
         norm_eps: float,
         qk_norm_eps: float,
+        apply_silu: bool = True,
     ):
         super().__init__()
         self.norm1 = nn.RMSNorm(hidden_size, eps=norm_eps)
@@ -345,7 +387,9 @@ class MiniMaxH3TransformerBlock(nn.Module):
         )
         self.norm2 = nn.RMSNorm(hidden_size, eps=norm_eps)
         self.ff = FeedForward(hidden_size, inner_dim=ffn_dim, activation_fn="swiglu", bias=False)
-        self.adaln_proj = MiniMaxH3AdaLayerNormModulation(time_embed_dim=time_embed_dim, hidden_size=hidden_size)
+        self.adaln_proj = MiniMaxH3AdaLayerNormModulation(
+            time_embed_dim=time_embed_dim, hidden_size=hidden_size, apply_silu=apply_silu
+        )
 
     def forward(
         self,
@@ -436,6 +480,12 @@ class MiniMaxH3Transformer3DModel(
             Epsilon of the per-head query/key norms.
         final_norm_eps (`float`, defaults to `1e-5`):
             Epsilon of the token refiner output norm and of `norm_out`.
+        adaln_curve_grid (`int`, *optional*):
+            The number of grid points of a *pruned* checkpoint's timestep curve (`1025` for the Comfy-Org releases).
+            When set, the timestep MLP is replaced by [`MiniMaxH3TimestepCurve`], `time_embed_dim` is the dimension of
+            the curve's basis (`8` for the released files) rather than the MLP's output, `freq_dim` and
+            `time_embed_hidden_dim` are unused, and the AdaLN projections consume the curve coordinates without an
+            activation.
     """
 
     _supports_gradient_checkpointing = True
@@ -445,7 +495,8 @@ class MiniMaxH3Transformer3DModel(
     # MiniMax-H3 ships a mixed-precision checkpoint: the two input patch projections, the timestep MLP and the two
     # output heads are float32 while everything else (including the AdaLN projections) is bfloat16. The `rope.inv_freq`
     # buffer is computed rather than loaded and is kept float32 for the same reason the reference ships it float32.
-    # Entries are matched as substrings of the parameter name, so `proj_in` / `proj_out` also cover the audio heads.
+    # Entries are matched as substrings of the parameter name, so `proj_in` / `proj_out` also cover the audio heads,
+    # and `time_embedder` covers a pruned checkpoint's curve table as well as the MLP.
     _keep_in_fp32_modules = [
         "proj_in",
         "audio_proj_in",
@@ -545,21 +596,29 @@ class MiniMaxH3Transformer3DModel(
         norm_eps: float = 1e-5,
         qk_norm_eps: float = 1e-5,
         final_norm_eps: float = 1e-5,
+        adaln_curve_grid: int | None = None,
     ) -> None:
         super().__init__()
 
         video_patch_dim = in_channels * patch_size[0] * patch_size[1] * patch_size[2]
+        # A pruned checkpoint ships the activated timestep curve, so its AdaLN projections apply no activation.
+        apply_silu = adaln_curve_grid is None
 
         # 1. Per-modality input projections
         self.proj_in = nn.Linear(video_patch_dim, hidden_size, bias=True)
         self.audio_proj_in = nn.Linear(audio_in_channels, hidden_size, bias=True)
         self.context_embedder = nn.Linear(text_dim, hidden_size, bias=True)
 
-        # 2. Timestep embedding, shared by every AdaLN projection
-        self.time_proj = Timesteps(num_channels=freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
-        self.time_embedder = TimestepEmbedding(
-            in_channels=freq_dim, time_embed_dim=time_embed_hidden_dim, out_dim=time_embed_dim
-        )
+        # 2. Timestep conditioning, shared by every AdaLN projection: the sinusoidal embedding and its MLP, or, for a
+        # pruned checkpoint, the sampled curve that replaces them.
+        if adaln_curve_grid is None:
+            self.time_proj = Timesteps(num_channels=freq_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
+            self.time_embedder = TimestepEmbedding(
+                in_channels=freq_dim, time_embed_dim=time_embed_hidden_dim, out_dim=time_embed_dim
+            )
+        else:
+            self.time_proj = None
+            self.time_embedder = MiniMaxH3TimestepCurve(num_points=adaln_curve_grid, embed_dim=time_embed_dim)
 
         # 3. Rotary embedding over the packed (t, h, w) grid
         self.rope = MiniMaxH3RotaryPosEmbed(rope_freq_dim=rope_freq_dim, rope_theta=rope_theta)
@@ -587,6 +646,7 @@ class MiniMaxH3Transformer3DModel(
                     time_embed_dim=time_embed_dim,
                     norm_eps=norm_eps,
                     qk_norm_eps=qk_norm_eps,
+                    apply_silu=apply_silu,
                 )
                 for _ in range(num_layers)
             ]
@@ -595,7 +655,7 @@ class MiniMaxH3Transformer3DModel(
         # 6. Shared output norm and the two per-modality output heads. Both heads run over every row of the packed
         # sequence; the rows of each modality are selected afterwards.
         self.norm_out = MiniMaxH3AdaLayerNormOut(
-            hidden_size=hidden_size, time_embed_dim=time_embed_dim, eps=final_norm_eps
+            hidden_size=hidden_size, time_embed_dim=time_embed_dim, eps=final_norm_eps, apply_silu=apply_silu
         )
         self.proj_out = nn.Linear(hidden_size, video_patch_dim, bias=True)
         self.audio_proj_out = nn.Linear(hidden_size, audio_in_channels, bias=True)
@@ -681,9 +741,13 @@ class MiniMaxH3Transformer3DModel(
 
         # 2. One timestep embedding per distinct noise level. `temb` is shared by all AdaLN projections, which are
         # bfloat16 in the checkpoint while `time_embedder` is float32, so it stays at the time embedder's precision:
-        # each AdaLN module applies its own activation to it and casts to its projection's dtype afterwards.
-        temb = self.time_proj(timestep)
-        temb = self.time_embedder(temb.to(get_parameter_dtype(self.time_embedder)))
+        # each AdaLN module applies its own activation to it and casts to its projection's dtype afterwards. A pruned
+        # checkpoint reads the activated curve instead.
+        if self.config.adaln_curve_grid is None:
+            temb = self.time_proj(timestep)
+            temb = self.time_embedder(temb.to(get_parameter_dtype(self.time_embedder)))
+        else:
+            temb = self.time_embedder(timestep)
 
         # 3. Row -> AdaLN table row.
         adaln_indices = timestep_indices * MINIMAX_H3_MODALITY_NUM + token_tags
