@@ -907,7 +907,7 @@ def main():
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
-    logger.info(f"  Num Epochs = {args.num_train_epochs}")
+    logger.info(f"  Num Epochs (estimated) = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
@@ -951,7 +951,8 @@ def main():
         disable=not accelerator.is_local_main_process,
     )
 
-    for epoch in range(first_epoch, args.num_train_epochs):
+    epoch = first_epoch
+    while global_step < args.max_train_steps:
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
@@ -1041,8 +1042,9 @@ def main():
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
-            # Checks if the accelerator has performed an optimization step behind the scenes
-            if accelerator.sync_gradients:
+            # Checks if the accelerator has performed an optimization step behind the scenes.
+            # Skip EMA and step bookkeeping when the optimizer step was skipped due to gradient overflow.
+            if accelerator.sync_gradients and not accelerator.optimizer_step_was_skipped:
                 if args.use_ema:
                     if args.offload_ema:
                         ema_unet.to(device="cuda", non_blocking=True)
@@ -1052,7 +1054,6 @@ def main():
                 progress_bar.update(1)
                 global_step += 1
                 accelerator.log({"train_loss": train_loss}, step=global_step)
-                train_loss = 0.0
 
                 if global_step % args.checkpointing_steps == 0:
                     if accelerator.is_main_process:
@@ -1080,11 +1081,16 @@ def main():
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
+            if accelerator.sync_gradients:
+                train_loss = 0.0
+
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
 
             if global_step >= args.max_train_steps:
                 break
+
+        epoch += 1
 
         if accelerator.is_main_process:
             if args.validation_prompts is not None and epoch % args.validation_epochs == 0:
@@ -1107,6 +1113,7 @@ def main():
                     ema_unet.restore(unet.parameters())
 
     # Create the pipeline using the trained modules and save it.
+    logger.info(f"  Num Epochs (actual) = {epoch}")
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = unwrap_model(unet)
