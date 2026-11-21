@@ -164,6 +164,11 @@ class ModuleGroup:
             self.tensor_to_key = {tensor: f"tensor_{i}" for i, tensor in enumerate(all_tensors)}
             self.key_to_tensor = {v: k for k, v in self.tensor_to_key.items()}
             self.cpu_param_dict = {}
+            # Buffers can be read without calling the forward of the module that owns them (e.g. a pipeline reading a
+            # VAE's batch norm running statistics), so they may never be onloaded. Keep their values on the offload
+            # device instead of the uninitialized tensors that offloaded parameters get.
+            buffers = [buffer for module in self.modules for buffer in module.buffers()] + self.buffers
+            self.cpu_buffer_dict = {buffer: buffer.data.to(self.offload_device) for buffer in buffers}
         else:
             self.cpu_param_dict = self._init_cpu_param_dict()
 
@@ -309,9 +314,12 @@ class ModuleGroup:
         # The group is now considered offloaded to disk for the rest of the session.
         self._is_offloaded_to_disk = True
 
-        # We do this to free up the RAM which is still holding the up tensor data.
+        # Free the RAM held by the parameters; they are reloaded from disk on onload. Buffers keep their values.
         for tensor_obj in self.tensor_to_key.keys():
-            tensor_obj.data = torch.empty_like(tensor_obj.data, device=self.offload_device)
+            if tensor_obj in self.cpu_buffer_dict:
+                tensor_obj.data = self.cpu_buffer_dict[tensor_obj]
+            else:
+                tensor_obj.data = torch.empty_like(tensor_obj.data, device=self.offload_device)
 
     def _offload_to_memory(self):
         if self.stream is not None:
