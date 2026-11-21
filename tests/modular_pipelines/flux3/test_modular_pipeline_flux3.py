@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
+
 import numpy as np
 import PIL.Image
 import pytest
@@ -354,6 +356,38 @@ class TestFlux3ModularPipelineGuider(Flux3ModularPipelineTesterConfig, ModularGu
     def test_guider_cfg(self):
         # the tiny random model's cond/uncond predictions differ only slightly
         super().test_guider_cfg(expected_max_diff=1e-3)
+
+    def test_cfg_shares_image_prefix(self):
+        # the cond and uncond batches of a step share the image-only part of the transformer forward
+        blocks = self.pipeline_blocks_class()
+        blocks.sub_blocks.pop("prompt_upsampler")
+        pipe = blocks.init_pipeline(self.pretrained_model_name_or_path)
+        pipe.load_components(dtype=torch.float32)
+        pipe.to(torch_device)
+        transformer = pipe.transformer
+        assert pipe.guider.num_conditions == 2
+
+        calls = {"transformer": 0, "image_prefix": 0}
+        handles = [
+            transformer.register_forward_pre_hook(lambda *args: calls.update(transformer=calls["transformer"] + 1)),
+            transformer.x_embedders["image"].register_forward_pre_hook(
+                lambda *args: calls.update(image_prefix=calls["image_prefix"] + 1)
+            ),
+        ]
+        # without the prompt upsampler step, `max_new_tokens` has no consumer
+        inputs = {k: v for k, v in self.get_dummy_inputs().items() if k != "max_new_tokens"}
+        images = pipe(**inputs, output="images")
+        for handle in handles:
+            handle.remove()
+        num_steps = inputs["num_inference_steps"]
+        assert calls == {"transformer": 2 * num_steps, "image_prefix": num_steps}
+        assert transformer._image_prefix_cache is None
+
+        # the same images without the reuse
+        transformer.cache_image_prefix = contextlib.nullcontext
+        reference = pipe(**{**inputs, "generator": self.get_generator(0)}, output="images")
+        del transformer.cache_image_prefix
+        assert torch.equal(images, reference)
 
 
 class TestFlux3ModularPipelineLoading(Flux3ModularPipelineTesterConfig, ModularLoadingTesterMixin):

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import contextmanager
 from typing import Any
 
 import torch
@@ -323,6 +324,15 @@ class Flux3PosEmbed(nn.Module):
         return freqs_cos, freqs_sin
 
 
+def _has_diffusers_hooks(modules) -> bool:
+    # cache, guider (PAG / SLG) and offloading hooks are registered through a `HookRegistry` on the module
+    for module in modules:
+        registry = getattr(module, "_diffusers_hook", None)
+        if registry is not None and registry.hooks:
+            return True
+    return False
+
+
 class Flux3AdaLayerNorm(nn.Module):
     """Output adaptive layer norm conditioned on a per-token embedding of shape `(batch_size, seq_len, dim)`."""
 
@@ -490,6 +500,69 @@ class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         self.proj_out = nn.Linear(self.inner_dim, in_channels, bias=False)
 
         self.gradient_checkpointing = False
+        self._image_prefix_cache = None
+
+    @contextmanager
+    def cache_image_prefix(self):
+        """
+        Context manager that shares the image-only part of the forward pass between calls with the same image inputs.
+
+        Inside the context, a forward call that receives the same `hidden_states`, `timestep`, `img_ids` and
+        `target_timestep` tensor objects as the previous call reuses its image timestep embedding, image modulations,
+        image RoPE and the output of the image per-mode blocks. The guider batches of one denoising step (e.g. the
+        conditional and unconditional passes of classifier-free guidance) differ only in the text inputs, so the
+        denoising loop opens this context around them. The model weights, LoRA scale and attention backend must not
+        change inside the context. The cache is dropped on exit.
+
+        Nothing is reused when context parallelism is enabled, when a diffusers hook is on the model as the context
+        opens or on an image-prefix module at call time, with gradients enabled, or under `torch.compile`.
+        """
+        enabled = self._parallel_config is None and not _has_diffusers_hooks(self.modules())
+        previous_cache = self._image_prefix_cache
+        self._image_prefix_cache = {} if enabled else None
+        try:
+            yield
+        finally:
+            self._image_prefix_cache = previous_cache
+
+    def _image_prefix_modules(self):
+        modules = [self.time_proj, self.timestep_embedder, self.target_timestep_embedder, self.pos_embed]
+        modules += [self.early_stream_modulations["image"], self.single_stream_modulations["image"]]
+        modules += [self.x_embedders["image"], self.mode_blocks["image"]]
+        return [submodule for module in modules if module is not None for submodule in module.modules()]
+
+    def _image_prefix(
+        self,
+        hidden_states: torch.Tensor,
+        timestep: torch.Tensor,
+        img_ids: torch.Tensor,
+        target_temb: torch.Tensor | None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+        """Image-only part of the forward pass: depends on the image inputs and not on the text context."""
+        batch_size, image_seq_len = hidden_states.shape[:2]
+        dtype = hidden_states.dtype
+
+        image_temb = self.time_proj(timestep.to(dtype) * 1000)
+        image_temb = self.timestep_embedder(image_temb.to(dtype))[:, None, :]
+        if target_temb is not None:
+            image_temb = image_temb + target_temb
+        image_temb = image_temb.expand(batch_size, image_seq_len, -1)
+
+        image_temb_act = F.silu(image_temb)
+        image_early_mod = self.early_stream_modulations["image"](image_temb_act)
+        image_single_mod = self.single_stream_modulations["image"](image_temb_act)
+        hidden_states = self.x_embedders["image"](hidden_states)
+        image_rotary_emb = self.pos_embed(img_ids)
+
+        for block in self.mode_blocks["image"]:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                hidden_states = self._gradient_checkpointing_func(
+                    block, hidden_states, image_early_mod, image_rotary_emb
+                )
+            else:
+                hidden_states = block(hidden_states, image_early_mod, image_rotary_emb)
+
+        return image_temb, image_single_mod, hidden_states, image_rotary_emb
 
     @apply_lora_scale("attention_kwargs")
     def forward(
@@ -551,20 +624,17 @@ class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         batch_size, image_seq_len = hidden_states.shape[:2]
         dtype = hidden_states.dtype
 
-        # 1. Timestep embeddings: the image tokens at `timestep`, the text context and the reference tokens at 0.
-        #    Each is a per-token embedding (batch_size, seq_len, dim) since the modulation is per token.
-        image_temb = self.time_proj(timestep.to(dtype) * 1000)
-        image_temb = self.timestep_embedder(image_temb.to(dtype))[:, None, :]
+        # 1. Timestep embeddings: the image tokens at `timestep` (in step 3), the text context and the reference tokens
+        #    at 0. Each is a per-token embedding (batch_size, seq_len, dim) since the modulation is per token.
         zero_temb = self.time_proj(torch.zeros(batch_size, device=hidden_states.device, dtype=dtype))
         zero_temb = self.timestep_embedder(zero_temb.to(dtype))[:, None, :]
+        target_temb = None
         if target_timestep is not None:
             # flow map: the embedding of the timestep this step jumps to is added to every mode's embedding, so it
             # reaches the per-mode blocks, the joint blocks and the output layer
             target_temb = self.time_proj(target_timestep.to(dtype) * 1000)
             target_temb = self.target_timestep_embedder(target_temb.to(dtype))[:, None, :]
-            image_temb = image_temb + target_temb
             zero_temb = zero_temb + target_temb
-        image_temb = image_temb.expand(batch_size, image_seq_len, -1)
         zero_temb_act = F.silu(zero_temb)
 
         # 2. Text context: the two modulation sets, input projection and RoPE
@@ -574,12 +644,28 @@ class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
         txt_rotary_emb = self.pos_embed(txt_ids)
 
-        # 3. Image tokens
-        image_temb_act = F.silu(image_temb)
-        image_early_mod = self.early_stream_modulations["image"](image_temb_act)
-        image_single_mod = self.single_stream_modulations["image"](image_temb_act)
-        hidden_states = self.x_embedders["image"](hidden_states)
-        image_rotary_emb = self.pos_embed(img_ids)
+        # 3. Image tokens: timestep embedding, the two modulation sets, input projection, RoPE and the per-mode blocks.
+        #    Reused from the previous call inside `cache_image_prefix` when the image inputs are the same tensors.
+        cache = self._image_prefix_cache
+        use_cache = (
+            cache is not None
+            and not torch.is_grad_enabled()
+            and not torch.compiler.is_compiling()
+            and not _has_diffusers_hooks(self._image_prefix_modules())
+        )
+        image_inputs = (hidden_states, timestep, img_ids, target_timestep)
+        image_prefix = None
+        if use_cache:
+            # `_version` catches in-place updates; inference tensors have no version counter
+            versions = tuple(None if x is None or x.is_inference() else x._version for x in image_inputs)
+            if cache.get("versions") == versions and all(x is y for x, y in zip(cache["inputs"], image_inputs)):
+                image_prefix = cache["outputs"]
+        if image_prefix is None:
+            image_prefix = self._image_prefix(hidden_states, timestep, img_ids, target_temb)
+            if use_cache:
+                # the cache holds the inputs, so their ids cannot be reused by new tensors while it is alive
+                cache.update(inputs=image_inputs, versions=versions, outputs=image_prefix)
+        image_temb, image_single_mod, hidden_states, image_rotary_emb = image_prefix
 
         # 4. Reference image tokens (optional)
         if image_cond_hidden_states is not None:
@@ -589,7 +675,8 @@ class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
             image_cond_hidden_states = self.x_embedders["image_cond"](image_cond_hidden_states)
             cond_rotary_emb = self.pos_embed(image_cond_ids)
 
-        # 5. Per-mode transformer blocks (each mode self-attends within itself only)
+        # 5. Per-mode transformer blocks of the text context and the reference tokens (the image blocks ran in step 3);
+        #    each mode self-attends within itself only
         for block in self.txt_mode_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 encoder_hidden_states = self._gradient_checkpointing_func(
@@ -597,14 +684,6 @@ class Flux3Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOri
                 )
             else:
                 encoder_hidden_states = block(encoder_hidden_states, txt_early_mod, txt_rotary_emb)
-
-        for block in self.mode_blocks["image"]:
-            if torch.is_grad_enabled() and self.gradient_checkpointing:
-                hidden_states = self._gradient_checkpointing_func(
-                    block, hidden_states, image_early_mod, image_rotary_emb
-                )
-            else:
-                hidden_states = block(hidden_states, image_early_mod, image_rotary_emb)
 
         if image_cond_hidden_states is not None:
             for block in self.mode_blocks["image_cond"]:
