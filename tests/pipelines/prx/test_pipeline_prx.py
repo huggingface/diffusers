@@ -19,16 +19,6 @@ from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, Pipelin
 # disk is skipped.
 T5GEMMA_SERIALIZATION_SKIP_REASON = "Custom T5GemmaEncoder not compatible with transformers v5."
 
-# Both PRX pipelines read `callback_on_step_end`'s inputs out of `locals()` but throw away what the callback
-# returns, so a callback that rewrites `latents` (or `prompt_embeds`) has no effect on the denoising loop. Every
-# other diffusers pipeline pops those keys back off the returned dict. Fixing it is a `src/` change and out of
-# scope for this test migration, so the one shared test that exercises the write-back is marked `xfail`: whoever
-# adds the pop-back will see it XPASS and can drop this marker.
-CALLBACK_OUTPUTS_IGNORED = pytest.mark.xfail(
-    reason="`PRX` pipelines discard the dict `callback_on_step_end` returns, so callback edits to `latents` are lost.",
-    strict=True,
-)
-
 
 class PRXPipelineTesterConfig(BasePipelineTesterConfig):
     pipeline_class = PRXPipeline
@@ -123,10 +113,6 @@ class PRXPipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestPRXPipeline(PRXPipelineTesterConfig, PipelineTesterMixin):
-    @CALLBACK_OUTPUTS_IGNORED
-    def test_callback_inputs(self):
-        super().test_callback_inputs()
-
     def test_attention_slicing_forward_pass(self, expected_max_diff=1e-3):
         # Run on CPU: sliced attention is compared against a full-attention run of the same pipeline.
         pipe = self.get_pipeline()

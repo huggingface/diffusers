@@ -11,17 +11,6 @@ from ..pipeline_params import TEXT_TO_IMAGE_PARAMS
 from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
 
 
-# Both PRX pipelines read `callback_on_step_end`'s inputs out of `locals()` but throw away what the callback
-# returns, so a callback that rewrites `latents` (or `prompt_embeds`) has no effect on the denoising loop. Every
-# other diffusers pipeline pops those keys back off the returned dict. Fixing it is a `src/` change and out of
-# scope for this test migration, so the one shared test that exercises the write-back is marked `xfail`: whoever
-# adds the pop-back will see it XPASS and can drop this marker.
-CALLBACK_OUTPUTS_IGNORED = pytest.mark.xfail(
-    reason="`PRX` pipelines discard the dict `callback_on_step_end` returns, so callback edits to `latents` are lost.",
-    strict=True,
-)
-
-
 class PRXPixelPipelineTesterConfig(BasePipelineTesterConfig):
     # PRXPixelPipeline is standalone: it inherits from DiffusionPipeline (not PRXPipeline) and always has its own
     # image_processor, so it denoises raw RGB in pixel space and supports output_type="pil"/"np" without a VAE.
@@ -91,10 +80,6 @@ class PRXPixelPipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestPRXPixelPipeline(PRXPixelPipelineTesterConfig, PipelineTesterMixin):
-    @CALLBACK_OUTPUTS_IGNORED
-    def test_callback_inputs(self):
-        super().test_callback_inputs()
-
     def test_pixel_space_has_no_vae(self):
         # Pixel space: vae_scale_factor is always 1, and the pipeline always carries an image processor
         # so postprocessing (and the default output_type="pil") works without any VAE.
