@@ -19,7 +19,7 @@ import random
 import numpy as np
 import pytest
 import torch
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPConfig, CLIPImageProcessor, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
@@ -27,6 +27,7 @@ from diffusers import (
     LCMScheduler,
     UNet2DConditionModel,
 )
+from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
 from ...testing_utils import (
     assert_tensors_close,
@@ -148,6 +149,48 @@ class LatentConsistencyModelImg2ImgPipelineTesterConfig(BasePipelineTesterConfig
 class TestLatentConsistencyModelImg2ImgPipeline(
     LatentConsistencyModelImg2ImgPipelineTesterConfig, PipelineTesterMixin
 ):
+    @pytest.mark.parametrize("requires_safety_checker", [False, True])
+    def test_requires_safety_checker_save_load(self, tmp_path, requires_safety_checker):
+        components = self.get_dummy_components()
+        components["requires_safety_checker"] = requires_safety_checker
+        pipe = self.pipeline_class(**components)
+        pipe.save_pretrained(tmp_path)
+
+        config = self.pipeline_class.load_config(tmp_path)
+        assert config["requires_safety_checker"] is requires_safety_checker
+
+        reloaded_pipe = self.pipeline_class.from_pretrained(tmp_path)
+        assert reloaded_pipe.config.requires_safety_checker is requires_safety_checker
+
+    @pytest.mark.parametrize("requires_safety_checker", [False, True])
+    @pytest.mark.parametrize("with_feature_extractor", [False, True])
+    def test_safety_checker_requires_feature_extractor(self, requires_safety_checker, with_feature_extractor):
+        components = self.get_dummy_components()
+        components["requires_safety_checker"] = requires_safety_checker
+        components["safety_checker"] = StableDiffusionSafetyChecker(
+            CLIPConfig(
+                projection_dim=4,
+                vision_config={
+                    "hidden_size": 8,
+                    "intermediate_size": 16,
+                    "num_hidden_layers": 1,
+                    "num_attention_heads": 2,
+                    "image_size": 8,
+                    "patch_size": 4,
+                },
+            )
+        )
+        if with_feature_extractor:
+            components["feature_extractor"] = CLIPImageProcessor(size={"shortest_edge": 8}, crop_size=8)
+            pipe = self.pipeline_class(**components)
+            image = np.zeros((1, 8, 8, 3), dtype=np.float32)
+            checked_image, has_nsfw_concept = pipe.run_safety_checker(image, "cpu", torch.float32)
+            assert checked_image.shape == image.shape
+            assert len(has_nsfw_concept) == 1
+        else:
+            with pytest.raises(ValueError, match="feature extractor"):
+                self.pipeline_class(**components)
+
     def test_lcm_onestep(self):
         # Run on CPU: the expected slice below is CPU-specific.
         pipe = self.get_pipeline()

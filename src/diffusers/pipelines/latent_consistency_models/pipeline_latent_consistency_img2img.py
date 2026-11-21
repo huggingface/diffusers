@@ -213,6 +213,12 @@ class LatentConsistencyModelImg2ImgPipeline(
     ):
         super().__init__()
 
+        if safety_checker is not None and feature_extractor is None:
+            raise ValueError(
+                f"Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
+                " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
+            )
+
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -236,6 +242,7 @@ class LatentConsistencyModelImg2ImgPipeline(
 
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1) if getattr(self, "vae", None) else 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt
     def encode_prompt(
@@ -740,7 +747,7 @@ class LatentConsistencyModelImg2ImgPipeline(
             image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, or `list[np.ndarray]`):
                 `Image` or tensor representing an image batch to be used as the starting point. Can also accept image
                 latents as `image`, but if passing latents directly it is not encoded again.
-            num_inference_steps (`int`, *optional*, defaults to 50):
+            num_inference_steps (`int`, *optional*, defaults to 4):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             strength (`float`, *optional*, defaults to 0.8):
@@ -758,7 +765,7 @@ class LatentConsistencyModelImg2ImgPipeline(
                 Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
                 timesteps on the original LCM training/distillation timestep schedule are used. Must be in descending
                 order.
-            guidance_scale (`float`, *optional*, defaults to 7.5):
+            guidance_scale (`float`, *optional*, defaults to 8.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
                 Note that the original latent consistency models paper uses a different CFG formulation where the
