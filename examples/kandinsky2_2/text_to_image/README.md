@@ -305,13 +305,3 @@ image = pipe(prompt=prompt).images[0]
 image.save("robot_naruto.png")
 image
 ```
-
-### Training with xFormers:
-
-You can enable memory efficient attention by [installing xFormers](https://huggingface.co/docs/diffusers/main/en/optimization/xformers) and passing the `--enable_xformers_memory_efficient_attention` argument to the script.
-
-xFormers training is not available for fine-tuning the prior model.
-
-**Note**:
-
-According to [this issue](https://github.com/huggingface/diffusers/issues/2234#issuecomment-1416931212), xFormers `v0.0.16` cannot be used for training in some GPUs. If you observe that problem, please install a development version as indicated in that comment.

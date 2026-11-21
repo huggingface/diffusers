@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 [ControlNet](https://hf.co/papers/2302.05543) models are adapters trained on top of another pretrained model. It allows for a greater degree of control over image generation by conditioning the model with an additional input image. The input image can be a canny edge, depth map, human pose, and many more.
 
-If you're training on a GPU with limited vRAM, you should try enabling the `gradient_checkpointing`, `gradient_accumulation_steps`, and `mixed_precision` parameters in the training command. You can also reduce your memory footprint by using memory-efficient attention with [xFormers](../optimization/attention_backends).
+If you're training on a GPU with limited vRAM, you should try enabling the `gradient_checkpointing`, `gradient_accumulation_steps`, and `mixed_precision` parameters in the training command.
 
 This guide will explore the [train_controlnet.py](https://github.com/huggingface/diffusers/blob/main/examples/controlnet/train_controlnet.py) training script to help you become familiar with it, and how you can adapt it for your own use-case.
 
@@ -185,13 +185,12 @@ accelerate launch train_controlnet.py \
 </hfoption>
 <hfoption id="12GB">
 
-On a 12GB GPU, you'll need bitsandbytes 8-bit optimizer, gradient checkpointing, xFormers, and set the gradients to `None` instead of zero to reduce your memory-usage.
+On a 12GB GPU, you'll need bitsandbytes 8-bit optimizer, gradient checkpointing, and set the gradients to `None` instead of zero to reduce your memory-usage.
 
 ```bash
 accelerate launch train_controlnet.py \
   --use_8bit_adam \
   --gradient_checkpointing \
-  --enable_xformers_memory_efficient_attention \
   --set_grads_to_none \
 ```
 

@@ -71,7 +71,6 @@ accelerate launch train_realfill.py \
 
 It is possible to run realfill on a low-memory GPU by using the following optimizations:
 - [gradient checkpointing and the 8-bit optimizer](#training-with-gradient-checkpointing-and-8-bit-optimizers)
-- [xformers](#training-with-xformers)
 - [setting grads to none](#set-grads-to-none)
 
 ```bash
@@ -87,7 +86,6 @@ accelerate launch train_realfill.py \
   --train_batch_size=16 \
   --gradient_accumulation_steps=1 --gradient_checkpointing \
   --use_8bit_adam \
-  --enable_xformers_memory_efficient_attention \
   --set_grads_to_none \
   --unet_learning_rate=2e-4 \
   --text_encoder_learning_rate=4e-5 \
@@ -104,9 +102,6 @@ accelerate launch train_realfill.py \
 With the help of gradient checkpointing and the 8-bit optimizer from bitsandbytes it's possible to run train realfill on a 16GB GPU.
 
 To install `bitsandbytes` please refer to this [readme](https://github.com/TimDettmers/bitsandbytes#requirements--installation).
-
-### Training with xformers:
-You can enable memory efficient attention by [installing xFormers](https://github.com/facebookresearch/xformers#installing-xformers) and padding the `--enable_xformers_memory_efficient_attention` argument to the script.
 
 ### Set grads to none
 

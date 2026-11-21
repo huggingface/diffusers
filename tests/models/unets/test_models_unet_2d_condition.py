@@ -33,7 +33,6 @@ from diffusers.models.attention_processor import (
 )
 from diffusers.models.embeddings import ImageProjection, IPAdapterFaceIDImageProjection, IPAdapterPlusImageProjection
 from diffusers.utils import logging
-from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
@@ -717,21 +716,6 @@ class TestUNet2DConditionTraining(UNet2DConditionTesterConfig, TrainingTesterMix
 class TestUNet2DConditionAttention(UNet2DConditionTesterConfig, AttentionTesterMixin):
     """Attention processor tests for UNet2DConditionModel."""
 
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_xformers_available(),
-        reason="XFormers attention is only available with CUDA and `xformers` installed",
-    )
-    def test_xformers_enable_works(self):
-        init_dict = self.get_init_dict()
-        model = self.model_class(**init_dict)
-
-        model.enable_xformers_memory_efficient_attention()
-
-        assert (
-            model.mid_block.attentions[0].transformer_blocks[0].attn1.processor.__class__.__name__
-            == "XFormersAttnProcessor"
-        ), "xformers is not enabled"
-
     def test_model_attention_slicing(self):
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
@@ -943,36 +927,6 @@ class TestUNet2DConditionCustomDiffusion(UNet2DConditionTesterConfig):
 
         # custom diffusion and no custom diffusion should be the same
         assert (sample - old_sample).abs().max() < 3e-3
-
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_xformers_available(),
-        reason="XFormers attention is only available with CUDA and `xformers` installed",
-    )
-    def test_custom_diffusion_xformers_on_off(self):
-        init_dict = self.get_init_dict()
-        inputs_dict = self.get_dummy_inputs()
-
-        init_dict["block_out_channels"] = (16, 32)
-        init_dict["attention_head_dim"] = (8, 16)
-
-        torch.manual_seed(0)
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-        custom_diffusion_attn_procs = create_custom_diffusion_layers(model, mock_weights=False)
-        model.set_attn_processor(custom_diffusion_attn_procs)
-
-        # default
-        with torch.no_grad():
-            sample = model(**inputs_dict).sample
-
-            model.enable_xformers_memory_efficient_attention()
-            on_sample = model(**inputs_dict).sample
-
-            model.disable_xformers_memory_efficient_attention()
-            off_sample = model(**inputs_dict).sample
-
-        assert (sample - on_sample).abs().max() < 1e-4
-        assert (sample - off_sample).abs().max() < 1e-4
 
 
 class TestUNet2DConditionIPAdapter(UNet2DConditionTesterConfig, IPAdapterTesterMixin):

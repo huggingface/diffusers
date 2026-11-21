@@ -29,8 +29,6 @@ This model was contributed by the community contributor [HimariO](https://github
     - __call__
     - enable_attention_slicing
     - disable_attention_slicing
-    - enable_xformers_memory_efficient_attention
-    - disable_xformers_memory_efficient_attention
 
 ## StableDiffusionXLAdapterPipeline
 
@@ -39,5 +37,3 @@ This model was contributed by the community contributor [HimariO](https://github
     - __call__
     - enable_attention_slicing
     - disable_attention_slicing
-    - enable_xformers_memory_efficient_attention
-    - disable_xformers_memory_efficient_attention
