@@ -24,6 +24,7 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
+from diffusers.models.attention_processor import XLAFlashAttnProcessor2_0
 from diffusers.training_utils import compute_snr
 from diffusers.utils import is_wandb_available
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
@@ -520,7 +521,7 @@ def main(args):
     from torch_xla.distributed.fsdp.utils import apply_xla_patch_to_nn_linear
 
     unet = apply_xla_patch_to_nn_linear(unet, xs.xla_patched_nn_linear_forward)
-    unet.enable_xla_flash_attention(partition_spec=("data", None, None, None))
+    unet.set_attn_processor(XLAFlashAttnProcessor2_0(partition_spec=("data", None, None, None)))
 
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)

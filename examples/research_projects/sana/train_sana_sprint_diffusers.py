@@ -52,7 +52,7 @@ from diffusers import (
     SanaSprintPipeline,
     SanaTransformer2DModel,
 )
-from diffusers.models.attention_processor import Attention
+from diffusers.models.attention_processor import Attention, AttnProcessorNPU
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import (
     free_memory,
@@ -1106,9 +1106,9 @@ def main(args):
         if is_torch_npu_available():
             logger.info("npu flash attention enabled.")
             for block in transformer.transformer_blocks:
-                block.attn2.set_use_npu_flash_attention(True)
+                block.attn2.set_processor(AttnProcessorNPU())
             for block in pretrained_model.transformer_blocks:
-                block.attn2.set_use_npu_flash_attention(True)
+                block.attn2.set_processor(AttnProcessorNPU())
         else:
             raise ValueError("npu flash attention requires torch_npu extensions and is supported only on npu device ")
 

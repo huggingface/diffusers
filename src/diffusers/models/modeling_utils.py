@@ -129,6 +129,17 @@ TORCH_INIT_FUNCTIONS = {
 
 _LOW_CPU_MEM_USAGE_DEFAULT = True
 
+NPU_FLASH_ATTENTION_DEPRECATION_MESSAGE = (
+    "`enable_npu_flash_attention`, `disable_npu_flash_attention` and `set_use_npu_flash_attention` are deprecated and"
+    ' will be removed in version 0.46.0. Use `set_attention_backend("_native_npu")` instead. For models that do not'
+    " support attention backends, such as UNets, use `set_attn_processor(AttnProcessorNPU())`."
+)
+XLA_FLASH_ATTENTION_DEPRECATION_MESSAGE = (
+    "`enable_xla_flash_attention`, `disable_xla_flash_attention` and `set_use_xla_flash_attention` are deprecated and"
+    ' will be removed in version 0.46.0. Use `set_attention_backend("_native_xla")` instead. For models that do not'
+    " support attention backends, such as UNets, use `set_attn_processor(XLAFlashAttnProcessor2_0(partition_spec))`."
+)
+
 
 if is_accelerate_available():
     import accelerate
@@ -329,12 +340,17 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             self._set_gradient_checkpointing(enable=False)
 
     def set_use_npu_flash_attention(self, valid: bool) -> None:
-        r"""
-        Set the switch for the npu flash attention.
-        """
+        # Deprecated and scheduled for removal in version 0.46.0.
+        deprecate(
+            "set_use_npu_flash_attention", "0.46.0", NPU_FLASH_ATTENTION_DEPRECATION_MESSAGE, standard_warn=False
+        )
+        self._set_use_npu_flash_attention(valid)
 
+    def _set_use_npu_flash_attention(self, valid: bool) -> None:
         def fn_recursive_set_npu_flash_attention(module: torch.nn.Module):
-            if hasattr(module, "set_use_npu_flash_attention"):
+            if hasattr(module, "_set_use_npu_flash_attention"):
+                module._set_use_npu_flash_attention(valid)
+            elif hasattr(module, "set_use_npu_flash_attention"):
                 module.set_use_npu_flash_attention(valid)
 
             for child in module.children():
@@ -345,27 +361,36 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 fn_recursive_set_npu_flash_attention(module)
 
     def enable_npu_flash_attention(self) -> None:
-        r"""
-        Enable npu flash attention from torch_npu
-
-        """
-        self.set_use_npu_flash_attention(True)
+        # Deprecated and scheduled for removal in version 0.46.0.
+        deprecate("enable_npu_flash_attention", "0.46.0", NPU_FLASH_ATTENTION_DEPRECATION_MESSAGE, standard_warn=False)
+        self._set_use_npu_flash_attention(True)
 
     def disable_npu_flash_attention(self) -> None:
-        r"""
-        disable npu flash attention from torch_npu
-
-        """
-        self.set_use_npu_flash_attention(False)
+        # Deprecated and scheduled for removal in version 0.46.0.
+        deprecate(
+            "disable_npu_flash_attention", "0.46.0", NPU_FLASH_ATTENTION_DEPRECATION_MESSAGE, standard_warn=False
+        )
+        self._set_use_npu_flash_attention(False)
 
     def set_use_xla_flash_attention(
+        self, use_xla_flash_attention: bool, partition_spec: Callable | None = None, **kwargs
+    ) -> None:
+        # Deprecated and scheduled for removal in version 0.46.0.
+        deprecate(
+            "set_use_xla_flash_attention", "0.46.0", XLA_FLASH_ATTENTION_DEPRECATION_MESSAGE, standard_warn=False
+        )
+        self._set_use_xla_flash_attention(use_xla_flash_attention, partition_spec, **kwargs)
+
+    def _set_use_xla_flash_attention(
         self, use_xla_flash_attention: bool, partition_spec: Callable | None = None, **kwargs
     ) -> None:
         # Recursively walk through all the children.
         # Any children which exposes the set_use_xla_flash_attention method
         # gets the message
         def fn_recursive_set_flash_attention(module: torch.nn.Module):
-            if hasattr(module, "set_use_xla_flash_attention"):
+            if hasattr(module, "_set_use_xla_flash_attention"):
+                module._set_use_xla_flash_attention(use_xla_flash_attention, partition_spec, **kwargs)
+            elif hasattr(module, "set_use_xla_flash_attention"):
                 module.set_use_xla_flash_attention(use_xla_flash_attention, partition_spec, **kwargs)
 
             for child in module.children():
@@ -376,16 +401,16 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 fn_recursive_set_flash_attention(module)
 
     def enable_xla_flash_attention(self, partition_spec: Callable | None = None, **kwargs):
-        r"""
-        Enable the flash attention pallals kernel for torch_xla.
-        """
-        self.set_use_xla_flash_attention(True, partition_spec, **kwargs)
+        # Deprecated and scheduled for removal in version 0.46.0.
+        deprecate("enable_xla_flash_attention", "0.46.0", XLA_FLASH_ATTENTION_DEPRECATION_MESSAGE, standard_warn=False)
+        self._set_use_xla_flash_attention(True, partition_spec, **kwargs)
 
     def disable_xla_flash_attention(self):
-        r"""
-        Disable the flash attention pallals kernel for torch_xla.
-        """
-        self.set_use_xla_flash_attention(False)
+        # Deprecated and scheduled for removal in version 0.46.0.
+        deprecate(
+            "disable_xla_flash_attention", "0.46.0", XLA_FLASH_ATTENTION_DEPRECATION_MESSAGE, standard_warn=False
+        )
+        self._set_use_xla_flash_attention(False)
 
     def set_use_memory_efficient_attention_xformers(self, valid: bool, attention_op: Callable | None = None) -> None:
         # Recursively walk through all the children.

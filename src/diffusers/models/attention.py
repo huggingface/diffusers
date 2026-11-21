@@ -175,13 +175,15 @@ class AttentionModuleMixin:
         self.processor._attention_backend = backend
 
     def set_use_npu_flash_attention(self, use_npu_flash_attention: bool) -> None:
-        """
-        Set whether to use NPU flash attention from `torch_npu` or not.
+        # Deprecated and scheduled for removal in version 0.46.0.
+        deprecation_message = (
+            "`set_use_npu_flash_attention` is deprecated and will be removed in version 0.46.0. Use"
+            ' `set_attention_backend("_native_npu")` instead.'
+        )
+        deprecate("set_use_npu_flash_attention", "0.46.0", deprecation_message, standard_warn=False)
+        self._set_use_npu_flash_attention(use_npu_flash_attention)
 
-        Args:
-            use_npu_flash_attention (`bool`): Whether to use NPU flash attention or not.
-        """
-
+    def _set_use_npu_flash_attention(self, use_npu_flash_attention: bool) -> None:
         if use_npu_flash_attention:
             if not is_torch_npu_available():
                 raise ImportError("torch_npu is not available")
@@ -194,17 +196,20 @@ class AttentionModuleMixin:
         partition_spec: tuple[str | None, ...] | None = None,
         is_flux=False,
     ) -> None:
-        """
-        Set whether to use XLA flash attention from `torch_xla` or not.
+        # Deprecated and scheduled for removal in version 0.46.0.
+        deprecation_message = (
+            "`set_use_xla_flash_attention` is deprecated and will be removed in version 0.46.0. Use"
+            ' `set_attention_backend("_native_xla")` instead.'
+        )
+        deprecate("set_use_xla_flash_attention", "0.46.0", deprecation_message, standard_warn=False)
+        self._set_use_xla_flash_attention(use_xla_flash_attention, partition_spec, is_flux)
 
-        Args:
-            use_xla_flash_attention (`bool`):
-                Whether to use pallas flash attention kernel from `torch_xla` or not.
-            partition_spec (`tuple[]`, *optional*):
-                Specify the partition specification if using SPMD. Otherwise None.
-            is_flux (`bool`, *optional*, defaults to `False`):
-                Whether the model is a Flux model.
-        """
+    def _set_use_xla_flash_attention(
+        self,
+        use_xla_flash_attention: bool,
+        partition_spec: tuple[str | None, ...] | None = None,
+        is_flux=False,
+    ) -> None:
         if use_xla_flash_attention:
             if not is_torch_xla_available():
                 raise ImportError("torch_xla is not available")

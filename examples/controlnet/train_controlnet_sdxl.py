@@ -51,6 +51,7 @@ from diffusers import (
     UNet2DConditionModel,
     UniPCMultistepScheduler,
 )
+from diffusers.models.attention_processor import AttnProcessorNPU
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
@@ -979,7 +980,7 @@ def main(args):
     if args.enable_npu_flash_attention:
         if is_torch_npu_available():
             logger.info("npu flash attention enabled.")
-            unet.enable_npu_flash_attention()
+            unet.set_attn_processor(AttnProcessorNPU())
         else:
             raise ValueError("npu flash attention requires torch_npu extensions and is supported only on npu devices.")
 
