@@ -14,7 +14,7 @@
 
 from ...utils import logging
 from ..modular_pipeline import SequentialPipelineBlocks
-from ..modular_pipeline_utils import OutputParam
+from ..modular_pipeline_utils import InputParam, OutputParam
 from .before_denoise import (
     WanPrepareLatentsStep,
     WanSetTimestepsStep,
@@ -137,8 +137,8 @@ class Wan22VaceBlocks(SequentialPipelineBlocks):
           noise stages.
 
       Inputs:
-          prompt (`None`, *optional*):
-              TODO: Add description.
+          prompt (`str`):
+              The prompt to guide generation, a single string.
           negative_prompt (`None`, *optional*):
               TODO: Add description.
           max_sequence_length (`None`, *optional*, defaults to 512):
@@ -158,7 +158,7 @@ class Wan22VaceBlocks(SequentialPipelineBlocks):
           width (`None`, *optional*):
               TODO: Add description.
           num_frames (`int`, *optional*, defaults to 81):
-              TODO: Add description.
+              The number of frames in the generated video.
           generator (`None`, *optional*):
               TODO: Add description.
           num_videos_per_prompt (`None`, *optional*, defaults to 1):
@@ -185,7 +185,11 @@ class Wan22VaceBlocks(SequentialPipelineBlocks):
 
     model_name = "wan-vace"
     block_classes = [
-        WanTextEncoderStep,
+        # VACE takes one prompt per call (`WanVaceAdditionalInputsStep` raises on a list), the shared encoder says
+        # "prompt or prompts"
+        WanTextEncoderStep().new(
+            inputs=[InputParam.template("prompt", description="The prompt to guide generation, a single string.")]
+        ),
         WanVaceEncoderStep,
         Wan22VaceCoreDenoiseStep,
         WanVaeDecoderStep,

@@ -20,6 +20,7 @@ from diffusers.modular_pipelines import QwenImage21AutoBlocks, QwenImage21Modula
 
 from ...testing_utils import assert_tensors_close, torch_device
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularGuiderTesterMixin,
     ModularLoadingTesterMixin,
@@ -135,9 +136,7 @@ class QwenImage21ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = QwenImage21AutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage21-modular"
     expected_latents_shape = (1, 8, 1, 2, 2)
-    params = frozenset(
-        ["prompt", "negative_prompt", "height", "width", "output_resolution", "attention_kwargs", "image"]
-    )
+    optional_params = OPTIONAL_PARAMS | {"attention_kwargs", "image", "negative_prompt", "output_resolution"}
     batch_params = frozenset(["prompt", "negative_prompt"])
     expected_workflow_blocks = QWENIMAGE21_TEXT2IMAGE_WORKFLOWS
     expected_workflow_defaults = {"text2image": QWENIMAGE21_WORKFLOW_DEFAULTS["text2image"]}

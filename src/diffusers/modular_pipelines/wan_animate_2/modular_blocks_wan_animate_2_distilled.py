@@ -263,7 +263,7 @@ class WanAnimate2DistilledBlocks(SequentialPipelineBlocks):
 
       Inputs:
           prompt (`str`):
-              The prompt or prompts to guide image generation.
+              The prompt to guide generation, a single string.
           negative_prompt (`str`, *optional*):
               The prompt or prompts not to guide the image generation.
           prompt_ref (`str`, *optional*, defaults to 人物动作的参考视频):

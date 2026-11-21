@@ -314,11 +314,11 @@ class Flux2AutoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           image_latents (`list`, *optional*):
               TODO: Add description.
-          latents (`Tensor | NoneType`):
+          latents (`Tensor | NoneType`, *optional*):
               TODO: Add description.
-          num_inference_steps (`None`):
+          num_inference_steps (`None`, *optional*, defaults to 50):
               TODO: Add description.
-          timesteps (`None`):
+          timesteps (`None`, *optional*):
               TODO: Add description.
           sigmas (`None`, *optional*):
               TODO: Add description.

@@ -43,11 +43,24 @@ class HunyuanVideo15CoreDenoiseStep(SequentialPipelineBlocks):
           video_processor (`HunyuanVideo15ImageProcessor`) guider (`ClassifierFreeGuidance`)
 
       Inputs:
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          batch_size (`int`, *optional*):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
-              be generated in input step.
+          prompt_embeds_mask (`Tensor`):
+              mask for the text embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              mask for the negative text embeddings. Can be generated from text_encoder step.
+          prompt_embeds_2 (`Tensor`):
+              ByT5 glyph-text embeddings. Can be generated from text_encoder step.
+          prompt_embeds_mask_2 (`Tensor`):
+              Attention mask for the ByT5 glyph-text embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds_2 (`Tensor`, *optional*):
+              ByT5 glyph-text negative embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
+              Attention mask for the ByT5 glyph-text negative embeddings. Can be generated from text_encoder step.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           sigmas (`list`, *optional*):
@@ -60,26 +73,10 @@ class HunyuanVideo15CoreDenoiseStep(SequentialPipelineBlocks):
               Number of video frames to generate.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
-          negative_prompt_embeds (`Tensor`, *optional*):
-              Negative branch of the 'negative_prompt_embeds' field fed into the guider.
-          prompt_embeds_mask (`Tensor`):
-              Positive branch of the 'prompt_embeds_mask' field fed into the guider.
-          negative_prompt_embeds_mask (`Tensor`, *optional*):
-              Negative branch of the 'negative_prompt_embeds_mask' field fed into the guider.
-          prompt_embeds_2 (`Tensor`):
-              Positive branch of the 'prompt_embeds_2' field fed into the guider.
-          negative_prompt_embeds_2 (`Tensor`, *optional*):
-              Negative branch of the 'negative_prompt_embeds_2' field fed into the guider.
-          prompt_embeds_mask_2 (`Tensor`):
-              Positive branch of the 'prompt_embeds_mask_2' field fed into the guider.
-          negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
-              Negative branch of the 'negative_prompt_embeds_mask_2' field fed into the guider.
 
       Outputs:
           latents (`Tensor`):
@@ -122,9 +119,6 @@ class HunyuanVideo15Blocks(SequentialPipelineBlocks):
               The prompt or prompts not to guide the image generation.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
-          batch_size (`int`, *optional*):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
-              be generated in input step.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           sigmas (`list`, *optional*):
@@ -176,11 +170,24 @@ class HunyuanVideo15Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
           video_processor (`HunyuanVideo15ImageProcessor`) guider (`ClassifierFreeGuidance`)
 
       Inputs:
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          batch_size (`int`, *optional*):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
-              be generated in input step.
+          prompt_embeds_mask (`Tensor`):
+              mask for the text embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              mask for the negative text embeddings. Can be generated from text_encoder step.
+          prompt_embeds_2 (`Tensor`):
+              ByT5 glyph-text embeddings. Can be generated from text_encoder step.
+          prompt_embeds_mask_2 (`Tensor`):
+              Attention mask for the ByT5 glyph-text embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds_2 (`Tensor`, *optional*):
+              ByT5 glyph-text negative embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
+              Attention mask for the ByT5 glyph-text negative embeddings. Can be generated from text_encoder step.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           sigmas (`list`, *optional*):
@@ -193,28 +200,12 @@ class HunyuanVideo15Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               Number of video frames to generate.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
           image_latents (`Tensor`):
               Pre-encoded image latents from the VAE encoder step, used as conditioning for I2V.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
-          negative_prompt_embeds (`Tensor`, *optional*):
-              Negative branch of the 'negative_prompt_embeds' field fed into the guider.
-          prompt_embeds_mask (`Tensor`):
-              Positive branch of the 'prompt_embeds_mask' field fed into the guider.
-          negative_prompt_embeds_mask (`Tensor`, *optional*):
-              Negative branch of the 'negative_prompt_embeds_mask' field fed into the guider.
-          prompt_embeds_2 (`Tensor`):
-              Positive branch of the 'prompt_embeds_2' field fed into the guider.
-          negative_prompt_embeds_2 (`Tensor`, *optional*):
-              Negative branch of the 'negative_prompt_embeds_2' field fed into the guider.
-          prompt_embeds_mask_2 (`Tensor`):
-              Positive branch of the 'prompt_embeds_mask_2' field fed into the guider.
-          negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
-              Negative branch of the 'negative_prompt_embeds_mask_2' field fed into the guider.
 
       Outputs:
           latents (`Tensor`):
@@ -252,7 +243,7 @@ class HunyuanVideo15AutoVaeEncoderStep(AutoPipelineBlocks):
           vae (`AutoencoderKLHunyuanVideo15`) video_processor (`HunyuanVideo15ImageProcessor`)
 
       Inputs:
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, depends on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
           height (`int`, *optional*):
               The height in pixels of the generated image.
@@ -295,7 +286,7 @@ class HunyuanVideo15AutoImageEncoderStep(AutoPipelineBlocks):
           image_encoder (`SiglipVisionModel`) feature_extractor (`SiglipImageProcessor`)
 
       Inputs:
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, depends on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
 
       Outputs:
@@ -330,12 +321,25 @@ class HunyuanVideo15AutoCoreDenoiseStep(AutoPipelineBlocks):
           video_processor (`HunyuanVideo15ImageProcessor`) guider (`ClassifierFreeGuidance`)
 
       Inputs:
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          batch_size (`int`):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
-              be generated in input step.
-          num_inference_steps (`int`):
+          prompt_embeds_mask (`Tensor`):
+              mask for the text embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds (`Tensor`, *optional*):
+              negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
+          negative_prompt_embeds_mask (`Tensor`, *optional*):
+              mask for the negative text embeddings. Can be generated from text_encoder step.
+          prompt_embeds_2 (`Tensor`):
+              ByT5 glyph-text embeddings. Can be generated from text_encoder step.
+          prompt_embeds_mask_2 (`Tensor`):
+              Attention mask for the ByT5 glyph-text embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds_2 (`Tensor`, *optional*):
+              ByT5 glyph-text negative embeddings. Can be generated from text_encoder step.
+          negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
+              Attention mask for the ByT5 glyph-text negative embeddings. Can be generated from text_encoder step.
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
@@ -345,30 +349,14 @@ class HunyuanVideo15AutoCoreDenoiseStep(AutoPipelineBlocks):
               The width in pixels of the generated image.
           num_frames (`int`, *optional*, defaults to 121):
               Number of video frames to generate.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`, *optional*, depends on the workflow):
               Pre-encoded image latents from the VAE encoder step, used as conditioning for I2V.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
-          negative_prompt_embeds (`Tensor`, *optional*):
-              Negative branch of the 'negative_prompt_embeds' field fed into the guider.
-          prompt_embeds_mask (`Tensor`):
-              Positive branch of the 'prompt_embeds_mask' field fed into the guider.
-          negative_prompt_embeds_mask (`Tensor`, *optional*):
-              Negative branch of the 'negative_prompt_embeds_mask' field fed into the guider.
-          prompt_embeds_2 (`Tensor`):
-              Positive branch of the 'prompt_embeds_2' field fed into the guider.
-          negative_prompt_embeds_2 (`Tensor`, *optional*):
-              Negative branch of the 'negative_prompt_embeds_2' field fed into the guider.
-          prompt_embeds_mask_2 (`Tensor`):
-              Positive branch of the 'prompt_embeds_mask_2' field fed into the guider.
-          negative_prompt_embeds_mask_2 (`Tensor`, *optional*):
-              Negative branch of the 'negative_prompt_embeds_mask_2' field fed into the guider.
 
       Outputs:
           latents (`Tensor`):
@@ -410,28 +398,25 @@ class HunyuanVideo15AutoBlocks(SequentialPipelineBlocks):
               The prompt or prompts to guide image generation.
           negative_prompt (`str`, *optional*):
               The prompt or prompts not to guide the image generation.
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, depends on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
-          batch_size (`int`):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
-              be generated in input step.
-          num_inference_steps (`int`):
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           num_frames (`int`, *optional*, defaults to 121):
               Number of video frames to generate.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`, *optional*, depends on the workflow):
               Pre-encoded image latents from the VAE encoder step, used as conditioning for I2V.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
@@ -483,17 +468,14 @@ class HunyuanVideo15Image2VideoBlocks(SequentialPipelineBlocks):
               The prompt or prompts to guide image generation.
           negative_prompt (`str`, *optional*):
               The prompt or prompts not to guide the image generation.
-          num_videos_per_prompt (`int`, *optional*, defaults to 1):
-              The number of images to generate per prompt.
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, depends on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
           height (`int`, *optional*):
               The height in pixels of the generated image.
           width (`int`, *optional*):
               The width in pixels of the generated image.
-          batch_size (`int`, *optional*):
-              Number of prompts, the final batch size of model inputs should be batch_size * num_images_per_prompt. Can
-              be generated in input step.
+          num_videos_per_prompt (`int`, *optional*, defaults to 1):
+              The number of images to generate per prompt.
           num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           sigmas (`list`, *optional*):
@@ -504,7 +486,7 @@ class HunyuanVideo15Image2VideoBlocks(SequentialPipelineBlocks):
               Pre-generated noisy latents for image generation.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          image_latents (`Tensor`):
+          image_latents (`Tensor`, *optional*):
               Pre-encoded image latents from the VAE encoder step, used as conditioning for I2V.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.

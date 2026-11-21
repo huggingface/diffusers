@@ -269,7 +269,7 @@ OutputParam(
 )
 ```
 
-If a template's predefined description doesn't fit (e.g. the `"latents"` output template means "Denoised latents", which is wrong for the noisy latents out of a prepare-latents step) — drop the template and declare the field directly with an accurate description. See gotcha #5.
+If a template's predefined description doesn't fit (e.g. the `"latents"` output template means "Denoised latents", which is wrong for the noisy latents out of a prepare-latents step) — keep the template for the name and type hint and pass your own `description=`, or declare the field directly. See gotcha #5.
 
 **Declare defaults in the `InputParam`, not inside `__call__`.**
 
@@ -282,19 +282,22 @@ if block_state.num_frames is None:
     block_state.num_frames = 189
 ```
 
-A declared default is part of the block's contract, so the assembled pipeline is aware of it: the generated docstring shows it and `default_call_parameters` reports it. Resolved inside the body instead, the input renders as `*optional*` with no default, and nothing at the pipeline level can report what the block will actually do. Don't worry about branches of a conditional blockset declaring different defaults for the same input — each branch resolves its own at runtime. Resolve inside `__call__` only when the default is *computed* — derived from other inputs or component config (`height = components.default_sample_size * components.vae_scale_factor`). And when several blocks in a sequence share an input, declare the same default on each (or only on the first block that reads it): in a sequence the input is one shared value, so disagreeing declarations are silently resolved first-block-wins.
-
-**A composed `SequentialPipelineBlocks` can override `inputs` / `outputs`.** Two uses: narrow `outputs` to what downstream actually consumes, so the docstring shows the step's product instead of every internal intermediate (Wan-Animate-2's core denoise exposes only `segment_frames`); and change one input default per preset by mapping over `super().inputs` (the distilled core denoise turns `num_inference_steps` into `default=10`):
+A declared default is part of the block's contract: it shows in the generated docstring and in `default_call_parameters`; one resolved in the body does not. Resolve inside `__call__` only when the default is *computed*, derived from other inputs or component config:
 
 ```python
-@property
-def inputs(self):
-    # The distilled checkpoint samples in few steps.
-    return [
-        InputParam.template("num_inference_steps", default=10) if param.name == "num_inference_steps" else param
-        for param in super().inputs
-    ]
+if block_state.height is None:
+    block_state.height = components.default_sample_size * components.vae_scale_factor
 ```
+
+The other two ways to declare an input: 
+(1) `required=True` when the block cannot work without the value, so the caller has to pass it; the block raises `ValueError("Required input 'x' is missing")` when it is not passed or `None`.
+(2) Optional with no default when the block works with `None`. Most often that is the computed case above, and the block should then also declare the value as an output.
+
+A composite (`SequentialPipelineBlocks`, `ConditionalPipelineBlocks`, `LoopSequentialPipelineBlocks`) derives its inputs and intermediate outputs from its sub-blocks. They are part of each sub-block's logic, the values its `__call__` reads and writes, so they can't be added or removed on the composite. Don't override `inputs` or `intermediate_outputs` there: to change the default of an input, create the sub-block with the default you need using `new()`. See "Reusing a block with `new()`" below.
+
+`outputs` is different: it is what the composite presents as its product. By default it is every intermediate output. Override the property to list only what the step is for, so the docstring shows the product instead of every internal intermediate (most core denoise steps list only `latents`). It changes the docstring and `output_names` only: everything stays in the pipeline state, and `pipe(..., output=<name>)` still fetches any intermediate, listed or not.
+
+When two sub-blocks of a sequence declare different defaults for the same input, the sequence uses the first one. The best practice is to make sure every sub-block you use has the intended default (use `new()` where it does not). An input a sub-block requires can show as optional on the composite, when an earlier sub-block gives it a default or may produce it; that is expected.
 
 ## ComponentSpec patterns
 
@@ -312,6 +315,40 @@ ComponentSpec(
 )
 ```
 
+A composite inherits its sub-blocks' `ComponentSpec`s and `ConfigSpec`s. To point one at another repo, loading method or config value for the assembled pipeline, see "Reusing a block with `new()`" below.
+
+## Reusing a block with `new()`
+
+A composite's inputs, intermediate outputs, components and configs all derive from its sub-blocks, so you should change the declaration on the sub-block, not on the composite.
+
+A common case: a block does what you need, but one of its declarations does not fit, e.g. the default or description of an input, the repo and loading info of a component, the value of a config. Don't copy or subclass the block for that, create it with `new()`:
+
+```python
+class DistilledBlocks(SequentialPipelineBlocks):
+    block_classes = [
+        TextEncoderStep,
+        # the distilled checkpoint samples in few steps
+        SetTimestepsStep().new(inputs=[InputParam.template("num_inference_steps", default=10)]),
+        # it has its own transformer weights and skips guidance
+        DenoiseStep().new(
+            components=[
+                ComponentSpec("transformer", YourTransformerModel, repo="org/model-distilled", subfolder="transformer")
+            ],
+            configs=[ConfigSpec("is_distilled", default=True)],
+        ),
+        DecodeStep,
+    ]
+    block_names = ["text_encoder", "set_timesteps", "denoise", "decode"]
+```
+
+`block.new(description=..., inputs=[...], intermediate_outputs=[...], outputs=[...], components=[...], configs=[...])` returns a copy of the block where the entries you pass override the block's own, matched by name. Entries you don't list are unchanged; an entry you do list is replaced whole (gotcha #13). Typical uses: set a preset's default or checkpoint as above, settle a default two sub-blocks disagree on, or reword a description.
+
+What `new()` does not do:
+
+- It cannot add or remove an entry, only replace one the block already declares.
+- It only works on a block without sub-blocks.
+- It does not change the block's code. A block that reads other inputs or runs other code is a block of its own, not a `new()` of another (gotcha #13).
+
 ## Gotchas
 
 1. **Importing from standard pipelines.** The modular and standard pipeline systems are parallel — modular blocks must not import from `diffusers.pipelines.*`. For shared utility methods (e.g. `_pack_latents`, `retrieve_timesteps`), either redefine as standalone functions or use `# Copied from diffusers.pipelines.<model>...` headers. See `wan/before_denoise.py` and `helios/before_denoise.py` for examples.
@@ -322,7 +359,7 @@ ComponentSpec(
 
 4. **Instantiating components inline.** If a class like `VideoProcessor` is needed, register it as a `ComponentSpec` and access via `components.video_processor`. Don't create new instances inside block `__call__`.
 
-5. **Using `InputParam.template()` / `OutputParam.template()` when semantics don't match.** Templates carry predefined descriptions — e.g. the `"latents"` output template means "Denoised latents". Don't use it for initial noisy latents from a prepare-latents step. Use a plain `InputParam(...)` / `OutputParam(...)` with an accurate description instead.
+5. **Using `InputParam.template()` / `OutputParam.template()` when semantics don't match.** Templates carry predefined descriptions — e.g. the `"latents"` output template means "Denoised latents". Don't use it as is for initial noisy latents from a prepare-latents step: keep the template for the name and type hint and pass `description=` (`OutputParam.template("latents", description="Initial noisy latents")`), or use a plain `InputParam(...)` / `OutputParam(...)`.
 
 6. **`required=True` on an input that carries a default.** An input cannot be both required and have a default. When that happens, `InputParam` keeps the default, treats the input as optional and logs a warning. This is likely to happen when you reuse a template for its type hint and description but make it required: `InputParam.template("num_inference_steps", required=True)` stays an optional input that defaults to 50, plus a warning. Decide which one you mean: drop `required=True` to keep the template default without the warning, or pass `default=None` explicitly to make the input required.
 
@@ -340,6 +377,8 @@ ComponentSpec(
 11. **Raw `torch.randn(device=...)` for noise.** Use `randn_tensor(...)` from `utils/torch_utils`: it draws on the generator's device and moves the result, so CPU generators (what the test mixins pass) work, and the CUDA-generator path is bit-identical to `torch.randn`.
 
 12. **Helpers taking `components`.** Prefer explicit args, for example, `get_xx_prompt_embeds(text_encoder, tokenizer, prompt)` instead of `get_xx_prompt_embeds(components, prompt)`. Helpers and block methods should take only what they use so dependencies are visible and they can run without an assembled pipeline. Leave the full `components` object to `__call__`, which unpacks what its helpers need. See `get_qwen_prompt_embeds` in `qwenimage/encoders.py`.
+
+13. **`new()` replaces a whole entry, not a field.** List only the entries you want to change; the others stay as the block declared them. But each entry you list replaces the block's entry completely: `block.new(inputs=[InputParam("num_inference_steps", default=10)])` loses the type hint and description the block had. Build the entry from the template, `InputParam.template("num_inference_steps", default=10)`, or write out every field.
 
 ## Conversion checklist
 

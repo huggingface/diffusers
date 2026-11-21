@@ -1056,7 +1056,17 @@ class HeliosPyramidDistilledChunkDenoiseStep(HeliosChunkLoopWrapper):
 
     block_classes = [
         HeliosChunkHistorySliceStep,
-        HeliosPyramidChunkNoiseGenStep,
+        # the shared noise-gen step defaults to the non-distilled schedule; the distilled denoiser runs 2 steps per stage
+        HeliosPyramidChunkNoiseGenStep().new(
+            inputs=[
+                InputParam(
+                    "pyramid_num_inference_steps_list",
+                    default=[2, 2, 2],
+                    type_hint=list,
+                    description="Number of denoising steps per pyramid stage.",
+                )
+            ]
+        ),
         HeliosPyramidDistilledChunkDenoiseInner,
         HeliosChunkUpdateStep,
     ]
@@ -1075,7 +1085,17 @@ class HeliosPyramidDistilledI2VChunkDenoiseStep(HeliosChunkLoopWrapper):
 
     block_classes = [
         HeliosI2VChunkHistorySliceStep,
-        HeliosPyramidChunkNoiseGenStep,
+        # the shared noise-gen step defaults to the non-distilled schedule; the distilled denoiser runs 2 steps per stage
+        HeliosPyramidChunkNoiseGenStep().new(
+            inputs=[
+                InputParam(
+                    "pyramid_num_inference_steps_list",
+                    default=[2, 2, 2],
+                    type_hint=list,
+                    description="Number of denoising steps per pyramid stage.",
+                )
+            ]
+        ),
         HeliosPyramidDistilledChunkDenoiseInner,
         HeliosChunkUpdateStep,
     ]

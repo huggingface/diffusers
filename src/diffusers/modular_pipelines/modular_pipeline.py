@@ -19,8 +19,8 @@ import sys
 import traceback
 import warnings
 from collections import OrderedDict
-from copy import deepcopy
-from dataclasses import dataclass, field
+from copy import copy, deepcopy
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import torch
@@ -52,13 +52,13 @@ from ..utils.torch_utils import empty_device_cache, is_compiled_module
 from .components_manager import ComponentsManager
 from .modular_pipeline_utils import (
     MODULAR_MODEL_CARD_TEMPLATE,
+    REQUIRED,
     ComponentSpec,
     ConfigSpec,
     InputParam,
     InsertableDict,
     OutputParam,
     _validate_requirements,
-    combine_inputs,
     combine_outputs,
     format_components,
     format_configs,
@@ -433,6 +433,129 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         """list of input parameters. Must be implemented by subclasses."""
         return []
 
+    def new(
+        self,
+        description: str | None = None,
+        inputs: list[InputParam] | None = None,
+        intermediate_outputs: list[OutputParam] | None = None,
+        outputs: list[OutputParam] | None = None,
+        components: list[ComponentSpec] | None = None,
+        configs: list[ConfigSpec] | None = None,
+    ) -> "ModularPipelineBlocks":
+        """
+        Creates a copy of this block with some of its declarations replaced, e.g. another default for an input, so the
+        same block can be reused where only what it declares differs. The block's code is not changed and the copy
+        keeps what this block was created with. An entry cannot be added or removed: a block that reads other inputs or
+        runs other code is a block of its own.
+
+        Args:
+            description: the description of the new block, in place of this block's
+            inputs: `InputParam`s replacing the ones the block declares under the same name. Each takes the declared
+                entry's place whole, so it states everything: default, `required`, description.
+            intermediate_outputs: the same for `intermediate_outputs`, a list of `OutputParam`
+            outputs: the same for `outputs`, a list of `OutputParam`
+            components: the same for `expected_components`, a list of `ComponentSpec`
+            configs: the same for `expected_configs`, a list of `ConfigSpec`
+
+        Returns:
+            A new block of the same class that declares the replaced entries.
+
+        Example:
+            ```python
+            class InpaintBeforeDenoiseStep(SequentialPipelineBlocks):
+                block_classes = [
+                    # shared with img2img, which defaults `strength` to 0.3
+                    SetTimestepsStep().new(inputs=[InputParam.template("strength", default=0.9999)]),
+                    InpaintPrepareLatentsStep,
+                ]
+                block_names = ["set_timesteps", "prepare_latents"]
+            ```
+        """
+        block_class = self.__class__
+        # a block assembled from sub-blocks (sequential, conditional, loop) derives its declarations from them
+        if self.sub_blocks:
+            raise TypeError(
+                f"`{block_class.__name__}.new()`: {block_class.__name__} derives its declarations from its "
+                f"sub-blocks. Call `new()` on the sub-block that declares the entry."
+            )
+
+        # the declarations of the new block, replaced one list at a time
+        properties = {}
+
+        if description is not None:
+            properties["description"] = property(lambda self: description)
+
+        if inputs:
+            # e.g. [<num_inference_steps: default=50>, <strength: default=0.3>]
+            new_inputs = list(self.inputs)
+            # kwargs inputs have no name and are keyed by "*_<kwargs_type>", like `ConditionalPipelineBlocks` does
+            names = [inp.name if inp.name is not None else f"*_{inp.kwargs_type}" for inp in new_inputs]
+            for inp in inputs:
+                name = inp.name if inp.name is not None else f"*_{inp.kwargs_type}"
+                if name not in names:
+                    raise ValueError(
+                        f"`{block_class.__name__}.new()`: {block_class.__name__} does not declare an input '{name}'. "
+                        f"Available: {sorted(n for n in names if not n.startswith('*_'))}"
+                    )
+                # e.g. -> [<num_inference_steps: default=50>, <strength: default=0.9999>]
+                new_inputs[names.index(name)] = inp
+            properties["inputs"] = property(lambda self: list(new_inputs))
+
+        if intermediate_outputs:
+            new_intermediate_outputs = list(self.intermediate_outputs)
+            names = [out.name for out in new_intermediate_outputs]
+            for out in intermediate_outputs:
+                if out.name not in names:
+                    raise ValueError(
+                        f"`{block_class.__name__}.new()`: {block_class.__name__} does not declare an intermediate "
+                        f"output '{out.name}'. Available: {sorted(names)}"
+                    )
+                new_intermediate_outputs[names.index(out.name)] = out
+            properties["intermediate_outputs"] = property(lambda self: list(new_intermediate_outputs))
+
+        if outputs:
+            new_outputs = list(self.outputs)
+            names = [out.name for out in new_outputs]
+            for out in outputs:
+                if out.name not in names:
+                    raise ValueError(
+                        f"`{block_class.__name__}.new()`: {block_class.__name__} does not list an output "
+                        f"'{out.name}' in `outputs`. Available: {sorted(names)}"
+                    )
+                new_outputs[names.index(out.name)] = out
+            properties["outputs"] = property(lambda self: list(new_outputs))
+
+        if components:
+            new_components = list(self.expected_components)
+            names = [spec.name for spec in new_components]
+            for spec in components:
+                if spec.name not in names:
+                    raise ValueError(
+                        f"`{block_class.__name__}.new()`: {block_class.__name__} does not declare a component "
+                        f"'{spec.name}'. Available: {sorted(names)}"
+                    )
+                new_components[names.index(spec.name)] = spec
+            properties["expected_components"] = property(lambda self: list(new_components))
+
+        if configs:
+            new_configs = list(self.expected_configs)
+            names = [spec.name for spec in new_configs]
+            for spec in configs:
+                if spec.name not in names:
+                    raise ValueError(
+                        f"`{block_class.__name__}.new()`: {block_class.__name__} does not declare a config "
+                        f"'{spec.name}'. Available: {sorted(names)}"
+                    )
+                new_configs[names.index(spec.name)] = spec
+            properties["expected_configs"] = property(lambda self: list(new_configs))
+
+        # the new block is a copy of this one, as an instance of a subclass with the same name that returns the lists
+        # above: the same as subclassing the block by hand to change what it declares
+        new_class = type(block_class.__name__, (block_class,), {"__module__": block_class.__module__, **properties})
+        block = deepcopy(self)
+        block.__class__ = new_class
+        return block
+
     def _get_required_inputs(self):
         input_names = []
         for input_param in self.inputs:
@@ -749,39 +872,102 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
                     expected_configs.append(config)
         return expected_configs
 
-    @property
-    def required_inputs(self) -> list[str]:
-        # no default block means this conditional block can be skipped entirely
-        if self.default_block_name is None:
-            return []
+    def _get_inputs(self):
+        # Merge the sub-blocks' inputs into one. Each sub-block is a branch and only one of them runs, so an input declared by
+        # several sub-blocks under the same name (for kwargs inputs, the same `kwargs_type`) is combined into one input:
+        # - its `type_hint` and `description` are defined by the first declaration.
+        # - `required` and `default` are only meaningful when the branches agree on them. they agree when:
+        #   - (1) every sub-block requires the input, and the block cannot be skipped: the merged input is required
+        #   - (2) every sub-block that declares it does so as optional, with the exact same default: the merged input is
+        #     optional with that default
+        # - otherwise (some require it and others do not, the defaults differ, or all of them require it but the block
+        # itself can be skipped): the merged input is optional with default `None`, and `defaults_by_block` records
+        # what each declaring sub-block says. At runtime the sub-block that runs fills in its own default, or raises when
+        # it requires the input and it is missing (see `ModularPipelineBlocks.get_block_state`);
+        # the docstrings say "depends on the workflow"
 
-        first_block = next(iter(self.sub_blocks.values()))
-        required_by_all = set(getattr(first_block, "required_inputs", set()))
+        declarations = {}
+        # declarations: input_name -> {block_name: InputParam}, `None` when the sub-block does not declare the input
+        # e.g. {"strength": {"inpaint": InputParam("strength", default=0.9999), "img2img": InputParam(...),
+        #                     "text2img": None}}
+        for block_name, block in self.sub_blocks.items():
+            for input_param in block.inputs:
+                # kwargs inputs have no name, key them by "*_<kwargs_type>"
+                if input_param.name is None and input_param.kwargs_type is not None:
+                    input_name = "*_" + input_param.kwargs_type
+                else:
+                    input_name = input_param.name
+                # every sub-block gets a slot, in order, so a silent sub-block shows up as None
+                by_block = declarations.setdefault(input_name, dict.fromkeys(self.sub_blocks))
+                if by_block[block_name] is None:
+                    by_block[block_name] = input_param
 
-        # Intersect with required inputs from all other blocks
-        for block in list(self.sub_blocks.values())[1:]:
-            block_required = set(getattr(block, "required_inputs", set()))
-            required_by_all.intersection_update(block_required)
+        # assemble the final merged input param list
+        inputs = []
+        for input_name, by_block in declarations.items():
+            # keep the first `InputParam` for type hint and description
+            input_param = next(p for p in by_block.values() if p is not None)
 
-        return list(required_by_all)
+            # required only when every sub-block requires it and the user cannot skip the whole block
+            required = (
+                all(p is not None and p.required for p in by_block.values()) and self.default_block_name is not None
+            )
+            # same default when every declaring sub-block says optional with the same default. A silent sub-block does not
+            # declare the input, so it agrees with whatever its siblings say. A required sub-block and a nested conditional
+            # block carrying a record of its own both have `default=None`, so they are ruled out explicitly, otherwise
+            # they would match a sibling that is optional with no default
+            same_default = all(
+                p is None or (not p.required and not p.defaults_by_block and p.default == input_param.default)
+                for p in by_block.values()
+            )
+            if required or same_default:
+                inputs.append(input_param)
+                continue
+
+            # the branches disagree: record what each declaring sub-block says, its default or `REQUIRED` when it
+            # requires the input, e.g. {"img2img": 0.3, "inpaint": 0.9999} for `strength`, or
+            # {"t2va": 124, "ref2va": REQUIRED} for `num_frames`. A silent sub-block has no entry
+            defaults_by_block = {}
+            for block_name, inp in by_block.items():
+                if inp is None:
+                    continue
+                if inp.defaults_by_block:
+                    # nested conditional block: prefix its block names with the sub-block name, e.g. from sub-block
+                    # "image", {"img2img": 0.3, "inpaint": 0.9999} -> {"image.img2img": 0.3, "image.inpaint": 0.9999}
+                    defaults_by_block.update({f"{block_name}.{k}": v for k, v in inp.defaults_by_block.items()})
+                else:
+                    # one entry for a leaf sub-block: e.g. {"img2img": 0.3}
+                    defaults_by_block[block_name] = REQUIRED if inp.required else inp.default
+            # a merged input with a record always has `default=None` and `required=False`: the sub-block that runs fills
+            # in its own default at runtime, or raises when it requires the input and it is missing. `replace` creates
+            # a fresh copy so the sub-blocks' own params are never mutated
+            inputs.append(replace(input_param, default=None, required=False, defaults_by_block=defaults_by_block))
+
+        return inputs
 
     @property
     def inputs(self) -> list[tuple[str, Any]]:
-        named_inputs = [(name, block.inputs) for name, block in self.sub_blocks.items()]
-        combined_inputs = combine_inputs(*named_inputs)
-        # mark Required inputs only if that input is required by all the blocks
-        for input_param in combined_inputs:
-            if input_param.name in self.required_inputs:
-                input_param.required = True
-            else:
-                input_param.required = False
-        return combined_inputs
+        return self._get_inputs()
 
     @property
     def intermediate_outputs(self) -> list[str]:
+        # the outputs of each branch, e.g. [("img2img", [<latents>, <image_latents>]), ("text2img", [<latents>])]
         named_outputs = [(name, block.intermediate_outputs) for name, block in self.sub_blocks.items()]
+        # merged into one list, one entry per name, e.g. [<latents>, <image_latents>]
         combined_outputs = combine_outputs(*named_outputs)
-        return combined_outputs
+        # determine the list of outputs that are always produced
+        if self.default_block_name is None:
+            # if the block can be skipped, no outputs are always produced
+            always = set()
+        else:
+            # if the block cannot be skipped, and every branch produces the output, then the output is always produced
+            # one set of names per branch, e.g. per_branch = [{"latents", "image_latents"}, {"latents"}]: the first set
+            # is the `img2img` branch, the second the `text2img` branch
+            per_branch = [{out.name for out in outputs if not out._maybe} for _, outputs in named_outputs]
+            # e.g. always = {"latents"} as `latents` is present in both branches
+            always = set.intersection(*per_branch)
+        # use `replace` so that we don't modify the sub-block's declaration
+        return [replace(out, _maybe=out.name not in always) for out in combined_outputs]
 
     @property
     def outputs(self) -> list[str]:
@@ -1059,7 +1245,8 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
     @property
     def description(self):
-        return ""
+        # default to empty string; set by `from_blocks_dict(description=...)` or overridden in child classes
+        return self._description if self._description is not None else ""
 
     @property
     def model_name(self):
@@ -1115,12 +1302,18 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
 
     @classmethod
     def from_blocks_dict(
-        cls, blocks_dict: dict[str, Any], description: str | None = None
+        cls,
+        blocks_dict: dict[str, Any],
+        description: str | None = None,
+        outputs: list[OutputParam] | None = None,
     ) -> "SequentialPipelineBlocks":
         """Creates a SequentialPipelineBlocks instance from a dictionary of blocks.
 
         Args:
             blocks_dict: Dictionary mapping block names to block classes or instances
+            description: Description of the new block
+            outputs: the outputs the new block lists in its docs, in place of every intermediate output. Each must be
+                an intermediate output of one of the blocks
 
         Returns:
             A new SequentialPipelineBlocks instance
@@ -1140,11 +1333,22 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         instance.sub_blocks = sub_blocks
 
         if description is not None:
-            instance.description = description
+            instance._description = description
+        if outputs is not None:
+            produced = {out.name for out in instance.intermediate_outputs}
+            unknown = sorted(out.name for out in outputs if out.name not in produced)
+            if unknown:
+                raise ValueError(
+                    f"`from_blocks_dict(outputs=...)`: {unknown} are not intermediate outputs of the given blocks."
+                )
+            instance._outputs = list(outputs)
 
         return instance
 
     def __init__(self):
+        # set by `from_blocks_dict(description=..., outputs=...)`, `None` otherwise
+        self._description = None
+        self._outputs = None
         sub_blocks = InsertableDict()
         for block_name, block in zip(self.block_names, self.block_classes):
             if inspect.isclass(block):
@@ -1158,64 +1362,133 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             )
 
     def _get_inputs(self):
-        inputs = []
-        outputs = set()
-
-        # Go through all blocks in order
-        for block in self.sub_blocks.values():
-            # Add inputs that aren't in outputs yet
+        # Walk the sub-blocks in order to derive the pipeline inputs. An input is listed unless an earlier block
+        # produces it. The first declaration is kept; a later declaration of the same input can only make it required
+        # or warn about a conflict in the defaults.
+        #
+        # The comments below follow one img2img pipeline as example:
+        # `text_encoder -> image_encoder -> set_timesteps -> prepare_latents -> denoise`, where `image_encoder` is a
+        # ConditionalPipelineBlocks which runs only when `image` is passed and produces `image_latents`.
+        inputs = {}  # input_name -> InputParam, e.g. {"num_inference_steps": InputParam("num_inference_steps", default=50)}
+        outputs = set()  # produced by an earlier block
+        # maybe produced by an earlier block: a ConditionalPipelineBlocks that can be skipped, or whose branches do not
+        # all produce the output, at any depth. e.g. `image_latents` from a skippable `image_encoder`
+        maybe_outputs = set()
+        # could be produced by an earlier block, but only when the block receives the same input.
+        # `requires_same_input` is used to determine if an output can stand in for an input the caller did not pass,
+        # e.g. a skippable prompt enhancer writes `prompt` but also requires `prompt` as an input, so it cannot stand
+        # in for a `prompt` the caller did not pass
+        requires_same_input = set()
+        for block_name, block in self.sub_blocks.items():
             for inp in block.inputs:
-                if inp.name not in outputs and inp.name not in {input.name for input in inputs}:
-                    inputs.append(inp)
+                # kwargs inputs have no name, key them by "*_<kwargs_type>"
+                key = inp.name if inp.name is not None else f"*_{inp.kwargs_type}"
+                if key in outputs:
+                    # not a pipeline input if it'sproduced by an earlier block
+                    # e.g. `prompt` -> `text_encoder` -> `prompt_embeds` -> `denoise`
+                    # here `prompt_embeds` is an input for `denoise` but not an input for pipeline because `text_encoder` outputs it
+                    continue
+                if key not in inputs:
+                    # otherwise, declare it as an input if not already declared
+                    inputs[key] = copy(inp)
+                    if inp.defaults_by_block:
+                        # a conditional sub-block's record is keyed by its branches; prefix them with the sub-block's name
+                        # so the record says which block's branch each entry is, like a nested conditional block does
+                        # e.g. {"img2img": REQUIRED} on `denoise` -> {"denoise.img2img": REQUIRED}
+                        inputs[key].defaults_by_block = {
+                            f"{block_name}.{k}": v for k, v in inp.defaults_by_block.items()
+                        }
+                    if key in maybe_outputs and key not in requires_same_input:
+                        # an earlier conditional block can produce it, so the caller does not have to pass it even if
+                        # this block requires it.
+                        # e.g. `prepare_latents` lists `image_latents` as a required input, but `image_encoder` (a
+                        # conditional block) produces it when `image` is passed, so `image_latents` is an optional input
+                        # for the pipeline: the user can skip it if they pass `image` and run the image_encoder block.
+                        inputs[key].required = False
+                    continue
+                # if the input is already declared: a later declaration can only make it required, or warn on a conflict in the defaults
+                existing = inputs[key]
+                if inp.required and not existing.required:
+                    # a later block requires an input currently listed as optional.
+                    # we only change it to required if:
+                    # (1) it is not possible for an earlier conditional block to produce it
+                    # (2) no earlier default fills it in: the existing default is `None`, and if it comes from a
+                    #     conditional block with per-branch defaults, no branch declares a non-None one
+                    # e.g. `prepare_latents` declares `height` optional with `None` default, `denoise` requires it, so
+                    # `height` is a required pipeline input. Had `prepare_latents` defaults `height` to 512, it would
+                    # stay optional with the default
+                    has_default = existing.default is not None or any(
+                        d is not None and d is not REQUIRED for d in (existing.defaults_by_block or {}).values()
+                    )
+                    if not (key in maybe_outputs and key not in requires_same_input) and not has_default:
+                        existing.required = True
+                elif (
+                    not inp.required
+                    and not existing.required
+                    and inp.default is not None
+                    and inp.default != existing.default
+                ):
+                    # the earlier declaration wins. Two values, e.g. `strength` is 0.3 on `set_timesteps` and 0.9999
+                    # on `prepare_latents`: the pipeline uses 0.3, `set_timesteps.new(inputs=[...])` picks another
+                    # value. An earlier declaration with no default stays open, e.g. an earlier block predicts
+                    # `num_frames` when it is omitted and `decode` defaults it to 121 for when it runs on its own
+                    if existing.defaults_by_block:
+                        existing_text = f"per-branch defaults {existing.defaults_by_block!r}"
+                    elif existing.default is None:
+                        existing_text = "no default"
+                    else:
+                        existing_text = f"default {existing.default!r}"
+                    logger.debug(
+                        f"{self.__class__.__name__}: sub-block '{block_name}' declares default {inp.default!r} for "
+                        f"input '{key}', but an earlier sub-block declares {existing_text}. The sequence keeps the "
+                        f"earlier declaration."
+                    )
+            # an output the block always produces goes to `outputs`, one marked `_maybe` (see `OutputParam`) to
+            # `maybe_outputs`, e.g. `image_encoder` may be skipped, so `image_latents` is only produced if it runs.
+            # A maybe-output also goes to `requires_same_input` unless the block is able to produce it without
+            # requiring it as an input: we look through its sub-blocks, at any depth, for one that does
+            for out in block.intermediate_outputs:
+                if not out._maybe:
+                    outputs.add(out.name)
+                    continue
+                to_visit = [block]
+                produced_on_its_own = False
+                while to_visit and not produced_on_its_own:
+                    current = to_visit.pop()
+                    if isinstance(current, (SequentialPipelineBlocks, ConditionalPipelineBlocks)):
+                        to_visit.extend(current.sub_blocks.values())
+                    else:
+                        produced_on_its_own = out.name in {o.name for o in current.intermediate_outputs} and (
+                            out.name not in {i.name for i in current.inputs if i.required}
+                        )
+                if produced_on_its_own:
+                    # another block can produce it on its own, so it can stand in for the input
+                    requires_same_input.discard(out.name)
+                elif out.name not in maybe_outputs:
+                    requires_same_input.add(out.name)
+                maybe_outputs.add(out.name)
 
-            # Only add outputs if the block cannot be skipped
-            should_add_outputs = True
-            if isinstance(block, ConditionalPipelineBlocks) and block.default_block_name is None:
-                # ConditionalPipelineBlocks without default can be skipped
-                should_add_outputs = False
+        return list(inputs.values())
 
-            if should_add_outputs:
-                # Add this block's outputs
-                block_intermediate_outputs = [out.name for out in block.intermediate_outputs]
-                outputs.update(block_intermediate_outputs)
-
-        return inputs
-
-    # YiYi TODO: add test for this
     @property
     def inputs(self) -> list[tuple[str, Any]]:
         return self._get_inputs()
 
     @property
-    def required_inputs(self) -> list[str]:
-        # Get the first block from the dictionary
-        first_block = next(iter(self.sub_blocks.values()))
-        required_by_any = set(getattr(first_block, "required_inputs", set()))
-
-        # Union with required inputs from all other blocks
-        for block in list(self.sub_blocks.values())[1:]:
-            block_required = set(getattr(block, "required_inputs", set()))
-            required_by_any.update(block_required)
-
-        return list(required_by_any)
-
-    @property
     def intermediate_outputs(self) -> list[str]:
-        named_outputs = []
-        for name, block in self.sub_blocks.items():
-            inp_names = {inp.name for inp in block.inputs}
-            # so we only need to list new variables as intermediate_outputs, but if user wants to list these they modified it's still fine (a.k.a we don't enforce)
-            # filter out them here so they do not end up as intermediate_outputs
-            if name not in inp_names:
-                named_outputs.append((name, block.intermediate_outputs))
+        named_outputs = [(name, block.intermediate_outputs) for name, block in self.sub_blocks.items()]
         combined_outputs = combine_outputs(*named_outputs)
-        return combined_outputs
+        # every sub-block runs, so an output is always produced when any sub-block always produces it. A maybe can only
+        # come from a conditional block nested in a sub-block, see `ConditionalPipelineBlocks.intermediate_outputs`
+        always = {out.name for _, outputs in named_outputs for out in outputs if not out._maybe}
+        return [replace(out, _maybe=out.name not in always) for out in combined_outputs]
 
-    # YiYi TODO: I think we can remove the outputs property
+    # `outputs` is what `doc` and the model card list as the block's outputs. By default that is every intermediate
+    # output; a composite overrides it to show only what the step is for, e.g. just `latents` for the `denoise` block,
+    # either by overriding the property in a child class or with `from_blocks_dict(outputs=...)`.
     @property
     def outputs(self) -> list[str]:
-        # return next(reversed(self.sub_blocks.values())).intermediate_outputs
-        return self.intermediate_outputs
+        return self._outputs if self._outputs is not None else self.intermediate_outputs
 
     @torch.no_grad()
     def __call__(self, pipeline, state: PipelineState) -> tuple["ModularPipeline", PipelineState]:
@@ -1305,7 +1578,12 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
             nested_blocks = fn_recursive_traverse(block, block_name, active_inputs)
             all_blocks.update(nested_blocks)
 
-        return SequentialPipelineBlocks.from_blocks_dict(all_blocks)
+        # if `outputs` is set on the composite block, it applies to the selected execution blocks as well, minus the
+        # ones they don't produce
+        produced = {out.name for block in all_blocks.values() for out in block.intermediate_outputs}
+        return SequentialPipelineBlocks.from_blocks_dict(
+            all_blocks, outputs=[out for out in self.outputs if out.name in produced]
+        )
 
     def __repr__(self):
         class_name = self.__class__.__name__
@@ -1437,14 +1715,6 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         return []
 
     @property
-    def loop_required_inputs(self) -> list[str]:
-        input_names = []
-        for input_param in self.loop_inputs:
-            if input_param.required:
-                input_names.append(input_param.name)
-        return input_names
-
-    @property
     def loop_intermediate_outputs(self) -> list[OutputParam]:
         """list of intermediate output parameters. Must be implemented by subclasses."""
         return []
@@ -1476,49 +1746,43 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
         return expected_configs
 
     def _get_inputs(self):
-        inputs = []
-        inputs.extend(self.loop_inputs)
-        outputs = set()
-
-        for name, block in self.sub_blocks.items():
-            # Add inputs that aren't in outputs yet
+        # Same walk as `SequentialPipelineBlocks._get_inputs`, starting from `loop_inputs`. Loop sub-blocks are leaf
+        # blocks, so there is no skippable ConditionalPipelineBlocks whose outputs may or may not exist.
+        inputs = {}
+        outputs = set()  # produced by an earlier block
+        for inp in self.loop_inputs:
+            # kwargs inputs have no name, key them by "*_<kwargs_type>" like `ConditionalPipelineBlocks` does
+            key = inp.name if inp.name is not None else f"*_{inp.kwargs_type}"
+            inputs[key] = copy(inp)
+        for block_name, block in self.sub_blocks.items():
             for inp in block.inputs:
-                if inp.name not in outputs and inp not in inputs:
-                    inputs.append(inp)
+                key = inp.name if inp.name is not None else f"*_{inp.kwargs_type}"
+                if key in outputs:
+                    continue
+                if key not in inputs:
+                    # `copy`: the flags below are the composite's view and must not reach the sub-block
+                    inputs[key] = copy(inp)
+                    continue
+                if inp.required:
+                    if inputs[key].default is None:
+                        # nothing earlier defaults or produces it: the caller has to pass it
+                        inputs[key].required = True
+                elif not inputs[key].required and inp.default is not None and inp.default != inputs[key].default:
+                    # two optional declarations: the earlier one wins (a later `None` takes whatever is set). Loop
+                    # sub-blocks are leaves, so there are no per-branch defaults to consider
+                    logger.debug(
+                        f"{self.__class__.__name__}: sub-block '{block_name}' declares default {inp.default!r} for "
+                        f"input '{key}', but an earlier declaration (a loop input or an earlier sub-block) has "
+                        f"{inputs[key].default!r}. The loop keeps the earlier declaration."
+                    )
+            outputs.update(out.name for out in block.intermediate_outputs)
 
-            # Add this block's outputs
-            block_intermediate_outputs = [out.name for out in block.intermediate_outputs]
-            outputs.update(block_intermediate_outputs)
-
-        for input_param in inputs:
-            if input_param.name in self.required_inputs:
-                input_param.required = True
-            else:
-                input_param.required = False
-
-        return inputs
+        return list(inputs.values())
 
     @property
     # Copied from diffusers.modular_pipelines.modular_pipeline.SequentialPipelineBlocks.inputs
     def inputs(self):
         return self._get_inputs()
-
-    # modified from SequentialPipelineBlocks, if any additionan input required by the loop is required by the block
-    @property
-    def required_inputs(self) -> list[str]:
-        # Get the first block from the dictionary
-        first_block = next(iter(self.sub_blocks.values()))
-        required_by_any = set(getattr(first_block, "required_inputs", set()))
-
-        required_by_loop = set(getattr(self, "loop_required_inputs", set()))
-        required_by_any.update(required_by_loop)
-
-        # Union with required inputs from all other blocks
-        for block in list(self.sub_blocks.values())[1:]:
-            block_required = set(getattr(block, "required_inputs", set()))
-            required_by_any.update(block_required)
-
-        return list(required_by_any)
 
     # YiYi TODO: this need to be thought about more
     # modified from SequentialPipelineBlocks to include loop_intermediate_outputs

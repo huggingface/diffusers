@@ -42,6 +42,7 @@ from diffusers.utils import is_peft_available, logging
 
 from ...testing_utils import CaptureLogger
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularLoraTesterMixin,
@@ -171,12 +172,12 @@ class MiniMaxH3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = MiniMaxH3Blocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-minimax-h3-modular-pipe"
     expected_latents_shape = (1, 4, 37, 2, 2)
-    params = frozenset(["prompt", "image", "last_image", "height", "width", "num_frames"])
     # MiniMax-H3 packs one request into one sequence and rejects a list of prompts, so nothing is batched.
+    # one request per call: the text encoder raises on a list of prompts
     batch_params = frozenset()
     # The checkpoint is guidance-distilled and generates a video, so neither `guidance_scale` nor
     # `num_images_per_prompt` exists.
-    optional_params = frozenset(["num_inference_steps", "latents", "output_type"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {"image", "last_image", "num_frames"}
     output_name = "videos"
     expected_workflow_blocks = MINIMAX_H3_WORKFLOWS
     expected_workflow_defaults = MINIMAX_H3_WORKFLOW_DEFAULTS
@@ -197,14 +198,6 @@ class MiniMaxH3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestMiniMaxH3ModularPipelineFast(MiniMaxH3ModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    @pytest.mark.skip(reason="MiniMax-H3 packs one request into one sequence, so a batch of prompts is not a thing.")
-    def test_inference_batch_consistent(self):
-        pass
-
-    @pytest.mark.skip(reason="MiniMax-H3 packs one request into one sequence, so a batch of prompts is not a thing.")
-    def test_inference_batch_single_identical(self):
-        pass
-
     @pytest.mark.skip(reason="One request generates one video, so there is no `num_images_per_prompt`.")
     def test_num_images_per_prompt(self):
         pass
@@ -611,12 +604,12 @@ class MiniMaxH3Ref2VAModularPipelineTesterConfig(BaseModularPipelineTesterConfig
     pipeline_blocks_class = MiniMaxH3Blocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-minimax-h3-modular-pipe"
     expected_latents_shape = (1, 4, 37, 2, 2)
-    params = frozenset(["prompt", "references", "height", "width", "num_frames"])
     # MiniMax-H3 packs one request into one sequence and rejects a list of prompts, so nothing is batched.
+    # one request per call: the text encoder raises on a list of prompts
     batch_params = frozenset()
     # The checkpoint is guidance-distilled and generates a video, so neither `guidance_scale` nor
     # `num_images_per_prompt` exists.
-    optional_params = frozenset(["num_inference_steps", "latents", "output_type"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {"num_frames", "references"}
     output_name = "videos"
     expected_workflow_blocks = MINIMAX_H3_REF2VA_WORKFLOWS
     expected_workflow_defaults = MINIMAX_H3_REF2VA_WORKFLOW_DEFAULTS
@@ -656,14 +649,6 @@ class MiniMaxH3Ref2VAModularPipelineTesterConfig(BaseModularPipelineTesterConfig
 
 
 class TestMiniMaxH3Ref2VAModularPipelineFast(MiniMaxH3Ref2VAModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    @pytest.mark.skip(reason="MiniMax-H3 packs one request into one sequence, so a batch of prompts is not a thing.")
-    def test_inference_batch_consistent(self):
-        pass
-
-    @pytest.mark.skip(reason="MiniMax-H3 packs one request into one sequence, so a batch of prompts is not a thing.")
-    def test_inference_batch_single_identical(self):
-        pass
-
     @pytest.mark.skip(reason="One request generates one video, so there is no `num_images_per_prompt`.")
     def test_num_images_per_prompt(self):
         pass

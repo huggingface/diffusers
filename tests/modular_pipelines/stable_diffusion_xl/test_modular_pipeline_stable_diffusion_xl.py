@@ -26,6 +26,7 @@ from diffusers.loaders import ModularIPAdapterMixin
 from ...models.unets.test_models_unet_2d_condition import create_ip_adapter_state_dict
 from ...testing_utils import enable_full_determinism, floats_tensor, is_ip_adapter, torch_device
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineOutputMixin,
     BaseModularPipelineTesterConfig,
     ModularGuiderTesterMixin,
@@ -337,15 +338,7 @@ class SDXLModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = StableDiffusionXLAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-sdxl-modular"
     expected_latents_shape = (1, 4, 32, 32)
-    params = frozenset(
-        [
-            "prompt",
-            "height",
-            "width",
-            "negative_prompt",
-            "cross_attention_kwargs",
-        ]
-    )
+    optional_params = OPTIONAL_PARAMS | {"cross_attention_kwargs", "negative_prompt"}
     batch_params = frozenset(["prompt", "negative_prompt"])
     expected_image_output_shape = (1, 3, 64, 64)
 
@@ -466,16 +459,7 @@ class SDXLImg2ImgModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = StableDiffusionXLAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-sdxl-modular"
     expected_latents_shape = (1, 4, 32, 32)
-    params = frozenset(
-        [
-            "prompt",
-            "height",
-            "width",
-            "negative_prompt",
-            "cross_attention_kwargs",
-            "image",
-        ]
-    )
+    optional_params = OPTIONAL_PARAMS | {"cross_attention_kwargs", "image", "negative_prompt"}
     batch_params = frozenset(["prompt", "negative_prompt", "image"])
     expected_image_output_shape = (1, 3, 64, 64)
     expected_workflow_blocks = IMAGE2IMAGE_WORKFLOWS
@@ -611,17 +595,7 @@ class SDXLInpaintingModularPipelineFastTests(
     pipeline_blocks_class = StableDiffusionXLAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-sdxl-modular"
     expected_latents_shape = (1, 4, 32, 32)
-    params = frozenset(
-        [
-            "prompt",
-            "height",
-            "width",
-            "negative_prompt",
-            "cross_attention_kwargs",
-            "image",
-            "mask_image",
-        ]
-    )
+    optional_params = OPTIONAL_PARAMS | {"cross_attention_kwargs", "image", "mask_image", "negative_prompt"}
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
     expected_image_output_shape = (1, 3, 64, 64)
     expected_workflow_blocks = INPAINTING_WORKFLOWS

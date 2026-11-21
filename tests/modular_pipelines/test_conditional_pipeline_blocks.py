@@ -21,58 +21,160 @@ from diffusers.modular_pipelines import (
     OutputParam,
     SequentialPipelineBlocks,
 )
-from diffusers.modular_pipelines.modular_pipeline_utils import combine_inputs
+from diffusers.modular_pipelines.modular_pipeline_utils import REQUIRED
+
+
+class InputsOnlyBlock(ModularPipelineBlocks):
+    """A block that declares the given inputs and does nothing."""
+
+    model_name = "test"
+
+    def __init__(self, inputs):
+        super().__init__()
+        self._inputs = inputs
+
+    @property
+    def inputs(self):
+        return self._inputs
+
+    def __call__(self, components, state):
+        return components, state
+
+
+def conditional_blocks(blocks, default_block_name="block-a"):
+    """A conditional block over the given `{name: block}` sub-blocks, each triggered by its own name."""
+    default = default_block_name
+
+    class Conditional(ConditionalPipelineBlocks):
+        block_classes = list(blocks.values())
+        block_names = list(blocks)
+        block_trigger_inputs = list(blocks)
+        default_block_name = default
+
+    return Conditional()
 
 
 class TestConditionalBlocksInputs:
-    def test_combine_inputs_agreeing_defaults_stay_untouched(self):
-        combined = combine_inputs(
-            ("block-a", [InputParam(name="x", default=5)]),
-            ("block-b", [InputParam(name="x", default=5)]),
+    def test_agreeing_defaults_stay_untouched(self):
+        blocks = conditional_blocks(
+            {
+                "block-a": InputsOnlyBlock([InputParam(name="x", default=5)]),
+                "block-b": InputsOnlyBlock([InputParam(name="x", default=5)]),
+            }
         )
-        assert combined == [InputParam(name="x", default=5)]
+        assert blocks.inputs == [InputParam(name="x", default=5)]
 
-    def test_combine_inputs_first_occurrence_wins(self):
-        combined = combine_inputs(
-            ("block-a", [InputParam(name="x", default=5, description="from block-a")]),
-            ("block-b", [InputParam(name="x", default=5, description="from block-b")]),
+    def test_first_occurrence_wins(self):
+        blocks = conditional_blocks(
+            {
+                "block-a": InputsOnlyBlock([InputParam(name="x", default=5, description="from block-a")]),
+                "block-b": InputsOnlyBlock([InputParam(name="x", default=5, description="from block-b")]),
+            }
         )
         # duplicate inputs keep the first occurrence: block-b's description is dropped
-        assert combined == [InputParam(name="x", default=5, description="from block-a")]
+        assert blocks.inputs == [InputParam(name="x", default=5, description="from block-a")]
 
-    def test_combine_inputs_none_default_counts_as_disagreement(self):
+    def test_none_default_counts_as_disagreement(self):
         # a None default is a sentinel ("user didn't pass this"), it must not be overridden by a sibling's default
-        combined = combine_inputs(
-            ("block-a", [InputParam(name="x", default=None)]),
-            ("block-b", [InputParam(name="x", default=5)]),
+        blocks = conditional_blocks(
+            {
+                "block-a": InputsOnlyBlock([InputParam(name="x", default=None)]),
+                "block-b": InputsOnlyBlock([InputParam(name="x", default=5)]),
+            }
         )
-        assert combined == [InputParam(name="x", default=None, defaults_by_block={"block-a": None, "block-b": 5})]
+        assert blocks.inputs == [InputParam(name="x", defaults_by_block={"block-a": None, "block-b": 5})]
 
-    def test_combine_inputs_disagreement_records_every_block(self):
-        combined = combine_inputs(
-            ("block-a", [InputParam(name="x", default=1)]),
-            ("block-b", [InputParam(name="x", default=2)]),
-            ("block-c", [InputParam(name="x", default=1)]),
+    def test_disagreement_records_every_block(self):
+        blocks = conditional_blocks(
+            {
+                "block-a": InputsOnlyBlock([InputParam(name="x", default=1)]),
+                "block-b": InputsOnlyBlock([InputParam(name="x", default=2)]),
+                "block-c": InputsOnlyBlock([InputParam(name="x", default=1)]),
+            }
         )
         # any disagreement records every block's default, including the ones that agree with each other
-        assert combined == [
-            InputParam(name="x", default=None, defaults_by_block={"block-a": 1, "block-b": 2, "block-c": 1})
-        ]
+        assert blocks.inputs == [InputParam(name="x", defaults_by_block={"block-a": 1, "block-b": 2, "block-c": 1})]
 
-    def test_combine_inputs_nested_defaults_prefixed(self):
+    def test_required_everywhere_stays_required(self):
+        blocks = conditional_blocks(
+            {
+                "block-a": InputsOnlyBlock([InputParam(name="x", required=True)]),
+                "block-b": InputsOnlyBlock([InputParam(name="x", required=True)]),
+            }
+        )
+        assert blocks.inputs == [InputParam(name="x", required=True)]
+        assert blocks.required_inputs == ["x"]
+
+    def test_required_everywhere_is_optional_when_the_block_can_be_skipped(self):
+        # no default block: the user can skip the whole block, so nothing it requires is required of the user; the
+        # record still says which sub-blocks require it
+        blocks = conditional_blocks(
+            {
+                "block-a": InputsOnlyBlock([InputParam(name="x", required=True)]),
+                "block-b": InputsOnlyBlock([InputParam(name="x", required=True)]),
+            },
+            default_block_name=None,
+        )
+        assert blocks.inputs == [InputParam(name="x", defaults_by_block={"block-a": REQUIRED, "block-b": REQUIRED})]
+        assert blocks.required_inputs == []
+
+    def test_records_a_requirement_other_blocks_do_not_share(self):
+        # block-b does not declare x at all, so x is not required (only when every block requires it): the record is
+        # the only place that says block-a requires it
+        blocks = conditional_blocks(
+            {
+                "block-a": InputsOnlyBlock([InputParam(name="x", required=True)]),
+                "block-b": InputsOnlyBlock([InputParam(name="y")]),
+            }
+        )
+        assert blocks.inputs == [InputParam(name="x", defaults_by_block={"block-a": REQUIRED}), InputParam(name="y")]
+
+        # a requirement against a default is a disagreement like any other
+        blocks = conditional_blocks(
+            {
+                "block-a": InputsOnlyBlock([InputParam(name="x", required=True)]),
+                "block-b": InputsOnlyBlock([InputParam(name="x", default=124)]),
+            }
+        )
+        assert blocks.inputs == [InputParam(name="x", defaults_by_block={"block-a": REQUIRED, "block-b": 124})]
+
+    def test_nested_defaults_prefixed(self):
         # block-b is itself a conditional block whose branches already disagree, so its param carries
         # defaults_by_block; merging at the outer level prefixes those entries with the sub-block name
-        combined = combine_inputs(
-            ("block-a", [InputParam(name="x", default=3)]),
-            ("block-b", [InputParam(name="x", default=None, defaults_by_block={"branch-a": 1, "branch-b": 2})]),
+        blocks = conditional_blocks(
+            {
+                "block-a": InputsOnlyBlock([InputParam(name="x", default=3)]),
+                "block-b": InputsOnlyBlock([InputParam(name="x", defaults_by_block={"branch-a": 1, "branch-b": 2})]),
+            }
         )
-        assert combined == [
-            InputParam(
-                name="x",
-                default=None,
-                defaults_by_block={"block-a": 3, "block-b.branch-a": 1, "block-b.branch-b": 2},
-            )
+        assert blocks.inputs == [
+            InputParam(name="x", defaults_by_block={"block-a": 3, "block-b.branch-a": 1, "block-b.branch-b": 2})
         ]
+
+    def test_nested_requirements_stay_optional(self):
+        # each sub-block is a conditional block where one branch requires x and the other does not use it, so x is
+        # not required of the user even though every record says REQUIRED
+        block_a = conditional_blocks(
+            {
+                "branch-a": InputsOnlyBlock([InputParam(name="x", required=True)]),
+                "other": InputsOnlyBlock([InputParam(name="y")]),
+            },
+            default_block_name="branch-a",
+        )
+        block_b = conditional_blocks(
+            {
+                "branch-b": InputsOnlyBlock([InputParam(name="x", required=True)]),
+                "other": InputsOnlyBlock([InputParam(name="y")]),
+            },
+            default_block_name="branch-b",
+        )
+        blocks = conditional_blocks({"block-a": block_a, "block-b": block_b})
+
+        x = blocks.inputs[0]
+        assert x == InputParam(
+            name="x", defaults_by_block={"block-a.branch-a": REQUIRED, "block-b.branch-b": REQUIRED}
+        )
+        assert blocks.required_inputs == []
 
 
 class TextToImageBlock(ModularPipelineBlocks):
@@ -349,15 +451,12 @@ class TestConditionalBlocksBranchDefaults:
         strength_params = [p for p in AutoImageBlocks().inputs if p.name == "strength"]
         assert len(strength_params) == 1
         assert strength_params[0] == InputParam(
-            name="strength",
-            type_hint=float,
-            default=None,
-            defaults_by_block={"inpaint": 0.9999, "img2img": 0.3},
+            name="strength", type_hint=float, defaults_by_block={"inpaint": 0.9999, "img2img": 0.3}
         )
 
-        # the docstring renders the distinct per-block defaults instead of a single value
+        # the docstring does not pick one of the per-block defaults
         doc = " ".join(AutoImageBlocks().doc.split())
-        assert "strength (`float`, *optional*, defaults to 0.9999 or 0.3, depending on the workflow):" in doc
+        assert "strength (`float`, *optional*, depends on the workflow):" in doc
 
     def test_branch_resolves_own_default(self):
         pipe = AutoImageBlocks().init_pipeline()
@@ -387,13 +486,11 @@ class TestConditionalBlocksBranchDefaults:
         assert strength_params[0] == InputParam(
             name="strength",
             type_hint=float,
-            default=None,
             defaults_by_block={"refine": 0.9999, "image.inpaint": 0.9999, "image.img2img": 0.3},
         )
 
-        # the docstring renders distinct values only: refine and image.inpaint both use 0.9999, shown once
         doc = " ".join(NestedImageBlocks().doc.split())
-        assert "strength (`float`, *optional*, defaults to 0.9999 or 0.3, depending on the workflow):" in doc
+        assert "strength (`float`, *optional*, depends on the workflow):" in doc
 
     def test_explicit_none_reaches_every_branch(self):
         # a passed None is a value, not "use the default": the block keeps it instead of filling in its default
@@ -435,3 +532,62 @@ class TestConditionalBlocksBranchDefaults:
         state = pipe(prompt="p", image="i", strength=0.7)
         assert state.get("strength_seen_first") == 0.7
         assert state.get("strength") == 0.7
+
+
+class ProducesLatentsAndImageLatentsBlock(ModularPipelineBlocks):
+    model_name = "test"
+
+    @property
+    def intermediate_outputs(self):
+        return [OutputParam("latents"), OutputParam("image_latents")]
+
+    def __call__(self, components, state):
+        return components, state
+
+
+class ProducesLatentsBlock(ModularPipelineBlocks):
+    model_name = "test"
+
+    @property
+    def inputs(self):
+        return [InputParam("image", required=True)]
+
+    @property
+    def intermediate_outputs(self):
+        return [OutputParam("latents")]
+
+    def __call__(self, components, state):
+        return components, state
+
+
+class LatentsBlocks(ConditionalPipelineBlocks):
+    block_classes = [ProducesLatentsBlock, ProducesLatentsAndImageLatentsBlock]
+    block_names = ["img2img", "text2img"]
+    block_trigger_inputs = ["image"]
+    default_block_name = "text2img"
+
+    def select_block(self, image=None):
+        return "img2img" if image is not None else None
+
+
+class SkippableLatentsBlocks(LatentsBlocks):
+    default_block_name = None  # no default; block can be skipped
+
+
+class TestConditionalBlocksOptionalOutputs:
+    def test_output_is_always_produced_only_when_every_branch_produces_it(self):
+        blocks = LatentsBlocks()
+        # `latents` comes out of both branches, `image_latents` out of `text2img` only
+        assert {out.name: out._maybe for out in blocks.intermediate_outputs} == {
+            "latents": False,
+            "image_latents": True,
+        }
+        # the sub-blocks' own declarations are untouched
+        assert all(not out._maybe for out in ProducesLatentsAndImageLatentsBlock().intermediate_outputs)
+
+    def test_every_output_of_a_skippable_block_is_a_maybe(self):
+        blocks = SkippableLatentsBlocks()
+        assert {out.name: out._maybe for out in blocks.intermediate_outputs} == {
+            "latents": True,
+            "image_latents": True,
+        }

@@ -55,7 +55,7 @@ class PikaH3FlexAutoBeforeEncodeStep(ConditionalPipelineBlocks):
           canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
 
       Inputs:
-          references (`list`, *optional*):
+          references (`list`, *optional*, depends on the workflow):
               The references to condition on, **in the order the model should read them**: the order labels them in the
               prompt presentation and lays them out on the shared rotary clock, so a different order is a different
               request. One dataclass per modality, all holding in-memory media — a [`PikaH3FlexImageReference`] (at
@@ -69,7 +69,7 @@ class PikaH3FlexAutoBeforeEncodeStep(ConditionalPipelineBlocks):
               Height of the generated video in pixels, a multiple of 32.
           width (`int`, *optional*):
               Width of the generated video in pixels, a multiple of 32.
-          num_frames (`int`, *optional*):
+          num_frames (`int`, *optional*, depends on the workflow):
               Number of frames to generate, at the fixed 24 fps: 120 to 360, i.e. 5 to 15 seconds, snapped up to the
               next `17 * n + 5` the video VAE can decode. To generate a video as long as a reference soundtrack, pass
               `round(samples / sample_rate * 24)`.
@@ -143,7 +143,7 @@ class PikaH3FlexAutoTextEncoderStep(ConditionalPipelineBlocks):
       Inputs:
           prompt (`str`):
               The prompt to guide generation, a single string.
-          normalized_references (`list`, *optional*):
+          normalized_references (`list`, *optional*, depends on the workflow):
               The references normalized by the setup step, in packed order.
           keyframes (`list`, *optional*):
               The keyframes put onto the target canvas, in packed order.
@@ -195,9 +195,9 @@ class PikaH3FlexAutoVaeEncoderStep(ConditionalPipelineBlocks):
           vae (`AutoencoderKLMiniMaxH3`) audio_vae (`AutoencoderKLMiniMaxH3Audio`)
 
       Inputs:
-          normalized_references (`list`, *optional*):
+          normalized_references (`list`, *optional*, depends on the workflow):
               The references normalized by the setup step, in packed order.
-          keyframes (`list`, *optional*):
+          keyframes (`list`, *optional*, depends on the workflow):
               The keyframes put onto the target canvas, in packed order.
 
       Outputs:
@@ -550,26 +550,26 @@ class PikaH3FlexAutoDenoiseStep(ConditionalPipelineBlocks):
       Inputs:
           text_token_tags (`Tensor`):
               The per-row modality tag of every row of `prompt_embeds`.
-          normalized_references (`list`, *optional*):
+          normalized_references (`list`, *optional*, depends on the workflow):
               The references normalized by the setup step, in packed order.
-          condition_latents (`list`, *optional*):
+          condition_latents (`list`, *optional*, depends on the workflow):
               The encoded video conditioning latents, one per image and video reference in packed order. Their shape is
               where every reference block's geometry comes from.
-          audio_condition_latents (`list`, *optional*):
+          audio_condition_latents (`list`, *optional*, depends on the workflow):
               The encoded audio conditioning rows, one per audio-bearing reference in packed order.
-          height (`int`, *optional*):
+          height (`int`, *optional*, depends on the workflow):
               Height of the generated video in pixels.
-          width (`int`, *optional*):
+          width (`int`, *optional*, depends on the workflow):
               Width of the generated video in pixels.
-          num_frames (`int`, *optional*, defaults to None or 124, depending on the workflow):
+          num_frames (`int`, *optional*, depends on the workflow):
               Resolved number of frames, of the form 17 * n + 5.
           generator (`Generator`, *optional*):
               The generator of the request. The conditioning noise is drawn from it first, one draw per condition,
               before the noise of the generated rows.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated video noise of shape `(1, 24, num_latent_frames, latent_height, latent_width)`, used
               instead of the draw.
-          audio_latents (`Tensor`):
+          audio_latents (`Tensor`, *optional*):
               Pre-generated audio noise of shape `(2, 32, num_audio_latents)`.
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
@@ -691,7 +691,7 @@ class PikaH3FlexBlocks(SequentialPipelineBlocks):
           750, 500, 250, 100, 40, 0])
 
       Inputs:
-          references (`list`, *optional*):
+          references (`list`, *optional*, depends on the workflow):
               The references to condition on, **in the order the model should read them**: the order labels them in the
               prompt presentation and lays them out on the shared rotary clock, so a different order is a different
               request. One dataclass per modality, all holding in-memory media — a [`PikaH3FlexImageReference`] (at
@@ -705,7 +705,7 @@ class PikaH3FlexBlocks(SequentialPipelineBlocks):
               Height of the generated video in pixels, a multiple of 32.
           width (`int`, *optional*):
               Width of the generated video in pixels, a multiple of 32.
-          num_frames (`int`, *optional*):
+          num_frames (`int`, *optional*, depends on the workflow):
               Number of frames to generate, at the fixed 24 fps: 120 to 360, i.e. 5 to 15 seconds, snapped up to the
               next `17 * n + 5` the video VAE can decode. To generate a video as long as a reference soundtrack, pass
               `round(samples / sample_rate * 24)`.
@@ -717,22 +717,22 @@ class PikaH3FlexBlocks(SequentialPipelineBlocks):
               the canvas' aspect ratio and resized onto it, like `image`.
           prompt (`str`):
               The prompt to guide generation, a single string.
-          normalized_references (`list`, *optional*):
+          normalized_references (`list`, *optional*, depends on the workflow):
               The references normalized by the setup step, in packed order.
           keyframes (`list`, *optional*):
               The keyframes put onto the target canvas, in packed order.
-          condition_latents (`list`, *optional*):
+          condition_latents (`list`, *optional*, depends on the workflow):
               The encoded video conditioning latents, one per image and video reference in packed order. Their shape is
               where every reference block's geometry comes from.
-          audio_condition_latents (`list`, *optional*):
+          audio_condition_latents (`list`, *optional*, depends on the workflow):
               The encoded audio conditioning rows, one per audio-bearing reference in packed order.
           generator (`Generator`, *optional*):
               The generator of the request. The conditioning noise is drawn from it first, one draw per condition,
               before the noise of the generated rows.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated video noise of shape `(1, 24, num_latent_frames, latent_height, latent_width)`, used
               instead of the draw.
-          audio_latents (`Tensor`):
+          audio_latents (`Tensor`, *optional*):
               Pre-generated audio noise of shape `(2, 32, num_audio_latents)`.
           **denoiser_input_fields (`None`, *optional*):
               The structural description of the packed sequence the transformer reads by name: `token_tags`,

@@ -35,6 +35,7 @@ from diffusers.utils import logging
 
 from ...testing_utils import CaptureLogger
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularMemoryTesterMixin,
@@ -156,12 +157,12 @@ class PH3ImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pretrained_model_name_or_path = "hf-internal-testing/tiny-p-h3-image-modular-pipe"
     # One 4-channel latent frame for a 32 x 32 image.
     expected_latents_shape = (1, 4, 1, 2, 2)
-    params = frozenset(["prompt", "image", "height", "width"])
     # One request is one packed sequence, so prompts are not batched.
+    # one prompt per call: the prompt upsampler raises on a list
     batch_params = frozenset()
     # No guidance, one image per request, fixed sampling grid: no `guidance_scale`, `num_images_per_prompt` or
     # `num_inference_steps`.
-    optional_params = frozenset(["latents", "output_type"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt", "num_inference_steps"} | {"image"}
     output_name = "images"
     expected_workflow_blocks = P_H3_IMAGE_WORKFLOWS
     expected_workflow_defaults = P_H3_IMAGE_WORKFLOW_DEFAULTS
@@ -188,14 +189,6 @@ class PH3ImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestPH3ImageModularPipelineFast(PH3ImageModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    @pytest.mark.skip(reason="P-H3-Image packs one request into one sequence, so a batch of prompts is not a thing.")
-    def test_inference_batch_consistent(self):
-        pass
-
-    @pytest.mark.skip(reason="P-H3-Image packs one request into one sequence, so a batch of prompts is not a thing.")
-    def test_inference_batch_single_identical(self):
-        pass
-
     @pytest.mark.skip(reason="One request generates one image, so there is no `num_images_per_prompt`.")
     def test_num_images_per_prompt(self):
         pass

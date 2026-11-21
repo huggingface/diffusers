@@ -355,6 +355,16 @@ class FluxPrepareLatentsStep(ModularPipelineBlocks):
             OutputParam(
                 "latents", type_hint=torch.Tensor, description="The initial latents to use for the denoising process"
             ),
+            OutputParam(
+                "height",
+                type_hint=int,
+                description="The height of the generated image, resolved to the default when not passed",
+            ),
+            OutputParam(
+                "width",
+                type_hint=int,
+                description="The width of the generated image, resolved to the default when not passed",
+            ),
         ]
 
     @staticmethod

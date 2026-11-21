@@ -1,4 +1,5 @@
 from .common import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineOutputMixin,
     BaseModularPipelineTesterConfig,
     ModularPipelineTesterMixin,
@@ -17,6 +18,7 @@ from .workflow import ModularWorkflowTesterMixin
 
 
 __all__ = [
+    "OPTIONAL_PARAMS",
     "BaseModularPipelineOutputMixin",
     "BaseModularPipelineTesterConfig",
     "ModularAutoOffloadTesterMixin",

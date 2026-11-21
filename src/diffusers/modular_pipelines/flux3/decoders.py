@@ -47,15 +47,17 @@ class Flux3UnpackLatentsStep(ModularPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The denoised image latent tokens from the denoising step. Shape: (B, seq_len, C)",
             ),
-            # no default: the size is already baked into the latents, every workflow sets these upstream
+            # required, no default: the size is already baked into the latents, every workflow sets these upstream
             InputParam(
                 "height",
                 type_hint=int,
+                required=True,
                 description="The height in pixels of the generated image; must match the size the latents were prepared at",
             ),
             InputParam(
                 "width",
                 type_hint=int,
+                required=True,
                 description="The width in pixels of the generated image; must match the size the latents were prepared at",
             ),
         ]
