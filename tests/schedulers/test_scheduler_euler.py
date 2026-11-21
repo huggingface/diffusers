@@ -269,3 +269,21 @@ class EulerDiscreteSchedulerTest(SchedulerCommonTest):
 
     def test_exponential_sigmas(self):
         self.check_over_configs(use_exponential_sigmas=True)
+
+    def test_get_velocity_in_low_precision(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler = scheduler_class(**self.get_scheduler_config())
+        scheduler.set_timesteps(10)
+        timesteps = scheduler.timesteps[:3]
+
+        # noise = 0, so the output is the `-sqrt(1 - alphas_cumprod[t])` term applied to the sample
+        sample = torch.ones(1, 3, 4, 4)
+        noise = torch.zeros(1, 3, 4, 4)
+        expected = scheduler.get_velocity(sample.double(), noise.double(), timesteps.double())[:, 0, 0, 0]
+
+        for dtype in [torch.float16, torch.bfloat16]:
+            velocity = scheduler.get_velocity(sample.to(dtype), noise.to(dtype), timesteps.float())
+            # fp16/bf16 only keep ~3 significant digits, so a relative tolerance is what we can ask for
+            assert torch.allclose(velocity[:, 0, 0, 0].float(), expected.float(), rtol=1e-2), (
+                f"{dtype}: expected {expected.tolist()}, got {velocity[:, 0, 0, 0].tolist()}"
+            )

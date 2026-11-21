@@ -276,15 +276,17 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
         betas = torch.linspace(0.0001, 0.02, 1000, dtype=torch.float32)
         alphas = 1.0 - betas
         alphas_cumprod = torch.cumprod(alphas, dim=0)
-        alphas_cumprod = alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        # Build the schedule in float32 and cast only the coefficients: casting `alphas_cumprod` itself to
+        # float16/bfloat16 rounds it to 1 at the first timesteps, so `1 - alphas_cumprod[t]` becomes 0.
+        alphas_cumprod = alphas_cumprod.to(device=original_samples.device)
         timesteps = timesteps.to(original_samples.device)
 
-        sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
+        sqrt_alpha_prod = (alphas_cumprod[timesteps] ** 0.5).to(original_samples.dtype)
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()
         while len(sqrt_alpha_prod.shape) < len(original_samples.shape):
             sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
 
-        sqrt_one_minus_alpha_prod = (1 - alphas_cumprod[timesteps]) ** 0.5
+        sqrt_one_minus_alpha_prod = ((1 - alphas_cumprod[timesteps]) ** 0.5).to(original_samples.dtype)
         sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
         while len(sqrt_one_minus_alpha_prod.shape) < len(original_samples.shape):
             sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)
