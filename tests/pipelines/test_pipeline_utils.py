@@ -24,10 +24,33 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.pipeline_loading_utils import is_safetensors_compatible, variant_compatible_siblings
+from diffusers.pipelines.pipeline_loading_utils import (
+    is_safetensors_compatible,
+    variant_compatible_siblings,
+)
 
 from ..others.test_utils import TOKEN, USER, is_staging_test
 from ..testing_utils import require_torch_accelerator, torch_device
+
+
+class TestBalancedDeviceMap:
+    @require_torch_accelerator
+    def test_components_that_overflow_stay_in_device_map(self):
+        # The budget fits the text encoder only, so the unet and the vae both overflow to the CPU.
+        device = torch_device if torch_device == "mps" else 0
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch",
+            device_map="balanced",
+            max_memory={device: "300KB"},
+            safety_checker=None,
+        )
+
+        assert pipe.hf_device_map["unet"] == "cpu"
+        assert pipe.hf_device_map["vae"] == "cpu"
+        assert pipe.hf_device_map["text_encoder"] == device
+
+        image = pipe("foo", num_inference_steps=2, output_type="np").images
+        assert image.shape == (1, 128, 128, 3)
 
 
 class TestIsSafetensorsCompatible:
