@@ -155,8 +155,8 @@ class VideoProcessor(VaeImageProcessor):
         # Check if resizing is needed
         if orig_height != new_height or orig_width != new_width:
             ratio = max(new_height / orig_height, new_width / orig_width)
-            resized_width = int(orig_width * ratio)
-            resized_height = int(orig_height * ratio)
+            resized_width = max(int(orig_width * ratio), new_width)
+            resized_height = max(int(orig_height * ratio), new_height)
 
             # Reshape to (N*T, C, H, W) for interpolation
             n, c, t, h, w = samples.shape

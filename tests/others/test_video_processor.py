@@ -26,6 +26,41 @@ torch.manual_seed(0)
 
 
 class TestVideoProcessor:
+    @pytest.mark.parametrize(
+        "source_size, target_size",
+        [
+            ((832, 1152), (960, 1280)),
+            ((1152, 832), (1280, 960)),
+            ((832, 1216), (448, 696)),
+            ((1216, 832), (696, 448)),
+            ((448, 896), (128, 488)),
+            ((896, 448), (488, 128)),
+            ((12, 20), (8, 8)),
+            ((8, 8), (16, 24)),
+            ((8, 16), (8, 16)),
+            ((13, 17), (23, 31)),
+        ],
+    )
+    def test_resize_and_crop_tensor_output_size(self, source_size, target_size):
+        samples = torch.zeros(1, 3, 2, *source_size)
+        height, width = target_size
+
+        output = VideoProcessor.resize_and_crop_tensor(samples, width, height)
+
+        assert output.shape == (1, 3, 2, height, width)
+
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    def test_resize_and_crop_tensor_preserves_batch_channel_and_frame_order(self, dtype):
+        levels = torch.arange(12, dtype=dtype).reshape(2, 2, 3, 1, 1)
+        samples = levels.expand(2, 2, 3, 3, 5).clone()
+
+        output = VideoProcessor.resize_and_crop_tensor(samples, 4, 4)
+
+        assert output.dtype == dtype
+        assert output.device == samples.device
+        torch.testing.assert_close(output, levels.expand(2, 2, 3, 4, 4))
+        torch.testing.assert_close(samples, levels.expand(2, 2, 3, 3, 5))
+
     def get_dummy_sample(self, input_type):
         batch_size = 1
         num_frames = 5
