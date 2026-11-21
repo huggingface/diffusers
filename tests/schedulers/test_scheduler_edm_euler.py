@@ -137,6 +137,21 @@ class EDMEulerSchedulerTest(SchedulerCommonTest):
         self.assertEqual(output_0.shape, sample.shape)
         self.assertEqual(output_0.shape, output_1.shape)
 
+    def test_set_timesteps_with_custom_sigmas(self):
+        scheduler = self.scheduler_classes[0](**self.get_scheduler_config())
+        custom_sigmas = [80.0, 9.723, 0.47, 0.002]
+
+        scheduler.set_timesteps(sigmas=custom_sigmas)
+
+        # the sigmas are used as given, they are not treated as a ramp for `sigma_schedule`
+        expected_sigmas = torch.tensor([*custom_sigmas, 0.0])
+        self.assertTrue(torch.allclose(scheduler.sigmas.float(), expected_sigmas, atol=1e-3))
+        self.assertTrue(torch.isfinite(scheduler.timesteps).all())
+
+        # they match the schedule the scheduler builds on its own for the same number of steps
+        scheduler.set_timesteps(num_inference_steps=len(custom_sigmas))
+        self.assertTrue(torch.allclose(scheduler.sigmas.float(), expected_sigmas, atol=1e-3))
+
     # Override test_from_save_pretrained to use EDMEulerScheduler-specific logic
     def test_scheduler_outputs_equivalence(self):
         def set_nan_tensor_to_zero(t):
