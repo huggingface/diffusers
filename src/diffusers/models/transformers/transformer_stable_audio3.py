@@ -62,7 +62,7 @@ class StableAudio3RMSNorm(nn.Module):
         hidden_states = hidden_states.to(compute_dtype)
         variance = hidden_states.pow(2).mean(-1, keepdim=True)
         hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
-        hidden_states = hidden_states * self.gamma.to(compute_dtype)
+        hidden_states = hidden_states * self.gamma
         return hidden_states.to(input_dtype)
 
 
@@ -114,17 +114,20 @@ def _rotate_half(x: torch.Tensor) -> torch.Tensor:
     return torch.cat((-x2, x1), dim=-1)
 
 
-def _apply_rotary_partial(t: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
+def _apply_rotary_partial(t: torch.Tensor, freqs: tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
     """Partial RoPE — rotate the first `rot_dim` channels, leave the rest.
 
-    `t` has shape `(batch, seq_len, heads, head_dim)`; `freqs` has shape `(seq_len, rot_dim)`.
+    `t` has shape `(batch, seq_len, heads, head_dim)`; `freqs` is the float32 `(cos, sin)` pair, each of shape
+    `(seq_len, rot_dim)`.
     """
-    rot_dim = freqs.shape[-1]
+    cos, sin = freqs
+    rot_dim = cos.shape[-1]
     out_dtype = t.dtype
     t_rot, t_pass = t[..., :rot_dim], t[..., rot_dim:]
     t_rot = t_rot.float()
-    freqs = freqs[-t_rot.shape[-3] :].float().unsqueeze(1)  # (seq_len, 1, rot_dim) broadcasts over heads
-    t_rot = t_rot * freqs.cos() + _rotate_half(t_rot) * freqs.sin()
+    cos = cos[-t_rot.shape[-3] :].unsqueeze(1)  # (seq_len, 1, rot_dim) broadcasts over heads
+    sin = sin[-t_rot.shape[-3] :].unsqueeze(1)
+    t_rot = t_rot * cos + _rotate_half(t_rot) * sin
     return torch.cat((t_rot.to(out_dtype), t_pass), dim=-1)
 
 
@@ -154,18 +157,23 @@ class StableAudio3SelfAttnProcessor:
     _parallel_config = None
 
     def __call__(
-        self, attn: "StableAudio3SelfAttention", hidden_states: torch.Tensor, rope: torch.Tensor
+        self, attn: "StableAudio3SelfAttention", hidden_states: torch.Tensor, rope: tuple[torch.Tensor, torch.Tensor]
     ) -> torch.Tensor:
         def heads(x: torch.Tensor) -> torch.Tensor:
             return x.unflatten(-1, (attn.heads, attn.dim_heads))
 
         if attn.use_differential:
-            q1, q2, k1, k2, v = attn.to_qkv(hidden_states).chunk(5, dim=-1)
-            q1, q2, k1, k2, v = map(heads, (q1, q2, k1, k2, v))
-            q1, q2 = attn.q_norm(q1), attn.q_norm(q2)
-            k1, k2 = attn.k_norm(k1), attn.k_norm(k2)
-            q1, q2 = _apply_rotary_partial(q1, rope), _apply_rotary_partial(q2, rope)
-            k1, k2 = _apply_rotary_partial(k1, rope), _apply_rotary_partial(k2, rope)
+            # q1 / q2 share q_norm, k1 / k2 share k_norm, and all four share RoPE, so each pair runs as one
+            # (2 * heads)-head tensor
+            inner_dim = attn.heads * attn.dim_heads
+            q, k, v = attn.to_qkv(hidden_states).split([2 * inner_dim, 2 * inner_dim, inner_dim], dim=-1)
+            q = q.unflatten(-1, (2 * attn.heads, attn.dim_heads))
+            k = k.unflatten(-1, (2 * attn.heads, attn.dim_heads))
+            v = heads(v)
+            q = _apply_rotary_partial(attn.q_norm(q), rope)
+            k = _apply_rotary_partial(attn.k_norm(k), rope)
+            q1, q2 = q.chunk(2, dim=2)
+            k1, k2 = k.chunk(2, dim=2)
             out = dispatch_attention_fn(
                 q1, k1, v, backend=self._attention_backend, parallel_config=self._parallel_config
             ) - dispatch_attention_fn(
@@ -207,11 +215,14 @@ class StableAudio3CrossAttnProcessor:
         attn_mask = None if context_mask is None else context_mask[:, None, None, :].bool()
 
         if attn.use_differential:
-            q1, q2 = attn.to_q(hidden_states).chunk(2, dim=-1)
-            k1, k2, v = attn.to_kv(context).chunk(3, dim=-1)
-            q1, q2, k1, k2, v = map(heads, (q1, q2, k1, k2, v))
-            q1, q2 = attn.q_norm(q1), attn.q_norm(q2)
-            k1, k2 = attn.k_norm(k1), attn.k_norm(k2)
+            # q1 / q2 share q_norm and k1 / k2 share k_norm, so each pair runs as one (2 * heads)-head tensor
+            inner_dim = attn.heads * attn.dim_heads
+            q = attn.q_norm(attn.to_q(hidden_states).unflatten(-1, (2 * attn.heads, attn.dim_heads)))
+            k, v = attn.to_kv(context).split([2 * inner_dim, inner_dim], dim=-1)
+            k = attn.k_norm(k.unflatten(-1, (2 * attn.heads, attn.dim_heads)))
+            v = heads(v)
+            q1, q2 = q.chunk(2, dim=2)
+            k1, k2 = k.chunk(2, dim=2)
             out = dispatch_attention_fn(
                 q1, k1, v, attn_mask=attn_mask, backend=self._attention_backend, parallel_config=self._parallel_config
             ) - dispatch_attention_fn(
@@ -263,7 +274,7 @@ class StableAudio3SelfAttention(nn.Module, AttentionModuleMixin):
             processor = self._default_processor_cls()
         self.set_processor(processor)
 
-    def forward(self, hidden_states: torch.Tensor, rope: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, rope: tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
         return self.processor(self, hidden_states, rope=rope)
 
 
@@ -367,7 +378,7 @@ class StableAudio3DiTBlock(nn.Module):
         hidden_states: torch.Tensor,
         context: torch.Tensor,
         global_modulation: torch.Tensor,
-        rope: torch.Tensor,
+        rope: tuple[torch.Tensor, torch.Tensor],
         context_mask: Optional[torch.Tensor] = None,
         local_seq: Optional[torch.Tensor] = None,
         num_memory_tokens: int = 0,
@@ -588,7 +599,8 @@ class StableAudio3DiTModel(ModelMixin, ConfigMixin, AttentionMixin):
             memory = self.memory_tokens.unsqueeze(0).expand(batch_size, -1, -1)
             x = torch.cat([memory, x], dim=1)
 
-        rope = self.rotary_pos_emb(x.shape[1], x.device)
+        freqs = self.rotary_pos_emb(x.shape[1], x.device).float()
+        rope = (freqs.cos(), freqs.sin())
 
         for block in self.transformer_blocks:
             if torch.is_grad_enabled() and self.gradient_checkpointing:
