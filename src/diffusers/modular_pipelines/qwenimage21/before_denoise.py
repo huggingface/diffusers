@@ -467,7 +467,7 @@ class QwenImage21TurboSetTimestepsStep(ModularPipelineBlocks):
           - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Configs:
-          sample_sigmas (default: None): Sampling grid the checkpoint ships with, used when `sigmas` is not passed.
+          - sample_sigmas (default: None): Sampling grid the checkpoint ships with, used when `sigmas` is not passed.
 
       Inputs:
           num_inference_steps (`int`, *optional*, defaults to 8):

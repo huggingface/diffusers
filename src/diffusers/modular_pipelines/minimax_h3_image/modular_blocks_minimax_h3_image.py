@@ -46,8 +46,10 @@ class MiniMaxH3ImageAutoBeforeEncodeStep(AutoPipelineBlocks):
           - image_processor (`VaeImageProcessor`)
 
       Configs:
-          reference_min_short_edge (default: 1024) reference_max_short_edge (default: 2048) vision_min_short_edge
-          (default: 1024) vision_max_short_edge (default: 1024)
+          - reference_min_short_edge (default: 1024)
+          - reference_max_short_edge (default: 2048)
+          - vision_min_short_edge (default: 1024)
+          - vision_max_short_edge (default: 1024)
 
       Inputs:
           image (`Image | list`, *optional*):
@@ -165,8 +167,8 @@ class MiniMaxH3ImageCoreDenoiseStep(SequentialPipelineBlocks):
           - transformer (`MiniMaxH3ImageTransformer2DModel`)
 
       Configs:
-          sample_sigmas (default: [1.0, 0.9675236940383911, 0.8875485062599182, 0.75, 0.5327739119529724,
-          0.23200887441635132, 0.0]): The sampling grid the checkpoint's per-step output heads were distilled on.
+          - sample_sigmas (default: [1.0, 0.9675236940383911, 0.8875485062599182, 0.75, 0.5327739119529724,
+            0.23200887441635132, 0.0]): The sampling grid the checkpoint's per-step output heads were distilled on.
 
       Inputs:
           height (`int`, *optional*, defaults to 2048):
@@ -235,8 +237,8 @@ class MiniMaxH3ImageEditCoreDenoiseStep(SequentialPipelineBlocks):
           - transformer (`MiniMaxH3ImageTransformer2DModel`)
 
       Configs:
-          sample_sigmas (default: [1.0, 0.9675236940383911, 0.8875485062599182, 0.75, 0.5327739119529724,
-          0.23200887441635132, 0.0]): The sampling grid the checkpoint's per-step output heads were distilled on.
+          - sample_sigmas (default: [1.0, 0.9675236940383911, 0.8875485062599182, 0.75, 0.5327739119529724,
+            0.23200887441635132, 0.0]): The sampling grid the checkpoint's per-step output heads were distilled on.
 
       Inputs:
           height (`int`, *optional*, defaults to 2048):
@@ -322,8 +324,8 @@ class MiniMaxH3ImageAutoDenoiseStep(AutoPipelineBlocks):
           - transformer (`MiniMaxH3ImageTransformer2DModel`)
 
       Configs:
-          sample_sigmas (default: [1.0, 0.9675236940383911, 0.8875485062599182, 0.75, 0.5327739119529724,
-          0.23200887441635132, 0.0]): The sampling grid the checkpoint's per-step output heads were distilled on.
+          - sample_sigmas (default: [1.0, 0.9675236940383911, 0.8875485062599182, 0.75, 0.5327739119529724,
+            0.23200887441635132, 0.0]): The sampling grid the checkpoint's per-step output heads were distilled on.
 
       Inputs:
           height (`int`):
@@ -392,10 +394,12 @@ class MiniMaxH3ImageBlocks(SequentialPipelineBlocks):
           - transformer (`MiniMaxH3ImageTransformer2DModel`)
 
       Configs:
-          reference_min_short_edge (default: 1024) reference_max_short_edge (default: 2048) vision_min_short_edge
-          (default: 1024) vision_max_short_edge (default: 1024) sample_sigmas (default: [1.0, 0.9675236940383911,
-          0.8875485062599182, 0.75, 0.5327739119529724, 0.23200887441635132, 0.0]): The sampling grid the checkpoint's
-          per-step output heads were distilled on.
+          - reference_min_short_edge (default: 1024)
+          - reference_max_short_edge (default: 2048)
+          - vision_min_short_edge (default: 1024)
+          - vision_max_short_edge (default: 1024)
+          - sample_sigmas (default: [1.0, 0.9675236940383911, 0.8875485062599182, 0.75, 0.5327739119529724,
+            0.23200887441635132, 0.0]): The sampling grid the checkpoint's per-step output heads were distilled on.
 
       Inputs:
           image (`Image | list`, *optional*):

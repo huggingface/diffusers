@@ -126,7 +126,8 @@ class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
           - text_tokenizer (`AutoTokenizer`)
 
       Configs:
-          default_use_system_prompt (default: True) enable_safety_checker (default: True)
+          - default_use_system_prompt (default: True)
+          - enable_safety_checker (default: True)
 
       Inputs:
           control_videos (`dict`, *optional*):
@@ -377,7 +378,7 @@ class Cosmos3VisionCoreDenoiseStep(SequentialPipelineBlocks):
           - scheduler (`UniPCMultistepScheduler`)
 
       Configs:
-          use_native_flow_schedule (default: False)
+          - use_native_flow_schedule (default: False)
 
       Inputs:
           cond_input_ids (`None`):
@@ -458,7 +459,7 @@ class Cosmos3VisionSoundCoreDenoiseStep(SequentialPipelineBlocks):
           - scheduler (`UniPCMultistepScheduler`)
 
       Configs:
-          use_native_flow_schedule (default: False)
+          - use_native_flow_schedule (default: False)
 
       Inputs:
           cond_input_ids (`None`):
@@ -552,7 +553,7 @@ class Cosmos3VisionActionCoreDenoiseStep(SequentialPipelineBlocks):
           - scheduler (`UniPCMultistepScheduler`)
 
       Configs:
-          use_native_flow_schedule (default: False)
+          - use_native_flow_schedule (default: False)
 
       Inputs:
           cond_input_ids (`None`):
@@ -650,7 +651,7 @@ class Cosmos3VisionSoundActionCoreDenoiseStep(SequentialPipelineBlocks):
           - scheduler (`UniPCMultistepScheduler`)
 
       Configs:
-          use_native_flow_schedule (default: False)
+          - use_native_flow_schedule (default: False)
 
       Inputs:
           cond_input_ids (`None`):
@@ -1050,7 +1051,7 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
           - scheduler (`UniPCMultistepScheduler`)
 
       Configs:
-          use_native_flow_schedule (default: False)
+          - use_native_flow_schedule (default: False)
 
       Inputs:
           cond_input_ids (`None`):
@@ -1252,8 +1253,9 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
           - sound_tokenizer (`Cosmos3AVAEAudioTokenizer`)
 
       Configs:
-          default_use_system_prompt (default: True) enable_safety_checker (default: True) use_native_flow_schedule
-          (default: False)
+          - default_use_system_prompt (default: True)
+          - enable_safety_checker (default: True)
+          - use_native_flow_schedule (default: False)
 
       Inputs:
           control_videos (`dict`, *optional*):

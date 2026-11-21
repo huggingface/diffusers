@@ -52,7 +52,8 @@ class PikaH3FlexAutoBeforeEncodeStep(ConditionalPipelineBlocks):
           - image_processor (`VaeImageProcessor`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
+          - canvas_short_edge (default: 768)
+          - canvas_max_pixels (default: 1032192)
 
       Inputs:
           references (`list`, *optional*):
@@ -250,8 +251,9 @@ class PikaH3FlexCoreDenoiseStep(SequentialPipelineBlocks):
           - transformer (`MiniMaxH3Transformer3DModel`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192) denoising_step_list (default: [1000,
-          750, 500, 250, 100, 40, 0])
+          - canvas_short_edge (default: 768)
+          - canvas_max_pixels (default: 1032192)
+          - denoising_step_list (default: [1000, 750, 500, 250, 100, 40, 0])
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -343,8 +345,9 @@ class PikaH3FlexFL2VACoreDenoiseStep(SequentialPipelineBlocks):
           - transformer (`MiniMaxH3Transformer3DModel`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192) denoising_step_list (default: [1000,
-          750, 500, 250, 100, 40, 0])
+          - canvas_short_edge (default: 768)
+          - canvas_max_pixels (default: 1032192)
+          - denoising_step_list (default: [1000, 750, 500, 250, 100, 40, 0])
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -445,7 +448,7 @@ class PikaH3FlexRef2VACoreDenoiseStep(SequentialPipelineBlocks):
           - transformer_ref (`MiniMaxH3Transformer3DModel`)
 
       Configs:
-          denoising_step_list (default: [1000, 750, 500, 250, 100, 40, 0])
+          - denoising_step_list (default: [1000, 750, 500, 250, 100, 40, 0])
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -552,8 +555,9 @@ class PikaH3FlexAutoDenoiseStep(ConditionalPipelineBlocks):
           - transformer (`MiniMaxH3Transformer3DModel`)
 
       Configs:
-          denoising_step_list (default: [1000, 750, 500, 250, 100, 40, 0]) canvas_short_edge (default: 768)
-          canvas_max_pixels (default: 1032192)
+          - denoising_step_list (default: [1000, 750, 500, 250, 100, 40, 0])
+          - canvas_short_edge (default: 768)
+          - canvas_max_pixels (default: 1032192)
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -703,8 +707,9 @@ class PikaH3FlexBlocks(SequentialPipelineBlocks):
           - video_processor (`VideoProcessor`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192) denoising_step_list (default: [1000,
-          750, 500, 250, 100, 40, 0])
+          - canvas_short_edge (default: 768)
+          - canvas_max_pixels (default: 1032192)
+          - denoising_step_list (default: [1000, 750, 500, 250, 100, 40, 0])
 
       Inputs:
           references (`list`, *optional*):

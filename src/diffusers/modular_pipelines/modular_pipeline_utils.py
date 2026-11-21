@@ -883,7 +883,7 @@ def format_components(components, indent_level=4, *, add_empty_lines=True, list_
     return "\n".join(formatted_components)
 
 
-def format_configs(configs, indent_level=4, *, add_empty_lines=True):
+def format_configs(configs, indent_level=4, *, add_empty_lines=True, list_marker=""):
     """Format a list of ConfigSpec objects into a readable string representation.
 
     Args:
@@ -908,7 +908,7 @@ def format_configs(configs, indent_level=4, *, add_empty_lines=True):
 
     # Add each config with optional empty lines between them
     for i, config in enumerate(configs):
-        config_desc = f"{config_indent}{config.name} (default: {config.default})"
+        config_desc = f"{config_indent}{list_marker}{config.name} (default: {config.default})"
         if config.description:
             config_desc += f": {config.description}"
         formatted_configs.append(config_desc)
@@ -992,7 +992,7 @@ def make_doc_string(
 
     # Add configs section if provided
     if expected_configs and len(expected_configs) > 0:
-        configs_str = format_configs(expected_configs, indent_level=2, add_empty_lines=False)
+        configs_str = format_configs(expected_configs, indent_level=2, add_empty_lines=False, list_marker="- ")
         output += configs_str + "\n\n"
 
     # Add inputs section

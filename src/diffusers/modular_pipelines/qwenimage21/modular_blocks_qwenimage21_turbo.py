@@ -253,7 +253,7 @@ class QwenImage21TurboCoreDenoiseStep(SequentialPipelineBlocks):
           - transformer (`QwenImage21Transformer2DModel`)
 
       Configs:
-          sample_sigmas (default: None): Sampling grid the checkpoint ships with, used when `sigmas` is not passed.
+          - sample_sigmas (default: None): Sampling grid the checkpoint ships with, used when `sigmas` is not passed.
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -330,7 +330,7 @@ class QwenImage21TurboImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
           - transformer (`QwenImage21Transformer2DModel`)
 
       Configs:
-          sample_sigmas (default: None): Sampling grid the checkpoint ships with, used when `sigmas` is not passed.
+          - sample_sigmas (default: None): Sampling grid the checkpoint ships with, used when `sigmas` is not passed.
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -399,7 +399,7 @@ class QwenImage21TurboAutoCoreDenoiseStep(AutoPipelineBlocks):
           - transformer (`QwenImage21Transformer2DModel`)
 
       Configs:
-          sample_sigmas (default: None): Sampling grid the checkpoint ships with, used when `sigmas` is not passed.
+          - sample_sigmas (default: None): Sampling grid the checkpoint ships with, used when `sigmas` is not passed.
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -490,7 +490,7 @@ class QwenImage21TurboAutoBlocks(SequentialPipelineBlocks):
           - transformer (`QwenImage21Transformer2DModel`)
 
       Configs:
-          sample_sigmas (default: None): Sampling grid the checkpoint ships with, used when `sigmas` is not passed.
+          - sample_sigmas (default: None): Sampling grid the checkpoint ships with, used when `sigmas` is not passed.
 
       Inputs:
           image (`Image | list`, *optional*):

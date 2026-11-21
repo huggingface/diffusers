@@ -88,7 +88,8 @@ class Cosmos3DistilledVisionCoreDenoiseStep(SequentialPipelineBlocks):
           - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Configs:
-          is_distilled (default: True) distilled_sigmas (default: None)
+          - is_distilled (default: True)
+          - distilled_sigmas (default: None)
 
       Inputs:
           cond_input_ids (`None`):
@@ -179,8 +180,10 @@ class Cosmos3DistilledBlocks(SequentialPipelineBlocks):
           - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Configs:
-          default_use_system_prompt (default: True) enable_safety_checker (default: True) is_distilled (default: True)
-          distilled_sigmas (default: None)
+          - default_use_system_prompt (default: True)
+          - enable_safety_checker (default: True)
+          - is_distilled (default: True)
+          - distilled_sigmas (default: None)
 
       Inputs:
           prompt (`str`):

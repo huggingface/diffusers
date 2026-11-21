@@ -271,7 +271,7 @@ class PAN2Blocks(SequentialPipelineBlocks):
           - guider (`ClassifierFreeGuidance`)
 
       Configs:
-          enable_safety_checker (default: True)
+          - enable_safety_checker (default: True)
 
       Inputs:
           prompt (`str`):

@@ -147,7 +147,7 @@ class Flux2KleinBaseCoreDenoiseStep(SequentialPipelineBlocks):
           - guider (`ClassifierFreeGuidance`)
 
       Configs:
-          is_distilled (default: False)
+          - is_distilled (default: False)
 
       Inputs:
           num_images_per_prompt (`None`, *optional*, defaults to 1):
@@ -221,7 +221,7 @@ class Flux2KleinBaseImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
           - guider (`ClassifierFreeGuidance`)
 
       Configs:
-          is_distilled (default: False)
+          - is_distilled (default: False)
 
       Inputs:
           num_images_per_prompt (`None`, *optional*, defaults to 1):
@@ -283,7 +283,7 @@ class Flux2KleinBaseAutoCoreDenoiseStep(AutoPipelineBlocks):
           - guider (`ClassifierFreeGuidance`)
 
       Configs:
-          is_distilled (default: False)
+          - is_distilled (default: False)
 
       Inputs:
           num_images_per_prompt (`None`, *optional*, defaults to 1):
@@ -357,7 +357,7 @@ class Flux2KleinBaseAutoBlocks(SequentialPipelineBlocks):
           - transformer (`Flux2Transformer2DModel`)
 
       Configs:
-          is_distilled (default: False)
+          - is_distilled (default: False)
 
       Inputs:
           prompt (`None`, *optional*):

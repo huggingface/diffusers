@@ -324,7 +324,8 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
           - control_image_processor (`VaeImageProcessor`)
 
       Configs:
-          force_zeros_for_empty_prompt (default: True) requires_aesthetics_score (default: False)
+          - force_zeros_for_empty_prompt (default: True)
+          - requires_aesthetics_score (default: False)
 
       Inputs:
           prompt (`None`, *optional*):

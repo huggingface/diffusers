@@ -343,7 +343,7 @@ class Flux2KleinAutoBlocks(SequentialPipelineBlocks):
           - transformer (`Flux2Transformer2DModel`)
 
       Configs:
-          is_distilled (default: True)
+          - is_distilled (default: True)
 
       Inputs:
           prompt (`None`, *optional*):

@@ -52,8 +52,8 @@ class Wan22CoreDenoiseStep(SequentialPipelineBlocks):
           - transformer_2 (`WanTransformer3DModel`)
 
       Configs:
-          boundary_ratio (default: 0.875): The boundary ratio to divide the denoising loop into high noise and low
-          noise stages.
+          - boundary_ratio (default: 0.875): The boundary ratio to divide the denoising loop into high noise and low
+            noise stages.
 
       Inputs:
           num_videos_per_prompt (`None`, *optional*, defaults to 1):
@@ -128,8 +128,8 @@ class Wan22Blocks(SequentialPipelineBlocks):
           - video_processor (`VideoProcessor`)
 
       Configs:
-          boundary_ratio (default: 0.875): The boundary ratio to divide the denoising loop into high noise and low
-          noise stages.
+          - boundary_ratio (default: 0.875): The boundary ratio to divide the denoising loop into high noise and low
+            noise stages.
 
       Inputs:
           prompt (`None`, *optional*):

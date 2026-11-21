@@ -52,8 +52,9 @@ class MiniMaxH3AutoBeforeEncodeStep(ConditionalPipelineBlocks):
           - image_processor (`VaeImageProcessor`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192) reference_image_short_edge (default:
-          2048)
+          - canvas_short_edge (default: 768)
+          - canvas_max_pixels (default: 1032192)
+          - reference_image_short_edge (default: 2048)
 
       Inputs:
           references (`list`, *optional*):
@@ -246,7 +247,8 @@ class MiniMaxH3CoreDenoiseStep(SequentialPipelineBlocks):
           - transformer (`MiniMaxH3Transformer3DModel`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
+          - canvas_short_edge (default: 768)
+          - canvas_max_pixels (default: 1032192)
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -340,7 +342,8 @@ class MiniMaxH3FL2VACoreDenoiseStep(SequentialPipelineBlocks):
           - transformer (`MiniMaxH3Transformer3DModel`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
+          - canvas_short_edge (default: 768)
+          - canvas_max_pixels (default: 1032192)
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -546,7 +549,8 @@ class MiniMaxH3AutoDenoiseStep(ConditionalPipelineBlocks):
           - transformer (`MiniMaxH3Transformer3DModel`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
+          - canvas_short_edge (default: 768)
+          - canvas_max_pixels (default: 1032192)
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -692,8 +696,9 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
           - video_processor (`VideoProcessor`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192) reference_image_short_edge (default:
-          2048)
+          - canvas_short_edge (default: 768)
+          - canvas_max_pixels (default: 1032192)
+          - reference_image_short_edge (default: 2048)
 
       Inputs:
           references (`list`, *optional*):
