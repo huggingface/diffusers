@@ -123,7 +123,7 @@ class QwenImagePrepareLatentsStep(ModularPipelineBlocks):
     Prepare initial random noise for the generation process
 
       Components:
-          pachifier (`QwenImagePachifier`)
+          - pachifier (`QwenImagePachifier`)
 
       Inputs:
           latents (`Tensor`, *optional*):
@@ -241,7 +241,7 @@ class QwenImageLayeredPrepareLatentsStep(ModularPipelineBlocks):
     Prepare initial random noise (B, layers+1, C, H, W) for the generation process
 
       Components:
-          pachifier (`QwenImageLayeredPachifier`)
+          - pachifier (`QwenImageLayeredPachifier`)
 
       Inputs:
           latents (`Tensor`, *optional*):
@@ -363,7 +363,7 @@ class QwenImagePrepareLatentsWithStrengthStep(ModularPipelineBlocks):
     prepare_latents. Both noise and image latents should alreadybe patchified.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           latents (`Tensor`):
@@ -469,7 +469,7 @@ class QwenImageCreateMaskLatentsStep(ModularPipelineBlocks):
     Step that creates mask latents from preprocessed mask_image by interpolating to latent space.
 
       Components:
-          pachifier (`QwenImagePachifier`)
+          - pachifier (`QwenImagePachifier`)
 
       Inputs:
           processed_mask_image (`Tensor`):
@@ -561,7 +561,7 @@ class QwenImageSetTimestepsStep(ModularPipelineBlocks):
     Step that sets the scheduler's timesteps for text-to-image generation. Should be run after prepare latents step.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           num_inference_steps (`int`, *optional*, defaults to 50):
@@ -649,7 +649,7 @@ class QwenImageLayeredSetTimestepsStep(ModularPipelineBlocks):
     Set timesteps step for QwenImage Layered with custom mu calculation based on image_latents.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           num_inference_steps (`int`, *optional*, defaults to 50):
@@ -730,7 +730,7 @@ class QwenImageSetTimestepsWithStrengthStep(ModularPipelineBlocks):
     latents step.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           num_inference_steps (`int`, *optional*, defaults to 50):
@@ -1240,7 +1240,7 @@ class QwenImageControlNetBeforeDenoiserStep(ModularPipelineBlocks):
     step that prepare inputs for controlnet. Insert before the Denoise Step, after set_timesteps step.
 
       Components:
-          controlnet (`QwenImageControlNetModel`)
+          - controlnet (`QwenImageControlNetModel`)
 
       Inputs:
           control_guidance_start (`float`, *optional*, defaults to 0.0):

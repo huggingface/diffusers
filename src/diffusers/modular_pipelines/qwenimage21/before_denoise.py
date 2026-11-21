@@ -219,7 +219,7 @@ class QwenImage21SetTimestepsStep(ModularPipelineBlocks):
     `num_inference_steps`. Should be run after the prepare latents step.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           num_inference_steps (`int`, *optional*, defaults to 40):
@@ -464,10 +464,10 @@ class QwenImage21TurboSetTimestepsStep(ModularPipelineBlocks):
     after the prepare latents step.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Configs:
-          sample_sigmas (default: None): Sampling grid the checkpoint ships with, used when `sigmas` is not passed.
+          - sample_sigmas (default: None): Sampling grid the checkpoint ships with, used when `sigmas` is not passed.
 
       Inputs:
           num_inference_steps (`int`, *optional*, defaults to 8):

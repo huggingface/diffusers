@@ -43,11 +43,13 @@ class MiniMaxH3ImageAutoBeforeEncodeStep(AutoPipelineBlocks):
        - a `text2image` request skips this block.
 
       Components:
-          image_processor (`VaeImageProcessor`)
+          - image_processor (`VaeImageProcessor`)
 
       Configs:
-          reference_min_short_edge (default: 1024) reference_max_short_edge (default: 2048) vision_min_short_edge
-          (default: 1024) vision_max_short_edge (default: 1024)
+          - reference_min_short_edge (default: 1024)
+          - reference_max_short_edge (default: 2048)
+          - vision_min_short_edge (default: 1024)
+          - vision_max_short_edge (default: 1024)
 
       Inputs:
           image (`Image | list`, *optional*):
@@ -84,7 +86,9 @@ class MiniMaxH3ImageAutoTextEncoderStep(AutoPipelineBlocks):
        - `MiniMaxH3ImageTextEncoderStep` runs otherwise (`text2image`).
 
       Components:
-          text_encoder (`Qwen3VLForConditionalGeneration`) tokenizer (`Qwen2Tokenizer`) processor (`Qwen3VLProcessor`)
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - tokenizer (`Qwen2Tokenizer`)
+          - processor (`Qwen3VLProcessor`)
 
       Inputs:
           prompt (`str`):
@@ -124,7 +128,7 @@ class MiniMaxH3ImageAutoVaeEncoderStep(AutoPipelineBlocks):
        - a `text2image` request skips this block.
 
       Components:
-          vae (`AutoencoderKLMiniMaxH3Image`)
+          - vae (`AutoencoderKLMiniMaxH3Image`)
 
       Inputs:
           reference_images (`list`, *optional*):
@@ -159,11 +163,12 @@ class MiniMaxH3ImageCoreDenoiseStep(SequentialPipelineBlocks):
     denoising loop and unpacks the latents.
 
       Components:
-          scheduler (`MiniMaxH3Scheduler`) transformer (`MiniMaxH3ImageTransformer2DModel`)
+          - scheduler (`MiniMaxH3Scheduler`)
+          - transformer (`MiniMaxH3ImageTransformer2DModel`)
 
       Configs:
-          sample_sigmas (default: [1.0, 0.9675236940383911, 0.8875485062599182, 0.75, 0.5327739119529724,
-          0.23200887441635132, 0.0]): The sampling grid the checkpoint's per-step output heads were distilled on.
+          - sample_sigmas (default: [1.0, 0.9675236940383911, 0.8875485062599182, 0.75, 0.5327739119529724,
+            0.23200887441635132, 0.0]): The sampling grid the checkpoint's per-step output heads were distilled on.
 
       Inputs:
           height (`int`, *optional*, defaults to 2048):
@@ -228,11 +233,12 @@ class MiniMaxH3ImageEditCoreDenoiseStep(SequentialPipelineBlocks):
     puts the noised reference rows in front of the generated rows, runs the denoising loop and unpacks the latents.
 
       Components:
-          scheduler (`MiniMaxH3Scheduler`) transformer (`MiniMaxH3ImageTransformer2DModel`)
+          - scheduler (`MiniMaxH3Scheduler`)
+          - transformer (`MiniMaxH3ImageTransformer2DModel`)
 
       Configs:
-          sample_sigmas (default: [1.0, 0.9675236940383911, 0.8875485062599182, 0.75, 0.5327739119529724,
-          0.23200887441635132, 0.0]): The sampling grid the checkpoint's per-step output heads were distilled on.
+          - sample_sigmas (default: [1.0, 0.9675236940383911, 0.8875485062599182, 0.75, 0.5327739119529724,
+            0.23200887441635132, 0.0]): The sampling grid the checkpoint's per-step output heads were distilled on.
 
       Inputs:
           height (`int`, *optional*, defaults to 2048):
@@ -314,11 +320,12 @@ class MiniMaxH3ImageAutoDenoiseStep(AutoPipelineBlocks):
        - `MiniMaxH3ImageCoreDenoiseStep` runs otherwise (`text2image`).
 
       Components:
-          scheduler (`MiniMaxH3Scheduler`) transformer (`MiniMaxH3ImageTransformer2DModel`)
+          - scheduler (`MiniMaxH3Scheduler`)
+          - transformer (`MiniMaxH3ImageTransformer2DModel`)
 
       Configs:
-          sample_sigmas (default: [1.0, 0.9675236940383911, 0.8875485062599182, 0.75, 0.5327739119529724,
-          0.23200887441635132, 0.0]): The sampling grid the checkpoint's per-step output heads were distilled on.
+          - sample_sigmas (default: [1.0, 0.9675236940383911, 0.8875485062599182, 0.75, 0.5327739119529724,
+            0.23200887441635132, 0.0]): The sampling grid the checkpoint's per-step output heads were distilled on.
 
       Inputs:
           height (`int`):
@@ -378,15 +385,21 @@ class MiniMaxH3ImageBlocks(SequentialPipelineBlocks):
         - `image_conditioned`: requires `prompt`, `image`
 
       Components:
-          image_processor (`VaeImageProcessor`) text_encoder (`Qwen3VLForConditionalGeneration`) tokenizer
-          (`Qwen2Tokenizer`) processor (`Qwen3VLProcessor`) vae (`AutoencoderKLMiniMaxH3Image`) scheduler
-          (`MiniMaxH3Scheduler`) transformer (`MiniMaxH3ImageTransformer2DModel`)
+          - image_processor (`VaeImageProcessor`)
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - tokenizer (`Qwen2Tokenizer`)
+          - processor (`Qwen3VLProcessor`)
+          - vae (`AutoencoderKLMiniMaxH3Image`)
+          - scheduler (`MiniMaxH3Scheduler`)
+          - transformer (`MiniMaxH3ImageTransformer2DModel`)
 
       Configs:
-          reference_min_short_edge (default: 1024) reference_max_short_edge (default: 2048) vision_min_short_edge
-          (default: 1024) vision_max_short_edge (default: 1024) sample_sigmas (default: [1.0, 0.9675236940383911,
-          0.8875485062599182, 0.75, 0.5327739119529724, 0.23200887441635132, 0.0]): The sampling grid the checkpoint's
-          per-step output heads were distilled on.
+          - reference_min_short_edge (default: 1024)
+          - reference_max_short_edge (default: 2048)
+          - vision_min_short_edge (default: 1024)
+          - vision_max_short_edge (default: 1024)
+          - sample_sigmas (default: [1.0, 0.9675236940383911, 0.8875485062599182, 0.75, 0.5327739119529724,
+            0.23200887441635132, 0.0]): The sampling grid the checkpoint's per-step output heads were distilled on.
 
       Inputs:
           image (`Image | list`, *optional*):
