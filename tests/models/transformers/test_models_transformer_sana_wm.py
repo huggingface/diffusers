@@ -13,9 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pytest
 import torch
 
 from diffusers import SanaWMTransformer3DModel
+from diffusers.models.transformers.transformer_sana_wm import (
+    torch_chunk_cam_single_path_delta_rule,
+    torch_chunk_sana_gdn,
+)
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -147,3 +152,119 @@ class TestSanaWMTransformer3DTraining(SanaWMTransformer3DTesterConfig, TrainingT
     def test_gradient_checkpointing_is_applied(self):
         expected_set = {"SanaWMTransformer3DModel"}
         super().test_gradient_checkpointing_is_applied(expected_set=expected_set)
+
+
+def _flip_and_shift(x, shift_val):
+    # Reverse the frame axis, drop the last entry and pad the front with `shift_val`.
+    x_shifted = torch.flip(x, dims=[2]).narrow(2, 0, x.shape[2] - 1)
+    pad_shape = list(x.shape)
+    pad_shape[2] = 1
+    padding = torch.full(pad_shape, shift_val, device=x.device, dtype=x.dtype)
+    return torch.cat([padding, x_shifted], dim=2)
+
+
+class TestSanaWMBidirectionalScan:
+    """The bidirectional scans must match a second scan on flipped and shifted inputs bit for bit."""
+
+    batch_size, num_heads, head_dim, spatial_size = 2, 2, 4, 6
+    token_inputs = ("q", "k", "v", "q_rot", "k_rot")
+
+    def get_leaves(self, num_frames, requires_grad=False):
+        generator = torch.Generator("cpu").manual_seed(0)
+        B, H, D, S, T = self.batch_size, self.num_heads, self.head_dim, self.spatial_size, num_frames
+        leaves = {name: torch.randn(B, T * S, H, D, generator=generator) for name in self.token_inputs}
+        leaves["beta"] = torch.rand(B, H, T, S, generator=generator)
+        leaves["decay"] = torch.rand(B, H, T, generator=generator)
+        return {name: x.to(torch_device).requires_grad_(requires_grad) for name, x in leaves.items()}
+
+    def get_inputs(self, leaves):
+        # Same layout as the attention modules pass in: `(B, N, H, D)` tokens permuted to `(B, H, D, N)`.
+        return {name: x.permute(0, 2, 3, 1) if name in self.token_inputs else x for name, x in leaves.items()}
+
+    def to_frames(self, x, num_frames):
+        B, H, D, N = x.shape
+        return x.view(B, H, D, num_frames, N // num_frames).permute(0, 1, 3, 2, 4)
+
+    def from_frames(self, x):
+        B, H, T, D, S = x.shape
+        return x.permute(0, 1, 3, 2, 4).reshape(B, H, D, T * S)
+
+    def flip_back(self, x, num_frames):
+        B, H, D, N = x.shape
+        return torch.flip(x.view(B, H, D, num_frames, N // num_frames), dims=[3]).reshape(B, H, D, N)
+
+    def reference_gdn(self, q, k, v, q_rot, k_rot, beta, decay, chunk_size):
+        T = beta.shape[2]
+        num_fwd, den_fwd = torch_chunk_sana_gdn(
+            q, k, v, q_rot, k_rot, beta, decay, chunk_size=chunk_size, return_components=True
+        )
+        num_bwd, den_bwd = torch_chunk_sana_gdn(
+            self.from_frames(torch.flip(self.to_frames(q, T), dims=[2])),
+            self.from_frames(_flip_and_shift(self.to_frames(k, T), 0.0)),
+            self.from_frames(_flip_and_shift(self.to_frames(v, T), 0.0)),
+            self.from_frames(torch.flip(self.to_frames(q_rot, T), dims=[2])),
+            self.from_frames(_flip_and_shift(self.to_frames(k_rot, T), 0.0)),
+            _flip_and_shift(beta, 0.0),
+            _flip_and_shift(decay, 1.0),
+            chunk_size=chunk_size,
+            return_components=True,
+        )
+        return num_fwd + self.flip_back(num_bwd, T), den_fwd + self.flip_back(den_bwd, T)
+
+    def reference_cam(self, q_rot, k_rot, v, beta, decay, chunk_size):
+        T = beta.shape[2]
+        out_fwd = torch_chunk_cam_single_path_delta_rule(q_rot, k_rot, v, beta, decay, chunk_size=chunk_size)
+        out_bwd = torch_chunk_cam_single_path_delta_rule(
+            self.from_frames(torch.flip(self.to_frames(q_rot, T), dims=[2])),
+            self.from_frames(_flip_and_shift(self.to_frames(k_rot, T), 0.0)),
+            self.from_frames(_flip_and_shift(self.to_frames(v, T), 0.0)),
+            _flip_and_shift(beta, 0.0),
+            _flip_and_shift(decay, 1.0),
+            chunk_size=chunk_size,
+        )
+        return out_fwd + self.flip_back(out_bwd, T)
+
+    @pytest.mark.parametrize("num_frames, chunk_size", [(1, 21), (2, 21), (5, 21), (5, 2), (7, 3)])
+    def test_gdn_matches_flipped_scan(self, num_frames, chunk_size):
+        inputs = self.get_inputs(self.get_leaves(num_frames))
+        with torch.no_grad():
+            expected = self.reference_gdn(**inputs, chunk_size=chunk_size)
+            output = torch_chunk_sana_gdn(**inputs, chunk_size=chunk_size, return_components=True, bidirectional=True)
+        assert torch.equal(output[0], expected[0])
+        assert torch.equal(output[1], expected[1])
+
+    @pytest.mark.parametrize("num_frames, chunk_size", [(1, 21), (2, 21), (5, 21), (5, 2), (7, 3)])
+    def test_cam_matches_flipped_scan(self, num_frames, chunk_size):
+        leaves = self.get_leaves(num_frames)
+        del leaves["q"], leaves["k"]
+        inputs = self.get_inputs(leaves)
+        with torch.no_grad():
+            expected = self.reference_cam(**inputs, chunk_size=chunk_size)
+            output = torch_chunk_cam_single_path_delta_rule(**inputs, chunk_size=chunk_size, bidirectional=True)
+        assert torch.equal(output, expected)
+
+    def test_gdn_gradients_match_flipped_scan(self):
+        leaves = self.get_leaves(num_frames=5, requires_grad=True)
+        inputs = self.get_inputs(leaves)
+        expected = self.reference_gdn(**inputs, chunk_size=2)
+        expected_grads = torch.autograd.grad(sum(x.square().sum() for x in expected), list(leaves.values()))
+        output = torch_chunk_sana_gdn(**inputs, chunk_size=2, return_components=True, bidirectional=True)
+        grads = torch.autograd.grad(sum(x.square().sum() for x in output), list(leaves.values()))
+        assert torch.equal(output[0], expected[0])
+        assert torch.equal(output[1], expected[1])
+        # The gradients of both scans sum the same terms in a different order.
+        for grad, expected_grad in zip(grads, expected_grads):
+            assert (grad - expected_grad).abs().max() <= 1e-5 * expected_grad.abs().max()
+
+    def test_cam_gradients_match_flipped_scan(self):
+        leaves = self.get_leaves(num_frames=5, requires_grad=True)
+        del leaves["q"], leaves["k"]
+        inputs = self.get_inputs(leaves)
+        expected = self.reference_cam(**inputs, chunk_size=2)
+        expected_grads = torch.autograd.grad(expected.square().sum(), list(leaves.values()))
+        output = torch_chunk_cam_single_path_delta_rule(**inputs, chunk_size=2, bidirectional=True)
+        grads = torch.autograd.grad(output.square().sum(), list(leaves.values()))
+        assert torch.equal(output, expected)
+        # The gradients of both scans sum the same terms in a different order.
+        for grad, expected_grad in zip(grads, expected_grads):
+            assert (grad - expected_grad).abs().max() <= 1e-5 * expected_grad.abs().max()
