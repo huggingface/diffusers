@@ -895,6 +895,10 @@ def get_ltx2_diffusion_video_vae_config(version: str) -> tuple[dict[str, Any], d
 def convert_ltx2_diffusion_video_vae(original_state_dict: dict[str, Any], version: str) -> dict[str, Any]:
     config, rename_dict, special_keys_remap = get_ltx2_diffusion_video_vae_config(version)
     diffusers_config = config["diffusers_config"]
+    # Checkpoints trained for keyframe-aware decoding carry the keyframe stream's learned tag, `decoder.type_emb`
+    # (`(latent_channels,)`); older ones do not. It keeps its name, so only the config has to know it is there.
+    if "decoder.type_emb" in original_state_dict:
+        diffusers_config = {**diffusers_config, "decoder_keyframe_type_embedding": True}
 
     with init_empty_weights():
         vae = LTX2VideoDiffusionDecoderModel.from_config(diffusers_config)
