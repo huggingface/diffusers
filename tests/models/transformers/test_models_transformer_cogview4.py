@@ -12,9 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from unittest.mock import patch
+
+import pytest
 import torch
 
 from diffusers import CogView4Transformer2DModel
+from diffusers.models.embeddings import apply_rotary_emb
+from diffusers.models.transformers.transformer_cogview4 import _apply_rotary_emb_to_latents_
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -109,3 +114,47 @@ class TestCogView4TransformerTraining(CogView4TransformerTesterConfig, TrainingT
 
 class TestCogView4TransformerLoRA(CogView4TransformerTesterConfig, LoraTesterMixin):
     pass
+
+
+class TestCogView4RotaryEmbedding:
+    text_seq_length = 5
+    image_seq_length = 12
+
+    def get_inputs(self, tables_device):
+        generator = torch.Generator("cpu").manual_seed(0)
+        shape = (2, 3, self.text_seq_length + self.image_seq_length, 16)
+        query = torch.randn(shape, generator=generator).to(torch_device, torch.bfloat16)
+        key = torch.randn(shape, generator=generator).to(torch_device, torch.bfloat16)
+        cos = torch.randn(self.image_seq_length, 16, generator=generator).to(tables_device)
+        sin = torch.randn(self.image_seq_length, 16, generator=generator).to(tables_device)
+        return query, key, (cos, sin)
+
+    def check_against_apply_rotary_emb(self, tables_device, expected_calls):
+        query, key, image_rotary_emb = self.get_inputs(tables_device)
+        expected = []
+        for x in (query, key):
+            x = x.clone()
+            x[:, :, self.text_seq_length :, :] = apply_rotary_emb(
+                x[:, :, self.text_seq_length :, :], image_rotary_emb, use_real_unbind_dim=-2
+            )
+            expected.append(x)
+        assert not torch.equal(query, expected[0])
+
+        with patch("diffusers.models.embeddings.apply_rotary_emb", wraps=apply_rotary_emb) as mock:
+            _apply_rotary_emb_to_latents_(query, key, self.text_seq_length, image_rotary_emb)
+
+        assert mock.call_count == expected_calls
+        assert torch.equal(query, expected[0])
+        assert torch.equal(key, expected[1])
+
+    @torch.no_grad()
+    def test_split_half_matches_apply_rotary_emb(self):
+        self.check_against_apply_rotary_emb(torch_device, expected_calls=0)
+
+    @pytest.mark.skipif(torch_device == "cpu", reason="CPU tables are on the input device")
+    @torch.no_grad()
+    def test_cpu_tables_fall_back_to_apply_rotary_emb(self):
+        self.check_against_apply_rotary_emb("cpu", expected_calls=2)
+
+    def test_grad_enabled_falls_back_to_apply_rotary_emb(self):
+        self.check_against_apply_rotary_emb(torch_device, expected_calls=2)
