@@ -396,6 +396,13 @@ def _get_checkpoint_shard_files(
     if not os.path.isfile(index_filename):
         raise ValueError(f"Can't find a checkpoint index ({index_filename}) in {pretrained_model_name_or_path}.")
 
+    # Offline mode (HF_HUB_OFFLINE=1) can only be served from the cache, so it
+    # behaves like `local_files_only=True` for both the Hub pre-check below and
+    # the `snapshot_download` call: without this fold, `model_info` raises
+    # OfflineModeIsEnabled on a fully cached checkpoint, and hub>=1.33 may hit
+    # the network for a trees/<commit>.json listing that older caches never wrote.
+    local_files_only = local_files_only or HF_HUB_OFFLINE
+
     with open(index_filename, "r") as f:
         index = json.loads(f.read())
 
