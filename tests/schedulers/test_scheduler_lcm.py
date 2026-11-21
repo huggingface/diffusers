@@ -298,3 +298,51 @@ class LCMSchedulerTest(SchedulerCommonTest):
             msg="`timesteps` must start before `self.config.train_timesteps`: {scheduler.config.num_train_timesteps}}",
         ):
             scheduler.set_timesteps(timesteps=timesteps)
+
+    def test_truncated_custom_timesteps_final_step_preserves_generator(self):
+        # Regression test for the same bug class as huggingface/diffusers#15288 (fixed for
+        # TCDScheduler in #15301): `strength < 1` truncates a custom timestep schedule, but
+        # `num_inference_steps` keeps the pre-truncation count, so the actual final step used
+        # to sample noise (and advance the generator) even though that noise is never used.
+        for prediction_type in ["epsilon", "v_prediction"]:
+            scheduler_class = self.scheduler_classes[0]
+            scheduler_config = self.get_scheduler_config(prediction_type=prediction_type)
+            scheduler = scheduler_class(**scheduler_config)
+
+            # Single-step truncation: [999, 499, 19] with strength=0.5 leaves only [19].
+            scheduler.set_timesteps(timesteps=[999, 499, 19], strength=0.5)
+
+            self.assertEqual(scheduler.timesteps.tolist(), [19])
+
+            generator = torch.Generator(device="cpu").manual_seed(0)
+            control = torch.Generator(device="cpu").manual_seed(0)
+            sample = torch.ones((1, 1), device="cpu")
+
+            before = generator.get_state().clone()
+            scheduler.step(torch.zeros_like(sample), scheduler.timesteps[0], sample, generator=generator)
+
+            # The terminal step must not consume randomness.
+            self.assertTrue(torch.equal(before, generator.get_state()))
+            self.assertTrue(torch.equal(torch.randn(4, generator=generator), torch.randn(4, generator=control)))
+
+            # Multi-step truncation: [999, 899, 799, 699, 599] with strength=0.6
+            # leaves [799, 699, 599]. Only the non-final steps consume randomness.
+            scheduler.set_timesteps(timesteps=[999, 899, 799, 699, 599], strength=0.6)
+
+            self.assertEqual(scheduler.timesteps.tolist(), [799, 699, 599])
+
+            generator = torch.Generator(device="cpu").manual_seed(0)
+            control = torch.Generator(device="cpu").manual_seed(0)
+            sample = torch.ones((1, 1), device="cpu")
+
+            for i, t in enumerate(scheduler.timesteps):
+                before = generator.get_state().clone()
+                scheduler.step(torch.zeros_like(sample), t, sample, generator=generator)
+                if i == len(scheduler.timesteps) - 1:
+                    self.assertTrue(torch.equal(before, generator.get_state()))
+                else:
+                    self.assertFalse(torch.equal(before, generator.get_state()))
+                    # Each non-final step draws one noise tensor of the model output shape.
+                    torch.randn(1, 1, generator=control)
+
+            self.assertTrue(torch.equal(torch.randn(4, generator=generator), torch.randn(4, generator=control)))
