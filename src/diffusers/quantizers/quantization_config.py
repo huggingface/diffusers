@@ -43,6 +43,7 @@ logger = logging.get_logger(__name__)
 class QuantizationMethod(str, Enum):
     BITS_AND_BYTES = "bitsandbytes"
     BFL = "bfl"
+    COMFY = "comfy"
     GGUF = "gguf"
     NUNCHAKU_LITE = "nunchaku_lite"
     TORCHAO = "torchao"
@@ -421,6 +422,42 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
 
         if self.compute_dtype is None:
             self.compute_dtype = torch.float32
+
+
+@dataclass
+class ComfyQuantizationConfig(QuantizationConfigMixin):
+    """Load native Comfy checkpoints with Comfy-Kitchen kernels.
+
+    Quantization formats are read from each layer's `comfy_quant` metadata in the prequantized checkpoint.
+    See the [Comfy quantization guide](https://huggingface.co/docs/diffusers/main/en/quantization/comfy) for validated
+    formats and checkpoint limitations.
+
+    Args:
+        compute_dtype (`torch.dtype`, defaults to `torch.bfloat16`):
+            Precision of activations and unquantized layers. Supports BF16 and FP16.
+    """
+
+    def __init__(self, compute_dtype: "torch.dtype" | str | None = None, **kwargs):
+        self.quant_method = QuantizationMethod.COMFY
+        self.compute_dtype = compute_dtype if compute_dtype is not None else torch.bfloat16
+        self.pre_quantized = True
+        self.post_init()
+
+    def post_init(self):
+        self.pre_quantized = True
+        if isinstance(self.compute_dtype, str):
+            self.compute_dtype = {"bfloat16": torch.bfloat16, "float16": torch.float16}.get(self.compute_dtype)
+        if self.compute_dtype not in (torch.bfloat16, torch.float16):
+            raise ValueError("Comfy compute_dtype must be torch.bfloat16 or torch.float16.")
+
+    def to_dict(self):
+        result = super().to_dict()
+        result["compute_dtype"] = str(self.compute_dtype).replace("torch.", "")
+        return result
+
+    def to_diff_dict(self):
+        default = ComfyQuantizationConfig().to_dict()
+        return {key: value for key, value in self.to_dict().items() if key == "quant_method" or value != default[key]}
 
 
 @dataclass

@@ -34,6 +34,13 @@ Quantization techniques reduce memory and computational costs by representing we
 
 [[autodoc]] quantizers.quantization_config.GGUFQuantizationConfig
 
+## ComfyQuantizationConfig
+
+Load prequantized single-file checkpoints with Comfy-Kitchen. See the [Comfy quantization guide](../quantization/comfy)
+for usage, validated formats, and checkpoint limitations.
+
+[[autodoc]] quantizers.quantization_config.ComfyQuantizationConfig
+
 ## NunchakuLiteQuantizationConfig
 
 [[autodoc]] quantizers.quantization_config.NunchakuLiteQuantizationConfig
