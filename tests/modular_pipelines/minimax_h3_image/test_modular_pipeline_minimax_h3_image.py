@@ -24,7 +24,9 @@ from diffusers.modular_pipelines.minimax_h3_image.encoders import (
     MiniMaxH3ImageTextEncoderStep,
 )
 
+from ...testing_utils import is_lora, require_peft_backend
 from ..testing_utils import (
+    BaseModularPipelineOutputMixin,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularMemoryTesterMixin,
@@ -78,6 +80,7 @@ _SHARED_INPUTS = {
     "min_generation_area": 2048 * 2048,
     "generator": None,
     "latents": None,
+    "attention_kwargs": None,
     "output_type": "pil",
 }
 MINIMAX_H3_IMAGE_WORKFLOW_DEFAULTS = {
@@ -332,6 +335,35 @@ class TestMiniMaxH3ImageModularPipelineFast(MiniMaxH3ImageModularPipelineTesterC
 
         with pytest.raises(ValueError, match="must be a single non-empty string"):
             pipe(**inputs)
+
+
+@is_lora
+@require_peft_backend
+class TestMiniMaxH3ImageModularPipelineLoRA(MiniMaxH3ImageModularPipelineTesterConfig, BaseModularPipelineOutputMixin):
+    @torch.no_grad()
+    def test_attention_kwargs_scale(self):
+        from peft import LoraConfig
+
+        pipe = self.get_pipeline()
+        base_output = self.run_pipe(pipe)
+        pipe.transformer.add_adapter(
+            LoraConfig(
+                r=4,
+                lora_alpha=4,
+                target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+                init_lora_weights=False,
+            )
+        )
+        lora_output = self.run_pipe(pipe)
+        zero_scale_output = self.run_pipe(pipe, attention_kwargs={"scale": 0.0})
+        full_scale_output = self.run_pipe(pipe, attention_kwargs={"scale": 1.0})
+        half_scale_output = self.run_pipe(pipe, attention_kwargs={"scale": 0.5})
+
+        assert not torch.allclose(base_output, lora_output, atol=1e-4, rtol=1e-4)
+        torch.testing.assert_close(zero_scale_output, base_output, atol=1e-4, rtol=1e-4)
+        torch.testing.assert_close(full_scale_output, lora_output, atol=0, rtol=0)
+        assert not torch.allclose(half_scale_output, base_output, atol=1e-4, rtol=1e-4)
+        assert not torch.allclose(half_scale_output, lora_output, atol=1e-4, rtol=1e-4)
 
 
 class TestMiniMaxH3ImageModularBlocks(MiniMaxH3ImageModularPipelineTesterConfig):

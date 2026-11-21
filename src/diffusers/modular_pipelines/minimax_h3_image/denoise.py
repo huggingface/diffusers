@@ -70,6 +70,7 @@ class MiniMaxH3ImageLoopDenoiser(ModularPipelineBlocks):
                     "`position_ids` and the two row-index tensors."
                 ),
             ),
+            InputParam.template("attention_kwargs"),
         ]
 
     @property
@@ -106,6 +107,7 @@ class MiniMaxH3ImageLoopDenoiser(ModularPipelineBlocks):
             timestep=unique_timesteps,
             timestep_indices=timestep_indices,
             pdd_step_index=i,
+            attention_kwargs=block_state.attention_kwargs,
             return_dict=False,
             **additional_denoiser_kwargs,
         )[0]

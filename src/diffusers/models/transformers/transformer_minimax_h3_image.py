@@ -12,12 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Any
+
 import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...hooks.tensor_parallel import PackedColwiseParallel
-from ...utils import logging
+from ...loaders import PeftAdapterMixin
+from ...utils import apply_lora_scale, logging
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
@@ -362,7 +365,7 @@ class MiniMaxH3ImageTransformerBlock(nn.Module):
         return hidden_states
 
 
-class MiniMaxH3ImageTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
+class MiniMaxH3ImageTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapterMixin):
     r"""
     A Transformer model for image generation and editing, introduced in MiniMax-H3-Image.
 
@@ -542,6 +545,7 @@ class MiniMaxH3ImageTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
 
         self.gradient_checkpointing = False
 
+    @apply_lora_scale("attention_kwargs")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -553,6 +557,7 @@ class MiniMaxH3ImageTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
         image_indices: torch.Tensor,
         text_indices: torch.Tensor,
         pdd_step_index: int,
+        attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
     ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         r"""
@@ -577,6 +582,8 @@ class MiniMaxH3ImageTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
                 Positions of the text rows in the packed sequence.
             pdd_step_index (`int`):
                 The sampling step, which selects the output head.
+            attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that, if specified, may carry a `scale` entry which is applied to the LoRA layers.
             return_dict (`bool`, defaults to `True`):
                 Whether to return a [`~models.modeling_outputs.Transformer2DModelOutput`] instead of a plain tuple.
 
@@ -585,6 +592,7 @@ class MiniMaxH3ImageTransformer2DModel(ModelMixin, ConfigMixin, AttentionMixin):
                 The velocity of every image row, of shape `(batch_size, num_image_tokens, in_channels *
                 prod(patch_size))`, in the row order of `image_indices`.
         """
+        # `attention_kwargs` is consumed by the `@apply_lora_scale` decorator on this method.
         if position_ids.ndim != 2 or position_ids.shape[-1] != 3:
             raise ValueError(f"`position_ids` must be a `(seq_len, 3)` tensor, got {list(position_ids.shape)}.")
         sequence_length = position_ids.shape[0]
