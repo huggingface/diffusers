@@ -53,4 +53,6 @@ deps = {
     "opencv-python": "opencv-python",
     "timm": "timm",
     "flashpack": "flashpack",
+    "fastapi": "fastapi",
+    "uvicorn": "uvicorn",
 }

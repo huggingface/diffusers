@@ -146,6 +146,8 @@ _deps = [
     "opencv-python",
     "timm",
     "flashpack",
+    "fastapi",
+    "uvicorn",
 ]
 
 # this is a lookup table with items like:
@@ -253,6 +255,7 @@ extras["torchao"] = deps_list("torchao", "accelerate")
 extras["nvidia_modelopt"] = deps_list("nvidia_modelopt[hf]")
 extras["sdnq"] = deps_list("sdnq")
 extras["flashpack"] = deps_list("flashpack")
+extras["serve"] = deps_list("fastapi", "uvicorn")
 
 extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"]
 
@@ -287,7 +290,12 @@ setup(
     python_requires=">=3.11.0",
     install_requires=list(install_requires),
     extras_require=extras,
-    entry_points={"console_scripts": ["diffusers-cli=diffusers.commands.diffusers_cli:main"]},
+    entry_points={
+        "console_scripts": [
+            "diffusers-cli=diffusers.commands.diffusers_cli:main",
+            "diffusers=diffusers.commands.diffusers_cli:main",
+        ]
+    },
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",
