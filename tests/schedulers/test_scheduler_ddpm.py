@@ -66,7 +66,28 @@ class DDPMSchedulerTest(SchedulerCommonTest):
 
         assert torch.sum(torch.abs(scheduler._get_variance(0) - 0.0)) < 1e-5
         assert torch.sum(torch.abs(scheduler._get_variance(487) - 0.00979)) < 1e-5
-        assert torch.sum(torch.abs(scheduler._get_variance(999) - 0.02)) < 1e-5
+
+    def test_no_noise_at_terminal_transition(self):
+        # when previous_timestep() returns -1 (e.g. trailing spacing ends at t != 0),
+        # step() must not add fresh noise on top of pred_original_sample
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(
+            variance_type="fixed_large",
+            timestep_spacing="trailing",
+            prediction_type="sample",
+            clip_sample=False,
+        )
+        scheduler = scheduler_class(**scheduler_config)
+        scheduler.set_timesteps(50)
+
+        x = torch.zeros(1, 1, 2, 2)
+        x0 = torch.full_like(x, 0.25)
+        generator = torch.Generator().manual_seed(0)
+
+        for variance in ("fixed_small", "fixed_large"):
+            scheduler.config.variance_type = variance
+            out = scheduler.step(x0, scheduler.timesteps[-1], x, generator=generator)
+            assert torch.allclose(out.prev_sample, out.pred_original_sample), variance
 
     def test_rescale_betas_zero_snr(self):
         for rescale_betas_zero_snr in [True, False]:
