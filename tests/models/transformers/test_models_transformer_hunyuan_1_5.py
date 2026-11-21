@@ -12,9 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from unittest import mock
+
 import torch
+import torch.nn.functional as F
 
 from diffusers import HunyuanVideo15Transformer3DModel
+from diffusers.models.attention_dispatch import dispatch_attention_fn
+from diffusers.models.transformers import transformer_hunyuan_video15
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -106,6 +111,70 @@ class HunyuanVideo15TransformerTesterConfig(BaseModelTesterConfig):
 
 class TestHunyuanVideo15Transformer(HunyuanVideo15TransformerTesterConfig, ModelTesterMixin):
     pass
+
+
+class TestHunyuanVideo15TransformerAttentionMask(HunyuanVideo15TransformerTesterConfig):
+    def test_key_only_attention_mask_matches_dense_mask(self):
+        """The mask the processor passes gives the same video tokens, the same valid encoder rows and the same output,
+        bit for bit, as a reference with the dense (batch, 1, seq_len, seq_len) mask that also masks the padded
+        queries (the mask before the key-only change)."""
+        encoder_masks = []
+
+        def capture_encoder_mask(module, args, kwargs):
+            encoder_masks.append(kwargs["attention_mask"])
+
+        def dispatch_with_dense_mask(query, key, value, attn_mask=None, **kwargs):
+            # the mask HunyuanVideo15AttnProcessor2_0 built before (padded tokens masked as keys and as queries),
+            # rebuilt from the block's encoder mask; the mask the processor passes is not used
+            batch_size, seq_len = query.shape[:2]
+            mask = F.pad(encoder_masks[-1], (seq_len - encoder_masks[-1].shape[1], 0), value=True).bool()
+            mask = mask.view(batch_size, 1, 1, seq_len).repeat(1, 1, seq_len, 1)
+            return dispatch_attention_fn(query, key, value, attn_mask=mask & mask.transpose(2, 3), **kwargs)
+
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        for block in model.transformer_blocks:
+            block.attn.register_forward_pre_hook(capture_encoder_mask, with_kwargs=True)
+
+        def run(inputs):
+            block_outputs = []
+            hooks = [
+                block.register_forward_hook(lambda module, args, output: block_outputs.append(output))
+                for block in model.transformer_blocks
+            ]
+            with torch.no_grad():
+                sample = model(**inputs).sample
+            for hook in hooks:
+                hook.remove()
+            return sample, block_outputs
+
+        inputs = self.get_dummy_inputs(batch_size=2)
+        # padded prompts, different per sample; the second sample has no valid ByT5 token
+        qwen_mask = torch.tensor([[1, 1, 1, 1, 1, 0], [1, 1, 1, 0, 0, 0]], dtype=torch.float32, device=torch_device)
+        byt5_mask = torch.tensor([[1, 1, 1, 0], [0, 0, 0, 0]], dtype=torch.float32, device=torch_device)
+        inputs["encoder_attention_mask"], inputs["encoder_attention_mask_2"] = qwen_mask, byt5_mask
+        t2v_image_embeds = inputs["image_embeds"]
+        i2v_image_embeds = randn_tensor(t2v_image_embeds.shape, generator=self.generator, device=torch_device)
+        # all-zero image_embeds: t2v, the image-embedding tokens are padded too; otherwise i2v, they are valid.
+        # Valid encoder tokens per sample = image-embedding + ByT5 + Qwen
+        for image_embeds, num_valid in ((t2v_image_embeds, [8, 3]), (i2v_image_embeds, [11, 6])):
+            inputs["image_embeds"] = image_embeds
+            encoder_masks.clear()
+            out, out_blocks = run(inputs)
+            encoder_mask = encoder_masks[-1].bool()
+            assert encoder_mask.sum(dim=1).tolist() == num_valid
+            with mock.patch.object(transformer_hunyuan_video15, "dispatch_attention_fn", dispatch_with_dense_mask):
+                ref, ref_blocks = run(inputs)
+
+            assert torch.isfinite(out).all() and torch.isfinite(ref).all()
+            assert torch.equal(out, ref)
+            assert len(out_blocks) == len(ref_blocks) == len(model.transformer_blocks)
+            for (hidden, encoder), (ref_hidden, ref_encoder) in zip(out_blocks, ref_blocks):
+                assert torch.equal(hidden, ref_hidden)
+                # valid encoder tokens come first; the padded ones are never read as unmasked keys and are dropped
+                for i, n in enumerate(num_valid):
+                    assert encoder_mask[i, :n].all()
+                    assert torch.equal(encoder[i, :n], ref_encoder[i, :n])
 
 
 class TestHunyuanVideo15TransformerTraining(HunyuanVideo15TransformerTesterConfig, TrainingTesterMixin):
