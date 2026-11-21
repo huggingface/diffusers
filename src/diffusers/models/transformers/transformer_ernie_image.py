@@ -268,15 +268,16 @@ class ErnieImageSharedAdaLNBlock(nn.Module):
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = temb
         residual = x
         x = self.adaLN_sa_ln(x)
-        x = (x.float() * (1 + scale_msa.float()) + shift_msa.float()).to(x.dtype)
+        # The float32 scale / shift / gate promote each product to float32, so the activations are not upcast first.
+        x = (x * (1 + scale_msa.float()) + shift_msa.float()).to(x.dtype)
         x_bsh = x.permute(1, 0, 2)  # [S, B, H] → [B, S, H] for diffusers Attention (batch-first)
         attn_out = self.self_attention(x_bsh, attention_mask=attention_mask, image_rotary_emb=rotary_pos_emb)
         attn_out = attn_out.permute(1, 0, 2)  # [B, S, H] → [S, B, H]
-        x = residual + (gate_msa.float() * attn_out.float()).to(x.dtype)
+        x = residual + (gate_msa.float() * attn_out).to(x.dtype)
         residual = x
         x = self.adaLN_mlp_ln(x)
-        x = (x.float() * (1 + scale_mlp.float()) + shift_mlp.float()).to(x.dtype)
-        return residual + (gate_mlp.float() * self.mlp(x).float()).to(x.dtype)
+        x = (x * (1 + scale_mlp.float()) + shift_mlp.float()).to(x.dtype)
+        return residual + (gate_mlp.float() * self.mlp(x)).to(x.dtype)
 
 
 class ErnieImageAdaLNContinuous(nn.Module):
@@ -389,7 +390,6 @@ class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         text_sbh = text_bth.transpose(0, 1).contiguous()
 
         x = torch.cat([img_sbh, text_sbh], dim=0)
-        S = x.shape[0]
 
         # Position IDs
         text_ids = (
@@ -431,8 +431,9 @@ class ErnieImageTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         sample = self.time_proj(timestep)
         sample = sample.to(dtype=dtype)
         c = self.time_embedding(sample)
+        # [1, B, H] each, broadcast over the sequence inside the blocks
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = [
-            t.unsqueeze(0).expand(S, -1, -1).contiguous() for t in self.adaLN_modulation(c).chunk(6, dim=-1)
+            t.unsqueeze(0) for t in self.adaLN_modulation(c).chunk(6, dim=-1)
         ]
         for layer in self.layers:
             temb = [shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp]
