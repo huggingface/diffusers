@@ -132,3 +132,120 @@ class TestDeprecatedAttentionBlock:
 
         assert np.allclose(pre_conversion, conversion, atol=1e-3)
         assert np.allclose(conversion, after_conversion, atol=1e-3)
+
+
+class TestGetAttentionScoresMPS:
+    # Regression tests for https://github.com/huggingface/diffusers/issues/14438.
+    # On MPS, baddbmm propagates NaN/Inf from `input` even with beta=0, so
+    # get_attention_scores must not pass uninitialized memory as the buffer.
+    # Poison the allocator pool so a subsequent torch.empty of the same shape
+    # recycles NaN-bearing pages, then verify scores stay finite and correct.
+
+    batch, tokens, dim_head = 8, 4096, 32
+
+    def _make_qk(self):
+        query = torch.randn(self.batch, self.tokens, self.dim_head, device="mps", dtype=torch.float16)
+        key = torch.randn(self.batch, self.tokens, self.dim_head, device="mps", dtype=torch.float16)
+        return query, key
+
+    def _poison_pool(self):
+        # Fill and free a buffer of exactly the attention-scores shape so the
+        # allocator hands its NaN-bearing pages to the next torch.empty call.
+        junk = torch.full((self.batch, self.tokens, self.tokens), float("nan"), device="mps", dtype=torch.float16)
+        del junk
+
+    @pytest.mark.skipif(torch_device != "mps", reason="regression test for an MPS-specific baddbmm issue")
+    def test_get_attention_scores_no_nan_from_recycled_buffer(self):
+        from types import SimpleNamespace
+
+        from diffusers.models.attention import AttentionModuleMixin
+
+        # Exercise both duplicated implementations of get_attention_scores in one
+        # process: allocator page-recycling on MPS is position-dependent, so a
+        # sequence of poisoned calls across both paths is what detects the leak
+        # deterministically.
+        attn = Attention(query_dim=64, heads=2, dim_head=32)
+        holder = SimpleNamespace(upcast_attention=False, upcast_softmax=False, scale=0.125)
+        query, key = self._make_qk()
+
+        score_fns = [
+            ("Attention", lambda: attn.get_attention_scores(query, key, attention_mask=None)),
+            (
+                "AttentionModuleMixin",
+                lambda: AttentionModuleMixin.get_attention_scores(holder, query, key, attention_mask=None),
+            ),
+        ]
+        for round_idx in range(3):
+            for name, scores_fn in score_fns:
+                self._poison_pool()
+                scores = scores_fn()
+                assert not torch.isnan(scores).any(), (
+                    f"NaN leaked from uninitialized baddbmm buffer on MPS ({name}, round {round_idx})"
+                )
+
+    @pytest.mark.skipif(torch_device != "mps", reason="regression test for an MPS-specific baddbmm issue")
+    def test_get_attention_scores_matches_cpu_reference(self):
+        # The MPS path must stay numerically equivalent to the CPU baddbmm path,
+        # not merely NaN-free.
+        attn = Attention(query_dim=64, heads=2, dim_head=32)
+        query, key = self._make_qk()
+        self._poison_pool()
+        probs_mps = attn.get_attention_scores(query, key, attention_mask=None).cpu()
+        probs_cpu = attn.get_attention_scores(query.cpu(), key.cpu(), attention_mask=None)
+        assert torch.allclose(probs_mps, probs_cpu, atol=2e-3), "MPS attention probs diverge from CPU reference"
+
+
+class TestGetAttentionScoresEquivalence:
+    # Device-agnostic companion to TestGetAttentionScoresMPS. The MPS-specific
+    # regression tests above can only run on Apple hardware, so this class pins the
+    # property a reviewer on any other backend cares about: routing the unmasked
+    # case through a scaled `bmm` must not change what `get_attention_scores`
+    # returns, on any device, for any combination of the upcast flags.
+
+    @staticmethod
+    def _reference(query, key, scale, attention_mask, upcast_attention, upcast_softmax):
+        dtype = query.dtype
+        if upcast_attention:
+            query, key = query.float(), key.float()
+        scores = scale * torch.bmm(query, key.transpose(-1, -2))
+        if attention_mask is not None:
+            scores = scores + attention_mask
+        if upcast_softmax:
+            scores = scores.float()
+        return scores.softmax(dim=-1).to(dtype)
+
+    @pytest.mark.parametrize("masked", [False, True])
+    @pytest.mark.parametrize("upcast_attention", [False, True])
+    @pytest.mark.parametrize("upcast_softmax", [False, True])
+    def test_matches_reference_on_current_device(self, masked, upcast_attention, upcast_softmax):
+        from types import SimpleNamespace
+
+        from diffusers.models.attention import AttentionModuleMixin
+
+        batch, tokens, dim_head = 4, 16, 8
+        torch.manual_seed(0)
+        query = torch.randn(batch, tokens, dim_head, device=torch_device)
+        key = torch.randn(batch, tokens, dim_head, device=torch_device)
+        attention_mask = torch.randn(batch, tokens, tokens, device=torch_device) if masked else None
+
+        attn = Attention(
+            query_dim=dim_head * 2,
+            heads=2,
+            dim_head=dim_head,
+            upcast_attention=upcast_attention,
+            upcast_softmax=upcast_softmax,
+        )
+        expected = self._reference(query, key, attn.scale, attention_mask, upcast_attention, upcast_softmax)
+
+        # Both duplicated implementations must agree with the reference.
+        holder = SimpleNamespace(upcast_attention=upcast_attention, upcast_softmax=upcast_softmax, scale=attn.scale)
+        actual = {
+            "Attention": attn.get_attention_scores(query, key, attention_mask=attention_mask),
+            "AttentionModuleMixin": AttentionModuleMixin.get_attention_scores(
+                holder, query, key, attention_mask=attention_mask
+            ),
+        }
+        for name, probs in actual.items():
+            assert probs.shape == (batch, tokens, tokens), name
+            assert torch.isfinite(probs).all(), name
+            assert torch.allclose(probs, expected, atol=1e-6), f"{name} diverges from the reference formulation"
