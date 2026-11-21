@@ -404,9 +404,11 @@ class GroupOffloadingHook(ModelHook):
                 # However, for conditionally-executed modules (e.g. patch_short/patch_mid/patch_long in Helios),
                 # the prefetch chain may not cover them if they were absent during the first forward pass
                 # when the execution order was traced. In that case, their weights remain on offload_device,
-                # so we fall back to a synchronous onload here.
-                params = [p for m in self.group.modules for p in m.parameters()] + list(self.group.parameters)
-                if params and params[0].device == self.group.offload_device:
+                # so we fall back to a synchronous onload here. Buffers are checked after parameters so that groups
+                # holding only buffers (e.g. a rotary embedding called twice in a row) also fall back.
+                tensors = [p for m in self.group.modules for p in m.parameters()] + list(self.group.parameters)
+                tensors += [b for m in self.group.modules for b in m.buffers()] + list(self.group.buffers)
+                if tensors and tensors[0].device == self.group.offload_device:
                     self.group.onload_()
                     if self.group.stream is not None:
                         self.group.stream.synchronize()
