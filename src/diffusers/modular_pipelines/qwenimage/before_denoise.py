@@ -574,6 +574,8 @@ class QwenImageSetTimestepsStep(ModularPipelineBlocks):
       Outputs:
           timesteps (`Tensor`):
               The timesteps to use for the denoising process
+          num_inference_steps (`int`):
+              The number of denoising steps
     """
 
     model_name = "qwenimage"
@@ -607,6 +609,7 @@ class QwenImageSetTimestepsStep(ModularPipelineBlocks):
             OutputParam(
                 name="timesteps", type_hint=torch.Tensor, description="The timesteps to use for the denoising process"
             ),
+            OutputParam(name="num_inference_steps", type_hint=int, description="The number of denoising steps"),
         ]
 
     def __call__(
@@ -662,6 +665,8 @@ class QwenImageLayeredSetTimestepsStep(ModularPipelineBlocks):
       Outputs:
           timesteps (`Tensor`):
               The timesteps to use for the denoising process.
+          num_inference_steps (`int`):
+              The number of denoising steps.
     """
 
     model_name = "qwenimage-layered"
@@ -690,6 +695,7 @@ class QwenImageLayeredSetTimestepsStep(ModularPipelineBlocks):
             OutputParam(
                 name="timesteps", type_hint=torch.Tensor, description="The timesteps to use for the denoising process."
             ),
+            OutputParam(name="num_inference_steps", type_hint=int, description="The number of denoising steps."),
         ]
 
     @torch.no_grad()

@@ -55,17 +55,21 @@ class WanImage2VideoVaeEncoderStep(SequentialPipelineBlocks):
           image (`Image`):
               TODO: Add description.
           height (`int`, *optional*, defaults to 480):
-              TODO: Add description.
+              The target height of the video.
           width (`int`, *optional*, defaults to 832):
-              TODO: Add description.
+              The target width of the video.
           num_frames (`int`, *optional*, defaults to 81):
-              TODO: Add description.
+              The number of frames in the generated video.
           generator (`None`, *optional*):
               TODO: Add description.
 
       Outputs:
           resized_image (`Image`):
               TODO: Add description.
+          height (`int`):
+              The height in pixels of the resized image.
+          width (`int`):
+              The width in pixels of the resized image.
           first_frame_latents (`Tensor`):
               video latent representation with the first frame image condition
           image_condition_latents (`Tensor | NoneType`):
@@ -116,7 +120,7 @@ class Wan22Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               TODO: Add description.
           num_frames (`None`, *optional*):
               TODO: Add description.
-          image_condition_latents (`None`, *optional*):
+          image_condition_latents (`None`):
               TODO: Add description.
           num_inference_steps (`None`, *optional*, defaults to 50):
               TODO: Add description.
@@ -189,8 +193,8 @@ class Wan22Image2VideoBlocks(SequentialPipelineBlocks):
             noise stages.
 
       Inputs:
-          prompt (`None`, *optional*):
-              TODO: Add description.
+          prompt (`str`):
+              The prompt or prompts to guide image generation.
           negative_prompt (`None`, *optional*):
               TODO: Add description.
           max_sequence_length (`None`, *optional*, defaults to 512):
@@ -198,11 +202,11 @@ class Wan22Image2VideoBlocks(SequentialPipelineBlocks):
           image (`Image`):
               TODO: Add description.
           height (`int`, *optional*, defaults to 480):
-              TODO: Add description.
+              The target height of the video.
           width (`int`, *optional*, defaults to 832):
-              TODO: Add description.
+              The target width of the video.
           num_frames (`int`, *optional*, defaults to 81):
-              TODO: Add description.
+              The number of frames in the generated video.
           generator (`None`, *optional*):
               TODO: Add description.
           num_videos_per_prompt (`None`, *optional*, defaults to 1):

@@ -141,7 +141,7 @@ class WanAnimate2TextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("prompt"),
+            InputParam.template("prompt", description="The prompt to guide generation, a single string."),
             InputParam.template("negative_prompt"),
             InputParam(
                 "prompt_ref",

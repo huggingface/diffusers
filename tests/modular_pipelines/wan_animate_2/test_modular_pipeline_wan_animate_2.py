@@ -25,6 +25,7 @@ from diffusers.modular_pipelines import (
 )
 
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularGuiderTesterMixin,
     ModularLoadingTesterMixin,
@@ -84,11 +85,12 @@ class WanAnimate2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = WanAnimate2ModularPipeline
     pipeline_blocks_class = WanAnimate2Blocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-wan-animate-2-modular"
+    required_params = frozenset(["driving_video", "image", "prompt"])
     # Each segment is decoded inside the denoise loop, so no latents are left in the state.
 
-    params = frozenset(["prompt", "image", "driving_video"])
+    # one prompt per call: the text encoder raises on a list
     batch_params = frozenset()
-    optional_params = frozenset(["num_inference_steps", "height", "width", "output_type"])
+    optional_params = OPTIONAL_PARAMS - {"latents", "num_images_per_prompt"}
     output_name = "videos"
     expected_workflow_defaults = WAN_ANIMATE_2_DEFAULTS
 
@@ -117,14 +119,6 @@ class WanAnimate2ModularPipelineFastTesterMixin(ModularPipelineTesterMixin):
 
     @pytest.mark.skip(reason="Wan-Animate-2 decodes inside its segment loop and leaves no latents in the state.")
     def test_latents_output_in_canonical_form(self):
-        pass
-
-    @pytest.mark.skip(reason="Wan-Animate-2 is unbatched: one character image and driving video per call")
-    def test_inference_batch_consistent(self):
-        pass
-
-    @pytest.mark.skip(reason="Wan-Animate-2 is unbatched: one character image and driving video per call")
-    def test_inference_batch_single_identical(self):
         pass
 
     @pytest.mark.skip(reason="Wan-Animate-2 is unbatched: no num_videos_per_prompt")

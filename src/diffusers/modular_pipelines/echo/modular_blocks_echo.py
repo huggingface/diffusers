@@ -122,7 +122,8 @@ class EchoDenoiseStep(SequentialPipelineBlocks):
               Optional initial audio noise in VAE form (B, C, L, M).
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          sigmas (`list | tuple`):
+          sigmas (`list | tuple`, *optional*, defaults to (1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725,
+          0.421875, 0.0)):
               DMD sigma schedule, including the terminal zero.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.
@@ -272,7 +273,8 @@ class EchoBlocks(SequentialPipelineBlocks):
               Optional initial audio noise in VAE form (B, C, L, M).
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          sigmas (`list | tuple`):
+          sigmas (`list | tuple`, *optional*, defaults to (1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725,
+          0.421875, 0.0)):
               DMD sigma schedule, including the terminal zero.
           attention_kwargs (`dict`, *optional*):
               Additional kwargs for attention processors.

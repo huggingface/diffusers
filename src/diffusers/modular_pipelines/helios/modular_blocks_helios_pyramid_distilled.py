@@ -52,7 +52,7 @@ class HeliosPyramidDistilledAutoVaeEncoderStep(AutoPipelineBlocks):
           - video_processor (`VideoProcessor`)
 
       Inputs:
-          video (`None`, *optional*):
+          video (`None`, *optional*, depends on the workflow):
               Input video for video-to-video generation
           height (`int`, *optional*, defaults to 384):
               The height in pixels of the generated image.
@@ -62,7 +62,7 @@ class HeliosPyramidDistilledAutoVaeEncoderStep(AutoPipelineBlocks):
               Number of latent frames per temporal chunk.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, depends on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
 
       Outputs:
@@ -123,7 +123,7 @@ class HeliosPyramidDistilledCoreDenoiseStep(SequentialPipelineBlocks):
               Sizes of long/mid/short history buffers for temporal context.
           keep_first_frame (`bool`, *optional*, defaults to True):
               Whether to keep the first frame as a prefix in history.
-          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [10, 10, 10]):
+          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [2, 2, 2]):
               Number of denoising steps per pyramid stage.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
@@ -198,7 +198,7 @@ class HeliosPyramidDistilledI2VCoreDenoiseStep(SequentialPipelineBlocks):
               Sizes of long/mid/short history buffers for temporal context.
           keep_first_frame (`bool`, *optional*, defaults to True):
               Whether to keep the first frame as a prefix in history.
-          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [10, 10, 10]):
+          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [2, 2, 2]):
               Number of denoising steps per pyramid stage.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
@@ -268,7 +268,7 @@ class HeliosPyramidDistilledV2VCoreDenoiseStep(SequentialPipelineBlocks):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
           negative_prompt_embeds (`Tensor`, *optional*):
               negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
           video_latents (`Tensor`, *optional*):
               Encoded video latents for V2V generation.
@@ -290,7 +290,7 @@ class HeliosPyramidDistilledV2VCoreDenoiseStep(SequentialPipelineBlocks):
               Sizes of long/mid/short history buffers for temporal context.
           keep_first_frame (`bool`, *optional*, defaults to True):
               Whether to keep the first frame as a prefix in history.
-          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [10, 10, 10]):
+          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [2, 2, 2]):
               Number of denoising steps per pyramid stage.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
@@ -361,7 +361,7 @@ class HeliosPyramidDistilledAutoCoreDenoiseStep(ConditionalPipelineBlocks):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
           negative_prompt_embeds (`Tensor`, *optional*):
               negative text embeddings used to guide the image generation. Can be generated from text_encoder step.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`, *optional*, depends on the workflow):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
           video_latents (`Tensor`, *optional*):
               Encoded video latents for V2V generation.
@@ -379,11 +379,11 @@ class HeliosPyramidDistilledAutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Torch generator for deterministic generation.
           num_frames (`int`, *optional*, defaults to 132):
               Total number of video frames to generate.
-          history_sizes (`list`):
+          history_sizes (`list`, *optional*, defaults to [16, 2, 1]):
               Sizes of long/mid/short history buffers for temporal context.
           keep_first_frame (`bool`, *optional*, defaults to True):
               Whether to keep the first frame as a prefix in history.
-          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [10, 10, 10]):
+          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [2, 2, 2]):
               Number of denoising steps per pyramid stage.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
@@ -471,7 +471,7 @@ class HeliosPyramidDistilledAutoBlocks(SequentialPipelineBlocks):
               The prompt or prompts not to guide the image generation.
           max_sequence_length (`int`, *optional*, defaults to 512):
               Maximum sequence length for prompt encoding.
-          video (`None`, *optional*):
+          video (`None`, *optional*, depends on the workflow):
               Input video for video-to-video generation
           height (`int`, *optional*, defaults to 384):
               The height in pixels of the generated image.
@@ -481,11 +481,11 @@ class HeliosPyramidDistilledAutoBlocks(SequentialPipelineBlocks):
               Number of latent frames per temporal chunk.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          image (`Image | list`, *optional*):
+          image (`Image | list`, *optional*, depends on the workflow):
               Reference image(s) for denoising. Can be a single image or list of images.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               Number of videos to generate per prompt.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`, *optional*, depends on the workflow):
               image latents used to guide the image generation. Can be generated from vae_encoder step.
           video_latents (`Tensor`, *optional*):
               Encoded video latents for V2V generation.
@@ -499,11 +499,11 @@ class HeliosPyramidDistilledAutoBlocks(SequentialPipelineBlocks):
               Maximum sigma for video latent noise.
           num_frames (`int`, *optional*, defaults to 132):
               Total number of video frames to generate.
-          history_sizes (`list`):
+          history_sizes (`list`, *optional*, defaults to [16, 2, 1]):
               Sizes of long/mid/short history buffers for temporal context.
           keep_first_frame (`bool`, *optional*, defaults to True):
               Whether to keep the first frame as a prefix in history.
-          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [10, 10, 10]):
+          pyramid_num_inference_steps_list (`list`, *optional*, defaults to [2, 2, 2]):
               Number of denoising steps per pyramid stage.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.

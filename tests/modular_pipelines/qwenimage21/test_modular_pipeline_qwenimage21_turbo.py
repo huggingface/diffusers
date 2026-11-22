@@ -20,6 +20,7 @@ from diffusers.modular_pipelines import QwenImage21TurboAutoBlocks, QwenImage21T
 
 from ...testing_utils import assert_tensors_close, torch_device
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularMemoryTesterMixin,
@@ -128,8 +129,7 @@ class QwenImage21TurboModularPipelineTesterConfig(BaseModularPipelineTesterConfi
     pipeline_blocks_class = QwenImage21TurboAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage21-turbo-modular"
     expected_latents_shape = (1, 8, 1, 2, 2)
-    params = frozenset(["prompt", "height", "width", "output_resolution", "attention_kwargs", "image"])
-    batch_params = frozenset(["prompt"])
+    optional_params = OPTIONAL_PARAMS | {"attention_kwargs", "image", "output_resolution"}
     not_params = frozenset(["negative_prompt"])
     expected_workflow_blocks = QWENIMAGE21_TURBO_TEXT2IMAGE_WORKFLOWS
     expected_workflow_defaults = {"text2image": QWENIMAGE21_TURBO_WORKFLOW_DEFAULTS["text2image"]}

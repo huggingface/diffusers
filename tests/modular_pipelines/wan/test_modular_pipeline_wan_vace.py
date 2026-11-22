@@ -21,6 +21,7 @@ from PIL import Image
 from diffusers.modular_pipelines import Wan22VaceBlocks, Wan22VaceModularPipeline
 
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularMemoryTesterMixin,
@@ -35,9 +36,15 @@ class Wan22VaceModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pretrained_model_name_or_path = "akshan-main/tiny-wan22-vace-modular-pipe"
     expected_latents_shape = (1, 16, 3, 2, 2)
 
-    params = frozenset(["prompt", "height", "width", "num_frames", "video", "mask", "reference_images"])
+    # a list of prompts is not yet supported: `WanVaceAdditionalInputsStep` raises on one
     batch_params = frozenset()
-    optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {
+        "mask",
+        "num_frames",
+        "num_videos_per_prompt",
+        "reference_images",
+        "video",
+    }
     output_name = "videos"
 
     def get_dummy_inputs(self, seed=0):
@@ -69,14 +76,6 @@ class TestWan22VaceModularPipelineFast(Wan22VaceModularPipelineTesterConfig, Mod
         videos = pipe(**inputs, output=self.output_name)
         assert videos.shape == (1, 9, 3, 16, 16)
         assert torch.isnan(videos).sum() == 0
-
-    @pytest.mark.skip(reason="Batching is not yet supported with this pipeline")
-    def test_inference_batch_consistent(self):
-        pass
-
-    @pytest.mark.skip(reason="Batching is not yet supported with this pipeline")
-    def test_inference_batch_single_identical(self):
-        pass
 
     @pytest.mark.skip(reason="num_videos_per_prompt")
     def test_num_images_per_prompt(self):

@@ -479,10 +479,7 @@ class StableDiffusion3TextEncoderStep(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam(
-                "prompt",
-                description="The prompt or prompts to guide the image generation.",
-            ),
+            InputParam.template("prompt"),
             InputParam(
                 "prompt_2",
                 description="The prompt or prompts to be sent to tokenizer_2 and text_encoder_2.",

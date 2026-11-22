@@ -14,7 +14,7 @@
 
 from ...utils import logging
 from ..modular_pipeline import AutoPipelineBlocks, SequentialPipelineBlocks
-from ..modular_pipeline_utils import OutputParam
+from ..modular_pipeline_utils import InputParam, OutputParam
 from .before_denoise import (
     StableDiffusionXLControlNetInputStep,
     StableDiffusionXLControlNetUnionInputStep,
@@ -122,7 +122,9 @@ class StableDiffusionXLImg2ImgBeforeDenoiseStep(SequentialPipelineBlocks):
 # before_denoise: inpainting
 class StableDiffusionXLInpaintBeforeDenoiseStep(SequentialPipelineBlocks):
     block_classes = [
-        StableDiffusionXLImg2ImgSetTimestepsStep,
+        # set_timesteps is shared with img2img and defaults `strength` to 0.3; inpainting starts from (almost) pure
+        # noise
+        StableDiffusionXLImg2ImgSetTimestepsStep().new(inputs=[InputParam.template("strength", default=0.9999)]),
         StableDiffusionXLInpaintPrepareLatentsStep,
         StableDiffusionXLImg2ImgPrepareAdditionalConditioningStep,
     ]
@@ -328,8 +330,8 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
           - requires_aesthetics_score (default: False)
 
       Inputs:
-          prompt (`None`, *optional*):
-              TODO: Add description.
+          prompt (`str`):
+              The prompt or prompts to guide image generation.
           prompt_2 (`None`, *optional*):
               TODO: Add description.
           negative_prompt (`None`, *optional*):
@@ -340,15 +342,15 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           clip_skip (`None`, *optional*):
               TODO: Add description.
-          ip_adapter_image (`Image | ndarray | Tensor | list | list | list`, *optional*):
+          ip_adapter_image (`Image | ndarray | Tensor | list | list | list`, *optional*, depends on the workflow):
               The image(s) to be used as ip adapter
           height (`None`, *optional*):
               TODO: Add description.
           width (`None`, *optional*):
               TODO: Add description.
-          image (`None`, *optional*):
+          image (`None`, *optional*, depends on the workflow):
               TODO: Add description.
-          mask_image (`None`, *optional*):
+          mask_image (`None`, *optional*, depends on the workflow):
               TODO: Add description.
           padding_mask_crop (`None`, *optional*):
               TODO: Add description.
@@ -373,16 +375,16 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           denoising_end (`None`, *optional*):
               TODO: Add description.
-          strength (`None`, *optional*, defaults to 0.3):
-              TODO: Add description.
+          strength (`float`, *optional*, depends on the workflow):
+              Strength for img2img/inpainting.
           denoising_start (`None`, *optional*):
               TODO: Add description.
-          latents (`None`):
+          latents (`None`, *optional*):
               TODO: Add description.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`, *optional*, depends on the workflow):
               The latents representing the reference image for image-to-image/inpainting generation. Can be generated
               in vae_encode step.
-          mask (`Tensor`, *optional*):
+          mask (`Tensor`, *optional*, depends on the workflow):
               The mask for the inpainting generation. Can be generated in vae_encode step.
           masked_image_latents (`Tensor`, *optional*):
               The masked image latents for the inpainting generation (only for inpainting-specific unet). Can be
@@ -403,9 +405,9 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           negative_aesthetic_score (`None`, *optional*, defaults to 2.0):
               TODO: Add description.
-          control_image (`None`, *optional*):
+          control_image (`None`, *optional*, depends on the workflow):
               TODO: Add description.
-          control_mode (`None`, *optional*):
+          control_mode (`None`, *optional*, depends on the workflow):
               TODO: Add description.
           control_guidance_start (`None`, *optional*, defaults to 0.0):
               TODO: Add description.
@@ -418,12 +420,12 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
           crops_coords (`tuple | NoneType`, *optional*):
               The crop coordinates to use for preprocess/postprocess the image and mask, for inpainting task only. Can
               be generated in vae_encode step.
-          controlnet_cond (`Tensor`, *optional*):
+          controlnet_cond (`Tensor`, *optional*, depends on the workflow):
               The control image to use for the denoising process. Can be generated in prepare_controlnet_inputs step.
           conditioning_scale (`float`, *optional*):
               The controlnet conditioning scale value to use for the denoising process. Can be generated in
               prepare_controlnet_inputs step.
-          controlnet_keep (`list`, *optional*):
+          controlnet_keep (`list`, *optional*, depends on the workflow):
               The controlnet keep values to use for the denoising process. Can be generated in
               prepare_controlnet_inputs step.
           **denoiser_input_fields (`None`, *optional*):
@@ -432,8 +434,14 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
               pooled_prompt_embeds/negative_pooled_prompt_embeds, and ip_adapter_embeds/negative_ip_adapter_embeds
               (optional).please add `kwargs_type=denoiser_input_fields` to their parameter spec (`OutputParam`) when
               they are created and added to the pipeline state
+          **controlnet_kwargs (`None`, *optional*):
+              additional kwargs for controlnet (e.g. control_type_idx and control_type from the controlnet union input
+              step )please add `kwargs_type=controlnet_kwargs` to their parameter spec (`OutputParam`) when they are
+              created and added to the pipeline state
           eta (`None`, *optional*, defaults to 0.0):
               TODO: Add description.
+          noise (`Tensor | NoneType`, *optional*):
+              The noise added to the image latents, for inpainting task only. Can be generated in prepare_latent step.
           output_type (`None`, *optional*, defaults to pil):
               TODO: Add description.
 

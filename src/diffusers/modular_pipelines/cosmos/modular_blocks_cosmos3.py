@@ -130,7 +130,7 @@ class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
           - enable_safety_checker (default: True)
 
       Inputs:
-          control_videos (`dict`, *optional*):
+          control_videos (`dict`, *optional*, depends on the workflow):
               Mapping of hint name (edge/blur/depth/seg/wsm) to the control video for that modality.
           height (`int`, *optional*):
               Height of the generated video in pixels.
@@ -146,9 +146,9 @@ class Cosmos3AutoTextEncoderStep(AutoPipelineBlocks):
               The text prompt that guides Cosmos3 generation.
           negative_prompt (`str`, *optional*):
               The negative text prompt used for classifier-free guidance.
-          use_system_prompt (`bool`, *optional*, defaults to True or None, depending on the workflow):
+          use_system_prompt (`bool`, *optional*, depends on the workflow):
               Whether to prepend the Cosmos3 transfer system prompt.
-          action (`CosmosActionCondition`, *optional*):
+          action (`CosmosActionCondition`, *optional*, depends on the workflow):
               Action-conditioning metadata and its reference visual input.
           fps (`float`, *optional*, defaults to 24.0):
               Frame rate of the generated video.
@@ -211,7 +211,7 @@ class Cosmos3AutoVaeEncoderStep(ConditionalPipelineBlocks):
           - video_processor (`VideoProcessor`)
 
       Inputs:
-          action (`CosmosActionCondition`, *optional*):
+          action (`CosmosActionCondition`, *optional*, depends on the workflow):
               Action-conditioning metadata and its reference visual input.
           video (`None`, *optional*):
               Reference video for video-to-video conditioning.
@@ -219,11 +219,11 @@ class Cosmos3AutoVaeEncoderStep(ConditionalPipelineBlocks):
               Latent-frame indexes to preserve from the conditioning video.
           condition_video_keep (`str`, *optional*, defaults to first):
               Which end of a longer conditioning video to use: `first` or `last`.
-          num_frames (`int`, *optional*):
+          num_frames (`int`, *optional*, depends on the workflow):
               Number of frames to generate.
-          height (`int`, *optional*):
+          height (`int`, *optional*, depends on the workflow):
               Height of the generated video in pixels.
-          width (`int`, *optional*):
+          width (`int`, *optional*, depends on the workflow):
               Width of the generated video in pixels.
           image (`None`, *optional*):
               Reference image for image-to-video conditioning.
@@ -287,7 +287,7 @@ class Cosmos3AutoSoundDecodeStep(AutoPipelineBlocks):
           - sound_tokenizer (`Cosmos3AVAEAudioTokenizer`)
 
       Inputs:
-          sound_latents (`Tensor`, *optional*):
+          sound_latents (`Tensor`, *optional*, depends on the workflow):
               Denoised sound latents to decode.
 
       Outputs:
@@ -326,7 +326,7 @@ class Cosmos3DecodeStep(SequentialPipelineBlocks):
               Denoised vision latents to decode.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
-          sound_latents (`Tensor`, *optional*):
+          sound_latents (`Tensor`, *optional*, depends on the workflow):
               Denoised sound latents to decode.
 
       Outputs:
@@ -1062,13 +1062,13 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Index of the current chunk.
           previous_output (`None`, *optional*):
               Decoded pixels of the previous chunk, used to seed later chunks.
-          control_frames (`dict`, *optional*):
+          control_frames (`dict`, *optional*, depends on the workflow):
               Preprocessed, time-padded control maps in canonical hint order.
-          chunk_frames (`int`, *optional*):
+          chunk_frames (`int`, *optional*, depends on the workflow):
               Pixel frames per chunk.
-          total_frames (`int`, *optional*):
+          total_frames (`int`, *optional*, depends on the workflow):
               Total number of output frames.
-          stride (`int`, *optional*):
+          stride (`int`, *optional*, depends on the workflow):
               Frame stride between chunks.
           height (`int`):
               Height of the generated video in pixels.
@@ -1084,7 +1084,7 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Torch generator for deterministic generation.
           fps (`float`, *optional*, defaults to 24.0):
               Frame rate of the generated video.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           mixed_precision_format (`str`, *optional*):
               None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
@@ -1105,21 +1105,21 @@ class Cosmos3AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               Timestep interval [lo, hi] over which text guidance is active (None = always).
           control_guidance_interval (`tuple`, *optional*):
               Timestep interval [lo, hi] over which control guidance is active (None = always).
-          output_chunks (`list`, *optional*):
+          output_chunks (`list`, *optional*, depends on the workflow):
               Decoded pixel chunks accumulated so far.
-          num_chunks (`int`, *optional*):
+          num_chunks (`int`, *optional*, depends on the workflow):
               Number of autoregressive chunks.
           x0_tokens_vision (`Tensor`, *optional*):
               Vision latents encoded from the conditioning image or video.
           vision_condition_frames (`list`, *optional*):
               Latent-frame indexes fixed by visual conditioning.
-          num_frames (`int`, *optional*):
+          num_frames (`int`, *optional*, depends on the workflow):
               Number of frames to generate.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy vision latents.
           sound_latents (`Tensor`, *optional*):
               Pre-generated noisy sound latents.
-          action (`CosmosActionCondition`, *optional*):
+          action (`CosmosActionCondition`, *optional*, depends on the workflow):
               Action-conditioning metadata.
           action_condition_frame_indexes (`list`, *optional*):
               Action-frame indexes fixed by action conditioning.
@@ -1258,7 +1258,7 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
           - use_native_flow_schedule (default: False)
 
       Inputs:
-          control_videos (`dict`, *optional*):
+          control_videos (`dict`, *optional*, depends on the workflow):
               Mapping of hint name (edge/blur/depth/seg/wsm) to the control video for that modality.
           height (`int`, *optional*):
               Height of the generated video in pixels.
@@ -1274,9 +1274,9 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
               The text prompt that guides Cosmos3 generation.
           negative_prompt (`str`, *optional*):
               The negative text prompt used for classifier-free guidance.
-          use_system_prompt (`bool`, *optional*, defaults to True or None, depending on the workflow):
+          use_system_prompt (`bool`, *optional*, depends on the workflow):
               Whether to prepend the Cosmos3 transfer system prompt.
-          action (`CosmosActionCondition`, *optional*):
+          action (`CosmosActionCondition`, *optional*, depends on the workflow):
               Action-conditioning metadata and its reference visual input.
           fps (`float`, *optional*, defaults to 24.0):
               Frame rate of the generated video.
@@ -1296,11 +1296,19 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
               Index of the current chunk.
           previous_output (`None`, *optional*):
               Decoded pixels of the previous chunk, used to seed later chunks.
+          control_frames (`dict`, *optional*, depends on the workflow):
+              Preprocessed, time-padded control maps in canonical hint order.
+          chunk_frames (`int`, *optional*, depends on the workflow):
+              Pixel frames per chunk.
+          total_frames (`int`, *optional*, depends on the workflow):
+              Total number of output frames.
+          stride (`int`, *optional*, depends on the workflow):
+              Frame stride between chunks.
           num_first_chunk_conditional_frames (`int`, *optional*, defaults to 0):
               Number of frames the first chunk reuses from the input video.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           mixed_precision_format (`str`, *optional*):
               None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
@@ -1321,13 +1329,15 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
               Timestep interval [lo, hi] over which text guidance is active (None = always).
           control_guidance_interval (`tuple`, *optional*):
               Timestep interval [lo, hi] over which control guidance is active (None = always).
-          output_chunks (`list`, *optional*):
+          output_chunks (`list`, *optional*, depends on the workflow):
               Decoded pixel chunks accumulated so far.
+          num_chunks (`int`, *optional*, depends on the workflow):
+              Number of autoregressive chunks.
           x0_tokens_vision (`Tensor`, *optional*):
               Vision latents encoded from the conditioning image or video.
           vision_condition_frames (`list`, *optional*):
               Latent-frame indexes fixed by visual conditioning.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy vision latents.
           sound_latents (`Tensor`, *optional*):
               Pre-generated noisy sound latents.
@@ -1339,6 +1349,10 @@ class Cosmos3OmniBlocks(SequentialPipelineBlocks):
               Whether to generate a synchronized sound track.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
+          action_mode (`str`, *optional*):
+              Requested action-generation mode.
+          raw_action_dim_resolved (`int`, *optional*):
+              Unpadded action-vector dimension.
 
       Outputs:
           videos (`list`):

@@ -43,7 +43,7 @@ class PAN2AutoVaeEncoderStep(AutoPipelineBlocks):
           - video_processor (`VideoProcessor`)
 
       Inputs:
-          image (`Image`, *optional*):
+          image (`Image`, *optional*, depends on the workflow):
               The first frame, a single image.
           height (`int`, *optional*):
               The height in pixels of the generated video, 704 by default.
@@ -213,15 +213,15 @@ class PAN2AutoCoreDenoiseStep(AutoPipelineBlocks):
               Text embeddings used to guide the video generation.
           negative_prompt_embeds (`Tensor`, *optional*):
               Negative text embeddings used to guide the video generation.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`, *optional*, depends on the workflow):
               The normalized first-frame latents. Can be generated from the vae_encoder step.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
           num_frames (`int`, *optional*, defaults to 313):
               Number of video frames to generate, of the form `4 * n + 1`.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents to use as inputs for video generation.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
@@ -285,7 +285,7 @@ class PAN2Blocks(SequentialPipelineBlocks):
               Number of video frames to generate, of the form `4 * n + 1`.
           fps (`float`, *optional*, defaults to 24.0):
               The frame rate of the video, which sets its duration in the default negative prompt.
-          image (`Image`, *optional*):
+          image (`Image`, *optional*, depends on the workflow):
               The first frame, a single image.
           height (`int`, *optional*):
               The height in pixels of the generated video, 704 by default.
@@ -293,13 +293,13 @@ class PAN2Blocks(SequentialPipelineBlocks):
               The width in pixels of the generated video, 1248 by default.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of videos to generate per prompt.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`, *optional*, depends on the workflow):
               The normalized first-frame latents. Can be generated from the vae_encoder step.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           sigmas (`list`, *optional*):
               Custom sigmas for the denoising process.
-          latents (`Tensor`):
+          latents (`Tensor`, *optional*):
               Pre-generated noisy latents to use as inputs for video generation.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.

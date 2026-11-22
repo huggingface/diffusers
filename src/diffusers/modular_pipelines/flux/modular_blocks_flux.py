@@ -164,6 +164,10 @@ class FluxBeforeDenoiseStep(SequentialPipelineBlocks):
       Outputs:
           latents (`Tensor`):
               The initial latents to use for the denoising process
+          height (`int`):
+              The height of the generated image, resolved to the default when not passed
+          width (`int`):
+              The width of the generated image, resolved to the default when not passed
           timesteps (`Tensor`):
               The timesteps to use for inference
           num_inference_steps (`int`):
@@ -229,6 +233,10 @@ class FluxImg2ImgBeforeDenoiseStep(SequentialPipelineBlocks):
       Outputs:
           latents (`Tensor`):
               The initial latents to use for the denoising process
+          height (`int`):
+              The height of the generated image, resolved to the default when not passed
+          width (`int`):
+              The width of the generated image, resolved to the default when not passed
           timesteps (`Tensor`):
               The timesteps to use for inference
           num_inference_steps (`int`):
@@ -270,9 +278,9 @@ class FluxAutoBeforeDenoiseStep(AutoPipelineBlocks):
           - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
-          height (`int`):
+          height (`int`, *optional*):
               TODO: Add description.
-          width (`int`):
+          width (`int`, *optional*):
               TODO: Add description.
           latents (`Tensor | NoneType`, *optional*):
               TODO: Add description.
@@ -295,7 +303,7 @@ class FluxAutoBeforeDenoiseStep(AutoPipelineBlocks):
               TODO: Add description.
           guidance_scale (`None`, *optional*, defaults to 3.5):
               TODO: Add description.
-          image_latents (`Tensor`, *optional*):
+          image_latents (`Tensor`, *optional*, depends on the workflow):
               The image latents to use for the denoising process. Can be generated in vae encoder and packed in input
               step.
           prompt_embeds (`None`, *optional*):
@@ -304,6 +312,10 @@ class FluxAutoBeforeDenoiseStep(AutoPipelineBlocks):
       Outputs:
           latents (`Tensor`):
               The initial latents to use for the denoising process
+          height (`int`):
+              The height of the generated image, resolved to the default when not passed
+          width (`int`):
+              The width of the generated image, resolved to the default when not passed
           timesteps (`Tensor`):
               The timesteps to use for inference
           num_inference_steps (`int`):
@@ -533,8 +545,8 @@ class FluxAutoBlocks(SequentialPipelineBlocks):
           - transformer (`FluxTransformer2DModel`)
 
       Inputs:
-          prompt (`None`, *optional*):
-              TODO: Add description.
+          prompt (`str`):
+              The prompt or prompts to guide image generation.
           prompt_2 (`None`, *optional*):
               TODO: Add description.
           max_sequence_length (`int`, *optional*, defaults to 512):

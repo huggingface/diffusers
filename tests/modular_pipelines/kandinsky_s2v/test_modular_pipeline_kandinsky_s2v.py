@@ -30,6 +30,7 @@ from diffusers.modular_pipelines.kandinsky_s2v.modular_pipeline import DEFAULT_P
 
 from ...testing_utils import numpy_cosine_similarity_distance, require_accelerator, torch_device
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularGuiderTesterMixin,
     ModularLoadingTesterMixin,
@@ -70,9 +71,10 @@ class KandinskyS2VModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = KandinskyS2VModularPipeline
     pipeline_blocks_class = KandinskyS2VAutoBlocks
     pretrained_model_name_or_path = TINY_REPO
-    params = frozenset(["image", "audio", "prompt", "height", "width", "num_latent_frames"])
-    batch_params = frozenset(["prompt"])
-    optional_params = frozenset(["num_inference_steps", "output_type"])
+    # one prompt per call: batching is not supported
+    batch_params = frozenset()
+    optional_params = OPTIONAL_PARAMS - {"latents", "num_images_per_prompt"} | {"num_latent_frames", "prompt"}
+    required_params = frozenset(["audio", "image"])
     output_name = "videos"
     latents_output_name = "latent_chunks"
     # One chunk, channels last: (num_latent_frames, latent_height, latent_width, channels).
@@ -126,14 +128,6 @@ class KandinskyS2VModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestKandinskyS2VModularPipelineFast(KandinskyS2VModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    @pytest.mark.skip(reason="The pipeline takes one prompt at a time; batching is not supported")
-    def test_inference_batch_consistent(self):
-        pass
-
-    @pytest.mark.skip(reason="The pipeline takes one prompt at a time; batching is not supported")
-    def test_inference_batch_single_identical(self):
-        pass
-
     @pytest.mark.skip(reason="One video per call; there is no num_images_per_prompt")
     def test_num_images_per_prompt(self):
         pass
@@ -208,8 +202,6 @@ class TestKandinskyS2VModularPipelineMemory(KandinskyS2VModularPipelineTesterCon
 
 
 FAST_SKIPS = {
-    "test_inference_batch_consistent": "The pipeline takes one prompt at a time; batching is not supported",
-    "test_inference_batch_single_identical": "The pipeline takes one prompt at a time; batching is not supported",
     "test_num_images_per_prompt": "One video per call; there is no num_images_per_prompt",
 }
 
@@ -258,14 +250,6 @@ class KandinskyS2VDistilledModularPipelineTesterConfig(KandinskyS2VModularPipeli
 class TestKandinskyS2VDistilledModularPipelineFast(
     KandinskyS2VDistilledModularPipelineTesterConfig, ModularPipelineTesterMixin
 ):
-    @pytest.mark.skip(reason=FAST_SKIPS["test_inference_batch_consistent"])
-    def test_inference_batch_consistent(self):
-        pass
-
-    @pytest.mark.skip(reason=FAST_SKIPS["test_inference_batch_single_identical"])
-    def test_inference_batch_single_identical(self):
-        pass
-
     @pytest.mark.skip(reason=FAST_SKIPS["test_num_images_per_prompt"])
     def test_num_images_per_prompt(self):
         pass

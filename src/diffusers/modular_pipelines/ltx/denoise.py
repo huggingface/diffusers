@@ -99,9 +99,9 @@ class LTXLoopDenoiser(ModularPipelineBlocks):
             InputParam.template("attention_kwargs"),
             InputParam.template("num_inference_steps", required=True, default=None),
             InputParam("rope_interpolation_scale", type_hint=tuple),
-            InputParam.template("height"),
-            InputParam.template("width"),
-            InputParam("num_frames", type_hint=int),
+            InputParam.template("height", required=True),
+            InputParam.template("width", required=True),
+            InputParam("num_frames", type_hint=int, required=True),
         ]
         guider_input_names = []
         for value in self._guider_input_fields.values():
@@ -333,9 +333,9 @@ class LTXImage2VideoLoopDenoiser(ModularPipelineBlocks):
             InputParam.template("attention_kwargs"),
             InputParam.template("num_inference_steps", required=True, default=None),
             InputParam("rope_interpolation_scale", type_hint=tuple),
-            InputParam.template("height"),
-            InputParam.template("width"),
-            InputParam("num_frames", type_hint=int),
+            InputParam.template("height", required=True),
+            InputParam.template("width", required=True),
+            InputParam("num_frames", type_hint=int, required=True),
         ]
         guider_input_names = []
         for value in self._guider_input_fields.values():
@@ -413,9 +413,9 @@ class LTXImage2VideoLoopAfterDenoiser(ModularPipelineBlocks):
     @property
     def inputs(self) -> list[InputParam]:
         return [
-            InputParam.template("height"),
-            InputParam.template("width"),
-            InputParam("num_frames", type_hint=int),
+            InputParam.template("height", required=True),
+            InputParam.template("width", required=True),
+            InputParam("num_frames", type_hint=int, required=True),
         ]
 
     @torch.no_grad()

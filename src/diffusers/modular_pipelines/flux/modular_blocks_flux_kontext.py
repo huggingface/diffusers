@@ -155,6 +155,10 @@ class FluxKontextBeforeDenoiseStep(SequentialPipelineBlocks):
       Outputs:
           latents (`Tensor`):
               The initial latents to use for the denoising process
+          height (`int`):
+              The height of the generated image, resolved to the default when not passed
+          width (`int`):
+              The width of the generated image, resolved to the default when not passed
           timesteps (`Tensor`):
               The timesteps to use for inference
           num_inference_steps (`int`):
@@ -222,6 +226,10 @@ class FluxKontextImageConditionedBeforeDenoiseStep(SequentialPipelineBlocks):
       Outputs:
           latents (`Tensor`):
               The initial latents to use for the denoising process
+          height (`int`):
+              The height of the generated image, resolved to the default when not passed
+          width (`int`):
+              The width of the generated image, resolved to the default when not passed
           timesteps (`Tensor`):
               The timesteps to use for inference
           num_inference_steps (`int`):
@@ -293,6 +301,10 @@ class FluxKontextAutoBeforeDenoiseStep(AutoPipelineBlocks):
       Outputs:
           latents (`Tensor`):
               The initial latents to use for the denoising process
+          height (`int`):
+              The height of the generated image, resolved to the default when not passed
+          width (`int`):
+              The width of the generated image, resolved to the default when not passed
           timesteps (`Tensor`):
               The timesteps to use for inference
           num_inference_steps (`int`):
@@ -475,6 +487,10 @@ class FluxKontextCoreDenoiseStep(SequentialPipelineBlocks):
               TODO: Add description.
           guidance_scale (`None`, *optional*, defaults to 3.5):
               TODO: Add description.
+          image_height (`None`, *optional*):
+              TODO: Add description.
+          image_width (`None`, *optional*):
+              TODO: Add description.
           joint_attention_kwargs (`None`, *optional*):
               TODO: Add description.
 
@@ -538,8 +554,8 @@ class FluxKontextAutoBlocks(SequentialPipelineBlocks):
           - transformer (`FluxTransformer2DModel`)
 
       Inputs:
-          prompt (`None`, *optional*):
-              TODO: Add description.
+          prompt (`str`):
+              The prompt or prompts to guide image generation.
           prompt_2 (`None`, *optional*):
               TODO: Add description.
           max_sequence_length (`int`, *optional*, defaults to 512):
@@ -571,6 +587,10 @@ class FluxKontextAutoBlocks(SequentialPipelineBlocks):
           sigmas (`None`, *optional*):
               TODO: Add description.
           guidance_scale (`None`, *optional*, defaults to 3.5):
+              TODO: Add description.
+          image_height (`None`, *optional*):
+              TODO: Add description.
+          image_width (`None`, *optional*):
               TODO: Add description.
           output_type (`None`, *optional*, defaults to pil):
               TODO: Add description.

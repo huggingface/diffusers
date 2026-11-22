@@ -40,7 +40,7 @@ class ErnieImageAutoPromptEnhancerStep(ConditionalPipelineBlocks):
           - pe_tokenizer (`AutoTokenizer`)
 
       Inputs:
-          prompt (`str`, *optional*):
+          prompt (`str`, *optional*, depends on the workflow):
               The prompt or prompts to guide image generation.
           height (`int`, *optional*):
               The height in pixels of the generated image.
@@ -154,7 +154,7 @@ class ErnieImageAutoBlocks(SequentialPipelineBlocks):
           - image_processor (`VaeImageProcessor`)
 
       Inputs:
-          prompt (`str`, *optional*):
+          prompt (`str`, *optional*, depends on the workflow):
               The prompt or prompts to guide image generation.
           height (`int`, *optional*):
               The height in pixels of the generated image.

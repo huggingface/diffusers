@@ -27,6 +27,7 @@ from diffusers.modular_pipelines.pan2.encoders import (
 
 from ...testing_utils import torch_device
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularGuiderTesterMixin,
     ModularLoadingTesterMixin,
@@ -107,9 +108,9 @@ class PAN2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = PAN2Blocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-pan2-modular-pipe"
     expected_latents_shape = (1, 48, 2, 2, 2)
-    params = frozenset(["prompt", "height", "width", "num_frames"])
+    # one prompt per call: the text encoder raises on a list
     batch_params = frozenset()
-    optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {"num_frames", "num_videos_per_prompt"}
     expected_workflow_blocks = PAN2_WORKFLOWS
     expected_workflow_defaults = PAN2_WORKFLOW_DEFAULTS
     output_name = "videos"
@@ -140,14 +141,6 @@ class PAN2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestPAN2ModularPipelineFast(PAN2ModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    @pytest.mark.skip(reason="PAN 2 takes a single prompt per call, so a batch of prompts is not a thing.")
-    def test_inference_batch_consistent(self):
-        pass
-
-    @pytest.mark.skip(reason="PAN 2 takes a single prompt per call, so a batch of prompts is not a thing.")
-    def test_inference_batch_single_identical(self):
-        pass
-
     def test_num_videos_per_prompt(self):
         pipe = self.get_pipeline().to(torch_device)
         videos = pipe(**self.get_dummy_inputs(), num_videos_per_prompt=2, output=self.output_name)

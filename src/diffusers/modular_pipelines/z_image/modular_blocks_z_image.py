@@ -118,7 +118,7 @@ class ZImageImage2ImageCoreDenoiseStep(SequentialPipelineBlocks):
               TODO: Add description.
           width (`None`, *optional*):
               TODO: Add description.
-          image_latents (`None`, *optional*):
+          image_latents (`None`):
               TODO: Add description.
           latents (`Tensor | NoneType`, *optional*):
               TODO: Add description.
@@ -191,13 +191,13 @@ class ZImageAutoDenoiseStep(AutoPipelineBlocks):
               TODO: Add description.
           width (`None`, *optional*):
               TODO: Add description.
-          image_latents (`None`, *optional*):
+          image_latents (`None`, *optional*, depends on the workflow):
               TODO: Add description.
-          latents (`Tensor | NoneType`):
+          latents (`Tensor | NoneType`, *optional*):
               TODO: Add description.
           generator (`None`, *optional*):
               TODO: Add description.
-          num_inference_steps (`None`):
+          num_inference_steps (`None`, *optional*, defaults to 8):
               TODO: Add description.
           sigmas (`None`, *optional*):
               TODO: Add description.
@@ -240,7 +240,7 @@ class ZImageAutoVaeImageEncoderStep(AutoPipelineBlocks):
           - image_processor (`VaeImageProcessor`)
 
       Inputs:
-          image (`Image`, *optional*):
+          image (`Image`, *optional*, depends on the workflow):
               TODO: Add description.
           height (`None`, *optional*):
               TODO: Add description.
@@ -285,13 +285,13 @@ class ZImageAutoBlocks(SequentialPipelineBlocks):
           - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
-          prompt (`None`, *optional*):
-              TODO: Add description.
+          prompt (`str`):
+              The prompt or prompts to guide image generation.
           negative_prompt (`None`, *optional*):
               TODO: Add description.
           max_sequence_length (`None`, *optional*, defaults to 512):
               TODO: Add description.
-          image (`Image`, *optional*):
+          image (`Image`, *optional*, depends on the workflow):
               TODO: Add description.
           height (`None`, *optional*):
               TODO: Add description.
@@ -301,11 +301,11 @@ class ZImageAutoBlocks(SequentialPipelineBlocks):
               TODO: Add description.
           num_images_per_prompt (`None`, *optional*, defaults to 1):
               TODO: Add description.
-          image_latents (`None`, *optional*):
+          image_latents (`None`, *optional*, depends on the workflow):
               TODO: Add description.
-          latents (`Tensor | NoneType`):
+          latents (`Tensor | NoneType`, *optional*):
               TODO: Add description.
-          num_inference_steps (`None`):
+          num_inference_steps (`None`, *optional*, defaults to 8):
               TODO: Add description.
           sigmas (`None`, *optional*):
               TODO: Add description.

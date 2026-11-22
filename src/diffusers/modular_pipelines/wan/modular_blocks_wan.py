@@ -117,8 +117,8 @@ class WanBlocks(SequentialPipelineBlocks):
           - video_processor (`VideoProcessor`)
 
       Inputs:
-          prompt (`None`, *optional*):
-              TODO: Add description.
+          prompt (`str`):
+              The prompt or prompts to guide image generation.
           negative_prompt (`None`, *optional*):
               TODO: Add description.
           max_sequence_length (`None`, *optional*, defaults to 512):

@@ -110,23 +110,34 @@ class ImageProcessingStep(SequentialPipelineBlocks):
             " - Encodes the image into latent space."
         )
 ```
+When you create a [`~modular_pipelines.SequentialPipelineBlocks`], `inputs`, `intermediate_outputs`, `expected_components` and `expected_configs` are aggregated from the sub-blocks, so there is no need to define them again. The sequence cannot add, remove or redefine any of them: they belong to the sub-blocks. To reuse a block with another default for an input, another description, or other repo info for a component, create the sub-block with `new()`. It returns a copy of the block with the listed declarations replaced, matched by name; the block's code is unchanged.
 
-When you create a [`~modular_pipelines.SequentialPipelineBlocks`], properties like `inputs`, `intermediate_outputs`, and `expected_components` are automatically aggregated from the sub-blocks, so there is no need to define them again.
+```py
+class ImageProcessingStep(SequentialPipelineBlocks):
+    """
+    # auto_docstring
+    """
+    model_name = "my_model"
+    block_classes = [
+        # `InputBlock` declares `num_images_per_prompt` without a default; this step defaults it to 1
+        InputBlock().new(
+            inputs=[
+                InputParam(
+                    name="num_images_per_prompt", type_hint=int, default=1, description="number of images per prompt"
+                )
+            ]
+        ),
+        ImageEncoderBlock(),
+    ]
+    block_names = ["input", "image_encoder"]
+```
 
-There are a few properties you should set:
+When two sub-blocks declare different defaults for the same input, the sequence uses the first one. To remove the ambiguity, make sure every sub-block that declares the input has the intended default, creating it with `new()` where it does not.
+
+A few properties you set yourself:
 
 - `description`: We recommend adding a description for the assembled block to explain what the combined step does.
 - `model_name`: This is automatically derived from the sub-blocks but isn't always correct, so you may need to override it.
-- `outputs`: By default this is the same as `intermediate_outputs`, but you can manually set it to control which values appear in the doc. This is useful for showing only the final outputs instead of all intermediate values.
+- `outputs`: By default this is the same as `intermediate_outputs`. Set it to list only the values the step is for, so the doc shows the final outputs instead of every intermediate value. Everything stays in the pipeline state either way. The blocks `get_execution_blocks` and `get_workflow` return keep this list too, minus any output their selected blocks don't produce.
 
 These properties, together with the aggregated `inputs`, `intermediate_outputs`, and `expected_components`, are used to automatically generate the `doc` property.
-
-
-Print the `ImageProcessingStep` block to inspect its sub-blocks, and use `doc` for a full summary of the block's inputs, outputs, and components.
-
-
-```py
-blocks = ImageProcessingStep()
-print(blocks)
-print(blocks.doc)
-```

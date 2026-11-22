@@ -17,7 +17,7 @@ import torch
 
 from diffusers.modular_pipelines import EchoBlocks, EchoModularPipeline
 
-from ..testing_utils import BaseModularPipelineTesterConfig
+from ..testing_utils import OPTIONAL_PARAMS, BaseModularPipelineTesterConfig
 
 
 class EchoModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
@@ -25,22 +25,10 @@ class EchoModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = EchoBlocks
     pretrained_model_name_or_path = "Echo-Team/tiny-echo-modular-pipe"
     expected_latents_shape = (1, 4, 3, 16, 16)
-    params = frozenset(
-        [
-            "prompt",
-            "image",
-            "memory_images",
-            "memory_audio_waveforms",
-            "height",
-            "width",
-            "num_frames",
-            "frame_rate",
-            "model_frame_rate",
-            "sigmas",
-        ]
-    )
-    batch_params = frozenset(["prompt"])
-    optional_params = frozenset(["num_videos_per_prompt", "latents", "audio_latents", "output_type"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt", "num_inference_steps"} | {
+        "audio_latents",
+        "num_videos_per_prompt",
+    }
     not_params = frozenset(["negative_prompt", "guidance_scale", "num_inference_steps"])
     expected_workflow_blocks = {}
     output_name = "videos"

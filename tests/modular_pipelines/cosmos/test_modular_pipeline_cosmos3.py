@@ -43,6 +43,7 @@ from diffusers.modular_pipelines.cosmos.modular_blocks_cosmos3 import Cosmos3Tra
 
 from ...testing_utils import torch_device
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularMemoryTesterMixin,
@@ -133,9 +134,9 @@ class Cosmos3OmniModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_blocks_class = Cosmos3OmniBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-cosmos3-modular-pipe"
     expected_latents_shape = (1, 4, 2, 4, 4)
-    params = frozenset(["prompt", "height", "width", "num_frames", "guidance_scale"])
+    # one prompt per call: the text encoder raises on a list
     batch_params = frozenset()
-    optional_params = frozenset(["num_inference_steps", "output_type"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt"} | {"guidance_scale", "num_frames"}
     output_name = "videos"
     expected_workflow_blocks = COSMOS3_OMNI_WORKFLOWS
 
@@ -159,14 +160,6 @@ class Cosmos3OmniModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestCosmos3OmniModularPipelineFast(Cosmos3OmniModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    @pytest.mark.skip(reason="Cosmos3 does not support batched prompts.")
-    def test_inference_batch_consistent(self):
-        pass
-
-    @pytest.mark.skip(reason="Cosmos3 does not support batched prompts.")
-    def test_inference_batch_single_identical(self):
-        pass
-
     @pytest.mark.skip(reason="Cosmos3 does not support multiple videos per prompt.")
     def test_num_images_per_prompt(self):
         pass

@@ -25,6 +25,7 @@ from diffusers.modular_pipelines.minimax_h3_image.encoders import (
 )
 
 from ..testing_utils import (
+    OPTIONAL_PARAMS,
     BaseModularPipelineTesterConfig,
     ModularLoadingTesterMixin,
     ModularMemoryTesterMixin,
@@ -111,10 +112,10 @@ class MiniMaxH3ImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig)
     pretrained_model_name_or_path = "hf-internal-testing/tiny-minimax-h3-image-modular-pipe"
     # 4 latent channels at a quarter of a 32 x 32 image: the tiny VAE compresses 4x.
     expected_latents_shape = (1, 4, 8, 8)
-    params = frozenset(["prompt", "image", "height", "width"])
     # One request is one packed sequence, so prompts are not batched.
+    # one request per call: the text encoder raises on a list of prompts
     batch_params = frozenset()
-    optional_params = frozenset(["latents", "output_type"])
+    optional_params = OPTIONAL_PARAMS - {"num_images_per_prompt", "num_inference_steps"} | {"image"}
     output_name = "images"
     expected_workflow_blocks = MINIMAX_H3_IMAGE_WORKFLOWS
     expected_workflow_defaults = MINIMAX_H3_IMAGE_WORKFLOW_DEFAULTS
@@ -144,14 +145,6 @@ class MiniMaxH3ImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig)
 
 
 class TestMiniMaxH3ImageModularPipelineFast(MiniMaxH3ImageModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    @pytest.mark.skip(reason="MiniMax-H3-Image packs one request into one sequence, so there is no batch of prompts.")
-    def test_inference_batch_consistent(self):
-        pass
-
-    @pytest.mark.skip(reason="MiniMax-H3-Image packs one request into one sequence, so there is no batch of prompts.")
-    def test_inference_batch_single_identical(self):
-        pass
-
     @pytest.mark.skip(reason="One request generates one image, so there is no `num_images_per_prompt`.")
     def test_num_images_per_prompt(self):
         pass
