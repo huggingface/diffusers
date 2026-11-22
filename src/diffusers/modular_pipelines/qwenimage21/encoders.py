@@ -203,7 +203,7 @@ class QwenImage21ResizeStep(ModularPipelineBlocks):
     the VAE encoder.
 
       Components:
-          image_processor (`VaeImageProcessor`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           image (`Image | list`):
@@ -302,7 +302,8 @@ class QwenImage21TextEncoderStep(ModularPipelineBlocks):
     Text Encoder step that generates text embeddings with Qwen3-VL to guide text-to-image generation.
 
       Components:
-          text_encoder (`Qwen3VLForConditionalGeneration`) processor (`Qwen3VLProcessor`)
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - processor (`Qwen3VLProcessor`)
 
       Inputs:
           prompt (`str`):
@@ -427,7 +428,8 @@ class QwenImage21VLTextEncoderStep(ModularPipelineBlocks):
     image-conditioned generation.
 
       Components:
-          text_encoder (`Qwen3VLForConditionalGeneration`) processor (`Qwen3VLProcessor`)
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - processor (`Qwen3VLProcessor`)
 
       Inputs:
           prompt (`str`):
@@ -564,7 +566,7 @@ class QwenImage21ProcessImagesInputStep(ModularPipelineBlocks):
     Image preprocess step that turns the resized RGBA condition images into normalized tensors for the VAE.
 
       Components:
-          image_processor (`VaeImageProcessor`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           resized_image (`list`):
@@ -637,7 +639,7 @@ class QwenImage21VaeEncoderStep(ModularPipelineBlocks):
     resolutions, so the latents are returned as a list.
 
       Components:
-          vae (`AutoencoderKLQwenImage21`)
+          - vae (`AutoencoderKLQwenImage21`)
 
       Inputs:
           processed_image (`list`):
@@ -717,7 +719,8 @@ class QwenImage21TurboTextEncoderStep(ModularPipelineBlocks):
     checkpoint runs without guidance, so there is no negative prompt.
 
       Components:
-          text_encoder (`Qwen3VLForConditionalGeneration`) processor (`Qwen3VLProcessor`)
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - processor (`Qwen3VLProcessor`)
 
       Inputs:
           prompt (`str`):
@@ -796,7 +799,8 @@ class QwenImage21TurboVLTextEncoderStep(ModularPipelineBlocks):
     image-conditioned generation. The Turbo checkpoint runs without guidance, so there is no negative prompt.
 
       Components:
-          text_encoder (`Qwen3VLForConditionalGeneration`) processor (`Qwen3VLProcessor`)
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - processor (`Qwen3VLProcessor`)
 
       Inputs:
           prompt (`str`):

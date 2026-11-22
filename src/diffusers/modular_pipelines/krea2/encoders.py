@@ -51,8 +51,9 @@ class Krea2TextEncoderStep(ModularPipelineBlocks):
     prompt is encoded the same way when the guider enables CFG.
 
       Components:
-          text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`AutoTokenizer`): The tokenizer paired
-          with the text encoder. guider (`ClassifierFreeGuidance`)
+          - text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder.
+          - tokenizer (`AutoTokenizer`): The tokenizer paired with the text encoder.
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt (`str`):
@@ -211,8 +212,8 @@ class Krea2TurboTextEncoderStep(Krea2TextEncoderStep):
     negative prompt and has no guider.
 
       Components:
-          text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`AutoTokenizer`): The tokenizer paired
-          with the text encoder.
+          - text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder.
+          - tokenizer (`AutoTokenizer`): The tokenizer paired with the text encoder.
 
       Inputs:
           prompt (`str`):

@@ -290,8 +290,9 @@ class Krea2DenoiseStep(Krea2DenoiseLoopWrapper):
     conditional (and, when the guider enables CFG, the negative) text features and combining them through the `guider`.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
-          (`Krea2Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`Krea2Transformer2DModel`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -341,7 +342,8 @@ class Krea2TurboDenoiseStep(Krea2DenoiseLoopWrapper):
     classifier-free guidance.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`Krea2Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Krea2Transformer2DModel`)
 
       Inputs:
           timesteps (`Tensor`):
