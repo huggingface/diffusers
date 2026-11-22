@@ -9,6 +9,16 @@ class TCDSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (TCDScheduler,)
     forward_default_kwargs = (("num_inference_steps", 10),)
 
+    def test_truncated_custom_schedule_terminal_step_preserves_generator(self):
+        scheduler = TCDScheduler()
+        scheduler.set_timesteps(timesteps=[999, 499, 19], strength=0.5, device="cpu")
+        self.assertEqual(scheduler.timesteps.tolist(), [19])
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        state = generator.get_state().clone()
+        sample = torch.ones(1, 1, device="cpu")
+        scheduler.step(torch.zeros_like(sample), scheduler.timesteps[0], sample, eta=0.3, generator=generator)
+        self.assertTrue(torch.equal(generator.get_state(), state))
+
     def get_scheduler_config(self, **kwargs):
         config = {
             "num_train_timesteps": 1000,
@@ -178,3 +188,91 @@ class TCDSchedulerTest(SchedulerCommonTest):
             msg="`timesteps` must start before `self.config.train_timesteps`: {scheduler.config.num_train_timesteps}}",
         ):
             scheduler.set_timesteps(timesteps=timesteps)
+
+    def test_rng_only_advances_for_effective_stochastic_steps(self):
+        # Issue #15288: truncation may leave the actual last step before
+        # num_inference_steps - 1. Also test zero noise on non-terminal steps.
+        schedules = [
+            ([999, 499, 19], 0.5, [19]),
+            ([999, 799, 599, 399, 199], 0.6, [599, 399, 199]),
+            ([999, 799, 599, 399, 199], 1.0, [999, 799, 599, 399, 199]),
+            ([999, 0], 1.0, [999, 0]),
+            ([999, 1, 0], 1.0, [999, 1, 0]),
+        ]
+        for requested, strength, expected in schedules:
+            for prediction_type in ["epsilon", "sample", "v_prediction"]:
+                for set_alpha_to_one in [True, False]:
+                    for eta in [0.0, 1e-12, 0.3, 1.0]:
+                        for return_dict in [False, True]:
+                            with self.subTest(
+                                requested=requested,
+                                strength=strength,
+                                prediction_type=prediction_type,
+                                set_alpha_to_one=set_alpha_to_one,
+                                eta=eta,
+                                return_dict=return_dict,
+                            ):
+                                scheduler = TCDScheduler(
+                                    prediction_type=prediction_type,
+                                    set_alpha_to_one=set_alpha_to_one,
+                                    original_inference_steps=1000,
+                                )
+                                scheduler.set_timesteps(timesteps=requested, strength=strength, device="cpu")
+                                self.assertEqual(scheduler.timesteps.tolist(), expected)
+                                generator = torch.Generator(device="cpu").manual_seed(0)
+                                control = torch.Generator(device="cpu").manual_seed(0)
+                                sample = torch.ones((1, 1), device="cpu")
+
+                                for i, timestep in enumerate(scheduler.timesteps):
+                                    before = generator.get_state().clone()
+                                    result = scheduler.step(
+                                        torch.zeros_like(sample),
+                                        timestep,
+                                        sample,
+                                        eta=eta,
+                                        generator=generator,
+                                        return_dict=return_dict,
+                                    )
+                                    prev_sample, pred_noised = (
+                                        (result.prev_sample, result.pred_noised_sample) if return_dict else result
+                                    )
+                                    self.assertTrue(torch.isfinite(prev_sample).all())
+                                    has_next = i + 1 < len(expected)
+                                    next_t = expected[i + 1] if has_next else 0
+                                    timestep_s = int(torch.floor((1 - eta) * torch.tensor(next_t)).item())
+                                    should_draw = eta > 0 and has_next and timestep_s < next_t
+                                    moved = not torch.equal(before, generator.get_state())
+                                    self.assertEqual(moved, should_draw)
+                                    if should_draw:
+                                        torch.randn(sample.shape, generator=control, device="cpu")
+                                    else:
+                                        torch.testing.assert_close(prev_sample, pred_noised, rtol=0, atol=0)
+                                    sample = prev_sample
+
+                                torch.testing.assert_close(
+                                    torch.randn(4, generator=generator),
+                                    torch.randn(4, generator=control),
+                                    rtol=0,
+                                    atol=0,
+                                )
+
+    def test_rng_standard_schedule_unchanged(self):
+        for eta in [0.0, 1e-12, 0.3, 1.0]:
+            scheduler = TCDScheduler(original_inference_steps=1000)
+            scheduler.set_timesteps(num_inference_steps=4, device="cpu")
+            generator = torch.Generator(device="cpu").manual_seed(0)
+            control = torch.Generator(device="cpu").manual_seed(0)
+            sample = torch.ones((1, 1), device="cpu")
+            for i, timestep in enumerate(scheduler.timesteps):
+                scheduler.step(torch.zeros_like(sample), timestep, sample, eta=eta, generator=generator)
+                if i + 1 < len(scheduler.timesteps):
+                    next_t = int(scheduler.timesteps[i + 1].item())
+                    timestep_s = int(torch.floor((1 - eta) * torch.tensor(next_t)).item())
+                    if eta > 0 and timestep_s < next_t:
+                        torch.randn(sample.shape, generator=control)
+            torch.testing.assert_close(
+                torch.randn(4, generator=generator),
+                torch.randn(4, generator=control),
+                rtol=0,
+                atol=0,
+            )
