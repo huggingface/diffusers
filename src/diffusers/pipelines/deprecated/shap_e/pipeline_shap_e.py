@@ -12,23 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
 import PIL.Image
 import torch
-from transformers import CLIPImageProcessor, CLIPVisionModel
+from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 
-from ...models import PriorTransformer
-from ...schedulers import HeunDiscreteScheduler
-from ...utils import (
+from ....models import PriorTransformer
+from ....schedulers import HeunDiscreteScheduler
+from ....utils import (
     BaseOutput,
     is_torch_xla_available,
     logging,
     replace_example_docstring,
 )
-from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ....utils.torch_utils import randn_tensor
+from ...pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline
 from .renderer import ShapERenderer
 
 
@@ -39,35 +40,34 @@ if is_torch_xla_available():
 else:
     XLA_AVAILABLE = False
 
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from PIL import Image
         >>> import torch
         >>> from diffusers import DiffusionPipeline
-        >>> from diffusers.utils import export_to_gif, load_image
+        >>> from diffusers.utils import export_to_gif
 
         >>> device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        >>> repo = "openai/shap-e-img2img"
+        >>> repo = "openai/shap-e"
         >>> pipe = DiffusionPipeline.from_pretrained(repo, torch_dtype=torch.float16)
         >>> pipe = pipe.to(device)
 
-        >>> guidance_scale = 3.0
-        >>> image_url = "https://hf.co/datasets/diffusers/docs-images/resolve/main/shap-e/corgi.png"
-        >>> image = load_image(image_url).convert("RGB")
+        >>> guidance_scale = 15.0
+        >>> prompt = "a shark"
 
         >>> images = pipe(
-        ...     image,
+        ...     prompt,
         ...     guidance_scale=guidance_scale,
         ...     num_inference_steps=64,
         ...     frame_size=256,
         ... ).images
 
-        >>> gif_path = export_to_gif(images[0], "corgi_3d.gif")
+        >>> gif_path = export_to_gif(images[0], "shark_3d.gif")
         ```
 """
 
@@ -82,12 +82,12 @@ class ShapEPipelineOutput(BaseOutput):
             A list of images for 3D rendering.
     """
 
-    images: PIL.Image.Image | np.ndarray
+    images: list[list[PIL.Image.Image]] | list[list[np.ndarray]]
 
 
-class ShapEImg2ImgPipeline(DiffusionPipeline):
+class ShapEPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
     """
-    Pipeline for generating latent representation of a 3D asset and rendering with the NeRF method from an image.
+    Pipeline for generating latent representation of a 3D asset and rendering with the NeRF method.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -95,10 +95,10 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
     Args:
         prior ([`PriorTransformer`]):
             The canonical unCLIP prior to approximate the image embedding from the text embedding.
-        image_encoder ([`~transformers.CLIPVisionModel`]):
-            Frozen image-encoder.
-        image_processor ([`~transformers.CLIPImageProcessor`]):
-             A `CLIPImageProcessor` to process images.
+        text_encoder ([`~transformers.CLIPTextModelWithProjection`]):
+            Frozen text-encoder.
+        tokenizer ([`~transformers.CLIPTokenizer`]):
+             A `CLIPTokenizer` to tokenize text.
         scheduler ([`HeunDiscreteScheduler`]):
             A scheduler to be used in combination with the `prior` model to generate image embedding.
         shap_e_renderer ([`ShapERenderer`]):
@@ -106,14 +106,16 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             rendering method.
     """
 
-    model_cpu_offload_seq = "image_encoder->prior"
+    _last_supported_version = "0.43.0"
+
+    model_cpu_offload_seq = "text_encoder->prior"
     _exclude_from_cpu_offload = ["shap_e_renderer"]
 
     def __init__(
         self,
         prior: PriorTransformer,
-        image_encoder: CLIPVisionModel,
-        image_processor: CLIPImageProcessor,
+        text_encoder: CLIPTextModelWithProjection,
+        tokenizer: CLIPTokenizer,
         scheduler: HeunDiscreteScheduler,
         shap_e_renderer: ShapERenderer,
     ):
@@ -121,8 +123,8 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
 
         self.register_modules(
             prior=prior,
-            image_encoder=image_encoder,
-            image_processor=image_processor,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
             scheduler=scheduler,
             shap_e_renderer=shap_e_renderer,
         )
@@ -139,41 +141,60 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         latents = latents * scheduler.init_noise_sigma
         return latents
 
-    def _encode_image(
+    def _encode_prompt(
         self,
-        image,
+        prompt,
         device,
         num_images_per_prompt,
         do_classifier_free_guidance,
     ):
-        if isinstance(image, list) and isinstance(image[0], torch.Tensor):
-            image = torch.cat(image, axis=0) if image[0].ndim == 4 else torch.stack(image, axis=0)
+        len(prompt) if isinstance(prompt, list) else 1
 
-        if not isinstance(image, torch.Tensor):
-            image = self.image_processor(image, return_tensors="pt").pixel_values[0].unsqueeze(0)
+        # YiYi Notes: set pad_token_id to be 0, not sure why I can't set in the config file
+        self.tokenizer.pad_token_id = 0
+        # get prompt text embeddings
+        text_inputs = self.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=self.tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        )
+        text_input_ids = text_inputs.input_ids
+        untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
-        image = image.to(dtype=self.image_encoder.dtype, device=device)
+        if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
+            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
+            logger.warning(
+                "The following part of your input was truncated because CLIP can only handle sequences up to"
+                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+            )
 
-        image_embeds = self.image_encoder(image)["last_hidden_state"]
-        image_embeds = image_embeds[:, 1:, :].contiguous()  # batch_size, dim, 256
+        text_encoder_output = self.text_encoder(text_input_ids.to(device))
+        prompt_embeds = text_encoder_output.text_embeds
 
-        image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+        prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+        # in Shap-E it normalize the prompt_embeds and then later rescale it
+        prompt_embeds = prompt_embeds / torch.linalg.norm(prompt_embeds, dim=-1, keepdim=True)
 
         if do_classifier_free_guidance:
-            negative_image_embeds = torch.zeros_like(image_embeds)
+            negative_prompt_embeds = torch.zeros_like(prompt_embeds)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            image_embeds = torch.cat([negative_image_embeds, image_embeds])
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
-        return image_embeds
+        # Rescale the features to have unit variance
+        prompt_embeds = math.sqrt(prompt_embeds.shape[1]) * prompt_embeds
+
+        return prompt_embeds
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image: PIL.Image.Image | list[PIL.Image.Image],
+        prompt: str,
         num_images_per_prompt: int = 1,
         num_inference_steps: int = 25,
         generator: torch.Generator | list[torch.Generator] | None = None,
@@ -187,9 +208,8 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         The call function to the pipeline for generation.
 
         Args:
-            image (`torch.Tensor`, `PIL.Image.Image`, `np.ndarray`, `list[torch.Tensor]`, `list[PIL.Image.Image]`, or `list[np.ndarray]`):
-                `Image` or tensor representing an image batch to be used as the starting point. Can also accept image
-                latents as image, but if passing latents directly it is not encoded again.
+            prompt (`str` or `list[str]`):
+                The prompt or prompts to guide the image generation.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             num_inference_steps (`int`, *optional*, defaults to 25):
@@ -211,34 +231,30 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
                 The output format of the generated image. Choose between `"pil"` (`PIL.Image.Image`), `"np"`
                 (`np.array`), `"latent"` (`torch.Tensor`), or mesh ([`MeshDecoderOutput`]).
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.shap_e.pipeline_shap_e.ShapEPipelineOutput`] instead of a plain
-                tuple.
+                Whether or not to return a [`~pipelines.deprecated.shap_e.pipeline_shap_e.ShapEPipelineOutput`] instead
+                of a plain tuple.
 
         Examples:
 
         Returns:
-            [`~pipelines.shap_e.pipeline_shap_e.ShapEPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.shap_e.pipeline_shap_e.ShapEPipelineOutput`] is returned,
-                otherwise a `tuple` is returned where the first element is a list with the generated images.
+            [`~pipelines.deprecated.shap_e.pipeline_shap_e.ShapEPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.deprecated.shap_e.pipeline_shap_e.ShapEPipelineOutput`] is
+                returned, otherwise a `tuple` is returned where the first element is a list with the generated images.
         """
 
-        if isinstance(image, PIL.Image.Image):
+        if isinstance(prompt, str):
             batch_size = 1
-        elif isinstance(image, torch.Tensor):
-            batch_size = image.shape[0]
-        elif isinstance(image, list) and isinstance(image[0], (torch.Tensor, PIL.Image.Image)):
-            batch_size = len(image)
+        elif isinstance(prompt, list):
+            batch_size = len(prompt)
         else:
-            raise ValueError(
-                f"`image` has to be of type `PIL.Image.Image`, `torch.Tensor`, `list[PIL.Image.Image]` or `list[torch.Tensor]` but is {type(image)}"
-            )
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         device = self._execution_device
 
         batch_size = batch_size * num_images_per_prompt
 
         do_classifier_free_guidance = guidance_scale > 1.0
-        image_embeds = self._encode_image(image, device, num_images_per_prompt, do_classifier_free_guidance)
+        prompt_embeds = self._encode_prompt(prompt, device, num_images_per_prompt, do_classifier_free_guidance)
 
         # prior
 
@@ -247,15 +263,15 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
 
         num_embeddings = self.prior.config.num_embeddings
         embedding_dim = self.prior.config.embedding_dim
-        if latents is None:
-            latents = self.prepare_latents(
-                (batch_size, num_embeddings * embedding_dim),
-                image_embeds.dtype,
-                device,
-                generator,
-                latents,
-                self.scheduler,
-            )
+
+        latents = self.prepare_latents(
+            (batch_size, num_embeddings * embedding_dim),
+            prompt_embeds.dtype,
+            device,
+            generator,
+            latents,
+            self.scheduler,
+        )
 
         # YiYi notes: for testing only to match ldm, we can directly create a latents with desired shape: batch_size, num_embeddings, embedding_dim
         latents = latents.reshape(latents.shape[0], num_embeddings, embedding_dim)
@@ -268,7 +284,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             noise_pred = self.prior(
                 scaled_model_input,
                 timestep=t,
-                proj_embedding=image_embeds,
+                proj_embedding=prompt_embeds,
             ).predicted_image_embedding
 
             # remove the variance
@@ -289,13 +305,13 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             if XLA_AVAILABLE:
                 xm.mark_step()
 
+        # Offload all models
+        self.maybe_free_model_hooks()
+
         if output_type not in ["np", "pil", "latent", "mesh"]:
             raise ValueError(
                 f"Only the output types `pil`, `np`, `latent` and `mesh` are supported not output_type={output_type}"
             )
-
-        # Offload all models
-        self.maybe_free_model_hooks()
 
         if output_type == "latent":
             return ShapEPipelineOutput(images=latents)

@@ -29,12 +29,12 @@ from diffusers import (
     AutoencoderKLLTX2Video,
     FlowMatchEulerDiscreteScheduler,
     LTX2VideoTransformer3DModel,
+    LTX2Vocoder,
     LTXEulerAncestralRFScheduler,
 )
 from diffusers.models.condition_embedders import LTX2TextConnectors
 from diffusers.models.latent_upscaler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2 import LTX2DurationHead
-from diffusers.pipelines.ltx2.vocoder import LTX2Vocoder
 
 from ...testing_utils import torch_device
 from ..testing_utils import (

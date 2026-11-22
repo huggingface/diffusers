@@ -36,7 +36,9 @@ class EchoTextConditioningStep(SequentialPipelineBlocks):
     Positive-only text conditioning for the guidance-free Echo DMD checkpoint.
 
       Components:
-          text_encoder (`PreTrainedModel`) tokenizer (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`)
+          - text_encoder (`PreTrainedModel`)
+          - tokenizer (`PreTrainedTokenizerBase`)
+          - connectors (`LTX2TextConnectors`)
 
       Inputs:
           prompt (`str`):
@@ -83,7 +85,7 @@ class EchoDenoiseStep(SequentialPipelineBlocks):
     Prepare Echo conditioning and target latents, then run stochastic DMD denoising.
 
       Components:
-          transformer (`LTX2VideoTransformer3DModel`)
+          - transformer (`LTX2VideoTransformer3DModel`)
 
       Inputs:
           first_frame_latents (`Tensor`, *optional*):
@@ -166,8 +168,10 @@ class EchoDecoderStep(SequentialPipelineBlocks):
     Decode Echo video and audio outputs with mixed-precision-safe audio vocoding.
 
       Components:
-          vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) audio_vae (`AutoencoderKLLTX2Audio`)
-          vocoder (`LTX2Vocoder`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - video_processor (`VideoProcessor`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           latents (`Tensor`):
@@ -223,9 +227,14 @@ class EchoBlocks(SequentialPipelineBlocks):
     stochastic DMD denoising.
 
       Components:
-          text_encoder (`PreTrainedModel`) tokenizer (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) vae
-          (`AutoencoderKLLTX2Video`) audio_vae (`AutoencoderKLLTX2Audio`) transformer (`LTX2VideoTransformer3DModel`)
-          video_processor (`VideoProcessor`) vocoder (`LTX2Vocoder`)
+          - text_encoder (`PreTrainedModel`)
+          - tokenizer (`PreTrainedTokenizerBase`)
+          - connectors (`LTX2TextConnectors`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - video_processor (`VideoProcessor`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           prompt (`str`):

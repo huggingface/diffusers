@@ -262,7 +262,7 @@ class Krea2PrepareLatentsStep(ModularPipelineBlocks):
     denoising loop.
 
       Components:
-          transformer (`Krea2Transformer2DModel`)
+          - transformer (`Krea2Transformer2DModel`)
 
       Inputs:
           latents (`Tensor`, *optional*):
@@ -373,7 +373,7 @@ class Krea2SetTimestepsStep(ModularPipelineBlocks):
     dynamic time shift `mu`.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           num_inference_steps (`int`, *optional*, defaults to 28):
@@ -459,7 +459,7 @@ class Krea2TurboSetTimestepsStep(ModularPipelineBlocks):
     sigma schedule with the fixed time shift `mu=1.15` the checkpoint was distilled with.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           num_inference_steps (`int`, *optional*, defaults to 8):

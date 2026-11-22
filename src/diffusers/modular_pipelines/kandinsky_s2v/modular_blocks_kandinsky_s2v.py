@@ -39,8 +39,9 @@ class KandinskyS2VCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoise step that prepares the conditions and the FramePack memory, then denoises the video chunk by chunk.
 
       Components:
-          transformer (`KandinskyS2VTransformer3DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`)
+          - transformer (`KandinskyS2VTransformer3DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           reference_latents (`Tensor`):
@@ -111,10 +112,15 @@ class KandinskyS2VAutoBlocks(SequentialPipelineBlocks):
     a speech track, generated chunk by chunk.
 
       Components:
-          text_encoder (`Qwen2_5OmniThinkerForConditionalGeneration`) tokenizer (`Qwen2_5OmniProcessor`) text_encoder_2
-          (`CLIPTextModel`) tokenizer_2 (`CLIPTokenizer`) vae (`AutoencoderKLHunyuanVideo`) video_processor
-          (`VideoProcessor`) transformer (`KandinskyS2VTransformer3DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`)
+          - text_encoder (`Qwen2_5OmniThinkerForConditionalGeneration`)
+          - tokenizer (`Qwen2_5OmniProcessor`)
+          - text_encoder_2 (`CLIPTextModel`)
+          - tokenizer_2 (`CLIPTokenizer`)
+          - vae (`AutoencoderKLHunyuanVideo`)
+          - video_processor (`VideoProcessor`)
+          - transformer (`KandinskyS2VTransformer3DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt (`str`, *optional*, defaults to The video presents a stable medium close-up of a subject facing the

@@ -48,8 +48,9 @@ class ZImageCoreDenoiseStep(SequentialPipelineBlocks):
     denoise block that takes encoded conditions and runs the denoising process.
 
       Components:
-          transformer (`ZImageTransformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`)
+          - transformer (`ZImageTransformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_images_per_prompt (`None`, *optional*, defaults to 1):
@@ -102,8 +103,9 @@ class ZImageImage2ImageCoreDenoiseStep(SequentialPipelineBlocks):
     denoise block that takes encoded text and image latent conditions and runs the denoising process.
 
       Components:
-          transformer (`ZImageTransformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`)
+          - transformer (`ZImageTransformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_images_per_prompt (`None`, *optional*, defaults to 1):
@@ -174,8 +176,9 @@ class ZImageAutoDenoiseStep(AutoPipelineBlocks):
        - if `image_latents` is not provided, `ZImageCoreDenoiseStep` will be used.
 
       Components:
-          transformer (`ZImageTransformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`)
+          - transformer (`ZImageTransformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_images_per_prompt (`None`, *optional*, defaults to 1):
@@ -233,7 +236,8 @@ class ZImageAutoVaeImageEncoderStep(AutoPipelineBlocks):
     Vae Image Encoder step that encode the image to generate the image latents
 
       Components:
-          vae (`AutoencoderKL`) image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKL`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           image (`Image`, *optional*):
@@ -272,9 +276,13 @@ class ZImageAutoBlocks(SequentialPipelineBlocks):
         - `image2image`: requires `image`, `prompt`
 
       Components:
-          text_encoder (`Qwen3Model`) tokenizer (`Qwen2Tokenizer`) guider (`ClassifierFreeGuidance`) vae
-          (`AutoencoderKL`) image_processor (`VaeImageProcessor`) transformer (`ZImageTransformer2DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`)
+          - text_encoder (`Qwen3Model`)
+          - tokenizer (`Qwen2Tokenizer`)
+          - guider (`ClassifierFreeGuidance`)
+          - vae (`AutoencoderKL`)
+          - image_processor (`VaeImageProcessor`)
+          - transformer (`ZImageTransformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           prompt (`None`, *optional*):

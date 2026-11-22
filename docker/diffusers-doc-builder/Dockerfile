@@ -32,7 +32,7 @@ RUN uv pip install --no-cache-dir "git+https://github.com/huggingface/diffusers.
 # Extra dependencies
 RUN uv pip install --no-cache-dir \
     accelerate \
-    numpy==1.26.4 \
+    "numpy>=2" \
     hf_xet \
     setuptools==69.5.1 \
     bitsandbytes \

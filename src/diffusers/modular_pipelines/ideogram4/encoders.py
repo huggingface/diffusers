@@ -46,9 +46,10 @@ class Ideogram4PromptUpsampleStep(ModularPipelineBlocks):
     `Qwen3VLForConditionalGeneration`); install `outlines` for schema-constrained captions.
 
       Components:
-          text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`Qwen2Tokenizer`): The tokenizer paired
-          with the text encoder. prompt_enhancer_head (`Ideogram4PromptEnhancerHead`): LM head grafted onto the text
-          encoder for prompt upsampling.
+          - text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder.
+          - tokenizer (`Qwen2Tokenizer`): The tokenizer paired with the text encoder.
+          - prompt_enhancer_head (`Ideogram4PromptEnhancerHead`): LM head grafted onto the text encoder for prompt
+            upsampling.
 
       Inputs:
           prompt (`str`):
@@ -182,8 +183,8 @@ class Ideogram4TextEncoderStep(ModularPipelineBlocks):
     tokens are appended later (the encoder is causal with image after text, so they never affect the text features).
 
       Components:
-          text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`Qwen2Tokenizer`): The tokenizer paired
-          with the text encoder.
+          - text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder.
+          - tokenizer (`Qwen2Tokenizer`): The tokenizer paired with the text encoder.
 
       Inputs:
           prompt (`str`):

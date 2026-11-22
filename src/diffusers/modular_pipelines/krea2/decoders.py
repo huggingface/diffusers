@@ -109,7 +109,8 @@ class Krea2DecodeStep(ModularPipelineBlocks):
     Qwen-Image VAE into images.
 
       Components:
-          vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           output_type (`str`, *optional*, defaults to pil):
