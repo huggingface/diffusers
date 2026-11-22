@@ -39,7 +39,7 @@ class QwenImageAfterDenoiseStep(ModularPipelineBlocks):
     channels, 1, height, width)
 
       Components:
-          pachifier (`QwenImagePachifier`)
+          - pachifier (`QwenImagePachifier`)
 
       Inputs:
           height (`int`):
@@ -110,7 +110,7 @@ class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
     Unpack latents from (B, seq, C*4) to (B, C, layers+1, H, W) after denoising.
 
       Components:
-          pachifier (`QwenImageLayeredPachifier`)
+          - pachifier (`QwenImageLayeredPachifier`)
 
       Inputs:
           latents (`Tensor`):
@@ -185,7 +185,7 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
     Step that decodes the latents to images
 
       Components:
-          vae (`AutoencoderKLQwenImage`)
+          - vae (`AutoencoderKLQwenImage`)
 
       Inputs:
           latents (`Tensor`):
@@ -262,7 +262,8 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
     Decode unpacked latents (B, C, layers+1, H, W) into layer images.
 
       Components:
-          vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           latents (`Tensor`):
@@ -361,7 +362,7 @@ class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
     postprocess the generated image
 
       Components:
-          image_processor (`VaeImageProcessor`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           images (`Tensor`):
@@ -435,7 +436,7 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
     postprocess the generated image, optional apply the mask overally to the original image..
 
       Components:
-          image_mask_processor (`InpaintProcessor`)
+          - image_mask_processor (`InpaintProcessor`)
 
       Inputs:
           images (`Tensor`):

@@ -65,7 +65,8 @@ class LTX2AutoPromptEnhancerStep(ConditionalPipelineBlocks):
        - Skipped when `enable_prompt_enhancement` is falsy / not provided.
 
       Components:
-          prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`)
+          - prompt_enhancer (`PreTrainedModel`)
+          - processor (`ProcessorMixin`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -130,7 +131,9 @@ class LTX2TextConditioningStep(SequentialPipelineBlocks):
     stage expands them by `num_videos_per_prompt` -- so they can be reused across denoise runs.
 
       Components:
-          text_encoder (`PreTrainedModel`) tokenizer (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`)
+          - text_encoder (`PreTrainedModel`)
+          - tokenizer (`PreTrainedTokenizerBase`)
+          - connectors (`LTX2TextConnectors`)
 
       Inputs:
           prompt (`str`):
@@ -189,7 +192,7 @@ class LTX2AutoDurationStep(ConditionalPipelineBlocks):
        - Skipped when `num_frames` is supplied as an integer.
 
       Components:
-          duration_head (`LTX2DurationHead`)
+          - duration_head (`LTX2DurationHead`)
 
       Inputs:
           min_seconds (`float`, *optional*, defaults to 1.0):
@@ -235,7 +238,9 @@ class LTX2AutoVaeEncoderStep(AutoPipelineBlocks):
        - Skipped otherwise.
 
       Components:
-          vae (`AutoencoderKLLTX2Video`) text_encoder (`PreTrainedModel`) video_processor (`VideoProcessor`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - text_encoder (`PreTrainedModel`)
+          - video_processor (`VideoProcessor`)
 
       Inputs:
           image (`Image | list`, *optional*):
@@ -278,8 +283,11 @@ class LTX2CoreDenoiseStep(SequentialPipelineBlocks):
     latents and runs the joint denoising loop.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`LTX2VideoTransformer3DModel`) audio_vae
-          (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -382,8 +390,11 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     conditioning and runs the joint denoising loop.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`LTX2VideoTransformer3DModel`) audio_vae
-          (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -490,9 +501,12 @@ class LTX2ConditionCoreDenoiseStep(SequentialPipelineBlocks):
     conditions to the video latents and runs the joint denoising loop.
 
       Components:
-          transformer (`LTX2VideoTransformer3DModel`) vae (`AutoencoderKLLTX2Video`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider
-          (`LTX2Guidance`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -603,7 +617,8 @@ class LTX2AutoConditionEncoderStep(ConditionalPipelineBlocks):
        - Skipped for text-to-video and image-to-video.
 
       Components:
-          vae (`AutoencoderKLLTX2Video`) text_encoder (`PreTrainedModel`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - text_encoder (`PreTrainedModel`)
 
       Inputs:
           conditions (`list`, *optional*):
@@ -662,7 +677,9 @@ class LTX2AutoReferenceEncoderStep(ConditionalPipelineBlocks):
        - Skipped otherwise, for IC-LoRAs that take no reference video.
 
       Components:
-          vae (`AutoencoderKLLTX2Video`) transformer (`LTX2VideoTransformer3DModel`) video_processor (`VideoProcessor`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - video_processor (`VideoProcessor`)
 
       Inputs:
           reference_conditions (`list`, *optional*):
@@ -799,9 +816,12 @@ class LTX2InContextCoreDenoiseStep(SequentialPipelineBlocks):
     the reference implementation's uniform treatment of both.
 
       Components:
-          transformer (`LTX2VideoTransformer3DModel`) vae (`AutoencoderKLLTX2Video`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider
-          (`LTX2Guidance`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -934,9 +954,12 @@ class LTX2AutoCoreDenoiseStep(ConditionalPipelineBlocks):
        - `LTX2CoreDenoiseStep` otherwise (text-to-video).
 
       Components:
-          transformer (`LTX2VideoTransformer3DModel`) vae (`AutoencoderKLLTX2Video`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider
-          (`LTX2Guidance`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -1062,8 +1085,10 @@ class LTX2DecoderStep(SequentialPipelineBlocks):
     Decode stage: VAE-decodes the video latents and vocodes the audio latents (or returns latents).
 
       Components:
-          vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) audio_vae (`AutoencoderKLLTX2Audio`)
-          vocoder (`LTX2Vocoder`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - video_processor (`VideoProcessor`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           latents (`Tensor`):
@@ -1123,8 +1148,10 @@ class LTX2ConditionDecoderStep(SequentialPipelineBlocks):
     latents and vocodes the audio latents (or returns latents).
 
       Components:
-          vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) audio_vae (`AutoencoderKLLTX2Audio`)
-          vocoder (`LTX2Vocoder`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - video_processor (`VideoProcessor`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           latents (`Tensor`):
@@ -1191,8 +1218,10 @@ class LTX2AutoDecoderStep(AutoPipelineBlocks):
        - `LTX2DecoderStep` otherwise (text-to-video, image-to-video).
 
       Components:
-          vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) audio_vae (`AutoencoderKLLTX2Audio`)
-          vocoder (`LTX2Vocoder`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - video_processor (`VideoProcessor`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           latents (`Tensor`):
@@ -1261,11 +1290,20 @@ class LTX2Blocks(SequentialPipelineBlocks):
     Modular pipeline blocks for LTX-2 text-to-video (joint video + audio).
 
       Components:
-          prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`) text_encoder (`PreTrainedModel`) tokenizer
-          (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) duration_head (`LTX2DurationHead`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) transformer (`LTX2VideoTransformer3DModel`) audio_vae
-          (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`) vae
-          (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) vocoder (`LTX2Vocoder`)
+          - prompt_enhancer (`PreTrainedModel`)
+          - processor (`ProcessorMixin`)
+          - text_encoder (`PreTrainedModel`)
+          - tokenizer (`PreTrainedTokenizerBase`)
+          - connectors (`LTX2TextConnectors`)
+          - duration_head (`LTX2DurationHead`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - video_processor (`VideoProcessor`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -1373,11 +1411,20 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
     Modular pipeline blocks for LTX-2 image-to-video (joint video + audio).
 
       Components:
-          prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`) text_encoder (`PreTrainedModel`) tokenizer
-          (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) duration_head (`LTX2DurationHead`) vae
-          (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) scheduler (`FlowMatchEulerDiscreteScheduler`)
-          transformer (`LTX2VideoTransformer3DModel`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`)
-          audio_guider (`LTX2Guidance`) vocoder (`LTX2Vocoder`)
+          - prompt_enhancer (`PreTrainedModel`)
+          - processor (`ProcessorMixin`)
+          - text_encoder (`PreTrainedModel`)
+          - tokenizer (`PreTrainedTokenizerBase`)
+          - connectors (`LTX2TextConnectors`)
+          - duration_head (`LTX2DurationHead`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - video_processor (`VideoProcessor`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -1494,11 +1541,20 @@ class LTX2ConditionBlocks(SequentialPipelineBlocks):
     arbitrary latent frame indices of the generated video.
 
       Components:
-          prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`) text_encoder (`PreTrainedModel`) tokenizer
-          (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) duration_head (`LTX2DurationHead`) vae
-          (`AutoencoderKLLTX2Video`) transformer (`LTX2VideoTransformer3DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider
-          (`LTX2Guidance`) video_processor (`VideoProcessor`) vocoder (`LTX2Vocoder`)
+          - prompt_enhancer (`PreTrainedModel`)
+          - processor (`ProcessorMixin`)
+          - text_encoder (`PreTrainedModel`)
+          - tokenizer (`PreTrainedTokenizerBase`)
+          - connectors (`LTX2TextConnectors`)
+          - duration_head (`LTX2DurationHead`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
+          - video_processor (`VideoProcessor`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -1614,11 +1670,19 @@ class LTX2InContextBlocks(SequentialPipelineBlocks):
     `LTX2InContextPipeline`.
 
       Components:
-          prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`) text_encoder (`PreTrainedModel`) tokenizer
-          (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) vae (`AutoencoderKLLTX2Video`) transformer
-          (`LTX2VideoTransformer3DModel`) video_processor (`VideoProcessor`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider
-          (`LTX2Guidance`) vocoder (`LTX2Vocoder`)
+          - prompt_enhancer (`PreTrainedModel`)
+          - processor (`ProcessorMixin`)
+          - text_encoder (`PreTrainedModel`)
+          - tokenizer (`PreTrainedTokenizerBase`)
+          - connectors (`LTX2TextConnectors`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - video_processor (`VideoProcessor`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -1770,11 +1834,20 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
         - `in_context`: requires `reference_conditions`, `num_frames`, `prompt`
 
       Components:
-          prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`) text_encoder (`PreTrainedModel`) tokenizer
-          (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) duration_head (`LTX2DurationHead`) vae
-          (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) transformer (`LTX2VideoTransformer3DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`)
-          audio_guider (`LTX2Guidance`) vocoder (`LTX2Vocoder`)
+          - prompt_enhancer (`PreTrainedModel`)
+          - processor (`ProcessorMixin`)
+          - text_encoder (`PreTrainedModel`)
+          - tokenizer (`PreTrainedTokenizerBase`)
+          - connectors (`LTX2TextConnectors`)
+          - duration_head (`LTX2DurationHead`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - video_processor (`VideoProcessor`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           prompt (`str`, *optional*):
