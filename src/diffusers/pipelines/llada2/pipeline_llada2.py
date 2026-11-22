@@ -271,7 +271,7 @@ class LLaDA2Pipeline(DiffusionPipeline):
         | MultiPipelineCallbacks
         | None = None,
         callback_on_step_end_tensor_inputs: list[str] | None = None,
-    ) -> LLaDA2PipelineOutput | tuple[torch.LongTensor, list[str] | None]:
+    ) -> LLaDA2PipelineOutput | tuple:
         """
         Generate text with block-wise refinement.
 
@@ -457,7 +457,14 @@ class LLaDA2Pipeline(DiffusionPipeline):
 
             while should_continue:
                 block_tokens = block_x[:, -block_length:]
-                masks_remaining = (block_tokens == mask_token_id).any()
+                # Finished rows are frozen (`final_transfer & ~finished`), so
+                # their masks can never clear. Only unfinished rows decide
+                # whether refinement continues, otherwise a finished row keeps
+                # every later block running to the step limit.
+                if eos_early_stop and finished.any():
+                    masks_remaining = (block_tokens[~finished] == mask_token_id).any()
+                else:
+                    masks_remaining = (block_tokens == mask_token_id).any()
 
                 if not masks_remaining:
                     post_steps += 1

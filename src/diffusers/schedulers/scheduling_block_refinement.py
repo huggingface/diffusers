@@ -398,13 +398,15 @@ class BlockRefinementScheduler(SchedulerMixin, ConfigMixin):
             eos_in_commits = (sampled_tokens[b][final_transfer[b]] == eos_token_id).any().item()
             if not eos_in_commits:
                 continue
-            eos_pos = (cur_x[b] == eos_token_id).nonzero(as_tuple=True)
-            if len(eos_pos[0]) == 0:
-                continue
-            eos_pos = int(eos_pos[0][0].item())
+            # Only EOS tokens at or after `prompt_length` are genuine generated
+            # tokens. Earlier positions belong to the prompt, including padding:
+            # when the tokenizer uses EOS as its pad token, a padded row holds
+            # an EOS before `prompt_length`, which must not block finishing.
             # The first generated token sits at index `prompt_length`; allow EOS there.
-            if eos_pos < prompt_length:
+            eos_positions = (cur_x[b, prompt_length:] == eos_token_id).nonzero(as_tuple=True)
+            if len(eos_positions[0]) == 0:
                 continue
+            eos_pos = prompt_length + int(eos_positions[0][0].item())
             if (cur_x[b, prompt_length:eos_pos] != mask_token_id).all().item():
                 finished[b] = True
         return finished
