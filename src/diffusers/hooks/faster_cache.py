@@ -602,6 +602,8 @@ def apply_faster_cache(module: torch.nn.Module, config: FasterCacheConfig) -> No
         if any(re.search(identifier, name) is not None for identifier in _TRANSFORMER_BLOCK_IDENTIFIERS):
             _apply_faster_cache_on_attention_class(name, submodule, config)
 
+    HookRegistry.check_if_exists_or_initialize(module).invalidate_child_registries_cache()
+
 
 def _apply_faster_cache_on_denoiser(module: torch.nn.Module, config: FasterCacheConfig) -> None:
     hook = FasterCacheDenoiserHook(

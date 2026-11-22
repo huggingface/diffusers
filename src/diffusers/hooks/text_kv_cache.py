@@ -171,3 +171,5 @@ def apply_text_kv_cache(module: torch.nn.Module, config: TextKVCacheConfig) -> N
             hook = TextKVCacheBlockHook(state_manager, block_state_manager)
             block_registry = HookRegistry.check_if_exists_or_initialize(submodule)
             block_registry.register_hook(hook, _TEXT_KV_CACHE_BLOCK_HOOK)
+
+    registry.invalidate_child_registries_cache()
