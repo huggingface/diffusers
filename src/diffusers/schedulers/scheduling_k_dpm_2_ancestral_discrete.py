@@ -327,12 +327,28 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         # compute up and down sigmas
         sigmas_next = sigmas.roll(-1)
         sigmas_next[-1] = 0.0
-        sigmas_up = (sigmas_next**2 * (sigmas**2 - sigmas_next**2) / sigmas**2) ** 0.5
-        sigmas_down = (sigmas_next**2 - sigmas_up**2) ** 0.5
-        sigmas_down[-1] = 0.0
+        # Clamp the radicand to 0. sigmas_up is mathematically <= sigmas_next, but under
+        # beta_schedule="squaredcos_cap_v2" the sigma dynamic range is so large that in
+        # float32 sigmas_up can round to a value fractionally larger than sigmas_next,
+        # making sigmas_next**2 - sigmas_up**2 negative and producing NaN.
+        sigmas_up_sq = sigmas_next**2 * (sigmas**2 - sigmas_next**2) / sigmas**2
+        sigmas_up = sigmas_up_sq.clamp(min=0) ** 0.5
+        # Compute sigmas_down algebraically as sqrt(sigmas_next**4 / sigmas**2). The textbook
+        # form sqrt(sigmas_next**2 - sigmas_up**2) suffers catastrophic cancellation in the
+        # same squaredcos_cap_v2 regime (sigmas_up ~= sigmas_next), which is what drives
+        # sigmas_down to 0 and then NaN into sigmas_interpol via log(0). The algebraic form
+        # is mathematically identical and numerically stable.
+        sigmas_down = sigmas_next**2 / sigmas.clamp(min=1e-30)  # sqrt(sigmas_next**4/sigmas**2)
+        sigmas_down = torch.where(sigmas_next > 0, sigmas_down, torch.zeros_like(sigmas_down))
 
         # compute interpolated sigmas
-        sigmas_interpol = sigmas.log().lerp(sigmas_down.log(), 0.5).exp()
+        # Midpoint between sigmas and sigmas_down in log space. Written as the equivalent
+        # geometric mean (sqrt(sigmas * sigmas_down)) rather than
+        # sigmas.log().lerp(sigmas_down.log(), 0.5).exp() because the latter produces NaN
+        # wherever sigmas_down == 0 (torch.lerp with a -inf end term), which happens at the
+        # tail and — under squaredcos_cap_v2 — at the head where the huge sigma range forces
+        # sigmas_down[0] to 0.
+        sigmas_interpol = (sigmas.clamp(min=0) * sigmas_down) ** 0.5
         sigmas_interpol[-2:] = 0.0
 
         # set sigmas
