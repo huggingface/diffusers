@@ -403,6 +403,15 @@ class UniPCMultistepScheduler1DTest(UniPCMultistepSchedulerTest):
     def test_flow_and_karras_sigmas(self):
         self.check_over_configs(use_flow_sigmas=True, use_karras_sigmas=True)
 
+    def test_flow_sigmas_single_step_with_shift_terminal_is_finite(self):
+        # With num_inference_steps=1 the lone sigma is both the first and last point of the
+        # schedule, so stretch_shift_to_terminal's `one_minus_z[-1] / scale_factor` degenerates to
+        # a 0/0 division and produced nan timesteps/sigmas. See gh-14411.
+        scheduler = UniPCMultistepScheduler(use_flow_sigmas=True, flow_shift=3.0, shift_terminal=0.1)
+        scheduler.set_timesteps(num_inference_steps=1)
+        self.assertFalse(torch.isnan(scheduler.sigmas).any())
+        self.assertFalse(torch.isnan(scheduler.timesteps).any())
+
     def test_flow_and_karras_sigmas_values(self):
         num_train_timesteps = 1000
         num_inference_steps = 5
