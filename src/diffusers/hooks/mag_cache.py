@@ -249,6 +249,10 @@ class MagCacheHeadHook(ModelHook):
                 if diff > 0:
                     output = output.clone()
                     output[:, diff:, :] = output[:, diff:, :] + res
+                elif diff < 0:
+                    # The residual was computed on a longer sequence (e.g. the QwenImage2.1 KV-cache prefill step
+                    # covers prefix + target tokens, later steps only the target); the target tokens sit at the end.
+                    output = output + res[:, -output.shape[1] :, :]
                 else:
                     logger.warning(
                         f"MagCache: Dimension mismatch. Input {output.shape}, Residual {res.shape}. "
@@ -371,6 +375,12 @@ class MagCacheBlockHook(ModelHook):
             # norm(dim=-1) gives magnitude of each token vector
             curr_norm = torch.linalg.norm(current_residual.float(), dim=-1)
             prev_norm = torch.linalg.norm(state.previous_residual.float(), dim=-1)
+            if curr_norm.ndim == 2 and prev_norm.ndim == 2 and curr_norm.shape[1] != prev_norm.shape[1]:
+                # Sequence length changed between steps (e.g. KV-cache prefill vs. cached steps); compare the
+                # trailing tokens both steps share.
+                num_tokens = min(curr_norm.shape[1], prev_norm.shape[1])
+                curr_norm = curr_norm[:, -num_tokens:]
+                prev_norm = prev_norm[:, -num_tokens:]
 
             # Avoid division by zero
             ratio = (curr_norm / (prev_norm + 1e-8)).mean().item()
