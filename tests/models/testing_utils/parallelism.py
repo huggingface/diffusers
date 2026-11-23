@@ -929,9 +929,11 @@ def _context_and_tensor_parallel_worker(
             name: value.to(device) if isinstance(value, torch.Tensor) else value for name, value in inputs.items()
         }
         with torch.no_grad():
-            output = model(**device_inputs, return_dict=False)[0]
+            output = model(**device_inputs, return_dict=False)
         tolerance = 2e-2 if device_type in ("tpu", "neuron") else 1e-3
-        torch.testing.assert_close(output.float().cpu(), reference, atol=tolerance, rtol=tolerance)
+        torch.testing.assert_close(
+            tuple(item.float().cpu() for item in output), reference, atol=tolerance, rtol=tolerance
+        )
     finally:
         dist.destroy_process_group()
 
@@ -986,7 +988,7 @@ class ContextAndTensorParallelTesterMixin:
         with torch.random.fork_rng(devices=[]), torch.no_grad(), attention_backend(AttentionBackendName.NATIVE):
             torch.random.default_generator.manual_seed(0)
             model = self.model_class(**init_dict).eval()
-            reference = model(**inputs, return_dict=False)[0].float()
+            reference = tuple(item.float() for item in model(**inputs, return_dict=False))
 
         checkpoint = tmp_path / "checkpoint"
         model.save_pretrained(checkpoint)
