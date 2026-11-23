@@ -17,6 +17,7 @@ State dict utilities: utility methods for converting state dicts easily
 
 import enum
 import json
+from typing import Any
 
 from .import_utils import is_torch_available
 from .logging import get_logger
@@ -27,6 +28,21 @@ if is_torch_available():
 
 
 logger = get_logger(__name__)
+
+
+class _TorchStateDict(dict):
+    """
+    A state dict that also carries the metadata of the file it was read from: a safetensors file's `__metadata__`
+    (string values), or a GGUF file's key/value fields (typed values). `metadata` is empty when the weights came from a
+    pickled checkpoint or were passed in memory, since there is nowhere for a header to live.
+
+    Anything that rebuilds the state dict (a comprehension, `dict(...)`, `.copy()`) returns a plain `dict`, so read
+    `metadata` before converting.
+    """
+
+    def __init__(self, state_dict=(), metadata: dict[str, Any] | None = None):
+        super().__init__(state_dict)
+        self.metadata = metadata if metadata is not None else {}
 
 
 class StateDictType(enum.Enum):

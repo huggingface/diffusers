@@ -46,6 +46,7 @@ from ..utils import (
     logging,
 )
 from ..utils.distributed_utils import is_torch_dist_rank_zero
+from ..utils.state_dict_utils import _load_sft_file_metadata, _TorchStateDict
 
 
 logger = logging.get_logger(__name__)
@@ -166,9 +167,10 @@ def load_state_dict(
         file_extension = os.path.basename(checkpoint_file).split(".")[-1]
         if file_extension == SAFETENSORS_FILE_EXTENSION:
             if disable_mmap:
-                return safetensors.torch.load(open(checkpoint_file, "rb").read())
+                state_dict = safetensors.torch.load(open(checkpoint_file, "rb").read())
             else:
-                return safetensors.torch.load_file(checkpoint_file, device=map_location)
+                state_dict = safetensors.torch.load_file(checkpoint_file, device=map_location)
+            return _TorchStateDict(state_dict, metadata=_load_sft_file_metadata(checkpoint_file))
         elif file_extension == GGUF_FILE_EXTENSION:
             return load_gguf_checkpoint(checkpoint_file)
         else:
@@ -183,7 +185,11 @@ def load_state_dict(
                 and not disable_mmap
             ):
                 extra_args = {"mmap": True}
-            return torch.load(checkpoint_file, map_location=map_location, **weights_only_kwarg, **extra_args)
+            state_dict = torch.load(checkpoint_file, map_location=map_location, **weights_only_kwarg, **extra_args)
+            # Textual inversion files may hold a bare tensor rather than a dict.
+            if isinstance(state_dict, dict):
+                return _TorchStateDict(state_dict)
+            return state_dict
     except Exception as e:
         try:
             with open(checkpoint_file) as f:
@@ -627,10 +633,9 @@ def _gguf_parse_value(_value, data_type):
     return _value
 
 
-def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
+def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=True):
     """
-    Load a GGUF file and return a dictionary of parsed parameters containing tensors, the parsed tokenizer and config
-    attributes.
+    Load a GGUF file and return its tensors as a state dict, with the file's key/value fields as `metadata`.
 
     Args:
         gguf_checkpoint_path (`str`):
@@ -654,7 +659,15 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
 
     reader = GGUFReader(gguf_checkpoint_path)
 
+    metadata = {}
+    for name, field in reader.fields.items():
+        value = [_gguf_parse_value(field.parts[index], field.types) for index in field.data]
+        metadata[name] = value[0] if len(value) == 1 else value
+
     parsed_parameters = {}
+    if not return_tensors:
+        return _TorchStateDict(parsed_parameters, metadata=metadata)
+
     for tensor in reader.tensors:
         name = tensor.name
         quant_type = tensor.tensor_type
@@ -675,7 +688,7 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
         weights = torch.from_numpy(tensor.data.copy())
         parsed_parameters[name] = GGUFParameter(weights, quant_type=quant_type) if is_gguf_quant else weights
 
-    return parsed_parameters
+    return _TorchStateDict(parsed_parameters, metadata=metadata)
 
 
 def _find_mismatched_keys(state_dict, model_state_dict, loaded_keys, ignore_mismatched_sizes):
