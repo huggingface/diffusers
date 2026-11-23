@@ -12,13 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import importlib.metadata
 import json
 from unittest.mock import patch
 
 import pytest
 import torch
-from packaging.version import Version
 from torch import nn
 from torch.nn import functional as F
 
@@ -33,7 +31,7 @@ from diffusers.quantizers.comfy import ComfyQuantizer
 from diffusers.utils import is_comfy_kitchen_available
 
 
-if is_comfy_kitchen_available() and Version(importlib.metadata.version("comfy-kitchen")) >= Version("0.2.41"):
+if is_comfy_kitchen_available():
     import comfy_kitchen as kitchen
     from comfy_kitchen.float_utils import from_blocked, to_blocked
     from comfy_kitchen.tensor import QuantizedTensor
@@ -97,10 +95,10 @@ def bundle(state):
 
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 def test_config_and_registration(dtype):
-    config = ComfyQuantizationConfig(compute_dtype=dtype, pre_quantized=False)
+    config = ComfyQuantizationConfig(compute_dtype=dtype)
     assert config.pre_quantized is True
     assert not hasattr(config, "quant_type")
-    quantizer = DiffusersAutoQuantizer.from_config(config.to_dict())
+    quantizer = DiffusersAutoQuantizer.from_config(config)
     assert isinstance(quantizer, ComfyQuantizer)
     assert quantizer.compute_dtype == dtype
     assert quantizer.pre_quantized is True
@@ -323,7 +321,7 @@ def test_cpu_offload_and_dtype_move_keep_sidecars():
     from accelerate import cpu_offload_with_hook
 
     q = bundle(checkpoint(rows=32, convrot=True, convrot_groupsize=64))["linear.weight"]
-    q.sidecars["input_scale"] = torch.tensor(0.1234567)
+    q.input_scale = torch.tensor(0.1234567)
     scale = q.params.scale.clone()
     linear = ComfyLinear(256, 32, bias=False, dtype=torch.bfloat16)
     linear.weight = nn.Parameter(q, requires_grad=False)
@@ -333,7 +331,7 @@ def test_cpu_offload_and_dtype_move_keep_sidecars():
         first = model(inputs)
         hook.offload()
         assert linear.weight.device.type == "cpu"
-        assert linear.weight.sidecars["input_scale"].device.type == "cpu"
+        assert linear.weight.input_scale.device.type == "cpu"
         second = model(inputs)
     torch.testing.assert_close(first, second, rtol=0, atol=0)
     model.to(dtype=torch.float16)
@@ -428,3 +426,66 @@ def test_unmarked_fp8_weight_is_rejected():
     state["other.weight"] = torch.ones(32, 256).to(torch.float8_e4m3fn)
     with pytest.raises(ValueError, match="markers"):
         bundle(state)
+
+
+def test_negative_transpose_dims_match_positive_dims():
+    q = bundle(checkpoint(rows=96))["linear.weight"].view(2, 3, 16, 256)
+    expected = q.transpose(1, 0)
+    actual = q.transpose(-3, 0)
+    assert actual.shape == expected.shape
+    torch.testing.assert_close(actual._qdata, expected._qdata, rtol=0, atol=0)
+    torch.testing.assert_close(actual.params.scale, expected.params.scale, rtol=0, atol=0)
+
+
+def padded_checkpoint(quant_format, rows, columns, prefix="linear"):
+    torch.manual_seed(0)
+    layout = COMFY_FORMATS[quant_format][0]
+    q = QuantizedTensor.from_float(torch.randn(rows, columns), layout)
+    state = {"weight": q._qdata, "comfy_quant": marker(format=quant_format)}
+    if quant_format == "nvfp4":
+        state.update(weight_scale=q.params.block_scale, weight_scale_2=q.params.scale)
+    else:
+        state["weight_scale"] = q.params.scale
+    return {f"{prefix}.{name}": value for name, value in state.items()}, q
+
+
+@pytest.mark.parametrize("quant_format", ["nvfp4", "mxfp8"])
+def test_padded_weight_restores_linear_shape(quant_format):
+    state, reference = padded_checkpoint(quant_format, 100, 50, "0")
+    state = bundle(state)
+    model = nn.Sequential(nn.Linear(50, 100, bias=False, device="meta"))
+    quantizer = ComfyQuantizer(ComfyQuantizationConfig())
+    quantizer.preprocess_model(model, device_map=None, state_dict=state, keep_in_fp32_modules=[])
+    quantizer.create_quantized_param(model, state["0.weight"], "0.weight", "cpu", state)
+    assert model[0].weight.shape == (100, 50)
+    torch.testing.assert_close(
+        model[0].weight.dequantize().float(), reference.dequantize().float(), rtol=0.01, atol=1e-3
+    )
+    inputs = torch.randn(3, 50, dtype=torch.bfloat16)
+    with torch.inference_mode(), kitchen.use_backend("eager"):
+        assert model(inputs).shape == (3, 100)
+
+
+@pytest.mark.parametrize("quant_format", ["nvfp4", "mxfp8"])
+def test_split_padded_weight_is_rejected(quant_format):
+    state, _ = padded_checkpoint(quant_format, 90, 64, "0")
+    state = bundle(state)
+    state["0.weight"] = state["0.weight"].chunk(3)[0]
+    model = nn.Sequential(nn.Linear(64, 30, bias=False, device="meta"))
+    quantizer = ComfyQuantizer(ComfyQuantizationConfig())
+    with pytest.raises(ValueError, match="does not match"):
+        quantizer.preprocess_model(model, device_map=None, state_dict=state, keep_in_fp32_modules=[])
+
+
+@pytest.mark.parametrize("quant_format", FORMATS)
+def test_dequantize_restores_linear(quant_format):
+    state = bundle(checkpoint(quant_format, prefix="0", rows=128))
+    expected = state["0.weight"].dequantize()
+    model = nn.Sequential(nn.Linear(256, 128, bias=False, device="meta"))
+    quantizer = ComfyQuantizer(ComfyQuantizationConfig())
+    quantizer.preprocess_model(model, device_map=None, state_dict=state, keep_in_fp32_modules=[])
+    quantizer.create_quantized_param(model, state["0.weight"], "0.weight", "cpu", state)
+    quantizer._dequantize(model)
+    assert type(model[0]) is nn.Linear
+    assert type(model[0].weight.data) is torch.Tensor
+    torch.testing.assert_close(model[0].weight, expected.to(torch.bfloat16))

@@ -26,6 +26,7 @@ from ..testing_utils import (
     AutoRoundCompileTesterMixin,
     AutoRoundTesterMixin,
     BaseModelTesterConfig,
+    ComfyTesterMixin,
     LoKrTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
@@ -402,3 +403,27 @@ class TestZImageTransformer2DSingleFile(ZImageTransformerTesterConfig, SingleFil
     @property
     def pretrained_model_kwargs(self):
         return {"subfolder": "transformer"}
+
+
+class TestZImageTransformerComfy(ZImageTransformerTesterConfig, ComfyTesterMixin):
+    def get_dummy_inputs(self):
+        inputs = super().get_dummy_inputs()
+        return {
+            "x": [tensor.to(torch.bfloat16) for tensor in inputs["x"]],
+            "cap_feats": [tensor.to(torch.bfloat16) for tensor in inputs["cap_feats"]],
+            "t": inputs["t"].to(torch.bfloat16),
+        }
+
+    @torch.no_grad()
+    def _test_quantization_inference(self, config_kwargs):
+        model = self._create_quantized_model(config_kwargs)
+        output = _concat_list_output(model(**self.get_dummy_inputs(), return_dict=False)[0])
+        assert not torch.isnan(output).any(), "Model output contains NaN"
+
+    @torch.no_grad()
+    def _test_dequantize(self, config_kwargs):
+        model = self._create_quantized_model(config_kwargs)
+        model.dequantize()
+        assert not any(self._is_module_quantized(module) for module in model.modules())
+        output = _concat_list_output(model(**self.get_dummy_inputs(), return_dict=False)[0])
+        assert not torch.isnan(output).any(), "Model output contains NaN after dequantization"

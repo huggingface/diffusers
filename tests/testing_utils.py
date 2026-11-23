@@ -35,6 +35,7 @@ from diffusers.utils.import_utils import (
     is_accelerate_available,
     is_auto_round_available,
     is_bitsandbytes_available,
+    is_comfy_kitchen_available,
     is_compel_available,
     is_flashpack_available,
     is_gguf_available,
@@ -471,6 +472,10 @@ def is_sdnq(test_case):
     return pytest.mark.sdnq(test_case)
 
 
+def is_comfy(test_case):
+    return pytest.mark.comfy(test_case)
+
+
 def is_bfl(test_case):
     """
     Decorator marking a test as a BFL (fp8r / nvfp4) quantization test. These tests can be filtered using:
@@ -769,6 +774,10 @@ def require_sdnq(test_case):
     Decorator marking a test that requires sdnq. These tests are skipped when sdnq isn't installed.
     """
     return pytest.mark.skipif(not is_sdnq_available(), reason="test requires sdnq")(test_case)
+
+
+def require_comfy_kitchen(test_case):
+    return pytest.mark.skipif(not is_comfy_kitchen_available(), reason="test requires comfy-kitchen")(test_case)
 
 
 def require_accelerate(test_case):

@@ -128,6 +128,7 @@ _deps = [
     "onnx",
     "optimum_quanto>=0.2.6",
     "gguf>=0.10.0",
+    "comfy-kitchen>=0.2.41",
     "auto-round>=0.13.0",
     "torchao>=0.15.0",
     "bitsandbytes>=0.43.3",
@@ -248,6 +249,7 @@ extras["torch"] = deps_list("torch", "accelerate")
 
 extras["bitsandbytes"] = deps_list("bitsandbytes", "accelerate")
 extras["gguf"] = deps_list("gguf", "accelerate")
+extras["comfy"] = deps_list("comfy-kitchen", "accelerate")
 extras["optimum_quanto"] = deps_list("optimum_quanto", "accelerate")
 extras["torchao"] = deps_list("torchao", "accelerate")
 extras["nvidia_modelopt"] = deps_list("nvidia_modelopt[hf]")

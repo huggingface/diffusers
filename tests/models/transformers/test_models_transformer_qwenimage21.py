@@ -25,6 +25,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    ComfyTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     SingleFileTesterMixin,
@@ -392,3 +393,11 @@ class TestQwenImage21TransformerTensorParallelNeuron(
     QwenImage21TransformerTesterConfig, TensorParallelNeuronTesterMixin
 ):
     """Tensor Parallel inference test for QwenImage 2.1 Transformer on AWS Neuron."""
+
+
+class TestQwenImage21TransformerComfy(QwenImage21TransformerTesterConfig, ComfyTesterMixin):
+    def get_dummy_inputs(self, batch_size: int = 1, device=torch_device):
+        inputs = super().get_dummy_inputs(batch_size=batch_size, device=device)
+        for name in ("hidden_states", "encoder_hidden_states", "timestep"):
+            inputs[name] = inputs[name].to(torch.bfloat16)
+        return inputs

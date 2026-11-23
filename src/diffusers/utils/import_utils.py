@@ -67,6 +67,7 @@ _PKG_TO_DEPS_KEY = {
     "safetensors": "safetensors",
     "bitsandbytes": "bitsandbytes",
     "gguf": "gguf",
+    "comfy_kitchen": "comfy-kitchen",
     "torchao": "torchao",
     "optimum": "optimum_quanto",
     "modelopt": "nvidia_modelopt[hf]",

@@ -437,14 +437,13 @@ class ComfyQuantizationConfig(QuantizationConfigMixin):
             Precision of activations and unquantized layers. Supports BF16 and FP16.
     """
 
-    def __init__(self, compute_dtype: "torch.dtype" | str | None = None, **kwargs):
+    def __init__(self, compute_dtype: "torch.dtype" | str | None = None):
         self.quant_method = QuantizationMethod.COMFY
         self.compute_dtype = compute_dtype if compute_dtype is not None else torch.bfloat16
         self.pre_quantized = True
         self.post_init()
 
     def post_init(self):
-        self.pre_quantized = True
         if isinstance(self.compute_dtype, str):
             self.compute_dtype = {"bfloat16": torch.bfloat16, "float16": torch.float16}.get(self.compute_dtype)
         if self.compute_dtype not in (torch.bfloat16, torch.float16):

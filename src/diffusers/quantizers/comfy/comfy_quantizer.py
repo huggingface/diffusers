@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import importlib.metadata
+import dataclasses
 import json
 
 import torch
-from packaging.version import Version
 from torch import nn
 
 from ...utils import get_module_from_name, is_accelerate_available, is_comfy_kitchen_available
@@ -26,7 +25,7 @@ from ..base import DiffusersQuantizer
 if is_comfy_kitchen_available():
     from comfy_kitchen.tensor import get_layout_class
 
-    from .utils import ComfyLinear, ComfyQuantizedTensor
+    from .utils import ComfyLinear, ComfyQuantizedTensor, _dequantize_comfy_and_restore_linear
 
 
 COMFY_FORMATS = {
@@ -43,11 +42,13 @@ COMFY_FORMATS = {
 }
 
 
+PADDED_LAYOUTS = ("TensorCoreNVFP4Layout", "TensorCoreMXFP8Layout")
+
+
 class ComfyQuantizer(DiffusersQuantizer):
     use_keep_in_fp32_modules = True
 
     def __init__(self, quantization_config, **kwargs):
-        quantization_config.post_init()
         super().__init__(quantization_config, **kwargs)
         self.compute_dtype = quantization_config.compute_dtype
         self.pre_quantized = True
@@ -58,8 +59,6 @@ class ComfyQuantizer(DiffusersQuantizer):
             raise ImportError("Loading Comfy checkpoints requires accelerate: `pip install accelerate`.")
         if not is_comfy_kitchen_available():
             raise ImportError("Comfy inference requires comfy-kitchen: `pip install 'comfy-kitchen>=0.2.41'`.")
-        if Version(importlib.metadata.version("comfy-kitchen")) < Version("0.2.41"):
-            raise ImportError("Comfy inference requires comfy-kitchen>=0.2.41.")
 
     def update_torch_dtype(self, torch_dtype):
         if torch_dtype is not None and torch_dtype != self.compute_dtype:
@@ -163,14 +162,14 @@ class ComfyQuantizer(DiffusersQuantizer):
                     convrot_groupsize=options.get("convrot_groupsize", 256),
                     linear_dtype=options.get("linear_dtype", "int4"),
                 )
-            sidecars = {
-                name: state_dict.pop(f"{prefix}.{name}")
-                for name in ("input_scale", "pre_quant_scale")
-                if f"{prefix}.{name}" in state_dict
-            }
             layout = get_layout_class(layout_name)
             state_dict[f"{prefix}.weight"] = ComfyQuantizedTensor(
-                weight, layout_name, layout.Params(**params), marker, sidecars
+                weight,
+                layout_name,
+                layout.Params(**params),
+                comfy_quant=marker,
+                input_scale=state_dict.pop(f"{prefix}.input_scale", None),
+                pre_quant_scale=state_dict.pop(f"{prefix}.pre_quant_scale", None),
             )
         unmarked = [
             key
@@ -191,8 +190,24 @@ class ComfyQuantizer(DiffusersQuantizer):
             weight = state_dict.get(f"{prefix}.weight")
             if not isinstance(weight, ComfyQuantizedTensor):
                 continue
-            if not isinstance(module, nn.Linear) or tuple(weight.shape) != (module.out_features, module.in_features):
+            if not isinstance(module, nn.Linear):
                 raise ValueError(f"{prefix} does not match a Linear layer with shape {tuple(weight.shape)}.")
+            shape = (module.out_features, module.in_features)
+            storage_shape = shape
+            if weight._layout_cls in PADDED_LAYOUTS:
+                storage_shape = get_layout_class(weight._layout_cls).get_padded_shape(shape)
+            if tuple(weight.shape) != storage_shape or (weight.rows_rearranged and storage_shape[0] != shape[0]):
+                raise ValueError(f"{prefix} does not match a Linear layer with shape {tuple(weight.shape)}.")
+            if storage_shape != shape:
+                weight = ComfyQuantizedTensor(
+                    weight._qdata,
+                    weight._layout_cls,
+                    dataclasses.replace(weight.params, orig_shape=shape),
+                    weight.comfy_quant,
+                    weight.input_scale,
+                    weight.pre_quant_scale,
+                )
+                state_dict[f"{prefix}.weight"] = weight
             if any(name in prefix.split(".") for name in self.keep_in_fp32_modules):
                 continue
             parent, name = get_module_from_name(model, prefix)
@@ -224,6 +239,9 @@ class ComfyQuantizer(DiffusersQuantizer):
         if missing:
             raise ValueError(f"The Comfy checkpoint is missing model tensors: {missing}.")
         return model
+
+    def _dequantize(self, model):
+        return _dequantize_comfy_and_restore_linear(model)
 
     @property
     def is_serializable(self):

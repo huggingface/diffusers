@@ -19,8 +19,11 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from ...utils import is_comfy_kitchen_available
+from ...utils import is_accelerate_available, is_comfy_kitchen_available
 
+
+if is_accelerate_available():
+    from accelerate.hooks import add_hook_to_module, remove_hook_from_module
 
 if is_comfy_kitchen_available():
     from comfy_kitchen.float_utils import from_blocked, to_blocked
@@ -29,31 +32,59 @@ if is_comfy_kitchen_available():
     class ComfyQuantizedTensor(QuantizedTensor):
         """Packed Comfy weights whose sidecar tensors follow checkpoint row conversions."""
 
-        def __new__(cls, qdata, layout_cls, params, metadata=None, sidecars=None, logical_shape=None):
+        def __new__(
+            cls,
+            qdata,
+            layout_cls,
+            params,
+            comfy_quant=None,
+            input_scale=None,
+            pre_quant_scale=None,
+            shape=None,
+            rows_rearranged=False,
+        ):
             return torch.Tensor._make_wrapper_subclass(
                 cls,
-                logical_shape or params.orig_shape,
+                shape or params.orig_shape,
                 device=qdata.device,
                 dtype=params.orig_dtype,
                 requires_grad=False,
             )
 
-        def __init__(self, qdata, layout_cls, params, metadata=None, sidecars=None, logical_shape=None):
+        def __init__(
+            self,
+            qdata,
+            layout_cls,
+            params,
+            comfy_quant=None,
+            input_scale=None,
+            pre_quant_scale=None,
+            shape=None,
+            rows_rearranged=False,
+        ):
             super().__init__(qdata, layout_cls, params)
-            self.metadata = metadata or {}
-            self.sidecars = sidecars or {}
+            self.comfy_quant = comfy_quant or {}
+            self.input_scale = input_scale
+            self.pre_quant_scale = pre_quant_scale
+            self.rows_rearranged = rows_rearranged
 
         def _copy_with(self, qdata=None, params=None, clone_params=True):
             if params is None:
                 params = self.params.clone() if clone_params else self.params
             data = self._qdata if qdata is None else qdata
+            input_scale, pre_quant_scale = (
+                None if value is None else value.to(device=data.device).clone()
+                for value in (self.input_scale, self.pre_quant_scale)
+            )
             return type(self)(
                 data,
                 self._layout_cls,
                 params,
-                self.metadata.copy(),
-                {name: value.to(device=data.device).clone() for name, value in self.sidecars.items()},
+                self.comfy_quant.copy(),
+                input_scale,
+                pre_quant_scale,
                 tuple(self.shape),
+                self.rows_rearranged,
             )
 
         def dequantize(self):
@@ -101,7 +132,16 @@ if is_comfy_kitchen_available():
             elif self._layout_cls == "TensorCoreConvRotW4A4Layout":
                 values["scale"] = values["scale"].flatten()
             params = dataclasses.replace(self.params, orig_shape=(math.prod(shape[:-1]), shape[-1]), **values)
-            return type(self)(data, self._layout_cls, params, self.metadata.copy(), self.sidecars.copy(), tuple(shape))
+            return type(self)(
+                data,
+                self._layout_cls,
+                params,
+                self.comfy_quant.copy(),
+                self.input_scale,
+                self.pre_quant_scale,
+                tuple(shape),
+                rows_rearranged=True,
+            )
 
         def _select_rows(self, indices, shape):
             data, fields = self._row_components()
@@ -116,71 +156,95 @@ if is_comfy_kitchen_available():
             )
 
         @classmethod
+        def _split(cls, func, args, kwargs):
+            source, sizes = args[:2]
+            dim = (args[2] if len(args) > 2 else kwargs.get("dim", 0)) % source.ndim
+            if dim == source.ndim - 1:
+                raise NotImplementedError("Splitting quantized input features is not supported.")
+            indices = torch.arange(math.prod(source.shape[:-1]), device=source.device).reshape(source.shape[:-1])
+            return [
+                source._select_rows(part.flatten(), (*part.shape, source.shape[-1]))
+                for part in func(indices, sizes, dim)
+            ]
+
+        @classmethod
+        def _cat(cls, args, kwargs):
+            tensors = args[0]
+            dim = (args[1] if len(args) > 1 else kwargs.get("dim", 0)) % tensors[0].ndim
+            if dim != 0 or any(not isinstance(t, cls) or t._layout_cls != tensors[0]._layout_cls for t in tensors):
+                raise NotImplementedError("Concatenation requires matching Comfy layouts along output rows.")
+            source = tensors[0]
+            components = [tensor._row_components() for tensor in tensors]
+            row_fields = components[0][1]
+            for tensor, (_, fields) in zip(tensors[1:], components[1:]):
+                if tensor.shape[1:] != source.shape[1:] or fields.keys() != row_fields.keys():
+                    raise ValueError("Cannot concatenate incompatible quantized weight shapes or scales.")
+                if tensor.comfy_quant != source.comfy_quant:
+                    raise ValueError("Cannot concatenate weights with different quantization metadata.")
+                for name in ("input_scale", "pre_quant_scale"):
+                    left, right = getattr(source, name), getattr(tensor, name)
+                    if (left is None) != (right is None) or (left is not None and not torch.equal(left, right)):
+                        raise ValueError(f"Cannot concatenate weights with different {name}.")
+                for field in dataclasses.fields(source.params):
+                    if field.name in row_fields or field.name == "orig_shape":
+                        continue
+                    left, right = getattr(source.params, field.name), getattr(tensor.params, field.name)
+                    equal = (
+                        torch.equal(left, right)
+                        if isinstance(left, torch.Tensor) and isinstance(right, torch.Tensor)
+                        else left == right
+                    )
+                    if not equal:
+                        raise ValueError(f"Cannot concatenate weights with different {field.name}.")
+            data = torch.cat([part[0] for part in components], dim=0)
+            fields = {
+                name: (torch.cat([part[1][name][0] for part in components], dim=axis), axis)
+                for name, (_, axis) in row_fields.items()
+            }
+            return source._from_rows(data, fields, (sum(t.shape[0] for t in tensors), *source.shape[1:]))
+
+        @classmethod
+        def _view(cls, args):
+            source, shape = args[:2]
+            shape = list(shape)
+            if -1 in shape:
+                shape[shape.index(-1)] = source.numel() // -math.prod(shape)
+            if shape[-1] != source.shape[-1] or math.prod(shape) != source.numel():
+                raise NotImplementedError("Reshaping quantized input features is not supported.")
+            return cls(
+                source._qdata,
+                source._layout_cls,
+                source.params,
+                source.comfy_quant,
+                source.input_scale,
+                source.pre_quant_scale,
+                tuple(shape),
+                source.rows_rearranged,
+            )
+
+        @classmethod
+        def _reorder(cls, func, args, kwargs):
+            source = args[0]
+            indices = torch.arange(math.prod(source.shape[:-1]), device=source.device).reshape(source.shape[:-1])
+            dims = [dim % source.ndim for dim in args[1:]]
+            if any(dim == source.ndim - 1 for dim in dims):
+                raise NotImplementedError("Reordering quantized input features is not supported.")
+            transformed = func(indices, *dims, **kwargs)
+            if isinstance(transformed, torch.Tensor):
+                return source._select_rows(transformed.flatten(), (*transformed.shape, source.shape[-1]))
+            return [source._select_rows(part.flatten(), (*part.shape, source.shape[-1])) for part in transformed]
+
+        @classmethod
         def __torch_dispatch__(cls, func, types, args=(), kwargs=None):
             kwargs = kwargs or {}
             if func in (torch.ops.aten.split.Tensor, torch.ops.aten.split_with_sizes.default):
-                source, sizes = args[:2]
-                dim = (args[2] if len(args) > 2 else kwargs.get("dim", 0)) % source.ndim
-                if dim == source.ndim - 1:
-                    raise NotImplementedError("Splitting quantized input features is not supported.")
-                indices = torch.arange(math.prod(source.shape[:-1]), device=source.device).reshape(source.shape[:-1])
-                return [
-                    source._select_rows(part.flatten(), (*part.shape, source.shape[-1]))
-                    for part in func(indices, sizes, dim)
-                ]
+                return cls._split(func, args, kwargs)
             if func == torch.ops.aten.cat.default:
-                tensors = args[0]
-                dim = (args[1] if len(args) > 1 else kwargs.get("dim", 0)) % tensors[0].ndim
-                if dim != 0 or any(not isinstance(t, cls) or t._layout_cls != tensors[0]._layout_cls for t in tensors):
-                    raise NotImplementedError("Concatenation requires matching Comfy layouts along output rows.")
-                source = tensors[0]
-                components = [tensor._row_components() for tensor in tensors]
-                row_fields = components[0][1]
-                for tensor, (_, fields) in zip(tensors[1:], components[1:]):
-                    if tensor.shape[1:] != source.shape[1:] or fields.keys() != row_fields.keys():
-                        raise ValueError("Cannot concatenate incompatible quantized weight shapes or scales.")
-                    if tensor.metadata != source.metadata or tensor.sidecars.keys() != source.sidecars.keys():
-                        raise ValueError("Cannot concatenate weights with different quantization metadata.")
-                    for name in source.sidecars:
-                        if not torch.equal(source.sidecars[name], tensor.sidecars[name]):
-                            raise ValueError(f"Cannot concatenate weights with different {name}.")
-                    for field in dataclasses.fields(source.params):
-                        if field.name in row_fields or field.name == "orig_shape":
-                            continue
-                        left, right = getattr(source.params, field.name), getattr(tensor.params, field.name)
-                        equal = (
-                            torch.equal(left, right)
-                            if isinstance(left, torch.Tensor) and isinstance(right, torch.Tensor)
-                            else left == right
-                        )
-                        if not equal:
-                            raise ValueError(f"Cannot concatenate weights with different {field.name}.")
-                data = torch.cat([part[0] for part in components], dim=0)
-                fields = {
-                    name: (torch.cat([part[1][name][0] for part in components], dim=axis), axis)
-                    for name, (_, axis) in row_fields.items()
-                }
-                return source._from_rows(data, fields, (sum(t.shape[0] for t in tensors), *source.shape[1:]))
+                return cls._cat(args, kwargs)
             if func in (torch.ops.aten.view.default, torch.ops.aten._unsafe_view.default):
-                source, shape = args[:2]
-                shape = list(shape)
-                if -1 in shape:
-                    shape[shape.index(-1)] = source.numel() // -math.prod(shape)
-                if shape[-1] != source.shape[-1] or math.prod(shape) != source.numel():
-                    raise NotImplementedError("Reshaping quantized input features is not supported.")
-                return cls(
-                    source._qdata, source._layout_cls, source.params, source.metadata, source.sidecars, tuple(shape)
-                )
+                return cls._view(args)
             if func in (torch.ops.aten.transpose.int, torch.ops.aten.unbind.int):
-                source = args[0]
-                indices = torch.arange(math.prod(source.shape[:-1]), device=source.device).reshape(source.shape[:-1])
-                dims = [dim % source.ndim for dim in args[1:]]
-                if any(dim == source.ndim - 1 for dim in dims):
-                    raise NotImplementedError("Reordering quantized input features is not supported.")
-                transformed = func(indices, *args[1:], **kwargs)
-                if isinstance(transformed, torch.Tensor):
-                    return source._select_rows(transformed.flatten(), (*transformed.shape, source.shape[-1]))
-                return [source._select_rows(part.flatten(), (*part.shape, source.shape[-1])) for part in transformed]
+                return cls._reorder(func, args, kwargs)
             return super().__torch_dispatch__(func, types, args, kwargs)
 
 
@@ -192,16 +256,31 @@ class ComfyLinear(nn.Linear):
         inputs = inputs.to(weight.dtype)
         shape = inputs.shape
         inputs = inputs.reshape(-1, shape[-1])
-        pre_quant_scale = weight.sidecars.get("pre_quant_scale")
-        if pre_quant_scale is not None:
-            inputs = inputs * pre_quant_scale.to(inputs.dtype)
-        if weight.metadata.get("full_precision_matrix_mult", False):
+        if weight.pre_quant_scale is not None:
+            inputs = inputs * weight.pre_quant_scale.to(inputs.dtype)
+        if weight.comfy_quant.get("full_precision_matrix_mult", False):
             output = F.linear(inputs, weight.dequantize().to(weight.dtype), self.bias)
         else:
             if weight._layout_cls in ("TensorCoreFP8Layout", "TensorCoreNVFP4Layout", "TensorCoreMXFP8Layout"):
-                quant_kwargs = {"scale": weight.sidecars.get("input_scale")}
+                quant_kwargs = {"scale": weight.input_scale}
                 if weight._layout_cls == "TensorCoreFP8Layout":
                     quant_kwargs["dtype"] = weight.storage_dtype
                 inputs = QuantizedTensor.from_float(inputs, weight._layout_cls, **quant_kwargs)
             output = F.linear(inputs, weight, self.bias)
         return output.to(weight.dtype).reshape(*shape[:-1], self.out_features)
+
+
+def _dequantize_comfy_and_restore_linear(model):
+    for name, module in model.named_children():
+        if isinstance(module, ComfyLinear):
+            linear = nn.Linear(module.in_features, module.out_features, module.bias is not None, device="meta")
+            linear.weight = nn.Parameter(module.weight.dequantize().to(module.weight.dtype))
+            linear.bias = module.bias
+            if hasattr(module, "_hf_hook"):
+                hook = module._hf_hook
+                remove_hook_from_module(module)
+                add_hook_to_module(linear, hook)
+            model._modules[name] = linear
+        else:
+            _dequantize_comfy_and_restore_linear(module)
+    return model
