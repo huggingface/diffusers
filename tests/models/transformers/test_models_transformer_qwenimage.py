@@ -320,19 +320,14 @@ class TestQwenImageTransformerTensorParallelTPU(QwenImageTransformerTesterConfig
 class TestQwenImageTransformerContextAndTensorParallel(
     QwenImageTransformerTesterConfig, ContextAndTensorParallelTesterMixin
 ):
-    """Context Parallel x Tensor Parallel inference tests for QwenImage Transformer (4 accelerators).
+    def get_init_dict(self):
+        return {**super().get_init_dict(), "num_attention_heads": 8}
 
-    QwenImage is the model this runs on because its dummy config has four attention heads, and Ulysses splits the
-    heads TP already sharded — so `ulysses_degree` x `tp_degree` has to divide the head count.
-    """
-
-    def get_dummy_inputs(self, batch_size: int = 1) -> dict[str, torch.Tensor]:
-        inputs = super().get_dummy_inputs(batch_size=batch_size)
-        encoder_hidden_states_mask = inputs["encoder_hidden_states_mask"]
-        encoder_hidden_states_mask[:, 1] = 0
-        encoder_hidden_states_mask[:, 3] = 0
-        encoder_hidden_states_mask[:, 5:] = 0
-        inputs["encoder_hidden_states_mask"] = encoder_hidden_states_mask
+    def get_dummy_inputs(self, batch_size: int = 1, device=torch_device) -> dict[str, torch.Tensor]:
+        inputs = super().get_dummy_inputs(batch_size=batch_size, device=device)
+        mask = inputs["encoder_hidden_states_mask"]
+        mask[:, 1:4:2] = 0
+        mask[:, 5:] = 0
         return inputs
 
 

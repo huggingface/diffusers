@@ -198,13 +198,8 @@ class TensorParallelConfig:
 @dataclass
 class ParallelConfig:
     """
-    Configuration for applying different parallelisms.
-
-    Both may be set at once. The two are then applied over one device mesh with a dimension each — `("tp", "ring",
-    "ulysses")`, built by `enable_parallelism` or `from_pretrained(..., parallel_config=...)` — so their collectives
-    stay in separate process groups. This is what lets a model too large for one device (TP shards the weights) also
-    run a sequence too long for one device's attention scratchpad (CP splits the sequence): TP alone cannot divide the
-    sequence, and CP alone cannot divide the weights.
+    Both `enable_parallelism` and `from_pretrained(..., parallel_config=...)` can combine tensor and context
+    parallelism. Each uses its own process groups on a shared `("tp", "ring", "ulysses")` device mesh.
 
     Args:
         context_parallel_config (`ContextParallelConfig`, *optional*):
@@ -246,11 +241,6 @@ class ParallelConfig:
         self._device = device
         self._mesh = mesh
 
-        # Context and tensor parallelism compose because they cut the model along different axes: CP splits the
-        # sequence (and, under Ulysses, trades sequence for heads inside attention) while TP shards the Linear
-        # weights. Composing them means giving each its own mesh *dimension*, so that every collective one issues
-        # stays inside its own process group: TP's all-reduce must not reach a rank holding a different sequence
-        # chunk, and CP's sequence all-gather must not reach a rank holding a different weight shard.
         cp_mesh = tp_mesh = mesh
         if self._is_combined:
             dim_names = mesh.mesh_dim_names if mesh is not None else None
@@ -262,9 +252,7 @@ class ParallelConfig:
                     f"{dim_names}). `enable_parallelism` and `from_pretrained` build this mesh from `ring_degree`/"
                     f"`ulysses_degree`/`tp_degree`; if you build it yourself, set `mesh=` on one of the two configs."
                 )
-            # `ContextParallelConfig.setup` slices ("ring", "ulysses") off whatever mesh it is handed, so it takes
-            # the full mesh. TP instead needs its own 1-D submesh: `parallelize_module` shards a weight over every
-            # rank of the mesh it is given, so handing it the 3-D mesh would shard over the CP ranks as well.
+            # CP selects its axes in setup. TP takes a one-dimensional submesh.
             tp_mesh = mesh["tp"]
 
         if self.context_parallel_config is not None:

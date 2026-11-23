@@ -364,8 +364,7 @@ def _all_gather_anything(tensor: torch.Tensor, dim: int, group: dist.device_mesh
 
     max_dim = max(gather_dims)
     if any(d != max_dim for d in gather_dims) and tensor.device.type in ("neuron", "tpu"):
-        # Neuron and TPU all-gathers require every rank to send the same size, so pad each chunk to the longest one,
-        # gather, and trim each chunk back to its real length.
+        # TPU and Neuron all-gathers require equal-sized chunks.
         pad_shape = list(shape)
         pad_shape[dim] = max_dim - rank_dim
         padded = torch.cat([tensor, tensor.new_zeros(pad_shape)], dim=dim)

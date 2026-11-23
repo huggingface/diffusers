@@ -15,6 +15,8 @@
 
 import os
 import socket
+from datetime import timedelta
+from unittest.mock import patch
 
 import pytest
 import torch
@@ -31,7 +33,7 @@ from diffusers.models._modeling_parallel import (
     ParallelConfig,
     TensorParallelConfig,
 )
-from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
+from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry, attention_backend
 from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME
 from diffusers.utils.torch_utils import randn_tensor
 
@@ -464,63 +466,6 @@ def _tensor_parallel_from_pretrained_worker(
             dist.destroy_process_group()
 
 
-def _hybrid_parallel_worker(
-    rank, world_size, master_port, model_class, init_dict, cp_dict, tp_degree, inputs_dict, return_dict, state_dict
-):
-    """Worker function for combined tensor + context parallel inference testing.
-
-    Both parallelisms are requested through a single `ParallelConfig`, which shares one device mesh between them, so
-    each rank holds `1 / tp_degree` of every sharded weight *and* `1 / (ring_degree * ulysses_degree)` of the
-    sequence. Rank 0 reports its output so the caller can compare it against a single-device reference: the
-    composition is mathematically equivalent to the unsharded model up to floating-point reduction order.
-    """
-    try:
-        os.environ["MASTER_ADDR"] = "localhost"
-        os.environ["MASTER_PORT"] = str(master_port)
-        os.environ["RANK"] = str(rank)
-        os.environ["WORLD_SIZE"] = str(world_size)
-
-        device_config = DEVICE_CONFIG.get(torch_device, DEVICE_CONFIG["cuda"])
-        backend = device_config["backend"]
-        device_module = device_config["module"]
-
-        dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
-
-        device_module.set_device(rank)
-        device = torch.device(f"{torch_device}:{rank}")
-
-        model = model_class(**init_dict)
-        model.load_state_dict(state_dict)
-        model.to(device)
-        model.eval()
-
-        inputs_on_device = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
-
-        model.enable_parallelism(
-            config=ParallelConfig(
-                tensor_parallel_config=TensorParallelConfig(tp_degree=tp_degree),
-                context_parallel_config=ContextParallelConfig(**cp_dict),
-            )
-        )
-
-        with torch.no_grad():
-            output = model(**inputs_on_device, return_dict=False)[0]
-
-        if rank == 0:
-            return_dict["status"] = "success"
-            return_dict["output_shape"] = list(output.shape)
-            # Serialise via nested list so the manager dict can transport it across processes.
-            return_dict["output"] = output.float().cpu().tolist()
-
-    except Exception as e:
-        if rank == 0:
-            return_dict["status"] = "error"
-            return_dict["error"] = str(e)
-    finally:
-        if dist.is_initialized():
-            dist.destroy_process_group()
-
-
 def _parallel_rng_sync_worker(
     rank,
     world_size,
@@ -931,239 +876,143 @@ class TensorParallelTPUTesterMixin:
 
 
 def _context_and_tensor_parallel_worker(
-    rank,
-    world_size,
-    master_port,
-    model_class,
-    init_dict,
-    cp_dict,
-    tp_degree,
-    inputs_dict,
-    return_dict,
-    state_dict,
-    checkpoint_dir=None,
+    rank, world_size, master_port, device_type, model_class, checkpoint, inputs, reference, config, loading
 ):
-    """Worker for combined context + tensor parallel inference.
+    from torch.distributed.tensor import DTensor
 
-    Both configs go into one `ParallelConfig`, which puts them on one mesh with a dimension each. The result should
-    still match the single-device reference: TP is mathematically equivalent to the unsharded model, and CP splits the
-    sequence and gathers it back, so neither changes the function being computed.
+    os.environ.update(
+        MASTER_ADDR="localhost",
+        MASTER_PORT=str(master_port),
+        RANK=str(rank),
+        LOCAL_RANK=str(rank),
+        LOCAL_WORLD_SIZE=str(world_size),
+        WORLD_SIZE=str(world_size),
+    )
+    if device_type in ("cuda", "xpu"):
+        DEVICE_CONFIG[device_type]["module"].set_device(rank)
 
-    With `checkpoint_dir`, the model is loaded with `from_pretrained(..., parallel_config=...)` instead.
-    """
+    dist.init_process_group(backend=DEVICE_CONFIG[device_type]["backend"], timeout=timedelta(minutes=3))
     try:
-        os.environ["MASTER_ADDR"] = "localhost"
-        os.environ["MASTER_PORT"] = str(master_port)
-        os.environ["RANK"] = str(rank)
-        os.environ["WORLD_SIZE"] = str(world_size)
+        if device_type == "tpu":
+            device = torch.device("tpu")
+            torch.set_float32_matmul_precision("highest")
+        elif device_type == "neuron":
+            device = torch.neuron.current_device()
+        else:
+            device = torch.device(device_type, rank)
 
-        device_config = DEVICE_CONFIG.get(torch_device, DEVICE_CONFIG["cuda"])
-        dist.init_process_group(backend=device_config["backend"], rank=rank, world_size=world_size)
+        if loading == "from_pretrained":
+            model = model_class.from_pretrained(checkpoint, parallel_config=config)
+        else:
+            model = model_class.from_pretrained(checkpoint)
+            if device_type == "neuron":
+                model.enable_parallelism(config=config)
+                model.to(device)
+            else:
+                model.to(device)
+                model.enable_parallelism(config=config)
 
-        device_config["module"].set_device(rank)
-        device = torch.device(f"{torch_device}:{rank}")
+        assert any(
+            isinstance(param, DTensor) and any(placement.is_shard() for placement in param.placements)
+            for param in model.parameters()
+        ), "No model weights were sharded by tensor parallelism."
 
+        assert any(
+            name.startswith(("cp_input", "cp_output"))
+            for module in model.modules()
+            for name in getattr(getattr(module, "_diffusers_hook", None), "hooks", {})
+        ), "The combined config did not install context-parallel hooks."
+        processors = model.attn_processors.values()
+        assert processors and all(getattr(processor, "_parallel_config", None) is config for processor in processors)
+
+        device_inputs = {
+            name: value.to(device) if isinstance(value, torch.Tensor) else value for name, value in inputs.items()
+        }
+        with torch.no_grad():
+            output = model(**device_inputs, return_dict=False)[0]
+        tolerance = 2e-2 if device_type in ("tpu", "neuron") else 1e-3
+        torch.testing.assert_close(output.float().cpu(), reference, atol=tolerance, rtol=tolerance)
+    finally:
+        dist.destroy_process_group()
+
+
+@is_context_parallel
+@is_tensor_parallel
+class ContextAndTensorParallelTesterMixin:
+    """Run TPU and Neuron cases in a fresh pytest process so workers can acquire their devices."""
+
+    @pytest.mark.parametrize("cp_axis", ["ulysses", "ring"])
+    @pytest.mark.parametrize(
+        ("loading", "batch_size"),
+        [("enable_parallelism", 1), ("enable_parallelism", 2), ("from_pretrained", 1)],
+        ids=["enable", "enable-batched", "load"],
+    )
+    def test_context_and_tensor_parallel_inference(self, tmp_path, cp_axis, loading, batch_size):
+        if not dist.is_available():
+            pytest.skip("torch.distributed is not available.")
+        for plan in ("_tp_plan", "_cp_plan"):
+            if not getattr(self.model_class, plan, None):
+                pytest.skip(f"Model does not define a `{plan}`.")
+
+        device_type = torch.device(torch_device).type
+        if device_type == "cpu" and "DIFFUSERS_TEST_DEVICE" not in os.environ and hasattr(torch, "tpu"):
+            device_type = "tpu"
+        if device_type not in DEVICE_CONFIG:
+            pytest.skip("Combined context and tensor parallelism requires CUDA, XPU, TPU, or Neuron.")
+
+        active_backend, _ = _AttentionBackendRegistry.get_active_backend()
+        if cp_axis == "ring" and active_backend == AttentionBackendName.NATIVE:
+            pytest.skip("Ring attention requires an attention backend that returns log-sum-exp.")
+
+        tp_degree = 2
+        # Neuron all-to-all requires at least four ranks in each Ulysses group.
+        cp_degree = 4 if device_type == "neuron" and cp_axis == "ulysses" else 2
+        world_size = tp_degree * cp_degree
+        device_count = (
+            torch.accelerator.device_count()
+            if device_type == "tpu"
+            else DEVICE_CONFIG[device_type]["module"].device_count()
+        )
+        if device_count < world_size:
+            pytest.skip(f"Needs {world_size} {device_type} devices, found {device_count}.")
+
+        init_dict = self.get_init_dict()
+        head_count = init_dict.get("num_attention_heads")
+        head_divisor = world_size if cp_axis == "ulysses" else tp_degree
+        if head_count is not None and head_count % head_divisor:
+            pytest.skip(f"Number of attention heads ({head_count}) must be divisible by {head_divisor}.")
+
+        inputs = self.get_dummy_inputs(batch_size=batch_size, device="cpu")
+        with torch.random.fork_rng(devices=[]), torch.no_grad(), attention_backend(AttentionBackendName.NATIVE):
+            torch.random.default_generator.manual_seed(0)
+            model = self.model_class(**init_dict).eval()
+            reference = model(**inputs, return_dict=False)[0].float()
+
+        checkpoint = tmp_path / "checkpoint"
+        model.save_pretrained(checkpoint)
         config = ParallelConfig(
-            context_parallel_config=ContextParallelConfig(**cp_dict),
+            context_parallel_config=ContextParallelConfig(**{f"{cp_axis}_degree": cp_degree}),
             tensor_parallel_config=TensorParallelConfig(tp_degree=tp_degree),
         )
-        if checkpoint_dir is not None:
-            model = model_class.from_pretrained(checkpoint_dir, parallel_config=config).eval()
-        else:
-            model = model_class(**init_dict)
-            model.load_state_dict(state_dict)
-            model.to(device)
-            model.eval()
-            model.enable_parallelism(config=config)
-
-        inputs_on_device = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
-
-        with torch.no_grad():
-            output = model(**inputs_on_device, return_dict=False)[0]
-
-        if rank == 0:
-            return_dict["status"] = "success"
-            return_dict["output_shape"] = list(output.shape)
-            return_dict["output"] = output.float().cpu().tolist()
-
-    except Exception as e:
-        if rank == 0:
-            return_dict["status"] = "error"
-            return_dict["error"] = f"{type(e).__name__}: {e}"
-    finally:
-        if dist.is_initialized():
-            dist.destroy_process_group()
-
-
-@is_context_parallel
-@is_tensor_parallel
-@require_torch_multi_accelerator
-class ContextAndTensorParallelTesterMixin:
-    """Context and tensor parallelism enabled together, over one device mesh.
-
-    The two are orthogonal — CP cuts the sequence, TP cuts the weights — so composing them should leave the computed
-    function unchanged. Both axes are covered: Ulysses, which trades sequence for heads inside attention, and ring,
-    which does not touch the head dimension at all.
-
-    Needs `cp_degree` x `tp_degree` accelerators (four by default). Head-count requirements differ per CP type, so a
-    model whose dummy config has too few heads skips rather than failing.
-    """
-
-    cp_degree = 2
-    tp_degree = 2
-
-    @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"], ids=["ulysses", "ring"])
-    def test_context_and_tensor_parallel_inference(self, cp_type, batch_size: int = 1, checkpoint_dir=None):
-        if not torch.distributed.is_available():
-            pytest.skip("torch.distributed is not available.")
-
-        if getattr(self.model_class, "_tp_plan", None) is None:
-            pytest.skip("Model does not define a `_tp_plan` for tensor parallel inference.")
-        if getattr(self.model_class, "_cp_plan", None) is None:
-            pytest.skip("Model does not define a `_cp_plan` for context parallel inference.")
-
-        if cp_type == "ring_degree":
-            active_backend, _ = _AttentionBackendRegistry.get_active_backend()
-            if active_backend == AttentionBackendName.NATIVE:
-                pytest.skip("Ring attention is not supported with the native attention backend.")
-
-        world_size = self.cp_degree * self.tp_degree
-        device_module = DEVICE_CONFIG.get(torch_device, DEVICE_CONFIG["cuda"])["module"]
-        if device_module.device_count() < world_size:
-            pytest.skip(f"Combined CP x TP needs {world_size} accelerators, found {device_module.device_count()}.")
-
-        init_dict = self.get_init_dict()
-        num_heads = init_dict.get("num_attention_heads")
-        # TP shards the heads; Ulysses then splits what TP left on each rank, so the two multiply. Ring leaves the
-        # head dimension alone, so only the TP degree has to divide the head count.
-        required_head_multiple = self.tp_degree * (self.cp_degree if cp_type == "ulysses_degree" else 1)
-        if num_heads is not None and num_heads % required_head_multiple != 0:
-            pytest.skip(
-                f"`num_attention_heads` ({num_heads}) is not divisible by {required_head_multiple}, required for "
-                f"{cp_type.removesuffix('_degree')}={self.cp_degree} x tp_degree={self.tp_degree}."
+        with patch.dict(os.environ):
+            if device_type == "tpu":
+                torch.tpu.distributed.set_tpu_launch_env(nproc_per_node=world_size)
+            mp.spawn(
+                _context_and_tensor_parallel_worker,
+                args=(
+                    world_size,
+                    _find_free_port(),
+                    device_type,
+                    self.model_class,
+                    checkpoint,
+                    inputs,
+                    reference,
+                    config,
+                    loading,
+                ),
+                nprocs=world_size,
+                join=True,
             )
-
-        inputs_dict = self.get_dummy_inputs(batch_size=batch_size)
-
-        # Single-device reference, captured before anything is sharded.
-        model = self.model_class(**init_dict).eval().to(torch_device)
-        state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
-        with torch.no_grad():
-            ref_output = model(**inputs_dict, return_dict=False)[0].float().cpu()
-        if checkpoint_dir is not None:
-            model.save_pretrained(checkpoint_dir)
-
-        inputs_dict = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
-
-        manager = mp.Manager()
-        return_dict = manager.dict()
-        mp.spawn(
-            _context_and_tensor_parallel_worker,
-            args=(
-                world_size,
-                _find_free_port(),
-                self.model_class,
-                init_dict,
-                {cp_type: self.cp_degree},
-                self.tp_degree,
-                inputs_dict,
-                return_dict,
-                state_dict,
-                checkpoint_dir,
-            ),
-            nprocs=world_size,
-            join=True,
-        )
-
-        assert return_dict.get("status") == "success", (
-            f"Combined context + tensor parallel inference failed: {return_dict.get('error', 'Unknown error')}"
-        )
-
-        combined_output = torch.tensor(return_dict["output"])
-        assert list(ref_output.shape) == return_dict["output_shape"]
-        # Two sets of collectives reorder the summation on top of the sharded matmuls, so the tolerance matches the
-        # TP-only test rather than the tighter CP-only one.
-        torch.testing.assert_close(ref_output, combined_output, atol=1e-3, rtol=1e-3)
-
-    @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"], ids=["ulysses", "ring"])
-    def test_context_and_tensor_parallel_batch_inputs(self, cp_type):
-        self.test_context_and_tensor_parallel_inference(cp_type, batch_size=2)
-
-    @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"], ids=["ulysses", "ring"])
-    def test_context_and_tensor_parallel_from_pretrained(self, cp_type, tmp_path):
-        self.test_context_and_tensor_parallel_inference(cp_type, checkpoint_dir=str(tmp_path / "checkpoint"))
-
-
-@is_context_parallel
-@is_tensor_parallel
-@require_torch_multi_accelerator
-class HybridParallelTesterMixin:
-    """Tensor parallelism and context parallelism together, from one `ParallelConfig`.
-
-    Needs `tp_degree * ulysses_degree` accelerators (4 at the degrees used here), so it skips on a 2-device runner.
-    """
-
-    def test_hybrid_parallel_inference(self, batch_size: int = 1):
-        if not torch.distributed.is_available():
-            pytest.skip("torch.distributed is not available.")
-
-        for plan in ("_tp_plan", "_cp_plan"):
-            if getattr(self.model_class, plan, None) is None:
-                pytest.skip(f"Model does not define a `{plan}`, which hybrid parallelism requires.")
-
-        tp_degree, ulysses_degree = 2, 2
-        world_size = tp_degree * ulysses_degree
-        device_count = DEVICE_CONFIG.get(torch_device, DEVICE_CONFIG["cuda"])["module"].device_count()
-        if device_count < world_size:
-            pytest.skip(
-                f"tp_degree={tp_degree} x ulysses_degree={ulysses_degree} needs {world_size} accelerators, "
-                f"found {device_count}."
-            )
-
-        init_dict = self.get_init_dict()
-        num_heads = init_dict.get("num_attention_heads")
-        # Each rank keeps `num_heads // tp_degree` heads, which Ulysses splits again.
-        if num_heads is not None and num_heads % world_size != 0:
-            pytest.skip(f"`num_attention_heads` ({num_heads}) is not divisible by {world_size}.")
-
-        inputs_dict = self.get_dummy_inputs(batch_size=batch_size)
-
-        # Single-device reference
-        model = self.model_class(**init_dict).eval().to(torch_device)
-        state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
-        with torch.no_grad():
-            ref_output = model(**inputs_dict, return_dict=False)[0].float().cpu()
-
-        inputs_dict = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
-
-        master_port = _find_free_port()
-        manager = mp.Manager()
-        return_dict = manager.dict()
-
-        mp.spawn(
-            _hybrid_parallel_worker,
-            args=(
-                world_size,
-                master_port,
-                self.model_class,
-                init_dict,
-                {"ulysses_degree": ulysses_degree},
-                tp_degree,
-                inputs_dict,
-                return_dict,
-                state_dict,
-            ),
-            nprocs=world_size,
-            join=True,
-        )
-
-        assert return_dict.get("status") == "success", (
-            f"Hybrid parallel inference failed: {return_dict.get('error', 'Unknown error')}"
-        )
-
-        output = torch.tensor(return_dict["output"])
-        # Sharded matmuls plus the Ulysses all-to-all reorder the summation, hence the tolerance.
-        torch.testing.assert_close(ref_output, output, atol=1e-3, rtol=1e-3)
 
 
 @is_tensor_parallel

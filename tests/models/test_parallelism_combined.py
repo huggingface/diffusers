@@ -13,16 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for combining context parallelism with tensor parallelism on one device mesh.
-
-These cover the wiring rather than the numerics: that `ParallelConfig` hands each parallelism its own submesh, and
-that the resulting process groups are the intended factorisation of the world. They run on CPU over `gloo`, so they
-need no accelerator — `gloo` has no `all_to_all`, so an end-to-end Ulysses forward pass cannot run here; that is
-covered by `ContextAndTensorParallelTesterMixin` in `testing_utils/parallelism.py`, which needs four accelerators.
-"""
-
-import os
-import socket
+from datetime import timedelta
 
 import pytest
 import torch
@@ -32,133 +23,39 @@ import torch.multiprocessing as mp
 from diffusers.models._modeling_parallel import ContextParallelConfig, ParallelConfig, TensorParallelConfig
 
 
-def _find_free_port():
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("", 0))
-        s.listen(1)
-        return s.getsockname()[1]
-
-
-def _mesh_factorization_worker(rank, world_size, master_port, ulysses_degree, tp_degree, return_dict):
-    """Build a combined mesh, run `ParallelConfig.setup`, and report the process groups each parallelism landed on."""
+def _check_combined_mesh(rank, world_size, rendezvous, include_tp):
+    dist.init_process_group(
+        "gloo", init_method=rendezvous, rank=rank, world_size=world_size, timeout=timedelta(seconds=30)
+    )
     try:
-        os.environ["MASTER_ADDR"] = "localhost"
-        os.environ["MASTER_PORT"] = str(master_port)
-        os.environ["RANK"] = str(rank)
-        os.environ["WORLD_SIZE"] = str(world_size)
-
-        dist.init_process_group(backend="gloo", rank=rank, world_size=world_size)
-
-        mesh = torch.distributed.device_mesh.init_device_mesh(
-            "cpu", mesh_shape=(tp_degree, 1, ulysses_degree), mesh_dim_names=("tp", "ring", "ulysses")
-        )
-        config = ParallelConfig(
-            context_parallel_config=ContextParallelConfig(ulysses_degree=ulysses_degree),
-            tensor_parallel_config=TensorParallelConfig(tp_degree=tp_degree),
-        )
-        config.setup(rank, world_size, torch.device("cpu"), mesh=mesh)
-
-        cp_config = config.context_parallel_config
-        tp_config = config.tensor_parallel_config
-        return_dict[rank] = {
-            "status": "success",
-            "cp_ranks": dist.get_process_group_ranks(cp_config._flattened_mesh.get_group()),
-            "ulysses_local_rank": cp_config._ulysses_local_rank,
-            "tp_ranks": dist.get_process_group_ranks(tp_config._mesh.get_group()),
-            "tp_local_rank": tp_config._mesh.get_local_rank(),
-            "tp_degree": tp_config._tp_degree,
-        }
-    except Exception as e:  # noqa: BLE001 — surfaced as a test failure by the caller
-        return_dict[rank] = {"status": "error", "error": f"{type(e).__name__}: {e}"}
-    finally:
-        if dist.is_initialized():
-            dist.destroy_process_group()
-
-
-def _missing_tp_dim_worker(rank, world_size, master_port, return_dict):
-    """A combined config handed a CP-only mesh must be rejected, naming the missing 'tp' dimension."""
-    try:
-        os.environ["MASTER_ADDR"] = "localhost"
-        os.environ["MASTER_PORT"] = str(master_port)
-        os.environ["RANK"] = str(rank)
-        os.environ["WORLD_SIZE"] = str(world_size)
-
-        dist.init_process_group(backend="gloo", rank=rank, world_size=world_size)
-
-        mesh = torch.distributed.device_mesh.init_device_mesh(
-            "cpu", mesh_shape=(1, world_size), mesh_dim_names=("ring", "ulysses")
-        )
-        config = ParallelConfig(
-            context_parallel_config=ContextParallelConfig(ulysses_degree=world_size),
-            tensor_parallel_config=TensorParallelConfig(tp_degree=1),
-        )
-        try:
-            config.setup(rank, world_size, torch.device("cpu"), mesh=mesh)
-        except ValueError as e:
-            return_dict[rank] = {"status": "raised", "message": str(e)}
-        else:
-            return_dict[rank] = {"status": "no_raise"}
-    except Exception as e:  # noqa: BLE001
-        return_dict[rank] = {"status": "error", "error": f"{type(e).__name__}: {e}"}
-    finally:
-        if dist.is_initialized():
-            dist.destroy_process_group()
-
-
-def _spawn(worker, world_size, *args):
-    if not dist.is_available():
-        pytest.skip("torch.distributed is not available.")
-    manager = mp.Manager()
-    return_dict = manager.dict()
-    mp.spawn(worker, args=(world_size, _find_free_port(), *args, return_dict), nprocs=world_size, join=True)
-    return return_dict
-
-
-class TestCombinedParallelConfig:
-    """`ParallelConfig` accepting both parallelisms at once, and splitting the mesh between them."""
-
-    def test_both_configs_are_accepted(self):
-        # Combining the two used to raise outright; the mesh dimension per parallelism is what makes it work.
+        shape, names = ((2, 1, 2), ("tp", "ring", "ulysses")) if include_tp else ((1, 2), ("ring", "ulysses"))
+        mesh = torch.distributed.device_mesh.init_device_mesh("cpu", shape, mesh_dim_names=names)
         config = ParallelConfig(
             context_parallel_config=ContextParallelConfig(ulysses_degree=2),
             tensor_parallel_config=TensorParallelConfig(tp_degree=2),
         )
-        assert config._is_combined
-        assert config.context_parallel_config.ulysses_degree == 2
-        assert config.tensor_parallel_config.tp_degree == 2
+        if not include_tp:
+            with pytest.raises(ValueError, match=r"\['tp'\].*missing"):
+                config.setup(rank, world_size, torch.device("cpu"), mesh=mesh)
+            return
 
-    def test_single_parallelism_is_not_combined(self):
-        assert not ParallelConfig(context_parallel_config=ContextParallelConfig(ulysses_degree=2))._is_combined
-        assert not ParallelConfig(tensor_parallel_config=TensorParallelConfig(tp_degree=2))._is_combined
+        config.setup(rank, world_size, torch.device("cpu"), mesh=mesh)
+        tp_mesh = config.tensor_parallel_config._mesh
+        cp_mesh = config.context_parallel_config._flattened_mesh
+        cp_start = rank // 2 * 2
+        assert dist.get_process_group_ranks(tp_mesh.get_group()) == [rank % 2, rank % 2 + 2]
+        assert dist.get_process_group_ranks(cp_mesh.get_group()) == [cp_start, cp_start + 1]
+        assert tp_mesh.get_local_rank() == rank // 2
+        assert config.context_parallel_config._ulysses_local_rank == rank % 2
+    finally:
+        dist.destroy_process_group()
 
-    def test_mesh_is_factored_between_the_two(self):
-        """Each parallelism must end up on its own process group: TP within a CP chunk, CP across the TP groups.
 
-        With the default `mesh_shape=(tp=2, ring=1, ulysses=2)` over four ranks, "ulysses" is the fastest-varying
-        dimension, so ranks {0,1} and {2,3} are the CP groups and {0,2} / {1,3} are the TP groups. A TP all-reduce
-        must not reach a rank holding a different sequence chunk, and a CP collective must not reach a rank holding a
-        different weight shard — this asserts exactly that split.
-        """
-        world_size = 4
-        results = _spawn(_mesh_factorization_worker, world_size, 2, 2)
-
-        for rank in range(world_size):
-            assert results[rank]["status"] == "success", results[rank].get("error")
-
-        assert [results[r]["tp_ranks"] for r in range(4)] == [[0, 2], [1, 3], [0, 2], [1, 3]]
-        assert [results[r]["cp_ranks"] for r in range(4)] == [[0, 1], [0, 1], [2, 3], [2, 3]]
-        assert [results[r]["ulysses_local_rank"] for r in range(4)] == [0, 1, 0, 1]
-        # The TP shard index is the coordinate inside the TP group, which stops tracking the global rank as soon as
-        # the mesh has more than one dimension. Weight sharding keys off this, so it is the value that matters.
-        assert [results[r]["tp_local_rank"] for r in range(4)] == [0, 0, 1, 1]
-        assert all(results[r]["tp_degree"] == 2 for r in range(4))
-
-    def test_mesh_without_tp_dimension_is_rejected(self):
-        world_size = 2
-        results = _spawn(_missing_tp_dim_worker, world_size)
-
-        for rank in range(world_size):
-            assert results[rank]["status"] == "raised", (
-                f"rank {rank}: expected a ValueError for a mesh with no 'tp' dimension, got {results[rank]}"
-            )
-            assert "tp" in results[rank]["message"]
+@pytest.mark.skipif(not dist.is_available() or not dist.is_gloo_available(), reason="test requires Gloo")
+class TestCombinedParallelConfig:
+    @pytest.mark.parametrize(
+        ("include_tp", "world_size"), [(True, 4), (False, 2)], ids=["separate-groups", "missing-tp"]
+    )
+    def test_combined_mesh(self, tmp_path, include_tp, world_size):
+        rendezvous = (tmp_path / "rendezvous").as_uri()
+        mp.spawn(_check_combined_mesh, args=(world_size, rendezvous, include_tp), nprocs=world_size)
