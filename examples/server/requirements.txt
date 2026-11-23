@@ -125,7 +125,7 @@ pyyaml==6.0.2
     #   transformers
 regex==2024.9.11
     # via transformers
-requests==2.32.3
+requests==2.32.4
     # via
     #   huggingface-hub
     #   py-consul
