@@ -272,7 +272,7 @@ def _fetch_state_dict(
     return state_dict
 
 
-def _lora_adapter_metadata(state_dict):
+def _get_lora_adapter_metadata(state_dict):
     """Diffusers' own LoRA adapter metadata from the file header, or `None` if the file did not record any."""
     raw = state_dict.metadata.get(LORA_ADAPTER_METADATA_KEY)
     return json.loads(raw) if raw else None

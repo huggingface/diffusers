@@ -38,7 +38,7 @@ from ..utils import (
     set_weights_and_activate_adapters,
 )
 from ..utils.peft_utils import _create_lora_config, _maybe_warn_for_unhandled_keys
-from .lora_base import _fetch_state_dict, _func_optionally_disable_offloading, _lora_adapter_metadata
+from .lora_base import _fetch_state_dict, _func_optionally_disable_offloading, _get_lora_adapter_metadata
 from .unet_loader_utils import _maybe_expand_lora_scales
 
 
@@ -186,7 +186,7 @@ class PeftAdapterMixin:
             allow_pickle=allow_pickle,
         )
         if metadata is None:
-            metadata = _lora_adapter_metadata(state_dict)
+            metadata = _get_lora_adapter_metadata(state_dict)
         if network_alphas is not None and prefix is None:
             raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
         if network_alphas and metadata:
