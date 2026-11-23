@@ -42,6 +42,19 @@ enable_full_determinism()
 @is_quantization
 @is_torchao
 @require_torch
+@require_torchao_version_greater_or_equal("0.15.0")
+class TestTorchAoSafeGlobals:
+    def test_uintx_tensor_subclasses_are_registered(self):
+        """
+        `UintxTensor`/`UintxAQTTensorImpl` moved between torchao releases. If the import in
+        `_update_torch_safe_globals` goes stale, they are silently skipped and loading a uintx
+        checkpoint with `weights_only=True` fails.
+        """
+        registered = {getattr(safe_global, "__name__", None) for safe_global in torch.serialization.get_safe_globals()}
+        assert {"UintxTensor", "UintxAQTTensorImpl"}.issubset(registered)
+
+
+@require_torch
 @require_torch_accelerator
 @require_torchao_version_greater_or_equal("0.15.0")
 class TestTorchAoConfig:
