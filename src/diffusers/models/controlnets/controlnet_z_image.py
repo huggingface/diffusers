@@ -449,6 +449,7 @@ class ZImageControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrigi
         qk_norm=True,
     ):
         super().__init__()
+        self.gradient_checkpointing = False
         self.control_layers_places = control_layers_places
         self.control_in_dim = control_in_dim
         self.control_refiner_layers_places = control_refiner_layers_places
