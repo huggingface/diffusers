@@ -94,7 +94,7 @@ Our experiments were conducted on a single 40GB A100 GPU.
 Once training is done, we can perform inference like so:
 
 ```python
-from diffusers import StableDiffusionXLAdapterPipeline, T2IAdapter, EulerAncestralDiscreteSchedulerTest
+from diffusers import StableDiffusionXLAdapterPipeline, T2IAdapter, EulerAncestralDiscreteScheduler
 from diffusers.utils import load_image
 import torch
 
@@ -107,7 +107,7 @@ pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
 )
 
 # speed up diffusion process with faster scheduler and memory optimization
-pipe.scheduler = EulerAncestralDiscreteSchedulerTest.from_config(pipe.scheduler.config)
+pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
 # remove following line if xformers is not installed or when using Torch 2.0.
 pipe.enable_xformers_memory_efficient_attention()
 # memory optimization.
