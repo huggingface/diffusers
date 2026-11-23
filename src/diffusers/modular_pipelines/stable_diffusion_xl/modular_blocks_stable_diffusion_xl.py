@@ -308,14 +308,24 @@ class StableDiffusionXLAutoBlocks(SequentialPipelineBlocks):
           `mask_image`, `image`, `prompt`
 
       Components:
-          text_encoder (`CLIPTextModel`) text_encoder_2 (`CLIPTextModelWithProjection`) tokenizer (`CLIPTokenizer`)
-          tokenizer_2 (`CLIPTokenizer`) guider (`ClassifierFreeGuidance`) image_encoder
-          (`CLIPVisionModelWithProjection`) feature_extractor (`CLIPImageProcessor`) unet (`UNet2DConditionModel`) vae
-          (`AutoencoderKL`) image_processor (`VaeImageProcessor`) mask_processor (`VaeImageProcessor`) scheduler
-          (`EulerDiscreteScheduler`) controlnet (`ControlNetUnionModel`) control_image_processor (`VaeImageProcessor`)
+          - text_encoder (`CLIPTextModel`)
+          - text_encoder_2 (`CLIPTextModelWithProjection`)
+          - tokenizer (`CLIPTokenizer`)
+          - tokenizer_2 (`CLIPTokenizer`)
+          - guider (`ClassifierFreeGuidance`)
+          - image_encoder (`CLIPVisionModelWithProjection`)
+          - feature_extractor (`CLIPImageProcessor`)
+          - unet (`UNet2DConditionModel`)
+          - vae (`AutoencoderKL`)
+          - image_processor (`VaeImageProcessor`)
+          - mask_processor (`VaeImageProcessor`)
+          - scheduler (`EulerDiscreteScheduler`)
+          - controlnet (`ControlNetUnionModel`)
+          - control_image_processor (`VaeImageProcessor`)
 
       Configs:
-          force_zeros_for_empty_prompt (default: True) requires_aesthetics_score (default: False)
+          - force_zeros_for_empty_prompt (default: True)
+          - requires_aesthetics_score (default: False)
 
       Inputs:
           prompt (`None`, *optional*):

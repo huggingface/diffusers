@@ -203,7 +203,7 @@ class Ideogram4PrepareLatentsStep(ModularPipelineBlocks):
     Step that prepares the packed image latents (B, num_image_tokens, latent_dim) for the denoising loop.
 
       Components:
-          transformer (`Ideogram4Transformer2DModel`)
+          - transformer (`Ideogram4Transformer2DModel`)
 
       Inputs:
           latents (`Tensor`, *optional*):
@@ -291,7 +291,7 @@ class Ideogram4SetTimestepsStep(ModularPipelineBlocks):
     weights.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           num_inference_steps (`int`, *optional*, defaults to 48):

@@ -258,8 +258,8 @@ class PH3ImageAutoPromptUpsampleStep(AutoPipelineBlocks):
       To render `prompt` as given, remove the step from the blocks: `blocks.sub_blocks.pop("prompt_upsampler")`.
 
       Components:
-          prompt_upsampler (`Qwen3_5ForConditionalGeneration`): The prompt upsampler. prompt_upsampler_processor
-          (`AutoProcessor`): Its processor.
+          - prompt_upsampler (`Qwen3_5ForConditionalGeneration`): The prompt upsampler.
+          - prompt_upsampler_processor (`AutoProcessor`): Its processor.
 
       Inputs:
           prompt (`str`):

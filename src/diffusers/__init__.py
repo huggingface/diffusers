@@ -239,6 +239,8 @@ else:
     ]
     _import_structure["models"].extend(
         [
+            "AceStepAudioTokenDetokenizer",
+            "AceStepAudioTokenizer",
             "AceStepConditionEncoder",
             "AceStepTransformer1DModel",
             "AllegroTransformer3DModel",
@@ -248,6 +250,7 @@ else:
             "AsymmetricAutoencoderKL",
             "AttentionBackendName",
             "AudioLDM2ProjectionModel",
+            "AudioLDM2UNet2DConditionModel",
             "AuraFlowTransformer2DModel",
             "AutoencoderDC",
             "AutoencoderKL",
@@ -341,6 +344,8 @@ else:
             "LTX2TextConnectors",
             "LTX2VideoDiffusionDecoderModel",
             "LTX2VideoTransformer3DModel",
+            "LTX2Vocoder",
+            "LTX2VocoderWithBWE",
             "LTXLatentUpsamplerModel",
             "LTXVideoTransformer3DModel",
             "Lumina2Transformer2DModel",
@@ -390,6 +395,7 @@ else:
             "StableAudioDiTModel",
             "StableAudioProjectionModel",
             "StableCascadeUNet",
+            "StableUnCLIPImageNormalizer",
             "T2IAdapter",
             "T5FilmDecoder",
             "TensorParallelConfig",
@@ -655,8 +661,6 @@ else:
     )
     _import_structure["pipelines"].extend(
         [
-            "AceStepAudioTokenDetokenizer",
-            "AceStepAudioTokenizer",
             "AceStepPipeline",
             "AllegroPipeline",
             "AltDiffusionImg2ImgPipeline",
@@ -674,7 +678,6 @@ else:
             "AnyFlowFARPipeline",
             "AnyFlowPipeline",
             "AudioLDM2Pipeline",
-            "AudioLDM2UNet2DConditionModel",
             "AudioLDMPipeline",
             "AuraFlowPipeline",
             "BlipDiffusionControlNetPipeline",
@@ -1162,6 +1165,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VaeImageProcessorLDM3D,
         )
         from .models import (
+            AceStepAudioTokenDetokenizer,
+            AceStepAudioTokenizer,
             AceStepConditionEncoder,
             AceStepTransformer1DModel,
             AllegroTransformer3DModel,
@@ -1171,6 +1176,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AsymmetricAutoencoderKL,
             AttentionBackendName,
             AudioLDM2ProjectionModel,
+            AudioLDM2UNet2DConditionModel,
             AuraFlowTransformer2DModel,
             AutoencoderDC,
             AutoencoderKL,
@@ -1264,6 +1270,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTX2TextConnectors,
             LTX2VideoDiffusionDecoderModel,
             LTX2VideoTransformer3DModel,
+            LTX2Vocoder,
+            LTX2VocoderWithBWE,
             LTXLatentUpsamplerModel,
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
@@ -1312,6 +1320,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableAudio3DurationEmbedder,
             StableAudioDiTModel,
             StableAudioProjectionModel,
+            StableUnCLIPImageNormalizer,
             T2IAdapter,
             T5FilmDecoder,
             TensorParallelConfig,
@@ -1554,8 +1563,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageModularPipeline,
         )
         from .pipelines import (
-            AceStepAudioTokenDetokenizer,
-            AceStepAudioTokenizer,
             AceStepPipeline,
             AllegroPipeline,
             AltDiffusionImg2ImgPipeline,
@@ -1573,7 +1580,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AnyFlowFARPipeline,
             AnyFlowPipeline,
             AudioLDM2Pipeline,
-            AudioLDM2UNet2DConditionModel,
             AudioLDMPipeline,
             AuraFlowPipeline,
             BriaFibo2Pipeline,
