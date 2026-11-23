@@ -16,7 +16,7 @@
 import pytest
 import torch
 
-from diffusers import AutoencoderKLPH3Image
+from diffusers import AutoencoderKLPImageOSS
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -38,10 +38,10 @@ enable_full_determinism()
 HEIGHT = WIDTH = 32
 
 
-class AutoencoderKLPH3ImageTesterConfig(BaseModelTesterConfig):
+class AutoencoderKLPImageOSSTesterConfig(BaseModelTesterConfig):
     @property
     def model_class(self):
-        return AutoencoderKLPH3Image
+        return AutoencoderKLPImageOSS
 
     @property
     def main_input_name(self) -> str:
@@ -84,8 +84,8 @@ class AutoencoderKLPH3ImageTesterConfig(BaseModelTesterConfig):
         }
 
 
-class TestAutoencoderKLPH3Image(AutoencoderKLPH3ImageTesterConfig, ModelTesterMixin):
-    """Core model tests for the P-H3-Image image autoencoder."""
+class TestAutoencoderKLPImageOSS(AutoencoderKLPImageOSSTesterConfig, ModelTesterMixin):
+    """Core model tests for the P-Image-OSS image autoencoder."""
 
     @pytest.mark.skip(
         "`forward` runs through the `apply_forward_hook`-decorated `encode` and `decode`, and that decorator's "
@@ -108,8 +108,8 @@ class TestAutoencoderKLPH3Image(AutoencoderKLPH3ImageTesterConfig, ModelTesterMi
         assert decoded.shape == sample.shape
 
 
-class TestAutoencoderKLPH3ImageMemory(AutoencoderKLPH3ImageTesterConfig, MemoryTesterMixin):
-    """Memory optimization tests for the P-H3-Image image autoencoder."""
+class TestAutoencoderKLPImageOSSMemory(AutoencoderKLPImageOSSTesterConfig, MemoryTesterMixin):
+    """Memory optimization tests for the P-Image-OSS image autoencoder."""
 
     # The encoder's reflect spatial padding has no deterministic CUDA backward
     # (reflection_pad3d_backward_out_cuda), so every test with a backward pass runs with determinism relaxed.
@@ -117,11 +117,11 @@ class TestAutoencoderKLPH3ImageMemory(AutoencoderKLPH3ImageTesterConfig, MemoryT
         run_nondeterministic(super().test_layerwise_casting_training)
 
 
-class TestAutoencoderKLPH3ImageTraining(AutoencoderKLPH3ImageTesterConfig, TrainingTesterMixin):
-    """Training tests for the P-H3-Image image autoencoder."""
+class TestAutoencoderKLPImageOSSTraining(AutoencoderKLPImageOSSTesterConfig, TrainingTesterMixin):
+    """Training tests for the P-Image-OSS image autoencoder."""
 
     def test_gradient_checkpointing_is_applied(self):
-        super().test_gradient_checkpointing_is_applied(expected_set={"PH3ImageDownBlock3d", "PH3ImageViTDecoder"})
+        super().test_gradient_checkpointing_is_applied(expected_set={"PImageOSSDownBlock3d", "PImageOSSViTDecoder"})
 
     # The encoder's reflect spatial padding has no deterministic CUDA backward
     # (reflection_pad3d_backward_out_cuda), so every test with a backward pass runs with determinism relaxed.
@@ -138,9 +138,9 @@ class TestAutoencoderKLPH3ImageTraining(AutoencoderKLPH3ImageTesterConfig, Train
         run_nondeterministic(super().test_gradient_checkpointing_equivalence)
 
 
-class TestAutoencoderKLPH3ImageAttention(AutoencoderKLPH3ImageTesterConfig, AttentionTesterMixin):
-    """Attention processor tests for the P-H3-Image image autoencoder."""
+class TestAutoencoderKLPImageOSSAttention(AutoencoderKLPImageOSSTesterConfig, AttentionTesterMixin):
+    """Attention processor tests for the P-Image-OSS image autoencoder."""
 
 
-class TestAutoencoderKLPH3ImageSlicingTiling(AutoencoderKLPH3ImageTesterConfig, AutoencoderTesterMixin):
-    """Slicing and tiling tests for the P-H3-Image image autoencoder."""
+class TestAutoencoderKLPImageOSSSlicingTiling(AutoencoderKLPImageOSSTesterConfig, AutoencoderTesterMixin):
+    """Slicing and tiling tests for the P-Image-OSS image autoencoder."""
