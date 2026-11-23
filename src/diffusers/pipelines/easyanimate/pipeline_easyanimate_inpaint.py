@@ -1203,7 +1203,7 @@ class EasyAnimateInpaintPipeline(DiffusionPipeline):
                         noise_timestep = timesteps[i + 1]
                         if isinstance(self.scheduler, FlowMatchEulerDiscreteScheduler):
                             init_latents_proper = self.scheduler.scale_noise(
-                                init_latents_proper, torch.tensor([noise_timestep], noise)
+                                init_latents_proper, torch.tensor([noise_timestep]), noise
                             )
                         else:
                             init_latents_proper = self.scheduler.add_noise(
