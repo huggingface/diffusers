@@ -100,7 +100,8 @@ class QwenImage21DecodeStep(ModularPipelineBlocks):
     Step that decodes the latents to RGBA images and postprocesses them
 
       Components:
-          vae (`AutoencoderKLQwenImage21`) image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage21`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           latents (`Tensor`):

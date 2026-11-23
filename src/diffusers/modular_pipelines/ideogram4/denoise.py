@@ -220,8 +220,9 @@ class Ideogram4DenoiseStep(LoopSequentialPipelineBlocks):
     and unconditional transformers and blending with the per-step guidance schedule.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`Ideogram4Transformer2DModel`)
-          unconditional_transformer (`Ideogram4Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Ideogram4Transformer2DModel`)
+          - unconditional_transformer (`Ideogram4Transformer2DModel`)
 
       Inputs:
           timesteps (`Tensor`):

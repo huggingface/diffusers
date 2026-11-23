@@ -444,8 +444,9 @@ class QwenImage21DenoiseStep(QwenImage21DenoiseLoopWrapper):
       This block supports text-to-image generation.
 
       Components:
-          guider (`ClassifierFreeGuidance`) transformer (`QwenImage21Transformer2DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImage21Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -509,8 +510,9 @@ class QwenImage21ImageConditionedDenoiseStep(QwenImage21DenoiseLoopWrapper):
       This block supports image-conditioned generation.
 
       Components:
-          guider (`ClassifierFreeGuidance`) transformer (`QwenImage21Transformer2DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImage21Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -576,7 +578,8 @@ class QwenImage21TurboDenoiseStep(QwenImage21DenoiseLoopWrapper):
       This block supports text-to-image generation with the Turbo checkpoint.
 
       Components:
-          transformer (`QwenImage21Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`QwenImage21Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -637,7 +640,8 @@ class QwenImage21TurboImageConditionedDenoiseStep(QwenImage21DenoiseLoopWrapper)
       This block supports image-conditioned generation with the Turbo checkpoint.
 
       Components:
-          transformer (`QwenImage21Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`QwenImage21Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
