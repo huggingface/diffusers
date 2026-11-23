@@ -23,6 +23,11 @@ import diffusers
 from diffusers import ModularPipeline, ModularPipelineBlocks
 from diffusers.utils import logging
 
+from ...pipelines.testing_utils.common import (
+    REQUIRED_CACHE_CONTEXT_FIELDS,
+    assert_cache_contexts_have,
+    register_cache_context_probes,
+)
 from ...testing_utils import (
     CaptureLogger,
     backend_empty_cache,
@@ -396,6 +401,16 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
                 images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt, output=self.output_name)
 
                 assert images.shape[0] == batch_size * num_images_per_prompt
+
+    def test_cache_context_receives_required_fields(self):
+        pipe = self.get_pipeline().to(torch_device)
+        probes = register_cache_context_probes(pipe)
+        if not probes:
+            pytest.skip(f"Skipping test because {self.pipeline_blocks_class} has no `CacheMixin` component.")
+
+        pipe(**self.get_dummy_inputs(), output=self.output_name)
+
+        assert_cache_contexts_have(probes, REQUIRED_CACHE_CONTEXT_FIELDS)
 
     def test_latents_output_in_canonical_form(self):
         # The denoise group must hand latents back in the family's one canonical form, so any block (a decoder, a
