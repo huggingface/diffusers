@@ -259,7 +259,7 @@ class TestTorchStateDict:
 
         assert isinstance(state_dict, dict), f"Expected a dict subclass, got {type(state_dict)}"
         assert list(state_dict.keys()) == ["weight"], f"Unexpected keys: {list(state_dict.keys())}"
-        assert state_dict.metadata == {"alpha": "8"}, f"Unexpected metadata: {state_dict.metadata}"
+        assert state_dict.metadata == {"format": "pt", "alpha": "8"}, f"Unexpected metadata: {state_dict.metadata}"
 
     def test_load_state_dict_without_metadata(self, tmp_path):
         import safetensors.torch

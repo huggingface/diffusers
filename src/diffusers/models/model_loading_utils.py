@@ -171,7 +171,6 @@ def load_state_dict(
             with safetensors.safe_open(checkpoint_file, framework="pt", device=map_location, backend=backend) as f:
                 metadata = f.metadata() or {}
                 state_dict = f.get_tensors()
-            metadata.pop("format", None)
             return _TorchStateDict(state_dict, metadata=metadata)
         elif file_extension == GGUF_FILE_EXTENSION:
             return load_gguf_checkpoint(checkpoint_file)
