@@ -23,6 +23,7 @@ class PH3ImageTextConnector(_PImageOSSTextConnector):
         deprecate(
             "PH3ImageTextConnector",
             "0.45.0",
-            "Use `PImageOSSTextConnector` instead.",
+            "`PH3ImageTextConnector` was renamed to `PImageOSSTextConnector`. "
+            "Import it with `from diffusers import PImageOSSTextConnector` instead.",
         )
         return super().__new__(cls)

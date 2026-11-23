@@ -23,6 +23,7 @@ class PH3ImageModularPipeline(_PImageOSSModularPipeline):
         deprecate(
             "PH3ImageModularPipeline",
             "0.45.0",
-            "Use `PImageOSSModularPipeline` instead.",
+            "`PH3ImageModularPipeline` was renamed to `PImageOSSModularPipeline`. "
+            "Import it with `from diffusers import PImageOSSModularPipeline` instead.",
         )
         return super().__new__(cls)

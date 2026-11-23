@@ -23,6 +23,7 @@ class AutoencoderKLPH3Image(_AutoencoderKLPImageOSS):
         deprecate(
             "AutoencoderKLPH3Image",
             "0.45.0",
-            "Use `AutoencoderKLPImageOSS` instead.",
+            "`AutoencoderKLPH3Image` was renamed to `AutoencoderKLPImageOSS`. "
+            "Import it with `from diffusers import AutoencoderKLPImageOSS` instead.",
         )
         return super().__new__(cls)
