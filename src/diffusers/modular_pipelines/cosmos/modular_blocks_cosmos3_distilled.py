@@ -25,7 +25,8 @@ class Cosmos3DistilledAutoVaeEncoderStep(ConditionalPipelineBlocks):
        - when no image or video conditioning is provided, this block is skipped.
 
       Components:
-          vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
 
       Inputs:
           video (`None`, *optional*):
@@ -83,10 +84,12 @@ class Cosmos3DistilledVisionCoreDenoiseStep(SequentialPipelineBlocks):
     Runs the text-and-vision distilled Cosmos3 denoising workflow.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Cosmos3OmniTransformer`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Configs:
-          is_distilled (default: True) distilled_sigmas (default: None)
+          - is_distilled (default: True)
+          - distilled_sigmas (default: None)
 
       Inputs:
           cond_input_ids (`None`):
@@ -170,12 +173,17 @@ class Cosmos3DistilledBlocks(SequentialPipelineBlocks):
         - `video2video`: requires `prompt`, `video`
 
       Components:
-          text_tokenizer (`AutoTokenizer`) vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`) transformer
-          (`Cosmos3OmniTransformer`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - text_tokenizer (`AutoTokenizer`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
+          - transformer (`Cosmos3OmniTransformer`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Configs:
-          default_use_system_prompt (default: True) enable_safety_checker (default: True) is_distilled (default: True)
-          distilled_sigmas (default: None)
+          - default_use_system_prompt (default: True)
+          - enable_safety_checker (default: True)
+          - is_distilled (default: True)
+          - distilled_sigmas (default: None)
 
       Inputs:
           prompt (`str`):

@@ -44,7 +44,8 @@ class Flux2VaeEncoderSequentialStep(SequentialPipelineBlocks):
     VAE encoder step that preprocesses, encodes, and prepares image latents for Flux2 conditioning.
 
       Components:
-          image_processor (`Flux2ImageProcessor`) vae (`AutoencoderKLFlux2`)
+          - image_processor (`Flux2ImageProcessor`)
+          - vae (`AutoencoderKLFlux2`)
 
       Inputs:
           image (`None`, *optional*):
@@ -82,7 +83,8 @@ class Flux2AutoVaeEncoderStep(AutoPipelineBlocks):
        - If `image` is not provided, step will be skipped.
 
       Components:
-          image_processor (`Flux2ImageProcessor`) vae (`AutoencoderKLFlux2`)
+          - image_processor (`Flux2ImageProcessor`)
+          - vae (`AutoencoderKLFlux2`)
 
       Inputs:
           image (`None`, *optional*):
@@ -134,7 +136,8 @@ class Flux2CoreDenoiseStep(SequentialPipelineBlocks):
     Core denoise step that performs the denoising process for Flux2-dev.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`Flux2Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Flux2Transformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`None`, *optional*, defaults to 1):
@@ -205,7 +208,8 @@ class Flux2ImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoise step that performs the denoising process for Flux2-dev with image conditioning.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`Flux2Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Flux2Transformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`None`, *optional*, defaults to 1):
@@ -291,9 +295,12 @@ class Flux2AutoBlocks(SequentialPipelineBlocks):
         - `image_conditioned`: requires `image`, `prompt`
 
       Components:
-          text_encoder (`Mistral3ForConditionalGeneration`) tokenizer (`AutoProcessor`) image_processor
-          (`Flux2ImageProcessor`) vae (`AutoencoderKLFlux2`) scheduler (`FlowMatchEulerDiscreteScheduler`) transformer
-          (`Flux2Transformer2DModel`)
+          - text_encoder (`Mistral3ForConditionalGeneration`)
+          - tokenizer (`AutoProcessor`)
+          - image_processor (`Flux2ImageProcessor`)
+          - vae (`AutoencoderKLFlux2`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Flux2Transformer2DModel`)
 
       Inputs:
           prompt (`None`, *optional*):

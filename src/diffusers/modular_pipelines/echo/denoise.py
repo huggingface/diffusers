@@ -359,7 +359,7 @@ class EchoDenoiseLoopStep(LoopSequentialPipelineBlocks):
     sigma schedule.
 
       Components:
-          transformer (`LTX2VideoTransformer3DModel`)
+          - transformer (`LTX2VideoTransformer3DModel`)
 
       Inputs:
           sigmas (`list | tuple`):
