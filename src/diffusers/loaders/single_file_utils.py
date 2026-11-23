@@ -496,8 +496,10 @@ def load_single_file_checkpoint(
     metadata = checkpoint.metadata
     while "state_dict" in checkpoint:
         checkpoint = checkpoint["state_dict"]
+    if not isinstance(checkpoint, _TorchStateDict):
+        checkpoint = _TorchStateDict(checkpoint, metadata=metadata)
 
-    return _TorchStateDict(checkpoint, metadata=metadata)
+    return checkpoint
 
 
 def fetch_original_config(original_config_file, local_files_only=False):
