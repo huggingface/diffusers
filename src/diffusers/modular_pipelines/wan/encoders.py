@@ -42,7 +42,8 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def basic_clean(text):
-    text = ftfy.fix_text(text)
+    if is_ftfy_available():
+        text = ftfy.fix_text(text)
     text = html.unescape(html.unescape(text))
     return text.strip()
 
