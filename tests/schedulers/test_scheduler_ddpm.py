@@ -190,6 +190,22 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         ):
             scheduler.set_timesteps(timesteps=timesteps)
 
+    def test_set_timesteps_rejects_non_positive_num_inference_steps(self):
+        # Regression for https://github.com/huggingface/diffusers/issues/13394:
+        # `num_inference_steps=0` previously left the scheduler in an unusable
+        # state silently. Both 0 and negative values should fail fast.
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        with self.assertRaisesRegex(ValueError, r"`num_inference_steps` must be a positive integer"):
+            scheduler.set_timesteps(num_inference_steps=0)
+        with self.assertRaisesRegex(ValueError, r"`num_inference_steps` must be a positive integer"):
+            scheduler.set_timesteps(num_inference_steps=-1)
+        # Sanity check: a positive value still works after the rejected calls.
+        scheduler.set_timesteps(num_inference_steps=10)
+        self.assertEqual(scheduler.num_inference_steps, 10)
+
     def test_full_loop_with_noise(self):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
