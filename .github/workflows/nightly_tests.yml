@@ -131,7 +131,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        module: [models, schedulers, hooks, lora, others, single_file, examples]
+        module: [models, modular_pipelines, schedulers, hooks, lora, others, single_file, examples]
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -156,11 +156,15 @@ jobs:
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
+        if [[ "${{ matrix.module }}" == "lora" ]]; then
+          selection=(-m "lora and not compile" tests/)
+        else
+          selection=(-m "not compile" "tests/${{ matrix.module }}")
+        fi
         pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-          -m "not compile" \
           --make-reports=tests_torch_${{ matrix.module }}_cuda \
           --report-log=tests_torch_${{ matrix.module }}_cuda.log \
-          tests/${{ matrix.module }}
+          "${selection[@]}"
 
     - name: Run nightly example tests with Torch
       if: ${{ matrix.module == 'examples' }}
