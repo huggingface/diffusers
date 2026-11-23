@@ -144,17 +144,10 @@ class EntroPackQuantizer(DiffusersQuantizer):
             setattr(module, tensor_name, state_dict[param_name].to(device=target_device, dtype=torch.float32))
             return
 
-        # the packed wrapper carries the code dtype (fp8/int8); re-wrap it to the layer's logical
-        # dtype so param.dtype — and hence model.dtype — reflects the compute precision
         if self.pre_quantized:
-            container = param_value._map_quant_state(lambda value: value, dtype=module._init_dtype)
-            module.weight = nn.Parameter(container.to(target_device), requires_grad=False)
+            module.weight = nn.Parameter(param_value.to(target_device), requires_grad=False)
         else:
             module.compress_weight(param_value.detach().to(target_device))
-            module.weight = nn.Parameter(
-                module.weight._map_quant_state(lambda value: value, dtype=module._init_dtype),
-                requires_grad=False,
-            )
 
     def update_missing_keys(self, model, missing_keys: list[str], prefix: str) -> list[str]:
         if self.pre_quantized:

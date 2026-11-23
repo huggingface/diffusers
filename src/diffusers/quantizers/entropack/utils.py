@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ...utils import is_torch_available, logging
+from ...utils import is_entropack_available, is_torch_available, logging
 
 
 if TYPE_CHECKING:
@@ -26,6 +26,22 @@ if TYPE_CHECKING:
 if is_torch_available():
     import torch
     import torch.nn as nn
+
+
+if is_entropack_available():
+    import entropack
+
+    # present weights in the layer's compute dtype and decode codes directly from the packed header
+    class _CompressedFP8Linear(entropack.CompressedFP8Linear):
+        def __setattr__(self, name, value):
+            if name == "weight" and isinstance(value, nn.Parameter) and value.dtype == self.code_dtype:
+                value = nn.Parameter(
+                    value.data._map_quant_state(lambda v: v, dtype=self._init_dtype), requires_grad=False
+                )
+            super().__setattr__(name, value)
+
+        def codes(self, device=None):
+            return entropack.decompress(self._container(), self._decode_config).to(self.code_dtype)
 
 
 logger = logging.get_logger(__name__)
@@ -43,7 +59,7 @@ def _replace_with_entropack_linear(
     codec_config = entropack.EntroPackLossyConfig(**codec_options)
     linear_cls = {
         "default": entropack.CompressedLinear,
-        "fp8": entropack.CompressedFP8Linear,
+        "fp8": _CompressedFP8Linear,
         "int8": entropack.CompressedINT8Linear,
     }[quantization_config.linear_type]
     linear_kwargs = {}
