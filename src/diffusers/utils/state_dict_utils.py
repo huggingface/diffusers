@@ -16,7 +16,6 @@ State dict utilities: utility methods for converting state dicts easily
 """
 
 import enum
-import json
 from typing import Any
 
 from .import_utils import is_torch_available
@@ -554,14 +553,3 @@ def _load_sft_file_metadata(model_file: str):
 
     metadata.pop("format", None)
     return metadata
-
-
-def _load_sft_state_dict_metadata(model_file: str):
-    from ..loaders.lora_base import LORA_ADAPTER_METADATA_KEY
-
-    metadata = _load_sft_file_metadata(model_file)
-    if metadata:
-        raw = metadata.get(LORA_ADAPTER_METADATA_KEY)
-        return json.loads(raw) if raw else None
-    else:
-        return None
