@@ -185,8 +185,7 @@ class PeftAdapterMixin:
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
-        if metadata is None:
-            metadata = _get_lora_adapter_metadata(state_dict)
+        metadata = metadata or _get_lora_adapter_metadata(state_dict)
         if network_alphas is not None and prefix is None:
             raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
         if network_alphas and metadata:
