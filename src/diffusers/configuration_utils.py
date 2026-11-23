@@ -683,8 +683,10 @@ def register_to_config(init):
         parameters = {
             name: p.default for i, (name, p) in enumerate(signature.parameters.items()) if i > 0 and name not in ignore
         }
+        positional_arg_names = set()
         for arg, name in zip(args, parameters.keys()):
             new_kwargs[name] = arg
+            positional_arg_names.add(name)
 
         # Then add all kwargs
         new_kwargs.update(
@@ -695,9 +697,12 @@ def register_to_config(init):
             }
         )
 
-        # Take note of the parameters that were not present in the loaded config
-        if len(set(new_kwargs.keys()) - set(init_kwargs)) > 0:
-            new_kwargs["_use_default_values"] = list(set(new_kwargs.keys()) - set(init_kwargs))
+        # Take note of the parameters that were not present in the loaded config.
+        # Both keyword args (init_kwargs) and positional args must be considered
+        # explicitly provided so they survive from_config round trips.
+        explicitly_provided = set(init_kwargs) | positional_arg_names
+        if len(set(new_kwargs.keys()) - explicitly_provided) > 0:
+            new_kwargs["_use_default_values"] = list(set(new_kwargs.keys()) - explicitly_provided)
 
         new_kwargs = {**config_init_kwargs, **new_kwargs}
         getattr(self, "register_to_config")(**new_kwargs)
