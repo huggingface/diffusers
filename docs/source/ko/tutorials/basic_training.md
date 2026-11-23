@@ -329,7 +329,7 @@ TensorBoard에 로깅, 그래디언트 누적 및 혼합 정밀도 학습을 쉽
 ...             )
 
 ...             # 각 타임스텝의 노이즈 크기에 따라 깨끗한 이미지에 노이즈를 추가합니다.
-...             # (이는 foward diffusion 과정입니다.)
+...             # (이는 forward diffusion 과정입니다.)
 ...             noisy_images = noise_scheduler.add_noise(clean_images, noise, timesteps)
 
 ...             with accelerator.accumulate(model):
