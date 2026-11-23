@@ -201,10 +201,10 @@ class ParallelConfig:
     Configuration for applying different parallelisms.
 
     Both may be set at once. The two are then applied over one device mesh with a dimension each — `("tp", "ring",
-    "ulysses")`, built by `enable_parallelism` — so their collectives stay in separate process groups. This is what
-    lets a model too large for one device (TP shards the weights) also run a sequence too long for one device's
-    attention scratchpad (CP splits the sequence): TP alone cannot divide the sequence, and CP alone cannot divide the
-    weights.
+    "ulysses")`, built by `enable_parallelism` or `from_pretrained(..., parallel_config=...)` — so their collectives
+    stay in separate process groups. This is what lets a model too large for one device (TP shards the weights) also
+    run a sequence too long for one device's attention scratchpad (CP splits the sequence): TP alone cannot divide the
+    sequence, and CP alone cannot divide the weights.
 
     Args:
         context_parallel_config (`ContextParallelConfig`, *optional*):
@@ -259,8 +259,8 @@ class ParallelConfig:
                 raise ValueError(
                     f"Combining context and tensor parallelism requires a device mesh with 'ring', 'ulysses' and "
                     f"'tp' dimensions, but {missing} {'is' if len(missing) == 1 else 'are'} missing (got "
-                    f"{dim_names}). `enable_parallelism` builds this mesh from `ring_degree`/`ulysses_degree`/"
-                    f"`tp_degree`; if you build it yourself, set `mesh=` on one of the two configs."
+                    f"{dim_names}). `enable_parallelism` and `from_pretrained` build this mesh from `ring_degree`/"
+                    f"`ulysses_degree`/`tp_degree`; if you build it yourself, set `mesh=` on one of the two configs."
                 )
             # `ContextParallelConfig.setup` slices ("ring", "ulysses") off whatever mesh it is handed, so it takes
             # the full mesh. TP instead needs its own 1-D submesh: `parallelize_module` shards a weight over every

@@ -931,13 +931,25 @@ class TensorParallelTPUTesterMixin:
 
 
 def _context_and_tensor_parallel_worker(
-    rank, world_size, master_port, model_class, init_dict, cp_dict, tp_degree, inputs_dict, return_dict, state_dict
+    rank,
+    world_size,
+    master_port,
+    model_class,
+    init_dict,
+    cp_dict,
+    tp_degree,
+    inputs_dict,
+    return_dict,
+    state_dict,
+    checkpoint_dir=None,
 ):
     """Worker for combined context + tensor parallel inference.
 
     Both configs go into one `ParallelConfig`, which puts them on one mesh with a dimension each. The result should
     still match the single-device reference: TP is mathematically equivalent to the unsharded model, and CP splits the
     sequence and gathers it back, so neither changes the function being computed.
+
+    With `checkpoint_dir`, the model is loaded with `from_pretrained(..., parallel_config=...)` instead.
     """
     try:
         os.environ["MASTER_ADDR"] = "localhost"
@@ -951,19 +963,20 @@ def _context_and_tensor_parallel_worker(
         device_config["module"].set_device(rank)
         device = torch.device(f"{torch_device}:{rank}")
 
-        model = model_class(**init_dict)
-        model.load_state_dict(state_dict)
-        model.to(device)
-        model.eval()
+        config = ParallelConfig(
+            context_parallel_config=ContextParallelConfig(**cp_dict),
+            tensor_parallel_config=TensorParallelConfig(tp_degree=tp_degree),
+        )
+        if checkpoint_dir is not None:
+            model = model_class.from_pretrained(checkpoint_dir, parallel_config=config).eval()
+        else:
+            model = model_class(**init_dict)
+            model.load_state_dict(state_dict)
+            model.to(device)
+            model.eval()
+            model.enable_parallelism(config=config)
 
         inputs_on_device = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
-
-        model.enable_parallelism(
-            config=ParallelConfig(
-                context_parallel_config=ContextParallelConfig(**cp_dict),
-                tensor_parallel_config=TensorParallelConfig(tp_degree=tp_degree),
-            )
-        )
 
         with torch.no_grad():
             output = model(**inputs_on_device, return_dict=False)[0]
@@ -1000,7 +1013,7 @@ class ContextAndTensorParallelTesterMixin:
     tp_degree = 2
 
     @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"], ids=["ulysses", "ring"])
-    def test_context_and_tensor_parallel_inference(self, cp_type, batch_size: int = 1):
+    def test_context_and_tensor_parallel_inference(self, cp_type, batch_size: int = 1, checkpoint_dir=None):
         if not torch.distributed.is_available():
             pytest.skip("torch.distributed is not available.")
 
@@ -1037,6 +1050,8 @@ class ContextAndTensorParallelTesterMixin:
         state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
         with torch.no_grad():
             ref_output = model(**inputs_dict, return_dict=False)[0].float().cpu()
+        if checkpoint_dir is not None:
+            model.save_pretrained(checkpoint_dir)
 
         inputs_dict = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
 
@@ -1054,6 +1069,7 @@ class ContextAndTensorParallelTesterMixin:
                 inputs_dict,
                 return_dict,
                 state_dict,
+                checkpoint_dir,
             ),
             nprocs=world_size,
             join=True,
@@ -1072,6 +1088,10 @@ class ContextAndTensorParallelTesterMixin:
     @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"], ids=["ulysses", "ring"])
     def test_context_and_tensor_parallel_batch_inputs(self, cp_type):
         self.test_context_and_tensor_parallel_inference(cp_type, batch_size=2)
+
+    @pytest.mark.parametrize("cp_type", ["ulysses_degree", "ring_degree"], ids=["ulysses", "ring"])
+    def test_context_and_tensor_parallel_from_pretrained(self, cp_type, tmp_path):
+        self.test_context_and_tensor_parallel_inference(cp_type, checkpoint_dir=str(tmp_path / "checkpoint"))
 
 
 @is_context_parallel

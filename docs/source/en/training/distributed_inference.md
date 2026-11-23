@@ -43,6 +43,7 @@ The two strategies split a model along different axes: tensor parallelism shards
 Set both in one [`ParallelConfig`]. [`~ModelMixin.enable_parallelism`] (or `from_pretrained(..., parallel_config=...)`) builds a single device mesh with a dimension for each, `("tp", "ring", "ulysses")`, so the TP all-reduces and the CP all-gathers or all-to-alls each stay inside their own process group. The model must define both a `_tp_plan` and a `_cp_plan`.
 
 ```py
+import os
 import torch
 from torch import distributed as dist
 from diffusers import (
@@ -56,22 +57,23 @@ from diffusers import (
 def main():
     dist.init_process_group(backend="nccl")
     rank = dist.get_rank()
-    device = torch.device(f"cuda:{rank}")
+    # torchrun sets LOCAL_RANK to this process's GPU index on its node
+    device = torch.device(f"cuda:{int(os.environ['LOCAL_RANK'])}")
     torch.cuda.set_device(device)
 
-    # 4 devices: each weight is sharded 2 ways, and each shard's sequence is split 2 ways with Ulysses.
+    # 8 devices: each weight is sharded 4 ways, and each shard's sequence is split 2 ways with Ulysses.
     transformer = Flux2Transformer2DModel.from_pretrained(
         "black-forest-labs/FLUX.2-dev",
         subfolder="transformer",
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
         parallel_config=ParallelConfig(
-            tensor_parallel_config=TensorParallelConfig(tp_degree=2),
+            tensor_parallel_config=TensorParallelConfig(tp_degree=4),
             context_parallel_config=ContextParallelConfig(ulysses_degree=2),
         ),
     )
 
     pipeline = DiffusionPipeline.from_pretrained(
-        "black-forest-labs/FLUX.2-dev", transformer=transformer, torch_dtype=torch.bfloat16
+        "black-forest-labs/FLUX.2-dev", transformer=transformer, dtype=torch.bfloat16
     )
     # As with tensor parallelism alone, move the other components individually, not with `pipeline.to(device)`.
     pipeline.text_encoder.to(device)
@@ -87,9 +89,13 @@ if __name__ == "__main__":
     main()
 ```
 
+Save the script as `tp_cp_flux2.py` and launch it with `torchrun`.
+
 ```shell
-torchrun --nproc-per-node 4 tp_cp_flux2.py
+torchrun --nproc-per-node 8 tp_cp_flux2.py
 ```
+
+Only the transformer is sharded. Each rank holds a full copy of the text encoder, so each GPU needs enough memory for the text encoder plus its share of the transformer.
 
 The degrees are checked before anything is sharded:
 
