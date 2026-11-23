@@ -85,61 +85,64 @@ def load_video(
             f"Incorrect path or URL. URLs must start with `http://` or `https://`, and {video} is not a valid path."
         )
 
-    if is_url:
-        response = requests.get(video, stream=True)
-        if response.status_code != 200:
-            raise ValueError(f"Failed to download video. Status code: {response.status_code}")
+    try:
+        if is_url:
+            response = requests.get(video, stream=True)
+            if response.status_code != 200:
+                raise ValueError(f"Failed to download video. Status code: {response.status_code}")
 
-        parsed_url = urlparse(video)
-        file_name = os.path.basename(unquote(parsed_url.path))
+            parsed_url = urlparse(video)
+            file_name = os.path.basename(unquote(parsed_url.path))
 
-        suffix = os.path.splitext(file_name)[1] or ".mp4"
-        video_path = tempfile.NamedTemporaryFile(suffix=suffix, delete=False).name
+            suffix = os.path.splitext(file_name)[1] or ".mp4"
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                video_path = tmp.name
 
-        was_tempfile_created = True
+            was_tempfile_created = True
 
-        video_data = response.iter_content(chunk_size=8192)
-        with open(video_path, "wb") as f:
-            for chunk in video_data:
-                f.write(chunk)
+            video_data = response.iter_content(chunk_size=8192)
+            with open(video_path, "wb") as f:
+                for chunk in video_data:
+                    f.write(chunk)
 
-        video = video_path
+            video = video_path
 
-    pil_images = []
-    fps = None
-    if video.endswith(".gif"):
-        gif = PIL.Image.open(video)
-        # Milliseconds this frame is displayed for; GIFs are not obliged to record it.
-        frame_duration = gif.info.get("duration")
-        fps = 1000 / frame_duration if frame_duration else None
-        try:
-            while True:
-                pil_images.append(gif.copy())
-                gif.seek(gif.tell() + 1)
-        except EOFError:
-            pass
+        pil_images = []
+        fps = None
+        if video.endswith(".gif"):
+            with PIL.Image.open(video) as gif:
+                # Milliseconds this frame is displayed for; GIFs are not obliged to record it.
+                frame_duration = gif.info.get("duration")
+                fps = 1000 / frame_duration if frame_duration else None
+                try:
+                    while True:
+                        pil_images.append(gif.copy())
+                        gif.seek(gif.tell() + 1)
+                except EOFError:
+                    pass
 
-    else:
-        if is_imageio_available():
-            import imageio
         else:
-            raise ImportError(BACKENDS_MAPPING["imageio"][1].format("load_video"))
+            if is_imageio_available():
+                import imageio
+            else:
+                raise ImportError(BACKENDS_MAPPING["imageio"][1].format("load_video"))
 
-        try:
-            imageio.plugins.ffmpeg.get_exe()
-        except AttributeError:
-            raise AttributeError(
-                "`Unable to find an ffmpeg installation on your machine. Please install via `pip install imageio-ffmpeg"
-            )
+            try:
+                imageio.plugins.ffmpeg.get_exe()
+            except AttributeError:
+                raise AttributeError(
+                    "`Unable to find an ffmpeg installation on your machine. Please install via `pip install imageio-ffmpeg"
+                )
 
-        with imageio.get_reader(video) as reader:
-            fps = reader.get_meta_data().get("fps")
-            # Read all frames
-            for frame in reader:
-                pil_images.append(PIL.Image.fromarray(frame))
+            with imageio.get_reader(video) as reader:
+                fps = reader.get_meta_data().get("fps")
+                # Read all frames
+                for frame in reader:
+                    pil_images.append(PIL.Image.fromarray(frame))
 
-    if was_tempfile_created:
-        os.remove(video_path)
+    finally:
+        if was_tempfile_created:
+            os.remove(video_path)
 
     if convert_method is not None:
         pil_images = convert_method(pil_images)
