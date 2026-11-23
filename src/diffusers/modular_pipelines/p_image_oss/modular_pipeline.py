@@ -121,7 +121,3 @@ class PImageOSSModularPipeline(ModularPipeline):
     def audio_tag(self):
         r"""The modality tag of an audio row of the packed sequence."""
         return 2
-
-
-# Deprecated alias for the former P-H3-Image name, kept so existing code and Hub configs keep loading.
-PH3ImageModularPipeline = PImageOSSModularPipeline

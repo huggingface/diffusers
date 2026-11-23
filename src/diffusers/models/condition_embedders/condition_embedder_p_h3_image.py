@@ -11,4 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from .condition_embedder_p_image_oss import PH3ImageTextConnector, PImageOSSTextConnector  # noqa: F401
+
+from ...utils import deprecate
+from .condition_embedder_p_image_oss import PImageOSSTextConnector as _PImageOSSTextConnector
+
+
+# Deprecated aliases kept for backward compatibility. The warning is raised from `__new__` rather than `__init__` so
+# that the parent's `__init__` signature, which `ConfigMixin` inspects when loading a config, stays intact.
+class PH3ImageTextConnector(_PImageOSSTextConnector):
+    def __new__(cls, *args, **kwargs):
+        deprecate(
+            "PH3ImageTextConnector",
+            "0.45.0",
+            "Use `PImageOSSTextConnector` instead.",
+        )
+        return super().__new__(cls)

@@ -808,7 +808,3 @@ class AutoencoderKLPImageOSS(ModelMixin, ConfigMixin, AttentionMixin, Autoencode
         posterior = self.encode(sample).latent_dist
         z = posterior.sample(generator=generator) if sample_posterior else posterior.mode()
         return self.decode(z, return_dict=return_dict)
-
-
-# Deprecated alias for the former P-H3-Image name, kept so existing code and Hub configs keep loading.
-AutoencoderKLPH3Image = AutoencoderKLPImageOSS

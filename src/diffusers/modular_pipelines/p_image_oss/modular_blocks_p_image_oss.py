@@ -466,7 +466,3 @@ class PImageOSSBlocks(SequentialPipelineBlocks):
     @property
     def outputs(self):
         return [OutputParam.template("images")]
-
-
-# Deprecated alias for the former P-H3-Image name, kept so existing code and Hub configs keep loading.
-PH3ImageBlocks = PImageOSSBlocks

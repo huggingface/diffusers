@@ -75,7 +75,3 @@ class PImageOSSTextConnector(ModelMixin, ConfigMixin):
         hidden_states = self.proj(hidden_states) * self.output_std + self.output_mean
         sink = self.sink_embedding.expand(hidden_states.shape[0], 1, -1)
         return torch.cat([sink, hidden_states[:, 1:]], dim=1)
-
-
-# Deprecated alias for the former P-H3-Image name, kept so existing code and Hub configs keep loading.
-PH3ImageTextConnector = PImageOSSTextConnector

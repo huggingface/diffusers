@@ -11,4 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from .autoencoder_kl_p_image_oss import AutoencoderKLPH3Image, AutoencoderKLPImageOSS  # noqa: F401
+
+from ...utils import deprecate
+from .autoencoder_kl_p_image_oss import AutoencoderKLPImageOSS as _AutoencoderKLPImageOSS
+
+
+# Deprecated aliases kept for backward compatibility. The warning is raised from `__new__` rather than `__init__` so
+# that the parent's `__init__` signature, which `ConfigMixin` inspects when loading a config, stays intact.
+class AutoencoderKLPH3Image(_AutoencoderKLPImageOSS):
+    def __new__(cls, *args, **kwargs):
+        deprecate(
+            "AutoencoderKLPH3Image",
+            "0.45.0",
+            "Use `AutoencoderKLPImageOSS` instead.",
+        )
+        return super().__new__(cls)

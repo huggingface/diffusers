@@ -11,4 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from ..p_image_oss.modular_pipeline import PH3ImageModularPipeline, PImageOSSModularPipeline  # noqa: F401
+
+from ...utils import deprecate
+from ..p_image_oss.modular_pipeline import PImageOSSModularPipeline as _PImageOSSModularPipeline
+
+
+# Deprecated aliases kept for backward compatibility. The warning is raised from `__new__` rather than `__init__` so
+# that the parent's `__init__` signature, which `ConfigMixin` inspects when loading a config, stays intact.
+class PH3ImageModularPipeline(_PImageOSSModularPipeline):
+    def __new__(cls, *args, **kwargs):
+        deprecate(
+            "PH3ImageModularPipeline",
+            "0.45.0",
+            "Use `PImageOSSModularPipeline` instead.",
+        )
+        return super().__new__(cls)

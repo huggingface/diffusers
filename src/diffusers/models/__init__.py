@@ -56,7 +56,8 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_minimax_h3_audio"] = ["AutoencoderKLMiniMaxH3Audio"]
     _import_structure["autoencoders.autoencoder_kl_minimax_h3_image"] = ["AutoencoderKLMiniMaxH3Image"]
     _import_structure["autoencoders.autoencoder_kl_mochi"] = ["AutoencoderKLMochi"]
-    _import_structure["autoencoders.autoencoder_kl_p_image_oss"] = ["AutoencoderKLPH3Image", "AutoencoderKLPImageOSS"]
+    _import_structure["autoencoders.autoencoder_kl_p_h3_image"] = ["AutoencoderKLPH3Image"]
+    _import_structure["autoencoders.autoencoder_kl_p_image_oss"] = ["AutoencoderKLPImageOSS"]
     _import_structure["autoencoders.autoencoder_kl_qwenimage"] = ["AutoencoderKLQwenImage"]
     _import_structure["autoencoders.autoencoder_kl_qwenimage21"] = ["AutoencoderKLQwenImage21"]
     _import_structure["autoencoders.autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
@@ -83,10 +84,8 @@ if is_torch_available():
     _import_structure["condition_embedders.condition_embedder_gligen"] = ["CLIPImageProjection"]
     _import_structure["condition_embedders.condition_embedder_ltx2"] = ["LTX2TextConnectors"]
     _import_structure["condition_embedders.condition_embedder_minimax_music3"] = ["MiniMaxMusic3ConditionEncoder"]
-    _import_structure["condition_embedders.condition_embedder_p_image_oss"] = [
-        "PH3ImageTextConnector",
-        "PImageOSSTextConnector",
-    ]
+    _import_structure["condition_embedders.condition_embedder_p_h3_image"] = ["PH3ImageTextConnector"]
+    _import_structure["condition_embedders.condition_embedder_p_image_oss"] = ["PImageOSSTextConnector"]
     _import_structure["condition_embedders.condition_embedder_stable_audio"] = ["StableAudioProjectionModel"]
     _import_structure["condition_embedders.condition_embedder_stable_audio_3"] = ["StableAudio3DurationEmbedder"]
     _import_structure["condition_embedders.condition_embedder_stable_unclip"] = ["StableUnCLIPImageNormalizer"]

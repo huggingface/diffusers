@@ -21,8 +21,8 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["modular_blocks_p_image_oss"] = ["PH3ImageBlocks", "PImageOSSBlocks"]
-    _import_structure["modular_pipeline"] = ["PH3ImageModularPipeline", "PImageOSSModularPipeline"]
+    _import_structure["modular_blocks_p_image_oss"] = ["PImageOSSBlocks"]
+    _import_structure["modular_pipeline"] = ["PImageOSSModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -31,8 +31,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .modular_blocks_p_image_oss import PH3ImageBlocks, PImageOSSBlocks
-        from .modular_pipeline import PH3ImageModularPipeline, PImageOSSModularPipeline
+        from .modular_blocks_p_image_oss import PImageOSSBlocks
+        from .modular_pipeline import PImageOSSModularPipeline
 else:
     import sys
 
