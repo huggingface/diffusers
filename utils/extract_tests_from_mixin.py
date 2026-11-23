@@ -45,11 +45,21 @@ if __name__ == "__main__":
     with redirect_stdout(sys.stderr):
         mixin_classes = []
         if args.type == "pipeline":
-            # Preserve the old PipelineTesterMixin's scope: general pipeline and memory tests.
-            # Other feature mixins were not selected by the old script either.
-            from tests.pipelines.testing_utils import MemoryTesterMixin, PipelineTesterMixin
+            from tests.pipelines.testing_utils import (
+                LoraMemoryTesterMixin,
+                LoraTesterMixin,
+                MemoryTesterMixin,
+                PipelineTesterMixin,
+                UNetLoraTesterMixin,
+            )
 
-            mixin_classes = [PipelineTesterMixin, MemoryTesterMixin]
+            mixin_classes = [
+                PipelineTesterMixin,
+                MemoryTesterMixin,
+                LoraTesterMixin,
+                LoraMemoryTesterMixin,
+                UNetLoraTesterMixin,
+            ]
 
         elif args.type == "models":
             # The model tester suite is split across several mixins under `tests/models/testing_utils`,
@@ -70,10 +80,28 @@ if __name__ == "__main__":
                 LoraTesterMixin,
             ]
 
-        elif args.type == "lora":
-            from tests.pipelines.testing_utils import LoraMemoryTesterMixin, LoraTesterMixin, UNetLoraTesterMixin
+        elif args.type == "modular_pipelines":
+            from tests.modular_pipelines.testing_utils import (
+                ModularAutoOffloadTesterMixin,
+                ModularGuiderTesterMixin,
+                ModularLoadingTesterMixin,
+                ModularLoraMemoryTesterMixin,
+                ModularLoraTesterMixin,
+                ModularMemoryTesterMixin,
+                ModularPipelineTesterMixin,
+                ModularWorkflowTesterMixin,
+            )
 
-            mixin_classes = [LoraTesterMixin, LoraMemoryTesterMixin, UNetLoraTesterMixin]
+            mixin_classes = [
+                ModularPipelineTesterMixin,
+                ModularWorkflowTesterMixin,
+                ModularLoadingTesterMixin,
+                ModularGuiderTesterMixin,
+                ModularMemoryTesterMixin,
+                ModularAutoOffloadTesterMixin,
+                ModularLoraTesterMixin,
+                ModularLoraMemoryTesterMixin,
+            ]
 
         pattern = generate_pattern_for_mixins(mixin_classes)
     print(pattern)
