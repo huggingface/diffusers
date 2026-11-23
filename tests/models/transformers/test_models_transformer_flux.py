@@ -13,9 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import subprocess
-import sys
 import tempfile
 from typing import Any
 
@@ -27,7 +24,7 @@ from diffusers.models.embeddings import ImageProjection
 from diffusers.models.transformers.transformer_flux import FluxIPAdapterAttnProcessor
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import enable_full_determinism, is_tensor_parallel, require_torch_neuron, torch_device
+from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionBackendTesterMixin,
     AttentionTesterMixin,
@@ -52,7 +49,9 @@ from ..testing_utils import (
     SDNQTesterMixin,
     SingleFileTesterMixin,
     TaylorSeerCacheTesterMixin,
+    TensorParallelNeuronTesterMixin,
     TensorParallelTesterMixin,
+    TensorParallelTPUTesterMixin,
     TorchAoCompileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
@@ -64,7 +63,7 @@ enable_full_determinism()
 
 
 # TODO: This standalone function maintains backward compatibility with pipeline tests
-# (tests/pipelines/test_pipelines_common.py) and will be refactored.
+# (tests/pipelines/testing_utils/ip_adapter.py) and will be refactored.
 def create_flux_ip_adapter_state_dict(model) -> dict[str, dict[str, Any]]:
     """Create a dummy IP Adapter state dict for Flux transformer testing."""
     ip_cross_attn_state_dict = {}
@@ -253,6 +252,14 @@ class TestFluxTransformerAttention(FluxTransformerTesterConfig, AttentionTesterM
 class TestFluxTransformerAttentionBackend(FluxTransformerTesterConfig, AttentionBackendTesterMixin):
     """Attention backend tests for Flux Transformer."""
 
+    def get_init_dict(self) -> dict[str, int | list[int]]:
+        # `sage_blackwell_hub` runs a kernel that only accepts head dims of 64 or 128, so widen the
+        # shared dummy config's `attention_head_dim` of 16. `axes_dims_rope` has to keep summing to it.
+        init_dict = super().get_init_dict()
+        init_dict["attention_head_dim"] = 64
+        init_dict["axes_dims_rope"] = [16, 16, 32]
+        return init_dict
+
 
 class TestFluxTransformerContextParallel(FluxTransformerTesterConfig, ContextParallelTesterMixin):
     """Context Parallel inference tests for Flux Transformer"""
@@ -268,37 +275,16 @@ class TestFluxTransformerTensorParallel(FluxTransformerTesterConfig, TensorParal
     """Tensor Parallel inference tests for Flux Transformer (CUDA/XPU multi-accelerator)."""
 
 
-def make_neuron_tp_spec():
-    """Model spec consumed by the generic Neuron TP worker (`_neuron_tp_worker.py`).
+class TestFluxTransformerTensorParallelTPU(FluxTransformerTesterConfig, TensorParallelTPUTesterMixin):
+    """Tensor Parallel inference test for Flux Transformer on TPU."""
 
-    Returns `(model_class, init_dict, cpu_inputs)`. Defined here so all Flux-specific test data lives in this file
-    while the worker stays model-agnostic. Reuses the shared tester config so the spec never drifts from the rest of
-    the Flux tests.
-    """
-    config = FluxTransformerTesterConfig()
-    return FluxTransformer2DModel, config.get_init_dict(), config.get_dummy_inputs(device="cpu")
+    def get_init_dict(self):
+        # One head per chip.
+        return {**super().get_init_dict(), "num_attention_heads": self.tp_world_size}
 
 
-@is_tensor_parallel
-@require_torch_neuron
-class TestFluxTransformerTensorParallelNeuron:
-    """Tensor Parallel inference test for Flux Transformer on AWS Neuron.
-
-    Neuron TP runs through `torchrun` with the `"neuron"` distributed backend, so it cannot use the
-    `torch.multiprocessing`/NCCL spawn path of `TensorParallelTesterMixin`. This launches the generic worker
-    with the Flux model spec (`make_neuron_tp_spec`); the worker asserts the sharded output matches a single-device
-    reference, and the test checks its exit code.
-    """
-
-    def test_tensor_parallel_neuron_inference(self):
-        worker = os.path.join(os.path.dirname(__file__), "_neuron_tp_worker.py")
-        spec = "tests.models.transformers.test_models_transformer_flux:make_neuron_tp_spec"
-        cmd = [sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=2", worker, spec]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        assert result.returncode == 0, (
-            f"Neuron tensor-parallel worker failed (exit {result.returncode}).\n"
-            f"--- stdout ---\n{result.stdout}\n--- stderr ---\n{result.stderr}"
-        )
+class TestFluxTransformerTensorParallelNeuron(FluxTransformerTesterConfig, TensorParallelNeuronTesterMixin):
+    """Tensor Parallel inference test for Flux Transformer on AWS Neuron."""
 
 
 class TestFluxTransformerIPAdapter(FluxTransformerTesterConfig, IPAdapterTesterMixin):

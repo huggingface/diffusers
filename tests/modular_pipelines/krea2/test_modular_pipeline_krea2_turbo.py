@@ -33,6 +33,7 @@ KREA2_TURBO_WORKFLOWS = {
         ("denoise.set_timesteps", "Krea2TurboSetTimestepsStep"),
         ("denoise.prepare_position_ids", "Krea2PreparePositionIdsStep"),
         ("denoise.denoise", "Krea2TurboDenoiseStep"),
+        ("denoise.unpack_latents", "Krea2UnpackLatentsStep"),
         ("decode", "Krea2DecodeStep"),
     ],
 }
@@ -42,6 +43,7 @@ class Krea2TurboModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = Krea2TurboModularPipeline
     pipeline_blocks_class = Krea2TurboAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-krea2-turbo-modular-pipe"
+    expected_latents_shape = (1, 4, 1, 8, 8)
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
     expected_workflow_blocks = KREA2_TURBO_WORKFLOWS

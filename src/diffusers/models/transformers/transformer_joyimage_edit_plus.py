@@ -300,7 +300,7 @@ class JoyImageEditPlusTimeTextImageEmbedding(nn.Module):
         self,
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-    ):
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         timestep = self.timesteps_proj(timestep)
 
         time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
@@ -449,7 +449,7 @@ class JoyImageEditPlusTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin
         encoder_hidden_states_mask: torch.Tensor | None = None,
         shape_list: list[list[tuple[int, int, int]]] = None,
         return_dict: bool = True,
-    ) -> torch.Tensor | tuple:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         Args:
             hidden_states: [B, max_patches, C, pt, ph, pw] - patchified latent input.

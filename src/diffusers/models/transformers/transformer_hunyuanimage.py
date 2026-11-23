@@ -60,7 +60,7 @@ class HunyuanImageAttnProcessor:
         encoder_hidden_states: torch.Tensor | None = None,
         attention_mask: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor | None = None,
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         if attn.add_q_proj is None and encoder_hidden_states is not None:
             hidden_states = torch.cat([hidden_states, encoder_hidden_states], dim=1)
 
@@ -428,7 +428,7 @@ class HunyuanImageRotaryPosEmbed(nn.Module):
         self.rope_dim = rope_dim
         self.theta = theta
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         if hidden_states.ndim == 5:
             _, _, frame, height, width = hidden_states.shape
             patch_size_frame, patch_size_height, patch_size_width = self.patch_size
@@ -498,7 +498,7 @@ class HunyuanImageSingleTransformerBlock(nn.Module):
         image_rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
         *args,
         **kwargs,
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         text_seq_length = encoder_hidden_states.shape[1]
         hidden_states = torch.cat([hidden_states, encoder_hidden_states], dim=1)
 
@@ -753,7 +753,7 @@ class HunyuanImageTransformer2DModel(
         guidance: torch.Tensor | None = None,
         attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> torch.Tensor | dict[str, torch.Tensor]:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`HunyuanImageTransformer2DModel`] forward method.
 

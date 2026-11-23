@@ -145,7 +145,9 @@ class Flux2SetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2ModularPipeline, state: PipelineState
+    ) -> tuple[Flux2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -293,7 +295,9 @@ class Flux2PrepareLatentsStep(ModularPipelineBlocks):
         return latents
 
     @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2ModularPipeline, state: PipelineState
+    ) -> tuple[Flux2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         block_state.height = block_state.height or components.default_height
         block_state.width = block_state.width or components.default_width
@@ -368,7 +372,9 @@ class Flux2RoPEInputsStep(ModularPipelineBlocks):
 
         return torch.stack(out_ids)
 
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2ModularPipeline, state: PipelineState
+    ) -> tuple[Flux2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         prompt_embeds = block_state.prompt_embeds
@@ -429,7 +435,9 @@ class Flux2KleinBaseRoPEInputsStep(ModularPipelineBlocks):
 
         return torch.stack(out_ids)
 
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2ModularPipeline, state: PipelineState
+    ) -> tuple[Flux2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         prompt_embeds = block_state.prompt_embeds
@@ -516,7 +524,9 @@ class Flux2PrepareImageLatentsStep(ModularPipelineBlocks):
         return latents
 
     @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2ModularPipeline, state: PipelineState
+    ) -> tuple[Flux2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         image_latents = block_state.image_latents
 
@@ -579,7 +589,9 @@ class Flux2PrepareGuidanceStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2ModularPipeline, state: PipelineState
+    ) -> tuple[Flux2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         batch_size = block_state.batch_size * block_state.num_images_per_prompt

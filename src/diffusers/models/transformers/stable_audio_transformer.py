@@ -48,7 +48,7 @@ class StableAudioGaussianFourierProjection(nn.Module):
             self.weight = self.W
             del self.W
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         if self.log:
             x = torch.log(x)
 
@@ -289,7 +289,7 @@ class StableAudioDiTModel(ModelMixin, AttentionMixin, ConfigMixin):
         return_dict: bool = True,
         attention_mask: torch.LongTensor | None = None,
         encoder_attention_mask: torch.LongTensor | None = None,
-    ) -> torch.FloatTensor | Transformer2DModelOutput:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`StableAudioDiTModel`] forward method.
 

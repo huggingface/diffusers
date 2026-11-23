@@ -2,7 +2,7 @@ FROM nvidia/cuda:12.9.1-runtime-ubuntu24.04
 LABEL maintainer="Hugging Face"
 LABEL repository="diffusers"
 
-ARG PYTHON_VERSION=3.10
+ARG PYTHON_VERSION=3.11
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get -y update \
@@ -51,7 +51,7 @@ RUN uv pip install --no-cache-dir "git+https://github.com/huggingface/diffusers.
 # Extra dependencies
 RUN uv pip install --no-cache-dir \
     accelerate \
-    numpy==1.26.4 \
+    "numpy>=2" \
     pytorch-lightning \
     hf_xet
 

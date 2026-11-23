@@ -19,9 +19,9 @@ Make sure Pytorch 2.5+ and torchao are installed with the command below.
 uv pip install -U torch torchao
 ```
 
-Each quantization dtype is available as a separate instance of a [AOBaseConfig](https://docs.pytorch.org/ao/main/api_ref_quantization.html#inference-apis-for-quantize) class. This provides more flexible configuration options by exposing more available arguments.
+Each quantization dtype is available as a separate instance of a [AOBaseConfig](https://docs.pytorch.org/ao/main/api_reference/generated/torchao.core.config.AOBaseConfig.html) class. This provides more flexible configuration options by exposing more available arguments.
 
-Pass the `AOBaseConfig` of a quantization dtype, like [Int4WeightOnlyConfig](https://docs.pytorch.org/ao/main/generated/torchao.quantization.Int4WeightOnlyConfig) to [`TorchAoConfig`] in [`~ModelMixin.from_pretrained`].
+Pass the `AOBaseConfig` of a quantization dtype, like [Int4WeightOnlyConfig](https://docs.pytorch.org/ao/main/api_reference/generated/torchao.quantization.Int4WeightOnlyConfig.html) to [`TorchAoConfig`] in [`~ModelMixin.from_pretrained`].
 
 ```py
 import torch

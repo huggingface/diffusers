@@ -466,7 +466,7 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 256,
-    ):
+    ) -> MochiPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
@@ -648,7 +648,7 @@ class MochiPipeline(DiffusionPipeline, Mochi1LoraLoaderMixin):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
 
-                with self.transformer.cache_context("cond_uncond"):
+                with self.transformer.cache_context("cond_uncond", timestep=1000 - t):
                     noise_pred = self.transformer(
                         hidden_states=latent_model_input,
                         encoder_hidden_states=prompt_embeds,

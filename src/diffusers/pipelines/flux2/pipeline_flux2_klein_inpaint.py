@@ -849,7 +849,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
         text_encoder_out_layers: tuple[int, ...] = (9, 18, 27),
-    ):
+    ) -> Flux2PipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for inpainting.
 
@@ -1180,7 +1180,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
                 latent_model_input = latent_model_input.to(self.transformer.dtype)
 
-                with self.transformer.cache_context("cond"):
+                with self.transformer.cache_context("cond", timestep=t):
                     noise_pred = self.transformer(
                         hidden_states=latent_model_input,  # (B, image_seq_len, C)
                         timestep=timestep / 1000,
@@ -1194,7 +1194,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                 noise_pred = noise_pred[:, : latents.size(1)]
 
                 if self.do_classifier_free_guidance:
-                    with self.transformer.cache_context("uncond"):
+                    with self.transformer.cache_context("uncond", timestep=t):
                         neg_noise_pred = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep / 1000,

@@ -466,7 +466,7 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         prompt_template: dict[str, Any] = DEFAULT_PROMPT_TEMPLATE,
         max_sequence_length: int = 256,
-    ):
+    ) -> HunyuanVideoPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 
@@ -675,7 +675,7 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                with self.transformer.cache_context("cond"):
+                with self.transformer.cache_context("cond", timestep=t):
                     noise_pred = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep,
@@ -688,7 +688,7 @@ class HunyuanVideoPipeline(DiffusionPipeline, HunyuanVideoLoraLoaderMixin):
                     )[0]
 
                 if do_true_cfg:
-                    with self.transformer.cache_context("uncond"):
+                    with self.transformer.cache_context("uncond", timestep=t):
                         neg_noise_pred = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,

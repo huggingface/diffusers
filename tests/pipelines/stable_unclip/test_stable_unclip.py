@@ -9,10 +9,10 @@ from diffusers import (
     DDIMScheduler,
     DDPMScheduler,
     PriorTransformer,
+    StableUnCLIPImageNormalizer,
     StableUnCLIPPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
 from ...testing_utils import (
     backend_empty_cache,
@@ -26,11 +26,11 @@ from ...testing_utils import (
     torch_device,
 )
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import assert_mean_pixel_difference
 from ..testing_utils import (
     BasePipelineTesterConfig,
     MemoryTesterMixin,
     PipelineTesterMixin,
+    assert_mean_pixel_difference,
 )
 
 

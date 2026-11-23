@@ -628,7 +628,7 @@ class FluxPipeline(
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
-    ):
+    ) -> FluxPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
@@ -897,7 +897,7 @@ class FluxPipeline(
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                with self.transformer.cache_context("cond"):
+                with self.transformer.cache_context("cond", timestep=t):
                     noise_pred = self.transformer(
                         hidden_states=latents,
                         timestep=timestep / 1000,
@@ -914,7 +914,7 @@ class FluxPipeline(
                     if negative_image_embeds is not None:
                         self._joint_attention_kwargs["ip_adapter_image_embeds"] = negative_image_embeds
 
-                    with self.transformer.cache_context("uncond"):
+                    with self.transformer.cache_context("uncond", timestep=t):
                         neg_noise_pred = self.transformer(
                             hidden_states=latents,
                             timestep=timestep / 1000,

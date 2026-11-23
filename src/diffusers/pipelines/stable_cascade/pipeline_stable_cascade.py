@@ -14,12 +14,14 @@
 
 from typing import Callable
 
+import numpy as np
+import PIL.Image
 import torch
 from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 
 from ...models import StableCascadeUNet
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import is_torch_version, is_torch_xla_available, logging, replace_example_docstring
+from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..deprecated.wuerstchen.modeling_paella_vq_model import PaellaVQModel
 from ..pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, ImagePipelineOutput
@@ -321,7 +323,7 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         return_dict: bool = True,
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-    ):
+    ) -> ImagePipelineOutput | list[PIL.Image.Image] | np.ndarray | torch.Tensor:
         """
         Function invoked when calling the pipeline for generation.
 
@@ -392,8 +394,6 @@ class StableCascadeDecoderPipeline(DeprecatedPipelineMixin, DiffusionPipeline):
         device = self._execution_device
         dtype = self.decoder.dtype
         self._guidance_scale = guidance_scale
-        if is_torch_version("<", "2.2.0") and dtype == torch.bfloat16:
-            raise ValueError("`StableCascadeDecoderPipeline` requires torch>=2.2.0 when using `torch.bfloat16` dtype.")
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(

@@ -457,7 +457,7 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
         attention_kwargs: dict[str, Any] | None = None,
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-    ):
+    ) -> HunyuanImagePipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
@@ -687,7 +687,7 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
 
                     # e.g. "pred_cond"/"pred_uncond"
                     context_name = getattr(guider_state_batch, guider._identifier_key)
-                    with self.transformer.cache_context(context_name):
+                    with self.transformer.cache_context(context_name, timestep=t):
                         # Run denoiser and store noise prediction in this batch
                         guider_state_batch.noise_pred = self.transformer(
                             hidden_states=latent_model_input,

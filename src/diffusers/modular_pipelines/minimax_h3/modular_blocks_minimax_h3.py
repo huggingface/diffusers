@@ -49,11 +49,12 @@ class MiniMaxH3AutoBeforeEncodeStep(ConditionalPipelineBlocks):
        - a text-only request (`t2va`) skips this block, and the layout step falls back to MiniMax-H3's own 16:9 canvas.
 
       Components:
-          image_processor (`VaeImageProcessor`)
+          - image_processor (`VaeImageProcessor`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192) reference_image_short_edge (default:
-          2048)
+          - canvas_short_edge (default: 768)
+          - canvas_max_pixels (default: 1032192)
+          - reference_image_short_edge (default: 2048)
 
       Inputs:
           references (`list`, *optional*):
@@ -135,7 +136,9 @@ class MiniMaxH3AutoTextEncoderStep(ConditionalPipelineBlocks):
        - `MiniMaxH3TextEncoderStep` runs otherwise (`t2va`), presenting the prompt alone.
 
       Components:
-          text_encoder (`Qwen3VLForConditionalGeneration`) tokenizer (`Qwen2Tokenizer`) processor (`Qwen3VLProcessor`)
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - tokenizer (`Qwen2Tokenizer`)
+          - processor (`Qwen3VLProcessor`)
 
       Inputs:
           prompt (`str`):
@@ -188,7 +191,8 @@ class MiniMaxH3AutoVaeEncoderStep(ConditionalPipelineBlocks):
        - a text-only request (`t2va`) skips this block.
 
       Components:
-          vae (`AutoencoderKLMiniMaxH3`) audio_vae (`AutoencoderKLMiniMaxH3Audio`)
+          - vae (`AutoencoderKLMiniMaxH3`)
+          - audio_vae (`AutoencoderKLMiniMaxH3Audio`)
 
       Inputs:
           normalized_references (`list`, *optional*):
@@ -238,11 +242,13 @@ class MiniMaxH3CoreDenoiseStep(SequentialPipelineBlocks):
     latents.
 
       Components:
-          scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`) transformer
-          (`MiniMaxH3Transformer3DModel`)
+          - scheduler (`MiniMaxH3Scheduler`)
+          - audio_scheduler (`MiniMaxH3Scheduler`)
+          - transformer (`MiniMaxH3Transformer3DModel`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
+          - canvas_short_edge (default: 768)
+          - canvas_max_pixels (default: 1032192)
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -261,7 +267,7 @@ class MiniMaxH3CoreDenoiseStep(SequentialPipelineBlocks):
               instead of the draw.
           audio_latents (`Tensor`, *optional*):
               Pre-generated audio noise of shape `(2, 32, num_audio_latents)`.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
@@ -331,11 +337,13 @@ class MiniMaxH3FL2VACoreDenoiseStep(SequentialPipelineBlocks):
     `transformer` partition and unpacks the denoised rows back into latents.
 
       Components:
-          scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`) transformer
-          (`MiniMaxH3Transformer3DModel`)
+          - scheduler (`MiniMaxH3Scheduler`)
+          - audio_scheduler (`MiniMaxH3Scheduler`)
+          - transformer (`MiniMaxH3Transformer3DModel`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
+          - canvas_short_edge (default: 768)
+          - canvas_max_pixels (default: 1032192)
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -360,7 +368,7 @@ class MiniMaxH3FL2VACoreDenoiseStep(SequentialPipelineBlocks):
               instead of the draw.
           audio_latents (`Tensor`, *optional*):
               Pre-generated audio noise of shape `(2, 32, num_audio_latents)`.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
@@ -432,8 +440,9 @@ class MiniMaxH3Ref2VACoreDenoiseStep(SequentialPipelineBlocks):
     denoised rows back into latents.
 
       Components:
-          scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`) transformer_ref
-          (`MiniMaxH3Transformer3DModel`)
+          - scheduler (`MiniMaxH3Scheduler`)
+          - audio_scheduler (`MiniMaxH3Scheduler`)
+          - transformer_ref (`MiniMaxH3Transformer3DModel`)
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -459,7 +468,7 @@ class MiniMaxH3Ref2VACoreDenoiseStep(SequentialPipelineBlocks):
               instead of the draw.
           audio_latents (`Tensor`, *optional*):
               Pre-generated audio noise of shape `(2, 32, num_audio_latents)`.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
@@ -534,11 +543,14 @@ class MiniMaxH3AutoDenoiseStep(ConditionalPipelineBlocks):
        - `MiniMaxH3CoreDenoiseStep` runs otherwise (`t2va`), against the `transformer` partition.
 
       Components:
-          scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`) transformer_ref
-          (`MiniMaxH3Transformer3DModel`) transformer (`MiniMaxH3Transformer3DModel`)
+          - scheduler (`MiniMaxH3Scheduler`)
+          - audio_scheduler (`MiniMaxH3Scheduler`)
+          - transformer_ref (`MiniMaxH3Transformer3DModel`)
+          - transformer (`MiniMaxH3Transformer3DModel`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192)
+          - canvas_short_edge (default: 768)
+          - canvas_max_pixels (default: 1032192)
 
       Inputs:
           text_token_tags (`Tensor`):
@@ -564,7 +576,7 @@ class MiniMaxH3AutoDenoiseStep(ConditionalPipelineBlocks):
               instead of the draw.
           audio_latents (`Tensor`):
               Pre-generated audio noise of shape `(2, 32, num_audio_latents)`.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           prompt_embeds (`Tensor`):
               text embeddings used to guide the image generation. Can be generated from text_encoder step.
@@ -615,7 +627,9 @@ class MiniMaxH3DecodeStep(SequentialPipelineBlocks):
     Decodes the denoised rows of the packed sequence into the generated video and its soundtrack.
 
       Components:
-          vae (`AutoencoderKLMiniMaxH3`) video_processor (`VideoProcessor`) audio_vae (`AutoencoderKLMiniMaxH3Audio`)
+          - vae (`AutoencoderKLMiniMaxH3`)
+          - video_processor (`VideoProcessor`)
+          - audio_vae (`AutoencoderKLMiniMaxH3Audio`)
 
       Inputs:
           latents (`Tensor`):
@@ -669,15 +683,22 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
         - `ref2va`: requires `prompt`, `references`
 
       Components:
-          image_processor (`VaeImageProcessor`) text_encoder (`Qwen3VLForConditionalGeneration`) tokenizer
-          (`Qwen2Tokenizer`) processor (`Qwen3VLProcessor`) vae (`AutoencoderKLMiniMaxH3`) audio_vae
-          (`AutoencoderKLMiniMaxH3Audio`) scheduler (`MiniMaxH3Scheduler`) audio_scheduler (`MiniMaxH3Scheduler`)
-          transformer_ref (`MiniMaxH3Transformer3DModel`) transformer (`MiniMaxH3Transformer3DModel`) video_processor
-          (`VideoProcessor`)
+          - image_processor (`VaeImageProcessor`)
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - tokenizer (`Qwen2Tokenizer`)
+          - processor (`Qwen3VLProcessor`)
+          - vae (`AutoencoderKLMiniMaxH3`)
+          - audio_vae (`AutoencoderKLMiniMaxH3Audio`)
+          - scheduler (`MiniMaxH3Scheduler`)
+          - audio_scheduler (`MiniMaxH3Scheduler`)
+          - transformer_ref (`MiniMaxH3Transformer3DModel`)
+          - transformer (`MiniMaxH3Transformer3DModel`)
+          - video_processor (`VideoProcessor`)
 
       Configs:
-          canvas_short_edge (default: 768) canvas_max_pixels (default: 1032192) reference_image_short_edge (default:
-          2048)
+          - canvas_short_edge (default: 768)
+          - canvas_max_pixels (default: 1032192)
+          - reference_image_short_edge (default: 2048)
 
       Inputs:
           references (`list`, *optional*):
@@ -721,7 +742,7 @@ class MiniMaxH3Blocks(SequentialPipelineBlocks):
               instead of the draw.
           audio_latents (`Tensor`):
               Pre-generated audio noise of shape `(2, 32, num_audio_latents)`.
-          num_inference_steps (`int`):
+          num_inference_steps (`int`, *optional*, defaults to 50):
               The number of denoising steps.
           **denoiser_input_fields (`None`, *optional*):
               The structural description of the packed sequence the transformer reads by name: `token_tags`,

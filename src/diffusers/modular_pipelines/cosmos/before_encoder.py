@@ -82,7 +82,9 @@ class Cosmos3TransferSetupStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Cosmos3OmniModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Cosmos3OmniModularPipeline, state: PipelineState
+    ) -> tuple[Cosmos3OmniModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         dtype = components.transformer.dtype

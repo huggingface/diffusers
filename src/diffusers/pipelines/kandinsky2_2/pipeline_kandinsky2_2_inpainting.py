@@ -62,8 +62,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.to("cuda")
 
         >>> init_image = load_image(
-        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-        ...     "/kandinsky/cat.png"
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png"
         ... )
 
         >>> mask = np.zeros((768, 768), dtype=np.float32)
@@ -318,7 +317,7 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         **kwargs,
-    ):
+    ) -> ImagePipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 

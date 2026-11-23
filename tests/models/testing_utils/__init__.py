@@ -17,17 +17,23 @@ from .cache import (
 from .common import BaseModelTesterConfig, ModelTesterMixin
 from .compile import TorchCompileTesterMixin
 from .ip_adapter import IPAdapterTesterMixin
+from .lokr import LoKrTesterMixin
 from .lora import LoraHotSwappingForModelTesterMixin, LoraTesterMixin
 from .memory import CPUOffloadTesterMixin, GroupOffloadTesterMixin, LayerwiseCastingTesterMixin, MemoryTesterMixin
 from .parallelism import (
     ContextParallelAttentionBackendsTesterMixin,
     ContextParallelTesterMixin,
+    TensorParallelNeuronTesterMixin,
     TensorParallelTesterMixin,
+    TensorParallelTPUTesterMixin,
 )
 from .quantization import (
     AutoRoundCompileTesterMixin,
     AutoRoundConfigMixin,
     AutoRoundTesterMixin,
+    BFLCompileTesterMixin,
+    BFLConfigMixin,
+    BFLTesterMixin,
     BitsAndBytesCompileTesterMixin,
     BitsAndBytesConfigMixin,
     BitsAndBytesTesterMixin,
@@ -59,6 +65,9 @@ __all__ = [
     "AttentionTesterMixin",
     "AutoRoundConfigMixin",
     "AutoRoundTesterMixin",
+    "BFLCompileTesterMixin",
+    "BFLConfigMixin",
+    "BFLTesterMixin",
     "BaseModelTesterConfig",
     "BitsAndBytesCompileTesterMixin",
     "BitsAndBytesConfigMixin",
@@ -67,6 +76,8 @@ __all__ = [
     "ContextParallelTesterMixin",
     "ContextParallelAttentionBackendsTesterMixin",
     "TensorParallelTesterMixin",
+    "TensorParallelNeuronTesterMixin",
+    "TensorParallelTPUTesterMixin",
     "CPUOffloadTesterMixin",
     "FasterCacheConfigMixin",
     "FasterCacheTesterMixin",
@@ -80,6 +91,7 @@ __all__ = [
     "GroupOffloadTesterMixin",
     "IPAdapterTesterMixin",
     "LayerwiseCastingTesterMixin",
+    "LoKrTesterMixin",
     "LoraHotSwappingForModelTesterMixin",
     "LoraTesterMixin",
     "MemoryTesterMixin",

@@ -472,7 +472,7 @@ class LucyEditPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
-    ):
+    ) -> LucyPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 
@@ -670,7 +670,7 @@ class LucyEditPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                 else:
                     timestep = t.expand(latents.shape[0])
 
-                with current_model.cache_context("cond"):
+                with current_model.cache_context("cond", timestep=t):
                     noise_pred = current_model(
                         hidden_states=latent_model_input,
                         timestep=timestep,
@@ -680,7 +680,7 @@ class LucyEditPipeline(DiffusionPipeline, WanLoraLoaderMixin):
                     )[0]
 
                 if self.do_classifier_free_guidance:
-                    with current_model.cache_context("uncond"):
+                    with current_model.cache_context("uncond", timestep=t):
                         noise_uncond = current_model(
                             hidden_states=latent_model_input,
                             timestep=timestep,

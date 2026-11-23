@@ -18,7 +18,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..utils import deprecate
-from ..utils.import_utils import is_torch_npu_available, is_torch_version
+from ..utils.import_utils import is_torch_npu_available
 
 
 if is_torch_npu_available():
@@ -79,12 +79,9 @@ class GELU(nn.Module):
         self.approximate = approximate
 
     def gelu(self, gate: torch.Tensor) -> torch.Tensor:
-        if gate.device.type == "mps" and is_torch_version("<", "2.0.0"):
-            # fp16 gelu not supported on mps before torch 2.0
-            return F.gelu(gate.to(dtype=torch.float32), approximate=self.approximate).to(dtype=gate.dtype)
         return F.gelu(gate, approximate=self.approximate)
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states) -> torch.Tensor:
         hidden_states = self.proj(hidden_states)
         hidden_states = self.gelu(hidden_states)
         return hidden_states
@@ -105,12 +102,9 @@ class GEGLU(nn.Module):
         self.proj = nn.Linear(dim_in, dim_out * 2, bias=bias)
 
     def gelu(self, gate: torch.Tensor) -> torch.Tensor:
-        if gate.device.type == "mps" and is_torch_version("<", "2.0.0"):
-            # fp16 gelu not supported on mps before torch 2.0
-            return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
         return F.gelu(gate)
 
-    def forward(self, hidden_states, *args, **kwargs):
+    def forward(self, hidden_states, *args, **kwargs) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
@@ -140,7 +134,7 @@ class SwiGLU(nn.Module):
         self.proj = nn.Linear(dim_in, dim_out * 2, bias=bias)
         self.activation = nn.SiLU()
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states) -> torch.Tensor:
         hidden_states = self.proj(hidden_states)
         hidden_states, gate = hidden_states.chunk(2, dim=-1)
         return hidden_states * self.activation(gate)
@@ -173,6 +167,6 @@ class LinearActivation(nn.Module):
         self.proj = nn.Linear(dim_in, dim_out, bias=bias)
         self.activation = get_activation(activation)
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states) -> torch.Tensor:
         hidden_states = self.proj(hidden_states)
         return self.activation(hidden_states)

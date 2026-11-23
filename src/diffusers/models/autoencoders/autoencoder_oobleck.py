@@ -41,7 +41,7 @@ class Snake1d(nn.Module):
         self.beta.requires_grad = True
         self.logscale = logscale
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states) -> torch.Tensor:
         shape = hidden_states.shape
 
         alpha = self.alpha if not self.logscale else torch.exp(self.alpha)
@@ -67,7 +67,7 @@ class OobleckResidualUnit(nn.Module):
         self.snake2 = Snake1d(dimension)
         self.conv2 = weight_norm(nn.Conv1d(dimension, dimension, kernel_size=1))
 
-    def forward(self, hidden_state):
+    def forward(self, hidden_state) -> torch.Tensor:
         """
         Forward pass through the residual unit.
 
@@ -104,7 +104,7 @@ class OobleckEncoderBlock(nn.Module):
             nn.Conv1d(input_dim, output_dim, kernel_size=2 * stride, stride=stride, padding=math.ceil(stride / 2))
         )
 
-    def forward(self, hidden_state):
+    def forward(self, hidden_state) -> torch.Tensor:
         hidden_state = self.res_unit1(hidden_state)
         hidden_state = self.res_unit2(hidden_state)
         hidden_state = self.snake1(self.res_unit3(hidden_state))
@@ -133,7 +133,7 @@ class OobleckDecoderBlock(nn.Module):
         self.res_unit2 = OobleckResidualUnit(output_dim, dilation=3)
         self.res_unit3 = OobleckResidualUnit(output_dim, dilation=9)
 
-    def forward(self, hidden_state):
+    def forward(self, hidden_state) -> torch.Tensor:
         hidden_state = self.snake1(hidden_state)
         hidden_state = self.conv_t1(hidden_state)
         hidden_state = self.res_unit1(hidden_state)
@@ -239,7 +239,7 @@ class OobleckEncoder(nn.Module):
         self.snake1 = Snake1d(d_model)
         self.conv2 = weight_norm(nn.Conv1d(d_model, encoder_hidden_size, kernel_size=3, padding=1))
 
-    def forward(self, hidden_state):
+    def forward(self, hidden_state) -> torch.Tensor:
         hidden_state = self.conv1(hidden_state)
 
         for module in self.block:
@@ -279,7 +279,7 @@ class OobleckDecoder(nn.Module):
         self.snake1 = Snake1d(output_dim)
         self.conv2 = weight_norm(nn.Conv1d(channels, audio_channels, kernel_size=7, padding=3, bias=False))
 
-    def forward(self, hidden_state):
+    def forward(self, hidden_state) -> torch.Tensor:
         hidden_state = self.conv1(hidden_state)
 
         for layer in self.block:
@@ -440,7 +440,7 @@ class AutoencoderOobleck(ModelMixin, AutoencoderMixin, ConfigMixin):
 
         return torch.cat(tiles, dim=-1)
 
-    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> OobleckDecoderOutput | torch.Tensor:
+    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> OobleckDecoderOutput | tuple[torch.Tensor]:
         if self.use_tiling and z.shape[-1] > self.tile_latent_min_length:
             dec = self._tiled_decode(z)
         else:
@@ -488,7 +488,7 @@ class AutoencoderOobleck(ModelMixin, AutoencoderMixin, ConfigMixin):
     @apply_forward_hook
     def decode(
         self, z: torch.FloatTensor, return_dict: bool = True, generator=None
-    ) -> OobleckDecoderOutput | torch.FloatTensor:
+    ) -> OobleckDecoderOutput | tuple[torch.Tensor]:
         """
         Decode a batch of images.
 
@@ -520,7 +520,7 @@ class AutoencoderOobleck(ModelMixin, AutoencoderMixin, ConfigMixin):
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: torch.Generator | None = None,
-    ) -> OobleckDecoderOutput | torch.Tensor:
+    ) -> OobleckDecoderOutput | tuple[torch.Tensor]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

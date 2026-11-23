@@ -27,8 +27,11 @@ on:
       SERGE_INSTALLATION_ID:
         required: true
 
+permissions: {}
+
 jobs:
   relay:
+    permissions: {}
     name: Relay to Serge
     concurrency:
       group: diffusers-bot-review-${{ github.event.issue.number || github.event.pull_request.number }}

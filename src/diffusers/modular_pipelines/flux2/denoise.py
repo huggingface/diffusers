@@ -106,7 +106,7 @@ class Flux2LoopDenoiser(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(
         self, components: Flux2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
-    ) -> PipelineState:
+    ) -> tuple[Flux2ModularPipeline, BlockState]:
         latents = block_state.latents
         latent_model_input = latents.to(components.transformer.dtype)
         img_ids = block_state.latent_ids
@@ -119,16 +119,17 @@ class Flux2LoopDenoiser(ModularPipelineBlocks):
 
         timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-        noise_pred = components.transformer(
-            hidden_states=latent_model_input,
-            timestep=timestep / 1000,
-            guidance=block_state.guidance,
-            encoder_hidden_states=block_state.prompt_embeds,
-            txt_ids=block_state.txt_ids,
-            img_ids=img_ids,
-            joint_attention_kwargs=block_state.joint_attention_kwargs,
-            return_dict=False,
-        )[0]
+        with components.transformer.cache_context("inference", timestep=t):
+            noise_pred = components.transformer(
+                hidden_states=latent_model_input,
+                timestep=timestep / 1000,
+                guidance=block_state.guidance,
+                encoder_hidden_states=block_state.prompt_embeds,
+                txt_ids=block_state.txt_ids,
+                img_ids=img_ids,
+                joint_attention_kwargs=block_state.joint_attention_kwargs,
+                return_dict=False,
+            )[0]
 
         noise_pred = noise_pred[:, : latents.size(1)]
         block_state.noise_pred = noise_pred
@@ -195,7 +196,7 @@ class Flux2KleinLoopDenoiser(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(
         self, components: Flux2KleinModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
-    ) -> PipelineState:
+    ) -> tuple[Flux2KleinModularPipeline, BlockState]:
         latents = block_state.latents
         latent_model_input = latents.to(components.transformer.dtype)
         img_ids = block_state.latent_ids
@@ -208,16 +209,17 @@ class Flux2KleinLoopDenoiser(ModularPipelineBlocks):
 
         timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-        noise_pred = components.transformer(
-            hidden_states=latent_model_input,
-            timestep=timestep / 1000,
-            guidance=None,
-            encoder_hidden_states=block_state.prompt_embeds,
-            txt_ids=block_state.txt_ids,
-            img_ids=img_ids,
-            joint_attention_kwargs=block_state.joint_attention_kwargs,
-            return_dict=False,
-        )[0]
+        with components.transformer.cache_context("inference", timestep=t):
+            noise_pred = components.transformer(
+                hidden_states=latent_model_input,
+                timestep=timestep / 1000,
+                guidance=None,
+                encoder_hidden_states=block_state.prompt_embeds,
+                txt_ids=block_state.txt_ids,
+                img_ids=img_ids,
+                joint_attention_kwargs=block_state.joint_attention_kwargs,
+                return_dict=False,
+            )[0]
 
         noise_pred = noise_pred[:, : latents.size(1)]
         block_state.noise_pred = noise_pred
@@ -310,7 +312,7 @@ class Flux2KleinBaseLoopDenoiser(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(
         self, components: Flux2KleinModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
-    ) -> PipelineState:
+    ) -> tuple[Flux2KleinModularPipeline, BlockState]:
         latents = block_state.latents
         latent_model_input = latents.to(components.transformer.dtype)
         img_ids = block_state.latent_ids
@@ -341,15 +343,17 @@ class Flux2KleinBaseLoopDenoiser(ModularPipelineBlocks):
             components.guider.prepare_models(components.transformer)
             cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
 
-            noise_pred = components.transformer(
-                hidden_states=latent_model_input,
-                timestep=timestep / 1000,
-                guidance=None,
-                img_ids=img_ids,
-                joint_attention_kwargs=block_state.joint_attention_kwargs,
-                return_dict=False,
-                **cond_kwargs,
-            )[0]
+            context_name = getattr(guider_state_batch, components.guider._identifier_key)
+            with components.transformer.cache_context(context_name, timestep=t):
+                noise_pred = components.transformer(
+                    hidden_states=latent_model_input,
+                    timestep=timestep / 1000,
+                    guidance=None,
+                    img_ids=img_ids,
+                    joint_attention_kwargs=block_state.joint_attention_kwargs,
+                    return_dict=False,
+                    **cond_kwargs,
+                )[0]
             guider_state_batch.noise_pred = noise_pred[:, : latents.size(1)]
             components.guider.cleanup_models(components.transformer)
 
@@ -379,7 +383,9 @@ class Flux2LoopAfterDenoiser(ModularPipelineBlocks):
         return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents")]
 
     @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: Flux2ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[Flux2ModularPipeline, BlockState]:
         latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(
             block_state.noise_pred,
@@ -430,7 +436,9 @@ class Flux2DenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2ModularPipeline, state: PipelineState
+    ) -> tuple[Flux2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.num_warmup_steps = max(

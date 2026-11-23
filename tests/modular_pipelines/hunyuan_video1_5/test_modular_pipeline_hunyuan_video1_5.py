@@ -53,6 +53,7 @@ class HunyuanVideo15ModularPipelineTesterConfig(BaseModularPipelineTesterConfig)
     pipeline_class = HunyuanVideo15ModularPipeline
     pipeline_blocks_class = HunyuanVideo15AutoBlocks
     pretrained_model_name_or_path = "akshan-main/tiny-hunyuanvideo1_5-modular-pipe"
+    expected_latents_shape = (1, 32, 3, 2, 2)
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])

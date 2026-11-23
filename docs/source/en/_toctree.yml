@@ -12,28 +12,30 @@
   sections:
   - isExpanded: false
     sections:
-    - local: using-diffusers/weighted_prompts
-      title: Prompting
     - local: using-diffusers/loading
       title: DiffusionPipeline
     - local: tutorials/autopipeline
       title: AutoPipeline
-    - local: using-diffusers/custom_pipeline_overview
-      title: Community pipelines and components
-    - local: using-diffusers/callback
-      title: Pipeline callbacks
-    - local: using-diffusers/reusing_seeds
-      title: Reproducibility
-    - local: using-diffusers/schedulers
-      title: Schedulers
-    - local: using-diffusers/guiders
-      title: Guiders
     - local: using-diffusers/automodel
       title: AutoModel
     - local: using-diffusers/other-formats
       title: Model formats
+    - local: using-diffusers/schedulers
+      title: Schedulers
+    - local: using-diffusers/weighted_prompts
+      title: Prompting
+    - local: using-diffusers/image_quality
+      title: FreeU
+    - local: using-diffusers/reusing_seeds
+      title: Reproducibility
+    - local: using-diffusers/callback
+      title: Pipeline callbacks
+    - local: using-diffusers/custom_pipeline_overview
+      title: Community pipelines and components
     - local: using-diffusers/push_to_hub
       title: Sharing pipelines and models
+    - local: using-diffusers/legacy_checkpoints
+      title: Legacy checkpoints
     title: Using diffusion pipelines
   - isExpanded: false
     sections:
@@ -43,17 +45,15 @@
       title: IP-Adapter
     - local: using-diffusers/controlnet
       title: ControlNet
-    - local: using-diffusers/t2i_adapter
-      title: T2I-Adapter
     - local: using-diffusers/dreambooth
       title: DreamBooth
-    - local: using-diffusers/textual_inversion_inference
-      title: Textual inversion
+    - local: using-diffusers/legacy_adapters
+      title: Legacy adapters
     title: Adapters and personalization
   title: Inference
 - isExpanded: true
   sections:
-  - local: stable_diffusion
+  - local: optimization/overview
     title: Basic performance
   - isExpanded: false
     sections:
@@ -63,38 +63,36 @@
       title: Caching
     - local: optimization/attention_backends
       title: Attention backends
+    - local: using-diffusers/batched_inference
+      title: Batch inference
     - local: optimization/memory
       title: Reduce memory usage
+    - local: hybrid_inference/overview
+      title: Remote inference
     - local: optimization/speed-memory-optims
       title: Compiling and offloading quantized models
-    title: Inference
+    title: Speed and memory
   - isExpanded: false
     sections:
-    - local: optimization/pruna
-      title: Pruna
-    - local: optimization/xformers
-      title: xFormers
-    - local: optimization/tome
-      title: Token merging
-    - local: optimization/deepcache
-      title: DeepCache
-    - local: optimization/cache_dit
-      title: CacheDiT
-    - local: optimization/tgate
-      title: TGATE
-    - local: optimization/xdit
-      title: xDiT
-    - local: optimization/para_attn
-      title: ParaAttention
-    - local: using-diffusers/image_quality
-      title: FreeU
-    title: Community methods
+    - local: training/distributed_inference
+      title: Overview
+    - local: optimization/data_parallelism
+      title: Data parallelism
+    - local: optimization/device_map
+      title: Model sharding with device_map
+    - local: optimization/context_parallelism
+      title: Context parallelism
+    - local: optimization/tensor_parallelism
+      title: Tensor parallelism
+    title: Distributed inference
   - isExpanded: false
     sections:
     - local: quantization/overview
       title: Getting started
     - local: quantization/bitsandbytes
       title: bitsandbytes
+    - local: quantization/bfl
+      title: BFL (fp8r / nvfp4)
     - local: quantization/gguf
       title: gguf
     - local: quantization/nunchaku
@@ -112,8 +110,6 @@
     title: Quantization
   - isExpanded: false
     sections:
-    - local: optimization/onnx
-      title: ONNX
     - local: optimization/open_vino
       title: OpenVINO
     - local: optimization/coreml
@@ -123,19 +119,21 @@
     - local: optimization/habana
       title: Intel Gaudi
     - local: optimization/neuron
-      title: AWS Neuron
+      title: AWS Trainium
+    - local: optimization/tpu
+      title: Google TPU
     title: Hardware-specific acceleration
   - isExpanded: false
     sections:
-    - local: using-diffusers/create_a_server
-      title: Create a server
-    - local: using-diffusers/batched_inference
-      title: Batch inference
-    - local: training/distributed_inference
-      title: Distributed inference
-    - local: hybrid_inference/overview
-      title: Remote inference
-    title: Serving and scaling
+    - local: optimization/cache_dit
+      title: CacheDiT
+    - local: optimization/para_attn
+      title: ParaAttention
+    - local: optimization/pruna
+      title: Pruna
+    - local: optimization/xdit
+      title: xDiT
+    title: Community methods
   title: Optimize and scale
 - isExpanded: false
   sections:
@@ -143,6 +141,8 @@
     title: Overview
   - local: modular_diffusers/quickstart
     title: Quickstart
+  - local: modular_diffusers/coming_from_diffusion_pipeline
+    title: Coming from DiffusionPipeline
   - local: modular_diffusers/modular_diffusers_states
     title: States
   - local: modular_diffusers/pipeline_block
@@ -155,6 +155,8 @@
     title: AutoPipelineBlocks
   - local: modular_diffusers/modular_pipeline
     title: ModularPipeline
+  - local: using-diffusers/guiders
+    title: Guiders
   - local: modular_diffusers/components_manager
     title: ComponentsManager
   - local: modular_diffusers/auto_docstring
@@ -210,6 +212,8 @@
     title: Training methods
   - local: training/nemo_automodel
     title: NeMo Automodel
+  - local: training/jobs
+    title: Hugging Face Jobs
   title: Train and fine-tune
 - isExpanded: false
   sections:
@@ -239,8 +243,6 @@
     - local: using-diffusers/controlling_generation
       title: Controlled generation
     title: Concepts and background
-  - local: community_projects
-    title: Projects built with Diffusers
   title: Resources
 - isExpanded: false
   sections:
@@ -325,6 +327,8 @@
         title: AnyFlowTransformer3DModel
       - local: api/models/aura_flow_transformer2d
         title: AuraFlowTransformer2DModel
+      - local: api/models/transformer_bria_fibo2
+        title: BriaFibo2Transformer2DModel
       - local: api/models/transformer_bria_fibo
         title: BriaFiboTransformer2DModel
       - local: api/models/bria_transformer
@@ -353,6 +357,8 @@
         title: ErnieImageTransformer2DModel
       - local: api/models/flux2_transformer
         title: Flux2Transformer2DModel
+      - local: api/models/flux3_transformer
+        title: Flux3Transformer2DModel
       - local: api/models/flux_transformer
         title: FluxTransformer2DModel
       - local: api/models/glm_image_transformer2d
@@ -375,6 +381,10 @@
         title: JoyImageEditPlusTransformer3DModel
       - local: api/models/transformer_joyimage
         title: JoyImageEditTransformer3DModel
+      - local: api/models/kandinsky6_transformer
+        title: Kandinsky 6 Transformers
+      - local: api/models/kandinsky_s2v_transformer
+        title: KandinskyS2VTransformer3DModel
       - local: api/models/krea2_transformer2d
         title: Krea2Transformer2DModel
       - local: api/models/latte_transformer3d
@@ -389,6 +399,8 @@
         title: Lumina2Transformer2DModel
       - local: api/models/lumina_nextdit2d
         title: LuminaNextDiT2DModel
+      - local: api/models/minimax_h3_image_transformer2d
+        title: MiniMaxH3ImageTransformer2DModel
       - local: api/models/minimax_h3_transformer3d
         title: MiniMaxH3Transformer3DModel
       - local: api/models/minimax_music3_transformer
@@ -401,6 +413,8 @@
         title: OmniGenTransformer2DModel
       - local: api/models/ovisimage_transformer2d
         title: OvisImageTransformer2DModel
+      - local: api/models/pan2_transformer3d
+        title: PAN2Transformer3DModel
       - local: api/models/pixart_transformer2d
         title: PixArtTransformer2DModel
       - local: api/models/prior_transformer
@@ -409,10 +423,18 @@
         title: QwenImage21Transformer2DModel
       - local: api/models/qwenimage_transformer2d
         title: QwenImageTransformer2DModel
+      - local: api/models/rfd4_proteina_autoencoder
+        title: RFD4ProteinaAutoencoder
+      - local: api/models/rfd4_proteina_transformer
+        title: RFD4ProteinaTransformer
       - local: api/models/sana_transformer2d
         title: SanaTransformer2DModel
       - local: api/models/sana_video_transformer3d
         title: SanaVideoTransformer3DModel
+      - local: api/models/sana_wm_refiner_transformer3d
+        title: SanaWMLTX2RefinerTransformer3DModel
+      - local: api/models/sana_wm_transformer3d
+        title: SanaWMTransformer3DModel
       - local: api/models/sd3_transformer2d
         title: SD3Transformer2DModel
       - local: api/models/skyreels_v2_transformer_3d
@@ -473,6 +495,8 @@
         title: AutoencoderKLHunyuanVideo15
       - local: api/models/autoencoder_kl_kvae
         title: AutoencoderKLKVAE
+      - local: api/models/autoencoder_kl_kvae_audio
+        title: AutoencoderKLKVAEAudio
       - local: api/models/autoencoder_kl_kvae_video
         title: AutoencoderKLKVAEVideo
       - local: api/models/autoencoderkl_audio_ltx_2
@@ -487,8 +511,12 @@
         title: AutoencoderKLMiniMaxH3
       - local: api/models/autoencoderkl_minimax_h3_audio
         title: AutoencoderKLMiniMaxH3Audio
+      - local: api/models/autoencoderkl_minimax_h3_image
+        title: AutoencoderKLMiniMaxH3Image
       - local: api/models/autoencoderkl_mochi
         title: AutoencoderKLMochi
+      - local: api/models/autoencoderkl_p_h3_image
+        title: AutoencoderKLPH3Image
       - local: api/models/autoencoderkl_qwenimage
         title: AutoencoderKLQwenImage
       - local: api/models/autoencoderkl_qwenimage21
@@ -501,6 +529,8 @@
         title: AutoencoderSAME
       - local: api/models/consistency_decoder_vae
         title: ConsistencyDecoderVAE
+      - local: api/models/kandinsky6_vae
+        title: Kandinsky 6 VAEs
       - local: api/models/ltx2_diffusion_decoder
         title: LTX2VideoDiffusionDecoderModel
       - local: api/models/autoencoder_oobleck
@@ -523,6 +553,8 @@
         title: AudioLDM 2
       - local: api/pipelines/longcat_audio_dit
         title: LongCat-AudioDiT
+      - local: api/pipelines/minimax_music3
+        title: MiniMax Music 3
       - local: api/pipelines/stable_audio
         title: Stable Audio
       - local: api/pipelines/stable_audio_3
@@ -531,14 +563,14 @@
     - sections:
       - local: api/pipelines/anima
         title: Anima
-      - local: api/pipelines/animatediff
-        title: AnimateDiff
       - local: api/pipelines/aura_flow
         title: AuraFlow
       - local: api/pipelines/bria_3_2
         title: Bria 3.2
       - local: api/pipelines/bria_fibo
         title: Bria Fibo
+      - local: api/pipelines/bria_fibo2
+        title: Bria Fibo 2.0
       - local: api/pipelines/bria_fibo_edit
         title: Bria Fibo Edit
       - local: api/pipelines/chroma
@@ -573,14 +605,14 @@
         title: DiT
       - local: api/pipelines/dreamlite
         title: DreamLite
-      - local: api/pipelines/easyanimate
-        title: EasyAnimate
       - local: api/pipelines/ernie_image
         title: ERNIE-Image
       - local: api/pipelines/flux
         title: Flux
       - local: api/pipelines/flux2
         title: Flux2
+      - local: api/pipelines/flux3
+        title: Flux3
       - local: api/pipelines/control_flux_inpaint
         title: FluxControlInpaint
       - local: api/pipelines/glm_image
@@ -625,12 +657,16 @@
         title: Lumina-T2X
       - local: api/pipelines/marigold
         title: Marigold
+      - local: api/pipelines/minimax_h3_image
+        title: MiniMax-H3-Image
       - local: api/pipelines/nucleusmoe_image
         title: NucleusMoE-Image
       - local: api/pipelines/omnigen
         title: OmniGen
       - local: api/pipelines/ovis_image
         title: Ovis-Image
+      - local: api/pipelines/p_h3_image
+        title: P-H3-Image
       - local: api/pipelines/pag
         title: PAG
       - local: api/pipelines/pixart
@@ -649,10 +685,6 @@
         title: Sana
       - local: api/pipelines/sana_sprint
         title: Sana Sprint
-      - local: api/pipelines/sana_video
-        title: Sana Video
-      - local: api/pipelines/shap_e
-        title: Shap-E
       - local: api/pipelines/stable_cascade
         title: Stable Cascade
       - sections:
@@ -693,6 +725,10 @@
         title: Z-Image
       title: Image
     - sections:
+      - local: api/pipelines/rfd4_proteina
+        title: RFD4-Proteína
+      title: Protein
+    - sections:
       - local: api/pipelines/diffusion_gemma
         title: DiffusionGemma
       - local: api/pipelines/llada2
@@ -701,6 +737,8 @@
     - sections:
       - local: api/pipelines/allegro
         title: Allegro
+      - local: api/pipelines/animatediff
+        title: AnimateDiff
       - local: api/pipelines/anyflow
         title: AnyFlow
       - local: api/pipelines/chronoedit
@@ -713,6 +751,10 @@
         title: Cosmos
       - local: api/pipelines/cosmos3
         title: Cosmos3
+      - local: api/pipelines/easyanimate
+        title: EasyAnimate
+      - local: api/pipelines/echo
+        title: Echo
       - local: api/pipelines/framepack
         title: Framepack
       - local: api/pipelines/helios
@@ -723,20 +765,30 @@
         title: HunyuanVideo1.5
       - local: api/pipelines/kandinsky5_video
         title: Kandinsky 5.0 Video
+      - local: api/pipelines/kandinsky6
+        title: Kandinsky 6
+      - local: api/pipelines/kandinsky_s2v
+        title: Kandinsky S2V 1.0
       - local: api/pipelines/latte
         title: Latte
       - local: api/pipelines/ltx2
         title: LTX-2
       - local: api/pipelines/ltx_video
         title: LTXVideo
-      - local: api/pipelines/minimax_music3
-        title: MiniMax Music 3
       - local: api/pipelines/minimax_h3
         title: MiniMax-H3
       - local: api/pipelines/mochi
         title: Mochi
       - local: api/pipelines/motif_video
         title: Motif-Video
+      - local: api/pipelines/pan2
+        title: PAN 2
+      - local: api/pipelines/pika_h3_flex
+        title: Pika H3 Flex
+      - local: api/pipelines/sana_video
+        title: Sana Video
+      - local: api/pipelines/sana_wm
+        title: SANA-WM
       - local: api/pipelines/skyreels_v2
         title: SkyReels-V2
       - local: api/pipelines/stable_diffusion/svd
@@ -814,10 +866,14 @@
       title: LMSDiscreteScheduler
     - local: api/schedulers/minimax_h3
       title: MiniMaxH3Scheduler
+    - local: api/schedulers/piflow
+      title: PiflowScheduler
     - local: api/schedulers/pndm
       title: PNDMScheduler
     - local: api/schedulers/repaint
       title: RePaintScheduler
+    - local: api/schedulers/rfd4_proteina
+      title: RFD4ProteinaScheduler
     - local: api/schedulers/score_sde_ve
       title: ScoreSdeVeScheduler
     - local: api/schedulers/tcd
@@ -846,3 +902,4 @@
       title: Video Processor
     title: Internal classes
   title: API
+  

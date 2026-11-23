@@ -59,7 +59,9 @@ class ErnieImageLoopBeforeDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: ErnieImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: ErnieImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[ErnieImageModularPipeline, BlockState]:
         latents = block_state.latents
         block_state.latent_model_input = latents.to(components.transformer.dtype)
         block_state.timestep = t.expand(latents.shape[0]).to(components.transformer.dtype)
@@ -122,7 +124,9 @@ class ErnieImageLoopDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: ErnieImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: ErnieImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[ErnieImageModularPipeline, BlockState]:
         guider_inputs = {
             "text_bth": (block_state.text_bth, block_state.negative_text_bth),
             "text_lens": (block_state.text_lens, block_state.negative_text_lens),
@@ -159,7 +163,9 @@ class ErnieImageLoopAfterDenoiser(ModularPipelineBlocks):
         return "Step within the denoising loop that updates the latents using the scheduler step."
 
     @torch.no_grad()
-    def __call__(self, components: ErnieImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: ErnieImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[ErnieImageModularPipeline, BlockState]:
         latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(
             block_state.noise_pred, t, block_state.latents, return_dict=False
@@ -208,7 +214,9 @@ class ErnieImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         return [OutputParam("latents", type_hint=torch.Tensor, description="The denoised latents.")]
 
     @torch.no_grad()
-    def __call__(self, components: ErnieImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: ErnieImageModularPipeline, state: PipelineState
+    ) -> tuple[ErnieImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         with self.progress_bar(total=block_state.num_inference_steps) as progress_bar:
             for i, t in enumerate(block_state.timesteps):

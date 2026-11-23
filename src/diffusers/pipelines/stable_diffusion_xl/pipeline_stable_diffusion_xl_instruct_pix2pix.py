@@ -624,7 +624,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
         original_size: tuple[int, int] = None,
         crops_coords_top_left: tuple[int, int] = (0, 0),
         target_size: tuple[int, int] = None,
-    ):
+    ) -> StableDiffusionXLPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

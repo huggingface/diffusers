@@ -507,7 +507,7 @@ class Cosmos2VideoToWorldPipeline(DiffusionPipeline):
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
         sigma_conditioning: float = 0.0001,
-    ):
+    ) -> CosmosPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

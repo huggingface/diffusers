@@ -12,9 +12,15 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
-from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, StableUnCLIPImg2ImgPipeline, UNet2DConditionModel
+from diffusers import (
+    AutoencoderKL,
+    DDIMScheduler,
+    DDPMScheduler,
+    StableUnCLIPImageNormalizer,
+    StableUnCLIPImg2ImgPipeline,
+    UNet2DConditionModel,
+)
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
 from ...testing_utils import (
     assert_tensors_close,
@@ -32,11 +38,11 @@ from ...testing_utils import (
     torch_device,
 )
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-from ..test_pipelines_common import assert_mean_pixel_difference
 from ..testing_utils import (
     BasePipelineTesterConfig,
     MemoryTesterMixin,
     PipelineTesterMixin,
+    assert_mean_pixel_difference,
 )
 
 

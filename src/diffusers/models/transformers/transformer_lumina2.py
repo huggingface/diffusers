@@ -260,7 +260,9 @@ class Lumina2RotaryPosEmbed(nn.Module):
             result.append(torch.gather(freqs.unsqueeze(0).repeat(index.shape[0], 1, 1), dim=1, index=index))
         return torch.cat(result, dim=-1).to(device)
 
-    def forward(self, hidden_states: torch.Tensor, attention_mask: torch.Tensor):
+    def forward(
+        self, hidden_states: torch.Tensor, attention_mask: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, list[int], list[int]]:
         batch_size, channels, height, width = hidden_states.shape
         p = self.patch_size
         post_patch_height, post_patch_width = height // p, width // p
@@ -464,7 +466,7 @@ class Lumina2Transformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         encoder_attention_mask: torch.Tensor,
         attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> torch.Tensor | Transformer2DModelOutput:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`Lumina2Transformer2DModel`] forward method.
 

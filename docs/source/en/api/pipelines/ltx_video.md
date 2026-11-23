@@ -334,7 +334,7 @@ export_to_video(video, "output.mp4", fps=24)
   import torch
   from diffusers import LTXConditionPipeline, LTXLatentUpsamplePipeline
   from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXVideoCondition
-  from diffusers.pipelines.ltx.modeling_latent_upsampler import LTXLatentUpsamplerModel
+  from diffusers.models.latent_upscaler import LTXLatentUpsamplerModel
   from diffusers.utils import export_to_video, load_video
 
   pipeline = LTXConditionPipeline.from_pretrained("Lightricks/LTX-Video-0.9.8-13B-distilled", dtype=torch.bfloat16)

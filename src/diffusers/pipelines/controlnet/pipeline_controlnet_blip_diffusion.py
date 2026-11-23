@@ -255,7 +255,7 @@ class BlipDiffusionControlNetPipeline(DeprecatedPipelineMixin, DiffusionPipeline
         prompt_reps: int = 20,
         output_type: str | None = "pil",
         return_dict: bool = True,
-    ):
+    ) -> ImagePipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 

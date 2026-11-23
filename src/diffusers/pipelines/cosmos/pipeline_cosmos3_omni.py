@@ -1350,7 +1350,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
         mixed_precision_first_steps: int | None = None,
         mixed_precision_last_steps: int | None = None,
         mixed_precision_reasoner_policy: str | None = None,
-    ) -> Cosmos3OmniPipelineOutput:
+    ) -> Cosmos3OmniPipelineOutput | tuple:
         r"""
         Run the Cosmos 3 omni pipeline end-to-end: encode the (optional) conditioning image/video, denoise vision and
         (optional) sound latents jointly, and decode them back into a video and audio waveform.
@@ -1751,7 +1751,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
 
                     # --- Conditional pass ---
                     with self.transformer.cache_context(
-                        "cond", step_index=i, sigma=sigma, num_inference_steps=self._num_timesteps
+                        "cond", step_index=i, timestep=t, sigma=sigma, num_inference_steps=self._num_timesteps
                     ):
                         preds_vision, preds_sound, preds_action = self.transformer(
                             input_ids=cond_packed_static["input_ids"],
@@ -1794,7 +1794,7 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                     uncond_v_vision = uncond_v_sound = uncond_v_action = None
                     if self.do_classifier_free_guidance:
                         with self.transformer.cache_context(
-                            "uncond", step_index=i, sigma=sigma, num_inference_steps=self._num_timesteps
+                            "uncond", step_index=i, timestep=t, sigma=sigma, num_inference_steps=self._num_timesteps
                         ):
                             preds_vision, preds_sound, preds_action = self.transformer(
                                 input_ids=uncond_packed_static["input_ids"],

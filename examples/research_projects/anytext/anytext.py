@@ -53,9 +53,9 @@ from diffusers.loaders import (
     TextualInversionLoaderMixin,
 )
 from diffusers.models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DConditionModel
+from diffusers.models.controlnets.multicontrolnet import MultiControlNetModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.models.modeling_utils import ModelMixin
-from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker

@@ -165,7 +165,7 @@ class Kandinsky5TimeEmbeddings(nn.Module):
         self.activation = nn.SiLU()
         self.out_layer = nn.Linear(time_dim, time_dim, bias=True)
 
-    def forward(self, time):
+    def forward(self, time) -> torch.Tensor:
         args = torch.outer(time.to(torch.float32), self.freqs.to(device=time.device))
         time_embed = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
         time_embed = self.out_layer(self.activation(self.in_layer(time_embed)))
@@ -178,7 +178,7 @@ class Kandinsky5TextEmbeddings(nn.Module):
         self.in_layer = nn.Linear(text_dim, model_dim, bias=True)
         self.norm = nn.LayerNorm(model_dim, elementwise_affine=True)
 
-    def forward(self, text_embed):
+    def forward(self, text_embed) -> torch.Tensor:
         text_embed = self.in_layer(text_embed)
         return self.norm(text_embed).type_as(text_embed)
 
@@ -189,7 +189,7 @@ class Kandinsky5VisualEmbeddings(nn.Module):
         self.patch_size = patch_size
         self.in_layer = nn.Linear(math.prod(patch_size) * visual_dim, model_dim)
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         batch_size, duration, height, width, dim = x.shape
         x = (
             x.view(
@@ -218,7 +218,7 @@ class Kandinsky5RoPE1D(nn.Module):
         pos = torch.arange(max_pos, dtype=freq.dtype)
         self.register_buffer("args", torch.outer(pos, freq), persistent=False)
 
-    def forward(self, pos):
+    def forward(self, pos) -> torch.Tensor:
         args = self.args[pos]
         cosine = torch.cos(args)
         sine = torch.sin(args)
@@ -239,7 +239,7 @@ class Kandinsky5RoPE3D(nn.Module):
             pos = torch.arange(ax_max_pos, dtype=freq.dtype)
             self.register_buffer(f"args_{i}", torch.outer(pos, freq), persistent=False)
 
-    def forward(self, shape, pos, scale_factor=(1.0, 1.0, 1.0)):
+    def forward(self, shape, pos, scale_factor=(1.0, 1.0, 1.0)) -> torch.Tensor:
         batch_size, duration, height, width = shape
         args_t = self.args_0[pos[0]] / scale_factor[0]
         args_h = self.args_1[pos[1]] / scale_factor[1]
@@ -268,7 +268,7 @@ class Kandinsky5Modulation(nn.Module):
         self.out_layer.weight.data.zero_()
         self.out_layer.bias.data.zero_()
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         return self.out_layer(self.activation(x))
 
 
@@ -397,7 +397,7 @@ class Kandinsky5FeedForward(nn.Module):
         self.activation = nn.GELU()
         self.out_layer = nn.Linear(ff_dim, dim, bias=False)
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
         return self.out_layer(self.activation(self.in_layer(x)))
 
 
@@ -409,7 +409,7 @@ class Kandinsky5OutLayer(nn.Module):
         self.norm = nn.LayerNorm(model_dim, elementwise_affine=False)
         self.out_layer = nn.Linear(model_dim, math.prod(patch_size) * visual_dim, bias=True)
 
-    def forward(self, visual_embed, text_embed, time_embed):
+    def forward(self, visual_embed, text_embed, time_embed) -> torch.Tensor:
         shift, scale = torch.chunk(self.modulation(time_embed).unsqueeze(dim=1), 2, dim=-1)
 
         visual_embed = (
@@ -449,7 +449,7 @@ class Kandinsky5TransformerEncoderBlock(nn.Module):
         self.feed_forward_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
         self.feed_forward = Kandinsky5FeedForward(model_dim, ff_dim)
 
-    def forward(self, x, time_embed, rope):
+    def forward(self, x, time_embed, rope) -> torch.Tensor:
         self_attn_params, ff_params = torch.chunk(self.text_modulation(time_embed).unsqueeze(dim=1), 2, dim=-1)
         shift, scale, gate = torch.chunk(self_attn_params, 3, dim=-1)
         out = (self.self_attention_norm(x.float()) * (scale.float() + 1.0) + shift.float()).type_as(x)
@@ -478,7 +478,7 @@ class Kandinsky5TransformerDecoderBlock(nn.Module):
         self.feed_forward_norm = nn.LayerNorm(model_dim, elementwise_affine=False)
         self.feed_forward = Kandinsky5FeedForward(model_dim, ff_dim)
 
-    def forward(self, visual_embed, text_embed, time_embed, rope, sparse_params):
+    def forward(self, visual_embed, text_embed, time_embed, rope, sparse_params) -> torch.Tensor:
         self_attn_params, cross_attn_params, ff_params = torch.chunk(
             self.visual_modulation(time_embed).unsqueeze(dim=1), 3, dim=-1
         )

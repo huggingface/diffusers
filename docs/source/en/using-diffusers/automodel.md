@@ -97,7 +97,7 @@ If the custom model inherits from the [`ModelMixin`] class, it gets access to th
 > )
 > ```
 
-### Saving custom models
+## Saving custom models
 
 Use [`~ConfigMixin.register_for_auto_class`] to add the `auto_map` entry to `config.json` automatically when saving. This avoids having to manually edit the config file.
 
@@ -124,5 +124,6 @@ The saved `config.json` will include the `auto_map` field.
 }
 ```
 
-> [!NOTE]
-> Learn more about implementing custom models in the [Community components](../using-diffusers/custom_pipeline_overview#community-components) guide.
+## Next steps
+
+Learn more about implementing custom models in the [Community components](../using-diffusers/custom_pipeline_overview#community-components) guide.

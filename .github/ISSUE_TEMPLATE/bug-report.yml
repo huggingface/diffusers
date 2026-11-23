@@ -37,6 +37,12 @@ body:
     validations:
       required: true
   - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What were you working on when you run into this issue? A little bit of context helps us understand the impact and prioritize. A link to the project is great if you have one, not required.
+      placeholder: "Working on X [link], run into this issue when ..."
+  - type: textarea
     id: logs
     attributes:
       label: Logs

@@ -89,7 +89,7 @@ class T5FilmDecoder(ModelMixin, ConfigMixin):
         mask = torch.mul(query_input.unsqueeze(-1), key_input.unsqueeze(-2))
         return mask.unsqueeze(-3)
 
-    def forward(self, encodings_and_masks, decoder_input_tokens, decoder_noise_time):
+    def forward(self, encodings_and_masks, decoder_input_tokens, decoder_noise_time) -> torch.Tensor:
         """
         The [`T5FilmDecoder`] forward method.
 
@@ -101,6 +101,9 @@ class T5FilmDecoder(ModelMixin, ConfigMixin):
                 Input tokens for the decoder.
             decoder_noise_time (`torch.Tensor` of shape `(batch_size,)`):
                 Diffusion timesteps in `[0, 1)` used to condition the decoder.
+
+        Returns:
+            `torch.Tensor`: The decoded spectrogram of shape `(batch_size, seq_length, input_dims)`.
         """
         batch, _, _ = decoder_input_tokens.shape
         assert decoder_noise_time.shape == (batch,)

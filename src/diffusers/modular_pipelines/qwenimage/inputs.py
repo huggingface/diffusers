@@ -205,7 +205,9 @@ class QwenImageTextInputsStep(ModularPipelineBlocks):
         ):
             raise ValueError("`negative_prompt_embeds_mask` must have the same batch size as `prompt_embeds`")
 
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         self.check_inputs(
@@ -264,7 +266,7 @@ class QwenImageAdditionalInputsStep(ModularPipelineBlocks):
       This block should be placed after the encoder steps and the text input step.
 
       Components:
-          pachifier (`QwenImagePachifier`)
+          - pachifier (`QwenImagePachifier`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -411,7 +413,9 @@ class QwenImageAdditionalInputsStep(ModularPipelineBlocks):
 
         return outputs
 
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         # Process image latent inputs
@@ -478,7 +482,7 @@ class QwenImageEditPlusAdditionalInputsStep(ModularPipelineBlocks):
       This block should be placed after the encoder steps and the text input step.
 
       Components:
-          pachifier (`QwenImagePachifier`)
+          - pachifier (`QwenImagePachifier`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -626,7 +630,9 @@ class QwenImageEditPlusAdditionalInputsStep(ModularPipelineBlocks):
 
         return outputs
 
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         # Process image latent inputs
@@ -712,7 +718,7 @@ class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
       This block should be placed after the encoder steps and the text input step.
 
       Components:
-          pachifier (`QwenImageLayeredPachifier`)
+          - pachifier (`QwenImageLayeredPachifier`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -852,7 +858,9 @@ class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
 
         return outputs
 
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         # Process image latent inputs
@@ -969,7 +977,9 @@ class QwenImageControlNetInputsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         if isinstance(components.controlnet, QwenImageMultiControlNetModel):

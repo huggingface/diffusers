@@ -37,7 +37,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import get_device, is_torch_version, randn_tensor
+from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import SanaVideoPipelineOutput
@@ -990,12 +990,6 @@ class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             video = latents
         else:
             latents = latents.to(self.vae.dtype)
-            torch_accelerator_module = getattr(torch, get_device(), torch.cuda)
-            oom_error = (
-                torch.OutOfMemoryError
-                if is_torch_version(">=", "2.5.0")
-                else torch_accelerator_module.OutOfMemoryError
-            )
             if isinstance(self.vae, AutoencoderKLLTX2Video):
                 latents_mean = self.vae.latents_mean
                 latents_std = self.vae.latents_std
@@ -1014,7 +1008,7 @@ class SanaVideoPipeline(DiffusionPipeline, SanaLoraLoaderMixin):
             latents = latents / latents_std + latents_mean
             try:
                 video = self.vae.decode(latents, return_dict=False)[0]
-            except oom_error as e:
+            except torch.OutOfMemoryError as e:
                 warnings.warn(
                     f"{e}. \n"
                     f"Try to use VAE tiling for large images. For example: \n"

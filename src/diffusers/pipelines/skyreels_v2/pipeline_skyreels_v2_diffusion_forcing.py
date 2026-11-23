@@ -623,7 +623,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
         ar_step: int = 0,
         causal_block_size: int | None = None,
         fps: int = 24,
-    ):
+    ) -> SkyReelsV2PipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 
@@ -885,7 +885,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
                         )
                         timestep[:, valid_interval_start:prefix_video_latents_frames] = addnoise_condition
 
-                    with self.transformer.cache_context("cond"):
+                    with self.transformer.cache_context("cond", timestep=t):
                         noise_pred = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
@@ -897,7 +897,7 @@ class SkyReelsV2DiffusionForcingPipeline(DiffusionPipeline, SkyReelsV2LoraLoader
                         )[0]
 
                     if self.do_classifier_free_guidance:
-                        with self.transformer.cache_context("uncond"):
+                        with self.transformer.cache_context("uncond", timestep=t):
                             noise_uncond = self.transformer(
                                 hidden_states=latent_model_input,
                                 timestep=timestep,

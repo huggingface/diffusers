@@ -39,8 +39,10 @@ class HunyuanVideo15CoreDenoiseStep(SequentialPipelineBlocks):
     Denoise block that takes encoded conditions and runs the denoising process.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`HunyuanVideo15Transformer3DModel`)
-          video_processor (`HunyuanVideo15ImageProcessor`) guider (`ClassifierFreeGuidance`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`HunyuanVideo15Transformer3DModel`)
+          - video_processor (`HunyuanVideo15ImageProcessor`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt_embeds (`Tensor`):
@@ -110,10 +112,15 @@ class HunyuanVideo15Blocks(SequentialPipelineBlocks):
     Modular pipeline blocks for HunyuanVideo 1.5 text-to-video.
 
       Components:
-          text_encoder (`Qwen2_5_VLTextModel`) tokenizer (`Qwen2Tokenizer`) text_encoder_2 (`T5EncoderModel`)
-          tokenizer_2 (`ByT5Tokenizer`) guider (`ClassifierFreeGuidance`) scheduler (`FlowMatchEulerDiscreteScheduler`)
-          transformer (`HunyuanVideo15Transformer3DModel`) video_processor (`HunyuanVideo15ImageProcessor`) vae
-          (`AutoencoderKLHunyuanVideo15`)
+          - text_encoder (`Qwen2_5_VLTextModel`)
+          - tokenizer (`Qwen2Tokenizer`)
+          - text_encoder_2 (`T5EncoderModel`)
+          - tokenizer_2 (`ByT5Tokenizer`)
+          - guider (`ClassifierFreeGuidance`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`HunyuanVideo15Transformer3DModel`)
+          - video_processor (`HunyuanVideo15ImageProcessor`)
+          - vae (`AutoencoderKLHunyuanVideo15`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -172,8 +179,10 @@ class HunyuanVideo15Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     Denoise block for image-to-video that takes encoded conditions and runs the denoising process.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`HunyuanVideo15Transformer3DModel`)
-          video_processor (`HunyuanVideo15ImageProcessor`) guider (`ClassifierFreeGuidance`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`HunyuanVideo15Transformer3DModel`)
+          - video_processor (`HunyuanVideo15ImageProcessor`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt_embeds (`Tensor`):
@@ -249,7 +258,8 @@ class HunyuanVideo15AutoVaeEncoderStep(AutoPipelineBlocks):
        - If `image` is not provided, step will be skipped.
 
       Components:
-          vae (`AutoencoderKLHunyuanVideo15`) video_processor (`HunyuanVideo15ImageProcessor`)
+          - vae (`AutoencoderKLHunyuanVideo15`)
+          - video_processor (`HunyuanVideo15ImageProcessor`)
 
       Inputs:
           image (`Image | list`, *optional*):
@@ -292,7 +302,8 @@ class HunyuanVideo15AutoImageEncoderStep(AutoPipelineBlocks):
        - If `image` is not provided, step will be skipped.
 
       Components:
-          image_encoder (`SiglipVisionModel`) feature_extractor (`SiglipImageProcessor`)
+          - image_encoder (`SiglipVisionModel`)
+          - feature_extractor (`SiglipImageProcessor`)
 
       Inputs:
           image (`Image | list`, *optional*):
@@ -326,8 +337,10 @@ class HunyuanVideo15AutoCoreDenoiseStep(AutoPipelineBlocks):
        - `HunyuanVideo15CoreDenoiseStep` is used otherwise (text-to-video).
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`HunyuanVideo15Transformer3DModel`)
-          video_processor (`HunyuanVideo15ImageProcessor`) guider (`ClassifierFreeGuidance`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`HunyuanVideo15Transformer3DModel`)
+          - video_processor (`HunyuanVideo15ImageProcessor`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt_embeds (`Tensor`):
@@ -399,11 +412,17 @@ class HunyuanVideo15AutoBlocks(SequentialPipelineBlocks):
         - `image2video`: requires `image`, `prompt`
 
       Components:
-          text_encoder (`Qwen2_5_VLTextModel`) tokenizer (`Qwen2Tokenizer`) text_encoder_2 (`T5EncoderModel`)
-          tokenizer_2 (`ByT5Tokenizer`) guider (`ClassifierFreeGuidance`) vae (`AutoencoderKLHunyuanVideo15`)
-          video_processor (`HunyuanVideo15ImageProcessor`) image_encoder (`SiglipVisionModel`) feature_extractor
-          (`SiglipImageProcessor`) scheduler (`FlowMatchEulerDiscreteScheduler`) transformer
-          (`HunyuanVideo15Transformer3DModel`)
+          - text_encoder (`Qwen2_5_VLTextModel`)
+          - tokenizer (`Qwen2Tokenizer`)
+          - text_encoder_2 (`T5EncoderModel`)
+          - tokenizer_2 (`ByT5Tokenizer`)
+          - guider (`ClassifierFreeGuidance`)
+          - vae (`AutoencoderKLHunyuanVideo15`)
+          - video_processor (`HunyuanVideo15ImageProcessor`)
+          - image_encoder (`SiglipVisionModel`)
+          - feature_extractor (`SiglipImageProcessor`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`HunyuanVideo15Transformer3DModel`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -472,11 +491,17 @@ class HunyuanVideo15Image2VideoBlocks(SequentialPipelineBlocks):
     Modular pipeline blocks for HunyuanVideo 1.5 image-to-video.
 
       Components:
-          text_encoder (`Qwen2_5_VLTextModel`) tokenizer (`Qwen2Tokenizer`) text_encoder_2 (`T5EncoderModel`)
-          tokenizer_2 (`ByT5Tokenizer`) guider (`ClassifierFreeGuidance`) vae (`AutoencoderKLHunyuanVideo15`)
-          video_processor (`HunyuanVideo15ImageProcessor`) image_encoder (`SiglipVisionModel`) feature_extractor
-          (`SiglipImageProcessor`) scheduler (`FlowMatchEulerDiscreteScheduler`) transformer
-          (`HunyuanVideo15Transformer3DModel`)
+          - text_encoder (`Qwen2_5_VLTextModel`)
+          - tokenizer (`Qwen2Tokenizer`)
+          - text_encoder_2 (`T5EncoderModel`)
+          - tokenizer_2 (`ByT5Tokenizer`)
+          - guider (`ClassifierFreeGuidance`)
+          - vae (`AutoencoderKLHunyuanVideo15`)
+          - video_processor (`HunyuanVideo15ImageProcessor`)
+          - image_encoder (`SiglipVisionModel`)
+          - feature_extractor (`SiglipImageProcessor`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`HunyuanVideo15Transformer3DModel`)
 
       Inputs:
           prompt (`str`, *optional*):

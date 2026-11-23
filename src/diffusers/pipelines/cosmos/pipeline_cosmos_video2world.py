@@ -96,9 +96,7 @@ EXAMPLE_DOC_STRING = """
         >>> prompt = "The video depicts a winding mountain road covered in snow, with a single vehicle traveling along it. The road is flanked by steep, rocky cliffs and sparse vegetation. The landscape is characterized by rugged terrain and a river visible in the distance. The scene captures the solitude and beauty of a winter drive through a mountainous region."
         >>> video = load_video(
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cosmos/cosmos-video2world-input-vid.mp4"
-        ... )[
-        ...     :21
-        ... ]  # This example uses only the first 21 frames
+        ... )[:21]  # This example uses only the first 21 frames
 
         >>> video = pipe(video=video, prompt=prompt).frames[0]
         >>> export_to_video(video, "output.mp4", fps=30)
@@ -536,7 +534,7 @@ class CosmosVideoToWorldPipeline(DiffusionPipeline):
         callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
-    ):
+    ) -> CosmosPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

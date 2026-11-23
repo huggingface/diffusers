@@ -177,6 +177,7 @@ def _register_transformer_blocks_metadata():
     from ..models.transformers.transformer_cogview4 import CogView4TransformerBlock
     from ..models.transformers.transformer_cosmos3 import Cosmos3VLTextMoTDecoderLayer
     from ..models.transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
+    from ..models.transformers.transformer_flux2 import Flux2SingleTransformerBlock, Flux2TransformerBlock
     from ..models.transformers.transformer_hunyuan_video import (
         HunyuanVideoSingleTransformerBlock,
         HunyuanVideoTokenReplaceSingleTransformerBlock,
@@ -194,6 +195,7 @@ def _register_transformer_blocks_metadata():
         MotifVideoSingleTransformerBlock,
         MotifVideoTransformerBlock,
     )
+    from ..models.transformers.transformer_pan2 import PAN2TransformerBlock
     from ..models.transformers.transformer_qwenimage import QwenImageTransformerBlock
     from ..models.transformers.transformer_wan import WanTransformerBlock
     from ..models.transformers.transformer_z_image import ZImageTransformerBlock
@@ -259,6 +261,22 @@ def _register_transformer_blocks_metadata():
         ),
     )
 
+    # Flux2
+    TransformerBlockRegistry.register(
+        model_class=Flux2TransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=1,
+            return_encoder_hidden_states_index=0,
+        ),
+    )
+    TransformerBlockRegistry.register(
+        model_class=Flux2SingleTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=None,
+        ),
+    )
+
     # HunyuanVideo
     TransformerBlockRegistry.register(
         model_class=HunyuanVideoTransformerBlock,
@@ -317,6 +335,15 @@ def _register_transformer_blocks_metadata():
     )
     TransformerBlockRegistry.register(
         model_class=MotifVideoSingleTransformerBlock,
+        metadata=TransformerBlockMetadata(
+            return_hidden_states_index=0,
+            return_encoder_hidden_states_index=1,
+        ),
+    )
+
+    # PAN 2
+    TransformerBlockRegistry.register(
+        model_class=PAN2TransformerBlock,
         metadata=TransformerBlockMetadata(
             return_hidden_states_index=0,
             return_encoder_hidden_states_index=1,

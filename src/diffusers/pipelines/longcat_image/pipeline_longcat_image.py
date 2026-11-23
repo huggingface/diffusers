@@ -490,7 +490,7 @@ class LongCatImagePipeline(DiffusionPipeline, FromSingleFileMixin):
         enable_cfg_renorm: bool | None = True,
         cfg_renorm_min: float | None = 0.0,
         enable_prompt_rewrite: bool | None = True,
-    ):
+    ) -> LongCatImagePipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
@@ -632,7 +632,7 @@ class LongCatImagePipeline(DiffusionPipeline, FromSingleFileMixin):
 
                 self._current_timestep = t
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
-                with self.transformer.cache_context("cond"):
+                with self.transformer.cache_context("cond", timestep=t):
                     noise_pred_text = self.transformer(
                         hidden_states=latents,
                         timestep=timestep / 1000,
@@ -643,7 +643,7 @@ class LongCatImagePipeline(DiffusionPipeline, FromSingleFileMixin):
                         return_dict=False,
                     )[0]
                 if self.do_classifier_free_guidance:
-                    with self.transformer.cache_context("uncond"):
+                    with self.transformer.cache_context("uncond", timestep=t):
                         noise_pred_uncond = self.transformer(
                             hidden_states=latents,
                             timestep=timestep / 1000,

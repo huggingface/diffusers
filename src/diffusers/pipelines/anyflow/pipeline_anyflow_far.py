@@ -476,7 +476,7 @@ class AnyFlowFARPipeline(DiffusionPipeline, WanLoraLoaderMixin):
         use_mean_velocity: bool = True,
         use_kv_cache: bool = True,
         chunk_partition: Optional[List[int]] = None,
-    ):
+    ) -> AnyFlowPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

@@ -468,7 +468,7 @@ class AnyFlowDualTimestepTextImageEmbeddingCausal(nn.Module):
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
         far_cfg=None,
         clean_timestep=None,
-    ):
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
         if self.deltatime_type == "r":
             delta_timestep = r_timestep
         elif self.deltatime_type == "t-r":
@@ -749,7 +749,7 @@ class AnyFlowCausalRotaryPosEmbed(nn.Module):
         freqs = torch.cat([freqs_f, freqs_h, freqs_w], dim=-1)
         return freqs
 
-    def forward(self, far_cfg, device, clean_hidden_states=None):
+    def forward(self, far_cfg, device, clean_hidden_states=None) -> dict[str, torch.Tensor]:
         full_frame_freqs = self._forward_full_frame(
             num_frames=far_cfg["total_frames"],
             height=far_cfg["full_frame_shape"][0],
@@ -1111,7 +1111,12 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         attention_mask: Optional[BlockMask] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> Union[Transformer2DModelOutput, AnyFlowFARTransformerOutput, Tuple]:
+    ) -> Union[
+        Transformer2DModelOutput,
+        AnyFlowFARTransformerOutput,
+        Tuple[torch.Tensor],
+        Tuple[Optional[torch.Tensor], List[Dict[str, torch.Tensor]]],
+    ]:
         """
         FAR causal forward pass. Dispatches to one of three internal paths:
 
@@ -1285,7 +1290,7 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         return_dict: bool = True,
         kv_cache=None,
         kv_cache_flag=None,
-    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+    ) -> Union[AnyFlowFARTransformerOutput, Tuple[torch.Tensor, List[Dict[str, torch.Tensor]]]]:
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4)
 
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
@@ -1405,7 +1410,7 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         clean_timestep=None,
         kv_cache=None,
         kv_cache_flag=None,
-    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+    ) -> Union[AnyFlowFARTransformerOutput, Tuple[None, List[Dict[str, torch.Tensor]]]]:
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4)
         if clean_hidden_states is not None:
             clean_hidden_states = clean_hidden_states.permute(0, 2, 1, 3, 4)
@@ -1510,7 +1515,7 @@ class AnyFlowFARTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, Fr
         return_dict: bool = True,
         clean_hidden_states=None,
         clean_timestep=None,
-    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+    ) -> Union[Transformer2DModelOutput, Tuple[torch.Tensor]]:
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4)
         if clean_hidden_states is not None:
             clean_hidden_states = clean_hidden_states.permute(0, 2, 1, 3, 4)

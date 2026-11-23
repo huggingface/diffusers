@@ -127,7 +127,7 @@ class NucleusMoETimestepProjEmbeddings(nn.Module):
         if use_additional_t_cond:
             self.addition_t_embedding = nn.Embedding(2, embedding_dim)
 
-    def forward(self, timestep, hidden_states, addition_t_cond=None):
+    def forward(self, timestep, hidden_states, addition_t_cond=None) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_states.dtype))
 
@@ -841,7 +841,7 @@ class NucleusMoEImageTransformer2DModel(
         timestep: torch.LongTensor = None,
         attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> torch.Tensor | Transformer2DModelOutput:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`NucleusMoEImageTransformer2DModel`] forward method.
 

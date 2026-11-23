@@ -213,7 +213,7 @@ class WanRotaryPosEmbed(nn.Module):
         self.register_buffer("freqs_cos", torch.cat(freqs_cos, dim=1), persistent=False)
         self.register_buffer("freqs_sin", torch.cat(freqs_sin, dim=1), persistent=False)
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p_t, p_h, p_w = self.patch_size
         ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
@@ -263,7 +263,9 @@ class SanaCombinedTimestepGuidanceEmbeddings(nn.Module):
         self.silu = nn.SiLU()
         self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=True)
 
-    def forward(self, timestep: torch.Tensor, guidance: torch.Tensor = None, hidden_dtype: torch.dtype = None):
+    def forward(
+        self, timestep: torch.Tensor, guidance: torch.Tensor = None, hidden_dtype: torch.dtype = None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, D)
 

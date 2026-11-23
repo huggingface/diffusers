@@ -333,7 +333,7 @@ class WanTimeTextImageEmbedding(nn.Module):
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: torch.Tensor | None = None,
         timestep_seq_len: int | None = None,
-    ):
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
         timestep = self.timesteps_proj(timestep)
         if timestep_seq_len is not None:
             timestep = timestep.unflatten(0, (-1, timestep_seq_len))
@@ -392,7 +392,7 @@ class WanRotaryPosEmbed(nn.Module):
         self.register_buffer("freqs_cos", torch.cat(freqs_cos, dim=1), persistent=False)
         self.register_buffer("freqs_sin", torch.cat(freqs_sin, dim=1), persistent=False)
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         p_t, p_h, p_w = self.patch_size
         ppf, pph, ppw = num_frames // p_t, height // p_h, width // p_w
@@ -634,7 +634,7 @@ class WanTransformer3DModel(
         encoder_hidden_states_image: torch.Tensor | None = None,
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
-    ) -> torch.Tensor | dict[str, torch.Tensor]:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`WanTransformer3DModel`] forward method.
 

@@ -30,13 +30,22 @@ from tqdm.auto import tqdm
 from typing_extensions import Self
 
 from ..configuration_utils import ConfigMixin, FrozenDict
+from ..models.auto_model import AutoModel
+from ..models.modeling_utils import ModelMixin
 from ..pipelines.pipeline_loading_utils import (
     LOADABLE_CLASSES,
     _fetch_class_library_tuple,
     _unwrap_model,
+    filter_model_files,
     simple_get_class_obj,
 )
-from ..utils import PushToHubMixin, deprecate, is_accelerate_available, logging
+from ..utils import (
+    TRANSFORMERS_COMPONENT_AUX_FILES,
+    PushToHubMixin,
+    is_accelerate_available,
+    is_transformers_available,
+    logging,
+)
 from ..utils.dynamic_modules_utils import get_class_from_dynamic_module, resolve_trust_remote_code
 from ..utils.hub_utils import _resolve_revision, load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import empty_device_cache, is_compiled_module
@@ -59,10 +68,44 @@ from .modular_pipeline_utils import (
 )
 
 
+# classes whose components are loaded from weight files; a component without a type hint is loaded with `AutoModel`
+_MODEL_CLASSES = (ModelMixin, AutoModel)
+if is_transformers_available():
+    from transformers import PreTrainedModel
+
+    _MODEL_CLASSES = (*_MODEL_CLASSES, PreTrainedModel)
+
 if is_accelerate_available():
     import accelerate
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def _is_local_component(
+    pretrained_model_name_or_path: str | os.PathLike | None, component_spec: ComponentSpec
+) -> bool:
+    """
+    Whether the component's files are in `pretrained_model_name_or_path`, a local pipeline directory: weight files for
+    a model, the config file its class saves for a diffusers component without weights (schedulers, guiders, ...), one
+    of `TRANSFORMERS_COMPONENT_AUX_FILES` for a transformers one (tokenizers, processors, ...).
+    """
+    if pretrained_model_name_or_path is None:
+        return False
+    component_dir = os.path.join(pretrained_model_name_or_path, component_spec.subfolder or "")
+    if not os.path.isdir(component_dir):
+        return False
+    filenames = os.listdir(component_dir)
+
+    class_obj = component_spec.type_hint
+    is_model = class_obj is None or issubclass(class_obj, _MODEL_CLASSES)
+
+    if is_model:
+        return len(filter_model_files(filenames)) > 0
+
+    if issubclass(class_obj, ConfigMixin):
+        return class_obj.config_name in filenames
+
+    return any(filename in filenames for filename in TRANSFORMERS_COMPONENT_AUX_FILES)
 
 
 # map regular pipeline to modular pipeline class name
@@ -85,6 +128,17 @@ def _flux2_klein_map_fn(config_dict=None):
         return "Flux2KleinModularPipeline"
     else:
         return "Flux2KleinBaseModularPipeline"
+
+
+def _qwenimage21_map_fn(config_dict=None):
+    if config_dict is None:
+        return "QwenImage21ModularPipeline"
+
+    # The Turbo checkpoint ships its sampling grid as pipeline config; the base checkpoint has none.
+    if config_dict.get("sample_sigmas"):
+        return "QwenImage21TurboModularPipeline"
+    else:
+        return "QwenImage21ModularPipeline"
 
 
 def _wan_map_fn(config_dict=None):
@@ -140,23 +194,34 @@ MODULAR_PIPELINE_MAPPING = OrderedDict(
         ("flux-kontext", _create_default_map_fn("FluxKontextModularPipeline")),
         ("flux2", _create_default_map_fn("Flux2ModularPipeline")),
         ("flux2-klein", _flux2_klein_map_fn),
+        ("flux3", _create_default_map_fn("Flux3ModularPipeline")),
+        ("flux3-distilled", _create_default_map_fn("Flux3DistilledModularPipeline")),
         ("ideogram4", _create_default_map_fn("Ideogram4ModularPipeline")),
         ("krea2", _krea2_map_fn),
         ("qwenimage", _create_default_map_fn("QwenImageModularPipeline")),
         ("qwenimage-edit", _create_default_map_fn("QwenImageEditModularPipeline")),
         ("qwenimage-edit-plus", _create_default_map_fn("QwenImageEditPlusModularPipeline")),
         ("qwenimage-layered", _create_default_map_fn("QwenImageLayeredModularPipeline")),
+        ("qwenimage21", _qwenimage21_map_fn),
+        ("qwenimage21-turbo", _create_default_map_fn("QwenImage21TurboModularPipeline")),
         ("anima", _create_default_map_fn("AnimaModularPipeline")),
         ("z-image", _create_default_map_fn("ZImageModularPipeline")),
         ("cosmos3-omni", _create_default_map_fn("Cosmos3OmniModularPipeline")),
         ("helios", _create_default_map_fn("HeliosModularPipeline")),
         ("helios-pyramid", _helios_pyramid_map_fn),
+        ("kandinsky-s2v", _create_default_map_fn("KandinskyS2VModularPipeline")),
+        ("kandinsky-s2v-distilled", _create_default_map_fn("KandinskyS2VDistilledModularPipeline")),
         ("hunyuan-video-1.5", _create_default_map_fn("HunyuanVideo15ModularPipeline")),
+        ("echo", _create_default_map_fn("EchoModularPipeline")),
         ("ltx", _create_default_map_fn("LTXModularPipeline")),
         ("ltx2", _create_default_map_fn("LTX2ModularPipeline")),
         ("ltx2.5", _create_default_map_fn("LTX25ModularPipeline")),
         ("minimax-h3", _create_default_map_fn("MiniMaxH3ModularPipeline")),
+        ("minimax-h3-image", _create_default_map_fn("MiniMaxH3ImageModularPipeline")),
         ("minimax-music3", _create_default_map_fn("MiniMaxMusic3ModularPipeline")),
+        ("pan2", _create_default_map_fn("PAN2ModularPipeline")),
+        ("pika-h3-flex", _create_default_map_fn("PikaH3FlexModularPipeline")),
+        ("p-h3-image", _create_default_map_fn("PH3ImageModularPipeline")),
         ("ernie-image", _create_default_map_fn("ErnieImageModularPipeline")),
     ]
 )
@@ -454,11 +519,13 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         trust_remote_code = resolve_trust_remote_code(
             trust_remote_code, pretrained_model_name_or_path, has_remote_code
         )
-        if not has_remote_code and trust_remote_code:
+        if not has_remote_code:
             raise ValueError(
-                "Selected model repository does not happear to have any custom code or does not have a valid `config.json` file."
+                f"Selected model repository does not appear to have any custom code for {cls.__name__} or does not"
+                " have a valid `modular_config.json` file."
             )
 
+        # Only once the repository is trusted do we act on anything else it declares.
         if "requirements" in config and config["requirements"] is not None:
             _ = _validate_requirements(config["requirements"])
 
@@ -528,13 +595,12 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         # Check inputs
         for input_param in state_inputs:
             if input_param.name:
-                value = state.get(input_param.name)
-                if value is None:
-                    # if the value is None (not passed, or passed as None), the first block that reads it sets the
-                    # default at call time. For sequential blocks the default is already resolved at compile time
-                    # (first declaring block wins, see _get_inputs), but for conditional blocks the selected branch
-                    # is only known at runtime: disagreeing branch defaults merge to None (see combine_inputs) and
-                    # the block that actually runs applies its own declared default here
+                if input_param.name in state.values:
+                    # a value in the state, None included, is what the user passed or an earlier block set
+                    value = state.get(input_param.name)
+                else:
+                    # the first block that reads an input fills in its own default; `set_block_state` records it so
+                    # the blocks after it read the same value
                     value = input_param.default
                 if input_param.required and value is None:
                     raise ValueError(f"Required input '{input_param.name}' is missing")
@@ -564,9 +630,12 @@ class ModularPipelineBlocks(ConfigMixin, PushToHubMixin):
         for input_param in self.inputs:
             if input_param.name and hasattr(block_state, input_param.name):
                 param = getattr(block_state, input_param.name)
-                # Only add if the value is different from what's in the state
+                # Only add if the value is different from what's in the state, or the state did not hold it yet (the
+                # default this block filled in, see `get_block_state`).
+                # e.g. `num_inference_steps` is not passed. `set_timesteps` reads its default, 50, and records it here.
+                # `denoise` then reads 50 from the state.
                 current_value = state.get(input_param.name)
-                if current_value is not param:  # Using identity comparison to check if object was modified
+                if input_param.name not in state.values or current_value is not param:  # identity: object modified?
                     state.set(input_param.name, param, input_param.kwargs_type)
 
             elif input_param.kwargs_type:
@@ -777,7 +846,7 @@ class ConditionalPipelineBlocks(ModularPipelineBlocks):
         raise NotImplementedError(f"Subclass {self.__class__.__name__} must implement the `select_block` method.")
 
     @torch.no_grad()
-    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, pipeline, state: PipelineState) -> tuple["ModularPipeline", PipelineState]:
         trigger_kwargs = {name: state.get(name) for name in self.block_trigger_inputs if name is not None}
         block_name = self.select_block(**trigger_kwargs)
 
@@ -1149,7 +1218,7 @@ class SequentialPipelineBlocks(ModularPipelineBlocks):
         return self.intermediate_outputs
 
     @torch.no_grad()
-    def __call__(self, pipeline, state: PipelineState) -> PipelineState:
+    def __call__(self, pipeline, state: PipelineState) -> tuple["ModularPipeline", PipelineState]:
         for block_name, block in self.sub_blocks.items():
             try:
                 pipeline, state = block(pipeline, state)
@@ -1533,7 +1602,7 @@ class LoopSequentialPipelineBlocks(ModularPipelineBlocks):
                 raise
         return components, state
 
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple["ModularPipeline", PipelineState]:
         raise NotImplementedError("`__call__` method needs to be implemented by the subclass")
 
     @property
@@ -1765,6 +1834,11 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                     library, class_name, component_spec_dict = value
                     component_spec = self._dict_to_component_spec(name, component_spec_dict)
                     component_spec.default_creation_method = "from_pretrained"
+                    # a local copy of the repo (e.g. `hf download --local-dir`) keeps the original index, which
+                    # points at the Hub; load the components whose files are present locally from the copy
+                    if _is_local_component(pretrained_model_name_or_path, component_spec):
+                        component_spec.pretrained_model_name_or_path = str(pretrained_model_name_or_path)
+                        component_spec.revision = None
                     self._component_specs[name] = component_spec
 
                 elif name in self._config_specs:
@@ -1994,16 +2068,6 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 - `token` (`str`, *optional*):
                     The Hugging Face token to use for authentication.
         """
-        if "overwrite_modular_index" not in kwargs:
-            deprecate(
-                "overwrite_modular_index",
-                "0.43.0",
-                "The default of `overwrite_modular_index` in `ModularPipeline.save_pretrained` changed from `False`"
-                " to `True`: the saved `modular_model_index.json` now points each saved component at the destination"
-                " (the save directory, or `repo_id` when pushing to the Hub). Pass `overwrite_modular_index=False`"
-                " to keep the previously recorded loading specs, or pass `True` explicitly to silence this warning.",
-                standard_warn=False,
-            )
         overwrite_modular_index = kwargs.pop("overwrite_modular_index", True)
         repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
 
@@ -2658,7 +2722,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
         def module_is_sequentially_offloaded(module):
-            if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
+            if not is_accelerate_available():
                 return False
 
             _, _, is_loaded_in_8bit_bnb = _check_bnb_status(module)
@@ -2673,7 +2737,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
             )
 
         def module_is_offloaded(module):
-            if not is_accelerate_available() or is_accelerate_version("<", "0.17.0.dev0"):
+            if not is_accelerate_available():
                 return False
 
             return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, accelerate.hooks.CpuOffload)
@@ -2941,6 +3005,9 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
 
         # Add inputs to state, using defaults if not provided in the kwargs or the state
         # if same input already in the state, will override it if provided in the kwargs
+        # a None passed by the user is stored as None. A None default is not prefilled: the first block that reads
+        # the input fills in its own default and records it, see `get_block_state` and `set_block_state`. That is how
+        # a conditional branch gets its own default (`defaults_by_block`)
         for expected_input_param in self._blocks.inputs:
             name = expected_input_param.name
             default = expected_input_param.default
@@ -2951,7 +3018,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 kwargs_dict = passed_kwargs.pop(kwargs_type)
                 for k, v in kwargs_dict.items():
                     state.set(k, v, kwargs_type)
-            elif name is not None and name not in state.values:
+            elif name is not None and name not in state.values and default is not None:
                 state.set(name, default, kwargs_type)
 
         # Warn about unexpected inputs
@@ -2965,6 +3032,12 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
                 error_msg = f"Error in block: ({self._blocks.__class__.__name__}):\n"
                 logger.error(error_msg)
                 raise
+            finally:
+                # Cache hooks (FirstBlockCache, MagCache, ...) keep state across a run. Clear it so the next call
+                # starts fresh, as `maybe_free_model_hooks` does for standard pipelines.
+                for component in self.components.values():
+                    if hasattr(component, "_reset_stateful_cache"):
+                        component._reset_stateful_cache()
 
         if output is None:
             return state

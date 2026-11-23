@@ -62,6 +62,78 @@ pipe.transformer.set_attn_processor(QwenImage21FlexAttnProcessor())
 pipe.transformer.compile()
 ```
 
+## Loading single-file checkpoints
+
+```python
+import torch
+from diffusers import QwenImage21Pipeline, QwenImage21Transformer2DModel
+
+transformer = QwenImage21Transformer2DModel.from_single_file(
+    "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/blob/main/diffusion_models/qwen_image_2.1_bf16.safetensors",
+    dtype=torch.bfloat16,
+)
+pipe = QwenImage21Pipeline.from_pretrained("Qwen/Qwen-Image-2.1", transformer=transformer, dtype=torch.bfloat16).to(
+    "cuda"
+)
+```
+
+## Sampling sigmas
+
+Model authors can configure a default sampling grid with `sample_sigmas` in the pipeline config. When you load a
+released checkpoint, its default grid and scheduler settings are restored automatically.
+
+To experiment with a different grid at runtime, pass `sigmas` to the pipeline call:
+
+```python
+# Use the checkpoint's default sampling grid.
+image = pipe(prompt).images[0]
+
+# Override the default grid for this call.
+image = pipe(prompt, sigmas=[1.0, 0.8, 0.5, 0.2]).images[0]
+```
+
+The custom grid above illustrates the API; generation quality depends on the checkpoint and grid. Sigma lists exclude
+the terminal sigma, which the scheduler appends. Explicit `sigmas` override the configured `sample_sigmas`, and either
+list determines the number of steps instead of `num_inference_steps`. If neither is provided, the pipeline uses
+`num_inference_steps` to generate the schedule. The scheduler applies its configured processing to either grid.
+
+## Modular
+
+Qwen-Image 2.1 is also available as a [modular pipeline](../../modular_diffusers/overview). The same blocks run
+text-to-image and image-conditioned generation: pass `image` to condition on one or more images. Classifier-free
+guidance is configured through the `guider` component rather than a `true_cfg_scale` call argument, and the prefix KV
+cache is on by default (`use_kv_cache=False` turns it off).
+
+```python
+import torch
+from diffusers import ClassifierFreeGuidance, ModularPipeline
+
+pipe = ModularPipeline.from_pretrained("Qwen/Qwen-Image-2.1")
+pipe.load_components(dtype=torch.bfloat16)
+pipe.to("cuda")
+
+image = pipe(prompt="A capybara wearing a wizard hat, oil painting").images[0]
+
+# Turn classifier-free guidance on for an edit.
+pipe.update_components(guider=ClassifierFreeGuidance(guidance_scale=4.0))
+edited = pipe(prompt="Move it to a snowy mountain top", negative_prompt="blurry", image=image).images[0]
+```
+
+The Turbo checkpoint maps to its own blocks ([`QwenImage21TurboAutoBlocks`]): it runs without a `guider`, takes no
+`negative_prompt`, and samples the sigma grid it ships with. `ModularPipeline.from_pretrained` picks the Turbo blocks
+from the `sample_sigmas` entry in the checkpoint's config, so nothing needs configuring:
+
+```python
+import torch
+from diffusers import ModularPipeline
+
+pipe = ModularPipeline.from_pretrained("Qwen/Qwen-Image-2.1-Turbo")
+pipe.load_components(dtype=torch.bfloat16)
+pipe.to("cuda")
+
+image = pipe(prompt="A capybara wearing a wizard hat, oil painting").images[0]
+```
+
 ## QwenImage21Pipeline
 
 [[autodoc]] QwenImage21Pipeline
@@ -71,3 +143,19 @@ pipe.transformer.compile()
 ## QwenImagePipelineOutput
 
 [[autodoc]] pipelines.qwenimage.pipeline_output.QwenImagePipelineOutput
+
+## QwenImage21ModularPipeline
+
+[[autodoc]] QwenImage21ModularPipeline
+
+## QwenImage21AutoBlocks
+
+[[autodoc]] QwenImage21AutoBlocks
+
+## QwenImage21TurboModularPipeline
+
+[[autodoc]] QwenImage21TurboModularPipeline
+
+## QwenImage21TurboAutoBlocks
+
+[[autodoc]] QwenImage21TurboAutoBlocks

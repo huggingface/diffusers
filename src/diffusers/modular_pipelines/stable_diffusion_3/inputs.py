@@ -187,7 +187,9 @@ class StableDiffusion3TextInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusion3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.batch_size = block_state.prompt_embeds.shape[0]
@@ -282,7 +284,9 @@ class StableDiffusion3AdditionalInputsStep(ModularPipelineBlocks):
             ),
         ]
 
-    def __call__(self, components: StableDiffusion3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: StableDiffusion3ModularPipeline, state: PipelineState
+    ) -> tuple[StableDiffusion3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         for input_name in self._image_latent_inputs:

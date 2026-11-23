@@ -152,7 +152,9 @@ class Flux2TextEncoderStep(ModularPipelineBlocks):
         return prompt_embeds
 
     @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2ModularPipeline, state: PipelineState
+    ) -> tuple[Flux2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
 
@@ -214,7 +216,9 @@ class Flux2RemoteTextEncoderStep(ModularPipelineBlocks):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(block_state.prompt)}")
 
     @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2ModularPipeline, state: PipelineState
+    ) -> tuple[Flux2ModularPipeline, PipelineState]:
         import io
 
         import requests
@@ -353,7 +357,9 @@ class Flux2KleinTextEncoderStep(ModularPipelineBlocks):
         return prompt_embeds
 
     @torch.no_grad()
-    def __call__(self, components: Flux2KleinModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2KleinModularPipeline, state: PipelineState
+    ) -> tuple[Flux2KleinModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
 
@@ -495,7 +501,9 @@ class Flux2KleinBaseTextEncoderStep(ModularPipelineBlocks):
         return prompt_embeds
 
     @torch.no_grad()
-    def __call__(self, components: Flux2KleinModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2KleinModularPipeline, state: PipelineState
+    ) -> tuple[Flux2KleinModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
 
@@ -585,7 +593,9 @@ class Flux2VaeEncoderStep(ModularPipelineBlocks):
         return image_latents
 
     @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2ModularPipeline, state: PipelineState
+    ) -> tuple[Flux2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         condition_images = block_state.condition_images
 

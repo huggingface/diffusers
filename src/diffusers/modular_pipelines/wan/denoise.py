@@ -64,7 +64,9 @@ class WanLoopBeforeDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[WanModularPipeline, BlockState]:
         block_state.latent_model_input = block_state.latents.to(block_state.dtype)
         return components, block_state
 
@@ -104,7 +106,9 @@ class WanImage2VideoLoopBeforeDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[WanModularPipeline, BlockState]:
         block_state.latent_model_input = torch.cat(
             [block_state.latents, block_state.image_condition_latents], dim=1
         ).to(block_state.dtype)
@@ -181,7 +185,7 @@ class WanLoopDenoiser(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(
         self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
-    ) -> PipelineState:
+    ) -> tuple[WanModularPipeline, BlockState]:
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
 
         # The guider splits model inputs into separate batches for conditional/unconditional predictions.
@@ -206,13 +210,15 @@ class WanLoopDenoiser(ModularPipelineBlocks):
 
             # Predict the noise residual
             # store the noise_pred in guider_state_batch so that we can apply guidance across all batches
-            guider_state_batch.noise_pred = components.transformer(
-                hidden_states=block_state.latent_model_input.to(block_state.dtype),
-                timestep=t.expand(block_state.latent_model_input.shape[0]).to(block_state.dtype),
-                attention_kwargs=block_state.attention_kwargs,
-                return_dict=False,
-                **cond_kwargs,
-            )[0]
+            context_name = getattr(guider_state_batch, components.guider._identifier_key)
+            with components.transformer.cache_context(context_name, timestep=t):
+                guider_state_batch.noise_pred = components.transformer(
+                    hidden_states=block_state.latent_model_input.to(block_state.dtype),
+                    timestep=t.expand(block_state.latent_model_input.shape[0]).to(block_state.dtype),
+                    attention_kwargs=block_state.attention_kwargs,
+                    return_dict=False,
+                    **cond_kwargs,
+                )[0]
             components.guider.cleanup_models(components.transformer)
 
         # Perform guidance
@@ -315,7 +321,7 @@ class Wan22LoopDenoiser(ModularPipelineBlocks):
     @torch.no_grad()
     def __call__(
         self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
-    ) -> PipelineState:
+    ) -> tuple[WanModularPipeline, BlockState]:
         boundary_timestep = components.config.boundary_ratio * components.num_train_timesteps
         if t >= boundary_timestep:
             block_state.current_model = components.transformer
@@ -391,7 +397,9 @@ class WanLoopAfterDenoiser(ModularPipelineBlocks):
         )
 
     @torch.no_grad()
-    def __call__(self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: WanModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[WanModularPipeline, BlockState]:
         # Perform scheduler step using the predicted output
         latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(
@@ -441,7 +449,9 @@ class WanDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: WanModularPipeline, state: PipelineState
+    ) -> tuple[WanModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.num_warmup_steps = max(

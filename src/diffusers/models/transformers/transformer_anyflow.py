@@ -287,7 +287,7 @@ class AnyFlowDualTimestepTextImageEmbedding(nn.Module):
         encoder_hidden_states: torch.Tensor,
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
         layout_cfg=None,
-    ):
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
         if self.deltatime_type == "r":
             delta_timestep = r_timestep
         elif self.deltatime_type == "t-r":
@@ -384,7 +384,7 @@ class AnyFlowRotaryPosEmbed(nn.Module):
         freqs = torch.cat([freqs_f, freqs_h, freqs_w], dim=-1)
         return freqs
 
-    def forward(self, layout_cfg, device):
+    def forward(self, layout_cfg, device) -> dict[str, torch.Tensor]:
         freqs = self._forward_full_frame(
             num_frames=layout_cfg["total_frames"],
             height=layout_cfg["full_frame_shape"][0],
@@ -633,7 +633,7 @@ class AnyFlowTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromO
         encoder_hidden_states_image: Optional[torch.Tensor] = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> Union[Transformer2DModelOutput, Tuple]:
+    ) -> Union[Transformer2DModelOutput, Tuple[torch.Tensor]]:
         """
         Bidirectional flow-map forward pass. ``hidden_states`` is laid out as ``(B, F, C, H, W)`` (per-frame latents).
         The input is patchified with the standard ``patch_embedding`` (kernel = stride = ``patch_size``) and denoised

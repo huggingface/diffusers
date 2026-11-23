@@ -644,7 +644,7 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
         ] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         max_sequence_length: int = 512,
-    ):
+    ) -> MotifVideoPipelineOutput | tuple:
         r"""
         The call function to the pipeline for image-to-video generation.
 
@@ -855,7 +855,7 @@ class MotifVideoImage2VideoPipeline(DiffusionPipeline):
                     }
 
                     context_name = getattr(guider_state_batch, self.guider._identifier_key)
-                    with self.transformer.cache_context(context_name):
+                    with self.transformer.cache_context(context_name, timestep=t):
                         noise_pred = self.transformer(
                             hidden_states=hidden_states,
                             timestep=timestep,
