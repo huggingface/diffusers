@@ -356,13 +356,13 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
         pipe = self.get_pipeline().to("cpu")
 
         model_devices = [
-            component.device.type for component in pipe.components.values() if hasattr(component, "device")
+            component.device.type for component in pipe.components.values() if getattr(component, "device", None)
         ]
         assert all(device == "cpu" for device in model_devices), "All pipeline components are not on CPU"
 
         pipe.to(torch_device)
         model_devices = [
-            component.device.type for component in pipe.components.values() if hasattr(component, "device")
+            component.device.type for component in pipe.components.values() if getattr(component, "device", None)
         ]
         assert all(device == torch_device for device in model_devices), (
             "All pipeline components are not on accelerator device"
