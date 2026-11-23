@@ -28,7 +28,6 @@ from diffusers.modular_pipelines import (
 from diffusers.modular_pipelines.kandinsky_s2v.encoders import KandinskyS2VTextAudioEncoderStep
 from diffusers.modular_pipelines.kandinsky_s2v.modular_pipeline import DEFAULT_PROMPT
 
-from ...testing_utils import numpy_cosine_similarity_distance, require_accelerator, torch_device
 from ..testing_utils import (
     BaseModularPipelineTesterConfig,
     ModularGuiderTesterMixin,
@@ -51,19 +50,6 @@ NUM_LATENT_FRAMES = 8
 def dummy_waveform(seconds: int = 1) -> torch.Tensor:
     """A plain tone, as a mono waveform at 16 kHz."""
     return 0.25 * torch.sin(torch.arange(seconds * AUDIO_SAMPLE_RATE) / 24)
-
-
-def check_float16_inference(tester, expected_max_diff=5e-2):
-    """The mixin's fp16 check, with the pipeline loaded in fp16 rather than cast to it after loading.
-
-    Loading in a dtype keeps `_keep_in_fp32_modules` in fp32; `.to(torch.float16)` would cast them too.
-    """
-    outputs = []
-    for dtype in (torch.float32, torch.float16):
-        pipe = tester.get_pipeline(dtype=dtype).to(torch_device)
-        outputs.append(pipe(**tester.get_dummy_inputs(), output=tester.output_name).float().cpu())
-    max_diff = numpy_cosine_similarity_distance(outputs[0].flatten().numpy(), outputs[1].flatten().numpy())
-    assert max_diff < expected_max_diff, f"FP16 inference is different from FP32 inference (max_diff: {max_diff})"
 
 
 class KandinskyS2VModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
@@ -137,10 +123,6 @@ class TestKandinskyS2VModularPipelineFast(KandinskyS2VModularPipelineTesterConfi
     @pytest.mark.skip(reason="One video per call; there is no num_images_per_prompt")
     def test_num_images_per_prompt(self):
         pass
-
-    @require_accelerator
-    def test_float16_inference(self):
-        check_float16_inference(self)
 
     def test_two_chunks_carry_memory(self):
         """Two chunks end to end: the second is conditioned on the FramePack memory rolled from the first."""
@@ -269,10 +251,6 @@ class TestKandinskyS2VDistilledModularPipelineFast(
     @pytest.mark.skip(reason=FAST_SKIPS["test_num_images_per_prompt"])
     def test_num_images_per_prompt(self):
         pass
-
-    @require_accelerator
-    def test_float16_inference(self):
-        check_float16_inference(self)
 
 
 class TestKandinskyS2VDistilledModularPipelineLoading(
