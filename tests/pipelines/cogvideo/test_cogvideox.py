@@ -26,6 +26,7 @@ from ...testing_utils import (
     nightly,
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
+    require_torch_gpu,
     torch_device,
 )
 from ..testing_utils import (
@@ -125,6 +126,31 @@ class CogVideoXPipelineTesterConfig(BasePipelineTesterConfig):
             # Request torch outputs so tests compare torch tensors directly (see `BasePipelineTesterConfig`).
             "output_type": "pt",
         }
+
+
+class TestCogVideoXPipelineHostSync(CogVideoXPipelineTesterConfig):
+    @require_torch_gpu
+    def test_denoising_loop_does_not_sync_with_host(self):
+        # A device-to-host copy inside the loop stalls the CPU every step and leaves the
+        # step uncapturable by a CUDA graph.
+        pipe = CogVideoXPipeline(**self.get_dummy_components()).to(torch_device)
+        pipe.set_progress_bar_config(disable=True)
+
+        inputs = self.get_dummy_inputs()
+        inputs["num_inference_steps"] = 3
+        inputs["use_dynamic_cfg"] = True
+        last_step = inputs["num_inference_steps"] - 1
+
+        def toggle_sync_debug(pipe, i, t, callback_kwargs):
+            # Arm once the one-off setup copies are done, disarm before decoding.
+            torch.cuda.set_sync_debug_mode("error" if i < last_step else "default")
+            return callback_kwargs
+
+        inputs["callback_on_step_end"] = toggle_sync_debug
+        try:
+            pipe(**inputs)
+        finally:
+            torch.cuda.set_sync_debug_mode("default")
 
 
 class TestCogVideoXPipeline(CogVideoXPipelineTesterConfig, PipelineTesterMixin):
