@@ -33,6 +33,7 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
+from datasets import Image as DatasetImage
 from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
@@ -656,6 +657,12 @@ def make_train_dataset(args, tokenizer, accelerator):
             raise ValueError(
                 f"`--conditioning_image_column` value '{args.conditioning_image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
             )
+
+    # Local copies of datasets such as fill50k may store image paths as
+    # strings, while the preprocessing below expects decoded PIL images.
+    for column in (image_column, conditioning_image_column):
+        if not isinstance(dataset.features[column], DatasetImage):
+            dataset = dataset.cast_column(column, DatasetImage())
 
     def tokenize_captions(examples, is_train=True):
         captions = []
