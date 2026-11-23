@@ -10,15 +10,12 @@ on:
       - "src/diffusers/models/model_loading_utils.py"
       - "src/diffusers/pipelines/pipeline_utils.py"
       - "src/diffusers/pipelines/pipeline_loading_utils.py"
-      - "src/diffusers/modular_pipelines/modular_pipeline.py"
-      - "src/diffusers/modular_pipelines/modular_pipeline_utils.py"
       - "src/diffusers/**/*lora*.py"
       - "src/diffusers/**/*peft*.py"
       - "tests/lora/**"
       - "tests/**/*lora*.py"
       - "tests/**/*peft*.py"
       - "tests/pipelines/testing_utils/**.py"
-      - "tests/modular_pipelines/testing_utils/**.py"
       - "tests/models/test_modeling_common.py"
       - "tests/models/testing_utils/**.py"
       - "examples/**/*.py"
@@ -165,30 +162,16 @@ jobs:
       - name: Environment
         run: |
           diffusers-cli env
-      - name: Extract tests
-        id: extract_tests
-        run: |
-          pattern=$(python utils/extract_tests_from_mixin.py --type pipeline)
-          echo "$pattern" > /tmp/test_pattern.txt
-          echo "pattern_file=/tmp/test_pattern.txt" >> $GITHUB_OUTPUT
-
       - name: PyTorch CUDA checkpoint tests on Ubuntu
         env:
           HF_OIDC_RESOURCE: ${{ !github.event.pull_request.head.repo.fork && 'Diffusers-CI-Bot' || '' }}
           # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
           CUBLAS_WORKSPACE_CONFIG: :16:8
         run: |
-          if [ "${{ matrix.module }}" = "ip_adapters" ]; then
-              pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-              --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
-              tests/pipelines/${{ matrix.module }}
-          else
-              pattern=$(cat ${{ steps.extract_tests.outputs.pattern_file }})
-              pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-              -k "$pattern" \
-              --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
-              tests/pipelines/${{ matrix.module }}
-          fi
+          pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+            -m "core or memory or cpu_offload or group_offload or lora" \
+            --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
+            tests/pipelines/${{ matrix.module }}
 
       - name: Failure short reports
         if: ${{ failure() }}
@@ -220,7 +203,16 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-        module: [models, modular_pipelines, schedulers, hooks, lora, others]
+        include:
+          - { module: models, name: core, marker: "core" }
+          - { module: models, name: memory, marker: "memory or cpu_offload or group_offload" }
+          - { module: models, name: training, marker: "training" }
+          - { module: models, name: attention, marker: "attention" }
+          - { module: models, name: lora, marker: "lora" }
+          - { module: schedulers, name: all, marker: "" }
+          - { module: hooks, name: all, marker: "" }
+          - { module: lora, name: all, marker: "" }
+          - { module: others, name: all, marker: "" }
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -239,40 +231,26 @@ jobs:
       run: |
         diffusers-cli env
 
-    - name: Extract tests
-      id: extract_tests
-      if: matrix.module != 'lora'
-      run: |
-        pattern=$(python utils/extract_tests_from_mixin.py --type ${{ matrix.module }})
-        echo "$pattern" > /tmp/test_pattern.txt
-        echo "pattern_file=/tmp/test_pattern.txt" >> $GITHUB_OUTPUT
-
     - name: Run PyTorch CUDA tests
       env:
         HF_OIDC_RESOURCE: ${{ !github.event.pull_request.head.repo.fork && 'Diffusers-CI-Bot' || '' }}
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
-        if [ "${{ matrix.module }}" = "lora" ]; then
-          pytest -n 1 --max-worker-restart=0 --dist=loadfile -m lora tests/ \
-            --make-reports=tests_torch_cuda_lora
-        else
-          pattern=$(cat "${{ steps.extract_tests.outputs.pattern_file }}")
-          pytest -n 1 --max-worker-restart=0 --dist=loadfile -k "$pattern" tests/${{ matrix.module }} \
-            --make-reports=tests_torch_cuda_${{ matrix.module }}
-        fi
+        pytest -n 1 --max-worker-restart=0 --dist=loadfile -m "${{ matrix.marker }}" tests/${{ matrix.module }} \
+          --make-reports=tests_torch_cuda_${{ matrix.module }}_${{ matrix.name }}
 
     - name: Failure short reports
       if: ${{ failure() }}
       run: |
-        cat reports/tests_torch_cuda_${{ matrix.module }}_stats.txt
-        cat reports/tests_torch_cuda_${{ matrix.module }}_failures_short.txt
+        cat reports/tests_torch_cuda_${{ matrix.module }}_${{ matrix.name }}_stats.txt
+        cat reports/tests_torch_cuda_${{ matrix.module }}_${{ matrix.name }}_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
-        name: torch_cuda_test_reports_${{ matrix.module }}
+        name: torch_cuda_test_reports_${{ matrix.module }}_${{ matrix.name }}
         path: reports
 
   run_examples_tests:

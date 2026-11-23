@@ -37,7 +37,6 @@ if is_peft_available():
     from peft.tuners.tuners_utils import BaseTunerLayer
 
 
-pytestmark = pytest.mark.lora
 LORA_KEY = "unet.test.lora_A.weight"
 
 
