@@ -542,14 +542,3 @@ def state_dict_all_zero(state_dict, filter_str=None):
         state_dict = {k: v for k, v in state_dict.items() if any(f in k for f in filter_str)}
 
     return all(torch.all(param == 0).item() for param in state_dict.values())
-
-
-def _load_sft_file_metadata(model_file: str):
-    """A safetensors file's own `__metadata__`, minus safetensors' `format` entry."""
-    import safetensors.torch
-
-    with safetensors.torch.safe_open(model_file, framework="pt", device="cpu") as f:
-        metadata = f.metadata() or {}
-
-    metadata.pop("format", None)
-    return metadata

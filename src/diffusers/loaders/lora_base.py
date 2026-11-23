@@ -238,7 +238,7 @@ def _fetch_state_dict(
                 )
                 state_dict = load_state_dict(model_file)
 
-            except (IOError, safetensors.SafetensorError) as e:
+            except IOError as e:
                 if not allow_pickle:
                     raise e
                 # try loading non-safetensors weights
@@ -264,10 +264,7 @@ def _fetch_state_dict(
             )
             state_dict = load_state_dict(model_file)
     else:
-        state_dict = pretrained_model_name_or_path_or_dict
-
-    if not isinstance(state_dict, _TorchStateDict):
-        state_dict = _TorchStateDict(state_dict)
+        state_dict = _TorchStateDict(pretrained_model_name_or_path_or_dict)
 
     return state_dict
 

@@ -46,7 +46,7 @@ from ..utils import (
     logging,
 )
 from ..utils.distributed_utils import is_torch_dist_rank_zero
-from ..utils.state_dict_utils import _load_sft_file_metadata, _TorchStateDict
+from ..utils.state_dict_utils import _TorchStateDict
 
 
 logger = logging.get_logger(__name__)
@@ -166,11 +166,13 @@ def load_state_dict(
     try:
         file_extension = os.path.basename(checkpoint_file).split(".")[-1]
         if file_extension == SAFETENSORS_FILE_EXTENSION:
-            if disable_mmap:
-                state_dict = safetensors.torch.load(open(checkpoint_file, "rb").read())
-            else:
-                state_dict = safetensors.torch.load_file(checkpoint_file, device=map_location)
-            return _TorchStateDict(state_dict, metadata=_load_sft_file_metadata(checkpoint_file))
+            # `pread` reads tensor bytes with pread(2) instead of mapping the file.
+            backend = "pread" if disable_mmap else "mmap"
+            with safetensors.safe_open(checkpoint_file, framework="pt", device=map_location, backend=backend) as f:
+                metadata = f.metadata() or {}
+                state_dict = f.get_tensors()
+            metadata.pop("format", None)
+            return _TorchStateDict(state_dict, metadata=metadata)
         elif file_extension == GGUF_FILE_EXTENSION:
             return load_gguf_checkpoint(checkpoint_file)
         else:
