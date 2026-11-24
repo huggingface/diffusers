@@ -22,6 +22,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    ComfyTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
@@ -174,6 +175,22 @@ class TestKrea2TransformerSingleFile(Krea2TransformerTesterConfig, SingleFileTes
     @property
     def pretrained_model_kwargs(self):
         return {"subfolder": "transformer"}
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
+
+class TestKrea2TransformerComfy(Krea2TransformerTesterConfig, ComfyTesterMixin):
+    _in_channels = 64
+    _text_hidden_dim = 2560
+    _num_text_layers = 12
+    _text_seq_len = 32
+    _grid_size = 16
+
+    @property
+    def comfy_filename(self):
+        return "https://huggingface.co/Comfy-Org/Krea-2/blob/main/diffusion_models/krea2_raw_int8_convrot.safetensors"
 
     @property
     def torch_dtype(self):

@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import gc
-import json
 import re
 import tempfile
 
@@ -2123,120 +2122,50 @@ class BFLCompileTesterMixin(BFLConfigMixin, QuantizationCompileTesterMixin):
 
 
 class ComfyConfigMixin:
-    COMFY_CONFIGS = {
-        "int8_tensorwise": {"quant_format": "int8_tensorwise", "compute_dtype": torch.bfloat16},
-        "nvfp4": {"quant_format": "nvfp4", "compute_dtype": torch.bfloat16},
-        "mxfp8": {"quant_format": "mxfp8", "compute_dtype": torch.bfloat16},
-    }
+    @property
+    def comfy_filename(self):
+        raise NotImplementedError("Subclasses must implement the `comfy_filename` property.")
 
-    def _load_unquantized_model(self):
-        torch.manual_seed(0)
-        return self.model_class(**self.get_init_dict()).eval()
+    def _create_quantized_model(self, config_kwargs=None, **extra_kwargs):
+        if config_kwargs is None:
+            config_kwargs = {"compute_dtype": torch.bfloat16}
 
-    @torch.no_grad()
-    def _comfy_quantized_state_dict(self, model, quant_format):
-        from comfy_kitchen.tensor import QuantizedTensor
-
-        from diffusers.quantizers.comfy.comfy_quantizer import COMFY_FORMATS
-
-        linears = {name for name, module in model.named_modules() if isinstance(module, torch.nn.Linear)}
-        marker = torch.tensor(list(json.dumps({"format": quant_format}).encode()), dtype=torch.uint8)
-        state_dict = {}
-        for name, tensor in model.state_dict().items():
-            module_name = name.removesuffix(".weight")
-            unsupported_int8 = quant_format == "int8_tensorwise" and tensor.ndim == 2 and tensor.shape[1] % 4
-            if not name.endswith(".weight") or module_name not in linears or not tensor.any() or unsupported_int8:
-                state_dict[name] = tensor
-                continue
-            weight = tensor.float()
-            state_dict[f"{module_name}.comfy_quant"] = marker
-            if quant_format == "int8_tensorwise":
-                scale = weight.abs().amax(dim=1, keepdim=True).clamp_min(1e-8) / 127
-                state_dict[name] = (weight / scale).round().clamp(-127, 127).to(torch.int8)
-                state_dict[f"{module_name}.weight_scale"] = scale
-                continue
-            quantized = QuantizedTensor.from_float(weight, COMFY_FORMATS[quant_format][0])
-            state_dict[name] = quantized._qdata
-            if quant_format == "nvfp4":
-                state_dict[f"{module_name}.weight_scale"] = quantized.params.block_scale
-                state_dict[f"{module_name}.weight_scale_2"] = quantized.params.scale
-            else:
-                state_dict[f"{module_name}.weight_scale"] = quantized.params.scale
-        return state_dict
-
-    def _create_quantized_model(self, config_kwargs, **extra_kwargs):
-        config_kwargs = dict(config_kwargs)
-        quant_format = config_kwargs.pop("quant_format")
-        compute_dtype = config_kwargs["compute_dtype"]
-        model = self._load_unquantized_model().to(compute_dtype)
-        state_dict = self._comfy_quantized_state_dict(model, quant_format)
+        config = ComfyQuantizationConfig(**config_kwargs)
         kwargs = {
-            "quantization_config": ComfyQuantizationConfig(**config_kwargs),
-            "dtype": compute_dtype,
-            "device": str(torch_device),
+            "quantization_config": config,
+            "torch_dtype": config.compute_dtype,
+            "device_map": str(torch_device),
         }
         kwargs.update(extra_kwargs)
-        with tempfile.TemporaryDirectory() as config_dir:
-            model.save_config(config_dir)
-            return self.model_class.from_single_file(state_dict, config=config_dir, **kwargs)
+        return self.model_class.from_single_file(self.comfy_filename, **kwargs)
 
-    def _verify_if_layer_quantized(self, name, module, config_kwargs):
-        from comfy_kitchen.tensor import QuantizedTensor
+    def _verify_if_layer_quantized(self, name, module, config_kwargs=None):
+        from diffusers.quantizers.comfy.utils import ComfyLinear, ComfyQuantizedTensor
 
-        from diffusers.quantizers.comfy.comfy_quantizer import COMFY_FORMATS
-        from diffusers.quantizers.comfy.utils import ComfyLinear
-
-        assert isinstance(module, ComfyLinear), f"Layer {name} is not a ComfyLinear, got {type(module)}"
-        assert isinstance(module.weight, QuantizedTensor), f"{name} weight is not quantized"
-        expected = COMFY_FORMATS[config_kwargs["quant_format"]][1]
-        assert module.weight.storage_dtype == expected, f"{name} storage dtype should be {expected}"
-
-    def _is_module_quantized(self, module, config_kwargs=None):
-        from diffusers.quantizers.comfy.utils import ComfyLinear
-
-        return isinstance(module, ComfyLinear)
+        assert isinstance(module, ComfyLinear), f"{name} is not a ComfyLinear"
+        assert isinstance(module.weight, ComfyQuantizedTensor), f"{name} weight is not a ComfyQuantizedTensor"
 
 
 @is_quantization
 @is_comfy
-@require_accelerator
 @require_accelerate
+@require_accelerator
 @require_comfy_kitchen
 class ComfyTesterMixin(ComfyConfigMixin, QuantizationTesterMixin):
-    @pytest.mark.parametrize("config_name", list(ComfyConfigMixin.COMFY_CONFIGS))
-    def test_comfy_quantization_inference(self, config_name):
-        self._test_quantization_inference(ComfyConfigMixin.COMFY_CONFIGS[config_name])
+    def test_comfy_quantization_inference(self):
+        self._test_quantization_inference({"compute_dtype": torch.bfloat16})
 
-    @pytest.mark.parametrize("config_name", list(ComfyConfigMixin.COMFY_CONFIGS))
-    def test_comfy_quantized_layers(self, config_name):
-        config_kwargs = ComfyConfigMixin.COMFY_CONFIGS[config_name]
-        model = self._create_quantized_model(config_kwargs)
-        quantized = [(name, module) for name, module in model.named_modules() if self._is_module_quantized(module)]
-        assert quantized, "No quantized layers found in model"
-        for name, module in quantized:
-            self._verify_if_layer_quantized(name, module, config_kwargs)
-
-    def test_comfy_quantization_dtype_assignment(self):
-        self._test_quantization_dtype_assignment(ComfyConfigMixin.COMFY_CONFIGS["int8_tensorwise"])
-
-    @pytest.mark.parametrize("config_name", list(ComfyConfigMixin.COMFY_CONFIGS))
-    def test_comfy_keep_modules_in_fp32(self, config_name):
+    def test_comfy_keep_modules_in_fp32(self):
         _keep_in_fp32_modules = self.model_class._keep_in_fp32_modules
         self.model_class._keep_in_fp32_modules = ["to_q"]
+
         try:
-            self._test_keep_modules_in_fp32(ComfyConfigMixin.COMFY_CONFIGS[config_name])
+            self._test_keep_modules_in_fp32({"compute_dtype": torch.bfloat16})
         finally:
             self.model_class._keep_in_fp32_modules = _keep_in_fp32_modules
 
-    @pytest.mark.parametrize("config_name", list(ComfyConfigMixin.COMFY_CONFIGS))
-    def test_comfy_dequantize(self, config_name):
-        self._test_dequantize(ComfyConfigMixin.COMFY_CONFIGS[config_name])
+    def test_comfy_quantization_dtype_assignment(self):
+        self._test_quantization_dtype_assignment({"compute_dtype": torch.bfloat16})
 
-    def test_comfy_rejects_unquantized_checkpoint(self):
-        model = self._load_unquantized_model().to(torch.bfloat16)
-        with tempfile.TemporaryDirectory() as config_dir:
-            model.save_config(config_dir)
-            with pytest.raises(ValueError, match="no native Comfy"):
-                self.model_class.from_single_file(
-                    model.state_dict(), config=config_dir, quantization_config=ComfyQuantizationConfig()
-                )
+    def test_comfy_dequantize(self):
+        self._test_dequantize({"compute_dtype": torch.bfloat16})

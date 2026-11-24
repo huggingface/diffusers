@@ -23,6 +23,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    ComfyTesterMixin,
     ContextParallelTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
@@ -223,3 +224,18 @@ class TestMiniMaxH3TransformerTensorParallel(MiniMaxH3TransformerTesterConfig, T
 
 class TestMiniMaxH3TransformerTensorParallelNeuron(MiniMaxH3TransformerTesterConfig, TensorParallelNeuronTesterMixin):
     """Tensor Parallel inference test for the MiniMax-H3 transformer on AWS Neuron."""
+
+
+class TestMiniMaxH3TransformerComfy(MiniMaxH3TransformerTesterConfig, ComfyTesterMixin):
+    @property
+    def comfy_filename(self):
+        return "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_fl2va_int8_convrot.safetensors"
+
+    def get_init_dict(self) -> dict:
+        return {"patch_size": [1, 2, 2], "in_channels": 24, "audio_in_channels": 32, "text_dim": 5120}
+
+    def get_dummy_inputs(self):
+        inputs = super().get_dummy_inputs(batch_size=1)
+        for name in ("hidden_states", "audio_hidden_states", "encoder_hidden_states"):
+            inputs[name] = inputs[name].to(torch.bfloat16)
+        return inputs
