@@ -49,6 +49,7 @@ from ...testing_utils import (
     is_bfl,
     is_bitsandbytes,
     is_gguf,
+    is_lora,
     is_modelopt,
     is_quantization,
     is_sdnq,
@@ -684,6 +685,7 @@ class BitsAndBytesTesterMixin(BitsAndBytesConfigMixin, QuantizationTesterMixin):
         assert model.device.type == torch.device(torch_device).type
         assert model.get_memory_footprint() == pytest.approx(mem_before)
 
+    @is_lora
     @pytest.mark.parametrize("config_name", ["4bit_nf4"], ids=["4bit_nf4"])
     def test_bnb_quantization_lora_inference(self, config_name):
         self._test_quantization_lora_inference(BitsAndBytesConfigMixin.BNB_CONFIGS[config_name])
@@ -914,6 +916,7 @@ class TorchAoTesterMixin(TorchAoConfigMixin, QuantizationTesterMixin):
     def test_torchao_quantized_layers(self, quant_type):
         self._test_quantized_layers(TorchAoConfigMixin.TORCHAO_QUANT_TYPES[quant_type])
 
+    @is_lora
     @pytest.mark.parametrize("quant_type", ["int8wo"], ids=["int8wo"])
     def test_torchao_quantization_lora_inference(self, quant_type):
         self._test_quantization_lora_inference(TorchAoConfigMixin.TORCHAO_QUANT_TYPES[quant_type])
@@ -1157,6 +1160,7 @@ class GGUFTesterMixin(GGUFConfigMixin, QuantizationTesterMixin):
     def test_gguf_quantization_dtype_assignment(self):
         self._test_quantization_dtype_assignment({"compute_dtype": torch.bfloat16})
 
+    @is_lora
     def test_gguf_quantization_lora_inference(self):
         self._test_quantization_lora_inference({"compute_dtype": torch.bfloat16})
 
@@ -1254,6 +1258,7 @@ class ModelOptTesterMixin(ModelOptConfigMixin, QuantizationTesterMixin):
     def test_modelopt_quantization_dtype_assignment(self, config_name):
         self._test_quantization_dtype_assignment(ModelOptConfigMixin.MODELOPT_CONFIGS[config_name])
 
+    @is_lora
     @pytest.mark.parametrize("config_name", ["fp8"], ids=["fp8"])
     def test_modelopt_quantization_lora_inference(self, config_name):
         self._test_quantization_lora_inference(ModelOptConfigMixin.MODELOPT_CONFIGS[config_name])
@@ -2040,6 +2045,7 @@ class BFLTesterMixin(BFLConfigMixin, QuantizationTesterMixin):
     def test_bfl_quantization_dtype_assignment(self, config_name):
         self._test_quantization_dtype_assignment(BFLConfigMixin.BFL_CONFIGS[config_name])
 
+    @is_lora
     @pytest.mark.parametrize("config_name", ["fp8r"], ids=["fp8r"])
     def test_bfl_quantization_lora_inference(self, config_name):
         self._test_quantization_lora_inference(BFLConfigMixin.BFL_CONFIGS[config_name])
