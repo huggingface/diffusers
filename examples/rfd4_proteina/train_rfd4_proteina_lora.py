@@ -533,11 +533,13 @@ def main():
         collate_fn=collate_fn,
         num_workers=args.dataloader_num_workers,
     )
+    # Check the PR https://github.com/huggingface/diffusers/pull/8312 for detailed explanation.
+    num_training_steps_for_scheduler = args.max_train_steps * accelerator.num_processes
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
         num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
-        num_training_steps=args.max_train_steps * accelerator.num_processes,
+        num_training_steps=num_training_steps_for_scheduler,
     )
     transformer, optimizer, dataloader, lr_scheduler = accelerator.prepare(
         transformer, optimizer, dataloader, lr_scheduler
