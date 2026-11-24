@@ -76,8 +76,7 @@ class Flux2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestFlux2ModularPipelineFast(Flux2ModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    def test_float16_inference(self):
-        super().test_float16_inference(9e-2)
+    pass
 
 
 class TestFlux2ModularPipelineLoading(Flux2ModularPipelineTesterConfig, ModularLoadingTesterMixin):
@@ -144,9 +143,6 @@ class Flux2ImageConditionedModularPipelineTesterConfig(BaseModularPipelineTester
 class TestFlux2ImageConditionedModularPipelineFast(
     Flux2ImageConditionedModularPipelineTesterConfig, ModularPipelineTesterMixin
 ):
-    def test_float16_inference(self):
-        super().test_float16_inference(9e-2)
-
     @pytest.mark.skip(reason="batched inference is currently not supported")
     def test_inference_batch_single_identical(self, batch_size=2, expected_max_diff=0.0001):
         return

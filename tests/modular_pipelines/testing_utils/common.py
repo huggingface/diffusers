@@ -23,10 +23,10 @@ import diffusers
 from diffusers import ModularPipeline, ModularPipelineBlocks
 from diffusers.utils import logging
 
+from ...pipelines.testing_utils.common import cast_pipeline_to_dtype
 from ...testing_utils import (
     CaptureLogger,
     backend_empty_cache,
-    numpy_cosine_similarity_distance,
     require_accelerator,
     torch_device,
 )
@@ -312,57 +312,35 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
         max_diff = torch.abs(output_batch - output).max()
         assert max_diff < expected_max_diff, "Batch inference results different from single inference results"
 
+    @pytest.mark.skipif(torch_device not in ["cuda", "xpu"], reason="half-precision inference requires CUDA or XPU")
     @require_accelerator
-    def test_float16_inference(self, expected_max_diff=5e-2):
-        pipe = self.get_pipeline()
-        pipe.to(torch_device, torch.float32)
-
-        pipe_fp16 = self.get_pipeline()
-        pipe_fp16.to(torch_device, torch.float16)
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=str)
+    def test_half_precision_inference_no_nan(self, dtype):
+        # Models are usually run in half precision (fp16/bf16), so rather than comparing against an fp32 reference
+        # (which carries little signal) we just run half-precision inference and check the output has no NaNs.
+        pipe = cast_pipeline_to_dtype(self.get_pipeline().to(torch_device), dtype)
 
         inputs = self.get_dummy_inputs()
-        # Reset generator in case it is used inside dummy inputs
         if "generator" in inputs:
             inputs["generator"] = self.get_generator(0)
-
         output = pipe(**inputs, output=self.output_name)
 
-        fp16_inputs = self.get_dummy_inputs()
-        # Reset generator in case it is used inside dummy inputs
-        if "generator" in fp16_inputs:
-            fp16_inputs["generator"] = self.get_generator(0)
-
-        output_fp16 = pipe_fp16(**fp16_inputs, output=self.output_name)
-
-        output_tensor = output.float().cpu()
-        output_fp16_tensor = output_fp16.float().cpu()
-
-        # Check for NaNs in outputs (can happen with tiny models in FP16)
-        if torch.isnan(output_tensor).any() or torch.isnan(output_fp16_tensor).any():
-            pytest.skip("FP16 inference produces NaN values - this is a known issue with tiny models")
-
-        max_diff = numpy_cosine_similarity_distance(
-            output_tensor.flatten().numpy(), output_fp16_tensor.flatten().numpy()
+        assert not torch.isnan(output).any(), (
+            f"`{self.pipeline_class.__name__}` produced NaNs during {dtype} inference."
         )
-
-        # Check if cosine similarity is NaN (which can happen if vectors are zero or very small)
-        if torch.isnan(torch.tensor(max_diff)):
-            pytest.skip("Cosine similarity is NaN - outputs may be too small for reliable comparison")
-
-        assert max_diff < expected_max_diff, f"FP16 inference is different from FP32 inference (max_diff: {max_diff})"
 
     @require_accelerator
     def test_to_device(self):
         pipe = self.get_pipeline().to("cpu")
 
         model_devices = [
-            component.device.type for component in pipe.components.values() if hasattr(component, "device")
+            component.device.type for component in pipe.components.values() if getattr(component, "device", None)
         ]
         assert all(device == "cpu" for device in model_devices), "All pipeline components are not on CPU"
 
         pipe.to(torch_device)
         model_devices = [
-            component.device.type for component in pipe.components.values() if hasattr(component, "device")
+            component.device.type for component in pipe.components.values() if getattr(component, "device", None)
         ]
         assert all(device == torch_device for device in model_devices), (
             "All pipeline components are not on accelerator device"
