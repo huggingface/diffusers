@@ -39,7 +39,8 @@ class KandinskyS2VDistilledCoreDenoiseStep(SequentialPipelineBlocks):
     the video chunk by chunk with the pi-Flow scheduler.
 
       Components:
-          transformer (`KandinskyS2VTransformer3DModel`) scheduler (`PiflowScheduler`)
+          - transformer (`KandinskyS2VTransformer3DModel`)
+          - scheduler (`PiflowScheduler`)
 
       Inputs:
           reference_latents (`Tensor`):
@@ -106,9 +107,14 @@ class KandinskyS2VDistilledAutoBlocks(SequentialPipelineBlocks):
     segments per chunk and no guidance, which is distilled into the student.
 
       Components:
-          text_encoder (`Qwen2_5OmniThinkerForConditionalGeneration`) tokenizer (`Qwen2_5OmniProcessor`) text_encoder_2
-          (`CLIPTextModel`) tokenizer_2 (`CLIPTokenizer`) vae (`AutoencoderKLHunyuanVideo`) video_processor
-          (`VideoProcessor`) transformer (`KandinskyS2VTransformer3DModel`) scheduler (`PiflowScheduler`)
+          - text_encoder (`Qwen2_5OmniThinkerForConditionalGeneration`)
+          - tokenizer (`Qwen2_5OmniProcessor`)
+          - text_encoder_2 (`CLIPTextModel`)
+          - tokenizer_2 (`CLIPTokenizer`)
+          - vae (`AutoencoderKLHunyuanVideo`)
+          - video_processor (`VideoProcessor`)
+          - transformer (`KandinskyS2VTransformer3DModel`)
+          - scheduler (`PiflowScheduler`)
 
       Inputs:
           prompt (`str`, *optional*, defaults to The video presents a stable medium close-up of a subject facing the

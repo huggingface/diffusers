@@ -118,7 +118,7 @@ context_tensor = torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0).unsqueeze(1
 prompt = (
     "A towering, battle-scarred humanoid robot, reminiscent of a Transformer with powerful, segmented armor "
     "and glowing red optics, walking through the skeletal remains of a city ruin. Twisted metal and shattered "
-    "concrete crunch under its heavy steps, as the robot scans the desolate, dust-choked skyline under an dark sky."
+    "concrete crunch under its heavy steps, as the robot scans the desolate, dust-choked skyline under a dark sky."
 )
 video = pipe(
     prompt=prompt,

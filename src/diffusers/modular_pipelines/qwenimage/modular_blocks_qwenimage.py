@@ -66,8 +66,9 @@ class QwenImageAutoTextEncoderStep(AutoPipelineBlocks):
     Text encoder step that encodes the text prompt into a text embedding. This is an auto pipeline block.
 
       Components:
-          text_encoder (`Qwen2_5_VLForConditionalGeneration`): The text encoder to use tokenizer (`Qwen2Tokenizer`):
-          The tokenizer to use guider (`ClassifierFreeGuidance`)
+          - text_encoder (`Qwen2_5_VLForConditionalGeneration`): The text encoder to use
+          - tokenizer (`Qwen2Tokenizer`): The tokenizer to use
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -114,7 +115,8 @@ class QwenImageInpaintVaeEncoderStep(SequentialPipelineBlocks):
        - Creates `image_latents`.
 
       Components:
-          image_mask_processor (`InpaintProcessor`) vae (`AutoencoderKLQwenImage`)
+          - image_mask_processor (`InpaintProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
 
       Inputs:
           mask_image (`Image`):
@@ -161,7 +163,8 @@ class QwenImageImg2ImgVaeEncoderStep(SequentialPipelineBlocks):
     Vae encoder step that preprocess andencode the image inputs into their latent representations.
 
       Components:
-          image_processor (`VaeImageProcessor`) vae (`AutoencoderKLQwenImage`)
+          - image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
 
       Inputs:
           image (`Image | list`):
@@ -216,8 +219,9 @@ class QwenImageOptionalControlNetVaeEncoderStep(AutoPipelineBlocks):
        - if `control_image` is not provided, step will be skipped.
 
       Components:
-          vae (`AutoencoderKLQwenImage`) controlnet (`QwenImageControlNetModel`) control_image_processor
-          (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
+          - controlnet (`QwenImageControlNetModel`)
+          - control_image_processor (`VaeImageProcessor`)
 
       Inputs:
           control_image (`Image`, *optional*):
@@ -260,7 +264,7 @@ class QwenImageImg2ImgInputStep(SequentialPipelineBlocks):
     Input step that prepares the inputs for the img2img denoising step. It:
 
       Components:
-          pachifier (`QwenImagePachifier`)
+          - pachifier (`QwenImagePachifier`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -323,7 +327,7 @@ class QwenImageInpaintInputStep(SequentialPipelineBlocks):
     Input step that prepares the inputs for the inpainting denoising step. It:
 
       Components:
-          pachifier (`QwenImagePachifier`)
+          - pachifier (`QwenImagePachifier`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -400,7 +404,8 @@ class QwenImageInpaintPrepareLatentsStep(SequentialPipelineBlocks):
        - Create the pachified latents `mask` based on the processedmask image.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) pachifier (`QwenImagePachifier`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - pachifier (`QwenImagePachifier`)
 
       Inputs:
           latents (`Tensor`):
@@ -452,8 +457,10 @@ class QwenImageCoreDenoiseStep(SequentialPipelineBlocks):
     (timesteps, latents, rope inputs etc.).
 
       Components:
-          pachifier (`QwenImagePachifier`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`)
+          - pachifier (`QwenImagePachifier`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -525,8 +532,10 @@ class QwenImageInpaintCoreDenoiseStep(SequentialPipelineBlocks):
     task.
 
       Components:
-          pachifier (`QwenImagePachifier`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`)
+          - pachifier (`QwenImagePachifier`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -606,8 +615,10 @@ class QwenImageImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
     task.
 
       Components:
-          pachifier (`QwenImagePachifier`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`)
+          - pachifier (`QwenImagePachifier`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -685,8 +696,11 @@ class QwenImageControlNetCoreDenoiseStep(SequentialPipelineBlocks):
     (timesteps, latents, rope inputs etc.).
 
       Components:
-          pachifier (`QwenImagePachifier`) scheduler (`FlowMatchEulerDiscreteScheduler`) controlnet
-          (`QwenImageControlNetModel`) guider (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`)
+          - pachifier (`QwenImagePachifier`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - controlnet (`QwenImageControlNetModel`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -771,8 +785,11 @@ class QwenImageControlNetInpaintCoreDenoiseStep(SequentialPipelineBlocks):
     task.
 
       Components:
-          pachifier (`QwenImagePachifier`) scheduler (`FlowMatchEulerDiscreteScheduler`) controlnet
-          (`QwenImageControlNetModel`) guider (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`)
+          - pachifier (`QwenImagePachifier`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - controlnet (`QwenImageControlNetModel`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -865,8 +882,11 @@ class QwenImageControlNetImg2ImgCoreDenoiseStep(SequentialPipelineBlocks):
     task.
 
       Components:
-          pachifier (`QwenImagePachifier`) scheduler (`FlowMatchEulerDiscreteScheduler`) controlnet
-          (`QwenImageControlNetModel`) guider (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`)
+          - pachifier (`QwenImagePachifier`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - controlnet (`QwenImageControlNetModel`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -1022,7 +1042,8 @@ class QwenImageDecodeStep(SequentialPipelineBlocks):
     Decode step that decodes the latents to images and postprocess the generated image.
 
       Components:
-          vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           latents (`Tensor`):
@@ -1053,7 +1074,8 @@ class QwenImageInpaintDecodeStep(SequentialPipelineBlocks):
     overally to the original image.
 
       Components:
-          vae (`AutoencoderKLQwenImage`) image_mask_processor (`InpaintProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
+          - image_mask_processor (`InpaintProcessor`)
 
       Inputs:
           latents (`Tensor`):
@@ -1123,11 +1145,17 @@ class QwenImageAutoBlocks(SequentialPipelineBlocks):
         - `controlnet_inpainting`: requires `prompt`, `mask_image`, `image`, `control_image`
 
       Components:
-          text_encoder (`Qwen2_5_VLForConditionalGeneration`): The text encoder to use tokenizer (`Qwen2Tokenizer`):
-          The tokenizer to use guider (`ClassifierFreeGuidance`) image_mask_processor (`InpaintProcessor`) vae
-          (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`) controlnet (`QwenImageControlNetModel`)
-          control_image_processor (`VaeImageProcessor`) pachifier (`QwenImagePachifier`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) transformer (`QwenImageTransformer2DModel`)
+          - text_encoder (`Qwen2_5_VLForConditionalGeneration`): The text encoder to use
+          - tokenizer (`Qwen2Tokenizer`): The tokenizer to use
+          - guider (`ClassifierFreeGuidance`)
+          - image_mask_processor (`InpaintProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
+          - image_processor (`VaeImageProcessor`)
+          - controlnet (`QwenImageControlNetModel`)
+          - control_image_processor (`VaeImageProcessor`)
+          - pachifier (`QwenImagePachifier`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           prompt (`str`, *optional*):

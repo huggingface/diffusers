@@ -9,9 +9,9 @@ Unless required by applicable law or agreed to in writing, software distributed 
 an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License. -->
 
-# AutoencoderKLPH3Image
+# AutoencoderKLPImageOSS
 
-The image VAE of [P-H3-Image](https://huggingface.co/PrunaAI/P-H3-Image) by Pruna AI. It uses the encoder and latent space of MiniMax-H3's [video VAE](./autoencoderkl_minimax_h3), with a ViT decoder that decodes a single latent frame into an image.
+The image VAE of [P-Image-OSS](https://huggingface.co/PrunaAI/P-Image-OSS) by Pruna AI. It uses the encoder and latent space of MiniMax-H3's [video VAE](./autoencoderkl_minimax_h3), with a ViT decoder that decodes a single latent frame into an image.
 
 It follows the conventions of [`AutoencoderKLMiniMaxH3`]:
 
@@ -22,18 +22,18 @@ It follows the conventions of [`AutoencoderKLMiniMaxH3`]:
 
 ```python
 import torch
-from diffusers import AutoencoderKLPH3Image
+from diffusers import AutoencoderKLPImageOSS
 
-vae = AutoencoderKLPH3Image.from_pretrained("PrunaAI/P-H3-Image", subfolder="vae", dtype=torch.bfloat16).to(
+vae = AutoencoderKLPImageOSS.from_pretrained("PrunaAI/P-Image-OSS", subfolder="vae", dtype=torch.bfloat16).to(
     "cuda"
 )  # or "mps", "xpu", "cpu"
 ```
 
 The encoder and the decoder's output projection stay in float32 whatever `dtype` the model is loaded in.
 
-## AutoencoderKLPH3Image
+## AutoencoderKLPImageOSS
 
-[[autodoc]] AutoencoderKLPH3Image
+[[autodoc]] AutoencoderKLPImageOSS
     - encode
     - decode
     - all

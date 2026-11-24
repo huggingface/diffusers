@@ -49,7 +49,8 @@ class HeliosAutoVaeEncoderStep(AutoPipelineBlocks):
        - If neither is provided, step will be skipped.
 
       Components:
-          vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
 
       Inputs:
           video (`None`, *optional*):
@@ -100,7 +101,9 @@ class HeliosCoreDenoiseStep(SequentialPipelineBlocks):
     Denoise block that takes encoded conditions and runs the chunk-based denoising process.
 
       Components:
-          transformer (`HeliosTransformer3DModel`) scheduler (`HeliosScheduler`) guider (`ClassifierFreeGuidance`)
+          - transformer (`HeliosTransformer3DModel`)
+          - scheduler (`HeliosScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -166,7 +169,9 @@ class HeliosI2VCoreDenoiseStep(SequentialPipelineBlocks):
     I2V denoise block that seeds history with image latents and uses I2V-aware chunk preparation.
 
       Components:
-          transformer (`HeliosTransformer3DModel`) scheduler (`HeliosScheduler`) guider (`ClassifierFreeGuidance`)
+          - transformer (`HeliosTransformer3DModel`)
+          - scheduler (`HeliosScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -260,7 +265,9 @@ class HeliosV2VCoreDenoiseStep(SequentialPipelineBlocks):
     V2V denoise block that seeds history with video latents and uses I2V-aware chunk preparation.
 
       Components:
-          transformer (`HeliosTransformer3DModel`) scheduler (`HeliosScheduler`) guider (`ClassifierFreeGuidance`)
+          - transformer (`HeliosTransformer3DModel`)
+          - scheduler (`HeliosScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -355,7 +362,9 @@ class HeliosAutoCoreDenoiseStep(ConditionalPipelineBlocks):
        - `HeliosCoreDenoiseStep` (text2video) for text-to-video tasks.
 
       Components:
-          transformer (`HeliosTransformer3DModel`) scheduler (`HeliosScheduler`) guider (`ClassifierFreeGuidance`)
+          - transformer (`HeliosTransformer3DModel`)
+          - scheduler (`HeliosScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -457,9 +466,13 @@ class HeliosAutoBlocks(SequentialPipelineBlocks):
         - `video2video`: requires `prompt`, `video`
 
       Components:
-          text_encoder (`UMT5EncoderModel`) tokenizer (`AutoTokenizer`) guider (`ClassifierFreeGuidance`) vae
-          (`AutoencoderKLWan`) video_processor (`VideoProcessor`) transformer (`HeliosTransformer3DModel`) scheduler
-          (`HeliosScheduler`)
+          - text_encoder (`UMT5EncoderModel`)
+          - tokenizer (`AutoTokenizer`)
+          - guider (`ClassifierFreeGuidance`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
+          - transformer (`HeliosTransformer3DModel`)
+          - scheduler (`HeliosScheduler`)
 
       Inputs:
           prompt (`str`):

@@ -35,6 +35,7 @@ from ...testing_utils import (
     assert_tensors_close,
     backend_empty_cache,
     floats_tensor,
+    is_lora,
     load_image,
     nightly,
     numpy_cosine_similarity_distance,
@@ -552,6 +553,7 @@ class TestStableDiffusionXLMultiAdapterPipelineIPAdapter(
     """IP-Adapter tests for the SDXL pipeline driven by a `MultiAdapter`."""
 
 
+@is_lora
 @slow
 @nightly
 @require_torch_accelerator

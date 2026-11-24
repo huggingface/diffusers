@@ -53,7 +53,8 @@ class WanAnimate2ImageEncodeStep(SequentialPipelineBlocks):
     into `encoder_hidden_states_image`.
 
       Components:
-          image_processor (`WanAnimate2VideoProcessor`) image_encoder (`CLIPVisionModel`)
+          - image_processor (`WanAnimate2VideoProcessor`)
+          - image_encoder (`CLIPVisionModel`)
 
       Inputs:
           image (`Image | list`):
@@ -100,7 +101,8 @@ class WanAnimate2VideoEncodeStep(SequentialPipelineBlocks):
     of segments) and CLIP-encodes its first frame into `condition_clip_context`.
 
       Components:
-          video_processor (`WanAnimate2VideoProcessor`) image_encoder (`CLIPVisionModel`)
+          - video_processor (`WanAnimate2VideoProcessor`)
+          - image_encoder (`CLIPVisionModel`)
 
       Inputs:
           driving_video (`list`):
@@ -165,8 +167,10 @@ class WanAnimate2CoreDenoiseStep(SequentialPipelineBlocks):
     decoding each segment inside the loop because the next segment conditions on its decoded pixels.
 
       Components:
-          vae (`AutoencoderKLWan`) transformer (`WanAnimate2Transformer3DModel`) scheduler (`SchedulerMixin`) guider
-          (`ClassifierFreeGuidance`)
+          - vae (`AutoencoderKLWan`)
+          - transformer (`WanAnimate2Transformer3DModel`)
+          - scheduler (`SchedulerMixin`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           segment_frame_length (`int`, *optional*, defaults to 81):
@@ -255,9 +259,15 @@ class WanAnimate2Blocks(SequentialPipelineBlocks):
     produce a video of the character following the driving motion.
 
       Components:
-          text_encoder (`UMT5EncoderModel`) tokenizer (`AutoTokenizer`) image_processor (`WanAnimate2VideoProcessor`)
-          image_encoder (`CLIPVisionModel`) video_processor (`WanAnimate2VideoProcessor`) vae (`AutoencoderKLWan`)
-          transformer (`WanAnimate2Transformer3DModel`) scheduler (`SchedulerMixin`) guider (`ClassifierFreeGuidance`)
+          - text_encoder (`UMT5EncoderModel`)
+          - tokenizer (`AutoTokenizer`)
+          - image_processor (`WanAnimate2VideoProcessor`)
+          - image_encoder (`CLIPVisionModel`)
+          - video_processor (`WanAnimate2VideoProcessor`)
+          - vae (`AutoencoderKLWan`)
+          - transformer (`WanAnimate2Transformer3DModel`)
+          - scheduler (`SchedulerMixin`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt (`str`):

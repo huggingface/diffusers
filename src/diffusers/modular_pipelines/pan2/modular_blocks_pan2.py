@@ -39,7 +39,8 @@ class PAN2AutoVaeEncoderStep(AutoPipelineBlocks):
        - If `image` is not provided, this step is skipped (text-to-video).
 
       Components:
-          vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
 
       Inputs:
           image (`Image`, *optional*):
@@ -85,8 +86,9 @@ class PAN2CoreDenoiseStep(SequentialPipelineBlocks):
     Core denoise step that runs the denoising process for text-to-video.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`PAN2Transformer3DModel`) guider
-          (`ClassifierFreeGuidance`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`PAN2Transformer3DModel`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -148,8 +150,9 @@ class PAN2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoise step that runs the denoising process for image-to-video, conditioned on the first frame.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`PAN2Transformer3DModel`) guider
-          (`ClassifierFreeGuidance`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`PAN2Transformer3DModel`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -199,8 +202,9 @@ class PAN2AutoCoreDenoiseStep(AutoPipelineBlocks):
        - `PAN2CoreDenoiseStep` is used otherwise (text-to-video).
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`PAN2Transformer3DModel`) guider
-          (`ClassifierFreeGuidance`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`PAN2Transformer3DModel`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -257,12 +261,17 @@ class PAN2Blocks(SequentialPipelineBlocks):
         - `i2v`: requires `prompt`, `image`
 
       Components:
-          text_encoder (`Qwen3_5TextModel`) tokenizer (`Qwen2Tokenizer`) safety_checker (`PAN2SafetyChecker`) vae
-          (`AutoencoderKLWan`) video_processor (`VideoProcessor`) scheduler (`FlowMatchEulerDiscreteScheduler`)
-          transformer (`PAN2Transformer3DModel`) guider (`ClassifierFreeGuidance`)
+          - text_encoder (`Qwen3_5TextModel`)
+          - tokenizer (`Qwen2Tokenizer`)
+          - safety_checker (`PAN2SafetyChecker`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`PAN2Transformer3DModel`)
+          - guider (`ClassifierFreeGuidance`)
 
       Configs:
-          enable_safety_checker (default: True)
+          - enable_safety_checker (default: True)
 
       Inputs:
           prompt (`str`):
