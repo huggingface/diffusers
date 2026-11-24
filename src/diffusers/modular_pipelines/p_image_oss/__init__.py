@@ -21,42 +21,18 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["camera"] = ["create_pan_cameras"]
-    _import_structure["pipeline_shap_e"] = ["ShapEPipeline"]
-    _import_structure["pipeline_shap_e_img2img"] = ["ShapEImg2ImgPipeline"]
-    _import_structure["renderer"] = [
-        "BoundingBoxVolume",
-        "ImportanceRaySampler",
-        "MLPNeRFModelOutput",
-        "MLPNeRSTFModel",
-        "ShapEParamsProjModel",
-        "ShapERenderer",
-        "StratifiedRaySampler",
-        "VoidNeRFModel",
-    ]
+    _import_structure["modular_blocks_p_image_oss"] = ["PImageOSSBlocks"]
+    _import_structure["modular_pipeline"] = ["PImageOSSModularPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
-
     except OptionalDependencyNotAvailable:
-        from ...utils.dummy_torch_and_transformers_objects import *
+        from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .camera import create_pan_cameras
-        from .pipeline_shap_e import ShapEPipeline
-        from .pipeline_shap_e_img2img import ShapEImg2ImgPipeline
-        from .renderer import (
-            BoundingBoxVolume,
-            ImportanceRaySampler,
-            MLPNeRFModelOutput,
-            MLPNeRSTFModel,
-            ShapEParamsProjModel,
-            ShapERenderer,
-            StratifiedRaySampler,
-            VoidNeRFModel,
-        )
-
+        from .modular_blocks_p_image_oss import PImageOSSBlocks
+        from .modular_pipeline import PImageOSSModularPipeline
 else:
     import sys
 

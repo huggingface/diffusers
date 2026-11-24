@@ -964,7 +964,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
                         )
                         timestep[:, valid_interval_start:prefix_video_latents_frames] = addnoise_condition
 
-                    with self.transformer.cache_context("cond"):
+                    with self.transformer.cache_context("cond", timestep=t):
                         noise_pred = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
@@ -976,7 +976,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
                         )[0]
 
                     if self.do_classifier_free_guidance:
-                        with self.transformer.cache_context("uncond"):
+                        with self.transformer.cache_context("uncond", timestep=t):
                             noise_uncond = self.transformer(
                                 hidden_states=latent_model_input,
                                 timestep=timestep,

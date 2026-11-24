@@ -27,11 +27,16 @@ Pick a method depending on how much config you will set, and the fit you need. E
 | [PAB](#pyramid-attention-broadcast) | Video, willing to tune attention reuse (block and timestep skip ranges per attention kind) | Skip ranges need tuning per model |
 | [FasterCache](#fastercache) | Like PAB, plus optional CFG-branch skipping | Experimental |
 
+Pyramid Attention Broadcast and FasterCache read the current timestep from the denoiser's `cache_context`.
+When writing a custom denoising loop, wrap each denoiser call with `model.cache_context("cond", timestep=t)`.
+Use a separate context name for each guidance branch, or `"cond_uncond"` for a combined batch, and call
+`model._reset_stateful_cache()` before starting a new generation. The pipeline examples below handle this for you.
+
 ## Pyramid Attention Broadcast
 
 [Pyramid Attention Broadcast (PAB)](https://huggingface.co/papers/2408.12588) approximates attention across denoising steps by reusing attention outputs for some blocks and timesteps instead of recomputing every step. Config separates attention kinds (spatial, temporal, cross) when the model has them. Not every video model exposes all three, and set only the ranges that match the blocks you have.
 
-Each kind uses a `*_attention_block_skip_range` (how often to recompute vs reuse within the window) and a `*_attention_timestep_skip_range` (which denoising timesteps may skip). You must pass `current_timestep_callback` so the hook can read the pipeline’s current timestep. Wider or more aggressive skips usually mean more speed and more quality risk.
+Each kind uses a `*_attention_block_skip_range` (how often to recompute vs reuse within the window) and a `*_attention_timestep_skip_range` (which denoising timesteps may skip). Wider or more aggressive skips usually mean more speed and more quality risk.
 
 Pass a [`PyramidAttentionBroadcastConfig`] to enable it.
 
@@ -45,7 +50,6 @@ pipe.to("cuda")  # or "mps", "xpu", "cpu"
 config = PyramidAttentionBroadcastConfig(
     spatial_attention_block_skip_range=2,
     spatial_attention_timestep_skip_range=(100, 800),
-    current_timestep_callback=lambda: pipe.current_timestep,
 )
 pipe.transformer.enable_cache(config)
 ```
@@ -66,7 +70,6 @@ pipe.to("cuda")  # or "mps", "xpu", "cpu"
 config = FasterCacheConfig(
     spatial_attention_block_skip_range=2,
     spatial_attention_timestep_skip_range=(-1, 681),
-    current_timestep_callback=lambda: pipe.current_timestep,
     attention_weight_callback=lambda _: 0.3,
     unconditional_batch_skip_range=5,
     unconditional_batch_timestep_skip_range=(-1, 781),
@@ -226,8 +229,8 @@ Cache methods attach to a model through hooks, and the hooks depend on the model
 3. Wrap each transformer call in the pipeline's denoising loop with `cache_context`. Use separate names, such as `"cond"` and `"uncond"`, when classifier-free guidance runs the conditional and unconditional branches as separate calls, so each branch keeps its own cache state.
 
     ```py
-    with self.transformer.cache_context("cond"):
+    with self.transformer.cache_context("cond", timestep=t):
         noise_pred = self.transformer(hidden_states=latents, timestep=timestep, ...)[0]
     ```
 
-PAB and FasterCache also need `current_timestep_callback` so the hooks can read the current timestep. Check the output quality on the new model, because cache settings tuned for one model often don't transfer to another.
+PAB and FasterCache read the current timestep from `cache_context`, so pass `timestep=t`. Check the output quality on the new model, because cache settings tuned for one model often don't transfer to another.

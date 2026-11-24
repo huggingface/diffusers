@@ -321,8 +321,9 @@ class Flux3DenoiseStep(Flux3DenoiseLoopWrapper):
       This block supports text-to-image and image-to-image generation.
 
       Components:
-          transformer (`Flux3Transformer2DModel`) guider (`ClassifierFreeGuidance`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Flux3Transformer2DModel`)
+          - guider (`ClassifierFreeGuidance`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -367,7 +368,8 @@ class Flux3DistilledDenoiseStep(Flux3DenoiseLoopWrapper):
       This block supports text-to-image and image-to-image generation, without classifier-free guidance.
 
       Components:
-          transformer (`Flux3Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Flux3Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):

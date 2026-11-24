@@ -14,12 +14,10 @@
 # limitations under the License.
 
 import gc
-import unittest
 
 import pytest
 import torch
 from datasets import load_dataset
-from parameterized import parameterized
 
 from diffusers import AutoencoderOobleck
 from diffusers.utils.torch_utils import randn_tensor
@@ -27,6 +25,7 @@ from diffusers.utils.torch_utils import randn_tensor
 from ...testing_utils import (
     backend_empty_cache,
     enable_full_determinism,
+    require_torchcodec,
     slow,
     torch_all_close,
     torch_device,
@@ -132,9 +131,9 @@ class TestAutoencoderOobleckSlicingTiling(AutoencoderOobleckTesterConfig, Autoen
 
 
 @slow
-class AutoencoderOobleckIntegrationTests(unittest.TestCase):
-    def tearDown(self):
-        super().tearDown()
+@require_torchcodec
+class TestAutoencoderOobleckIntegration:
+    def teardown_method(self):
         gc.collect()
         backend_empty_cache(torch_device)
 
@@ -166,13 +165,14 @@ class AutoencoderOobleckIntegrationTests(unittest.TestCase):
             return torch.Generator(device=generator_device).manual_seed(seed)
         return torch.manual_seed(seed)
 
-    @parameterized.expand(
+    @pytest.mark.parametrize(
+        "seed, expected_slice, expected_mean_absolute_diff",
         [
             # fmt: off
-            [33, [1.193e-4, 6.56e-05, 1.314e-4, 3.80e-05, -4.01e-06], 0.001192],
-            [44, [2.77e-05, -2.65e-05, 1.18e-05, -6.94e-05, -9.57e-05], 0.001196],
+            (33, [1.193e-4, 6.56e-05, 1.314e-4, 3.80e-05, -4.01e-06], 0.001192),
+            (44, [2.77e-05, -2.65e-05, 1.18e-05, -6.94e-05, -9.57e-05], 0.001196),
             # fmt: on
-        ]
+        ],
     )
     def test_stable_diffusion(self, seed, expected_slice, expected_mean_absolute_diff):
         model = self.get_oobleck_vae_model()
@@ -198,13 +198,14 @@ class AutoencoderOobleckIntegrationTests(unittest.TestCase):
 
         assert sample.shape == audio.shape
 
-    @parameterized.expand(
+    @pytest.mark.parametrize(
+        "seed, expected_slice, expected_mean_absolute_diff",
         [
             # fmt: off
-            [33, [1.193e-4, 6.56e-05, 1.314e-4, 3.80e-05, -4.01e-06], 0.001192],
-            [44, [2.77e-05, -2.65e-05, 1.18e-05, -6.94e-05, -9.57e-05], 0.001196],
+            (33, [1.193e-4, 6.56e-05, 1.314e-4, 3.80e-05, -4.01e-06], 0.001192),
+            (44, [2.77e-05, -2.65e-05, 1.18e-05, -6.94e-05, -9.57e-05], 0.001196),
             # fmt: on
-        ]
+        ],
     )
     def test_stable_diffusion_encode_decode(self, seed, expected_slice, expected_mean_absolute_diff):
         model = self.get_oobleck_vae_model()
