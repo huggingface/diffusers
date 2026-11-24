@@ -43,7 +43,7 @@ image
 >
 > If you don't need offloading, remove the `components_manager` argument and move the pipeline to your device manually with `to("cuda")`.
 
-Learn more about creating and loading pipelines in the [Creating a pipeline](https://huggingface.co/docs/diffusers/modular_diffusers/modular_pipeline#creating-a-pipeline) and [Loading components](https://huggingface.co/docs/diffusers/modular_diffusers/modular_pipeline#loading-components) guides.
+Learn more about creating and loading pipelines in the [Creating a pipeline](./modular_pipeline#creating-a-pipeline) and [Loading components](./modular_pipeline#loading-components) guides.
 
 ## Understand the structure
 
@@ -114,7 +114,7 @@ The output returns:
 
 ### Workflows
 
-This pipeline supports multiple workflows and adapts its behavior based on the inputs you provide. For example, if you pass `image` to the pipeline, it runs an image-to-image workflow instead of text-to-image. Learn more about how this works under the hood in the [AutoPipelineBlocks](https://huggingface.co/docs/diffusers/modular_diffusers/auto_pipeline_blocks) guide.
+This pipeline supports multiple workflows and adapts its behavior based on the inputs you provide. For example, if you pass `image` to the pipeline, it runs an image-to-image workflow instead of text-to-image. Learn more about how this works under the hood in the [AutoPipelineBlocks](./auto_pipeline_blocks) guide.
 
 ```py
 from diffusers.utils import load_image
@@ -159,13 +159,13 @@ image_latents = vae_encoder_pipe(image=input_image).image_latents
 print(image_latents.shape)
 ```
 
-It reuses the VAE from our original pipeline instead of reloading it, keeping memory usage efficient. Learn more in the [Loading components](https://huggingface.co/docs/diffusers/modular_diffusers/modular_pipeline#loading-components) guide.
+It reuses the VAE from our original pipeline instead of reloading it, keeping memory usage efficient. Learn more in the [Loading components](./modular_pipeline#loading-components) guide.
 
 Since blocks are composable, you can modify the pipeline's definition by adding, removing, or swapping blocks to create new workflows. In the next section, we'll add a canny edge detection block to a ControlNet pipeline, so you can pass a regular image instead of a pre-processed canny edge map.
 
 ## Compose new workflows
 
-Let's add a canny edge detection block to a ControlNet pipeline. First, load a pre-built canny block from the Hub (see [Building Custom Blocks](https://huggingface.co/docs/diffusers/modular_diffusers/custom_blocks) to create your own).
+Let's add a canny edge detection block to a ControlNet pipeline. First, load a pre-built canny block from the Hub (see [Building Custom Blocks](./custom_blocks) to create your own).
 ```py
 from diffusers.modular_pipelines import ModularPipelineBlocks
 

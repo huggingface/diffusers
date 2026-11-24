@@ -570,26 +570,28 @@ class NucleusMoEImagePipeline(DiffusionPipeline):
                 self._current_timestep = t
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
 
-                noise_pred = self.transformer(
-                    hidden_states=latents,
-                    timestep=timestep / self.scheduler.config.num_train_timesteps,
-                    encoder_hidden_states=prompt_embeds,
-                    encoder_hidden_states_mask=prompt_embeds_mask,
-                    img_shapes=img_shapes,
-                    attention_kwargs=self._attention_kwargs,
-                    return_dict=False,
-                )[0]
-
-                if do_cfg:
-                    neg_noise_pred = self.transformer(
+                with self.transformer.cache_context("cond", timestep=t):
+                    noise_pred = self.transformer(
                         hidden_states=latents,
                         timestep=timestep / self.scheduler.config.num_train_timesteps,
-                        encoder_hidden_states=negative_prompt_embeds,
-                        encoder_hidden_states_mask=negative_prompt_embeds_mask,
+                        encoder_hidden_states=prompt_embeds,
+                        encoder_hidden_states_mask=prompt_embeds_mask,
                         img_shapes=img_shapes,
                         attention_kwargs=self._attention_kwargs,
                         return_dict=False,
                     )[0]
+
+                if do_cfg:
+                    with self.transformer.cache_context("uncond", timestep=t):
+                        neg_noise_pred = self.transformer(
+                            hidden_states=latents,
+                            timestep=timestep / self.scheduler.config.num_train_timesteps,
+                            encoder_hidden_states=negative_prompt_embeds,
+                            encoder_hidden_states_mask=negative_prompt_embeds_mask,
+                            img_shapes=img_shapes,
+                            attention_kwargs=self._attention_kwargs,
+                            return_dict=False,
+                        )[0]
 
                     comb_pred = neg_noise_pred + guidance_scale * (noise_pred - neg_noise_pred)
                     cond_norm = torch.norm(noise_pred, dim=-1, keepdim=True)

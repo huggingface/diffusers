@@ -1,3 +1,4 @@
+from .audio_tokenizer_ace_step import AceStepAudioTokenDetokenizer, AceStepAudioTokenizer
 from .autoencoder_asym_kl import AsymmetricAutoencoderKL
 from .autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer
 from .autoencoder_dc import AutoencoderDC
@@ -20,7 +21,10 @@ from .autoencoder_kl_ltx2_audio import AutoencoderKLLTX2Audio
 from .autoencoder_kl_magvit import AutoencoderKLMagvit
 from .autoencoder_kl_minimax_h3 import AutoencoderKLMiniMaxH3
 from .autoencoder_kl_minimax_h3_audio import AutoencoderKLMiniMaxH3Audio
+from .autoencoder_kl_minimax_h3_image import AutoencoderKLMiniMaxH3Image
 from .autoencoder_kl_mochi import AutoencoderKLMochi
+from .autoencoder_kl_p_h3_image import AutoencoderKLPH3Image
+from .autoencoder_kl_p_image_oss import AutoencoderKLPImageOSS
 from .autoencoder_kl_qwenimage import AutoencoderKLQwenImage
 from .autoencoder_kl_qwenimage21 import AutoencoderKLQwenImage21
 from .autoencoder_kl_temporal_decoder import AutoencoderKLTemporalDecoder
@@ -37,4 +41,5 @@ from .consistency_decoder_vae import ConsistencyDecoderVAE
 from .ltx2_diffusion_decoder import LTX2VideoDiffusionDecoderModel
 from .minimax_music3_vocoder import MiniMaxMusic3Vocoder
 from .mmaudio_vocoder import MMAudioVocoder
+from .vocoder_ltx2 import LTX2Vocoder, LTX2VocoderWithBWE
 from .vq_model import VQModel

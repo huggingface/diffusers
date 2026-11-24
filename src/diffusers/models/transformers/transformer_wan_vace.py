@@ -98,7 +98,7 @@ class WanVACETransformerBlock(nn.Module):
         control_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         rotary_emb: torch.Tensor,
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor | None, torch.Tensor]:
         if self.proj_in is not None:
             control_hidden_states = self.proj_in(control_hidden_states)
             control_hidden_states = control_hidden_states + hidden_states
@@ -274,7 +274,7 @@ class WanVACETransformer3DModel(
         control_hidden_states_scale: torch.Tensor = None,
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
-    ) -> torch.Tensor | dict[str, torch.Tensor]:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`WanVACETransformer3DModel`] forward method.
 

@@ -60,7 +60,6 @@ from diffusers import (
     UniPCMultistepScheduler,
     logging,
 )
-from diffusers.pipelines.onnx_utils import OnnxRuntimeModel
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, is_transformers_version
 from diffusers.utils.import_utils import is_peft_available
@@ -1211,6 +1210,30 @@ class TestCustomPipeline:
         # compare to https://github.com/huggingface/diffusers/blob/main/tests/fixtures/custom_pipeline/pipeline.py#L102
         assert output_str == "This is a local test"
 
+    def test_library_name_from_model_index_is_not_imported(self, tmp_path, monkeypatch):
+        # The library name of a component is read from `model_index.json`, which ships with the repository, so it
+        # must never reach `importlib.import_module`: importing a module runs it, no `trust_remote_code` involved.
+        repo = tmp_path / "pipeline_repo"
+        (repo / "unet").mkdir(parents=True)
+        (repo / "payload.py").write_text("raise AssertionError('the module named in model_index.json was imported')")
+        (repo / "model_index.json").write_text(
+            json.dumps(
+                {
+                    "_class_name": "StableDiffusionPipeline",
+                    "_diffusers_version": "0.0.0",
+                    "unet": ["pipeline_repo.payload", "UNet2DConditionModel"],
+                }
+            )
+        )
+        (repo / "unet" / "config.json").write_text(json.dumps({"_class_name": "UNet2DConditionModel"}))
+        # the repository is importable, which is what a `git clone` into the working directory gives you
+        monkeypatch.syspath_prepend(str(tmp_path))
+
+        with pytest.raises(ValueError) as cm:
+            DiffusionPipeline.from_pretrained(repo)
+        assert "has not been imported" in str(cm.value)
+        assert "pipeline_repo.payload" not in sys.modules
+
     def test_custom_model_and_pipeline(self, tmp_path):
         pipe = CustomPipeline(
             encoder=CustomEncoder(),
@@ -1286,12 +1309,6 @@ class TestPipelineFast:
         # clean up the VRAM after each test
         gc.collect()
         backend_empty_cache(torch_device)
-
-    def test_onnx_runtime_model_deprecation(self):
-        with pytest.warns(
-            FutureWarning, match=r"`OnnxRuntimeModel` is deprecated and will be removed in version 0\.43\.0"
-        ):
-            OnnxRuntimeModel()
 
     def dummy_image(self):
         batch_size = 1

@@ -694,7 +694,7 @@ class LongCatImageEditPipeline(DiffusionPipeline, FromSingleFileMixin):
                     latent_model_input = torch.cat([latents, image_latents], dim=1)
 
                 timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
-                with self.transformer.cache_context("cond"):
+                with self.transformer.cache_context("cond", timestep=t):
                     noise_pred_text = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep / 1000,
@@ -706,7 +706,7 @@ class LongCatImageEditPipeline(DiffusionPipeline, FromSingleFileMixin):
                     )[0]
                     noise_pred_text = noise_pred_text[:, :image_seq_len]
                 if self.do_classifier_free_guidance:
-                    with self.transformer.cache_context("uncond"):
+                    with self.transformer.cache_context("uncond", timestep=t):
                         noise_pred_uncond = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep / 1000,

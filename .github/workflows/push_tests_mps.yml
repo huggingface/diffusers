@@ -23,6 +23,7 @@ jobs:
   run_fast_tests_apple_m1:
     permissions:
       contents: read
+      id-token: write
     name: Fast PyTorch MPS tests on MacOS
     runs-on: macos-13-xlarge
 
@@ -60,7 +61,7 @@ jobs:
       shell: arch -arch arm64 bash {0}
       env:
         HF_HOME: /System/Volumes/Data/mnt/cache
-        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        HF_OIDC_RESOURCE: Diffusers-CI-Bot
       run: |
         ${CONDA_RUN} python -m pytest -n 0 --make-reports=tests_torch_mps tests/
 

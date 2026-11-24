@@ -43,7 +43,8 @@ class Flux3VaeEncoderSequentialStep(SequentialPipelineBlocks):
     VAE encoder step that preprocesses and encodes the reference images into their latent representations.
 
       Components:
-          image_processor (`Flux3ImageProcessor`) vae (`AutoencoderKLFlux2`)
+          - image_processor (`Flux3ImageProcessor`)
+          - vae (`AutoencoderKLFlux2`)
 
       Inputs:
           image (`Image | list`):
@@ -79,7 +80,8 @@ class Flux3AutoVaeEncoderStep(AutoPipelineBlocks):
        - If `image` is not provided, step will be skipped.
 
       Components:
-          image_processor (`Flux3ImageProcessor`) vae (`AutoencoderKLFlux2`)
+          - image_processor (`Flux3ImageProcessor`)
+          - vae (`AutoencoderKLFlux2`)
 
       Inputs:
           image (`Image | list`, *optional*):
@@ -134,8 +136,9 @@ class Flux3CoreDenoiseStep(SequentialPipelineBlocks):
     Core denoise step that performs the denoising process for FLUX.3, for text-to-image generation.
 
       Components:
-          transformer (`Flux3Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`)
+          - transformer (`Flux3Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -203,8 +206,9 @@ class Flux3ImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoise step that performs the denoising process for FLUX.3 with reference images (image-to-image).
 
       Components:
-          transformer (`Flux3Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`)
+          - transformer (`Flux3Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -267,8 +271,9 @@ class Flux3AutoCoreDenoiseStep(AutoPipelineBlocks):
        - `Flux3CoreDenoiseStep` is used otherwise (text-to-image).
 
       Components:
-          transformer (`Flux3Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`)
+          - transformer (`Flux3Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -346,10 +351,15 @@ class Flux3AutoBlocks(SequentialPipelineBlocks):
         - `image_conditioned`: requires `prompt`, `image`
 
       Components:
-          prompt_upsampler (`Qwen3_5ForConditionalGeneration`): The prompt upsampler. prompt_upsampler_processor
-          (`AutoProcessor`): Its processor. text_encoder (`Qwen3VLForConditionalGeneration`) tokenizer
-          (`AutoProcessor`) image_processor (`Flux3ImageProcessor`) vae (`AutoencoderKLFlux2`) transformer
-          (`Flux3Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`)
+          - prompt_upsampler (`Qwen3_5ForConditionalGeneration`): The prompt upsampler.
+          - prompt_upsampler_processor (`AutoProcessor`): Its processor.
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - tokenizer (`AutoProcessor`)
+          - image_processor (`Flux3ImageProcessor`)
+          - vae (`AutoencoderKLFlux2`)
+          - transformer (`Flux3Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt (`str`):

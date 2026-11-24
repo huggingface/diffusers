@@ -11,19 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import importlib
 import os
 
 from huggingface_hub.constants import HF_HOME
-from packaging import version
 
-from ..dependency_versions_check import dep_version_check
 from .import_utils import ENV_VARS_TRUE_VALUES, is_peft_available, is_transformers_available
 
 
 MIN_PEFT_VERSION = "0.17.0"
-MIN_TRANSFORMERS_VERSION = "4.34.0"
-_CHECK_PEFT = os.environ.get("_CHECK_PEFT", "1") in ENV_VARS_TRUE_VALUES
 
 
 CONFIG_NAME = "config.json"
@@ -65,21 +60,7 @@ DIFFUSERS_TRUST_REMOTE_KERNELS = (
     and not DIFFUSERS_DISABLE_REMOTE_CODE
 )
 
-# Below should be `True` if the current version of `peft` and `transformers` are compatible with
-# PEFT backend. Will automatically fall back to PEFT backend if the correct versions of the libraries are
-# available.
-# For PEFT it has to be at least `MIN_PEFT_VERSION` and for transformers at least `MIN_TRANSFORMERS_VERSION`.
-_required_peft_version = is_peft_available() and version.parse(
-    version.parse(importlib.metadata.version("peft")).base_version
-) >= version.parse(MIN_PEFT_VERSION)
-_required_transformers_version = is_transformers_available() and version.parse(
-    version.parse(importlib.metadata.version("transformers")).base_version
-) >= version.parse(MIN_TRANSFORMERS_VERSION)
-
-USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
-
-if USE_PEFT_BACKEND and _CHECK_PEFT:
-    dep_version_check("peft")
+USE_PEFT_BACKEND = is_peft_available() and is_transformers_available()
 
 
 DECODE_ENDPOINT_SD_V1 = "https://q1bj3bpq6kzilnsu.us-east-1.aws.endpoints.huggingface.cloud/"

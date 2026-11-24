@@ -29,6 +29,7 @@ import torch
 from transformers import Gemma3ForConditionalGeneration, GemmaTokenizer, GemmaTokenizerFast
 
 from ...models.autoencoders import AutoencoderKLLTX2Video
+from ...models.condition_embedders import LTX2TextConnectors
 from ...models.transformers.transformer_sana_wm_refiner import (
     SanaWMLTX2RefinerTransformer3DModel,
     SanaWMRefinerKVCache,
@@ -36,11 +37,6 @@ from ...models.transformers.transformer_sana_wm_refiner import (
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
-
-# TODO: `LTX2TextConnectors` lives in the LTX-2 pipeline folder, so stage 2 has to reach across
-# pipelines for it. Once https://github.com/huggingface/diffusers/issues/14749 moves the connector
-# to a shared home (e.g. `models/`), import it from there and drop this cross-pipeline import.
-from ..ltx2.connectors import LTX2TextConnectors
 from ..pipeline_utils import DiffusionPipeline
 
 

@@ -24,6 +24,7 @@ from diffusers import ModularPipeline, ModularPipelineBlocks
 from diffusers.utils import logging
 
 from ...testing_utils import (
+    CaptureLogger,
     backend_empty_cache,
     numpy_cosine_similarity_distance,
     require_accelerator,
@@ -222,6 +223,16 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
         assert len(unsupported_parameters) == 0, (
             f"Parameters declared in `not_params` unexpectedly present in the pipeline inputs: {unsupported_parameters}"
         )
+
+    def test_no_input_is_both_required_and_has_a_default(self):
+        # `InputParam` warns and drops `required` when a declaration is both required and has a default (see the
+        # pitfalls list in `.ai/references/modular.md`). Building the blocks and reading their `inputs` constructs
+        # every `InputParam` of every sub-block, so a clean log means no block in this pipeline declares one
+        logger = logging.get_logger("diffusers.modular_pipelines.modular_pipeline_utils")
+        with CaptureLogger(logger) as cap_logger:
+            blocks = self.pipeline_blocks_class()
+            blocks.inputs
+        assert "is required and declares a default" not in cap_logger.out, cap_logger.out
 
     def test_inference_batch_consistent(self, batch_sizes=[2], batch_generator=True):
         pipe = self.get_pipeline().to(torch_device)

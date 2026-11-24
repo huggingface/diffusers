@@ -119,6 +119,7 @@ _SHARED_COMPONENTS = {
 # reference or from the bare 16:9 default — so all three declare the rule as pipeline config.
 _SHARED_CONFIGS = {"canvas_short_edge": 768, "canvas_max_pixels": 768 * 1344}
 _SHARED_INPUTS = {
+    "num_inference_steps": 50,
     "height": None,
     "width": None,
     "generator": None,
@@ -131,7 +132,7 @@ MINIMAX_H3_WORKFLOW_DEFAULTS = {
     "t2va": {
         "components": {**_SHARED_COMPONENTS, "transformer": "MiniMaxH3Transformer3DModel"},
         "configs": _SHARED_CONFIGS,
-        "required_inputs": ["prompt", "num_inference_steps"],
+        "required_inputs": ["prompt"],
         "inputs": {**_SHARED_INPUTS, "num_frames": 124},
     },
     "fl2va": {
@@ -141,7 +142,7 @@ MINIMAX_H3_WORKFLOW_DEFAULTS = {
             "image_processor": "VaeImageProcessor",
         },
         "configs": _SHARED_CONFIGS,
-        "required_inputs": ["prompt", "num_inference_steps"],
+        "required_inputs": ["prompt"],
         "inputs": {**_SHARED_INPUTS, "num_frames": 124, "image": None, "last_image": None},
     },
 }
@@ -157,7 +158,7 @@ MINIMAX_H3_REF2VA_WORKFLOW_DEFAULTS = {
         "configs": {**_SHARED_CONFIGS, "reference_image_short_edge": 2048},
         # `num_frames` cannot default on ref2va: reference soundtracks are truncated to the generated duration, so a
         # silent 124-frame default would cut them short. It is required instead.
-        "required_inputs": ["prompt", "references", "num_frames", "num_inference_steps"],
+        "required_inputs": ["prompt", "references", "num_frames"],
         "inputs": _SHARED_INPUTS,
     },
 }
@@ -174,8 +175,8 @@ class MiniMaxH3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     # MiniMax-H3 packs one request into one sequence and rejects a list of prompts, so nothing is batched.
     batch_params = frozenset()
     # The checkpoint is guidance-distilled and generates a video, so neither `guidance_scale` nor
-    # `num_images_per_prompt` exists. `num_inference_steps` is declared required, so it is not listed here either.
-    optional_params = frozenset(["latents", "output_type"])
+    # `num_images_per_prompt` exists.
+    optional_params = frozenset(["num_inference_steps", "latents", "output_type"])
     output_name = "videos"
     expected_workflow_blocks = MINIMAX_H3_WORKFLOWS
     expected_workflow_defaults = MINIMAX_H3_WORKFLOW_DEFAULTS
@@ -614,8 +615,8 @@ class MiniMaxH3Ref2VAModularPipelineTesterConfig(BaseModularPipelineTesterConfig
     # MiniMax-H3 packs one request into one sequence and rejects a list of prompts, so nothing is batched.
     batch_params = frozenset()
     # The checkpoint is guidance-distilled and generates a video, so neither `guidance_scale` nor
-    # `num_images_per_prompt` exists. `num_inference_steps` is declared required, so it is not listed here either.
-    optional_params = frozenset(["latents", "output_type"])
+    # `num_images_per_prompt` exists.
+    optional_params = frozenset(["num_inference_steps", "latents", "output_type"])
     output_name = "videos"
     expected_workflow_blocks = MINIMAX_H3_REF2VA_WORKFLOWS
     expected_workflow_defaults = MINIMAX_H3_REF2VA_WORKFLOW_DEFAULTS

@@ -39,7 +39,7 @@ Sample usage of text-to-video two stages pipeline
 import torch
 from diffusers import FlowMatchEulerDiscreteScheduler
 from diffusers.pipelines.ltx2 import LTX2Pipeline, LTX2LatentUpsamplePipeline
-from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
+from diffusers.models.latent_upscaler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.utils import STAGE_2_DISTILLED_SIGMA_VALUES
 from diffusers.utils import encode_video
 
@@ -125,7 +125,7 @@ Fastest two-stages generation pipeline using a distilled checkpoint.
 ```py
 import torch
 from diffusers.pipelines.ltx2 import LTX2Pipeline, LTX2LatentUpsamplePipeline
-from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
+from diffusers.models.latent_upscaler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES, STAGE_2_DISTILLED_SIGMA_VALUES
 from diffusers.utils import encode_video
 
@@ -203,7 +203,7 @@ You can use `LTX2ConditionPipeline` to specify image and/or video conditions at 
 ```py
 import torch
 from diffusers import LTX2ConditionPipeline, LTX2LatentUpsamplePipeline
-from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
+from diffusers.models.latent_upscaler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES, STAGE_2_DISTILLED_SIGMA_VALUES
 from diffusers.utils import encode_video
@@ -569,7 +569,7 @@ Stage 1 runs at half the target resolution, the upsampler doubles it, and stage 
 ```py
 import torch
 from diffusers.pipelines.ltx2 import LTX2Pipeline, LTX2LatentUpsamplePipeline
-from diffusers.pipelines.ltx2.latent_upsampler import LTX2LatentUpsamplerModel
+from diffusers.models.latent_upscaler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.utils import DISTILLED_SIGMA_VALUES, STAGE_2_DISTILLED_SIGMA_VALUES
 from diffusers.utils import encode_video
 
@@ -1119,7 +1119,7 @@ from diffusers import (
     LTX2LatentUpsamplePipeline,
     LTXEulerAncestralRFScheduler,
 )
-from diffusers.pipelines.ltx2 import LTX2LatentUpsamplerModel
+from diffusers.models.latent_upscaler import LTX2LatentUpsamplerModel
 from diffusers.pipelines.ltx2.utils import trim_canvas
 from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
 from diffusers.pipelines.ltx2.utils import STAGE_2_DISTILLED_SIGMA_VALUES

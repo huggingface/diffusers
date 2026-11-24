@@ -99,7 +99,7 @@ _deps = [
     "datasets",
     "filelock",
     "ftfy",
-    "hf-doc-builder>=0.3.0",
+    "hf-doc-builder==0.6.0",
     "huggingface-hub>=1.32.0,<3.0",
     "requests-mock==1.10.0",
     "importlib_metadata",
@@ -115,7 +115,7 @@ _deps = [
     "numpy",
     "parameterized",
     "peft>=0.17.0",
-    "protobuf>=3.20.3,<4",
+    "protobuf>=3.20.3",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
@@ -271,7 +271,7 @@ version_range_max = max(sys.version_info[1], 11) + 1
 
 setup(
     name="diffusers",
-    version="0.42.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.44.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="State-of-the-art diffusion in PyTorch.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

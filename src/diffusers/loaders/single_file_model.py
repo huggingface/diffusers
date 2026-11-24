@@ -27,7 +27,7 @@ from ..models.model_loading_utils import (
     _expand_device_map,
 )
 from ..quantizers import DiffusersAutoQuantizer
-from ..utils import deprecate, is_accelerate_available, is_torch_version, logging
+from ..utils import deprecate, is_accelerate_available, logging
 from ..utils.torch_utils import empty_device_cache
 from .single_file_utils import (
     SingleFileComponentError,
@@ -80,7 +80,7 @@ if is_accelerate_available():
 
     from ..models.model_loading_utils import load_model_dict_into_meta
 
-if is_torch_version(">=", "1.9.0") and is_accelerate_available():
+if is_accelerate_available():
     _LOW_CPU_MEM_USAGE_DEFAULT = True
 else:
     _LOW_CPU_MEM_USAGE_DEFAULT = False

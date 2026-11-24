@@ -527,7 +527,7 @@ class StableAudio3DiTModel(ModelMixin, ConfigMixin, AttentionMixin):
         encoder_attention_mask: Optional[torch.Tensor] = None,
         local_add_cond: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> Union[StableAudio3DiTModelOutput, tuple]:
+    ) -> Union[StableAudio3DiTModelOutput, tuple[torch.Tensor]]:
         """
         Args:
             hidden_states (`torch.Tensor`): Noisy latent audio `(batch, io_channels, T)`.

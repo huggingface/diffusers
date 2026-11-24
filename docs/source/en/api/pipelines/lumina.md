@@ -13,7 +13,7 @@ specific language governing permissions and limitations under the License.
 # Lumina-T2X
 ![concepts](https://github.com/Alpha-VLLM/Lumina-T2X/assets/54879512/9f52eabb-07dc-4881-8257-6d8a5f2a0a5a)
 
-[Lumina-Next : Making Lumina-T2X Stronger and Faster with Next-DiT](https://github.com/Alpha-VLLM/Lumina-T2X/blob/main/assets/lumina-next.pdf) from Alpha-VLLM, OpenGVLab, Shanghai AI Laboratory.
+[Lumina-Next : Making Lumina-T2X Stronger and Faster with Next-DiT](https://huggingface.co/papers/2406.18583) from Alpha-VLLM, OpenGVLab, Shanghai AI Laboratory.
 
 The abstract from the paper is:
 
@@ -50,7 +50,7 @@ This pipeline was contributed by [PommesPeter](https://github.com/PommesPeter). 
 
 ### Inference (Text-to-Image)
 
-Use [`torch.compile`](https://huggingface.co/docs/diffusers/main/en/tutorials/fast_diffusion#torchcompile) to reduce the inference latency.
+Use [`torch.compile`](../../optimization/fp16#torchcompile) to reduce the inference latency.
 
 First, load the pipeline:
 

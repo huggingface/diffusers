@@ -54,8 +54,10 @@ class QwenImageEditPlusVLEncoderStep(SequentialPipelineBlocks):
     QwenImage-Edit Plus VL encoder step that encodes the image and text prompts together.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`) text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor
-          (`Qwen2VLProcessor`) guider (`ClassifierFreeGuidance`)
+          - image_resize_processor (`VaeImageProcessor`)
+          - text_encoder (`Qwen2_5_VLForConditionalGeneration`)
+          - processor (`Qwen2VLProcessor`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           image (`Image | list`):
@@ -104,8 +106,9 @@ class QwenImageEditPlusVaeEncoderStep(SequentialPipelineBlocks):
       Each image is resized independently based on its own aspect ratio to 1024x1024 target area.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`) image_processor (`VaeImageProcessor`) vae
-          (`AutoencoderKLQwenImage`)
+          - image_resize_processor (`VaeImageProcessor`)
+          - image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
 
       Inputs:
           image (`Image | list`):
@@ -156,7 +159,7 @@ class QwenImageEditPlusInputStep(SequentialPipelineBlocks):
        - Defaults height/width from last image in the list.
 
       Components:
-          pachifier (`QwenImagePachifier`)
+          - pachifier (`QwenImagePachifier`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -227,8 +230,10 @@ class QwenImageEditPlusCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoising workflow for QwenImage-Edit Plus edit (img2img) task.
 
       Components:
-          pachifier (`QwenImagePachifier`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`)
+          - pachifier (`QwenImagePachifier`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -305,7 +310,8 @@ class QwenImageEditPlusDecodeStep(SequentialPipelineBlocks):
     Decode step that decodes the latents to images and postprocesses the generated image.
 
       Components:
-          vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           latents (`Tensor`):
@@ -351,10 +357,15 @@ class QwenImageEditPlusAutoBlocks(SequentialPipelineBlocks):
       - VL encoder uses 384x384 target area, VAE encoder uses 1024x1024 target area.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`) text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor
-          (`Qwen2VLProcessor`) guider (`ClassifierFreeGuidance`) image_processor (`VaeImageProcessor`) vae
-          (`AutoencoderKLQwenImage`) pachifier (`QwenImagePachifier`) scheduler (`FlowMatchEulerDiscreteScheduler`)
-          transformer (`QwenImageTransformer2DModel`)
+          - image_resize_processor (`VaeImageProcessor`)
+          - text_encoder (`Qwen2_5_VLForConditionalGeneration`)
+          - processor (`Qwen2VLProcessor`)
+          - guider (`ClassifierFreeGuidance`)
+          - image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
+          - pachifier (`QwenImagePachifier`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           image (`Image | list`):

@@ -34,7 +34,8 @@ class Ideogram4DecodeStep(ModularPipelineBlocks):
     batch-norm statistics and decodes through the VAE.
 
       Components:
-          vae (`AutoencoderKLFlux2`) image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKLFlux2`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           output_type (`str`, *optional*, defaults to pil):

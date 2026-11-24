@@ -46,6 +46,7 @@ from .lora_conversion_utils import (
     _convert_kohya_flux2_lora_to_diffusers,
     _convert_kohya_flux_lora_to_diffusers,
     _convert_lycoris_flux2_lokr_to_diffusers,
+    _convert_musubi_hunyuan_video_lora_to_diffusers,
     _convert_musubi_wan_lora_to_diffusers,
     _convert_non_diffusers_ace_step_lora_to_diffusers,
     _convert_non_diffusers_anima_lora_to_diffusers,
@@ -3571,7 +3572,9 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             state_dict = {k: v for k, v in state_dict.items() if "dora_scale" not in k}
 
         is_original_hunyuan_video = any("img_attn_qkv" in k for k in state_dict)
-        if is_original_hunyuan_video:
+        if any(k.startswith("lora_unet_") for k in state_dict):
+            state_dict = _convert_musubi_hunyuan_video_lora_to_diffusers(state_dict)
+        elif is_original_hunyuan_video:
             state_dict = _convert_hunyuan_video_lora_to_diffusers(state_dict)
 
         out = (state_dict, metadata) if return_lora_metadata else state_dict
@@ -7510,6 +7513,23 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
         See [`~loaders.StableDiffusionLoraLoaderMixin.unfuse_lora`] for more details.
         """
         super().unfuse_lora(components=components, **kwargs)
+
+
+class PikaH3FlexLoraLoaderMixin(MiniMaxH3LoraLoaderMixin):
+    r"""
+    Load LoRA layers into [`MiniMaxH3Transformer3DModel`]. Specific to [`PikaH3FlexModularPipeline`].
+
+    The Pika H3 Flex release *is* a pair of rank-128 adapters over the two MiniMax-H3 transformer partitions, published
+    as plain PEFT dumps of the diffusers module names (`fl2va/adapter.safetensors` for `transformer`,
+    `ref2va/adapter.safetensors` for `transformer_ref`). The alpha-less files load at `alpha == rank` (scale 1.0), the
+    adapters' own contract, and the loading, routing and saving are those of [`MiniMaxH3LoraLoaderMixin`]: the `fl2va`
+    adapter goes into `transformer`, and the `ref2va` adapter into `transformer_ref` — on its own when the pipeline
+    holds that partition alone (`workflow="ref2va"`), with `load_into_transformer_ref=True` when it holds both.
+
+    ```py
+    pipe.load_lora_weights("Pika-Labs/Pika-H3-Flex", weight_name="fl2va/adapter.safetensors")
+    ```
+    """
 
 
 class RFD4ProteinaLoraLoaderMixin(LoraBaseMixin):

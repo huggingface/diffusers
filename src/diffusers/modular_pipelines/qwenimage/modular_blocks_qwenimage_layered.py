@@ -56,8 +56,11 @@ class QwenImageLayeredTextEncoderStep(SequentialPipelineBlocks):
     provided.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`) text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor
-          (`Qwen2VLProcessor`) tokenizer (`Qwen2Tokenizer`): The tokenizer to use guider (`ClassifierFreeGuidance`)
+          - image_resize_processor (`VaeImageProcessor`)
+          - text_encoder (`Qwen2_5_VLForConditionalGeneration`)
+          - processor (`Qwen2VLProcessor`)
+          - tokenizer (`Qwen2Tokenizer`): The tokenizer to use
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           image (`Image | list`):
@@ -113,8 +116,9 @@ class QwenImageLayeredVaeEncoderStep(SequentialPipelineBlocks):
     Vae encoder step that encode the image inputs into their latent representations.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`) image_processor (`VaeImageProcessor`) vae
-          (`AutoencoderKLQwenImage`)
+          - image_resize_processor (`VaeImageProcessor`)
+          - image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
 
       Inputs:
           image (`Image | list`):
@@ -161,7 +165,7 @@ class QwenImageLayeredInputStep(SequentialPipelineBlocks):
        - update height/width based `image_latents`, patchify `image_latents`.
 
       Components:
-          pachifier (`QwenImageLayeredPachifier`)
+          - pachifier (`QwenImageLayeredPachifier`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -226,8 +230,10 @@ class QwenImageLayeredCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoising workflow for QwenImage-Layered img2img task.
 
       Components:
-          pachifier (`QwenImageLayeredPachifier`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`)
+          - pachifier (`QwenImageLayeredPachifier`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -311,10 +317,16 @@ class QwenImageLayeredAutoBlocks(SequentialPipelineBlocks):
     Auto Modular pipeline for layered denoising tasks using QwenImage-Layered.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`) text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor
-          (`Qwen2VLProcessor`) tokenizer (`Qwen2Tokenizer`): The tokenizer to use guider (`ClassifierFreeGuidance`)
-          image_processor (`VaeImageProcessor`) vae (`AutoencoderKLQwenImage`) pachifier (`QwenImageLayeredPachifier`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`QwenImageTransformer2DModel`)
+          - image_resize_processor (`VaeImageProcessor`)
+          - text_encoder (`Qwen2_5_VLForConditionalGeneration`)
+          - processor (`Qwen2VLProcessor`)
+          - tokenizer (`Qwen2Tokenizer`): The tokenizer to use
+          - guider (`ClassifierFreeGuidance`)
+          - image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
+          - pachifier (`QwenImageLayeredPachifier`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           image (`Image | list`):

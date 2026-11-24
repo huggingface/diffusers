@@ -628,7 +628,7 @@ class AutoencoderKLKVAE(ModelMixin, AutoencoderMixin, ConfigMixin):
 
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def _decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, tuple[torch.Tensor]]:
         if self.use_tiling and (z.shape[-1] > self.tile_latent_min_size or z.shape[-2] > self.tile_latent_min_size):
             return self.tiled_decode(z, return_dict=return_dict)
 
@@ -642,7 +642,7 @@ class AutoencoderKLKVAE(ModelMixin, AutoencoderMixin, ConfigMixin):
     @apply_forward_hook
     def decode(
         self, z: torch.FloatTensor, return_dict: bool = True, generator=None
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+    ) -> Union[DecoderOutput, tuple[torch.Tensor]]:
         """
         Decode a batch of images.
 
@@ -726,7 +726,7 @@ class AutoencoderKLKVAE(ModelMixin, AutoencoderMixin, ConfigMixin):
         enc = torch.cat(result_rows, dim=2)
         return enc
 
-    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, torch.Tensor]:
+    def tiled_decode(self, z: torch.Tensor, return_dict: bool = True) -> Union[DecoderOutput, tuple[torch.Tensor]]:
         r"""
         Decode a batch of images using a tiled decoder.
 
@@ -779,7 +779,7 @@ class AutoencoderKLKVAE(ModelMixin, AutoencoderMixin, ConfigMixin):
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, torch.Tensor]:
+    ) -> Union[DecoderOutput, tuple[torch.Tensor]]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.
