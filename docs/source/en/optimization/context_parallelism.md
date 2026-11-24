@@ -16,6 +16,9 @@ specific language governing permissions and limitations under the License.
 
 Context parallelism runs inside the attention backend, and only some backends support it. If yours doesn't, `enable_parallelism` raises an error that lists the compatible backends. Switch backends with [`~ModelMixin.set_attention_backend`], and see the [available backends](./attention_backends#available-backends) for the full list.
 
+> [!NOTE]
+> [`~ModelMixin.enable_parallelism`] only applies to the model you call it on. If a pipeline has more than one transformer, such as `transformer` and `transformer_2`, call it on each one. Otherwise, the denoising steps that use the other transformers aren't split across GPUs.
+
 Configure every variant below with [`ContextParallelConfig`].
 
 | Variant | Config | Requirements | Use when |

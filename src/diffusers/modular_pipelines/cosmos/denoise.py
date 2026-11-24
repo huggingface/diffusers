@@ -963,7 +963,8 @@ class Cosmos3TransferDenoiseStep(Cosmos3DenoiseLoopWrapper):
     Runs the per-chunk transfer denoising loop over scheduler timesteps.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) scheduler (`UniPCMultistepScheduler`)
+          - transformer (`Cosmos3OmniTransformer`)
+          - scheduler (`UniPCMultistepScheduler`)
 
       Inputs:
           timesteps (`Tensor`):

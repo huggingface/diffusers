@@ -48,7 +48,8 @@ class WanImage2VideoVaeEncoderStep(SequentialPipelineBlocks):
     representation
 
       Components:
-          vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
 
       Inputs:
           image (`Image`):
@@ -92,12 +93,15 @@ class Wan22Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     denoise block that takes encoded text and image latent conditions and runs the denoising process.
 
       Components:
-          transformer (`WanTransformer3DModel`) scheduler (`UniPCMultistepScheduler`) guider (`ClassifierFreeGuidance`)
-          guider_2 (`ClassifierFreeGuidance`) transformer_2 (`WanTransformer3DModel`)
+          - transformer (`WanTransformer3DModel`)
+          - scheduler (`UniPCMultistepScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - guider_2 (`ClassifierFreeGuidance`)
+          - transformer_2 (`WanTransformer3DModel`)
 
       Configs:
-          boundary_ratio (default: 0.875): The boundary ratio to divide the denoising loop into high noise and low
-          noise stages.
+          - boundary_ratio (default: 0.875): The boundary ratio to divide the denoising loop into high noise and low
+            noise stages.
 
       Inputs:
           num_videos_per_prompt (`None`, *optional*, defaults to 1):
@@ -170,13 +174,19 @@ class Wan22Image2VideoBlocks(SequentialPipelineBlocks):
     Modular pipeline for image-to-video using Wan2.2.
 
       Components:
-          text_encoder (`UMT5EncoderModel`) tokenizer (`AutoTokenizer`) guider (`ClassifierFreeGuidance`) vae
-          (`AutoencoderKLWan`) video_processor (`VideoProcessor`) transformer (`WanTransformer3DModel`) scheduler
-          (`UniPCMultistepScheduler`) guider_2 (`ClassifierFreeGuidance`) transformer_2 (`WanTransformer3DModel`)
+          - text_encoder (`UMT5EncoderModel`)
+          - tokenizer (`AutoTokenizer`)
+          - guider (`ClassifierFreeGuidance`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
+          - transformer (`WanTransformer3DModel`)
+          - scheduler (`UniPCMultistepScheduler`)
+          - guider_2 (`ClassifierFreeGuidance`)
+          - transformer_2 (`WanTransformer3DModel`)
 
       Configs:
-          boundary_ratio (default: 0.875): The boundary ratio to divide the denoising loop into high noise and low
-          noise stages.
+          - boundary_ratio (default: 0.875): The boundary ratio to divide the denoising loop into high noise and low
+            noise stages.
 
       Inputs:
           prompt (`None`, *optional*):

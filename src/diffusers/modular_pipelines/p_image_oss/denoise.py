@@ -26,15 +26,15 @@ from ..modular_pipeline import (
     PipelineState,
 )
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import PH3ImageModularPipeline
+from .modular_pipeline import PImageOSSModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# Copied from diffusers.modular_pipelines.minimax_h3.denoise.MiniMaxH3LoopDenoiser with \bMiniMaxH3->PH3Image, minimax-h3->p-h3-image, PH3ImageTransformer3DModel->MiniMaxH3Transformer3DModel
-class PH3ImageLoopDenoiser(ModularPipelineBlocks):
-    model_name = "p-h3-image"
+# Copied from diffusers.modular_pipelines.minimax_h3.denoise.MiniMaxH3LoopDenoiser with \bMiniMaxH3->PImageOSS, minimax-h3->p-image-oss, PImageOSSTransformer3DModel->MiniMaxH3Transformer3DModel
+class PImageOSSLoopDenoiser(ModularPipelineBlocks):
+    model_name = "p-image-oss"
 
     def __init__(self, transformer_name: str = "transformer"):
         r"""
@@ -110,8 +110,8 @@ class PH3ImageLoopDenoiser(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: PH3ImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
-    ) -> tuple[PH3ImageModularPipeline, BlockState]:
+        self, components: PImageOSSModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[PImageOSSModularPipeline, BlockState]:
         transformer = getattr(components, self.transformer_name)
         unique_timesteps, timestep_indices = block_state.row_timestep_plan[i]
         # The layout tags its outputs `denoiser_input_fields`, and their names are the transformer's own parameter
@@ -135,9 +135,9 @@ class PH3ImageLoopDenoiser(ModularPipelineBlocks):
         return components, block_state
 
 
-# Copied from diffusers.modular_pipelines.minimax_h3.denoise.MiniMaxH3LoopSchedulerStep with \bMiniMaxH3->PH3Image, minimax-h3->p-h3-image, PH3ImageScheduler->MiniMaxH3Scheduler
-class PH3ImageLoopSchedulerStep(ModularPipelineBlocks):
-    model_name = "p-h3-image"
+# Copied from diffusers.modular_pipelines.minimax_h3.denoise.MiniMaxH3LoopSchedulerStep with \bMiniMaxH3->PImageOSS, minimax-h3->p-image-oss, PImageOSSScheduler->MiniMaxH3Scheduler
+class PImageOSSLoopSchedulerStep(ModularPipelineBlocks):
+    model_name = "p-image-oss"
 
     @property
     def description(self) -> str:
@@ -217,8 +217,8 @@ class PH3ImageLoopSchedulerStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: PH3ImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
-    ) -> tuple[PH3ImageModularPipeline, BlockState]:
+        self, components: PImageOSSModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[PImageOSSModularPipeline, BlockState]:
         num_condition_video_rows = block_state.num_condition_video_rows
         num_condition_audio_rows = block_state.num_condition_audio_rows
 
@@ -237,9 +237,9 @@ class PH3ImageLoopSchedulerStep(ModularPipelineBlocks):
         return components, block_state
 
 
-# Copied from diffusers.modular_pipelines.minimax_h3.denoise.MiniMaxH3DenoiseLoopWrapper with \bMiniMaxH3->PH3Image, minimax-h3->p-h3-image, PH3ImageScheduler->MiniMaxH3Scheduler
-class PH3ImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
-    model_name = "p-h3-image"
+# Copied from diffusers.modular_pipelines.minimax_h3.denoise.MiniMaxH3DenoiseLoopWrapper with \bMiniMaxH3->PImageOSS, minimax-h3->p-image-oss, PImageOSSScheduler->MiniMaxH3Scheduler
+class PImageOSSDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
+    model_name = "p-image-oss"
 
     @property
     def description(self) -> str:
@@ -260,8 +260,8 @@ class PH3ImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: PH3ImageModularPipeline, state: PipelineState
-    ) -> tuple[PH3ImageModularPipeline, PipelineState]:
+        self, components: PImageOSSModularPipeline, state: PipelineState
+    ) -> tuple[PImageOSSModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         with self.progress_bar(total=len(block_state.timesteps)) as progress_bar:
             for i, t in enumerate(block_state.timesteps):
@@ -271,9 +271,9 @@ class PH3ImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
         return components, state
 
 
-# Copied from diffusers.modular_pipelines.minimax_h3.denoise.MiniMaxH3DenoiseStep with \bMiniMaxH3->PH3Image
-class PH3ImageDenoiseStep(PH3ImageDenoiseLoopWrapper):
-    block_classes = [PH3ImageLoopDenoiser, PH3ImageLoopSchedulerStep]
+# Copied from diffusers.modular_pipelines.minimax_h3.denoise.MiniMaxH3DenoiseStep with \bMiniMaxH3->PImageOSS
+class PImageOSSDenoiseStep(PImageOSSDenoiseLoopWrapper):
+    block_classes = [PImageOSSLoopDenoiser, PImageOSSLoopSchedulerStep]
     block_names = ["denoiser", "update"]
 
     @property

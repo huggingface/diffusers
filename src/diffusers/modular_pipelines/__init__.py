@@ -172,6 +172,10 @@ else:
         "PH3ImageBlocks",
         "PH3ImageModularPipeline",
     ]
+    _import_structure["p_image_oss"] = [
+        "PImageOSSBlocks",
+        "PImageOSSModularPipeline",
+    ]
     _import_structure["pika_h3_flex"] = [
         "PikaH3FlexBlocks",
         "PikaH3FlexModularPipeline",
@@ -270,6 +274,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .p_h3_image import (
             PH3ImageBlocks,
             PH3ImageModularPipeline,
+        )
+        from .p_image_oss import (
+            PImageOSSBlocks,
+            PImageOSSModularPipeline,
         )
         from .pan2 import PAN2Blocks, PAN2ModularPipeline, PAN2SafetyChecker
         from .pika_h3_flex import (

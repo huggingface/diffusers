@@ -24,6 +24,7 @@ from .autoencoder_kl_minimax_h3_audio import AutoencoderKLMiniMaxH3Audio
 from .autoencoder_kl_minimax_h3_image import AutoencoderKLMiniMaxH3Image
 from .autoencoder_kl_mochi import AutoencoderKLMochi
 from .autoencoder_kl_p_h3_image import AutoencoderKLPH3Image
+from .autoencoder_kl_p_image_oss import AutoencoderKLPImageOSS
 from .autoencoder_kl_qwenimage import AutoencoderKLQwenImage
 from .autoencoder_kl_qwenimage21 import AutoencoderKLQwenImage21
 from .autoencoder_kl_temporal_decoder import AutoencoderKLTemporalDecoder
