@@ -3495,6 +3495,7 @@ def _flash_attention_4_hub(
         v=value,
         softmax_scale=scale,
         causal=is_causal,
+        return_lse=return_lse,
     )
     if isinstance(out, tuple):
         return (out[0], out[1]) if return_lse else out[0]
