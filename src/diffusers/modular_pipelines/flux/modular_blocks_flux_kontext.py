@@ -45,7 +45,8 @@ class FluxKontextVaeEncoderStep(SequentialPipelineBlocks):
     Vae encoder step that preprocess andencode the image inputs into their latent representations.
 
       Components:
-          image_processor (`VaeImageProcessor`) vae (`AutoencoderKL`)
+          - image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKL`)
 
       Inputs:
           image (`None`, *optional*):
@@ -81,7 +82,8 @@ class FluxKontextAutoVaeEncoderStep(AutoPipelineBlocks):
          provided, step will be skipped.
 
       Components:
-          image_processor (`VaeImageProcessor`) vae (`AutoencoderKL`)
+          - image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKL`)
 
       Inputs:
           image (`None`, *optional*):
@@ -121,7 +123,7 @@ class FluxKontextBeforeDenoiseStep(SequentialPipelineBlocks):
     Before denoise step that prepares the inputs for the denoise step for Flux Kontext
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           height (`int`, *optional*):
@@ -184,7 +186,7 @@ class FluxKontextImageConditionedBeforeDenoiseStep(SequentialPipelineBlocks):
       for image-conditioned tasks.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           height (`int`, *optional*):
@@ -255,7 +257,7 @@ class FluxKontextAutoBeforeDenoiseStep(AutoPipelineBlocks):
          provided.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           height (`int`, *optional*):
@@ -443,7 +445,8 @@ class FluxKontextCoreDenoiseStep(SequentialPipelineBlocks):
        - for text-to-image generation, all you need to provide is prompt embeddings.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`FluxTransformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`FluxTransformer2DModel`)
 
       Inputs:
           height (`None`, *optional*):
@@ -525,9 +528,14 @@ class FluxKontextAutoBlocks(SequentialPipelineBlocks):
         - `text2image`: requires `prompt`
 
       Components:
-          text_encoder (`CLIPTextModel`) tokenizer (`CLIPTokenizer`) text_encoder_2 (`T5EncoderModel`) tokenizer_2
-          (`T5Tokenizer`) image_processor (`VaeImageProcessor`) vae (`AutoencoderKL`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) transformer (`FluxTransformer2DModel`)
+          - text_encoder (`CLIPTextModel`)
+          - tokenizer (`CLIPTokenizer`)
+          - text_encoder_2 (`T5EncoderModel`)
+          - tokenizer_2 (`T5Tokenizer`)
+          - image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKL`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`FluxTransformer2DModel`)
 
       Inputs:
           prompt (`None`, *optional*):

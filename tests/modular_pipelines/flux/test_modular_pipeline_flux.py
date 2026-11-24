@@ -93,9 +93,6 @@ class TestFluxModularPipelineFast(FluxModularPipelineTesterConfig, ModularPipeli
 
         assert images.shape == (1, 3, 8, 8)
 
-    def test_float16_inference(self):
-        super().test_float16_inference(9e-2)
-
 
 class TestFluxModularPipelineLoading(FluxModularPipelineTesterConfig, ModularLoadingTesterMixin):
     pass
@@ -173,8 +170,7 @@ class FluxImg2ImgModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestFluxImg2ImgModularPipelineFast(FluxImg2ImgModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    def test_float16_inference(self):
-        super().test_float16_inference(8e-2)
+    pass
 
 
 class TestFluxImg2ImgModularPipelineLoading(FluxImg2ImgModularPipelineTesterConfig, ModularLoadingTesterMixin):
@@ -263,8 +259,7 @@ class FluxKontextModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestFluxKontextModularPipelineFast(FluxKontextModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    def test_float16_inference(self):
-        super().test_float16_inference(9e-2)
+    pass
 
 
 class TestFluxKontextModularPipelineLoading(FluxKontextModularPipelineTesterConfig, ModularLoadingTesterMixin):

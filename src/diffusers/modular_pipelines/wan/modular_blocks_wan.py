@@ -44,7 +44,9 @@ class WanCoreDenoiseStep(SequentialPipelineBlocks):
     denoise block that takes encoded conditions and runs the denoising process.
 
       Components:
-          transformer (`WanTransformer3DModel`) scheduler (`UniPCMultistepScheduler`) guider (`ClassifierFreeGuidance`)
+          - transformer (`WanTransformer3DModel`)
+          - scheduler (`UniPCMultistepScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_videos_per_prompt (`None`, *optional*, defaults to 1):
@@ -106,9 +108,13 @@ class WanBlocks(SequentialPipelineBlocks):
     Modular pipeline blocks for Wan2.1.
 
       Components:
-          text_encoder (`UMT5EncoderModel`) tokenizer (`AutoTokenizer`) guider (`ClassifierFreeGuidance`) transformer
-          (`WanTransformer3DModel`) scheduler (`UniPCMultistepScheduler`) vae (`AutoencoderKLWan`) video_processor
-          (`VideoProcessor`)
+          - text_encoder (`UMT5EncoderModel`)
+          - tokenizer (`AutoTokenizer`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`WanTransformer3DModel`)
+          - scheduler (`UniPCMultistepScheduler`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
 
       Inputs:
           prompt (`None`, *optional*):

@@ -43,8 +43,9 @@ class MiniMaxMusic3SemanticGenerationStep(SequentialPipelineBlocks):
     condition the flow-matching stage.
 
       Components:
-          tokenizer (`Qwen2Tokenizer`) language_model (`Qwen3ForCausalLM`) rvq_depth_decoder
-          (`MiniMaxMusic3RVQDepthDecoder`)
+          - tokenizer (`Qwen2Tokenizer`)
+          - language_model (`Qwen3ForCausalLM`)
+          - rvq_depth_decoder (`MiniMaxMusic3RVQDepthDecoder`)
 
       Inputs:
           prompt (`str`):
@@ -96,8 +97,10 @@ class MiniMaxMusic3CoreDenoiseStep(SequentialPipelineBlocks):
     Flow-VAE latents from noise, blending every window into the previous one over their overlap.
 
       Components:
-          condition_encoder (`MiniMaxMusic3ConditionEncoder`) transformer (`MiniMaxMusic3Transformer1DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`)
+          - condition_encoder (`MiniMaxMusic3ConditionEncoder`)
+          - transformer (`MiniMaxMusic3Transformer1DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           frame_hiddens (`Tensor`):
@@ -135,10 +138,14 @@ class MiniMaxMusic3Blocks(SequentialPipelineBlocks):
     DAC-style vocoder decodes them into a stereo waveform at 44.1 kHz.
 
       Components:
-          tokenizer (`Qwen2Tokenizer`) language_model (`Qwen3ForCausalLM`) rvq_depth_decoder
-          (`MiniMaxMusic3RVQDepthDecoder`) condition_encoder (`MiniMaxMusic3ConditionEncoder`) transformer
-          (`MiniMaxMusic3Transformer1DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`) vocoder (`MiniMaxMusic3Vocoder`)
+          - tokenizer (`Qwen2Tokenizer`)
+          - language_model (`Qwen3ForCausalLM`)
+          - rvq_depth_decoder (`MiniMaxMusic3RVQDepthDecoder`)
+          - condition_encoder (`MiniMaxMusic3ConditionEncoder`)
+          - transformer (`MiniMaxMusic3Transformer1DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - vocoder (`MiniMaxMusic3Vocoder`)
 
       Inputs:
           prompt (`str`):

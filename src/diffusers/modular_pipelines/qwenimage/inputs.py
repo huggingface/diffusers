@@ -266,7 +266,7 @@ class QwenImageAdditionalInputsStep(ModularPipelineBlocks):
       This block should be placed after the encoder steps and the text input step.
 
       Components:
-          pachifier (`QwenImagePachifier`)
+          - pachifier (`QwenImagePachifier`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -482,7 +482,7 @@ class QwenImageEditPlusAdditionalInputsStep(ModularPipelineBlocks):
       This block should be placed after the encoder steps and the text input step.
 
       Components:
-          pachifier (`QwenImagePachifier`)
+          - pachifier (`QwenImagePachifier`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -718,7 +718,7 @@ class QwenImageLayeredAdditionalInputsStep(ModularPipelineBlocks):
       This block should be placed after the encoder steps and the text input step.
 
       Components:
-          pachifier (`QwenImageLayeredPachifier`)
+          - pachifier (`QwenImageLayeredPachifier`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):

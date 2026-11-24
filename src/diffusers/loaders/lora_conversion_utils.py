@@ -1071,8 +1071,13 @@ def _custom_replace(key: str, substrings: list[str]) -> str:
 def _convert_bfl_flux_control_lora_to_diffusers(original_state_dict):
     converted_state_dict = {}
     original_state_dict_keys = list(original_state_dict.keys())
-    num_layers = 19
-    num_single_layers = 38
+    num_layers = 0
+    num_single_layers = 0
+    for key in original_state_dict_keys:
+        if key.startswith("single_blocks."):
+            num_single_layers = max(num_single_layers, int(key.split(".")[1]) + 1)
+        elif key.startswith("double_blocks."):
+            num_layers = max(num_layers, int(key.split(".")[1]) + 1)
     inner_dim = 3072
     mlp_ratio = 4.0
 
@@ -1352,11 +1357,14 @@ def _convert_bfl_flux_control_lora_to_diffusers(original_state_dict):
                 f"final_layer.linear.{lora_key}.bias"
             )
 
-        converted_state_dict[f"norm_out.linear.{lora_key}.weight"] = swap_scale_shift(
+        # The original final layer orders its modulation (shift, scale), diffusers' `norm_out` (scale, shift). Only
+        # lora_B's rows are the layer's outputs; lora_A's rows are the rank dimension and must stay as they are.
+        maybe_swap = swap_scale_shift if lora_key == "lora_B" else (lambda weight: weight)
+        converted_state_dict[f"norm_out.linear.{lora_key}.weight"] = maybe_swap(
             original_state_dict.pop(f"final_layer.adaLN_modulation.1.{lora_key}.weight")
         )
         if f"final_layer.adaLN_modulation.1.{lora_key}.bias" in original_state_dict_keys:
-            converted_state_dict[f"norm_out.linear.{lora_key}.bias"] = swap_scale_shift(
+            converted_state_dict[f"norm_out.linear.{lora_key}.bias"] = maybe_swap(
                 original_state_dict.pop(f"final_layer.adaLN_modulation.1.{lora_key}.bias")
             )
 
@@ -1596,9 +1604,10 @@ def _convert_hunyuan_video_lora_to_diffusers(original_state_dict):
 
     def remap_norm_scale_shift_(key, state_dict):
         weight = state_dict.pop(key)
-        shift, scale = weight.chunk(2, dim=0)
-        new_weight = torch.cat([scale, shift], dim=0)
-        state_dict[key.replace("final_layer.adaLN_modulation.1", "norm_out.linear")] = new_weight
+        # Only lora_B's rows are the layer's (shift, scale) outputs; lora_A's rows are the rank dimension.
+        if "lora_B" in key:
+            weight = swap_scale_shift(weight)
+        state_dict[key.replace("final_layer.adaLN_modulation.1", "norm_out.linear")] = weight
 
     def remap_txt_in_(key, state_dict):
         def rename_key(key):

@@ -527,8 +527,9 @@ class QwenImageDenoiseStep(QwenImageDenoiseLoopWrapper):
       This block supports text2image and image2image tasks for QwenImage.
 
       Components:
-          guider (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -585,8 +586,9 @@ class QwenImageInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
       This block supports inpainting tasks for QwenImage.
 
       Components:
-          guider (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -650,8 +652,10 @@ class QwenImageControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
       This block supports text2img/img2img tasks with controlnet for QwenImage.
 
       Components:
-          guider (`ClassifierFreeGuidance`) controlnet (`QwenImageControlNetModel`) transformer
-          (`QwenImageTransformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - controlnet (`QwenImageControlNetModel`)
+          - transformer (`QwenImageTransformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -716,8 +720,10 @@ class QwenImageInpaintControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
       This block supports inpainting tasks with controlnet for QwenImage.
 
       Components:
-          guider (`ClassifierFreeGuidance`) controlnet (`QwenImageControlNetModel`) transformer
-          (`QwenImageTransformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - controlnet (`QwenImageControlNetModel`)
+          - transformer (`QwenImageTransformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -794,8 +800,9 @@ class QwenImageEditDenoiseStep(QwenImageDenoiseLoopWrapper):
       This block supports QwenImage Edit.
 
       Components:
-          guider (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -853,8 +860,9 @@ class QwenImageEditInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
       This block supports inpainting tasks for QwenImage Edit.
 
       Components:
-          guider (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -917,8 +925,9 @@ class QwenImageLayeredDenoiseStep(QwenImageDenoiseLoopWrapper):
       This block supports QwenImage Layered.
 
       Components:
-          guider (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
