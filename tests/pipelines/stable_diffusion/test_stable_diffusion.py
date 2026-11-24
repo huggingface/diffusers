@@ -55,6 +55,7 @@ from ...testing_utils import (
     backend_max_memory_allocated,
     backend_reset_max_memory_allocated,
     backend_reset_peak_memory_stats,
+    is_lora,
     load_image,
     load_numpy,
     nightly,
@@ -1306,6 +1307,7 @@ class TestStableDiffusionPipelineDeviceMap:
         _ = sd_pipe_with_device_map("hello", num_inference_steps=2)
 
 
+@is_lora
 @slow
 @require_torch_accelerator
 @require_peft_backend
@@ -1453,6 +1455,7 @@ class TestStableDiffusionLoRADeviceIntegration:
                 assert module.weight.device != torch.device("cpu")
 
 
+@is_lora
 @slow
 @nightly
 @require_torch_accelerator
