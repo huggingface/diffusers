@@ -20,6 +20,7 @@ from ...testing_utils import (
     CaptureLogger,
     assert_tensors_close,
     backend_empty_cache,
+    is_lora,
     nightly,
     numpy_cosine_similarity_distance,
     require_big_accelerator,
@@ -592,6 +593,7 @@ class TestFluxControlPipelineLoRAMemory(FluxControlPipelineTesterConfig, LoraMem
     """LoRA x memory-optimization tests (group offload, CPU offload) for the Flux Control pipeline."""
 
 
+@is_lora
 @nightly
 @require_torch_accelerator
 @require_peft_backend

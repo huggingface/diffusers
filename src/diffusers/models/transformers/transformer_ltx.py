@@ -591,5 +591,8 @@ def apply_rotary_emb(x, freqs):
     cos, sin = freqs
     x_real, x_imag = x.unflatten(2, (-1, 2)).unbind(-1)  # [B, S, C // 2]
     x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(2)
-    out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+    # cast `cos`/`sin` to at least float32 so that input is promoted to float32 inside the multiplication
+    compute_dtype = torch.promote_types(torch.float32, cos.dtype)
+    cos, sin = cos.to(compute_dtype), sin.to(compute_dtype)
+    out = (x * cos + x_rotated * sin).to(x.dtype)
     return out

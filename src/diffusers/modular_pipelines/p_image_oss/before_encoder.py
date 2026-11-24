@@ -22,7 +22,7 @@ from ...image_processor import VaeImageProcessor
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
-from .modular_pipeline import PH3ImageModularPipeline
+from .modular_pipeline import PImageOSSModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -67,8 +67,8 @@ def _size_in_area_range(width: int, height: int, min_pixels: int, max_pixels: in
     return tuple(max(multiple, round(side * scale / multiple) * multiple) for side in (width, height))
 
 
-class PH3ImageEditResizeStep(ModularPipelineBlocks):
-    model_name = "p-h3-image"
+class PImageOSSEditResizeStep(ModularPipelineBlocks):
+    model_name = "p-image-oss"
 
     @property
     def description(self) -> str:
@@ -149,8 +149,8 @@ class PH3ImageEditResizeStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: PH3ImageModularPipeline, state: PipelineState
-    ) -> tuple[PH3ImageModularPipeline, PipelineState]:
+        self, components: PImageOSSModularPipeline, state: PipelineState
+    ) -> tuple[PImageOSSModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         images = block_state.image if isinstance(block_state.image, list) else [block_state.image]
         images = [image.convert("RGB") for image in images]
