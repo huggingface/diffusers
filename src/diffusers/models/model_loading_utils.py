@@ -722,7 +722,11 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
         quant_type = tensor.tensor_type
 
         # if the tensor is a torch supported dtype do not use GGUFParameter
-        is_gguf_quant = quant_type not in [gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16]
+        is_gguf_quant = quant_type not in [
+            gguf.GGMLQuantizationType.F32,
+            gguf.GGMLQuantizationType.F16,
+            gguf.GGMLQuantizationType.BF16,
+        ]
         if is_gguf_quant and quant_type not in SUPPORTED_GGUF_QUANT_TYPES:
             _supported_quants_str = "\n".join([str(type) for type in SUPPORTED_GGUF_QUANT_TYPES])
             raise ValueError(
@@ -735,6 +739,9 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
             )
 
         weights = torch.from_numpy(tensor.data.copy())
+        if quant_type == gguf.GGMLQuantizationType.BF16:
+            # gguf-py returns BF16 data as raw bytes (uint8, last dim doubled)
+            weights = weights.view(torch.bfloat16)
         parsed_parameters[name] = GGUFParameter(weights, quant_type=quant_type) if is_gguf_quant else weights
 
     return parsed_parameters

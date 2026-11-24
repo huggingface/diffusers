@@ -51,7 +51,6 @@ if can_use_cuda_kernels and is_kernels_available():
 else:
     ops = None
 
-UNQUANTIZED_TYPES = {gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16, gguf.GGMLQuantizationType.BF16}
 STANDARD_QUANT_TYPES = {
     gguf.GGMLQuantizationType.Q4_0,
     gguf.GGMLQuantizationType.Q4_1,
@@ -87,11 +86,6 @@ MMQ_QUANT_TYPES = STANDARD_QUANT_TYPES | KQUANT_TYPES
 
 
 def _fused_mul_mat_gguf(x: torch.Tensor, qweight: torch.Tensor, qweight_type: int) -> torch.Tensor:
-    # there is no need to call any kernel for fp16/bf16
-    if qweight_type in UNQUANTIZED_TYPES:
-        weight = dequantize_gguf_tensor(qweight)
-        return x @ weight.to(x.dtype).T
-
     # TODO(Isotr0py): GGUF's MMQ and MMVQ implementation are designed for
     # contiguous batching and inefficient with diffusers' batching,
     # so we disabled it now.
@@ -440,10 +434,6 @@ def dequantize_blocks_Q2_K(blocks, block_size, type_size, dtype=None):
     return qs.reshape((n_blocks, -1))
 
 
-def dequantize_blocks_BF16(blocks, block_size, type_size, dtype=None):
-    return (blocks.view(torch.int16).to(torch.int32) << 16).view(torch.float32)
-
-
 # this part from calcuis (gguf.org)
 # more info: https://github.com/calcuis/gguf-connector/blob/main/src/gguf_connector/quant2c.py
 
@@ -502,7 +492,6 @@ GGML_QUANT_SIZES = gguf.GGML_QUANT_SIZES
 dequantize_functions = {
     gguf.GGMLQuantizationType.IQ4_NL: dequantize_blocks_IQ4_NL,
     gguf.GGMLQuantizationType.IQ4_XS: dequantize_blocks_IQ4_XS,
-    gguf.GGMLQuantizationType.BF16: dequantize_blocks_BF16,
     gguf.GGMLQuantizationType.Q8_0: dequantize_blocks_Q8_0,
     gguf.GGMLQuantizationType.Q5_1: dequantize_blocks_Q5_1,
     gguf.GGMLQuantizationType.Q5_0: dequantize_blocks_Q5_0,
