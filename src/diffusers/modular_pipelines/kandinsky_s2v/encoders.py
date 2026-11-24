@@ -344,8 +344,10 @@ class KandinskyS2VDistilledTextAudioEncoderStep(KandinskyS2VTextAudioEncoderStep
     prompt: it plans the chunks the speech track needs and encodes the prompt and the speech.
 
       Components:
-          text_encoder (`Qwen2_5OmniThinkerForConditionalGeneration`) tokenizer (`Qwen2_5OmniProcessor`) text_encoder_2
-          (`CLIPTextModel`) tokenizer_2 (`CLIPTokenizer`)
+          - text_encoder (`Qwen2_5OmniThinkerForConditionalGeneration`)
+          - tokenizer (`Qwen2_5OmniProcessor`)
+          - text_encoder_2 (`CLIPTextModel`)
+          - tokenizer_2 (`CLIPTokenizer`)
 
       Inputs:
           prompt (`str`, *optional*, defaults to The video presents a stable medium close-up of a subject facing the

@@ -63,8 +63,10 @@ class QwenImageEditVLEncoderStep(SequentialPipelineBlocks):
     QwenImage-Edit VL encoder step that encode the image and text prompts together.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`) text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor
-          (`Qwen2VLProcessor`) guider (`ClassifierFreeGuidance`)
+          - image_resize_processor (`VaeImageProcessor`)
+          - text_encoder (`Qwen2_5_VLForConditionalGeneration`)
+          - processor (`Qwen2VLProcessor`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           image (`Image | list`):
@@ -111,8 +113,9 @@ class QwenImageEditVaeEncoderStep(SequentialPipelineBlocks):
     Vae encoder step that encode the image inputs into their latent representations.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`) image_processor (`VaeImageProcessor`) vae
-          (`AutoencoderKLQwenImage`)
+          - image_resize_processor (`VaeImageProcessor`)
+          - image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
 
       Inputs:
           image (`Image | list`):
@@ -152,8 +155,9 @@ class QwenImageEditInpaintVaeEncoderStep(SequentialPipelineBlocks):
        - create image latents.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`) image_mask_processor (`InpaintProcessor`) vae
-          (`AutoencoderKLQwenImage`)
+          - image_resize_processor (`VaeImageProcessor`)
+          - image_mask_processor (`InpaintProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
 
       Inputs:
           image (`Image | list`):
@@ -227,7 +231,7 @@ class QwenImageEditInputStep(SequentialPipelineBlocks):
        - update height/width based `image_latents`, patchify `image_latents`.
 
       Components:
-          pachifier (`QwenImagePachifier`)
+          - pachifier (`QwenImagePachifier`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -297,7 +301,7 @@ class QwenImageEditInpaintInputStep(SequentialPipelineBlocks):
        - update height/width based `image_latents`, patchify `image_latents`.
 
       Components:
-          pachifier (`QwenImagePachifier`)
+          - pachifier (`QwenImagePachifier`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -376,7 +380,8 @@ class QwenImageEditInpaintPrepareLatentsStep(SequentialPipelineBlocks):
        - Create the patchified latents `mask` based on the processed mask image.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) pachifier (`QwenImagePachifier`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - pachifier (`QwenImagePachifier`)
 
       Inputs:
           latents (`Tensor`):
@@ -424,8 +429,10 @@ class QwenImageEditCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoising workflow for QwenImage-Edit edit (img2img) task.
 
       Components:
-          pachifier (`QwenImagePachifier`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`)
+          - pachifier (`QwenImagePachifier`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -498,8 +505,10 @@ class QwenImageEditInpaintCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoising workflow for QwenImage-Edit edit inpaint task.
 
       Components:
-          pachifier (`QwenImagePachifier`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`)
+          - pachifier (`QwenImagePachifier`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -617,7 +626,8 @@ class QwenImageEditDecodeStep(SequentialPipelineBlocks):
     Decode step that decodes the latents to images and postprocess the generated image.
 
       Components:
-          vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           latents (`Tensor`):
@@ -648,7 +658,8 @@ class QwenImageEditInpaintDecodeStep(SequentialPipelineBlocks):
     overlay to the original image.
 
       Components:
-          vae (`AutoencoderKLQwenImage`) image_mask_processor (`InpaintProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
+          - image_mask_processor (`InpaintProcessor`)
 
       Inputs:
           latents (`Tensor`):
@@ -724,10 +735,16 @@ class QwenImageEditAutoBlocks(SequentialPipelineBlocks):
         - `image_conditioned_inpainting`: requires `prompt`, `mask_image`, `image`
 
       Components:
-          image_resize_processor (`VaeImageProcessor`) text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor
-          (`Qwen2VLProcessor`) guider (`ClassifierFreeGuidance`) image_mask_processor (`InpaintProcessor`) vae
-          (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`) pachifier (`QwenImagePachifier`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) transformer (`QwenImageTransformer2DModel`)
+          - image_resize_processor (`VaeImageProcessor`)
+          - text_encoder (`Qwen2_5_VLForConditionalGeneration`)
+          - processor (`Qwen2VLProcessor`)
+          - guider (`ClassifierFreeGuidance`)
+          - image_mask_processor (`InpaintProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
+          - image_processor (`VaeImageProcessor`)
+          - pachifier (`QwenImagePachifier`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`QwenImageTransformer2DModel`)
 
       Inputs:
           image (`Image | list`):

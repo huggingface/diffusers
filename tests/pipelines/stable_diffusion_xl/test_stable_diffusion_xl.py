@@ -27,7 +27,6 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProject
 
 from diffusers import (
     AutoencoderKL,
-    AutoPipelineForText2Image,
     ControlNetModel,
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -48,6 +47,7 @@ from ...testing_utils import (
     assert_tensors_close,
     backend_empty_cache,
     backend_synchronize,
+    is_lora,
     load_image,
     nightly,
     numpy_cosine_similarity_distance,
@@ -1009,6 +1009,7 @@ class TestStableDiffusionXLPipelineIntegration:
         assert max_diff < 1e-2
 
 
+@is_lora
 @slow
 @nightly
 @require_torch_accelerator
@@ -1520,7 +1521,7 @@ class TestStableDiffusionXLTurboPipelineIntegration:
     def test_sdxl_turbo_512(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
-        pipe = AutoPipelineForText2Image.from_pretrained(self.ckpt_id, torch_dtype=torch.float16, variant="fp16")
+        pipe = StableDiffusionXLPipeline.from_pretrained(self.ckpt_id, torch_dtype=torch.float16, variant="fp16")
         pipe.to(torch_device)
         backend_synchronize(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -1547,7 +1548,7 @@ class TestStableDiffusionXLTurboPipelineIntegration:
         device = torch.neuron.current_device()
         generator = torch.Generator("cpu").manual_seed(0)
 
-        pipe = AutoPipelineForText2Image.from_pretrained(self.ckpt_id, torch_dtype=torch.bfloat16, variant="fp16")
+        pipe = StableDiffusionXLPipeline.from_pretrained(self.ckpt_id, torch_dtype=torch.bfloat16, variant="fp16")
         pipe = pipe.to(device)
         backend_synchronize(torch_device)
 

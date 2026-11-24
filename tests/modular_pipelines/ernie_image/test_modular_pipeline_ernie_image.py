@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
-
 from diffusers.modular_pipelines import ErnieImageAutoBlocks, ErnieImageModularPipeline
 
 from ..testing_utils import (
@@ -61,9 +59,7 @@ class ErnieImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestErnieImageModularPipelineFast(ErnieImageModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    @pytest.mark.skip(reason="PE generation is non-deterministic on CPU")
-    def test_float16_inference(self):
-        pass
+    pass
 
 
 class TestErnieImageModularPipelineLoading(ErnieImageModularPipelineTesterConfig, ModularLoadingTesterMixin):

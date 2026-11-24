@@ -16,7 +16,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import torch
 import torch.distributed as dist
@@ -285,6 +285,25 @@ class ContextParallelOutput:
         return f"ContextParallelOutput(gather_dim={self.gather_dim}, expected_dims={self.expected_dims})"
 
 
+@dataclass(frozen=True)
+class Conditional:
+    """
+    Marks a `_cp_plan` or `_tp_plan` entry whose module does not exist on every instance of the model class. For
+    example, different checkpoints of the same model class might have different layers / modules.
+
+    A plan entry must resolve to a module, so a typo in a key raises. Wrap the value of an entry in `Conditional` when
+    its module depends on the config or the checkpoint. The entry is skipped wherever the module is missing or set to
+    `None`, and a debug message is logged if it matches no module at all.
+
+    Args:
+        value:
+            The value the entry would have without the wrapper, e.g. `Conditional("colwise")` in a `_tp_plan` or
+            `Conditional(ContextParallelOutput(gather_dim=1, expected_dims=3))` in a `_cp_plan`.
+    """
+
+    value: Any
+
+
 # A dictionary where keys denote the input to be split across context parallel region, and the
 # value denotes the sharding configuration.
 # If the key is a string, it denotes the name of the parameter in the forward function.
@@ -300,7 +319,7 @@ ContextParallelOutputType = ContextParallelOutput | list[ContextParallelOutput] 
 
 # A dictionary where keys denote the module id, and the value denotes how the inputs/outputs of
 # the module should be split/gathered across context parallel region.
-ContextParallelModelPlan = dict[str, ContextParallelInputType | ContextParallelOutputType]
+ContextParallelModelPlan = dict[str, ContextParallelInputType | ContextParallelOutputType | Conditional]
 
 
 # Example of a ContextParallelModelPlan (QwenImageTransformer2DModel):

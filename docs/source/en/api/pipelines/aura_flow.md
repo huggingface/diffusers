@@ -59,7 +59,7 @@ image = pipeline(prompt).images[0]
 image.save("auraflow.png")
 ```
 
-Loading [GGUF checkpoints](https://huggingface.co/docs/diffusers/quantization/gguf) are also supported:
+Loading [GGUF checkpoints](../../quantization/gguf) are also supported:
 
 ```py
 import torch

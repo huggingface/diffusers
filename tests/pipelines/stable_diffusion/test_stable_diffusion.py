@@ -31,8 +31,6 @@ from transformers import (
 
 from diffusers import (
     AutoencoderKL,
-    AutoPipelineForImage2Image,
-    AutoPipelineForText2Image,
     DDIMScheduler,
     DiffusionPipeline,
     DPMSolverMultistepScheduler,
@@ -41,6 +39,7 @@ from diffusers import (
     LCMScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
+    StableDiffusionImg2ImgPipeline,
     StableDiffusionPipeline,
     UNet2DConditionModel,
     logging,
@@ -56,6 +55,7 @@ from ...testing_utils import (
     backend_max_memory_allocated,
     backend_reset_max_memory_allocated,
     backend_reset_peak_memory_stats,
+    is_lora,
     load_image,
     load_numpy,
     nightly,
@@ -1307,6 +1307,7 @@ class TestStableDiffusionPipelineDeviceMap:
         _ = sd_pipe_with_device_map("hello", num_inference_steps=2)
 
 
+@is_lora
 @slow
 @require_torch_accelerator
 @require_peft_backend
@@ -1454,6 +1455,7 @@ class TestStableDiffusionLoRADeviceIntegration:
                 assert module.weight.device != torch.device("cpu")
 
 
+@is_lora
 @slow
 @nightly
 @require_torch_accelerator
@@ -1831,7 +1833,7 @@ class TestStableDiffusionLoRAIntegration:
 
     def test_not_empty_state_dict(self):
         # Makes sure https://github.com/huggingface/diffusers/issues/7054 does not happen again
-        pipe = AutoPipelineForText2Image.from_pretrained(
+        pipe = StableDiffusionPipeline.from_pretrained(
             "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
         ).to(torch_device)
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
@@ -1845,7 +1847,7 @@ class TestStableDiffusionLoRAIntegration:
 
     def test_load_unload_load_state_dict(self):
         # Makes sure https://github.com/huggingface/diffusers/issues/7054 does not happen again
-        pipe = AutoPipelineForText2Image.from_pretrained(
+        pipe = StableDiffusionPipeline.from_pretrained(
             "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
         ).to(torch_device)
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
@@ -1894,7 +1896,7 @@ class TestStableDiffusionLoRAIntegration:
         release_memory(pipe)
 
     def test_sdv1_5_lcm_lora_img2img(self):
-        pipe = AutoPipelineForImage2Image.from_pretrained(
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             "stable-diffusion-v1-5/stable-diffusion-v1-5", torch_dtype=torch.float16
         )
         pipe.to(torch_device)

@@ -7,7 +7,6 @@ from ..utils import (
     get_objects_from_module,
     is_librosa_available,
     is_note_seq_available,
-    is_onnx_available,
     is_opencv_available,
     is_sentencepiece_available,
     is_torch_available,
@@ -114,6 +113,9 @@ else:
             "PIAPipeline",
             "PaintByExamplePipeline",
             "SemanticStableDiffusionPipeline",
+            "ShapEImg2ImgPipeline",
+            "ShapEPipeline",
+            "shap_e",
             "StableDiffusionAttendAndExcitePipeline",
             "StableDiffusionControlNetXSPipeline",
             "StableDiffusionDiffEditPipeline",
@@ -395,7 +397,6 @@ else:
         "SanaWMLTX2Refiner",
         "SanaWMPipelineOutput",
     ]
-    _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
     _import_structure["stable_audio"] = [
         "StableAudioProjectionModel",
         "StableAudioPipeline",
@@ -495,32 +496,6 @@ else:
     _import_structure["chronoedit"] = ["ChronoEditPipeline"]
     _import_structure["glm_image"] = ["GlmImagePipeline"]
 
-try:
-    if not is_onnx_available():
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from ..utils import dummy_onnx_objects  # noqa F403
-
-    _dummy_objects.update(get_objects_from_module(dummy_onnx_objects))
-else:
-    _import_structure["onnx_utils"] = ["OnnxRuntimeModel"]
-try:
-    if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from ..utils import dummy_torch_and_transformers_and_onnx_objects  # noqa F403
-
-    _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_onnx_objects))
-else:
-    _import_structure["stable_diffusion"].extend(
-        [
-            "OnnxStableDiffusionImg2ImgPipeline",
-            "OnnxStableDiffusionInpaintPipeline",
-            "OnnxStableDiffusionPipeline",
-            "OnnxStableDiffusionUpscalePipeline",
-            "StableDiffusionOnnxPipeline",
-        ]
-    )
 
 try:
     if not (is_torch_available() and is_transformers_available() and is_sentencepiece_available()):
@@ -685,6 +660,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PaintByExamplePipeline,
             PIAPipeline,
             SemanticStableDiffusionPipeline,
+            ShapEImg2ImgPipeline,
+            ShapEPipeline,
             StableDiffusionAttendAndExcitePipeline,
             StableDiffusionControlNetXSPipeline,
             StableDiffusionDiffEditPipeline,
@@ -716,6 +693,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
+            shap_e,
         )
         from .diffusion_gemma import DiffusionGemmaPipeline, DiffusionGemmaPipelineOutput
         from .dreamlite import (
@@ -899,7 +877,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SanaWMPipeline,
             SanaWMPipelineOutput,
         )
-        from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_audio import StableAudioPipeline, StableAudioProjectionModel
         from .stable_audio_3 import (
             StableAudio3AudioToAudioPipeline,
@@ -957,29 +934,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ZImageOmniPipeline,
             ZImagePipeline,
         )
-
-        try:
-            if not is_onnx_available():
-                raise OptionalDependencyNotAvailable()
-        except OptionalDependencyNotAvailable:
-            from ..utils.dummy_onnx_objects import *  # noqa F403
-
-        else:
-            from .onnx_utils import OnnxRuntimeModel
-
-        try:
-            if not (is_torch_available() and is_transformers_available() and is_onnx_available()):
-                raise OptionalDependencyNotAvailable()
-        except OptionalDependencyNotAvailable:
-            from ..utils.dummy_torch_and_transformers_and_onnx_objects import *
-        else:
-            from .stable_diffusion import (
-                OnnxStableDiffusionImg2ImgPipeline,
-                OnnxStableDiffusionInpaintPipeline,
-                OnnxStableDiffusionPipeline,
-                OnnxStableDiffusionUpscalePipeline,
-                StableDiffusionOnnxPipeline,
-            )
 
         try:
             if not (is_torch_available() and is_transformers_available() and is_sentencepiece_available()):

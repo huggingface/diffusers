@@ -47,12 +47,15 @@ class Wan22VaceCoreDenoiseStep(SequentialPipelineBlocks):
     denoise block that takes encoded text and vace conditioning latents and runs the denoising process.
 
       Components:
-          transformer (`WanTransformer3DModel`) scheduler (`UniPCMultistepScheduler`) guider (`ClassifierFreeGuidance`)
-          guider_2 (`ClassifierFreeGuidance`) transformer_2 (`WanVACETransformer3DModel`)
+          - transformer (`WanTransformer3DModel`)
+          - scheduler (`UniPCMultistepScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - guider_2 (`ClassifierFreeGuidance`)
+          - transformer_2 (`WanVACETransformer3DModel`)
 
       Configs:
-          boundary_ratio (default: 0.875): The boundary ratio to divide the denoising loop into high noise and low
-          noise stages.
+          - boundary_ratio (default: 0.875): The boundary ratio to divide the denoising loop into high noise and low
+            noise stages.
 
       Inputs:
           num_videos_per_prompt (`None`, *optional*, defaults to 1):
@@ -128,13 +131,19 @@ class Wan22VaceBlocks(SequentialPipelineBlocks):
     Modular pipeline for controllable video generation using Wan2.2 VACE.
 
       Components:
-          text_encoder (`UMT5EncoderModel`) tokenizer (`AutoTokenizer`) guider (`ClassifierFreeGuidance`) vae
-          (`AutoencoderKLWan`) video_processor (`VideoProcessor`) transformer (`WanTransformer3DModel`) scheduler
-          (`UniPCMultistepScheduler`) guider_2 (`ClassifierFreeGuidance`) transformer_2 (`WanVACETransformer3DModel`)
+          - text_encoder (`UMT5EncoderModel`)
+          - tokenizer (`AutoTokenizer`)
+          - guider (`ClassifierFreeGuidance`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
+          - transformer (`WanTransformer3DModel`)
+          - scheduler (`UniPCMultistepScheduler`)
+          - guider_2 (`ClassifierFreeGuidance`)
+          - transformer_2 (`WanVACETransformer3DModel`)
 
       Configs:
-          boundary_ratio (default: 0.875): The boundary ratio to divide the denoising loop into high noise and low
-          noise stages.
+          - boundary_ratio (default: 0.875): The boundary ratio to divide the denoising loop into high noise and low
+            noise stages.
 
       Inputs:
           prompt (`None`, *optional*):
