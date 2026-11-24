@@ -295,7 +295,12 @@ Serve a pipeline over HTTP with the [Generative Media Spec](./gms) API. See [Ser
 
 ```bash
 pip install "diffusers[serve]"
-diffusers-cli serve black-forest-labs/FLUX.1-dev
+diffusers-cli serve black-forest-labs/FLUX.2-klein-4B
+```
+
+```text
+url=http://127.0.0.1:8000 model=black-forest-labs/FLUX.2-klein-4B pipeline_class=Flux2KleinPipeline tasks=['text_to_image', 'image_to_image'] ...
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 ```
 
 ## `custom_blocks`

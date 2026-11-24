@@ -36,7 +36,6 @@ from .scheduler import GenerationJob, Scheduler
 
 logger = logging.get_logger("diffusers-cli/serve")
 
-MAX_WAIT_SECONDS = 300.0
 REQUEST_ID_HEADER = "x-request-id"
 _KEEP_ALIVE_SECONDS = 15.0
 _FILE_ROUTE = "/v1/generations/{generation_id}/files/{filename}"
@@ -51,6 +50,7 @@ def _timestamp(value: Any) -> str | None:
 def create_app(
     manifest: Manifest,
     scheduler: Scheduler,
+    max_wait: float,
     enable_cors: bool = False,
     public_url: str | None = None,
 ) -> FastAPI:
@@ -171,7 +171,7 @@ def create_app(
         wait = re.fullmatch(r"\s*wait=(\d+)\s*", request.headers.get("prefer", ""))
         # `Prefer` is a hint, so a server without the `wait` capability answers right away instead of failing.
         if wait is not None and "wait" in manifest.capabilities:
-            await generation.wait(min(float(wait.group(1)), MAX_WAIT_SECONDS))
+            await generation.wait(min(float(wait.group(1)), max_wait))
         return format_job_response(generation, request)
 
     @app.get("/v1/generations/{generation_id}")

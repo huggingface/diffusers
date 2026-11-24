@@ -38,7 +38,7 @@ from PIL import Image
 from ...modular_pipelines import InputParam, LoopSequentialPipelineBlocks, ModularPipeline, ModularPipelineBlocks
 from ...utils import export_to_video, load_image, load_video, logging, numpy_to_pil
 from ...utils.constants import DIFFUSERS_REQUEST_TIMEOUT
-from ..run import _as_audio_arrays, _as_pil_list, _get_generator, _load_pipeline
+from ..run import _as_audio_arrays, _as_pil_list, _get_generator, _load_pipeline, _lora_specs
 from .manifest import OUTPUT_FIELDS, GMSError, Manifest, blocks_signature
 from .scheduler import GenerationJob
 
@@ -48,9 +48,6 @@ logger = logging.get_logger("diffusers-cli/serve")
 # zlib level for PNG outputs. Pillow's default of 6 takes close to four times as long to encode a
 # 1024x1024 image for a file about 7% smaller; the output is lossless either way.
 PNG_COMPRESS_LEVEL = 1
-# Caps each media URL download, like vLLM's `VLLM_MAX_MEDIA_DOWNLOAD_SIZE_MB`, so a request can't make the server read
-# an unbounded file into memory.
-MAX_MEDIA_DOWNLOAD_BYTES = 256 * 2**20
 _SAMPLE_RATE_ATTRIBUTES = (
     "sample_rate",
     "vocoder.config.output_sampling_rate",
@@ -63,14 +60,22 @@ _SAMPLE_RATE_ATTRIBUTES = (
 
 def backend_capabilities(args: Namespace, pipeline_cls: type) -> list[str]:
     capabilities = ["sse", "wait"]
-    # Swapping adapter weights retraces a compiled denoiser on every request, and LoRAs passed at
-    # startup are part of the deployment rather than something a request may replace.
-    if hasattr(pipeline_cls, "load_lora_weights") and args.compile is None and not args.lora:
-        capabilities.append("adapters")
+    if not hasattr(pipeline_cls, "load_lora_weights"):
+        return capabilities
+    # Loading a request's LoRA changes the compiled denoiser's layers, so every such request would recompile it.
+    if args.compile is not None:
+        logger.warning(
+            "Per-request LoRAs (`adapters`) are off because --compile is set: loading one would recompile the model "
+            "on every request. Pass LoRAs at startup with --lora instead, or serve without --compile."
+        )
+        return capabilities
+    capabilities.append("adapters")
     return capabilities
 
 
-def _load_media(name: str, value: dict[str, Any], pointer: str, allowed_domains: list[str] | None) -> Any:
+def _load_media(
+    name: str, value: dict[str, Any], pointer: str, allowed_domains: list[str] | None, max_bytes: int
+) -> Any:
     try:
         if "base64" in value:
             content = base64.b64decode(value["base64"], validate=True)
@@ -82,6 +87,8 @@ def _load_media(name: str, value: dict[str, Any], pointer: str, allowed_domains:
             else:
                 # Only public addresses are fetched, so a request can't reach the server's own network, e.g. a cloud
                 # metadata endpoint. The operator vouches for the hosts on an allowlist.
+                # TODO(DN6): connect to the address checked here. The fetch resolves the host again, so a host whose
+                # DNS answer changes in between (DNS rebinding) can still reach a private address.
                 default_port = 443 if url.scheme == "https" else 80
                 for info in socket.getaddrinfo(url.hostname, url.port or default_port):
                     if not ipaddress.ip_address(info[4][0].split("%")[0]).is_global:
@@ -97,8 +104,8 @@ def _load_media(name: str, value: dict[str, Any], pointer: str, allowed_domains:
                 content = bytearray()
                 for chunk in response.iter_bytes():
                     content += chunk
-                    if len(content) > MAX_MEDIA_DOWNLOAD_BYTES:
-                        raise ValueError(f"the download is larger than {MAX_MEDIA_DOWNLOAD_BYTES // 2**20} MB")
+                    if len(content) > max_bytes:
+                        raise ValueError(f"the download is larger than {max_bytes // 2**20} MB")
     except (ValueError, OSError, httpx.HTTPError) as e:
         raise GMSError("invalid_request", f"could not read input {name!r}: {e}", pointer) from e
 
@@ -168,10 +175,20 @@ class DiffusersBackend:
     def __init__(self, args: Namespace, manifest: Manifest):
         self.pipeline = _load_pipeline(args)
         self._allowed_media_domains = args.allowed_media_domains
+        self._max_media_bytes = args.max_media_size_mb * 2**20
+        # The --lora adapters stay loaded and active alongside each request's own.
+        self._startup_adapters = {adapter_name: scale for _, adapter_name, _, scale in _lora_specs(args)}
         self._modular = isinstance(self.pipeline, ModularPipeline)
         if self._modular:
             # `pipeline.blocks` returns a copy, and the pipeline is already built, so the loops are edited in place.
-            for loop in _denoise_loops(self.pipeline._blocks):
+            loops = _denoise_loops(self.pipeline._blocks)
+            if not loops:
+                logger.warning(
+                    f"Found no denoising loop with a `denoiser` block in {type(self.pipeline).__name__}, so "
+                    "generations report no step progress and only stop on cancel or --generation-timeout once the "
+                    "pipeline returns."
+                )
+            for loop in loops:
                 loop.sub_blocks["step_callback"] = _StepCallback()
             parameters = blocks_signature(self.pipeline.blocks).parameters
         else:
@@ -188,18 +205,22 @@ class DiffusersBackend:
         for kwarg, (name, kind, value) in request.media.items():
             if isinstance(value, list):
                 loaded = [
-                    _load_media(name, item, f"/inputs/{name}/{index}", self._allowed_media_domains)
+                    _load_media(
+                        name, item, f"/inputs/{name}/{index}", self._allowed_media_domains, self._max_media_bytes
+                    )
                     for index, item in enumerate(value)
                 ]
             else:
-                loaded = [_load_media(name, value, f"/inputs/{name}", self._allowed_media_domains)]
+                loaded = [
+                    _load_media(name, value, f"/inputs/{name}", self._allowed_media_domains, self._max_media_bytes)
+                ]
             if kind == "audio":
                 if kwarg == "initial_audio_waveforms":
                     kwargs.setdefault("initial_audio_sampling_rate", loaded[0][1])
                 loaded = [waveform for waveform, _ in loaded]
             kwargs[kwarg] = loaded if isinstance(value, list) else loaded[0]
 
-        device = self.pipeline.device if hasattr(self.pipeline, "device") else torch.device("cpu")
+        device = self.pipeline.device
         if request.seed is not None:
             # A CUDA generator must sit on the pipeline's own GPU, which is `cuda:1` and up with --data-parallel.
             kwargs["generator"] = _get_generator(request.seed, str(device) if device.type == "cuda" else device.type)
@@ -223,7 +244,9 @@ class DiffusersBackend:
         try:
             for index, adapter in enumerate(request.adapters):
                 try:
-                    self.pipeline.load_lora_weights(adapter["path"].removeprefix("hf:"), adapter_name=names[index])
+                    self.pipeline.load_lora_weights(
+                        adapter["path"].removeprefix("hf:"), adapter_name=names[index], **adapter["options"]
+                    )
                 except Exception as e:
                     raise GMSError(
                         "invalid_request",
@@ -231,15 +254,24 @@ class DiffusersBackend:
                         f"/adapters/{index}/path",
                     ) from e
             if names:
-                self.pipeline.set_adapters(names, adapter_weights=[adapter["weight"] for adapter in request.adapters])
+                self.pipeline.set_adapters(
+                    [*self._startup_adapters, *names],
+                    adapter_weights=[
+                        *self._startup_adapters.values(),
+                        *(adapter["weight"] for adapter in request.adapters),
+                    ],
+                )
             # Worker threads start on GPU 0, and with --data-parallel this pipeline may sit on another one.
             with torch.cuda.device(device) if device.type == "cuda" else contextlib.nullcontext():
                 result = self.pipeline(**kwargs)
         except _Canceled:
             return {}
         finally:
-            if request.adapters:
-                self.pipeline.unload_lora_weights()
+            # A load that failed partway may have left its adapter in some components, so every request name goes.
+            if names:
+                self.pipeline.delete_adapters(names)
+            if names and self._startup_adapters:
+                self.pipeline.set_adapters(list(self._startup_adapters), list(self._startup_adapters.values()))
         if generation.cancel_requested:
             return {}
 

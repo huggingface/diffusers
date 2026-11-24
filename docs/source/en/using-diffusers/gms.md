@@ -36,16 +36,15 @@ Every request follows one loop:
 A manifest is the machine-readable description of one model. Clients render interfaces and validate requests from it,
 so a new model works in an existing client without client changes.
 
-Each task declares its parameters in one flat, typed map. A small core vocabulary has the same meaning in every
-manifest, and everything else is model-specific. `serve` maps the core names to pipeline arguments:
+Each task declares its inputs and parameters in flat, typed maps, and the names are model-specific. `serve` uses the
+pipeline's own argument names, except for a few common ones:
 
-| GMS name | Pipeline argument |
+| Manifest name | Pipeline argument |
 |---|---|
 | `steps` | `num_inference_steps` |
 | `seed` | `generator` |
 | `num_outputs` | `num_images_per_prompt`, `num_videos_per_prompt`, `num_waveforms_per_prompt` |
-| `fps` | `fps`, `frame_rate` |
-| `duration` | `num_frames`, converted from seconds with the manifest's frame lattice |
+| `fps` | `frame_rate` |
 | `mask` (input) | `mask_image` |
 
 The manifest travels with the model: canonically, a `gms.json` file in the model repository. A server SHOULD serve a
@@ -54,18 +53,18 @@ back to a manifest derived from the pipeline's `__call__` signature when the rep
 
 ## Publishing a manifest
 
-A derived manifest has types and defaults, but no ranges, presets, or durations in seconds. Write a `gms.json` to
-add them, and test it locally before uploading:
+A derived manifest has types and defaults, but no ranges or presets. Write a `gms.json` to add them, and test it
+locally before uploading:
 
 ```bash
-diffusers serve black-forest-labs/FLUX.1-dev --manifest gms.json
+diffusers serve black-forest-labs/FLUX.2-klein-4B --manifest gms.json
 ```
 
 `serve` checks the manifest against the pipeline at startup and refuses to start if it declares something the
 pipeline can't do. Once it loads, upload it to the root of the model repository:
 
 ```bash
-hf upload black-forest-labs/FLUX.1-dev gms.json gms.json
+hf upload black-forest-labs/FLUX.2-klein-4B gms.json gms.json
 ```
 
 See the [example manifests](https://github.com/huggingface/gms-alpha/tree/main/manifests) for FLUX.2, LTX 2.5 and

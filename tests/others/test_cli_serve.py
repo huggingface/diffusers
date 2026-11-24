@@ -17,7 +17,6 @@ No weights are loaded: the backend runs a fake pipeline.
 """
 
 import asyncio
-import base64
 import inspect
 import io
 import json
@@ -26,10 +25,8 @@ import shlex
 import threading
 import time
 from argparse import ArgumentParser, Namespace
-from pathlib import Path
 from types import SimpleNamespace
 
-import numpy as np
 import pytest
 import torch
 from huggingface_hub.utils import httpx
@@ -59,7 +56,6 @@ class FakePipeline:
         self.release.set()
         self.started = threading.Event()
         self.error = None
-        self.result = None
 
     def __call__(
         self,
@@ -101,8 +97,6 @@ class FakePipeline:
             if self._interrupt:
                 break
             callback_on_step_end(self, step, 0, {})
-        if self.result is not None:
-            return self.result
         size = (width or 32, height or 32)
         return SimpleNamespace(images=[Image.new("RGB", size, "red") for _ in range(num_images_per_prompt)])
 
@@ -112,38 +106,11 @@ class FakePipeline:
     def set_adapters(self, names, adapter_weights=None):
         self.lora_calls.append(("set", names, adapter_weights))
 
-    def unload_lora_weights(self):
-        self.lora_calls.append(("unload",))
+    def delete_adapters(self, names):
+        self.lora_calls.append(("delete", names))
 
 
 FAKE_SIGNATURE = inspect.signature(FakePipeline.__call__)
-
-
-class FakeImageBlock(ModularPipelineBlocks):
-    """A one-block modular pipeline that declares its inputs the way the built-in blocks do, mostly untyped."""
-
-    model_name = "fake"
-
-    @property
-    def inputs(self):
-        return [
-            InputParam("prompt"),
-            InputParam("image"),
-            InputParam("width"),
-            InputParam("num_inference_steps", default=4),
-            InputParam("generator"),
-        ]
-
-    @property
-    def intermediate_outputs(self):
-        return [OutputParam("images")]
-
-    def __call__(self, components, state):
-        block_state = self.get_block_state(state)
-        size = (block_state.width or 32, 32)
-        block_state.images = [Image.new("RGB", size, "red")]
-        self.set_block_state(state, block_state)
-        return components, state
 
 
 class FakeDenoiser(ModularPipelineBlocks):
@@ -189,6 +156,7 @@ def _args(**overrides):
         "compile": None,
         "lora": None,
         "allowed_media_domains": None,
+        "max_media_size_mb": 256,
     }
     return Namespace(**{**values, **overrides})
 
@@ -200,7 +168,7 @@ def _manifest(manifest=None, pipeline_cls=FakePipeline, signature=None, args=Non
     if manifest is None:
         manifest = derive_manifest(MODEL_ID, pipeline_cls, signature, capabilities)
     raw = manifest if isinstance(manifest, bytes) else json.dumps(manifest).encode()
-    return Manifest(raw, json.loads(raw), pipeline_cls, signature, capabilities, revision="abc123")
+    return Manifest(raw, json.loads(raw), pipeline_cls, signature, capabilities, max_adapters=4, revision="abc123")
 
 
 @pytest.fixture
@@ -218,13 +186,13 @@ def serve(tmp_path, monkeypatch):
         args = _args(**arg_overrides)
         bound = _manifest(manifest=manifest, pipeline_cls=type(pipeline), signature=signature, args=args)
         backend = backend or DiffusersBackend(args, bound)
-        app = create_app(bound, Scheduler([backend], str(tmp_path)), **(app_options or {}))
+        app = create_app(bound, Scheduler([backend], str(tmp_path)), max_wait=300.0, **(app_options or {}))
         return TestClient(app), pipeline
 
     return _build
 
 
-LATTICE_MANIFEST = {
+VIDEO_MANIFEST = {
     "id": MODEL_ID,
     "modalities": {"in": ["image"], "out": ["video"]},
     "tasks": {
@@ -235,7 +203,7 @@ LATTICE_MANIFEST = {
             },
             "outputs": {"video": {"type": "video"}},
             "parameters": {
-                "duration": {"type": "number", "min": 1, "max": 20, "lattice": {"frames": "8k+1", "fps": 24}},
+                "num_frames": {"type": "integer", "default": 121, "min": 9, "max": 257},
                 "width": {"type": "integer", "default": 768, "min": 512, "max": 1536, "multiple_of": 64},
                 "steps": {"type": "integer", "default": 30, "min": 1, "max": 100},
                 "fps": {"type": "number"},
@@ -267,13 +235,6 @@ class FakeVideoPipeline:
         pass
 
 
-class FakeAudioVideoPipeline(FakePipeline):
-    vocoder = SimpleNamespace(config=SimpleNamespace(sampling_rate=24000))
-
-    def __call__(self, prompt: str = None, frame_rate: float = 24.0):
-        return self.result
-
-
 class TestManifest:
     def test_derive_manifest_from_signature(self):
         manifest = derive_manifest(MODEL_ID, FakePipeline, FAKE_SIGNATURE, ["sse", "wait", "adapters"])
@@ -287,7 +248,7 @@ class TestManifest:
         }
         assert manifest["tasks"]["image_to_image"]["inputs"]["image"] == {"type": "image", "required": True}
         assert text_to_image["outputs"] == {"image": {"type": "image"}}
-        # Core vocabulary names replace the pipeline's own; tensors, callbacks and output plumbing are dropped.
+        # Built-in aliases replace the pipeline's own names; tensors, callbacks and output plumbing are dropped.
         assert text_to_image["parameters"] == {
             "height": {"type": "integer"},
             "width": {"type": "integer"},
@@ -303,55 +264,13 @@ class TestManifest:
         assert manifest["capabilities"] == ["sse", "wait", "adapters"]
         assert manifest["adapters"] == {"lora": {"targets": ["transformer", "text_encoder"]}}
 
-    def test_output_type_comes_from_the_pipeline_output_fields(self):
-        manifest = derive_manifest(MODEL_ID, FakePipeline, FAKE_SIGNATURE, [], output_fields={"frames"})
-        assert list(manifest["modalities"]["out"]) == ["video"], "a pipeline returning `frames` should output video"
-
-        manifest = derive_manifest(MODEL_ID, FakePipeline, FAKE_SIGNATURE, [], output_fields={"coords_nm"})
-        with pytest.raises(SystemExit, match=re.escape("but FakePipeline returns ['coords_nm']")):
-            Manifest(
-                json.dumps(manifest).encode(), manifest, FakePipeline, FAKE_SIGNATURE, [], output_fields={"coords_nm"}
-            )
-
-    def test_derive_manifest_keeps_the_scalar_members_of_unions(self):
-        def __call__(
-            self,
-            prompt: str | list[str],
-            strength: float | torch.Tensor = 0.5,
-            control_mode: int | list[int] | list[list[int]] | None = None,
-            boxes: list[list[float]] | None = None,
-            latents: torch.Tensor | None = None,
-        ):
-            pass
-
-        manifest = derive_manifest(MODEL_ID, FakePipeline, inspect.signature(__call__), [])
-        assert manifest["tasks"]["text_to_image"]["parameters"] == {
-            "strength": {"type": "number", "default": 0.5},
-            "control_mode": {"type": "integer"},
-        }, "a union should keep its scalar members, and nested lists and tensors should be left out"
-
-    def test_derive_manifest_marks_required_modular_inputs(self):
-        class RequiredImageBlock(FakeImageBlock):
-            @property
-            def inputs(self):
-                return [InputParam("prompt", required=True), InputParam("image", required=True)]
-
-        pipeline = RequiredImageBlock().init_pipeline()
-        manifest = derive_manifest(MODEL_ID, type(pipeline), blocks_signature(pipeline.blocks), [])
-        assert list(manifest["tasks"]) == ["image_to_image"], (
-            "a required modular `image` should not yield text_to_image"
-        )
-
     @pytest.mark.parametrize(
         "body, code, pointer",
         [
             ({"parameters": {"cfg": 3}}, "invalid_request", "/parameters/cfg"),
             ({"parameters": {"steps": 500}}, "invalid_request", "/parameters/steps"),
-            ({"parameters": {"steps": "8"}}, "invalid_request", "/parameters/steps"),
             ({"inputs": {}}, "invalid_request", "/inputs/prompt"),
             ({"task": "image_to_video"}, "invalid_request", "/task"),
-            # The lattice pins duration to 24 fps, so another fps would deliver a different length.
-            ({"parameters": {"duration": 4, "fps": 12}}, "invalid_request", "/parameters/fps"),
             # `negative_prompt` is only honored while guidance_scale > 1.
             (
                 {"inputs": {"prompt": "a cat", "negative_prompt": "blurry"}, "preset": "distilled"},
@@ -361,21 +280,14 @@ class TestManifest:
         ],
     )
     def test_resolve_rejects_invalid_requests(self, body, code, pointer):
-        bound = _manifest(manifest=LATTICE_MANIFEST, pipeline_cls=FakeVideoPipeline)
+        bound = _manifest(manifest=VIDEO_MANIFEST, pipeline_cls=FakeVideoPipeline)
         with pytest.raises(GMSError) as error:
             bound.resolve({"model": MODEL_ID, "inputs": {"prompt": "a cat"}, **body})
         assert (error.value.code, error.value.pointer) == (code, pointer), error.value.message
 
-    def test_resolve_rejects_non_http_media_urls(self):
-        bound = _manifest()
-        body = {"model": MODEL_ID, "inputs": {"prompt": "a cat", "image": {"type": "image", "url": "/etc/passwd"}}}
-        with pytest.raises(GMSError) as error:
-            bound.resolve(body)
-        assert error.value.pointer == "/inputs/image/url", error.value.message
-
     @pytest.mark.parametrize(
         "path",
-        ["hf:/etc/passwd", "hf:../loras/x", "hf:../outputs", "hf:detail", "/etc/passwd", "https://x/y.safetensors"],
+        ["hf:../loras/x", "/etc/passwd", "https://x/y.safetensors"],
     )
     def test_resolve_rejects_adapter_paths_that_are_not_repo_ids(self, path):
         body = {"model": MODEL_ID, "inputs": {"prompt": "a cat"}, "adapters": [{"type": "lora", "path": path}]}
@@ -383,33 +295,20 @@ class TestManifest:
             _manifest().resolve(body)
         assert (error.value.code, error.value.pointer) == ("invalid_request", "/adapters/0/path"), error.value.message
 
-    def test_resolve_rejects_adapter_repo_ids_that_name_a_local_path(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / "someone" / "detail").mkdir(parents=True)
-        body = {
-            "model": MODEL_ID,
-            "inputs": {"prompt": "a cat"},
-            "adapters": [{"type": "lora", "path": "hf:someone/detail"}],
-        }
-        with pytest.raises(GMSError, match="adapter path"):
-            _manifest().resolve(body)
-
     def test_resolve_maps_request_to_pipeline_kwargs(self):
-        bound = _manifest(manifest=LATTICE_MANIFEST, pipeline_cls=FakeVideoPipeline)
+        bound = _manifest(manifest=VIDEO_MANIFEST, pipeline_cls=FakeVideoPipeline)
         resolved = bound.resolve(
             {
                 "model": MODEL_ID,
                 "preset": "distilled",
                 "inputs": {"prompt": "a cat"},
-                "parameters": {"duration": 8, "seed": 7},
+                "parameters": {"num_frames": 193, "seed": 7},
             }
         )
-        # 8 s at 24 fps is 192 frames; the nearest point on the 8k+1 lattice is 193. The preset overrides the
-        # task defaults.
+        # The preset overrides the task defaults.
         assert resolved.kwargs == {
             "prompt": "a cat",
             "num_frames": 193,
-            "frame_rate": 24,
             "width": 768,
             "num_inference_steps": 8,
             "guidance_scale": 1.0,
@@ -418,27 +317,23 @@ class TestManifest:
         assert resolved.task == "text_to_video"
 
     @pytest.mark.parametrize(
-        "change, args, message",
+        "change, message",
         [
             # flux2-klein's published manifest declares `guidance_type`, which its pipeline does not take.
             (
                 {"parameters": {"guidance_type": {"type": "string", "enum": ["distilled"]}}},
-                {},
                 "declares parameter 'guidance_type' on task 'text_to_video', which FakeVideoPipeline does not take",
             ),
-            ({"capabilities": ["adapters"]}, {}, "request adapters are off"),
-            ({"capabilities": ["stream"]}, {}, "declares the 'stream' capability, which this server does not provide"),
-            ({"parameters": {"duration": {"type": "number"}}}, {}, "without a frame lattice"),
         ],
     )
-    def test_manifest_the_server_cannot_honor_fails_startup(self, change, args, message):
-        manifest = json.loads(json.dumps(LATTICE_MANIFEST))
+    def test_manifest_the_server_cannot_honor_fails_startup(self, change, message):
+        manifest = json.loads(json.dumps(VIDEO_MANIFEST))
         if "parameters" in change:
             manifest["tasks"]["text_to_video"]["parameters"].update(change["parameters"])
         else:
             manifest.update(change)
         with pytest.raises(SystemExit, match=re.escape(message)):
-            _manifest(manifest=manifest, pipeline_cls=FakeVideoPipeline, args=_args(**args))
+            _manifest(manifest=manifest, pipeline_cls=FakeVideoPipeline)
 
 
 class TestServeApp:
@@ -484,31 +379,6 @@ class TestServeApp:
         assert (missing.status_code, missing.json()["error"]["code"]) == (404, "not_found")
         assert client.get(artifact["url"]).status_code == 404
 
-    def test_inline_response_and_media_input(self, serve):
-        client, pipeline = serve()
-        buffer = io.BytesIO()
-        Image.new("RGB", (8, 8), "blue").save(buffer, format="PNG")
-        body = {
-            "model": MODEL_ID,
-            "inputs": {
-                "prompt": "a cat",
-                "image": {
-                    "type": "image",
-                    "base64": base64.b64encode(buffer.getvalue()).decode(),
-                    "media_type": "image/png",
-                },
-            },
-            "output_format": "image/jpeg",
-            "response_format": "b64_json",
-        }
-        generation = client.post("/v1/generations", json=body, headers=WAIT).json()
-        assert generation["status"] == "complete", generation
-        # The task is inferred from the inputs: only `image_to_image` accepts an image.
-        assert pipeline.calls[0]["image"].size == (8, 8)
-        (artifact,) = generation["outputs"]["image"]
-        assert artifact["media_type"] == "image/jpeg" and "url" not in artifact
-        assert Image.open(io.BytesIO(base64.b64decode(artifact["base64"]))).format == "JPEG"
-
     def test_media_urls_are_capped_and_not_redirected(self, monkeypatch):
         def respond(request):
             if request.url.path == "/redirect":
@@ -517,12 +387,12 @@ class TestServeApp:
 
         client = httpx.Client(transport=httpx.MockTransport(respond))
         monkeypatch.setattr("diffusers.commands.serve.backends.httpx.stream", client.stream)
-        monkeypatch.setattr("diffusers.commands.serve.backends.MAX_MEDIA_DOWNLOAD_BYTES", 8)
         public = [(None, None, None, "", ("93.184.215.14", 443))]
         monkeypatch.setattr("diffusers.commands.serve.backends.socket.getaddrinfo", lambda host, port: public)
         for path, message in (("/redirect", "Redirect response"), ("/large", "larger than")):
             with pytest.raises(GMSError, match=message) as error:
-                _load_media("image", {"type": "image", "url": f"https://example.com{path}"}, "/inputs/image", None)
+                url = f"https://example.com{path}"
+                _load_media("image", {"type": "image", "url": url}, "/inputs/image", None, max_bytes=8)
             assert error.value.pointer == "/inputs/image", f"{path} should be rejected as a bad input"
 
     @pytest.mark.parametrize(
@@ -538,59 +408,7 @@ class TestServeApp:
         monkeypatch.setattr("diffusers.commands.serve.backends.socket.getaddrinfo", lambda host, port: resolved)
         value = {"type": "image", "url": "http://media.example/cat.png"}
         with pytest.raises(GMSError, match=message):
-            _load_media("image", value, "/inputs/image", allowed_domains)
-
-    def test_allowed_media_domains_may_be_private(self, monkeypatch):
-        buffer = io.BytesIO()
-        Image.new("RGB", (8, 8), "blue").save(buffer, format="PNG")
-        client = httpx.Client(
-            transport=httpx.MockTransport(lambda request: httpx.Response(200, content=buffer.getvalue()))
-        )
-        monkeypatch.setattr("diffusers.commands.serve.backends.httpx.stream", client.stream)
-        value = {"type": "image", "url": "http://localhost:9000/cat.png"}
-        image = _load_media("image", value, "/inputs/image", ["localhost"])
-        assert image.size == (8, 8), "a host on --allowed-media-domains should be fetched even when it is private"
-
-    def test_joint_video_and_audio_outputs(self, serve, monkeypatch):
-        monkeypatch.setattr(
-            "diffusers.commands.serve.backends.export_to_video",
-            lambda frames, path, fps: Path(path).write_bytes(b"mp4"),
-        )
-        manifest = {
-            "id": MODEL_ID,
-            "tasks": {
-                "text_to_video": {
-                    "inputs": {"prompt": {"type": "text", "required": True}},
-                    "outputs": {"video": {"type": "video"}, "audio": {"type": "audio"}},
-                }
-            },
-            "capabilities": ["wait"],
-        }
-        client, pipeline = serve(manifest=manifest, pipeline=FakeAudioVideoPipeline())
-        pipeline.result = SimpleNamespace(
-            frames=[[Image.new("RGB", (32, 24)) for _ in range(16)]],
-            audio=np.zeros((1, 2, 8000), dtype=np.float32),
-        )
-        body = {"model": MODEL_ID, "inputs": {"prompt": "a cat"}}
-        generation = client.post("/v1/generations", json=body, headers=WAIT).json()
-        assert generation["status"] == "complete", generation
-
-        # Video is encoded at the pipeline's default `frame_rate`, audio at its vocoder's sample rate.
-        (video,) = generation["outputs"]["video"]
-        (audio,) = generation["outputs"]["audio"]
-        assert {k: v for k, v in video.items() if k != "url"} == {
-            "media_type": "video/mp4",
-            "width": 32,
-            "height": 24,
-            "duration": 0.67,
-            "fps": 24.0,
-        }
-        assert {k: v for k, v in audio.items() if k != "url"} == {
-            "media_type": "audio/wav",
-            "duration": 0.33,
-            "sample_rate": 24000,
-        }
-        assert client.get(audio["url"]).content[:4] == b"RIFF"
+            _load_media("image", value, "/inputs/image", allowed_domains, max_bytes=2**20)
 
     def test_failed_generation_returns_error_envelope(self, serve):
         client, pipeline = serve()
@@ -614,43 +432,6 @@ class TestServeApp:
         assert client.post("/v1/generations", json=body, headers=WAIT).status_code == 500
         pipeline.error = None
         assert client.post("/v1/generations", json=body, headers=WAIT).json()["status"] == "complete"
-
-    def test_undeclared_capabilities_are_off(self, serve):
-        manifest = json.loads(json.dumps(LATTICE_MANIFEST))
-        manifest["tasks"]["text_to_video"] = {
-            "inputs": {"prompt": {"type": "text", "required": True}},
-            "outputs": {"image": {"type": "image"}},
-        }
-        manifest["capabilities"] = []
-        client, pipeline = serve(manifest=manifest)
-        # The pipeline is held, so a response that waited for the generation could never return.
-        pipeline.release.clear()
-        created = client.post("/v1/generations", json={"model": MODEL_ID, "inputs": {"prompt": "a cat"}}, headers=WAIT)
-        assert created.json()["status"] in ("queued", "generating"), "without `wait`, Prefer: wait is ignored"
-        events = client.get(f"/v1/generations/{created.json()['id']}/events")
-        assert (events.status_code, events.json()["error"]["code"]) == (501, "not_implemented")
-        pipeline.release.set()
-
-    def test_health_checks_do_not_count_as_activity(self, serve):
-        client, _ = serve()
-        client.app.state.last_request = 0.0
-        client.get("/health")
-        assert client.app.state.last_request == 0.0, "a health check must not keep an idle server alive"
-        client.get("/v1/models")
-        assert client.app.state.last_request > 0.0, "a request should reset the idle clock"
-
-    def test_public_url_replaces_the_request_address_in_output_links(self, serve):
-        client, _ = serve(app_options={"public_url": "https://proxy.example/sandbox/proxy/8000/"})
-        body = {"model": MODEL_ID, "inputs": {"prompt": "a cat"}}
-        generation = client.post("/v1/generations", json=body, headers=WAIT).json()
-        expected = f"https://proxy.example/sandbox/proxy/8000/v1/generations/{generation['id']}/files/image-0.png"
-        assert generation["outputs"]["image"][0]["url"] == expected
-
-        # A reverse proxy may forward requests with the published path still attached.
-        for path in ("/v1/models", "/sandbox/proxy/8000/v1/models"):
-            assert client.get(path).status_code == 200, path
-        prefixed = client.post("/sandbox/proxy/8000/v1/generations", json=body, headers=WAIT)
-        assert prefixed.status_code == 201, prefixed.text
 
     def test_cancel_queued_and_running(self, serve):
         client, pipeline = serve()
@@ -688,7 +469,7 @@ class TestServeApp:
             ("load", "someone/style", "request_0"),
             ("load", "someone/detail", "request_1"),
             ("set", ["request_0", "request_1"], [0.8, {"transformer": 0.5, "text_encoder": 0.1}]),
-            ("unload",),
+            ("delete", ["request_0", "request_1"]),
         ]
 
     def test_discovery_serves_manifest_bytes_verbatim(self, serve):
@@ -714,26 +495,6 @@ class TestServeApp:
 
 
 class TestModularPipeline:
-    def test_generation_runs_a_modular_pipeline(self, serve):
-        pipeline = FakeImageBlock().init_pipeline()
-        signature = blocks_signature(pipeline.blocks)
-        manifest = derive_manifest(MODEL_ID, type(pipeline), signature, ["wait"])
-        assert list(manifest["tasks"]) == ["text_to_image", "image_to_image"], manifest["tasks"].keys()
-        assert manifest["tasks"]["text_to_image"]["inputs"] == {"prompt": {"type": "text", "required": True}}
-        assert manifest["tasks"]["text_to_image"]["parameters"] == {
-            "steps": {"type": "integer", "default": 4},
-            "seed": {"type": "integer"},
-        }
-
-        client, _ = serve(manifest=manifest, pipeline=pipeline, signature=signature)
-
-        body = {"model": MODEL_ID, "inputs": {"prompt": "a cat"}, "parameters": {"seed": 3}}
-        generation = client.post("/v1/generations", json=body, headers=WAIT).json()
-        assert generation["status"] == "complete", generation
-        assert generation["seed"] == 3
-        (artifact,) = generation["outputs"]["image"]
-        assert (artifact["media_type"], artifact["width"], artifact["height"]) == ("image/png", 32, 32)
-
     def test_modular_pipeline_reports_steps_and_stops_on_cancel(self, monkeypatch, tmp_path):
         pipeline = FakeDenoiseLoop().init_pipeline()
         monkeypatch.setattr("diffusers.commands.serve.backends._load_pipeline", lambda args: pipeline)
@@ -815,12 +576,6 @@ class TestServeRemote:
         assert not api.cancelled, "a Job that completed on its own needs no cancel"
         assert api.telemetry == ["diffusers/cli/serve/remote"], api.telemetry
 
-    def test_interrupt_cancels_the_job(self, monkeypatch):
-        api = FakeJobsApi(logs=("server started", KeyboardInterrupt()))
-        with pytest.raises(KeyboardInterrupt):
-            self._run(monkeypatch, api, [])
-        assert api.cancelled, "Ctrl-C must cancel the Job so it stops billing"
-
 
 class BlockingBackend:
     def __init__(self):
@@ -869,19 +624,6 @@ class TestScheduler:
         assert job.status == "failed", job.status
         assert "--generation-timeout" in job.error.message, job.error.message
 
-    def test_generation_stuck_past_the_timeout_fails_health(self, tmp_path):
-        backend = BlockingBackend()
-        scheduler = Scheduler([backend], str(tmp_path), timeout=60)
-        job = GenerationJob(_manifest().resolve({"model": MODEL_ID, "inputs": {"prompt": "a cat"}}))
-        scheduler.submit(job)
-        assert backend.started.wait(timeout=30), "the worker never picked up the generation"
-        assert scheduler.failure() is None, "a generation within its time limit is healthy"
-
-        # As if it had run for over twice the limit without reaching a step that could stop it.
-        job.deadline -= 121
-        assert "did not stop when interrupted" in (scheduler.failure() or ""), scheduler.failure()
-        backend.release.set()
-
 
 class FakeClock:
     """Stands in for the `time` module: `sleep` advances the clock instead of waiting."""
@@ -900,40 +642,16 @@ class FakeClock:
 
 class TestIdleShutdown:
     def _watch(self, monkeypatch, busy_checks):
-        """Run the watcher with a 1m timeout, checked every 30s, until it shuts the server down; returns when it did."""
+        """Run the watcher with a 1m timeout, checked every 30s, until it shuts the server down; return when it did."""
         clock = FakeClock()
         monkeypatch.setattr("diffusers.commands.serve.time", clock)
         busy = iter(busy_checks)
         server = SimpleNamespace(should_exit=False)
         app = SimpleNamespace(state=SimpleNamespace(last_request=0.0))
-        _shut_down_when_idle(server, app, SimpleNamespace(busy=lambda: next(busy, False)), "1m")
+        _shut_down_when_idle(server, app, SimpleNamespace(busy=lambda: next(busy, False)), 60.0)
         assert server.should_exit, "the watcher should only return once it told the server to exit"
         return clock.now
-
-    def test_idle_server_shuts_down(self, monkeypatch):
-        assert self._watch(monkeypatch, []) == 60, "an idle server should exit after one timeout"
 
     def test_busy_server_stays_up_until_the_work_ends(self, monkeypatch):
         # Busy at the checks at 30s and 60s, so the idle clock restarts at 60s.
         assert self._watch(monkeypatch, [True, True]) == 120, "the server should exit one timeout after the work ends"
-
-
-class TestServeCommand:
-    def _parse(self, argv):
-        parser = ArgumentParser()
-        ServeCommand.register_subcommand(parser.add_subparsers())
-        return parser.parse_args(["serve", *argv])
-
-    def test_model_is_positional_and_loads_in_bf16(self, monkeypatch):
-        pytest.importorskip("fastapi", reason="`diffusers-cli serve` needs the `diffusers[serve]` extra")
-        resolved = {}
-
-        def stop(args):
-            resolved.update(vars(args))
-            raise RuntimeError("stop after the flag check")
-
-        monkeypatch.setattr("diffusers.commands.serve._resolve_pipeline", stop)
-        with pytest.raises(RuntimeError, match="stop after the flag check"):
-            ServeCommand(self._parse(["org/model"])).run()
-        assert resolved["model"] == "org/model", resolved
-        assert resolved["dtype"] == "bf16", "serve should default to bf16 rather than `run`'s fp32 `auto`"

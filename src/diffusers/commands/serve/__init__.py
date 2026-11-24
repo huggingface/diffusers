@@ -23,6 +23,7 @@ from __future__ import annotations
 import copy
 import dataclasses
 import inspect
+import json
 import random
 import secrets
 import threading
@@ -46,14 +47,18 @@ logger = logging.get_logger("diffusers-cli/serve")
 DEFAULT_OUTPUT_DIR = str(Path.home() / ".diffusers" / "cli" / "serve" / "outputs")
 
 
-def _resolve_pipeline(args: Namespace) -> tuple[type, inspect.Signature, set[str] | None, str | None]:
-    """Return the pipeline class, the signature of its call, the fields of its output, and the commit hash of a
-    standard Hub repo. The output fields are None when the pipeline doesn't annotate what it returns."""
+def _resolve_pipeline(
+    args: Namespace,
+) -> tuple[type, inspect.Signature, set[str] | None, str | None, dict[str, Any] | None]:
+    """Return the pipeline class, the signature of its call, the fields of its output, the commit hash of a
+    standard Hub repo, and the workflow map of a modular pipeline, narrowed to --workflow when it is set. The output
+    fields are None when the pipeline doesn't annotate what it returns."""
     import diffusers
 
     from .manifest import blocks_signature
 
-    # A modular repo ships `modular_model_index.json` instead of `model_index.json`, so `load_config` raises.
+    # A modular repo ships `modular_model_index.json` instead of `model_index.json`, so `load_config` raises. A repo
+    # may also ship a `model_index.json` for another framework (e.g. SGLang) next to its modular one.
     try:
         config, commit_hash = diffusers.DiffusionPipeline.load_config(
             args.model, token=args.token, revision=args.revision, return_commit_hash=True
@@ -61,45 +66,58 @@ def _resolve_pipeline(args: Namespace) -> tuple[type, inspect.Signature, set[str
     except OSError:
         config, commit_hash = None, None
 
-    if config is not None:
-        class_name = config.get("_class_name")
-        pipeline_cls = getattr(diffusers, str(class_name), None)
-        if not isinstance(pipeline_cls, type):
-            raise SystemExit(
-                f"Pipeline class {class_name!r} declared in {diffusers.DiffusionPipeline.config_name} is not "
-                "exported by the installed diffusers."
-            )
-        if not issubclass(pipeline_cls, diffusers.ModularPipeline):
-            # Evaluated, so a module with `from __future__ import annotations` gives types rather than strings. A
-            # kwarg whose annotation doesn't evaluate is left out of a derived manifest.
-            try:
-                signature = inspect.signature(pipeline_cls.__call__, eval_str=True)
-            except (NameError, TypeError):
-                signature = inspect.signature(pipeline_cls.__call__)
-            returned = typing.get_args(signature.return_annotation) or (signature.return_annotation,)
-            outputs = [cls for cls in returned if isinstance(cls, type) and issubclass(cls, BaseOutput)]
-            output_fields = {field.name for field in dataclasses.fields(outputs[0])} if outputs else None
-            return pipeline_cls, signature, output_fields, commit_hash
+    class_name = config.get("_class_name") if config is not None else None
+    pipeline_cls = getattr(diffusers, class_name, None) if class_name is not None else None
+    if isinstance(pipeline_cls, type) and not issubclass(pipeline_cls, diffusers.ModularPipeline):
+        # Evaluated, so a module with `from __future__ import annotations` gives types rather than strings. A kwarg
+        # whose annotation doesn't evaluate is left out of a derived manifest.
+        try:
+            signature = inspect.signature(pipeline_cls.__call__, eval_str=True)
+        except (NameError, TypeError):
+            signature = inspect.signature(pipeline_cls.__call__)
+        returned = typing.get_args(signature.return_annotation) or (signature.return_annotation,)
+        outputs = [cls for cls in returned if isinstance(cls, type) and issubclass(cls, BaseOutput)]
+        output_fields = {field.name for field in dataclasses.fields(outputs[0])} if outputs else None
+        return pipeline_cls, signature, output_fields, commit_hash, None
 
     try:
         pipeline = diffusers.ModularPipeline.from_pretrained(
-            args.model, trust_remote_code=args.trust_remote_code, token=args.token, revision=args.revision
+            args.model,
+            trust_remote_code=args.trust_remote_code,
+            token=args.token,
+            revision=args.revision,
         )
-    except OSError as e:
+    # An unknown modular class raises AttributeError rather than OSError.
+    except (OSError, AttributeError) as e:
+        if class_name is not None and not isinstance(pipeline_cls, type):
+            raise SystemExit(
+                f"Pipeline class {class_name!r} declared in {diffusers.DiffusionPipeline.config_name} is not "
+                "exported by the installed diffusers, and the repo has no modular pipeline to load instead."
+            ) from e
         raise SystemExit(f"Could not read a pipeline config for {args.model!r}: {e}") from e
-    output_fields = {output.name for output in pipeline.blocks.intermediate_outputs}
-    return type(pipeline), blocks_signature(pipeline.blocks), output_fields, commit_hash
+    # The blocks of one workflow no longer carry the workflow map, so its triggers are read before pruning.
+    blocks = pipeline.blocks
+    workflow_map = getattr(blocks, "_workflow_map", None)
+    if args.workflow is not None:
+        if not workflow_map or args.workflow not in workflow_map:
+            raise SystemExit(
+                f"--workflow {args.workflow!r} is not a workflow of {type(pipeline).__name__}. Its workflows are "
+                f"{list(workflow_map or [])}."
+            )
+        blocks = blocks.get_workflow(args.workflow)
+        workflow_map = {args.workflow: workflow_map[args.workflow]}
+    output_fields = {output.name for output in blocks.intermediate_outputs}
+    return type(pipeline), blocks_signature(blocks), output_fields, commit_hash, workflow_map
 
 
-def _shut_down_when_idle(server: Any, app: Any, scheduler: Any, idle_timeout: str) -> None:
-    limit = _duration_to_seconds(idle_timeout)
+def _shut_down_when_idle(server: Any, app: Any, scheduler: Any, limit: float) -> None:
     while True:
         time.sleep(min(limit, 30.0))
         if scheduler.busy():
             app.state.last_request = time.monotonic()
             continue
         if time.monotonic() - app.state.last_request >= limit:
-            logger.info(f"No requests for {idle_timeout}; shutting down.")
+            logger.info(f"No requests for {limit:g}s; shutting down.")
             server.should_exit = True
             return
 
@@ -160,6 +178,14 @@ class ServeCommand(BaseDiffusersCLICommand):
             ),
         )
         parser.add_argument(
+            "--workflow",
+            default=None,
+            help=(
+                "For modular pipelines: serve only this workflow (e.g. t2va), loading only its components. "
+                "Defaults to loading every component and serving each workflow the pipeline declares as a task."
+            ),
+        )
+        parser.add_argument(
             "--output-dir",
             default=DEFAULT_OUTPUT_DIR,
             help=f"Directory generated files are stored in until they expire. Defaults to {DEFAULT_OUTPUT_DIR}.",
@@ -194,6 +220,25 @@ class ServeCommand(BaseDiffusersCLICommand):
             ),
         )
         parser.add_argument(
+            "--max-adapters",
+            type=int,
+            default=4,
+            metavar="N",
+            help="Most adapters a request may apply. Defaults to 4.",
+        )
+        parser.add_argument(
+            "--max-wait",
+            default="5m",
+            help="Longest a request may hold its response with `Prefer: wait` (e.g. 5m). Defaults to 5m.",
+        )
+        parser.add_argument(
+            "--max-media-size-mb",
+            type=int,
+            default=256,
+            metavar="MB",
+            help="Largest media input the server downloads from a URL, in MB. Defaults to 256.",
+        )
+        parser.add_argument(
             "--enable-cors",
             action="store_true",
             help="Allow cross-origin requests from any origin, so browser apps on other hosts can call the server.",
@@ -221,9 +266,9 @@ class ServeCommand(BaseDiffusersCLICommand):
             ),
         )
         add_remote_arguments(parser)
-        # `_load_pipeline` reads these `run` flags, which `serve` does not expose.
-        # Most served models are DiTs trained in bf16; `run`'s `auto` would load them in fp32.
-        parser.set_defaults(func=ServeCommand, workflow=None, offload_margin=None, dtype="bf16")
+        # `_load_pipeline` reads `offload_margin`, a `run` flag that `serve` does not expose. `dtype` defaults to bf16
+        # because most served models are DiTs trained in it; `run`'s `auto` would load them in fp32.
+        parser.set_defaults(func=ServeCommand, offload_margin=None, dtype="bf16")
 
     def __init__(self, args: Namespace):
         self.args = args
@@ -237,15 +282,24 @@ class ServeCommand(BaseDiffusersCLICommand):
         args.model_id = None
         if args.model is None:
             raise SystemExit("Pass the model to serve, e.g. `diffusers-cli serve black-forest-labs/FLUX.1-dev`.")
-        for flag, value in (("--idle-timeout", args.idle_timeout), ("--generation-timeout", args.generation_timeout)):
+        seconds = {}
+        for flag, value in (
+            ("--idle-timeout", args.idle_timeout),
+            ("--generation-timeout", args.generation_timeout),
+            ("--max-wait", args.max_wait),
+        ):
             if value is None:
+                seconds[flag] = None
                 continue
             try:
-                seconds = _duration_to_seconds(value)
+                seconds[flag] = _duration_to_seconds(value)
             except ValueError:
                 raise SystemExit(f"{flag} {value!r} is not a duration such as 30m or 2h.")
-            if seconds <= 0:
+            if seconds[flag] <= 0:
                 raise SystemExit(f"{flag} must be a positive duration such as 30m or 2h, got {value!r}.")
+        for flag, value in (("--max-adapters", args.max_adapters), ("--max-media-size-mb", args.max_media_size_mb)):
+            if value < 0:
+                raise SystemExit(f"{flag} must not be negative, got {value}.")
         if args.log_level is not None:
             logging.set_verbosity(logging.get_log_levels_dict()[args.log_level])
 
@@ -286,21 +340,28 @@ class ServeCommand(BaseDiffusersCLICommand):
 
         from .app import create_app
         from .backends import DiffusersBackend, backend_capabilities
-        from .manifest import load_manifest
+        from .manifest import Manifest, derive_manifest, load_manifest
         from .scheduler import Scheduler
 
-        pipeline_cls, signature, output_fields, commit_hash = _resolve_pipeline(args)
+        pipeline_cls, signature, output_fields, commit_hash, workflow_map = _resolve_pipeline(args)
         capabilities = backend_capabilities(args, pipeline_cls)
-        manifest = load_manifest(
-            args.model,
+        published = load_manifest(args.model, args.manifest, revision=args.revision, token=args.token)
+        if published is None:
+            model_id = Path(args.model).name if Path(args.model).is_dir() else args.model
+            data = derive_manifest(model_id, pipeline_cls, signature, capabilities, output_fields, workflow_map)
+            raw, source = json.dumps(data).encode(), None
+        else:
+            raw, data, source = published
+        manifest = Manifest(
+            raw,
+            data,
             pipeline_cls,
             signature,
             capabilities,
-            manifest_path=args.manifest,
-            revision=args.revision,
-            commit_hash=commit_hash,
-            token=args.token,
+            source=source,
+            revision=commit_hash,
             output_fields=output_fields,
+            max_adapters=args.max_adapters,
         )
 
         if args.data_parallel > 1:
@@ -315,13 +376,13 @@ class ServeCommand(BaseDiffusersCLICommand):
         seed = args.seed if args.seed is not None else secrets.randbelow(2**32)
         # Seeds the generator `Manifest.resolve` draws request seeds from, like vLLM's `--seed`.
         random.seed(seed)
-        timeout = None if args.generation_timeout is None else _duration_to_seconds(args.generation_timeout)
-        scheduler = Scheduler(backends, args.output_dir, timeout=timeout)
+        scheduler = Scheduler(backends, args.output_dir, timeout=seconds["--generation-timeout"])
         app = create_app(
             manifest,
             scheduler,
             enable_cors=args.enable_cors,
             public_url=args.public_url,
+            max_wait=seconds["--max-wait"],
         )
         out.result(
             self.task,
@@ -338,7 +399,7 @@ class ServeCommand(BaseDiffusersCLICommand):
         if args.idle_timeout is not None:
             threading.Thread(
                 target=_shut_down_when_idle,
-                args=(server, app, scheduler, args.idle_timeout),
+                args=(server, app, scheduler, seconds["--idle-timeout"]),
                 name="diffusers-serve-idle",
                 daemon=True,
             ).start()
