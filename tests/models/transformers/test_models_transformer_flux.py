@@ -20,6 +20,7 @@ import pytest
 import torch
 
 from diffusers import BitsAndBytesConfig, FluxTransformer2DModel, GGUFQuantizationConfig
+from diffusers.loaders.lora_conversion_utils import _convert_bfl_flux_control_lora_to_diffusers
 from diffusers.models.embeddings import ImageProjection
 from diffusers.models.transformers.transformer_flux import FluxIPAdapterAttnProcessor
 from diffusers.utils.torch_utils import randn_tensor
@@ -310,6 +311,29 @@ class TestFluxTransformerIPAdapter(FluxTransformerTesterConfig, IPAdapterTesterM
 
 class TestFluxTransformerLoRA(FluxTransformerTesterConfig, LoraTesterMixin):
     """LoRA adapter tests for Flux Transformer."""
+
+    def test_lora_bfl_control_final_layer_modulation(self):
+        # The original final layer orders its modulation (shift, scale) and diffusers' `norm_out` (scale, shift). Only
+        # lora_B's rows are the layer's outputs, so the converted update must be the original one with its halves swapped.
+        # The converter takes the number of blocks from the keys, so the state dict only needs the non-block layers.
+        modules = ["img_in", "txt_in", "time_in.in_layer", "time_in.out_layer", "vector_in.in_layer"]
+        modules += ["vector_in.out_layer", "final_layer.linear"]
+        state_dict = {}
+        for module in modules:
+            state_dict[f"{module}.lora_A.weight"] = torch.zeros(1, 1)
+            state_dict[f"{module}.lora_B.weight"] = torch.zeros(1, 1)
+
+        torch.manual_seed(0)
+        lora_A, lora_B = torch.randn(2, 16), torch.randn(32, 2)
+        state_dict["final_layer.adaLN_modulation.1.lora_A.weight"] = lora_A
+        state_dict["final_layer.adaLN_modulation.1.lora_B.weight"] = lora_B
+        converted = _convert_bfl_flux_control_lora_to_diffusers(state_dict)
+        delta = (
+            converted["transformer.norm_out.linear.lora_B.weight"]
+            @ converted["transformer.norm_out.linear.lora_A.weight"]
+        )
+        shift, scale = (lora_B @ lora_A).chunk(2, dim=0)
+        assert torch.allclose(delta, torch.cat([scale, shift]))
 
 
 class TestFluxTransformerLoRAHotSwap(FluxTransformerTesterConfig, LoraHotSwappingForModelTesterMixin):

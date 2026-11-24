@@ -20,14 +20,14 @@ import torch
 from PIL import Image
 from transformers import AutoTokenizer, Qwen3_5ForConditionalGeneration
 
-from diffusers.modular_pipelines import PH3ImageBlocks, PH3ImageModularPipeline
-from diffusers.modular_pipelines.p_h3_image.encoders import (
-    PH3ImageEditTextEncoderStep,
-    PH3ImageEditVaeEncoderStep,
-    PH3ImageTextEncoderStep,
+from diffusers.modular_pipelines import PImageOSSBlocks, PImageOSSModularPipeline
+from diffusers.modular_pipelines.p_image_oss.encoders import (
+    PImageOSSEditTextEncoderStep,
+    PImageOSSEditVaeEncoderStep,
+    PImageOSSTextEncoderStep,
 )
-from diffusers.modular_pipelines.p_h3_image.prompt_upsampler import (
-    PH3ImageEditPromptUpsampleStep,
+from diffusers.modular_pipelines.p_image_oss.prompt_upsampler import (
+    PImageOSSEditPromptUpsampleStep,
     aspect_ratio_label,
     is_edit_prompt,
 )
@@ -43,31 +43,31 @@ from ..testing_utils import (
 )
 
 
-# The blocks each workflow of `PH3ImageBlocks` runs, in order.
-P_H3_IMAGE_WORKFLOWS = {
+# The blocks each workflow of `PImageOSSBlocks` runs, in order.
+P_IMAGE_OSS_WORKFLOWS = {
     "text2image": [
-        ("prompt_upsampler", "PH3ImageText2ImagePromptUpsampleStep"),
-        ("text_encoder", "PH3ImageTextEncoderStep"),
-        ("denoise.prepare_layout", "PH3ImagePrepareLayoutStep"),
-        ("denoise.prepare_latents", "PH3ImagePrepareLatentsStep"),
-        ("denoise.set_timesteps", "PH3ImageSetTimestepsStep"),
-        ("denoise.denoise", "PH3ImageDenoiseStep"),
-        ("denoise.after_denoise", "PH3ImageAfterDenoiseStep"),
-        ("decode", "PH3ImageDecodeStep"),
+        ("prompt_upsampler", "PImageOSSText2ImagePromptUpsampleStep"),
+        ("text_encoder", "PImageOSSTextEncoderStep"),
+        ("denoise.prepare_layout", "PImageOSSPrepareLayoutStep"),
+        ("denoise.prepare_latents", "PImageOSSPrepareLatentsStep"),
+        ("denoise.set_timesteps", "PImageOSSSetTimestepsStep"),
+        ("denoise.denoise", "PImageOSSDenoiseStep"),
+        ("denoise.after_denoise", "PImageOSSAfterDenoiseStep"),
+        ("decode", "PImageOSSDecodeStep"),
     ],
     "image_conditioned": [
-        ("before_encode", "PH3ImageEditResizeStep"),
-        ("prompt_upsampler", "PH3ImageEditPromptUpsampleStep"),
-        ("text_encoder", "PH3ImageEditTextEncoderStep"),
-        ("vae_encoder", "PH3ImageEditVaeEncoderStep"),
-        ("denoise.prepare_layout", "PH3ImageEditPrepareLayoutStep"),
-        ("denoise.prepare_condition_latents", "PH3ImagePrepareConditionLatentsStep"),
-        ("denoise.prepare_latents", "PH3ImagePrepareLatentsStep"),
-        ("denoise.prepare_latents_image_conditioned", "PH3ImageEditPrepareLatentsStep"),
-        ("denoise.set_timesteps", "PH3ImageSetTimestepsStep"),
-        ("denoise.denoise", "PH3ImageDenoiseStep"),
-        ("denoise.after_denoise", "PH3ImageAfterDenoiseStep"),
-        ("decode", "PH3ImageDecodeStep"),
+        ("before_encode", "PImageOSSEditResizeStep"),
+        ("prompt_upsampler", "PImageOSSEditPromptUpsampleStep"),
+        ("text_encoder", "PImageOSSEditTextEncoderStep"),
+        ("vae_encoder", "PImageOSSEditVaeEncoderStep"),
+        ("denoise.prepare_layout", "PImageOSSEditPrepareLayoutStep"),
+        ("denoise.prepare_condition_latents", "PImageOSSPrepareConditionLatentsStep"),
+        ("denoise.prepare_latents", "PImageOSSPrepareLatentsStep"),
+        ("denoise.prepare_latents_image_conditioned", "PImageOSSEditPrepareLatentsStep"),
+        ("denoise.set_timesteps", "PImageOSSSetTimestepsStep"),
+        ("denoise.denoise", "PImageOSSDenoiseStep"),
+        ("denoise.after_denoise", "PImageOSSAfterDenoiseStep"),
+        ("decode", "PImageOSSDecodeStep"),
     ],
 }
 
@@ -75,13 +75,13 @@ _SHARED_COMPONENTS = {
     "prompt_upsampler": "Qwen3_5ForConditionalGeneration",
     "prompt_upsampler_processor": "AutoProcessor",
     "text_encoder": "Qwen3VLForConditionalGeneration",
-    "text_connector": "PH3ImageTextConnector",
+    "text_connector": "PImageOSSTextConnector",
     "tokenizer": "Qwen2Tokenizer",
     "processor": "Qwen3VLProcessor",
     "scheduler": "MiniMaxH3Scheduler",
     "audio_scheduler": "MiniMaxH3Scheduler",
     "transformer": "MiniMaxH3Transformer3DModel",
-    "vae": "AutoencoderKLPH3Image",
+    "vae": "AutoencoderKLPImageOSS",
     "image_processor": "VaeImageProcessor",
 }
 _SAMPLE_SIGMAS = [1.0, 0.984753, 0.967905, 0.951688, 0.925372, 0.881923, 0.810083, 0.528718, 0.0]
@@ -92,7 +92,7 @@ _SHARED_INPUTS = {
     "attention_kwargs": None,
     "output_type": "pil",
 }
-P_H3_IMAGE_WORKFLOW_DEFAULTS = {
+P_IMAGE_OSS_WORKFLOW_DEFAULTS = {
     "text2image": {
         "components": _SHARED_COMPONENTS,
         "configs": {"sample_sigmas": _SAMPLE_SIGMAS},
@@ -148,11 +148,11 @@ def tiny_prompt_upsampler():
         yield
 
 
-class PH3ImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
-    """The `text2image` and `image_conditioned` requests of [`PH3ImageBlocks`]."""
+class PImageOSSModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
+    """The `text2image` and `image_conditioned` requests of [`PImageOSSBlocks`]."""
 
-    pipeline_class = PH3ImageModularPipeline
-    pipeline_blocks_class = PH3ImageBlocks
+    pipeline_class = PImageOSSModularPipeline
+    pipeline_blocks_class = PImageOSSBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-p-h3-image-modular-pipe"
     # One 4-channel latent frame for a 32 x 32 image.
     expected_latents_shape = (1, 4, 1, 2, 2)
@@ -163,8 +163,8 @@ class PH3ImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     # `num_inference_steps`.
     optional_params = frozenset(["latents", "output_type"])
     output_name = "images"
-    expected_workflow_blocks = P_H3_IMAGE_WORKFLOWS
-    expected_workflow_defaults = P_H3_IMAGE_WORKFLOW_DEFAULTS
+    expected_workflow_blocks = P_IMAGE_OSS_WORKFLOWS
+    expected_workflow_defaults = P_IMAGE_OSS_WORKFLOW_DEFAULTS
 
     def get_dummy_inputs(self, seed=0):
         return {
@@ -187,12 +187,12 @@ class PH3ImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
         }
 
 
-class TestPH3ImageModularPipelineFast(PH3ImageModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    @pytest.mark.skip(reason="P-H3-Image packs one request into one sequence, so a batch of prompts is not a thing.")
+class TestPImageOSSModularPipelineFast(PImageOSSModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    @pytest.mark.skip(reason="P-Image-OSS packs one request into one sequence, so a batch of prompts is not a thing.")
     def test_inference_batch_consistent(self):
         pass
 
-    @pytest.mark.skip(reason="P-H3-Image packs one request into one sequence, so a batch of prompts is not a thing.")
+    @pytest.mark.skip(reason="P-Image-OSS packs one request into one sequence, so a batch of prompts is not a thing.")
     def test_inference_batch_single_identical(self):
         pass
 
@@ -317,7 +317,7 @@ class TestPH3ImageModularPipelineFast(PH3ImageModularPipelineTesterConfig, Modul
     @pytest.mark.parametrize("edit", [False, True], ids=["text2image", "image_conditioned"])
     def test_text_encoder_block_standalone(self, edit):
         r"""Both text encoder blocks run on their own. Vision tokens of an edit are tagged as video (`0`)."""
-        block = PH3ImageEditTextEncoderStep() if edit else PH3ImageTextEncoderStep()
+        block = PImageOSSEditTextEncoderStep() if edit else PImageOSSTextEncoderStep()
         pipe = block.init_pipeline(self.pretrained_model_name_or_path)
         pipe.load_components(dtype=torch.float32)
 
@@ -331,7 +331,7 @@ class TestPH3ImageModularPipelineFast(PH3ImageModularPipelineTesterConfig, Modul
 
     def test_vae_encoder_block_standalone(self):
         r"""The edit's VAE encoder block runs on its own."""
-        pipe = PH3ImageEditVaeEncoderStep().init_pipeline(self.pretrained_model_name_or_path)
+        pipe = PImageOSSEditVaeEncoderStep().init_pipeline(self.pretrained_model_name_or_path)
         pipe.load_components(dtype=torch.float32)
 
         condition_latents = pipe(reference_images=[Image.new("RGB", (64, 32))], output="condition_latents")
@@ -371,7 +371,7 @@ class TestPH3ImageModularPipelineFast(PH3ImageModularPipelineTesterConfig, Modul
 
         inputs = self.get_edit_inputs() if edit else self.get_dummy_inputs()
         inputs["height"], inputs["width"] = 30, 70
-        logger = logging.get_logger("diffusers.modular_pipelines.p_h3_image.before_encoder")
+        logger = logging.get_logger("diffusers.modular_pipelines.p_image_oss.before_encoder")
         with CaptureLogger(logger) as cap:
             images = pipe(**inputs, output="images")
 
@@ -444,7 +444,7 @@ class TestPH3ImageModularPipelineFast(PH3ImageModularPipelineTesterConfig, Modul
 
     def test_prompt_upsampler_image_limit(self):
         r"""The upsampler block run on its own takes the same 8 images as the pipeline."""
-        pipe = PH3ImageEditPromptUpsampleStep().init_pipeline(self.pretrained_model_name_or_path)
+        pipe = PImageOSSEditPromptUpsampleStep().init_pipeline(self.pretrained_model_name_or_path)
         pipe.load_components(dtype=torch.float32)
 
         with pytest.raises(ValueError, match="at most 8 images"):
@@ -468,7 +468,7 @@ class TestPH3ImageModularPipelineFast(PH3ImageModularPipelineTesterConfig, Modul
 
     def test_edit_prefix(self):
         r"""A short instruction gets the `"Edit <Picture 1>. "` prefix; a prompt that already has it is encoded as given."""
-        block = PH3ImageEditTextEncoderStep()
+        block = PImageOSSEditTextEncoderStep()
         pipe = block.init_pipeline(self.pretrained_model_name_or_path)
         pipe.load_components(dtype=torch.float32)
         vision_images = [Image.new("RGB", (32, 32))]
@@ -488,13 +488,13 @@ class TestPH3ImageModularPipelineFast(PH3ImageModularPipelineTesterConfig, Modul
             pipe(**inputs)
 
 
-class TestPH3ImageModularPipelineLoading(PH3ImageModularPipelineTesterConfig, ModularLoadingTesterMixin):
+class TestPImageOSSModularPipelineLoading(PImageOSSModularPipelineTesterConfig, ModularLoadingTesterMixin):
     pass
 
 
-class TestPH3ImageModularPipelineWorkflow(PH3ImageModularPipelineTesterConfig, ModularWorkflowTesterMixin):
+class TestPImageOSSModularPipelineWorkflow(PImageOSSModularPipelineTesterConfig, ModularWorkflowTesterMixin):
     pass
 
 
-class TestPH3ImageModularPipelineMemory(PH3ImageModularPipelineTesterConfig, ModularMemoryTesterMixin):
+class TestPImageOSSModularPipelineMemory(PImageOSSModularPipelineTesterConfig, ModularMemoryTesterMixin):
     pass
