@@ -38,7 +38,7 @@ from PIL import Image
 from ...modular_pipelines import InputParam, LoopSequentialPipelineBlocks, ModularPipeline, ModularPipelineBlocks
 from ...utils import export_to_video, load_image, load_video, logging, numpy_to_pil
 from ...utils.constants import DIFFUSERS_REQUEST_TIMEOUT
-from ..run import _as_audio_arrays, _as_pil_list, _get_generator, _load_pipeline, _lora_specs
+from ..run import _as_audio_arrays, _as_pil_list, _load_pipeline, _lora_specs
 from .manifest import OUTPUT_FIELDS, GMSError, Manifest, blocks_signature
 from .scheduler import GenerationJob
 
@@ -220,10 +220,9 @@ class DiffusersBackend:
                 loaded = [waveform for waveform, _ in loaded]
             kwargs[kwarg] = loaded if isinstance(value, list) else loaded[0]
 
-        device = self.pipeline.device
         if request.seed is not None:
-            # A CUDA generator must sit on the pipeline's own GPU, which is `cuda:1` and up with --data-parallel.
-            kwargs["generator"] = _get_generator(request.seed, str(device) if device.type == "cuda" else device.type)
+            # A CPU generator gives the same noise for a seed on any GPU or host, and needs no device lookup.
+            kwargs["generator"] = torch.Generator().manual_seed(request.seed)
 
         if self._reports_steps:
 
@@ -262,6 +261,7 @@ class DiffusersBackend:
                     ],
                 )
             # Worker threads start on GPU 0, and with --data-parallel this pipeline may sit on another one.
+            device = self.pipeline.device
             with torch.cuda.device(device) if device.type == "cuda" else contextlib.nullcontext():
                 result = self.pipeline(**kwargs)
         except _Canceled:
