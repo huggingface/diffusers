@@ -90,6 +90,7 @@ jobs:
         run: |
           printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
+          uv pip install peft@git+https://github.com/huggingface/peft.git
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
           uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
       - name: Environment
@@ -158,14 +159,10 @@ jobs:
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
-        if [[ "${{ matrix.module }}" == "lora" ]]; then
-          selection=(-m "lora and not compile" tests/)
-        else
-          selection=(-m "not compile" "tests/${{ matrix.module }}")
-        fi
         pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+          -m "not compile" \
           --make-reports=tests_torch_cuda_${{ matrix.module }} \
-          "${selection[@]}"
+          tests/${{ matrix.module }}
 
     - name: Failure short reports
       if: ${{ failure() }}
