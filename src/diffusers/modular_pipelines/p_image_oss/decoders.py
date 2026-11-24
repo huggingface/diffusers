@@ -16,19 +16,19 @@ import torch
 
 from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
-from ...models import AutoencoderKLPH3Image
+from ...models import AutoencoderKLPImageOSS
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import PH3ImageModularPipeline
+from .modular_pipeline import PImageOSSModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# Copied from diffusers.modular_pipelines.minimax_h3.decoders.MiniMaxH3AfterDenoiseStep with \bMiniMaxH3->PH3Image, minimax-h3->p-h3-image
-class PH3ImageAfterDenoiseStep(ModularPipelineBlocks):
-    model_name = "p-h3-image"
+# Copied from diffusers.modular_pipelines.minimax_h3.decoders.MiniMaxH3AfterDenoiseStep with \bMiniMaxH3->PImageOSS, minimax-h3->p-image-oss
+class PImageOSSAfterDenoiseStep(ModularPipelineBlocks):
+    model_name = "p-image-oss"
 
     @property
     def description(self) -> str:
@@ -98,8 +98,8 @@ class PH3ImageAfterDenoiseStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: PH3ImageModularPipeline, state: PipelineState
-    ) -> tuple[PH3ImageModularPipeline, PipelineState]:
+        self, components: PImageOSSModularPipeline, state: PipelineState
+    ) -> tuple[PImageOSSModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         patch_t, patch_h, patch_w = components.patch_size
         channels = components.vae_latent_channels
@@ -130,8 +130,8 @@ class PH3ImageAfterDenoiseStep(ModularPipelineBlocks):
         return components, state
 
 
-class PH3ImageDecodeStep(ModularPipelineBlocks):
-    model_name = "p-h3-image"
+class PImageOSSDecodeStep(ModularPipelineBlocks):
+    model_name = "p-image-oss"
 
     @property
     def description(self) -> str:
@@ -140,7 +140,7 @@ class PH3ImageDecodeStep(ModularPipelineBlocks):
     @property
     def expected_components(self) -> list[ComponentSpec]:
         return [
-            ComponentSpec("vae", AutoencoderKLPH3Image),
+            ComponentSpec("vae", AutoencoderKLPImageOSS),
             ComponentSpec(
                 "image_processor",
                 VaeImageProcessor,
@@ -168,8 +168,8 @@ class PH3ImageDecodeStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: PH3ImageModularPipeline, state: PipelineState
-    ) -> tuple[PH3ImageModularPipeline, PipelineState]:
+        self, components: PImageOSSModularPipeline, state: PipelineState
+    ) -> tuple[PImageOSSModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 

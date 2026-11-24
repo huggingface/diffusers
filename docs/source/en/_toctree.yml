@@ -515,8 +515,8 @@
         title: AutoencoderKLMiniMaxH3Image
       - local: api/models/autoencoderkl_mochi
         title: AutoencoderKLMochi
-      - local: api/models/autoencoderkl_p_h3_image
-        title: AutoencoderKLPH3Image
+      - local: api/models/autoencoderkl_p_image_oss
+        title: AutoencoderKLPImageOSS
       - local: api/models/autoencoderkl_qwenimage
         title: AutoencoderKLQwenImage
       - local: api/models/autoencoderkl_qwenimage21
@@ -665,8 +665,8 @@
         title: OmniGen
       - local: api/pipelines/ovis_image
         title: Ovis-Image
-      - local: api/pipelines/p_h3_image
-        title: P-H3-Image
+      - local: api/pipelines/p_image_oss
+        title: P-Image-OSS
       - local: api/pipelines/pag
         title: PAG
       - local: api/pipelines/pixart
