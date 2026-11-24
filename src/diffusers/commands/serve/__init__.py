@@ -38,7 +38,7 @@ from huggingface_hub.cli._output import out
 
 from ...utils import BaseOutput, logging
 from .. import BaseDiffusersCLICommand
-from ..run import _add_loading_arguments, _add_optimization_arguments, _duration_to_seconds
+from ..run import _add_loading_arguments, _add_optimization_arguments, _duration_to_seconds, _require_model
 from .remote import add_remote_arguments, serve_remote
 
 
@@ -148,14 +148,7 @@ class ServeCommand(BaseDiffusersCLICommand):
             formatter_class=RawDescriptionHelpFormatter,
         )
         parser._optionals.title = "Options"
-        parser.add_argument(
-            "model_id",
-            nargs="?",
-            default=None,
-            metavar="MODEL",
-            help="Model id on the Hugging Face Hub or local path.",
-        )
-        _add_loading_arguments(parser, require_model=False)
+        _add_loading_arguments(parser)
         _add_optimization_arguments(parser)
         parser.add_argument("--host", default="127.0.0.1", help="Interface to bind. Defaults to 127.0.0.1.")
         parser.add_argument("--port", type=int, default=8000, help="Port to bind. Defaults to 8000.")
@@ -275,13 +268,7 @@ class ServeCommand(BaseDiffusersCLICommand):
 
     def run(self) -> None:
         args = self.args
-        if args.model_id is not None and args.model is not None and args.model_id != args.model:
-            raise SystemExit(f"Got two models: {args.model_id!r} and --model {args.model!r}. Pass only one.")
-        args.model = args.model or args.model_id
-        # Cleared so `serve --remote` does not forward it to the Job as `--model-id`.
-        args.model_id = None
-        if args.model is None:
-            raise SystemExit("Pass the model to serve, e.g. `diffusers-cli serve black-forest-labs/FLUX.1-dev`.")
+        _require_model(args, self.task)
         seconds = {}
         for flag, value in (
             ("--idle-timeout", args.idle_timeout),

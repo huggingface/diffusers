@@ -28,7 +28,7 @@ import sys
 import time
 import uuid
 import wave
-from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter, _SubParsersAction
+from argparse import SUPPRESS, ArgumentParser, Namespace, RawDescriptionHelpFormatter, _SubParsersAction
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -148,10 +148,13 @@ REMOTE_KEYS = frozenset(
 # ---------------------------------------------------------------------------
 
 
-def _add_loading_arguments(parser: ArgumentParser, require_model: bool = True) -> None:
+def _add_loading_arguments(parser: ArgumentParser) -> None:
+    # The model can be passed positionally or with --model. The positional's default is SUPPRESS so that, when it is
+    # left out, it doesn't overwrite --model's value; --model's `None` default keeps `args.model` defined either way.
     parser.add_argument(
-        "--model", "-m", required=require_model, help="Model id on the Hugging Face Hub or local path."
+        "model", nargs="?", default=SUPPRESS, metavar="MODEL", help="Model id on the Hugging Face Hub or local path."
     )
+    parser.add_argument("--model", "-m", default=None, help="Model id on the Hugging Face Hub or local path.")
     parser.add_argument(
         "--device-map",
         default=None,
@@ -178,6 +181,12 @@ def _add_loading_arguments(parser: ArgumentParser, require_model: bool = True) -
             "`weight_name` picks the weight file when the repo ships more than one."
         ),
     )
+
+
+def _require_model(args: Namespace, task: str) -> None:
+    """Exit when neither the positional model nor --model was passed; argparse can't require one of the two."""
+    if args.model is None:
+        raise SystemExit(f"Pass the model to {task}, e.g. `diffusers-cli {task} black-forest-labs/FLUX.2-klein-4B`.")
 
 
 def _add_optimization_arguments(parser: ArgumentParser) -> None:
@@ -1232,7 +1241,7 @@ class RunCommand(BaseDiffusersCLICommand):
         parser: ArgumentParser = subparsers.add_parser(
             "run",
             help="Run any diffusers pipeline locally or remotely in an HF Sandbox.",
-            usage="\n  diffusers-cli run [options]",
+            usage="\n  diffusers-cli run <model> [options]",
             epilog=epilog,
             formatter_class=RawDescriptionHelpFormatter,
         )
@@ -1298,6 +1307,7 @@ class RunCommand(BaseDiffusersCLICommand):
         self.args = args
 
     def run(self) -> None:
+        _require_model(self.args, self.task)
         _get_or_create_run_id()  # populate RUN_ID_ENV so local output dir + remote bucket prefix agree
 
         call_kwargs = _parse_pipeline_kwargs(self.args.pipeline_kwargs)

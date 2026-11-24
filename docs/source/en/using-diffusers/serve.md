@@ -236,10 +236,17 @@ class LTX2ConditionServeBlocks(SequentialPipelineBlocks):
     block_names = ["condition_inputs", "ltx2"]
 ```
 
-Package the block, and point the pipeline at the base model's weights:
+Save the code as `block.py` in an empty folder, and run the next steps from that folder. First, package the blocks.
+This writes a `modular_config.json` that points to `block.py`, so loading the folder runs these blocks:
 
 ```bash
 diffusers-cli custom_blocks --block_class_name LTX2ConditionServeBlocks
+```
+
+The blocks don't say where the weights are. Bind them to the base model and save the result. This writes a
+`modular_model_index.json` that loads each component from `Lightricks/LTX-2`; no weights are downloaded or copied:
+
+```bash
 python -c 'from diffusers.modular_pipelines import ModularPipelineBlocks; ModularPipelineBlocks.from_pretrained(".", trust_remote_code=True).init_pipeline("Lightricks/LTX-2").save_pretrained(".")'
 ```
 
