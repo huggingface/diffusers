@@ -22,7 +22,7 @@ from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
 from ..modular_pipeline import AutoPipelineBlocks, ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .before_encoder import MAX_EDIT_IMAGES, _size_at_area
-from .modular_pipeline import PH3ImageModularPipeline
+from .modular_pipeline import PImageOSSModularPipeline
 
 
 ASPECT_RATIOS = {"1:1": 1.0, "4:3": 4 / 3, "3:4": 3 / 4, "3:2": 3 / 2, "2:3": 2 / 3, "16:9": 16 / 9, "9:16": 9 / 16}
@@ -52,7 +52,7 @@ def aspect_ratio_label(width: int, height: int) -> str:
 
 def is_edit_prompt(prompt: str) -> bool:
     r"""
-    Whether an edit prompt has one of the two forms P-H3-Image edits from.
+    Whether an edit prompt has one of the two forms P-Image-OSS edits from.
 
     A brief is the six sections of `EDIT_SECTIONS` in order, with `[keyframe completion]` once and every line of
     `retention_analysis` naming a `<Picture i>` or `<Subject i>` and how it is kept. An instruct prompt is one
@@ -89,7 +89,7 @@ def upsample_prompt(
     max_new_tokens: int = T2I_MAX_NEW_TOKENS,
 ) -> str:
     """
-    The prompt P-H3-Image renders for `request`: a text-to-image prompt for `aspect_ratio`, or an edit prompt written
+    The prompt P-Image-OSS renders for `request`: a text-to-image prompt for `aspect_ratio`, or an edit prompt written
     from the prepared `images` (the image to edit first). One greedy generation of at most `max_new_tokens`; the
     upsampler reasons first and the prompt is what follows `</think>`.
     """
@@ -135,13 +135,13 @@ def upsample_prompt(
     return prompt
 
 
-class PH3ImageText2ImagePromptUpsampleStep(ModularPipelineBlocks):
-    model_name = "p-h3-image"
+class PImageOSSText2ImagePromptUpsampleStep(ModularPipelineBlocks):
+    model_name = "p-image-oss"
 
     @property
     def description(self) -> str:
         return (
-            "Expands a text-to-image request into the full prompt P-H3-Image is meant to render, written by the "
+            "Expands a text-to-image request into the full prompt P-Image-OSS is meant to render, written by the "
             "prompt upsampler for the aspect ratio of `height` and `width`."
         )
 
@@ -174,8 +174,8 @@ class PH3ImageText2ImagePromptUpsampleStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: PH3ImageModularPipeline, state: PipelineState
-    ) -> tuple[PH3ImageModularPipeline, PipelineState]:
+        self, components: PImageOSSModularPipeline, state: PipelineState
+    ) -> tuple[PImageOSSModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         block_state.prompt = upsample_prompt(
             components.prompt_upsampler,
@@ -188,13 +188,13 @@ class PH3ImageText2ImagePromptUpsampleStep(ModularPipelineBlocks):
         return components, state
 
 
-class PH3ImageEditPromptUpsampleStep(ModularPipelineBlocks):
-    model_name = "p-h3-image"
+class PImageOSSEditPromptUpsampleStep(ModularPipelineBlocks):
+    model_name = "p-image-oss"
 
     @property
     def description(self) -> str:
         return (
-            "Expands an edit instruction into the edit prompt P-H3-Image is meant to render, written by the prompt "
+            "Expands an edit instruction into the edit prompt P-Image-OSS is meant to render, written by the prompt "
             "upsampler from the images of the edit (`image`): a brief of what to keep and what to change."
         )
 
@@ -230,8 +230,8 @@ class PH3ImageEditPromptUpsampleStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: PH3ImageModularPipeline, state: PipelineState
-    ) -> tuple[PH3ImageModularPipeline, PipelineState]:
+        self, components: PImageOSSModularPipeline, state: PipelineState
+    ) -> tuple[PImageOSSModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         images = block_state.image if isinstance(block_state.image, list) else [block_state.image]
         if len(images) > MAX_EDIT_IMAGES:
@@ -248,13 +248,13 @@ class PH3ImageEditPromptUpsampleStep(ModularPipelineBlocks):
 
 
 # auto_docstring
-class PH3ImageAutoPromptUpsampleStep(AutoPipelineBlocks):
+class PImageOSSAutoPromptUpsampleStep(AutoPipelineBlocks):
     """
     Prompt upsampling step:
-       expands `prompt` into the full prompt P-H3-Image is meant to render, with the prompt upsampler (based on
+       expands `prompt` into the full prompt P-Image-OSS is meant to render, with the prompt upsampler (based on
        Qwen3.5-9B). The task follows the inputs, like the rest of the pipeline:
-       - `PH3ImageEditPromptUpsampleStep` is used when `image` is provided (an edit, written from the images).
-       - `PH3ImageText2ImagePromptUpsampleStep` otherwise (text-to-image).
+       - `PImageOSSEditPromptUpsampleStep` is used when `image` is provided (an edit, written from the images).
+       - `PImageOSSText2ImagePromptUpsampleStep` otherwise (text-to-image).
       To render `prompt` as given, remove the step from the blocks: `blocks.sub_blocks.pop("prompt_upsampler")`.
 
       Components:
@@ -278,18 +278,18 @@ class PH3ImageAutoPromptUpsampleStep(AutoPipelineBlocks):
               The edit prompt, replacing the instruction.
     """
 
-    model_name = "p-h3-image"
-    block_classes = [PH3ImageEditPromptUpsampleStep, PH3ImageText2ImagePromptUpsampleStep]
+    model_name = "p-image-oss"
+    block_classes = [PImageOSSEditPromptUpsampleStep, PImageOSSText2ImagePromptUpsampleStep]
     block_names = ["image_conditioned", "text2image"]
     block_trigger_inputs = ["image", None]
 
     @property
     def description(self) -> str:
         return (
-            "Prompt upsampling step: expands `prompt` into the full prompt P-H3-Image is meant to render, with the "
+            "Prompt upsampling step: expands `prompt` into the full prompt P-Image-OSS is meant to render, with the "
             "prompt upsampler (based on Qwen3.5-9B). The task follows the inputs, like the rest of the pipeline:\n"
-            " - `PH3ImageEditPromptUpsampleStep` is used when `image` is provided (an edit, written from the "
+            " - `PImageOSSEditPromptUpsampleStep` is used when `image` is provided (an edit, written from the "
             "images).\n"
-            " - `PH3ImageText2ImagePromptUpsampleStep` otherwise (text-to-image).\n"
+            " - `PImageOSSText2ImagePromptUpsampleStep` otherwise (text-to-image).\n"
             'To render `prompt` as given, remove the step from the blocks: `blocks.sub_blocks.pop("prompt_upsampler")`.'
         )

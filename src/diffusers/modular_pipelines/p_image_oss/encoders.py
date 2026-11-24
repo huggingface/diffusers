@@ -17,17 +17,17 @@ import PIL.Image
 import torch
 from transformers import Qwen2TokenizerFast, Qwen3VLForConditionalGeneration, Qwen3VLProcessor
 
-from ...models import AutoencoderKLPH3Image, PH3ImageTextConnector
+from ...models import AutoencoderKLPImageOSS, PImageOSSTextConnector
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
-from .modular_pipeline import PH3ImageModularPipeline
+from .modular_pipeline import PImageOSSModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# Copied from diffusers.modular_pipelines.minimax_h3.encoders.encode_vae_condition with AutoencoderKLMiniMaxH3->AutoencoderKLPH3Image
+# Copied from diffusers.modular_pipelines.minimax_h3.encoders.encode_vae_condition with AutoencoderKLMiniMaxH3->AutoencoderKLPImageOSS
 def encode_vae_condition(
     vae, pixels: torch.Tensor, pixel_mean: tuple, pixel_std: tuple, encode_seed: int = 42
 ) -> torch.Tensor:
@@ -41,7 +41,7 @@ def encode_vae_condition(
     what turns `17 * n + 5` frames into `5 * n + 2` latent frames.
 
     Args:
-        vae (`AutoencoderKLPH3Image`): The video VAE.
+        vae (`AutoencoderKLPImageOSS`): The video VAE.
         pixels (`torch.Tensor` of shape `(1, 3, num_frames, height, width)`):
             The condition's `uint8` pixels, on the VAE's device. `num_frames` is 1 for a keyframe or an image
             reference.
@@ -65,7 +65,7 @@ def encode_vae_condition(
     return (latents - latents_mean) / latents_std
 
 
-def get_p_h3_image_prompt_embeds(
+def get_p_image_oss_prompt_embeds(
     text_encoder,
     text_connector,
     processor,
@@ -75,12 +75,12 @@ def get_p_h3_image_prompt_embeds(
     dtype: torch.dtype | None = None,
 ) -> torch.Tensor:
     r"""
-    Encode one tokenized P-H3-Image presentation: the hidden states of the text encoder, mapped to the transformer's
+    Encode one tokenized P-Image-OSS presentation: the hidden states of the text encoder, mapped to the transformer's
     text conditioning by the text connector.
 
     Args:
         text_encoder (`Qwen3VLForConditionalGeneration`): The text encoder.
-        text_connector (`PH3ImageTextConnector`): Maps the text encoder's hidden states to the conditioning.
+        text_connector (`PImageOSSTextConnector`): Maps the text encoder's hidden states to the conditioning.
         processor (`Qwen3VLProcessor`): The text encoder's processor, used for the token type ids.
         token_ids (`list[int]`): The tokenized presentation.
         vision_inputs (`dict`, *optional*):
@@ -111,8 +111,8 @@ def get_p_h3_image_prompt_embeds(
     return text_connector(outputs.hidden_states).to(device=device, dtype=dtype)
 
 
-class PH3ImageTextEncoderStep(ModularPipelineBlocks):
-    model_name = "p-h3-image"
+class PImageOSSTextEncoderStep(ModularPipelineBlocks):
+    model_name = "p-image-oss"
 
     @property
     def description(self) -> str:
@@ -122,7 +122,7 @@ class PH3ImageTextEncoderStep(ModularPipelineBlocks):
     def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("text_encoder", Qwen3VLForConditionalGeneration),
-            ComponentSpec("text_connector", PH3ImageTextConnector),
+            ComponentSpec("text_connector", PImageOSSTextConnector),
             ComponentSpec("tokenizer", Qwen2TokenizerFast),
             ComponentSpec("processor", Qwen3VLProcessor),
         ]
@@ -149,18 +149,18 @@ class PH3ImageTextEncoderStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: PH3ImageModularPipeline, state: PipelineState
-    ) -> tuple[PH3ImageModularPipeline, PipelineState]:
+        self, components: PImageOSSModularPipeline, state: PipelineState
+    ) -> tuple[PImageOSSModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         if not isinstance(block_state.prompt, str):
             raise ValueError(
-                "P-H3-Image packs one request into one sequence, so `prompt` must be a single string, got "
+                "P-Image-OSS packs one request into one sequence, so `prompt` must be a single string, got "
                 f"{type(block_state.prompt)}."
             )
 
         token_ids = components.tokenizer(block_state.prompt, add_special_tokens=False)["input_ids"]
 
-        block_state.prompt_embeds = get_p_h3_image_prompt_embeds(
+        block_state.prompt_embeds = get_p_image_oss_prompt_embeds(
             components.text_encoder,
             components.text_connector,
             components.processor,
@@ -174,8 +174,8 @@ class PH3ImageTextEncoderStep(ModularPipelineBlocks):
         return components, state
 
 
-class PH3ImageEditTextEncoderStep(ModularPipelineBlocks):
-    model_name = "p-h3-image"
+class PImageOSSEditTextEncoderStep(ModularPipelineBlocks):
+    model_name = "p-image-oss"
 
     @property
     def description(self) -> str:
@@ -189,7 +189,7 @@ class PH3ImageEditTextEncoderStep(ModularPipelineBlocks):
     def expected_components(self) -> list[ComponentSpec]:
         return [
             ComponentSpec("text_encoder", Qwen3VLForConditionalGeneration),
-            ComponentSpec("text_connector", PH3ImageTextConnector),
+            ComponentSpec("text_connector", PImageOSSTextConnector),
             ComponentSpec("tokenizer", Qwen2TokenizerFast),
             ComponentSpec("processor", Qwen3VLProcessor),
         ]
@@ -224,12 +224,12 @@ class PH3ImageEditTextEncoderStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: PH3ImageModularPipeline, state: PipelineState
-    ) -> tuple[PH3ImageModularPipeline, PipelineState]:
+        self, components: PImageOSSModularPipeline, state: PipelineState
+    ) -> tuple[PImageOSSModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         if not isinstance(block_state.prompt, str):
             raise ValueError(
-                "P-H3-Image packs one request into one sequence, so `prompt` must be a single string, got "
+                "P-Image-OSS packs one request into one sequence, so `prompt` must be a single string, got "
                 f"{type(block_state.prompt)}."
             )
         tokenizer, processor = components.tokenizer, components.processor
@@ -254,7 +254,7 @@ class PH3ImageEditTextEncoderStep(ModularPipelineBlocks):
         token_ids += prompt_ids
         token_tags += [text_tag] * len(prompt_ids)
 
-        block_state.prompt_embeds = get_p_h3_image_prompt_embeds(
+        block_state.prompt_embeds = get_p_image_oss_prompt_embeds(
             components.text_encoder,
             components.text_connector,
             processor,
@@ -269,8 +269,8 @@ class PH3ImageEditTextEncoderStep(ModularPipelineBlocks):
         return components, state
 
 
-class PH3ImageEditVaeEncoderStep(ModularPipelineBlocks):
-    model_name = "p-h3-image"
+class PImageOSSEditVaeEncoderStep(ModularPipelineBlocks):
+    model_name = "p-image-oss"
 
     @property
     def description(self) -> str:
@@ -281,7 +281,7 @@ class PH3ImageEditVaeEncoderStep(ModularPipelineBlocks):
 
     @property
     def expected_components(self) -> list[ComponentSpec]:
-        return [ComponentSpec("vae", AutoencoderKLPH3Image)]
+        return [ComponentSpec("vae", AutoencoderKLPImageOSS)]
 
     @property
     def inputs(self) -> list[InputParam]:
@@ -309,8 +309,8 @@ class PH3ImageEditVaeEncoderStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: PH3ImageModularPipeline, state: PipelineState
-    ) -> tuple[PH3ImageModularPipeline, PipelineState]:
+        self, components: PImageOSSModularPipeline, state: PipelineState
+    ) -> tuple[PImageOSSModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
