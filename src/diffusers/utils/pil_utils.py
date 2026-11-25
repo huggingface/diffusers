@@ -21,6 +21,16 @@ else:
         "nearest": PIL.Image.NEAREST,
     }
 
+# Resample modes natively supported by torch.nn.functional.interpolate.
+# Modes absent from this dict (e.g. "lanczos") are not supported; callers
+# should warn and fall back to default "nearest" behavior.
+TORCH_INTERPOLATION = {
+    "linear": ("bilinear", True),
+    "bilinear": ("bilinear", True),
+    "bicubic": ("bicubic", True),
+    "nearest": ("nearest", False),
+}
+
 
 def pt_to_pil(images):
     """
