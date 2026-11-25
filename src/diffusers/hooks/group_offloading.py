@@ -13,7 +13,10 @@
 # limitations under the License.
 
 import hashlib
+import itertools
+import mmap
 import os
+import weakref
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, replace
 from enum import Enum
@@ -34,6 +37,11 @@ if is_accelerate_available():
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
+
+_STREAM_PINNED_STAGING: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+# (start, end) -> [number of modules using the range, CPU tensors backing it]
+_HOST_REGISTERED_RANGES: dict[tuple[int, int], list] = {}
+_CUDA_HOST_REGISTER_READ_ONLY = 8
 
 
 def _is_torchao_tensor(tensor: torch.Tensor) -> bool:
@@ -111,6 +119,7 @@ class GroupOffloadingConfig:
     block_modules: list[str] | None = None
     exclude_kwargs: list[str] | None = None
     module_prefix: str = ""
+    pin_cpu_memory_in_place: bool = False
 
 
 class ModuleGroup:
@@ -178,7 +187,7 @@ class ModuleGroup:
 
     def _init_cpu_param_dict(self):
         cpu_param_dict = {}
-        if self.stream is None:
+        if self.stream is None and not self.low_cpu_mem_usage:
             return cpu_param_dict
 
         for module in self.modules:
@@ -198,10 +207,40 @@ class ModuleGroup:
     @contextmanager
     def _pinned_memory_tensors(self):
         try:
-            pinned_dict = {
-                param: tensor.pin_memory() if not tensor.is_pinned() else tensor
-                for param, tensor in self.cpu_param_dict.items()
-            }
+            if self.stream is not None and self.low_cpu_mem_usage:
+                # Offsets are 16-byte aligned so every dtype can view its slice of the buffer.
+                staging_bytes = sum(
+                    -(-tensor.numel() * tensor.element_size() // 16) * 16
+                    for tensor in self.cpu_param_dict.values()
+                    if not _is_torchao_tensor(tensor) and not tensor.is_pinned() and tensor.is_contiguous()
+                )
+                staging = None
+                if staging_bytes > 0:
+                    # One buffer per stream is enough: `_onload_from_memory` synchronizes the stream before
+                    # refilling it, so the previous transfer out of it has finished.
+                    staging = _STREAM_PINNED_STAGING.get(self.stream)
+                    if staging is None or staging.numel() < staging_bytes:
+                        staging = torch.empty(staging_bytes, dtype=torch.uint8, pin_memory=True)
+                        _STREAM_PINNED_STAGING[self.stream] = staging
+
+                offset = 0
+                pinned_dict = {}
+                for param, tensor in self.cpu_param_dict.items():
+                    if _is_torchao_tensor(tensor) or tensor.is_pinned() or staging is None:
+                        pinned_dict[param] = tensor.pin_memory() if not tensor.is_pinned() else tensor
+                    elif tensor.is_contiguous():
+                        nbytes = tensor.numel() * tensor.element_size()
+                        view = staging[offset : offset + nbytes].view(tensor.dtype).reshape(tensor.shape)
+                        view.copy_(tensor)
+                        pinned_dict[param] = view
+                        offset += -(-nbytes // 16) * 16
+                    else:
+                        pinned_dict[param] = tensor.pin_memory()
+            else:
+                pinned_dict = {
+                    param: tensor.pin_memory() if not tensor.is_pinned() else tensor
+                    for param, tensor in self.cpu_param_dict.items()
+                }
             yield pinned_dict
         finally:
             pinned_dict = None
@@ -314,8 +353,8 @@ class ModuleGroup:
             tensor_obj.data = torch.empty_like(tensor_obj.data, device=self.offload_device)
 
     def _offload_to_memory(self):
-        if self.stream is not None:
-            if not self.record_stream:
+        if self.stream is not None or self.cpu_param_dict:
+            if self.stream is not None and not self.record_stream:
                 self._torch_accelerator_module.current_stream().synchronize()
 
             for group_module in self.modules:
@@ -577,6 +616,7 @@ def apply_group_offloading(
     offload_to_disk_path: str | None = None,
     block_modules: list[str] | None = None,
     exclude_kwargs: list[str] | None = None,
+    pin_cpu_memory_in_place: bool = False,
 ) -> None:
     r"""
     Applies group offloading to the internal layers of a torch.nn.Module. To understand what group offloading is, and
@@ -641,6 +681,12 @@ def apply_group_offloading(
             List of kwarg keys that should not be processed by send_to_device. This is useful for mutable state like
             caching lists that need to maintain their object identity across forward passes. If not provided, will be
             inferred from the module's `_skip_keys` attribute if it exists.
+        pin_cpu_memory_in_place (`bool`, defaults to `False`):
+            Only used with `use_stream=True` and `low_cpu_mem_usage=True`. If True, the CPU tensors of the module are
+            page-locked where they already live (for example the memory-mapped safetensors file) with
+            `cudaHostRegister`, so streamed onloading copies them to the device directly instead of first copying them
+            into a pinned buffer on every forward pass. No second copy of the weights is allocated, but the registered
+            pages stay resident and cannot be reclaimed by the OS until the module is garbage collected.
 
     Example:
         ```python
@@ -678,6 +724,10 @@ def apply_group_offloading(
 
     if not use_stream and record_stream:
         raise ValueError("`record_stream` cannot be True when `use_stream=False`.")
+    if pin_cpu_memory_in_place and not (use_stream and low_cpu_mem_usage and offload_to_disk_path is None):
+        raise ValueError(
+            "`pin_cpu_memory_in_place=True` requires `use_stream=True`, `low_cpu_mem_usage=True` and no `offload_to_disk_path`."
+        )
     if offload_type == GroupOffloadingType.BLOCK_LEVEL and num_blocks_per_group is None:
         raise ValueError("`num_blocks_per_group` must be provided when using `offload_type='block_level'.")
 
@@ -701,6 +751,7 @@ def apply_group_offloading(
         offload_to_disk_path=offload_to_disk_path,
         block_modules=block_modules,
         exclude_kwargs=exclude_kwargs,
+        pin_cpu_memory_in_place=pin_cpu_memory_in_place,
     )
     _apply_group_offloading(module, config)
 
@@ -712,6 +763,78 @@ def _apply_group_offloading(module: torch.nn.Module, config: GroupOffloadingConf
         _apply_group_offloading_leaf_level(module, config)
     else:
         assert False
+    if config.pin_cpu_memory_in_place:
+        _pin_cpu_tensors_in_place(module)
+
+
+def _release_host_ranges(ranges: list[tuple[int, int]]) -> None:
+    cudart = torch.cuda.cudart()
+    for key in ranges:
+        entry = _HOST_REGISTERED_RANGES[key]
+        entry[0] -= 1
+        if entry[0] > 0:
+            continue
+        if int(cudart.cudaHostUnregister(key[0])) != 0:
+            logger.warning(f"Could not unregister the page-locked CPU range at {key[0]:#x}.")
+        del _HOST_REGISTERED_RANGES[key]
+
+
+def _pin_cpu_tensors_in_place(module: torch.nn.Module) -> None:
+    if not torch.cuda.is_available():
+        logger.warning("`pin_cpu_memory_in_place=True` needs a CUDA/ROCm device; falling back to pinned staging.")
+        return
+    page = mmap.PAGESIZE
+    spans = []
+    keepalive = []
+    for tensor in itertools.chain(module.parameters(), module.buffers()):
+        if tensor.device.type != "cpu" or tensor.numel() == 0 or _is_torchao_tensor(tensor):
+            continue
+        start = tensor.data_ptr() // page * page
+        end = -(-(tensor.data_ptr() + tensor.numel() * tensor.element_size()) // page) * page
+        # Pinned by another module's registration: still take a reference. Pinned any other way: leave it alone.
+        if tensor.is_pinned() and not any(
+            r_start < end and start < r_end for r_start, r_end in _HOST_REGISTERED_RANGES
+        ):
+            continue
+        keepalive.append(tensor.data)
+        spans.append((start, end))
+    spans.sort()
+    merged = []
+    for start, end in spans:
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+
+    cudart = torch.cuda.cudart()
+    held = []
+    for start, end in merged:
+        # Ranges already registered by another module (e.g. a shared mmap page) are shared, not registered again.
+        for key in sorted(_HOST_REGISTERED_RANGES):
+            r_start, r_end = key
+            if r_end <= start or r_start >= end:
+                continue
+            if r_start > start:
+                held += _register_host_range(cudart, start, r_start, keepalive)
+            _HOST_REGISTERED_RANGES[key][0] += 1
+            held.append(key)
+            start = max(start, r_end)
+        if start < end:
+            held += _register_host_range(cudart, start, end, keepalive)
+    if held:
+        weakref.finalize(module, _release_host_ranges, held)
+
+
+def _register_host_range(cudart, start: int, end: int, keepalive: list[torch.Tensor]) -> list[tuple[int, int]]:
+    # Read-only first: memory-mapped checkpoints are usually mapped without write permission.
+    for flags in (_CUDA_HOST_REGISTER_READ_ONLY, 0):
+        if int(cudart.cudaHostRegister(start, end - start, flags)) == 0:
+            # The backing tensors (and so their mmap) live as long as the registration: unmapping a still-registered
+            # range corrupts the runtime's host-memory tracking.
+            _HOST_REGISTERED_RANGES[(start, end)] = [1, keepalive]
+            return [(start, end)]
+    logger.warning("Could not page-lock a CPU memory range in place; it will use pinned staging instead.")
+    return []
 
 
 def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOffloadingConfig) -> None:
@@ -806,6 +929,7 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
             non_blocking=False,
             stream=None,
             record_stream=False,
+            low_cpu_mem_usage=config.low_cpu_mem_usage,
             onload_self=True,
             group_id=f"{config.module_prefix}{module.__class__.__name__}_unmatched_group",
         )
