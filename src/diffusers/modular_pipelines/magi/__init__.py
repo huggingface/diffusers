@@ -35,11 +35,12 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["before_denoise"] = ["MagiPrepareLatentsStep"]
+    _import_structure["before_denoise"] = ["MagiPrepareDenoiseStep", "MagiPrepareLatentsStep"]
     _import_structure["decoders"] = ["MagiVaeDecoderStep"]
-    _import_structure["denoise"] = ["MagiDenoiseLoop", "MagiDenoiseStep", "MagiPrepareDenoiseStep"]
+    _import_structure["denoise"] = ["MagiDenoiseLoop"]
     _import_structure["encoders"] = ["MagiTextEncoderStep"]
     _import_structure["modular_blocks_magi"] = [
+        "MagiDenoiseStep",
         "MagiImageToVideoBlocks",
         "MagiTextToVideoBlocks",
         "MagiVideoToVideoBlocks",
@@ -53,11 +54,16 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .before_denoise import MagiPrepareLatentsStep
+        from .before_denoise import MagiPrepareDenoiseStep, MagiPrepareLatentsStep
         from .decoders import MagiVaeDecoderStep
-        from .denoise import MagiDenoiseLoop, MagiDenoiseStep, MagiPrepareDenoiseStep
+        from .denoise import MagiDenoiseLoop
         from .encoders import MagiTextEncoderStep
-        from .modular_blocks_magi import MagiImageToVideoBlocks, MagiTextToVideoBlocks, MagiVideoToVideoBlocks
+        from .modular_blocks_magi import (
+            MagiDenoiseStep,
+            MagiImageToVideoBlocks,
+            MagiTextToVideoBlocks,
+            MagiVideoToVideoBlocks,
+        )
         from .modular_pipeline import MagiModularPipeline
 else:
     import sys

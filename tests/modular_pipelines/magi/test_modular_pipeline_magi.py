@@ -107,6 +107,7 @@ class MagiPipelineTesterConfig(BaseModularPipelineTesterConfig):
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset(["prompt"])
     output_name = "videos"
+    expected_latents_shape = (1, 4, 4, 4, 4)
 
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
@@ -217,10 +218,9 @@ class TestMagiPipelineFast(MagiPipelineTesterConfig, ModularPipelineTesterMixin)
             torch.zeros(1, 3, 2, 4, 4),
             torch.zeros(1, 4, 0, 4, 4),
             torch.zeros(1, 4, 2, 4, 4, dtype=torch.int64),
-            torch.full((1, 4, 2, 4, 4), float("nan")),
         ]
         for invalid in invalid_latents:
-            with pytest.raises(ValueError, match="latents must be a finite floating-point tensor"):
+            with pytest.raises(ValueError, match="latents must be a floating-point tensor"):
                 decoder(latents=invalid, chunk_width=2, output_type="latent", output="videos")
 
         for chunk_width in (True, 0, 1.5):

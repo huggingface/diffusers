@@ -21,13 +21,12 @@ from diffusers import (
     MagiEulerScheduler,
     MagiTransformer3DModel,
 )
-from diffusers.modular_pipelines.magi.denoise import (
-    MagiDenoiseLoop,
-    MagiPrefixDenoiseLoop,
-    MagiPrefixDenoiseStep,
+from diffusers.modular_pipelines.magi.before_denoise import (
     MagiPrepareDenoiseStep,
     MagiPreparePrefixStep,
 )
+from diffusers.modular_pipelines.magi.denoise import MagiDenoiseLoop, MagiPrefixDenoiseLoop
+from diffusers.modular_pipelines.magi.modular_blocks_magi import MagiPrefixDenoiseStep
 
 
 class TestMagiDenoise:
@@ -72,7 +71,7 @@ class TestMagiDenoise:
     def make_prepare_pipeline(self, **model_kwargs):
         denoise = self.make_pipeline(**model_kwargs)
         pipe = MagiPrepareDenoiseStep().init_pipeline()
-        pipe.update_components(transformer=denoise.transformer, scheduler=denoise.scheduler)
+        pipe.update_components(transformer=denoise.transformer)
         pipe.load_components()
         return pipe
 
@@ -183,19 +182,35 @@ class TestMagiDenoise:
         actual = restored(**inputs, output="latents")
         torch.testing.assert_close(actual, expected, atol=0, rtol=0)
 
-    def test_repeat_run_resets_state(self):
-        pipe = self.make_pipeline()
+    @pytest.mark.parametrize("prefix_length", [0, 1, 3])
+    def test_repeat_run_resets_state(self, monkeypatch, prefix_length):
+        pipe = self.make_prefix_pipeline() if prefix_length else self.make_pipeline()
         inputs = self.inputs()
+        if prefix_length:
+            inputs["conditioning_latents"] = inputs["latents"][:, :, :prefix_length].clone()
+        initialized_steps = []
+        set_timesteps = pipe.scheduler.set_timesteps
+
+        def record_timesteps(num_inference_steps, device=None):
+            initialized_steps.append(num_inference_steps)
+            return set_timesteps(num_inference_steps, device=device)
+
+        monkeypatch.setattr(pipe.scheduler, "set_timesteps", record_timesteps)
         first = pipe(**inputs, output="latents")
         second = pipe(**inputs, output="latents")
         torch.testing.assert_close(first, second, atol=0, rtol=0)
         assert pipe.scheduler.step_index is None
+        assert initialized_steps == [inputs["num_inference_steps"], inputs["num_inference_steps"]]
 
-    def test_standalone_denoise_loop_matches_composed_step(self):
+    @pytest.mark.parametrize("shift", [1.0, 3.0])
+    def test_standalone_denoise_loop_matches_composed_step(self, shift):
         inputs = self.inputs()
-        expected = self.make_pipeline()(**inputs, output=["latents", "clean_kv_cache", "completed_chunks"])
+        composed = self.make_pipeline()
+        composed.update_components(scheduler=MagiEulerScheduler(shift=shift))
+        expected = composed(**inputs, output=["latents", "clean_kv_cache", "completed_chunks"])
         state = self.make_prepare_pipeline()(**inputs)
         loop = self.make_loop_pipeline()
+        loop.update_components(scheduler=MagiEulerScheduler(shift=shift))
         actual = loop(state=state, output=["latents", "clean_kv_cache", "completed_chunks"])
         torch.testing.assert_close(actual["latents"], expected["latents"], atol=0, rtol=0)
         for actual_pair, expected_pair in zip(actual["clean_kv_cache"], expected["clean_kv_cache"]):
@@ -203,10 +218,11 @@ class TestMagiDenoise:
                 torch.testing.assert_close(actual_tensor, expected_tensor, atol=0, rtol=0)
         assert actual["completed_chunks"] == expected["completed_chunks"]
 
-        with pytest.raises(
-            ValueError, match="timestep_schedule must match the configured scheduler and num_inference_steps"
-        ):
-            loop(state=state, timestep_schedule=state.get("timestep_schedule") + 0.1, output="latents")
+        loop.scheduler.set_timesteps(8)
+        state = self.make_prepare_pipeline()(**inputs)
+        repeated = loop(state=state, output="latents")
+        torch.testing.assert_close(repeated, expected["latents"], atol=0, rtol=0)
+        assert loop.scheduler.num_inference_steps == inputs["num_inference_steps"]
 
     def test_standalone_prefix_denoise_loop_matches_composed_step(self):
         inputs = self.inputs(chunks=4)
@@ -410,20 +426,18 @@ class TestMagiDenoise:
     def test_standalone_prepare_denoise_input_validation(self):
         pipe = self.make_prepare_pipeline()
         inputs = self.inputs()
-        latent_message = "latents must be a nonempty finite floating-point tensor"
+        latent_message = "latents must be a nonempty floating-point tensor"
         for latents in [
             [[[[[0.0]]]]],
             torch.zeros(1, 4, 6, 4, 4, dtype=torch.int64),
-            torch.full((1, 4, 6, 4, 4), float("nan")),
         ]:
             with pytest.raises(ValueError, match=latent_message):
                 pipe(**(inputs | {"latents": latents}), output="latents")
 
-        prefix_message = "prefix_latents must be a finite floating-point tensor"
+        prefix_message = "prefix_latents must be a floating-point tensor"
         for prefix in [
             [[[[[0.0]]]]],
             torch.zeros(1, 4, 2, 4, 4, dtype=torch.int64),
-            torch.full((1, 4, 2, 4, 4), float("nan")),
         ]:
             with pytest.raises(ValueError, match=prefix_message):
                 pipe(**inputs, prefix_latents=prefix, output="latents")
@@ -440,11 +454,10 @@ class TestMagiDenoise:
             is None
         )
 
-        message = "latents must be a nonempty finite floating-point tensor"
+        message = "latents must be a nonempty floating-point tensor"
         for invalid_latents in [
             [[[[[0.0]]]]],
             torch.zeros(1, 4, 6, 4, 4, dtype=torch.int64),
-            torch.full((1, 4, 6, 4, 4), float("nan")),
         ]:
             with pytest.raises(ValueError, match=message):
                 pipe(

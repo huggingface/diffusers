@@ -49,6 +49,7 @@ class MagiImagePipelineTesterConfig(BaseModularPipelineTesterConfig):
     params = frozenset(["prompt", "image", "height", "width", "num_frames"])
     batch_params = frozenset(["prompt"])
     output_name = "videos"
+    expected_latents_shape = (1, 4, 6, 4, 4)
     workflow = "image"
 
     @pytest.fixture(scope="class", autouse=True)
@@ -201,6 +202,7 @@ class TestMagiImagePipelineMemory(MagiImagePipelineTesterConfig, ModularMemoryTe
 
 class MagiVideoPipelineTesterConfig(MagiImagePipelineTesterConfig):
     pipeline_blocks_class = MagiVideoToVideoBlocks
+    expected_latents_shape = (1, 4, 8, 4, 4)
     params = frozenset(["prompt", "video", "height", "width", "num_frames"])
     workflow = "video"
 

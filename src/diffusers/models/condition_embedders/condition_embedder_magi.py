@@ -17,9 +17,9 @@ from dataclasses import dataclass
 import torch
 from torch import nn
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
-from .modeling_utils import ModelMixin
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...utils import BaseOutput
+from ..modeling_utils import ModelMixin
 
 
 @dataclass

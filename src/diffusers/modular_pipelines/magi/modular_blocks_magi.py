@@ -12,12 +12,159 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import torch
+
 from ..modular_pipeline import SequentialPipelineBlocks
-from ..modular_pipeline_utils import OutputParam
-from .before_denoise import MagiPrepareConditionedLatentsStep, MagiPrepareLatentsStep
+from ..modular_pipeline_utils import InsertableDict, OutputParam
+from .before_denoise import (
+    MagiPrepareConditionedLatentsStep,
+    MagiPrepareDenoiseStep,
+    MagiPrepareLatentsStep,
+    MagiPreparePrefixStep,
+)
 from .decoders import MagiPrefixVaeDecoderStep, MagiVaeDecoderStep
-from .denoise import MagiDenoiseStep, MagiPrefixDenoiseStep
+from .denoise import MagiDenoiseLoop, MagiPrefixDenoiseLoop
 from .encoders import MagiImageVaeEncoderStep, MagiTextEncoderStep, MagiVideoVaeEncoderStep
+
+
+MagiDenoiseBlocks = InsertableDict([("prepare", MagiPrepareDenoiseStep()), ("denoise", MagiDenoiseLoop())])
+
+
+# auto_docstring
+class MagiDenoiseStep(SequentialPipelineBlocks):
+    """
+    MAGI base-model latent generation; text encoding, partial-chunk prefixes, and VAE decoding are not included.
+
+      Components:
+          - transformer (`MagiTransformer3DModel`)
+          - scheduler (`MagiEulerScheduler`)
+          - guider (`MagiClassifierFreeGuidance`)
+
+      Inputs:
+          latents (`Tensor`):
+              FP32 latent state shaped (batch, channels, frames, height, width), including prefix slots.
+          prompt_embeds (`Tensor`):
+              Prepared conditional text features, shared across chunks or provided per chunk.
+          prompt_attention_mask (`Tensor`):
+              Boolean keep-mask matching the conditional text features.
+          negative_prompt_embeds (`Tensor`):
+              Learned null-caption features shaped (batch, length, caption_channels), shared across chunks.
+          negative_prompt_attention_mask (`Tensor`):
+              Boolean keep-mask for the learned null-caption features.
+          prefix_latents (`Tensor`, *optional*):
+              Optional full-chunk clean prefix; replaces the leading latent slots and remains unchanged.
+          num_inference_steps (`int`, *optional*, defaults to 64):
+              Number of Euler updates per generated chunk.
+          chunk_width (`int`, *optional*, defaults to 6):
+              Number of latent frames in each chunk.
+          window_size (`int`, *optional*, defaults to 4):
+              Maximum number of simultaneously denoised chunks.
+          noise2clean_kvrange (`tuple`, *optional*, defaults to (5, 4, 3, 2)):
+              Positive attention-window lengths in chunks, from early to late denoising stages.
+          clean_chunk_kvrange (`int`, *optional*, defaults to 1):
+              Attention-window length used when recomputing clean chunks; `-1` uses the final noise-to-clean range.
+          clean_t (`float`, *optional*, defaults to 0.9999):
+              Model evaluation time for clean-prefix cache extraction.
+          attention_kwargs (`dict`, *optional*):
+              Optional keyword arguments passed to Transformer attention.
+          cache_device (`str`, *optional*):
+              Optional device for clean-prefix KV storage; use cpu to offload between layer evaluations.
+
+      Outputs:
+          latents (`Tensor`):
+              FP32 latent state shaped (batch, channels, frames, height, width), including prefix slots.
+    """
+
+    model_name = "magi"
+    block_classes = MagiDenoiseBlocks.values()
+    block_names = MagiDenoiseBlocks.keys()
+
+    @property
+    def description(self):
+        return "MAGI base-model latent generation; text encoding, partial-chunk prefixes, and VAE decoding are not included."
+
+    @property
+    def outputs(self):
+        return [
+            OutputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description="FP32 latent state shaped (batch, channels, frames, height, width), including prefix slots.",
+            )
+        ]
+
+
+MagiPrefixDenoiseBlocks = InsertableDict(
+    [
+        ("prepare_prefix", MagiPreparePrefixStep()),
+        ("prepare", MagiPrepareDenoiseStep()),
+        ("denoise", MagiPrefixDenoiseLoop()),
+    ]
+)
+
+
+# auto_docstring
+class MagiPrefixDenoiseStep(SequentialPipelineBlocks):
+    """
+    Generate latent continuations from complete or partial-chunk prefixes.
+
+      Components:
+          - transformer (`MagiTransformer3DModel`)
+          - scheduler (`MagiEulerScheduler`)
+          - guider (`MagiClassifierFreeGuidance`)
+
+      Inputs:
+          latents (`Tensor`):
+              FP32 latent state shaped (batch, channels, frames, height, width), including prefix slots.
+          chunk_width (`int`, *optional*, defaults to 6):
+              Number of latent frames in each chunk.
+          conditioning_latents (`Tensor`):
+              Scaled prefix matching the generated latent batch and device.
+          prompt_embeds (`Tensor`):
+              Prepared conditional text features, shared across chunks or provided per chunk.
+          prompt_attention_mask (`Tensor`):
+              Boolean keep-mask matching the conditional text features.
+          negative_prompt_embeds (`Tensor`):
+              Learned null-caption features shaped (batch, length, caption_channels), shared across chunks.
+          negative_prompt_attention_mask (`Tensor`):
+              Boolean keep-mask for the learned null-caption features.
+          num_inference_steps (`int`, *optional*, defaults to 64):
+              Number of Euler updates per generated chunk.
+          window_size (`int`, *optional*, defaults to 4):
+              Maximum number of simultaneously denoised chunks.
+          noise2clean_kvrange (`tuple`, *optional*, defaults to (5, 4, 3, 2)):
+              Positive attention-window lengths in chunks, from early to late denoising stages.
+          clean_chunk_kvrange (`int`, *optional*, defaults to 1):
+              Attention-window length used when recomputing clean chunks; `-1` uses the final noise-to-clean range.
+          clean_t (`float`, *optional*, defaults to 0.9999):
+              Model evaluation time for clean-prefix cache extraction.
+          attention_kwargs (`dict`, *optional*):
+              Optional keyword arguments passed to Transformer attention.
+          cache_device (`str`, *optional*):
+              Optional device for clean-prefix KV storage; use cpu to offload between layer evaluations.
+
+      Outputs:
+          latents (`Tensor`):
+              FP32 latent state shaped (batch, channels, frames, height, width), including prefix slots.
+    """
+
+    model_name = "magi"
+    block_classes = MagiPrefixDenoiseBlocks.values()
+    block_names = MagiPrefixDenoiseBlocks.keys()
+
+    @property
+    def description(self):
+        return "Generate latent continuations from complete or partial-chunk prefixes."
+
+    @property
+    def outputs(self):
+        return [
+            OutputParam(
+                "latents",
+                type_hint=torch.Tensor,
+                description="FP32 latent state shaped (batch, channels, frames, height, width), including prefix slots.",
+            )
+        ]
 
 
 # auto_docstring
@@ -26,17 +173,17 @@ class MagiTextToVideoBlocks(SequentialPipelineBlocks):
     Generate videos with a MAGI base model, using official HQ and duration conditioning.
 
       Components:
-          text_encoder (`T5EncoderModel`)
-          tokenizer (`AutoTokenizer`)
-          transformer (`MagiTransformer3DModel`)
-          vae (`AutoencoderKLMagi`)
-          text_conditioning (`MagiTextConditioningModel`)
-          scheduler (`MagiEulerScheduler`)
-          guider (`MagiClassifierFreeGuidance`)
-          video_processor (`VideoProcessor`)
+          - text_encoder (`T5EncoderModel`)
+          - tokenizer (`AutoTokenizer`)
+          - transformer (`MagiTransformer3DModel`)
+          - vae (`AutoencoderKLMagi`)
+          - text_conditioning (`MagiTextConditioningModel`)
+          - scheduler (`MagiEulerScheduler`)
+          - guider (`MagiClassifierFreeGuidance`)
+          - video_processor (`VideoProcessor`)
 
       Configs:
-          latent_scaling_factor (default: 0.18215)
+          - latent_scaling_factor (default: 0.18215)
 
       Inputs:
           prompt (`str`):
@@ -101,8 +248,6 @@ class MagiTextToVideoBlocks(SequentialPipelineBlocks):
               Number of iterations before the active chunk window moves forward.
           num_window_steps (`int`):
               Total number of asynchronous window iterations.
-          timestep_schedule (`Tensor`):
-              FP32 schedule including the final Euler integration endpoint.
           clean_kv_cache (`tuple`):
               Per-layer clean-prefix key/value tensors, or None before any prefix is cached; excludes the final generated chunk.
           completed_chunks (`list`):
@@ -158,17 +303,17 @@ class MagiImageToVideoBlocks(MagiTextToVideoBlocks):
     Generate a MAGI base-model video conditioned on a pre-resized uint8 RGB image.
 
       Components:
-          text_encoder (`T5EncoderModel`)
-          tokenizer (`AutoTokenizer`)
-          vae (`AutoencoderKLMagi`)
-          transformer (`MagiTransformer3DModel`)
-          text_conditioning (`MagiTextConditioningModel`)
-          scheduler (`MagiEulerScheduler`)
-          guider (`MagiClassifierFreeGuidance`)
-          video_processor (`VideoProcessor`)
+          - text_encoder (`T5EncoderModel`)
+          - tokenizer (`AutoTokenizer`)
+          - vae (`AutoencoderKLMagi`)
+          - transformer (`MagiTransformer3DModel`)
+          - text_conditioning (`MagiTextConditioningModel`)
+          - scheduler (`MagiEulerScheduler`)
+          - guider (`MagiClassifierFreeGuidance`)
+          - video_processor (`VideoProcessor`)
 
       Configs:
-          latent_scaling_factor (default: 0.18215)
+          - latent_scaling_factor (default: 0.18215)
 
       Inputs:
           prompt (`str`):
@@ -239,8 +384,6 @@ class MagiImageToVideoBlocks(MagiTextToVideoBlocks):
               Number of iterations before the active chunk window moves forward.
           num_window_steps (`int`):
               Total number of asynchronous window iterations.
-          timestep_schedule (`Tensor`):
-              FP32 schedule including the final Euler integration endpoint.
           clean_kv_cache (`tuple`):
               Per-layer clean-prefix key/value tensors, or None before any prefix is cached; excludes the final generated chunk.
           completed_chunks (`list`):
@@ -294,17 +437,17 @@ class MagiVideoToVideoBlocks(MagiImageToVideoBlocks):
     Continue pre-resized uint8 RGB video frames with a MAGI base model.
 
       Components:
-          text_encoder (`T5EncoderModel`)
-          tokenizer (`AutoTokenizer`)
-          vae (`AutoencoderKLMagi`)
-          transformer (`MagiTransformer3DModel`)
-          text_conditioning (`MagiTextConditioningModel`)
-          scheduler (`MagiEulerScheduler`)
-          guider (`MagiClassifierFreeGuidance`)
-          video_processor (`VideoProcessor`)
+          - text_encoder (`T5EncoderModel`)
+          - tokenizer (`AutoTokenizer`)
+          - vae (`AutoencoderKLMagi`)
+          - transformer (`MagiTransformer3DModel`)
+          - text_conditioning (`MagiTextConditioningModel`)
+          - scheduler (`MagiEulerScheduler`)
+          - guider (`MagiClassifierFreeGuidance`)
+          - video_processor (`VideoProcessor`)
 
       Configs:
-          latent_scaling_factor (default: 0.18215)
+          - latent_scaling_factor (default: 0.18215)
 
       Inputs:
           prompt (`str`):
@@ -375,8 +518,6 @@ class MagiVideoToVideoBlocks(MagiImageToVideoBlocks):
               Number of iterations before the active chunk window moves forward.
           num_window_steps (`int`):
               Total number of asynchronous window iterations.
-          timestep_schedule (`Tensor`):
-              FP32 schedule including the final Euler integration endpoint.
           clean_kv_cache (`tuple`):
               Per-layer clean-prefix key/value tensors, or None before any prefix is cached; excludes the final generated chunk.
           completed_chunks (`list`):

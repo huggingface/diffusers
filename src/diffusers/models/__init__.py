@@ -84,6 +84,7 @@ if is_torch_available():
     _import_structure["condition_embedders.condition_embedder_flux_redux"] = ["ReduxImageEncoder"]
     _import_structure["condition_embedders.condition_embedder_gligen"] = ["CLIPImageProjection"]
     _import_structure["condition_embedders.condition_embedder_ltx2"] = ["LTX2TextConnectors"]
+    _import_structure["condition_embedders.condition_embedder_magi"] = ["MagiTextConditioningModel"]
     _import_structure["condition_embedders.condition_embedder_minimax_music3"] = ["MiniMaxMusic3ConditionEncoder"]
     _import_structure["condition_embedders.condition_embedder_p_h3_image"] = ["PH3ImageTextConnector"]
     _import_structure["condition_embedders.condition_embedder_p_image_oss"] = ["PImageOSSTextConnector"]
@@ -113,7 +114,6 @@ if is_torch_available():
     _import_structure["latent_upscaler.latent_upscaler_kandinsky6_sr"] = ["Kandinsky6SRLatentUpscalerBank"]
     _import_structure["latent_upscaler.latent_upscaler_ltx"] = ["LTXLatentUpsamplerModel"]
     _import_structure["latent_upscaler.latent_upscaler_ltx2"] = ["LTX2LatentUpsamplerModel"]
-    _import_structure["magi_conditioning"] = ["MagiTextConditioningModel"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["transformers.ace_step_transformer"] = ["AceStepTransformer1DModel"]
     _import_structure["transformers.auraflow_transformer_2d"] = ["AuraFlowTransformer2DModel"]
@@ -272,6 +272,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDM2ProjectionModel,
             CLIPImageProjection,
             LTX2TextConnectors,
+            MagiTextConditioningModel,
             MiniMaxMusic3ConditionEncoder,
             PH3ImageTextConnector,
             PImageOSSTextConnector,
@@ -302,7 +303,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .embeddings import ImageProjection
         from .latent_upscaler import Kandinsky6SRLatentUpscalerBank, LTX2LatentUpsamplerModel, LTXLatentUpsamplerModel
-        from .magi_conditioning import MagiTextConditioningModel
         from .modeling_utils import ModelMixin
         from .transformers import (
             AceStepTransformer1DModel,

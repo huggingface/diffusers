@@ -108,12 +108,6 @@ class MagiTextEncoderStep(ModularPipelineBlocks):
         self.set_block_state(state, block_state)
         return components, state
 
-    @staticmethod
-    def basic_clean(text):
-        text = ftfy.fix_text(text)
-        text = html.unescape(html.unescape(text))
-        return text.strip()
-
     def clean_caption(self, caption):
         caption = str(caption)
         caption = ul.unquote_plus(caption)
@@ -198,7 +192,8 @@ class MagiTextEncoderStep(ModularPipelineBlocks):
         if len(re.findall(regex2, caption)) > 3:
             caption = re.sub(regex2, " ", caption)
 
-        caption = self.basic_clean(caption)
+        caption = ftfy.fix_text(caption)
+        caption = html.unescape(html.unescape(caption)).strip()
 
         caption = re.sub(r"\b[a-zA-Z]{1,3}\d{3,15}\b", "", caption)  # jc6640
         caption = re.sub(r"\b[a-zA-Z]+\d+[a-zA-Z]+\b", "", caption)  # jc6640vc
