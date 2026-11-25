@@ -54,7 +54,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import is_compiled_module, is_torch_version, randn_tensor
+from ...utils.torch_utils import get_module_execution_device, is_compiled_module, randn_tensor
 from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 
@@ -410,7 +410,9 @@ class StableDiffusionXLControlNetUnionPipeline(
                         f" {tokenizer.model_max_length} tokens: {removed_text}"
                     )
 
-                prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
+                prompt_embeds = text_encoder(
+                    text_input_ids.to(get_module_execution_device(text_encoder)), output_hidden_states=True
+                )
 
                 # We are only ALWAYS interested in the pooled output of the final text encoder
                 if pooled_prompt_embeds is None and prompt_embeds[0].ndim == 2:
@@ -471,7 +473,7 @@ class StableDiffusionXLControlNetUnionPipeline(
                 )
 
                 negative_prompt_embeds = text_encoder(
-                    uncond_input.input_ids.to(device),
+                    uncond_input.input_ids.to(get_module_execution_device(text_encoder)),
                     output_hidden_states=True,
                 )
 
@@ -1014,7 +1016,7 @@ class StableDiffusionXLControlNetUnionPipeline(
         clip_skip: int | None = None,
         callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-    ):
+    ) -> StableDiffusionXLPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 
@@ -1441,7 +1443,6 @@ class StableDiffusionXLControlNetUnionPipeline(
 
         is_unet_compiled = is_compiled_module(self.unet)
         is_controlnet_compiled = is_compiled_module(self.controlnet)
-        is_torch_higher_equal_2_1 = is_torch_version(">=", "2.1")
 
         control_type_repeat_factor = (
             batch_size * num_images_per_prompt * (2 if self.do_classifier_free_guidance else 1)
@@ -1468,7 +1469,7 @@ class StableDiffusionXLControlNetUnionPipeline(
 
                 # Relevant thread:
                 # https://dev-discuss.pytorch.org/t/cudagraphs-in-pytorch-2-0/1428
-                if (is_unet_compiled and is_controlnet_compiled) and is_torch_higher_equal_2_1:
+                if is_unet_compiled and is_controlnet_compiled:
                     torch._inductor.cudagraph_mark_step_begin()
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents

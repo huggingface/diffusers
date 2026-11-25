@@ -74,7 +74,10 @@ def _apply_rotary_emb_nucleus(
         else:
             raise ValueError(f"`use_real_unbind_dim={use_real_unbind_dim}` but should be -1 or -2.")
 
-        out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+        # cast `cos`/`sin` to at least float32 so that input is promoted to float32 inside the multiplication
+        compute_dtype = torch.promote_types(torch.float32, cos.dtype)
+        cos, sin = cos.to(compute_dtype), sin.to(compute_dtype)
+        out = (x * cos + x_rotated * sin).to(x.dtype)
 
         return out
     else:
@@ -127,7 +130,7 @@ class NucleusMoETimestepProjEmbeddings(nn.Module):
         if use_additional_t_cond:
             self.addition_t_embedding = nn.Embedding(2, embedding_dim)
 
-    def forward(self, timestep, hidden_states, addition_t_cond=None):
+    def forward(self, timestep, hidden_states, addition_t_cond=None) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_states.dtype))
 
@@ -841,7 +844,7 @@ class NucleusMoEImageTransformer2DModel(
         timestep: torch.LongTensor = None,
         attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> torch.Tensor | Transformer2DModelOutput:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`NucleusMoEImageTransformer2DModel`] forward method.
 

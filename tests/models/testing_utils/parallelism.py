@@ -21,8 +21,18 @@ import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
-from diffusers.models._modeling_parallel import ContextParallelConfig, TensorParallelConfig
+from diffusers.configuration_utils import ConfigMixin, register_to_config
+from diffusers.models import ModelMixin
+from diffusers.models._modeling_parallel import (
+    Conditional,
+    ContextParallelConfig,
+    ContextParallelInput,
+    ContextParallelOutput,
+    TensorParallelConfig,
+)
 from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
+from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME
+from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
     is_attention,
@@ -30,8 +40,11 @@ from ...testing_utils import (
     is_kernels_available,
     is_tensor_parallel,
     require_torch_multi_accelerator,
+    require_torch_neuron,
+    require_torch_tpu,
     torch_device,
 )
+from .common import calculate_expected_num_shards, compute_module_persistent_sizes
 from .utils import _maybe_cast_to_bf16
 
 
@@ -39,6 +52,8 @@ from .utils import _maybe_cast_to_bf16
 DEVICE_CONFIG = {
     "cuda": {"backend": "nccl", "module": torch.cuda},
     "xpu": {"backend": "xccl", "module": torch.xpu},
+    "tpu": {"backend": "tpu_dist", "module": None},
+    "neuron": {"backend": "neuron", "module": getattr(torch, "neuron", None)},
 }
 
 
@@ -49,6 +64,63 @@ def _find_free_port():
         s.listen(1)
         port = s.getsockname()[1]
     return port
+
+
+class DummyConditionalPlanBlock(torch.nn.Module):
+    def __init__(self, hidden_dim: int, use_conditional_layers: bool):
+        super().__init__()
+        self.up_proj = torch.nn.Linear(hidden_dim, 2 * hidden_dim)
+        self.gate_proj = torch.nn.Linear(hidden_dim, 2 * hidden_dim) if use_conditional_layers else None
+        self.down_proj = torch.nn.Linear(2 * hidden_dim, hidden_dim)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        projected = torch.nn.functional.silu(self.up_proj(hidden_states))
+        if self.gate_proj is not None:
+            projected = projected * self.gate_proj(hidden_states)
+        return hidden_states + self.down_proj(projected)
+
+
+class DummyConditionalPlanModel(ModelMixin, ConfigMixin):
+    """A tiny model whose `_cp_plan` and `_tp_plan` have `Conditional` entries.
+
+    The conditional layers exist only with `use_conditional_layers=True`. Without it, `pos_embed` is not created and
+    each block's `gate_proj` is `None`, which are the two ways a layer can be absent. The forward breaks on a shape
+    mismatch if a conditional layer exists but its plan entry is not applied.
+    """
+
+    _cp_plan = {
+        "": {"hidden_states": ContextParallelInput(split_dim=1, expected_dims=3)},
+        "pos_embed": Conditional({0: ContextParallelInput(split_dim=0, expected_dims=2, split_output=True)}),
+        "proj_out": ContextParallelOutput(gather_dim=1, expected_dims=3),
+    }
+    _tp_plan = {
+        "blocks.*.up_proj": "colwise",
+        "blocks.*.gate_proj": Conditional("colwise"),
+        "blocks.*.down_proj": "rowwise",
+    }
+
+    @register_to_config
+    def __init__(
+        self,
+        hidden_dim: int = 8,
+        num_layers: int = 2,
+        max_positions: int = 16,
+        use_conditional_layers: bool = True,
+    ):
+        super().__init__()
+        if use_conditional_layers:
+            self.pos_embed = torch.nn.Embedding(max_positions, hidden_dim)
+        self.blocks = torch.nn.ModuleList(
+            [DummyConditionalPlanBlock(hidden_dim, use_conditional_layers) for _ in range(num_layers)]
+        )
+        self.proj_out = torch.nn.Linear(hidden_dim, hidden_dim)
+
+    def forward(self, hidden_states: torch.Tensor, position_ids: torch.Tensor) -> torch.Tensor:
+        if self.config.use_conditional_layers:
+            hidden_states = hidden_states + self.pos_embed(position_ids)
+        for block in self.blocks:
+            hidden_states = block(hidden_states)
+        return self.proj_out(hidden_states)
 
 
 def _context_parallel_worker(
@@ -243,7 +315,15 @@ def _custom_mesh_worker(
 
 
 def _tensor_parallel_worker(
-    rank, world_size, master_port, model_class, init_dict, inputs_dict, return_dict, state_dict
+    rank,
+    world_size,
+    master_port,
+    model_class,
+    init_dict,
+    inputs_dict,
+    return_dict,
+    state_dict,
+    device_type=torch_device,
 ):
     """Worker function for tensor parallel inference testing.
 
@@ -253,19 +333,24 @@ def _tensor_parallel_worker(
     to the unsharded model up to floating-point reduction order).
     """
     try:
+        from torch.distributed.tensor import DTensor
+
         os.environ["MASTER_ADDR"] = "localhost"
         os.environ["MASTER_PORT"] = str(master_port)
         os.environ["RANK"] = str(rank)
+        os.environ["LOCAL_RANK"] = str(rank)
         os.environ["WORLD_SIZE"] = str(world_size)
 
-        device_config = DEVICE_CONFIG.get(torch_device, DEVICE_CONFIG["cuda"])
-        backend = device_config["backend"]
-        device_module = device_config["module"]
+        device_config = DEVICE_CONFIG.get(device_type, DEVICE_CONFIG["cuda"])
+        dist.init_process_group(backend=device_config["backend"], rank=rank, world_size=world_size)
 
-        dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
-
-        device_module.set_device(rank)
-        device = torch.device(f"{torch_device}:{rank}")
+        if device_type == "tpu":
+            # Each spawned process is bound to one chip. Avoid bf16 matmuls to keep the tolerance tight.
+            device = torch.device("tpu")
+            torch.set_float32_matmul_precision("highest")
+        else:
+            device_config["module"].set_device(rank)
+            device = torch.device(f"{device_type}:{rank}")
 
         model = model_class(**init_dict)
         model.load_state_dict(state_dict)
@@ -273,12 +358,20 @@ def _tensor_parallel_worker(
         model.eval()
 
         inputs_on_device = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
+        for k, v in inputs_on_device.items():
+            if isinstance(v, list):
+                inputs_on_device[k] = [x.to(device) if isinstance(x, torch.Tensor) else x for x in v]
 
         # Shard the model across all ranks; the device mesh is built from `tp_degree` on the active accelerator.
         model.enable_parallelism(config=TensorParallelConfig(tp_degree=world_size))
 
         with torch.no_grad():
             output = model(**inputs_on_device, return_dict=False)[0]
+        if isinstance(output, (list, tuple)):
+            # Flatten list outputs to compare predictions with different shapes.
+            output = torch.cat([sample.flatten() for sample in output])
+        if isinstance(output, DTensor):
+            output = output.full_tensor()
 
         if rank == 0:
             return_dict["status"] = "success"
@@ -293,6 +386,262 @@ def _tensor_parallel_worker(
     finally:
         if dist.is_initialized():
             dist.destroy_process_group()
+
+
+def _tensor_parallel_from_pretrained_worker(
+    rank, world_size, master_port, model_class, checkpoint_dir, inputs_dict, return_dict
+):
+    """Worker for `from_pretrained(..., parallel_config=...)`, i.e. sharding while reading the checkpoint.
+
+    Each rank loads only its own slice of every `_tp_plan` parameter straight into a `DTensor` and runs a forward
+    pass. Rank 0 checks that exactly the parameters `_tp_plan` covers were loaded as `DTensor`s, each with the
+    placement and local shape its shard spec implies, and reports its output so the caller can check the numerics.
+    """
+    try:
+        os.environ["MASTER_ADDR"] = "localhost"
+        os.environ["MASTER_PORT"] = str(master_port)
+        os.environ["RANK"] = str(rank)
+        os.environ["WORLD_SIZE"] = str(world_size)
+
+        device_config = DEVICE_CONFIG.get(torch_device, DEVICE_CONFIG["cuda"])
+        dist.init_process_group(backend=device_config["backend"], rank=rank, world_size=world_size)
+        device_config["module"].set_device(rank)
+
+        from torch.distributed.tensor import DTensor, Replicate, Shard
+
+        from diffusers.hooks.tensor_parallel import resolve_tp_shard_specs
+
+        model = model_class.from_pretrained(
+            checkpoint_dir, parallel_config=TensorParallelConfig(tp_degree=world_size)
+        ).eval()
+
+        device = torch.device(f"{torch_device}:{rank}")
+        inputs_on_device = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
+        for k, v in inputs_on_device.items():
+            if isinstance(v, list):
+                inputs_on_device[k] = [x.to(device) if isinstance(x, torch.Tensor) else x for x in v]
+        with torch.no_grad():
+            output = model(**inputs_on_device, return_dict=False)[0]
+        if isinstance(output, (list, tuple)):
+            output = torch.cat([sample.flatten() for sample in output])
+        if isinstance(output, DTensor):
+            output = output.full_tensor()
+
+        if rank == 0:
+            specs = resolve_tp_shard_specs(model, model_class._tp_plan, world_size)
+            state_dict = model.state_dict()
+
+            # The numerics check alone wouldn't catch a planned parameter left unsharded.
+            for name, spec in specs.items():
+                param = state_dict[name]
+                assert isinstance(param, DTensor), (
+                    f"'{name}' is covered by `_tp_plan` but was not loaded as a DTensor."
+                )
+                placement = Replicate() if spec.dim is None else Shard(spec.dim)
+                assert param.placements == (placement,), (
+                    f"'{name}' has placements {param.placements}, not {placement}."
+                )
+                expected_local_shape = list(param.shape)
+                if spec.dim is not None:
+                    expected_local_shape[spec.dim] //= world_size
+                assert list(param.to_local().shape) == expected_local_shape, (
+                    f"'{name}' has local shape {list(param.to_local().shape)}, not {expected_local_shape}."
+                )
+
+            unplanned = sorted(k for k, v in state_dict.items() if isinstance(v, DTensor) and k not in specs)
+            assert not unplanned, f"Parameters not covered by `_tp_plan` were loaded as DTensors: {unplanned}"
+
+            return_dict["status"] = "success"
+            return_dict["output"] = output.float().cpu().tolist()
+
+    except Exception as e:
+        if rank == 0:
+            return_dict["status"] = "error"
+            return_dict["error"] = f"{type(e).__name__}: {e}"
+    finally:
+        if dist.is_initialized():
+            dist.destroy_process_group()
+
+
+def _parallel_rng_sync_worker(
+    rank,
+    world_size,
+    master_port,
+    model_class,
+    checkpoint_dir,
+    inputs_dict,
+    main_input_name,
+    parallelism,
+    loading,
+    return_dict,
+    device_type=torch_device,
+):
+    """Worker for the default RNG sync that loading with a parallel config does across the ranks of its mesh.
+
+    Each rank seeds itself differently, loads the model with `parallelism`, then draws the main input from the default
+    RNG and runs a forward pass. Rank 0 reports whether every rank drew the same input, along with its own input and
+    output so the caller can compare against a single-device run on that input.
+    """
+    try:
+        os.environ["MASTER_ADDR"] = "localhost"
+        os.environ["MASTER_PORT"] = str(master_port)
+        os.environ["RANK"] = str(rank)
+        os.environ["LOCAL_RANK"] = str(rank)
+        os.environ["WORLD_SIZE"] = str(world_size)
+
+        device_config = DEVICE_CONFIG.get(device_type, DEVICE_CONFIG["cuda"])
+        dist.init_process_group(backend=device_config["backend"], rank=rank, world_size=world_size)
+
+        if device_type == "tpu":
+            # Each spawned process is bound to one chip. Avoid bf16 matmuls to keep the tolerance tight.
+            device = torch.device("tpu")
+            torch.set_float32_matmul_precision("highest")
+        else:
+            device_config["module"].set_device(rank)
+            device = torch.device(f"{device_type}:{rank}")
+
+        from torch.distributed.tensor import DTensor
+
+        if parallelism == "tensor_parallel":
+            config = TensorParallelConfig(tp_degree=world_size)
+        elif parallelism == "context_parallel":
+            config = ContextParallelConfig(ulysses_degree=world_size)
+        else:
+            # Every rank is its own one-rank TP group, i.e. an independent replica.
+            mesh = torch.distributed.device_mesh.init_device_mesh(
+                device_type, mesh_shape=(world_size, 1), mesh_dim_names=("dp", "tp")
+            )
+            config = TensorParallelConfig(mesh=mesh["tp"])
+
+        torch.manual_seed(rank)
+        if loading == "from_pretrained":
+            model = model_class.from_pretrained(checkpoint_dir, parallel_config=config).to(device)
+        else:
+            model = model_class.from_pretrained(checkpoint_dir).to(device)
+            model.enable_parallelism(config=config)
+        model.eval()
+
+        inputs_on_device = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
+        for k, v in inputs_on_device.items():
+            if isinstance(v, list):
+                inputs_on_device[k] = [x.to(device) if isinstance(x, torch.Tensor) else x for x in v]
+
+        # The main input is a tensor, or a list of them for models that take one tensor per sample.
+        main_input = inputs_on_device[main_input_name]
+        is_list = isinstance(main_input, list)
+        noise = [
+            randn_tensor(sample.shape, device=device, dtype=sample.dtype)
+            for sample in (main_input if is_list else [main_input])
+        ]
+        inputs_on_device[main_input_name] = noise if is_list else noise[0]
+        with torch.no_grad():
+            output = model(**inputs_on_device, return_dict=False)[0]
+        if isinstance(output, (list, tuple)):
+            # Flatten list outputs to compare predictions with different shapes.
+            output = torch.cat([sample.flatten() for sample in output])
+        if isinstance(output, DTensor):
+            output = output.full_tensor()
+
+        flat_noise = torch.cat([sample.flatten() for sample in noise])
+        gathered_noise = [torch.empty_like(flat_noise) for _ in range(world_size)]
+        dist.all_gather(gathered_noise, flat_noise)
+        if rank == 0:
+            return_dict["status"] = "success"
+            return_dict["same_noise_as_rank_0"] = [torch.equal(flat_noise, other) for other in gathered_noise]
+            # Redraw from rank 0's seed, which is what a non-parallel run with that seed would draw.
+            torch.manual_seed(rank)
+            seeded_noise = [randn_tensor(sample.shape, device=device, dtype=sample.dtype) for sample in noise]
+            return_dict["rank_0_seed_kept"] = all(torch.equal(a, b) for a, b in zip(noise, seeded_noise))
+            # Serialise via nested list so the manager dict can transport it across processes.
+            return_dict["noise"] = [sample.float().cpu().tolist() for sample in noise]
+            return_dict["output"] = output.float().cpu().tolist()
+
+    except Exception as e:
+        if rank == 0:
+            return_dict["status"] = "error"
+            return_dict["error"] = f"{type(e).__name__}: {e}"
+    finally:
+        if dist.is_initialized():
+            dist.destroy_process_group()
+
+
+def _check_parallel_rng_sync(
+    tester, inputs_dict, tmp_path, parallelism, loading, world_size=2, device_type=torch_device, atol=1e-3, rtol=1e-3
+):
+    """Check that loading `tester.model_class` with `parallelism` syncs the default RNG across the ranks of its mesh.
+
+    The ranks start from different seeds and draw the main input after loading. They must all draw the same one,
+    unless each rank is an independent replica (`"tensor_parallel_submesh"`), and rank 0's output must match a
+    single-device run on its input. That run uses the device `inputs_dict` is on.
+    """
+    if not torch.distributed.is_available():
+        pytest.skip("torch.distributed is not available.")
+
+    model_class = tester.model_class
+    plan_name = "_cp_plan" if parallelism == "context_parallel" else "_tp_plan"
+    if getattr(model_class, plan_name, None) is None:
+        pytest.skip(f"Model does not define a `{plan_name}`.")
+
+    init_dict = tester.get_init_dict()
+    num_heads = init_dict.get("num_attention_heads")
+    if parallelism == "tensor_parallel" and num_heads is not None and num_heads % world_size != 0:
+        pytest.skip(f"`num_attention_heads` ({num_heads}) is not divisible by tp_degree ({world_size}).")
+
+    main_input_name = tester.main_input_name
+    # The main input is a tensor, or a list of them for models that take one tensor per sample.
+    is_list = isinstance(inputs_dict[main_input_name], list)
+    main_input = inputs_dict[main_input_name] if is_list else [inputs_dict[main_input_name]]
+    reference_device = main_input[0].device
+    model = model_class(**init_dict).eval()
+    checkpoint_dir = str(tmp_path / "checkpoint")
+    model.save_pretrained(checkpoint_dir)
+
+    # Move all tensors to CPU for multiprocessing
+    cpu_inputs = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
+    for k, v in cpu_inputs.items():
+        if isinstance(v, list):
+            cpu_inputs[k] = [x.cpu() if isinstance(x, torch.Tensor) else x for x in v]
+
+    return_dict = mp.Manager().dict()
+    mp.spawn(
+        _parallel_rng_sync_worker,
+        args=(
+            world_size,
+            _find_free_port(),
+            model_class,
+            checkpoint_dir,
+            cpu_inputs,
+            main_input_name,
+            parallelism,
+            loading,
+            return_dict,
+            device_type,
+        ),
+        nprocs=world_size,
+        join=True,
+    )
+    assert return_dict.get("status") == "success", (
+        f"Parallel RNG sync failed: {return_dict.get('error', 'Unknown error')}"
+    )
+    # Independent replicas are outside each other's mesh, so they must keep their own seeds.
+    rank_0_group_size = 1 if parallelism == "tensor_parallel_submesh" else world_size
+    expected = [rank < rank_0_group_size for rank in range(world_size)]
+    assert return_dict["same_noise_as_rank_0"] == expected, (
+        f"Ranks drawing the same input as rank 0 from the default RNG: {return_dict['same_noise_as_rank_0']}, "
+        f"expected {expected}."
+    )
+    assert return_dict["rank_0_seed_kept"], "Rank 0 did not draw the input a non-parallel run with its seed draws."
+
+    noise = [
+        torch.tensor(values, dtype=sample.dtype, device=reference_device)
+        for values, sample in zip(return_dict["noise"], main_input)
+    ]
+    reference_inputs = {**inputs_dict, main_input_name: noise if is_list else noise[0]}
+    with torch.no_grad():
+        reference = model.to(reference_device)(**reference_inputs, return_dict=False)[0]
+    if isinstance(reference, (list, tuple)):
+        reference = torch.cat([sample.flatten() for sample in reference])
+    torch.testing.assert_close(reference.float().cpu(), torch.tensor(return_dict["output"]), atol=atol, rtol=rtol)
 
 
 @is_tensor_parallel
@@ -317,10 +666,16 @@ class TensorParallelTesterMixin:
         model = self.model_class(**init_dict).eval().to(torch_device)
         state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
         with torch.no_grad():
-            ref_output = model(**inputs_dict, return_dict=False)[0].float().cpu()
+            ref_output = model(**inputs_dict, return_dict=False)[0]
+        if isinstance(ref_output, (list, tuple)):
+            ref_output = torch.cat([sample.flatten() for sample in ref_output])
+        ref_output = ref_output.float().cpu()
 
         # Move all tensors to CPU for multiprocessing
         inputs_dict = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
+        for k, v in inputs_dict.items():
+            if isinstance(v, list):
+                inputs_dict[k] = [x.cpu() if isinstance(x, torch.Tensor) else x for x in v]
 
         master_port = _find_free_port()
         manager = mp.Manager()
@@ -343,6 +698,248 @@ class TensorParallelTesterMixin:
 
     def test_tensor_parallel_batch_inputs(self):
         self.test_tensor_parallel_inference(batch_size=2)
+
+    def _tp_checkpoint_and_reference(self, tmp_path, world_size, sharded):
+        """Write a checkpoint for the sharded loaders to read, and record its single-device output.
+
+        Returns `(checkpoint_dir, cpu_inputs, reference_output)`, or skips when the model cannot be sharded
+        across `world_size` ranks.
+        """
+        if not torch.distributed.is_available():
+            pytest.skip("torch.distributed is not available.")
+        if getattr(self.model_class, "_tp_plan", None) is None:
+            pytest.skip("Model does not define a `_tp_plan` for tensor parallel inference.")
+
+        init_dict = self.get_init_dict()
+        num_heads = init_dict.get("num_attention_heads")
+        if num_heads is not None and num_heads % world_size != 0:
+            pytest.skip(f"`num_attention_heads` ({num_heads}) is not divisible by tp_degree ({world_size}).")
+
+        inputs_dict = self.get_dummy_inputs()
+        model = self.model_class(**init_dict).eval().to(torch_device)
+        with torch.no_grad():
+            reference = model(**inputs_dict, return_dict=False)[0]
+        if isinstance(reference, (list, tuple)):
+            reference = torch.cat([sample.flatten() for sample in reference])
+        reference = reference.float().cpu()
+
+        checkpoint_dir = str(tmp_path / "checkpoint")
+        max_shard_size = int(compute_module_persistent_sizes(model)[""] * 0.75) if sharded else "5GB"
+        model.save_pretrained(checkpoint_dir, max_shard_size=max_shard_size)
+
+        if sharded:
+            index_path = os.path.join(checkpoint_dir, SAFE_WEIGHTS_INDEX_NAME)
+            assert os.path.exists(index_path)
+            expected_num_shards = calculate_expected_num_shards(index_path)
+            actual_num_shards = len([file for file in os.listdir(checkpoint_dir) if file.endswith(".safetensors")])
+            assert actual_num_shards == expected_num_shards > 1
+
+        inputs_dict = {k: v.cpu() if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
+        for k, v in inputs_dict.items():
+            if isinstance(v, list):
+                inputs_dict[k] = [x.cpu() if isinstance(x, torch.Tensor) else x for x in v]
+        return checkpoint_dir, inputs_dict, reference
+
+    @pytest.mark.parametrize("sharded", [False, True], ids=["unsharded", "sharded"])
+    def test_tensor_parallel_from_pretrained(self, tmp_path, sharded):
+        """`from_pretrained(..., parallel_config=...)` shards while reading and matches the single-device reference."""
+        world_size = 2
+        checkpoint_dir, inputs_dict, reference = self._tp_checkpoint_and_reference(tmp_path, world_size, sharded)
+
+        manager = mp.Manager()
+        return_dict = manager.dict()
+        mp.spawn(
+            _tensor_parallel_from_pretrained_worker,
+            args=(
+                world_size,
+                _find_free_port(),
+                self.model_class,
+                checkpoint_dir,
+                inputs_dict,
+                return_dict,
+            ),
+            nprocs=world_size,
+            join=True,
+        )
+        assert return_dict.get("status") == "success", (
+            f"Tensor parallel `from_pretrained` failed: {return_dict.get('error', 'Unknown error')}"
+        )
+
+        # Sharded matmuls + all-reduce reorder the summation, so allow a small tolerance over the reference.
+        torch.testing.assert_close(reference, torch.tensor(return_dict["output"]), atol=1e-3, rtol=1e-3)
+
+    @pytest.mark.parametrize("loading", ["enable_parallelism", "from_pretrained"])
+    @pytest.mark.parametrize("parallelism", ["tensor_parallel", "tensor_parallel_submesh"], ids=["mesh", "submesh"])
+    def test_tensor_parallel_rng_sync(self, tmp_path, parallelism, loading):
+        """Loading with a TP config gives every rank of the TP mesh the same default RNG, and only those ranks."""
+        _check_parallel_rng_sync(self, self.get_dummy_inputs(), tmp_path, parallelism, loading)
+
+
+@is_tensor_parallel
+@require_torch_tpu
+class TensorParallelTPUTesterMixin:
+    """Same check as `TensorParallelTesterMixin`, spawning one process per TPU chip.
+
+    Run these tests in their own pytest process (e.g. `-k TensorParallelTPU`): `torch.manual_seed` or a backward pass
+    in an earlier test binds every TPU chip to the pytest process, and the spawned workers then fail.
+    """
+
+    # Smallest slice every TPU generation supports, so the test is the same on any CI host.
+    tp_world_size = 4
+
+    def test_tensor_parallel_tpu_inference(self, atol=1e-3, rtol=1e-3):
+        from torch_tpu._internal.distributed.launchers.singlehost_wrapper import prepare_tpu_environment
+        from torch_tpu._internal.utils import hardware
+
+        if getattr(self.model_class, "_tp_plan", None) is None:
+            pytest.skip("Model does not define a `_tp_plan` for tensor parallel inference.")
+
+        world_size = self.tp_world_size
+        if hardware.get_tpu_device_count() < world_size:
+            pytest.skip(f"Needs at least {world_size} TPU chips.")
+        init_dict = self.get_init_dict()
+        num_heads = init_dict.get("num_attention_heads")
+        if num_heads is not None and num_heads % world_size != 0:
+            pytest.skip(f"`num_attention_heads` ({num_heads}) is not divisible by tp_degree ({world_size}).")
+
+        # Reference on CPU: touching the TPU here would bind every chip to this process.
+        inputs_dict = self.get_dummy_inputs(device="cpu")
+        model = self.model_class(**init_dict).eval()
+        with torch.no_grad():
+            ref_output = model(**inputs_dict, return_dict=False)[0].float()
+
+        tpu_env = ("TORCH_TPU_TOPOLOGY", "TORCH_TPU_SLICEBUILDER_ADDRESSES")
+        for key in tpu_env:
+            os.environ.pop(key, None)
+        prepare_tpu_environment(world_size)
+        return_dict = mp.Manager().dict()
+        try:
+            mp.spawn(
+                _tensor_parallel_worker,
+                args=(
+                    world_size,
+                    _find_free_port(),
+                    self.model_class,
+                    init_dict,
+                    inputs_dict,
+                    return_dict,
+                    model.state_dict(),
+                    "tpu",
+                ),
+                nprocs=world_size,
+                join=True,
+            )
+        finally:
+            for key in tpu_env:
+                os.environ.pop(key, None)
+
+        assert return_dict.get("status") == "success", (
+            f"Tensor parallel inference failed: {return_dict.get('error', 'Unknown error')}"
+        )
+        tp_output = torch.tensor(return_dict["output"])
+        torch.testing.assert_close(ref_output, tp_output, atol=atol, rtol=rtol)
+
+    @pytest.mark.parametrize("loading", ["enable_parallelism", "from_pretrained"])
+    @pytest.mark.parametrize("parallelism", ["tensor_parallel", "tensor_parallel_submesh"], ids=["mesh", "submesh"])
+    def test_tensor_parallel_tpu_rng_sync(self, tmp_path, parallelism, loading, atol=2e-2, rtol=2e-2):
+        """Loading with a TP config gives every rank of the TP mesh the same default RNG, and only those ranks."""
+        from torch_tpu._internal.distributed.launchers.singlehost_wrapper import prepare_tpu_environment
+        from torch_tpu._internal.utils import hardware
+
+        world_size = self.tp_world_size
+        if hardware.get_tpu_device_count() < world_size:
+            pytest.skip(f"Needs at least {world_size} TPU chips.")
+
+        tpu_env = ("TORCH_TPU_TOPOLOGY", "TORCH_TPU_SLICEBUILDER_ADDRESSES")
+        for key in tpu_env:
+            os.environ.pop(key, None)
+        prepare_tpu_environment(world_size)
+        try:
+            # Inputs, and so the reference, stay on CPU: touching the TPU here would bind every chip to this process.
+            _check_parallel_rng_sync(
+                self,
+                self.get_dummy_inputs(device="cpu"),
+                tmp_path,
+                parallelism,
+                loading,
+                world_size=world_size,
+                device_type="tpu",
+                atol=atol,
+                rtol=rtol,
+            )
+        finally:
+            for key in tpu_env:
+                os.environ.pop(key, None)
+
+
+@is_tensor_parallel
+@require_torch_neuron
+class TensorParallelNeuronTesterMixin:
+    """Same check as `TensorParallelTesterMixin`, spawning one process per Neuron core.
+
+    Run these tests in their own pytest process (e.g. `-k TensorParallelNeuron`): an earlier test that allocates a
+    Neuron tensor initializes the Neuron runtime in the pytest process, and the spawned workers then fail to initialize
+    theirs.
+    """
+
+    tp_world_size = 2
+
+    def test_tensor_parallel_neuron_inference(self, atol=2e-2, rtol=2e-2):
+        if getattr(self.model_class, "_tp_plan", None) is None:
+            pytest.skip("Model does not define a `_tp_plan` for tensor parallel inference.")
+
+        world_size = self.tp_world_size
+        init_dict = self.get_init_dict()
+        num_heads = init_dict.get("num_attention_heads")
+        if num_heads is not None and num_heads % world_size != 0:
+            pytest.skip(f"`num_attention_heads` ({num_heads}) is not divisible by tp_degree ({world_size}).")
+
+        # Reference on CPU: touching the Neuron device here would break the spawned workers.
+        inputs_dict = self.get_dummy_inputs(device="cpu")
+        model = self.model_class(**init_dict).eval()
+        with torch.no_grad():
+            ref_output = model(**inputs_dict, return_dict=False)[0].float()
+
+        return_dict = mp.Manager().dict()
+        mp.spawn(
+            _tensor_parallel_worker,
+            args=(
+                world_size,
+                _find_free_port(),
+                self.model_class,
+                init_dict,
+                inputs_dict,
+                return_dict,
+                model.state_dict(),
+                "neuron",
+            ),
+            nprocs=world_size,
+            join=True,
+        )
+
+        assert return_dict.get("status") == "success", (
+            f"Tensor parallel inference failed: {return_dict.get('error', 'Unknown error')}"
+        )
+        tp_output = torch.tensor(return_dict["output"])
+        # Neuron runs matmuls in bf16 internally, so compare with a bf16-level tolerance.
+        torch.testing.assert_close(ref_output, tp_output, atol=atol, rtol=rtol)
+
+    @pytest.mark.parametrize("loading", ["enable_parallelism", "from_pretrained"])
+    @pytest.mark.parametrize("parallelism", ["tensor_parallel", "tensor_parallel_submesh"], ids=["mesh", "submesh"])
+    def test_tensor_parallel_neuron_rng_sync(self, tmp_path, parallelism, loading, atol=2e-2, rtol=2e-2):
+        """Loading with a TP config gives every rank of the TP mesh the same default RNG, and only those ranks."""
+        # Inputs, and so the reference, stay on CPU: touching the Neuron device here would break the spawned workers.
+        _check_parallel_rng_sync(
+            self,
+            self.get_dummy_inputs(device="cpu"),
+            tmp_path,
+            parallelism,
+            loading,
+            world_size=self.tp_world_size,
+            device_type="neuron",
+            atol=atol,
+            rtol=rtol,
+        )
 
 
 @is_context_parallel
@@ -504,6 +1101,13 @@ class ContextParallelTesterMixin:
 
         assert return_dict.get("status") == "success", (
             f"Custom mesh context parallel inference failed: {return_dict.get('error', 'Unknown error')}"
+        )
+
+    @pytest.mark.parametrize("loading", ["enable_parallelism", "from_pretrained"])
+    def test_context_parallel_rng_sync(self, tmp_path, loading):
+        """Loading with a CP config gives every rank of the CP mesh the same default RNG."""
+        _check_parallel_rng_sync(
+            self, self.get_dummy_inputs(), tmp_path, "context_parallel", loading, atol=1e-4, rtol=1e-4
         )
 
 

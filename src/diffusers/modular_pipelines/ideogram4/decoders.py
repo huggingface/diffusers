@@ -34,7 +34,8 @@ class Ideogram4DecodeStep(ModularPipelineBlocks):
     batch-norm statistics and decodes through the VAE.
 
       Components:
-          vae (`AutoencoderKLFlux2`) image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKLFlux2`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           output_type (`str`, *optional*, defaults to pil):
@@ -85,7 +86,9 @@ class Ideogram4DecodeStep(ModularPipelineBlocks):
         return [OutputParam.template("images")]
 
     @torch.no_grad()
-    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Ideogram4ModularPipeline, state: PipelineState
+    ) -> tuple[Ideogram4ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         z = block_state.latents

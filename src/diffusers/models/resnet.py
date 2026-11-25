@@ -692,7 +692,7 @@ class SpatioTemporalResBlock(nn.Module):
         hidden_states: torch.Tensor,
         temb: torch.Tensor | None = None,
         image_only_indicator: torch.Tensor | None = None,
-    ):
+    ) -> torch.Tensor:
         num_frames = image_only_indicator.shape[-1]
         hidden_states = self.spatial_res_block(hidden_states, temb)
 

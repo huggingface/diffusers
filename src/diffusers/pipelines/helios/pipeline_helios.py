@@ -483,7 +483,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
         num_latent_frames_per_chunk: int = 9,
         keep_first_frame: bool = True,
         is_skip_first_chunk: bool = False,
-    ):
+    ) -> HeliosPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 
@@ -853,7 +853,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                     latents_history_short = latents_history_short.to(transformer_dtype)
                     latents_history_mid = latents_history_mid.to(transformer_dtype)
                     latents_history_long = latents_history_long.to(transformer_dtype)
-                    with self.transformer.cache_context("cond"):
+                    with self.transformer.cache_context("cond", timestep=t):
                         noise_pred = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
@@ -870,7 +870,7 @@ class HeliosPipeline(DiffusionPipeline, HeliosLoraLoaderMixin):
                         )[0]
 
                     if self.do_classifier_free_guidance:
-                        with self.transformer.cache_context("uncond"):
+                        with self.transformer.cache_context("uncond", timestep=t):
                             noise_uncond = self.transformer(
                                 hidden_states=latent_model_input,
                                 timestep=timestep,

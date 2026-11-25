@@ -39,7 +39,7 @@ class QwenImageAfterDenoiseStep(ModularPipelineBlocks):
     channels, 1, height, width)
 
       Components:
-          pachifier (`QwenImagePachifier`)
+          - pachifier (`QwenImagePachifier`)
 
       Inputs:
           height (`int`):
@@ -90,7 +90,9 @@ class QwenImageAfterDenoiseStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         vae_scale_factor = components.vae_scale_factor
@@ -108,7 +110,7 @@ class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
     Unpack latents from (B, seq, C*4) to (B, C, layers+1, H, W) after denoising.
 
       Components:
-          pachifier (`QwenImageLayeredPachifier`)
+          - pachifier (`QwenImageLayeredPachifier`)
 
       Inputs:
           latents (`Tensor`):
@@ -158,7 +160,7 @@ class QwenImageLayeredAfterDenoiseStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         # Unpack: (B, seq, C*4) -> (B, C, layers+1, H, W)
@@ -183,7 +185,7 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
     Step that decodes the latents to images
 
       Components:
-          vae (`AutoencoderKLQwenImage`)
+          - vae (`AutoencoderKLQwenImage`)
 
       Inputs:
           latents (`Tensor`):
@@ -225,7 +227,9 @@ class QwenImageDecoderStep(ModularPipelineBlocks):
         return [OutputParam.template("images", note="tensor output of the vae decoder.")]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         # YiYi Notes: remove support for output_type = "latents', we can just skip decode/encode step in modular
@@ -258,7 +262,8 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
     Decode unpacked latents (B, C, layers+1, H, W) into layer images.
 
       Components:
-          vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           latents (`Tensor`):
@@ -307,7 +312,7 @@ class QwenImageLayeredDecoderStep(ModularPipelineBlocks):
         return [OutputParam.template("images")]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         latents = block_state.latents
@@ -357,7 +362,7 @@ class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
     postprocess the generated image
 
       Components:
-          image_processor (`VaeImageProcessor`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           images (`Tensor`):
@@ -409,7 +414,9 @@ class QwenImageProcessImagesOutputStep(ModularPipelineBlocks):
             raise ValueError(f"Invalid output_type: {output_type}")
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         self.check_inputs(block_state.output_type)
@@ -429,7 +436,7 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
     postprocess the generated image, optional apply the mask overally to the original image..
 
       Components:
-          image_mask_processor (`InpaintProcessor`)
+          - image_mask_processor (`InpaintProcessor`)
 
       Inputs:
           images (`Tensor`):
@@ -492,7 +499,9 @@ class QwenImageInpaintProcessImagesOutputStep(ModularPipelineBlocks):
             raise ValueError("only support output_type 'pil' for mask overlay")
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         self.check_inputs(block_state.output_type, block_state.mask_overlay_kwargs)

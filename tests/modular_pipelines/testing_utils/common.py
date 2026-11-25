@@ -23,9 +23,10 @@ import diffusers
 from diffusers import ModularPipeline, ModularPipelineBlocks
 from diffusers.utils import logging
 
+from ...pipelines.testing_utils.common import cast_pipeline_to_dtype
 from ...testing_utils import (
+    CaptureLogger,
     backend_empty_cache,
-    numpy_cosine_similarity_distance,
     require_accelerator,
     torch_device,
 )
@@ -53,6 +54,20 @@ class BaseModularPipelineTesterConfig:
     # Output type for the pipeline (e.g., "images" for image pipelines, "videos" for video pipelines)
     # Subclasses can override this to change the expected output type
     output_name = "images"
+    # State name of the latents the denoise group hands to the decoder. Chunked families that hand over a list of
+    # per-chunk latents (e.g. `latent_chunks`) are checked chunk by chunk. A family that leaves no latents in the
+    # state, or not yet in its canonical form, skips `test_latents_output_in_canonical_form` with a reason.
+    latents_output_name = "latents"
+
+    @property
+    def expected_latents_shape(self) -> tuple:
+        raise NotImplementedError(
+            "You need to set the attribute `expected_latents_shape` in the child test class: the one canonical form "
+            "this family keeps latents in after the denoise group, for the geometry `get_dummy_inputs()` produces. "
+            "That is the form the VAE encoder blocks produce and the decoder step takes: the plain grid (e.g. "
+            "`(1, 4, 32, 32)`) for most families, or the patchified grid for families whose VAE statistics are "
+            "defined over patchified channels (e.g. `AutoencoderKLFlux2`)."
+        )
 
     # ==================== Required interface ====================
 
@@ -209,6 +224,16 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
             f"Parameters declared in `not_params` unexpectedly present in the pipeline inputs: {unsupported_parameters}"
         )
 
+    def test_no_input_is_both_required_and_has_a_default(self):
+        # `InputParam` warns and drops `required` when a declaration is both required and has a default (see the
+        # pitfalls list in `.ai/references/modular.md`). Building the blocks and reading their `inputs` constructs
+        # every `InputParam` of every sub-block, so a clean log means no block in this pipeline declares one
+        logger = logging.get_logger("diffusers.modular_pipelines.modular_pipeline_utils")
+        with CaptureLogger(logger) as cap_logger:
+            blocks = self.pipeline_blocks_class()
+            blocks.inputs
+        assert "is required and declares a default" not in cap_logger.out, cap_logger.out
+
     def test_inference_batch_consistent(self, batch_sizes=[2], batch_generator=True):
         pipe = self.get_pipeline().to(torch_device)
 
@@ -287,57 +312,35 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
         max_diff = torch.abs(output_batch - output).max()
         assert max_diff < expected_max_diff, "Batch inference results different from single inference results"
 
+    @pytest.mark.skipif(torch_device not in ["cuda", "xpu"], reason="half-precision inference requires CUDA or XPU")
     @require_accelerator
-    def test_float16_inference(self, expected_max_diff=5e-2):
-        pipe = self.get_pipeline()
-        pipe.to(torch_device, torch.float32)
-
-        pipe_fp16 = self.get_pipeline()
-        pipe_fp16.to(torch_device, torch.float16)
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=str)
+    def test_half_precision_inference_no_nan(self, dtype):
+        # Models are usually run in half precision (fp16/bf16), so rather than comparing against an fp32 reference
+        # (which carries little signal) we just run half-precision inference and check the output has no NaNs.
+        pipe = cast_pipeline_to_dtype(self.get_pipeline().to(torch_device), dtype)
 
         inputs = self.get_dummy_inputs()
-        # Reset generator in case it is used inside dummy inputs
         if "generator" in inputs:
             inputs["generator"] = self.get_generator(0)
-
         output = pipe(**inputs, output=self.output_name)
 
-        fp16_inputs = self.get_dummy_inputs()
-        # Reset generator in case it is used inside dummy inputs
-        if "generator" in fp16_inputs:
-            fp16_inputs["generator"] = self.get_generator(0)
-
-        output_fp16 = pipe_fp16(**fp16_inputs, output=self.output_name)
-
-        output_tensor = output.float().cpu()
-        output_fp16_tensor = output_fp16.float().cpu()
-
-        # Check for NaNs in outputs (can happen with tiny models in FP16)
-        if torch.isnan(output_tensor).any() or torch.isnan(output_fp16_tensor).any():
-            pytest.skip("FP16 inference produces NaN values - this is a known issue with tiny models")
-
-        max_diff = numpy_cosine_similarity_distance(
-            output_tensor.flatten().numpy(), output_fp16_tensor.flatten().numpy()
+        assert not torch.isnan(output).any(), (
+            f"`{self.pipeline_class.__name__}` produced NaNs during {dtype} inference."
         )
-
-        # Check if cosine similarity is NaN (which can happen if vectors are zero or very small)
-        if torch.isnan(torch.tensor(max_diff)):
-            pytest.skip("Cosine similarity is NaN - outputs may be too small for reliable comparison")
-
-        assert max_diff < expected_max_diff, f"FP16 inference is different from FP32 inference (max_diff: {max_diff})"
 
     @require_accelerator
     def test_to_device(self):
         pipe = self.get_pipeline().to("cpu")
 
         model_devices = [
-            component.device.type for component in pipe.components.values() if hasattr(component, "device")
+            component.device.type for component in pipe.components.values() if getattr(component, "device", None)
         ]
         assert all(device == "cpu" for device in model_devices), "All pipeline components are not on CPU"
 
         pipe.to(torch_device)
         model_devices = [
-            component.device.type for component in pipe.components.values() if hasattr(component, "device")
+            component.device.type for component in pipe.components.values() if getattr(component, "device", None)
         ]
         assert all(device == torch_device for device in model_devices), (
             "All pipeline components are not on accelerator device"
@@ -371,3 +374,17 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
                 images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt, output=self.output_name)
 
                 assert images.shape[0] == batch_size * num_images_per_prompt
+
+    def test_latents_output_in_canonical_form(self):
+        # The denoise group must hand latents back in the family's one canonical form, so any block (a decoder, a
+        # latent upsampler, a second denoise group) can consume them without geometry inputs. The decoder reads
+        # the latents without removing them, so they are checked in the state after a full run.
+        pipe = self.get_pipeline().to(torch_device)
+        latents = pipe(**self.get_dummy_inputs(), output=self.latents_output_name)
+        chunks = list(latents) if isinstance(latents, (list, tuple)) else [latents]
+        shapes = sorted({tuple(chunk.shape) for chunk in chunks})
+
+        assert shapes == [tuple(self.expected_latents_shape)], (
+            f"Latents left in the state have shape {shapes}, expected the canonical "
+            f"{tuple(self.expected_latents_shape)}"
+        )

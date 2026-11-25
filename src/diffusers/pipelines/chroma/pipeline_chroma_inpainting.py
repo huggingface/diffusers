@@ -43,7 +43,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, randn_tensor
 from ..chroma.pipeline_output import ChromaPipelineOutput
 from ..pipeline_utils import DiffusionPipeline
 
@@ -401,7 +401,7 @@ class ChromaInpaintPipeline(
         if not isinstance(image, torch.Tensor):
             image = self.feature_extractor(image, return_tensors="pt").pixel_values
 
-        image = image.to(device=device, dtype=dtype)
+        image = image.to(device=get_module_execution_device(self.image_encoder), dtype=dtype)
         image_embeds = self.image_encoder(image).image_embeds
         image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
         return image_embeds
@@ -795,7 +795,7 @@ class ChromaInpaintPipeline(
         max_sequence_length: int = 256,
         prompt_attention_mask: torch.Tensor | None = None,
         negative_prompt_attention_mask: torch.Tensor | None = None,
-    ):
+    ) -> ChromaPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
@@ -1118,31 +1118,33 @@ class ChromaInpaintPipeline(
                 if image_embeds is not None:
                     self._joint_attention_kwargs["ip_adapter_image_embeds"] = image_embeds
 
-                noise_pred = self.transformer(
-                    hidden_states=latents,
-                    timestep=timestep / 1000,
-                    encoder_hidden_states=prompt_embeds,
-                    txt_ids=text_ids,
-                    img_ids=latent_image_ids,
-                    attention_mask=attention_mask,
-                    joint_attention_kwargs=self.joint_attention_kwargs,
-                    return_dict=False,
-                )[0]
+                with self.transformer.cache_context("cond", timestep=t):
+                    noise_pred = self.transformer(
+                        hidden_states=latents,
+                        timestep=timestep / 1000,
+                        encoder_hidden_states=prompt_embeds,
+                        txt_ids=text_ids,
+                        img_ids=latent_image_ids,
+                        attention_mask=attention_mask,
+                        joint_attention_kwargs=self.joint_attention_kwargs,
+                        return_dict=False,
+                    )[0]
 
                 if self.do_classifier_free_guidance:
                     if negative_image_embeds is not None:
                         self._joint_attention_kwargs["ip_adapter_image_embeds"] = negative_image_embeds
 
-                    noise_pred_uncond = self.transformer(
-                        hidden_states=latents,
-                        timestep=timestep / 1000,
-                        encoder_hidden_states=negative_prompt_embeds,
-                        txt_ids=negative_text_ids,
-                        img_ids=latent_image_ids,
-                        attention_mask=negative_attention_mask,
-                        joint_attention_kwargs=self.joint_attention_kwargs,
-                        return_dict=False,
-                    )[0]
+                    with self.transformer.cache_context("uncond", timestep=t):
+                        noise_pred_uncond = self.transformer(
+                            hidden_states=latents,
+                            timestep=timestep / 1000,
+                            encoder_hidden_states=negative_prompt_embeds,
+                            txt_ids=negative_text_ids,
+                            img_ids=latent_image_ids,
+                            attention_mask=negative_attention_mask,
+                            joint_attention_kwargs=self.joint_attention_kwargs,
+                            return_dict=False,
+                        )[0]
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1

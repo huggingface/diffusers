@@ -27,6 +27,7 @@ from ..testing_utils import (
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    SeaCacheTesterMixin,
     SingleFileTesterMixin,
     TorchAoTesterMixin,
     TorchCompileTesterMixin,
@@ -106,6 +107,10 @@ class WanTransformer3DTesterConfig(BaseModelTesterConfig):
 
 class TestWanTransformer3D(WanTransformer3DTesterConfig, ModelTesterMixin):
     """Core model tests for Wan Transformer 3D."""
+
+
+class TestWanTransformer3DSeaCache(WanTransformer3DTesterConfig, SeaCacheTesterMixin):
+    cache_input_key = "hidden_states"
 
 
 class TestWanTransformer3DMemory(WanTransformer3DTesterConfig, MemoryTesterMixin):

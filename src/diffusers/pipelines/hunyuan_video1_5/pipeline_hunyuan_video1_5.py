@@ -352,7 +352,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
                 torch device
             batch_size (`int`):
                 batch size of prompts, defaults to 1
-            num_images_per_prompt (`int`):
+            num_videos_per_prompt (`int`):
                 number of images that should be generated per prompt
             prompt_embeds (`torch.Tensor`, *optional*):
                 Pre-generated text embeddings. If not provided, text embeddings will be generated from `prompt` input
@@ -564,7 +564,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
         output_type: str | None = "np",
         return_dict: bool = True,
         attention_kwargs: dict[str, Any] | None = None,
-    ):
+    ) -> HunyuanVideo15PipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 
@@ -773,7 +773,7 @@ class HunyuanVideo15Pipeline(DiffusionPipeline):
 
                     # e.g. "pred_cond"/"pred_uncond"
                     context_name = getattr(guider_state_batch, self.guider._identifier_key)
-                    with self.transformer.cache_context(context_name):
+                    with self.transformer.cache_context(context_name, timestep=t):
                         # Run denoiser and store noise prediction in this batch
                         guider_state_batch.noise_pred = self.transformer(
                             hidden_states=latent_model_input,

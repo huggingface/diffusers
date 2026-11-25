@@ -1439,7 +1439,7 @@ class AutoencoderVidTok(ModelMixin, ConfigMixin):
         encoder_mode: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[torch.Tensor, DecoderOutput]:
+    ) -> Union[torch.Tensor, DecoderOutput, tuple[torch.Tensor], tuple[torch.Tensor, torch.Tensor]]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

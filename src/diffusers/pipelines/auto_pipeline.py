@@ -81,6 +81,7 @@ from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .krea2 import Krea2Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .longcat_audio_dit import LongCatAudioDiTPipeline
+from .ltx import LTXImageToVideoPipeline, LTXPipeline
 from .lumina import LuminaPipeline
 from .lumina2 import Lumina2Pipeline
 from .nucleusmoe_image import NucleusMoEImagePipeline
@@ -114,6 +115,7 @@ from .qwenimage import (
     QwenImageLayeredPipeline,
     QwenImagePipeline,
 )
+from .qwenimage21 import QwenImage21Pipeline
 from .sana import SanaPipeline
 from .stable_audio import StableAudioPipeline
 from .stable_audio_3 import StableAudio3Pipeline
@@ -192,6 +194,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("cogview4-control", CogView4ControlPipeline),
         ("nucleusmoe-image", NucleusMoEImagePipeline),
         ("qwenimage", QwenImagePipeline),
+        ("qwenimage21", QwenImage21Pipeline),
         ("qwenimage-controlnet", QwenImageControlNetPipeline),
         ("z-image", ZImagePipeline),
         ("z-image-controlnet", ZImageControlNetPipeline),
@@ -269,6 +272,7 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
 AUTO_TEXT2VIDEO_PIPELINES_MAPPING = OrderedDict(
     [
         ("anyflow", AnyFlowPipeline),
+        ("ltx", LTXPipeline),
         ("wan", WanPipeline),
     ]
 )
@@ -282,6 +286,7 @@ AUTO_CONDITION2VIDEO_PIPELINES_MAPPING = OrderedDict(
 AUTO_IMAGE2VIDEO_PIPELINES_MAPPING = OrderedDict(
     [
         ("anyflow-far", AnyFlowFARPipeline),
+        ("ltx", LTXImageToVideoPipeline),
         ("wan-i2v", WanImageToVideoPipeline),
     ]
 )

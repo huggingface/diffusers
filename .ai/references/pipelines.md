@@ -18,6 +18,23 @@ src/diffusers/pipelines/<model>/
   pipeline_output.py                   # Output dataclass
 ```
 
+## Cache context
+
+Cache hooks (PAB, FasterCache, FirstBlockCache, …) need to know which denoiser call they are in and where the denoising loop is. The pipeline tells them by wrapping every denoiser call in `cache_context`:
+
+```python
+for i, t in enumerate(timesteps):
+    with self.transformer.cache_context("cond", timestep=t):
+        noise_pred = self.transformer(...)
+
+    if self.do_classifier_free_guidance:
+        with self.transformer.cache_context("uncond", timestep=t):
+            neg_noise_pred = self.transformer(...)
+```
+
+- **Wrap every denoiser call.** A cache hook raises when no context is set.
+- **Use one name per call.** The name keys the cache state. Use `"cond"` / `"uncond"` for separate guidance calls and `"cond_uncond"` for a batched one.
+- **Pass the loop state as keyword arguments.** Always pass `timestep=t`. The other fields are `step_index`, `num_inference_steps`, and `sigma` — see `CacheContext` in `hooks/hooks.py`. Pass them when a cache supported by the model reads them (see `pipeline_wan.py`).
 ## Gotchas
 
 1. **Config-derived static values: prefer `__init__` attributes.** Values that come from a sub-component's config (e.g. `vae_scale_factor`) belong as `self.foo = ...` in `__init__` — not `@property`, not module-level constants. Note the `getattr(...)` fallback — sub-components may not be loaded when the pipeline is constructed (e.g. via `from_pretrained` on a partial config), so don't assume `self.vae` / `self.transformer` exists.
@@ -89,3 +106,5 @@ src/diffusers/pipelines/<model>/
    The bug is invisible until someone actually passes `callback_on_step_end` — the `PipelineTesterMixin` callback tests are what catch it.
 
 10. **Raw `torch.randn(device=...)` for noise.** Use `randn_tensor(...)` from `utils/torch_utils`: it draws on the generator's device and moves the result, so CPU generators work, and the CUDA-generator path is bit-identical to `torch.randn`.
+
+11. **Bundling `__call__` inputs into a dict.** Pass inputs by name — a dict hides what the signature takes and makes you validate the keys by hand. There are a few exceptions: `attention_kwargs` is a standard dict input across our pipelines, and `RFD4ProteinaPipeline` takes its ~30 optional annotation tensors as one `conditioning_features` mapping because the checkpoint's config decides which are read. Use your judgment, and bring it up in review if your case genuinely needs one. The same rule for models is in [models.md](models.md).

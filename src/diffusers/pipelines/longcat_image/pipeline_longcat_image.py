@@ -110,7 +110,7 @@ def prepare_pos_ids(modality_id=0, type="text", start=(0, 0), num_token=None, he
     if type == "text":
         assert num_token
         if height or width:
-            print('Warning: The parameters of height and width will be ignored in "text" type.')
+            logger.warning('The parameters of height and width will be ignored in "text" type.')
         pos_ids = torch.zeros(num_token, 3)
         pos_ids[..., 0] = modality_id
         pos_ids[..., 1] = torch.arange(num_token) + start[0]
@@ -118,7 +118,7 @@ def prepare_pos_ids(modality_id=0, type="text", start=(0, 0), num_token=None, he
     elif type == "image":
         assert height and width
         if num_token:
-            print('Warning: The parameter of num_token will be ignored in "image" type.')
+            logger.warning('The parameter of num_token will be ignored in "image" type.')
         pos_ids = torch.zeros(height, width, 3)
         pos_ids[..., 0] = modality_id
         pos_ids[..., 1] = pos_ids[..., 1] + torch.arange(height)[:, None] + start[0]
@@ -490,7 +490,7 @@ class LongCatImagePipeline(DiffusionPipeline, FromSingleFileMixin):
         enable_cfg_renorm: bool | None = True,
         cfg_renorm_min: float | None = 0.0,
         enable_prompt_rewrite: bool | None = True,
-    ):
+    ) -> LongCatImagePipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
@@ -632,7 +632,7 @@ class LongCatImagePipeline(DiffusionPipeline, FromSingleFileMixin):
 
                 self._current_timestep = t
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
-                with self.transformer.cache_context("cond"):
+                with self.transformer.cache_context("cond", timestep=t):
                     noise_pred_text = self.transformer(
                         hidden_states=latents,
                         timestep=timestep / 1000,
@@ -643,7 +643,7 @@ class LongCatImagePipeline(DiffusionPipeline, FromSingleFileMixin):
                         return_dict=False,
                     )[0]
                 if self.do_classifier_free_guidance:
-                    with self.transformer.cache_context("uncond"):
+                    with self.transformer.cache_context("uncond", timestep=t):
                         noise_pred_uncond = self.transformer(
                             hidden_states=latents,
                             timestep=timestep / 1000,

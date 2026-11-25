@@ -23,7 +23,6 @@ https://github.com/huggingface/transformers/blob/52cb4034ada381fe1ffe8d428a1076e
 from __future__ import annotations
 
 import copy
-import importlib.metadata
 import json
 import os
 import warnings
@@ -31,9 +30,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable
 
-from packaging import version
-
-from ..utils import deprecate, is_torch_available, is_torchao_version, logging
+from ..dependency_versions_table import deps
+from ..utils import deprecate, is_torch_available, is_torchao_available, logging
 
 
 if is_torch_available():
@@ -44,6 +42,7 @@ logger = logging.get_logger(__name__)
 
 class QuantizationMethod(str, Enum):
     BITS_AND_BYTES = "bitsandbytes"
+    BFL = "bfl"
     GGUF = "gguf"
     NUNCHAKU_LITE = "nunchaku_lite"
     TORCHAO = "torchao"
@@ -341,13 +340,6 @@ class BitsAndBytesConfig(QuantizationConfigMixin):
         if not isinstance(self.bnb_4bit_use_double_quant, bool):
             raise TypeError("bnb_4bit_use_double_quant must be a boolean")
 
-        if self.load_in_4bit and not version.parse(importlib.metadata.version("bitsandbytes")) >= version.parse(
-            "0.39.0"
-        ):
-            raise ValueError(
-                "4 bit quantization requires bitsandbytes>=0.39.0 - please upgrade your bitsandbytes version"
-            )
-
     def is_quantizable(self):
         r"""
         Returns `True` if the model is quantizable, `False` otherwise.
@@ -429,6 +421,30 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
 
         if self.compute_dtype is None:
             self.compute_dtype = torch.float32
+
+
+@dataclass
+class BFLQuantizationConfig(QuantizationConfigMixin):
+    """Config for loading checkpoints quantized with the Black Forest Labs `fp8r` and `nvfp4` schemes.
+
+    Both schemes are read from the checkpoint through [`~FromSingleFileMixin.from_single_file`]; quantizing a model on
+    the fly is not supported. A linear layer is quantized when its weight comes with scale tensors:
+
+    - `fp8r`: `weight` is `float8_e4m3fn` with shape `[N, K]` and `weight_scale` is an fp32 per-row scale `[N]`.
+    - `nvfp4`: `weight` is `uint8` with shape `[N, K/2]` (two E2M1 values per byte), `weight_scale` is a
+      `float8_e4m3fn` block scale `[N, K/16]`, and `weight_scale_2` and `input_scale` are fp32 scalars holding the
+      global weight scale and the calibrated activation scale (the ModelOpt NVFP4 layout).
+
+    Args:
+        compute_dtype (`torch.dtype`, defaults to `torch.bfloat16`):
+            The dtype of the activations and of the unquantized layers. Devices without fused FP8 or NVFP4 kernels
+            dequantize the weights to this dtype in every forward pass.
+    """
+
+    def __init__(self, compute_dtype: "torch.dtype" | None = None):
+        self.quant_method = QuantizationMethod.BFL
+        self.compute_dtype = compute_dtype if compute_dtype is not None else torch.bfloat16
+        self.pre_quantized = True
 
 
 @dataclass
@@ -594,8 +610,10 @@ class TorchAoConfig(QuantizationConfigMixin):
         self.post_init()
 
     def post_init(self):
-        if is_torchao_version("<", "0.15.0"):
-            raise ValueError("TorchAoConfig requires torchao >= 0.15.0. Please upgrade with `pip install -U torchao`.")
+        if not is_torchao_available():
+            raise ValueError(
+                f"TorchAoConfig requires `{deps['torchao']}`. Please upgrade with `pip install -U '{deps['torchao']}'`."
+            )
 
         from torchao.quantization.quant_api import AOBaseConfig
 
@@ -619,8 +637,8 @@ class TorchAoConfig(QuantizationConfigMixin):
     @classmethod
     def from_dict(cls, config_dict, return_unused_kwargs=False, **kwargs):
         """Create configuration from a dictionary."""
-        if not is_torchao_version(">=", "0.15.0"):
-            raise NotImplementedError("TorchAoConfig requires torchao >= 0.15.0 for construction from dict")
+        if not is_torchao_available():
+            raise NotImplementedError(f"TorchAoConfig requires `{deps['torchao']}` for construction from dict")
         config_dict = config_dict.copy()
         quant_type = config_dict.pop("quant_type")
 

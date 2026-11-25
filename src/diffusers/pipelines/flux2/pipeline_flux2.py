@@ -24,7 +24,7 @@ from ...loaders import Flux2LoraLoaderMixin
 from ...models import AutoencoderKLFlux2, Flux2Transformer2DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .image_processor import Flux2ImageProcessor
 from .pipeline_output import Flux2PipelineOutput
@@ -661,7 +661,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     ):
         image_latents = []
         for image in images:
-            image = image.to(device=device, dtype=dtype)
+            image = image.to(device=get_module_execution_device(self.vae), dtype=dtype)
             imagge_latent = self._encode_vae_image(image=image, generator=generator)
             image_latents.append(imagge_latent)  # (1, 128, 32, 32)
 
@@ -680,6 +680,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         image_latents = image_latents.unsqueeze(0)  # (1, N*1024, 128)
 
         image_latents = image_latents.repeat(batch_size, 1, 1)
+        image_latents = image_latents.to(device)
         image_latent_ids = image_latent_ids.repeat(batch_size, 1, 1)
         image_latent_ids = image_latent_ids.to(device)
 
@@ -765,7 +766,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         max_sequence_length: int = 512,
         text_encoder_out_layers: tuple[int] = (10, 20, 30),
         caption_upsample_temperature: float = None,
-    ):
+    ) -> Flux2PipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
@@ -970,16 +971,17 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                     latent_model_input = torch.cat([latents, image_latents], dim=1).to(self.transformer.dtype)
                     latent_image_ids = torch.cat([latent_ids, image_latent_ids], dim=1)
 
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,  # (B, image_seq_len, C)
-                    timestep=timestep / 1000,
-                    guidance=guidance,
-                    encoder_hidden_states=prompt_embeds,
-                    txt_ids=text_ids,  # B, text_seq_len, 4
-                    img_ids=latent_image_ids,  # B, image_seq_len, 4
-                    joint_attention_kwargs=self.attention_kwargs,
-                    return_dict=False,
-                )[0]
+                with self.transformer.cache_context("inference", timestep=t):
+                    noise_pred = self.transformer(
+                        hidden_states=latent_model_input,  # (B, image_seq_len, C)
+                        timestep=timestep / 1000,
+                        guidance=guidance,
+                        encoder_hidden_states=prompt_embeds,
+                        txt_ids=text_ids,  # B, text_seq_len, 4
+                        img_ids=latent_image_ids,  # B, image_seq_len, 4
+                        joint_attention_kwargs=self.attention_kwargs,
+                        return_dict=False,
+                    )[0]
 
                 noise_pred = noise_pred[:, : latents.size(1) :]
 
@@ -1021,6 +1023,7 @@ class Flux2Pipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
             )
             latents = latents * latents_bn_std + latents_bn_mean
             latents = self._unpatchify_latents(latents)
+            latents = latents.to(get_module_execution_device(self.vae))
 
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)

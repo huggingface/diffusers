@@ -25,7 +25,7 @@ from ...models import AutoencoderKLFlux2, Flux2Transformer2DModel
 from ...models.transformers.transformer_flux2 import Flux2KVAttnProcessor, Flux2KVParallelSelfAttnProcessor
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .image_processor import Flux2ImageProcessor
 from .pipeline_output import Flux2PipelineOutput
@@ -529,7 +529,7 @@ class Flux2KleinKVPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
     ):
         image_latents = []
         for image in images:
-            image = image.to(device=device, dtype=dtype)
+            image = image.to(device=get_module_execution_device(self.vae), dtype=dtype)
             imagge_latent = self._encode_vae_image(image=image, generator=generator)
             image_latents.append(imagge_latent)  # (1, 128, 32, 32)
 
@@ -548,6 +548,7 @@ class Flux2KleinKVPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         image_latents = image_latents.unsqueeze(0)  # (1, N*1024, 128)
 
         image_latents = image_latents.repeat(batch_size, 1, 1)
+        image_latents = image_latents.to(device)
         image_latent_ids = image_latent_ids.repeat(batch_size, 1, 1)
         image_latent_ids = image_latent_ids.to(device)
 
@@ -627,7 +628,7 @@ class Flux2KleinKVPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
         text_encoder_out_layers: tuple[int] = (9, 18, 27),
-    ):
+    ) -> Flux2PipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
@@ -795,46 +796,49 @@ class Flux2KleinKVPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                     latent_model_input = torch.cat([image_latents, latents], dim=1).to(self.transformer.dtype)
                     latent_image_ids = torch.cat([image_latent_ids, latent_ids], dim=1)
 
-                    noise_pred, kv_cache = self.transformer(
-                        hidden_states=latent_model_input,
-                        timestep=timestep / 1000,
-                        guidance=None,
-                        encoder_hidden_states=prompt_embeds,
-                        txt_ids=text_ids,
-                        img_ids=latent_image_ids,
-                        joint_attention_kwargs=self.attention_kwargs,
-                        return_dict=False,
-                        kv_cache_mode="extract",
-                        num_ref_tokens=image_latents.shape[1],
-                    )
+                    with self.transformer.cache_context("reference", timestep=t):
+                        noise_pred, kv_cache = self.transformer(
+                            hidden_states=latent_model_input,
+                            timestep=timestep / 1000,
+                            guidance=None,
+                            encoder_hidden_states=prompt_embeds,
+                            txt_ids=text_ids,
+                            img_ids=latent_image_ids,
+                            joint_attention_kwargs=self.attention_kwargs,
+                            return_dict=False,
+                            kv_cache_mode="extract",
+                            num_ref_tokens=image_latents.shape[1],
+                        )
 
                 elif kv_cache is not None:
                     # Steps 1+: use cached ref KV, no ref tokens in input
-                    noise_pred = self.transformer(
-                        hidden_states=latents.to(self.transformer.dtype),
-                        timestep=timestep / 1000,
-                        guidance=None,
-                        encoder_hidden_states=prompt_embeds,
-                        txt_ids=text_ids,
-                        img_ids=latent_ids,
-                        joint_attention_kwargs=self.attention_kwargs,
-                        return_dict=False,
-                        kv_cache=kv_cache,
-                        kv_cache_mode="cached",
-                    )[0]
+                    with self.transformer.cache_context("inference", timestep=t):
+                        noise_pred = self.transformer(
+                            hidden_states=latents.to(self.transformer.dtype),
+                            timestep=timestep / 1000,
+                            guidance=None,
+                            encoder_hidden_states=prompt_embeds,
+                            txt_ids=text_ids,
+                            img_ids=latent_ids,
+                            joint_attention_kwargs=self.attention_kwargs,
+                            return_dict=False,
+                            kv_cache=kv_cache,
+                            kv_cache_mode="cached",
+                        )[0]
 
                 else:
                     # No reference images: standard forward
-                    noise_pred = self.transformer(
-                        hidden_states=latents.to(self.transformer.dtype),
-                        timestep=timestep / 1000,
-                        guidance=None,
-                        encoder_hidden_states=prompt_embeds,
-                        txt_ids=text_ids,
-                        img_ids=latent_ids,
-                        joint_attention_kwargs=self.attention_kwargs,
-                        return_dict=False,
-                    )[0]
+                    with self.transformer.cache_context("inference", timestep=t):
+                        noise_pred = self.transformer(
+                            hidden_states=latents.to(self.transformer.dtype),
+                            timestep=timestep / 1000,
+                            guidance=None,
+                            encoder_hidden_states=prompt_embeds,
+                            txt_ids=text_ids,
+                            img_ids=latent_ids,
+                            joint_attention_kwargs=self.attention_kwargs,
+                            return_dict=False,
+                        )[0]
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype

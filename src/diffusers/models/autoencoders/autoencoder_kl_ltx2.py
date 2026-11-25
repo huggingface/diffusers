@@ -40,7 +40,7 @@ class PerChannelRMSNorm(nn.Module):
     def __init__(self, channel_dim: int = 1, eps: float = 1e-8) -> None:
         """
         Args:
-            dim: Dimension along which to compute the RMS (typically channels).
+            channel_dim: Dimension along which to compute the RMS (typically channels).
             eps: Small constant added for numerical stability.
         """
         super().__init__()
@@ -1269,7 +1269,7 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         temb: torch.Tensor | None = None,
         causal: bool | None = None,
         return_dict: bool = True,
-    ) -> DecoderOutput | torch.Tensor:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         batch_size, num_channels, num_frames, height, width = z.shape
         tile_latent_min_height = self.tile_sample_min_height // self.spatial_compression_ratio
         tile_latent_min_width = self.tile_sample_min_width // self.spatial_compression_ratio
@@ -1295,7 +1295,7 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         temb: torch.Tensor | None = None,
         causal: bool | None = None,
         return_dict: bool = True,
-    ) -> DecoderOutput | torch.Tensor:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         """
         Decode a batch of images.
 
@@ -1404,7 +1404,7 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
 
     def tiled_decode(
         self, z: torch.Tensor, temb: torch.Tensor | None, causal: bool | None = None, return_dict: bool = True
-    ) -> DecoderOutput | torch.Tensor:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         r"""
         Decode a batch of images using a tiled decoder.
 
@@ -1496,7 +1496,7 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
 
     def _temporal_tiled_decode(
         self, z: torch.Tensor, temb: torch.Tensor | None, causal: bool | None = None, return_dict: bool = True
-    ) -> DecoderOutput | torch.Tensor:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         batch_size, num_channels, num_frames, height, width = z.shape
         num_sample_frames = (num_frames - 1) * self.temporal_compression_ratio + 1
 
@@ -1541,7 +1541,7 @@ class AutoencoderKLLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, FromOrig
         decoder_causal: bool | None = None,
         return_dict: bool = True,
         generator: torch.Generator | None = None,
-    ) -> torch.Tensor | torch.Tensor:
+    ) -> DecoderOutput | tuple[torch.Tensor]:
         r"""
         Args:
             sample (`torch.Tensor`): Input sample.

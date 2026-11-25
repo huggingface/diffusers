@@ -61,7 +61,9 @@ class MiniMaxMusic3PrepareChunksStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: MiniMaxMusic3ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: MiniMaxMusic3ModularPipeline, state: PipelineState
+    ) -> tuple[MiniMaxMusic3ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         num_frames = block_state.frame_hiddens.shape[1]

@@ -71,7 +71,9 @@ class Flux2TextInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2ModularPipeline, state: PipelineState
+    ) -> tuple[Flux2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.batch_size = block_state.prompt_embeds.shape[0]
@@ -146,7 +148,9 @@ class Flux2KleinBaseTextInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Flux2ModularPipeline, state: PipelineState
+    ) -> tuple[Flux2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.batch_size = block_state.prompt_embeds.shape[0]
@@ -202,7 +206,9 @@ class Flux2ProcessImagesInputStep(ModularPipelineBlocks):
         return [OutputParam(name="condition_images", type_hint=list[torch.Tensor])]
 
     @torch.no_grad()
-    def __call__(self, components: Flux2ModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: Flux2ModularPipeline, state: PipelineState
+    ) -> tuple[Flux2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         images = block_state.image
 

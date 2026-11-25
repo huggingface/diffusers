@@ -70,6 +70,17 @@ image = pipe(
 image.save("krea2_turbo.png")
 ```
 
+## Loading single-file checkpoints
+
+```python
+import torch
+from diffusers import Krea2Pipeline, Krea2Transformer2DModel
+
+transformer = Krea2Transformer2DModel.from_single_file(
+    "https://huggingface.co/krea/Krea-2-Turbo/blob/main/turbo.safetensors", dtype=torch.bfloat16
+)
+pipe = Krea2Pipeline.from_pretrained("krea/Krea-2-Turbo", transformer=transformer, dtype=torch.bfloat16).to("cuda")
+```
 
 ## Krea2Pipeline
 

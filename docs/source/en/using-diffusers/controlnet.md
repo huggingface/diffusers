@@ -12,14 +12,14 @@ specific language governing permissions and limitations under the License.
 
 # ControlNet
 
-[ControlNet](https://huggingface.co/papers/2302.05543) is an adapter that enables controllable generation such as generating an image of a cat in a *specific pose* or following the lines in a sketch of a *specific* cat. It works by adding a smaller network of "zero convolution" layers and progressively training these to avoid disrupting with the original model. The original model parameters are frozen to avoid retraining it.
+[ControlNet](https://huggingface.co/papers/2302.05543) steers a pretrained diffusion model with a structural control image (edges, depth, or pose) while you keep a text prompt. It freezes the base model and adds a parallel network whose residuals guide the denoiser, so you get layout control without fine-tuning.
 
-A ControlNet is conditioned on extra visual information or "structural controls" (canny edge, depth maps, human pose, etc.) that can be combined with text prompts to generate images that are guided by the visual input.
+Load a ControlNet for the control you need (for example canny), then pass it as `controlnet=` to [`~DiffusionPipeline.from_pretrained`]. Use `controlnet_conditioning_scale` to set how strongly the control steers generation.
 
 > [!TIP]
-> ControlNets are available to many models such as [Flux](../api/pipelines/controlnet_flux), [Hunyuan-DiT](../api/pipelines/controlnet_hunyuandit), [Stable Diffusion 3](../api/pipelines/controlnet_sd3), and more. The examples in this guide use Flux and Stable Diffusion XL.
+> ControlNets are available to many models such as [Flux](../api/pipelines/controlnet_flux), [Hunyuan-DiT](../api/pipelines/controlnet_hunyuandit), [Stable Diffusion 3](../api/pipelines/controlnet_sd3), and more. The examples in this guide use Flux and Stable Diffusion XL. For T2I-Adapter on older Stable Diffusion–family checkpoints, see [Legacy adapters](./legacy_adapters#t2i-adapter). Prefer ControlNet for new controllable-generation work.
 
-Load a ControlNet conditioned on a specific control, such as canny edge, and pass it to the pipeline in [`~DiffusionPipeline.from_pretrained`].
+The tabs below show ControlNet for text-to-image, image-to-image, and inpainting.
 
 <hfoptions id="usage">
 <hfoption id="text-to-image">
@@ -105,12 +105,13 @@ from diffusers import ControlNetModel, StableDiffusionXLControlNetImg2ImgPipelin
 from diffusers.utils import load_image
 
 
-depth_estimator = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas").to("cuda")  # or "mps", "xpu", "cpu"
+device = "cuda"  # or "mps", "xpu", "cpu"
+depth_estimator = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas").to(device)
 feature_extractor = DPTImageProcessor.from_pretrained("Intel/dpt-hybrid-midas")
 
 def get_depth_map(image):
-    image = feature_extractor(images=image, return_tensors="pt").pixel_values.to("cuda")
-    with torch.no_grad(), torch.autocast("cuda"):
+    image = feature_extractor(images=image, return_tensors="pt").pixel_values.to(device)
+    with torch.no_grad(), torch.autocast(device):
         depth_map = depth_estimator(image).predicted_depth
 
     depth_map = torch.nn.functional.interpolate(
@@ -127,6 +128,9 @@ def get_depth_map(image):
     image = Image.fromarray((image * 255.0).clip(0, 255).astype(np.uint8))
     return image
 
+image = load_image(
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/non-enhanced-prompt.png"
+).resize((1024, 1024))
 depth_image = get_depth_map(image)
 ```
 
@@ -143,16 +147,13 @@ pipeline = StableDiffusionXLControlNetImg2ImgPipeline.from_pretrained(
     controlnet=controlnet,
     vae=vae,
     dtype=torch.float16,
-).to("cuda")  # or "mps", "xpu", "cpu"
+).to(device)
 
 prompt = """
 A photorealistic overhead image of a cat reclining sideways in a flamingo pool floatie holding a margarita. 
 The cat is floating leisurely in the pool and completely relaxed and happy.
 """
-image = load_image(
-    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/non-enhanced-prompt.png"
-).resize((1024, 1024))
-controlnet_conditioning_scale = 0.5 
+controlnet_conditioning_scale = 0.5
 pipeline(
     prompt,
     image=image,
@@ -169,7 +170,7 @@ pipeline(
     <figcaption style="text-align: center;">original image</figcaption>
   </figure>
   <figure>
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_depth_image.png" width="300" alt="Control image (Canny edges)"/>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_depth_image.png" width="300" alt="Depth map"/>
     <figcaption style="text-align: center;">depth map</figcaption>
   </figure>
   <figure> 
@@ -181,7 +182,7 @@ pipeline(
 </hfoption>
 <hfoption id="inpainting">
 
-Generate a mask image and convert it to a tensor to mark the pixels in the original image as masked if the corresponding pixel in the mask image is over a certain threshold.
+Generate a mask image that marks which pixels to replace, then pass it as `mask_image` with the control image.
 
 ```py
 import cv2
@@ -196,7 +197,7 @@ init_image = load_image(
 )
 init_image = init_image.resize((1024, 1024))
 mask_image = load_image(
-    "/content/cat_mask.png"
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat_mask.png"
 )
 mask_image = mask_image.resize((1024, 1024))
 
@@ -219,7 +220,7 @@ controlnet = ControlNetModel.from_pretrained(
 )
 pipeline = StableDiffusionXLControlNetInpaintPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, dtype=torch.float16
-)
+).to("cuda")  # or "mps", "xpu", "cpu"
 pipeline(
     "a cute and fluffy bunny rabbit",
     num_inference_steps=100,
@@ -237,7 +238,7 @@ pipeline(
     <figcaption style="text-align: center;">original image</figcaption>
   </figure>
   <figure>
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat_mask.png" width="300" alt="Control image (Canny edges)"/>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat_mask.png" width="300" alt="Mask image"/>
     <figcaption style="text-align: center;">mask image</figcaption>
   </figure>
   <figure> 
@@ -251,29 +252,63 @@ pipeline(
 
 ## Multi-ControlNet
 
-You can compose multiple ControlNet conditionings, such as canny image and a depth map, to create a *MultiControlNet*. For the best rersults, you should mask conditionings so they don't overlap and experiment with different `controlnet_conditioning_scale` parameters to adjust how much weight is assigned to each control input.
-
-The example below composes a canny image and depth map.
-
-Pass the ControlNets as a list to the pipeline and resize the images to the expected input size.
+Compose several ControlNets (for example canny + depth) by passing them as a list. Mask overlapping regions when you can, and tune each `controlnet_conditioning_scale`. Build `canny_image` with OpenCV Canny (as in text-to-image) and `depth_image` with DPT (as in image-to-image). Resize every control image to the pipeline size before you call the pipeline.
 
 ```py
+import cv2
 import torch
+import numpy as np
+from PIL import Image
+from transformers import DPTImageProcessor, DPTForDepthEstimation
 from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel, AutoencoderKL
+from diffusers.utils import load_image
+
+original_image = load_image(
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/non-enhanced-prompt.png"
+)
+image = np.array(original_image)
+canny_image = Image.fromarray(
+    np.concatenate([cv2.Canny(image, 100, 200)[:, :, None]] * 3, axis=2)
+)
+
+device = "cuda"  # or "mps", "xpu", "cpu"
+depth_estimator = DPTForDepthEstimation.from_pretrained("Intel/dpt-hybrid-midas").to(device)
+feature_extractor = DPTImageProcessor.from_pretrained("Intel/dpt-hybrid-midas")
+
+def get_depth_map(image):
+    image = feature_extractor(images=image, return_tensors="pt").pixel_values.to(device)
+    with torch.no_grad(), torch.autocast(device):
+        depth_map = depth_estimator(image).predicted_depth
+
+    depth_map = torch.nn.functional.interpolate(
+        depth_map.unsqueeze(1),
+        size=(1024, 1024),
+        mode="bicubic",
+        align_corners=False,
+    )
+    depth_min = torch.amin(depth_map, dim=[1, 2, 3], keepdim=True)
+    depth_max = torch.amax(depth_map, dim=[1, 2, 3], keepdim=True)
+    depth_map = (depth_map - depth_min) / (depth_max - depth_min)
+    image = torch.cat([depth_map] * 3, dim=1)
+    image = image.permute(0, 2, 3, 1).cpu().numpy()[0]
+    image = Image.fromarray((image * 255.0).clip(0, 255).astype(np.uint8))
+    return image
+
+depth_image = get_depth_map(original_image.resize((1024, 1024)))
 
 controlnets = [
     ControlNetModel.from_pretrained(
-        "diffusers/controlnet-depth-sdxl-1.0-small", dtype=torch.float16
+        "diffusers/controlnet-canny-sdxl-1.0", dtype=torch.float16
     ),
     ControlNetModel.from_pretrained(
-        "diffusers/controlnet-canny-sdxl-1.0", dtype=torch.float16,
+        "diffusers/controlnet-depth-sdxl-1.0-small", dtype=torch.float16
     ),
 ]
 
 vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", dtype=torch.float16)
 pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnets, vae=vae, dtype=torch.float16
-).to("cuda")  # or "mps", "xpu", "cpu"
+).to(device)
 
 prompt = """
 a relaxed rabbit sitting on a striped towel next to a pool with a tropical drink nearby, 
@@ -289,17 +324,16 @@ pipeline(
     image=images,
     num_inference_steps=100,
     controlnet_conditioning_scale=[0.5, 0.5],
-    strength=0.7,
 ).images[0]
 ```
 
 <div style="display: flex; gap: 10px; justify-content: space-around; align-items: flex-end;">
   <figure>
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/canny-cat.png" width="300" alt="Generated image (prompt only)"/>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/canny-cat.png" width="300" alt="Canny image"/>
     <figcaption style="text-align: center;">canny image</figcaption>
   </figure>
   <figure>
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/multicontrolnet_depth.png" width="300" alt="Control image (Canny edges)"/>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/multicontrolnet_depth.png" width="300" alt="Depth map"/>
     <figcaption style="text-align: center;">depth map</figcaption>
   </figure>
   <figure> 
@@ -308,13 +342,13 @@ pipeline(
   </figure>
 </div>
 
-## guess_mode
+## Guess mode
 
-[Guess mode](https://github.com/lllyasviel/ControlNet/discussions/188) generates an image from **only** the control input (canny edge, depth map, pose, etc.) and without guidance from a prompt. It adjusts the scale of the ControlNet's output residuals by a fixed ratio depending on block depth. The earlier `DownBlock` is only scaled by `0.1` and the `MidBlock` is fully scaled by `1.0`.
+[Guess mode](https://github.com/lllyasviel/ControlNet/discussions/188) generates an image from a control alone when you don't have (or don't want) a text prompt. It scales ControlNet residuals by block depth, from about `0.1` in early down blocks up to `1.0` at the mid block. That keeps early layers from over-constraining while deeper blocks still carry the structure.
 
 ```py
 import torch
-from diffusers.utils import load_iamge
+from diffusers.utils import load_image
 from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel
 
 controlnet = ControlNetModel.from_pretrained(
@@ -336,7 +370,7 @@ pipeline(
 
 <div style="display: flex; gap: 10px; justify-content: space-around; align-items: flex-end;">
   <figure>
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/canny-cat.png" width="300" alt="Control image (Canny edges)"/>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/canny-cat.png" width="300" alt="Canny image"/>
     <figcaption style="text-align: center;">canny image</figcaption>
   </figure>
   <figure>

@@ -184,7 +184,7 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
         | MultiPipelineCallbacks
         | None = None,
         callback_on_step_end_tensor_inputs: list[str] | None = None,
-    ) -> DiffusionGemmaPipelineOutput | tuple[torch.LongTensor, list[str] | None]:
+    ) -> DiffusionGemmaPipelineOutput | tuple:
         """
         Generate text with block diffusion.
 
@@ -337,9 +337,9 @@ class DiffusionGemmaPipeline(DiffusionPipeline):
             # canvas; the mask builder sizes this to the cache internally, including the static buffer for a StaticCache.
             decoder_attention_mask = torch.nn.functional.pad(cur_attention_mask.bool(), (0, canvas_length), value=True)
             mask_mapping = self.model.model.decoder.create_diffusion_decoder_attention_mask(
-                config=self.model.config,
-                inputs_embeds=torch.empty((batch_size, canvas_length, 0), device=device),
-                past_key_values=past_key_values,
+                self.model.config,
+                torch.empty((batch_size, canvas_length, 0), device=device),
+                past_key_values,
                 decoder_attention_mask=decoder_attention_mask,
             )
 

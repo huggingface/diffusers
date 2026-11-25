@@ -623,7 +623,7 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 128,
-    ):
+    ) -> LTXPipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
@@ -840,7 +840,7 @@ class LTXImageToVideoPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLo
                 timestep = t.expand(latent_model_input.shape[0])
                 timestep = timestep.unsqueeze(-1) * (1 - conditioning_mask)
 
-                with self.transformer.cache_context("cond_uncond"):
+                with self.transformer.cache_context("cond_uncond", timestep=t):
                     noise_pred = self.transformer(
                         hidden_states=latent_model_input,
                         encoder_hidden_states=prompt_embeds,

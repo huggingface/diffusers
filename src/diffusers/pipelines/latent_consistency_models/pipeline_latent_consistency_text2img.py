@@ -661,7 +661,7 @@ class LatentConsistencyModelPipeline(
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         **kwargs,
-    ):
+    ) -> StableDiffusionPipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

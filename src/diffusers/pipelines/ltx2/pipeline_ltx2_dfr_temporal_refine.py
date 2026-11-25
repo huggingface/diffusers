@@ -28,16 +28,16 @@ from transformers import (
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
 from ...loaders import FromSingleFileMixin, LTX2LoraLoaderMixin
-from ...models.autoencoders import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video
+from ...models.autoencoders import AutoencoderKLLTX2Audio, AutoencoderKLLTX2Video, LTX2Vocoder, LTX2VocoderWithBWE
+from ...models.condition_embedders import LTX2TextConnectors
+from ...models.latent_upscaler import LTX2LatentUpsamplerModel
 from ...models.transformers import LTX2VideoTransformer3DModel
 from ...schedulers import LTXEulerAncestralRFScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
-from .connectors import LTX2TextConnectors
 from .dfr_layout import temporal_tile_plan
-from .latent_upsampler import LTX2LatentUpsamplerModel
 from .pipeline_ltx2_condition import LTX2VideoCondition
 from .pipeline_output import LTX2DFRPipelineOutput
 from .utils import (
@@ -49,7 +49,6 @@ from .utils import (
     apply_image_conditioning_crf,
     resolve_default_image_crf,
 )
-from .vocoder import LTX2Vocoder, LTX2VocoderWithBWE
 
 
 if is_torch_xla_available():
@@ -101,7 +100,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import LTX2DFRPipeline, LTX2DFRTemporalRefinePipeline, LTXEulerAncestralRFScheduler
-        >>> from diffusers.pipelines.ltx2 import LTX2LatentUpsamplerModel
+        >>> from diffusers.models.latent_upscaler import LTX2LatentUpsamplerModel
 
         >>> pipe = LTX2DFRPipeline.from_pretrained("Lightricks/LTX-2.5-Diffusers", torch_dtype=torch.bfloat16)
         >>> temporal_upsampler = LTX2LatentUpsamplerModel.from_pretrained(
@@ -1236,29 +1235,31 @@ class LTX2DFRTemporalRefinePipeline(DiffusionPipeline, FromSingleFileMixin, LTX2
             }
 
             if video_tile_plan is None:
-                noise_pred_video, noise_pred_audio = self.transformer(
-                    hidden_states=latents.to(prompt_embeds.dtype),
-                    audio_hidden_states=audio_latents.to(prompt_embeds.dtype),
-                    timestep=video_timestep,
-                    video_keyframes_mask=keyframes_mask,
-                    video_coords=video_coords,
-                    **transformer_kwargs,
-                )
+                with self.transformer.cache_context("inference", timestep=t):
+                    noise_pred_video, noise_pred_audio = self.transformer(
+                        hidden_states=latents.to(prompt_embeds.dtype),
+                        audio_hidden_states=audio_latents.to(prompt_embeds.dtype),
+                        timestep=video_timestep,
+                        video_keyframes_mask=keyframes_mask,
+                        video_coords=video_coords,
+                        **transformer_kwargs,
+                    )
             else:
                 # Blending the velocity is the same as blending x0: `x0 = x - v * sigma` is affine in `v`, every tile
                 # reads the same `latents` and the same per-token sigma, and the weights sum to one.
                 noise_pred_video = torch.zeros_like(latents, dtype=torch.float32)
                 noise_pred_audio = None
-                for tile in video_tile_plan:
+                for tile_idx, tile in enumerate(video_tile_plan):
                     keep = tile.keep
-                    tile_pred, tile_audio_pred = self.transformer(
-                        hidden_states=latents[:, keep].to(prompt_embeds.dtype),
-                        audio_hidden_states=audio_latents.to(prompt_embeds.dtype),
-                        timestep=video_timestep[:, keep],
-                        video_keyframes_mask=keyframes_mask[:, keep],
-                        video_coords=tile.coords,
-                        **transformer_kwargs,
-                    )
+                    with self.transformer.cache_context(f"tile_{tile_idx}", timestep=t):
+                        tile_pred, tile_audio_pred = self.transformer(
+                            hidden_states=latents[:, keep].to(prompt_embeds.dtype),
+                            audio_hidden_states=audio_latents.to(prompt_embeds.dtype),
+                            timestep=video_timestep[:, keep],
+                            video_keyframes_mask=keyframes_mask[:, keep],
+                            video_coords=tile.coords,
+                            **transformer_kwargs,
+                        )
                     noise_pred_video.index_add_(
                         1, keep, tile_pred.float() * tile.weights.to(torch.float32).view(1, -1, 1)
                     )
@@ -1377,7 +1378,7 @@ class LTX2DFRTemporalRefinePipeline(DiffusionPipeline, FromSingleFileMixin, LTX2
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 1024,
-    ):
+    ) -> LTX2DFRPipelineOutput | tuple:
         r"""
         Run one temporal refine round.
 

@@ -14,6 +14,7 @@
 
 import math
 import warnings
+from typing import Any
 
 import numpy as np
 import PIL.Image
@@ -632,8 +633,9 @@ class VaeImageProcessor(ConfigMixin):
                 image to fit within the specified width and height, maintaining the aspect ratio, and then center the
                 image within the dimensions, cropping the excess. Note that resize_mode `fill` and `crop` are only
                 supported for PIL image input.
-            crops_coords (`list[tuple[int, int, int, int]]`, *optional*, defaults to `None`):
-                The crop coordinates for each image in the batch. If `None`, will not crop the image.
+            crops_coords (`tuple[int, int, int, int]`, *optional*, defaults to `None`):
+                The crop box `(left, upper, right, lower)` applied to each image in the batch. Only supported for PIL
+                images. If `None`, no crop is applied.
 
         Returns:
             `torch.Tensor`:
@@ -680,6 +682,9 @@ class VaeImageProcessor(ConfigMixin):
             )
         if not isinstance(image, list):
             image = [image]
+
+        if crops_coords is not None and not all(isinstance(i, PIL.Image.Image) for i in image):
+            raise ValueError("`crops_coords` is only supported for PIL image inputs.")
 
         if isinstance(image[0], PIL.Image.Image):
             if crops_coords is not None:
@@ -885,7 +890,7 @@ class InpaintProcessor(ConfigMixin):
         height: int | None = None,
         width: int | None = None,
         padding_mask_crop: int | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor | None, dict[str, Any]]:
         """
         Preprocess the image and mask.
         """
@@ -894,7 +899,13 @@ class InpaintProcessor(ConfigMixin):
 
         # if mask is None, same behavior as regular image processor
         if mask is None:
-            return self._image_processor.preprocess(image, height=height, width=width)
+            processed_image = self._image_processor.preprocess(image, height=height, width=width)
+            postprocessing_kwargs = {
+                "crops_coords": None,
+                "original_image": None,
+                "original_mask": None,
+            }
+            return processed_image, None, postprocessing_kwargs
 
         if padding_mask_crop is not None:
             crops_coords = self._image_processor.get_crop_region(mask, width, height, pad=padding_mask_crop)

@@ -188,7 +188,7 @@ class PriorTransformer(ModelMixin, AttentionMixin, ConfigMixin, UNet2DConditionL
         encoder_hidden_states: torch.Tensor | None = None,
         attention_mask: torch.BoolTensor | None = None,
         return_dict: bool = True,
-    ):
+    ) -> PriorTransformerOutput | tuple[torch.Tensor]:
         """
         The [`PriorTransformer`] forward method.
 

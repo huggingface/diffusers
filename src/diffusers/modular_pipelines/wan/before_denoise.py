@@ -245,7 +245,9 @@ class WanTextInputStep(ModularPipelineBlocks):
                 )
 
     @torch.no_grad()
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: WanModularPipeline, state: PipelineState
+    ) -> tuple[WanModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(components, block_state)
 
@@ -355,7 +357,9 @@ class WanAdditionalInputsStep(ModularPipelineBlocks):
 
         return inputs
 
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: WanModularPipeline, state: PipelineState
+    ) -> tuple[WanModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         # Process image latent inputs (height/width calculation, patchify, and batch expansion)
@@ -436,7 +440,9 @@ class WanVaceAdditionalInputsStep(ModularPipelineBlocks):
                 "Generating multiple videos per prompt is not yet supported. This may be supported in the future."
             )
 
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: WanModularPipeline, state: PipelineState
+    ) -> tuple[WanModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(block_state)
 
@@ -469,7 +475,9 @@ class WanSetTimestepsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: WanModularPipeline, state: PipelineState
+    ) -> tuple[WanModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -568,7 +576,9 @@ class WanPrepareLatentsStep(ModularPipelineBlocks):
         return latents
 
     @torch.no_grad()
-    def __call__(self, components: WanModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: WanModularPipeline, state: PipelineState
+    ) -> tuple[WanModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(components, block_state)
 

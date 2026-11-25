@@ -16,6 +16,7 @@
 
 import PIL
 import pytest
+import torch
 
 from diffusers.modular_pipelines import (
     QwenImageAutoBlocks,
@@ -26,7 +27,7 @@ from diffusers.modular_pipelines import (
     QwenImageModularPipeline,
 )
 
-from ...testing_utils import torch_device
+from ...testing_utils import require_accelerator_memory, torch_device
 from ..testing_utils import (
     BaseModularPipelineTesterConfig,
     ModularGuiderTesterMixin,
@@ -138,6 +139,7 @@ class QwenImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = QwenImageModularPipeline
     pipeline_blocks_class = QwenImageAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-modular"
+    expected_latents_shape = (1, 4, 1, 8, 8)
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image", "mask_image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
     expected_workflow_blocks = QWEN_IMAGE_TEXT2IMAGE_WORKFLOWS
@@ -220,6 +222,7 @@ class QwenImageEditModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = QwenImageEditModularPipeline
     pipeline_blocks_class = QwenImageEditAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-edit-modular"
+    expected_latents_shape = (1, 4, 1, 8, 8)
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image", "mask_image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image", "mask_image"])
     expected_workflow_blocks = QWEN_IMAGE_EDIT_WORKFLOWS
@@ -240,6 +243,15 @@ class QwenImageEditModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestQwenImageEditModularPipelineFast(QwenImageEditModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    # The condition image is always resized to ~1 megapixel before it is encoded, so the VAE attention runs over
+    # 65k tokens no matter how small the dummy inputs are. On GPUs without bf16 SDPA support that attention falls
+    # back to the math backend, which materializes the full attention matrix (~16GB).
+    @require_accelerator_memory(24)
+    @pytest.mark.skipif(torch_device not in ["cuda", "xpu"], reason="half-precision inference requires CUDA or XPU")
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=str)
+    def test_half_precision_inference_no_nan(self, dtype):
+        super().test_half_precision_inference_no_nan(dtype)
+
     def test_num_images_per_prompt(self):
         # `QwenImageEditResizeStep` blows the conditioning image up to a ~1024x1024 area before the VL encoder
         # regardless of how tiny the test image is, so every forward here is expensive — the default four
@@ -268,6 +280,7 @@ class QwenImageEditPlusModularPipelineTesterConfig(BaseModularPipelineTesterConf
     pipeline_class = QwenImageEditPlusModularPipeline
     pipeline_blocks_class = QwenImageEditPlusAutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-qwenimage-edit-plus-modular"
+    expected_latents_shape = (1, 4, 1, 8, 8)
     # No `mask_image` yet.
     params = frozenset(["prompt", "height", "width", "negative_prompt", "attention_kwargs", "image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image"])
@@ -290,6 +303,15 @@ class QwenImageEditPlusModularPipelineTesterConfig(BaseModularPipelineTesterConf
 class TestQwenImageEditPlusModularPipelineFast(
     QwenImageEditPlusModularPipelineTesterConfig, ModularPipelineTesterMixin
 ):
+    # The condition image is always resized to ~1 megapixel before it is encoded, so the VAE attention runs over
+    # 65k tokens no matter how small the dummy inputs are. On GPUs without bf16 SDPA support that attention falls
+    # back to the math backend, which materializes the full attention matrix (~16GB).
+    @require_accelerator_memory(24)
+    @pytest.mark.skipif(torch_device not in ["cuda", "xpu"], reason="half-precision inference requires CUDA or XPU")
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=str)
+    def test_half_precision_inference_no_nan(self, dtype):
+        super().test_half_precision_inference_no_nan(dtype)
+
     def test_multi_images_as_input(self):
         inputs = self.get_dummy_inputs()
         image = inputs.pop("image")

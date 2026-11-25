@@ -22,7 +22,7 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import BaseOutput, apply_lora_scale, is_torch_version, logging
+from ...utils import BaseOutput, apply_lora_scale, logging
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
@@ -39,7 +39,10 @@ def apply_interleaved_rotary_emb(x: torch.Tensor, freqs: tuple[torch.Tensor, tor
     cos, sin = freqs
     x_real, x_imag = x.unflatten(2, (-1, 2)).unbind(-1)  # [B, S, C // 2]
     x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(2)
-    out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+    # cast `cos`/`sin` to at least float32 so that input is promoted to float32 inside the multiplication
+    compute_dtype = torch.promote_types(torch.float32, cos.dtype)
+    cos, sin = cos.to(compute_dtype), sin.to(compute_dtype)
+    out = (x * cos + x_rotated * sin).to(x.dtype)
     return out
 
 
@@ -152,12 +155,6 @@ class LTX2AudioVideoAttnProcessor:
     _attention_backend = None
     _parallel_config = None
 
-    def __init__(self):
-        if is_torch_version("<", "2.0"):
-            raise ValueError(
-                "LTX attention processors require a minimum PyTorch version of 2.0. Please upgrade your PyTorch installation."
-            )
-
     def __call__(
         self,
         attn: "LTX2Attention",
@@ -235,12 +232,6 @@ class LTX2PerturbedAttnProcessor:
 
     _attention_backend = None
     _parallel_config = None
-
-    def __init__(self):
-        if is_torch_version("<", "2.0"):
-            raise ValueError(
-                "LTX attention processors require a minimum PyTorch version of 2.0. Please upgrade your PyTorch installation."
-            )
 
     def __call__(
         self,
@@ -622,7 +613,7 @@ class LTX2VideoTransformerBlock(nn.Module):
         use_v2a_cross_attention: bool = True,
         perturbation_mask: torch.Tensor | None = None,
         all_perturbed: bool | None = None,
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         batch_size = hidden_states.size(0)
 
         # 1. Video and Audio Self-Attention
@@ -1390,7 +1381,7 @@ class LTX2VideoTransformer3DModel(
         video_self_attention_mask: torch.Tensor | None = None,
         video_keyframes_mask: torch.Tensor | None = None,
         return_dict: bool = True,
-    ) -> torch.Tensor:
+    ) -> AudioVisualModelOutput | tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass for LTX-2.0 audiovisual video transformer.
 
@@ -1446,7 +1437,7 @@ class LTX2VideoTransformer3DModel(
                 (SDPA) operation. If `None` or empty, STG will not be applied to any block.
             perturbation_mask (`torch.Tensor`, *optional*):
                 Perturbation mask for STG of shape `(batch_size,)` or `(batch_size, 1, 1)`. Should be 0 at batch
-                elements where STG should be applied and 1 elsewhere. If STG is being used but `peturbation_mask` is
+                elements where STG should be applied and 1 elsewhere. If STG is being used but `perturbation_mask` is
                 not supplied, will default to applying STG (perturbing) all batch elements.
             use_cross_timestep (`bool` *optional*, defaults to `False`):
                 Whether to use the cross modality (audio is the cross modality of video, and vice versa) sigma when

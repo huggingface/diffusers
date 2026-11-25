@@ -28,6 +28,7 @@ import safetensors
 import torch
 from huggingface_hub.utils import EntryNotFoundError
 
+from ..dependency_versions_table import deps
 from ..quantizers import DiffusersQuantizer
 from ..utils import (
     DEFAULT_HF_PARALLEL_LOADING_WORKERS,
@@ -42,7 +43,6 @@ from ..utils import (
     is_accelerate_version,
     is_gguf_available,
     is_torch_available,
-    is_torch_version,
     logging,
 )
 from ..utils.distributed_utils import is_torch_dist_rank_zero
@@ -173,17 +173,15 @@ def load_state_dict(
             return load_gguf_checkpoint(checkpoint_file)
         else:
             extra_args = {}
-            weights_only_kwarg = {"weights_only": True} if is_torch_version(">=", "1.13") else {}
             # mmap can only be used with files serialized with zipfile-based format.
             if (
                 isinstance(checkpoint_file, str)
                 and map_location != "meta"
-                and is_torch_version(">=", "2.1.0")
                 and is_zipfile(checkpoint_file)
                 and not disable_mmap
             ):
                 extra_args = {"mmap": True}
-            return torch.load(checkpoint_file, map_location=map_location, **weights_only_kwarg, **extra_args)
+            return torch.load(checkpoint_file, map_location=map_location, weights_only=True, **extra_args)
     except Exception as e:
         try:
             with open(checkpoint_file) as f:
@@ -381,6 +379,94 @@ def _load_shard_file(
     return offload_index, state_dict_index, mismatched_keys, error_msgs
 
 
+def _load_shard_file_tp(
+    shard_file,
+    model,
+    model_state_dict,
+    tp_shard_specs,
+    tp_config,
+    dtype=None,
+    keep_in_fp32_modules=None,
+    unexpected_keys=None,
+    ignore_mismatched_sizes=False,
+):
+    """Load one safetensors shard, reading only this rank's slice of each tensor-parallel parameter.
+
+    The counterpart of `_load_shard_file` for a model being sharded by `_tp_plan`, with the same return contract so it
+    can be swapped in as `load_fn`. Parameters covered by `tp_shard_specs` are sliced while still on disk and placed as
+    `DTensor`s; everything else is read whole and replicated on every rank, exactly as tensor parallelism requires.
+
+    Slicing before the dtype cast is the point of the whole exercise: `load_model_dict_into_meta` casts the full tensor
+    first, which would materialize it in full on every rank.
+    """
+    from safetensors import safe_open
+    from torch.distributed.tensor import DTensor, Replicate, Shard
+
+    from ..hooks.tensor_parallel import _local_shard
+
+    tp_mesh = tp_config._mesh
+    device = tp_config._device
+
+    mismatched_keys = []
+
+    # The slices are lazy views over the file, so every read has to happen inside this block.
+    with safe_open(shard_file, framework="pt", device="cpu") as f:
+        for key in f.keys():
+            if key not in model_state_dict:
+                unexpected_keys.append(key)
+                continue
+
+            checkpoint_slice = f.get_slice(key)
+            expected_shape = model_state_dict[key].shape
+            if tuple(checkpoint_slice.get_shape()) != tuple(expected_shape):
+                # Checkpoints always hold full tensors, so the comparison is against the unsharded shape.
+                if not ignore_mismatched_sizes:
+                    raise ValueError(
+                        f"Cannot load {key} because it has shape {tuple(checkpoint_slice.get_shape())} in the "
+                        f"checkpoint but shape {tuple(expected_shape)} in {model.__class__.__name__}. Pass "
+                        "`ignore_mismatched_sizes=True` to skip it and keep the randomly initialized weight."
+                    )
+                mismatched_keys.append((key, tuple(checkpoint_slice.get_shape()), tuple(expected_shape)))
+                continue
+
+            spec = tp_shard_specs.get(key)
+            if spec is None or spec.dim is None:
+                param = checkpoint_slice[...]
+            else:
+                param = _local_shard(checkpoint_slice, spec.dim, spec.block_sizes, tp_mesh)
+
+            # Mirror `load_model_dict_into_meta`: only floating point weights are cast, and modules held
+            # in fp32 override the requested dtype.
+            if dtype is not None and torch.is_floating_point(param):
+                if keep_in_fp32_modules is not None and any(
+                    module_to_keep_in_fp32 in key.split(".") for module_to_keep_in_fp32 in keep_in_fp32_modules
+                ):
+                    param = param.to(torch.float32)
+                else:
+                    param = param.to(dtype)
+
+            if spec is None:
+                set_module_tensor_to_device(model, key, device, value=param, dtype=param.dtype)
+                continue
+
+            path, _, param_name = key.rpartition(".")
+            module = model.get_submodule(path)
+            # A rowwise bias is added after the all-reduce, so it stays replicated. It still has to be a
+            # DTensor: a plain tensor next to a sharded weight fails the `addmm` dispatch.
+            placement = Replicate() if spec.dim is None else Shard(spec.dim)
+            module.register_parameter(
+                param_name,
+                torch.nn.Parameter(
+                    DTensor.from_local(param.to(device), tp_mesh, [placement], run_check=False),
+                    requires_grad=getattr(module, param_name).requires_grad,
+                ),
+            )
+
+    # `offload_index` / `state_dict_index` are always None here: offloading and tensor parallelism are
+    # rejected as a combination by `from_pretrained`.
+    return None, None, mismatched_keys, []
+
+
 def _load_shard_files_with_threadpool(
     shard_files,
     model,
@@ -443,28 +529,6 @@ def _load_shard_files_with_threadpool(
     return offload_index, state_dict_index, mismatched_keys, error_msgs
 
 
-def _find_mismatched_keys(
-    state_dict,
-    model_state_dict,
-    loaded_keys,
-    ignore_mismatched_sizes,
-):
-    mismatched_keys = []
-    if ignore_mismatched_sizes:
-        for checkpoint_key in loaded_keys:
-            model_key = checkpoint_key
-            # If the checkpoint is sharded, we may not have the key here.
-            if checkpoint_key not in state_dict:
-                continue
-
-            if model_key in model_state_dict and state_dict[checkpoint_key].shape != model_state_dict[model_key].shape:
-                mismatched_keys.append(
-                    (checkpoint_key, state_dict[checkpoint_key].shape, model_state_dict[model_key].shape)
-                )
-                del state_dict[checkpoint_key]
-    return mismatched_keys
-
-
 def _load_state_dict_into_model(
     model_to_load, state_dict: OrderedDict, assign_to_params_buffers: bool = False
 ) -> list[str]:
@@ -478,8 +542,6 @@ def _load_state_dict_into_model(
     def load(module: torch.nn.Module, prefix: str = "", assign_to_params_buffers: bool = False):
         local_metadata = {}
         local_metadata["assign_to_params_buffers"] = assign_to_params_buffers
-        if assign_to_params_buffers and not is_torch_version(">=", "2.1"):
-            logger.info("You need to have torch>=2.1 in order to load the model with assign_to_params_buffers=True")
         args = (state_dict, prefix, local_metadata, True, [], [], error_msgs)
         module._load_from_state_dict(*args)
 
@@ -647,10 +709,10 @@ def load_gguf_checkpoint(gguf_checkpoint_path, return_tensors=False):
         from ..quantizers.gguf.utils import SUPPORTED_GGUF_QUANT_TYPES, GGUFParameter
     else:
         logger.error(
-            "Loading a GGUF checkpoint in PyTorch, requires both PyTorch and GGUF>=0.10.0 to be installed. Please see "
+            f"Loading a GGUF checkpoint in PyTorch, requires both PyTorch and `{deps['gguf']}` to be installed. Please see "
             "https://pytorch.org/ and https://github.com/ggerganov/llama.cpp/tree/master/gguf-py for installation instructions."
         )
-        raise ImportError("Please install torch and gguf>=0.10.0 to load a GGUF checkpoint in PyTorch.")
+        raise ImportError(f"Please install torch and `{deps['gguf']}` to load a GGUF checkpoint in PyTorch.")
 
     reader = GGUFReader(gguf_checkpoint_path)
 

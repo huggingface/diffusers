@@ -65,7 +65,8 @@ class LTX2AutoPromptEnhancerStep(ConditionalPipelineBlocks):
        - Skipped when `enable_prompt_enhancement` is falsy / not provided.
 
       Components:
-          prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`)
+          - prompt_enhancer (`PreTrainedModel`)
+          - processor (`ProcessorMixin`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -130,7 +131,9 @@ class LTX2TextConditioningStep(SequentialPipelineBlocks):
     stage expands them by `num_videos_per_prompt` -- so they can be reused across denoise runs.
 
       Components:
-          text_encoder (`PreTrainedModel`) tokenizer (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`)
+          - text_encoder (`PreTrainedModel`)
+          - tokenizer (`PreTrainedTokenizerBase`)
+          - connectors (`LTX2TextConnectors`)
 
       Inputs:
           prompt (`str`):
@@ -189,7 +192,7 @@ class LTX2AutoDurationStep(ConditionalPipelineBlocks):
        - Skipped when `num_frames` is supplied as an integer.
 
       Components:
-          duration_head (`LTX2DurationHead`)
+          - duration_head (`LTX2DurationHead`)
 
       Inputs:
           min_seconds (`float`, *optional*, defaults to 1.0):
@@ -235,7 +238,9 @@ class LTX2AutoVaeEncoderStep(AutoPipelineBlocks):
        - Skipped otherwise.
 
       Components:
-          vae (`AutoencoderKLLTX2Video`) text_encoder (`PreTrainedModel`) video_processor (`VideoProcessor`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - text_encoder (`PreTrainedModel`)
+          - video_processor (`VideoProcessor`)
 
       Inputs:
           image (`Image | list`, *optional*):
@@ -278,8 +283,11 @@ class LTX2CoreDenoiseStep(SequentialPipelineBlocks):
     latents and runs the joint denoising loop.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`LTX2VideoTransformer3DModel`) audio_vae
-          (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -322,6 +330,10 @@ class LTX2CoreDenoiseStep(SequentialPipelineBlocks):
               Frames per second of the generated video.
           audio_latents (`Tensor`, *optional*):
               Optional pre-encoded audio latents; random noise is used when not provided.
+          motion_speed (`float`, *optional*, defaults to 1.0):
+              Speed of the motion relative to real time. The positional embeddings are conditioned on `frame_rate /
+              motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the Slow-Motion-Control LoRA's 5x
+              slow motion. `frame_rate` stays the playback rate.
           dtype (`dtype`):
               The dtype the model inputs are cast to.
           **denoiser_input_fields (`None`, *optional*):
@@ -378,8 +390,11 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     conditioning and runs the joint denoising loop.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`LTX2VideoTransformer3DModel`) audio_vae
-          (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -424,6 +439,10 @@ class LTX2Image2VideoCoreDenoiseStep(SequentialPipelineBlocks):
               Frames per second of the generated video.
           audio_latents (`Tensor`, *optional*):
               Optional pre-encoded audio latents; random noise is used when not provided.
+          motion_speed (`float`, *optional*, defaults to 1.0):
+              Speed of the motion relative to real time. The positional embeddings are conditioned on `frame_rate /
+              motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the Slow-Motion-Control LoRA's 5x
+              slow motion. `frame_rate` stays the playback rate.
           dtype (`dtype`):
               The dtype the model inputs are cast to.
           **denoiser_input_fields (`None`, *optional*):
@@ -482,9 +501,12 @@ class LTX2ConditionCoreDenoiseStep(SequentialPipelineBlocks):
     conditions to the video latents and runs the joint denoising loop.
 
       Components:
-          transformer (`LTX2VideoTransformer3DModel`) vae (`AutoencoderKLLTX2Video`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider
-          (`LTX2Guidance`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -520,6 +542,10 @@ class LTX2ConditionCoreDenoiseStep(SequentialPipelineBlocks):
               `LTX2AutoDurationStep`).
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
+          motion_speed (`float`, *optional*, defaults to 1.0):
+              Speed of the motion relative to real time. The positional embeddings are conditioned on `frame_rate /
+              motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the Slow-Motion-Control LoRA's 5x
+              slow motion. `frame_rate` stays the playback rate.
           noise_scale (`float`, *optional*):
               Initial noise level for the un-conditioned tokens. `None` (default) resolves to `sigmas[0]` when custom
               `sigmas` are supplied, else 1.0.
@@ -591,7 +617,8 @@ class LTX2AutoConditionEncoderStep(ConditionalPipelineBlocks):
        - Skipped for text-to-video and image-to-video.
 
       Components:
-          vae (`AutoencoderKLLTX2Video`) text_encoder (`PreTrainedModel`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - text_encoder (`PreTrainedModel`)
 
       Inputs:
           conditions (`list`, *optional*):
@@ -650,7 +677,9 @@ class LTX2AutoReferenceEncoderStep(ConditionalPipelineBlocks):
        - Skipped otherwise, for IC-LoRAs that take no reference video.
 
       Components:
-          vae (`AutoencoderKLLTX2Video`) transformer (`LTX2VideoTransformer3DModel`) video_processor (`VideoProcessor`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - video_processor (`VideoProcessor`)
 
       Inputs:
           reference_conditions (`list`, *optional*):
@@ -676,6 +705,10 @@ class LTX2AutoReferenceEncoderStep(ConditionalPipelineBlocks):
               `LTX2AutoDurationStep`).
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
+          motion_speed (`float`, *optional*, defaults to 1.0):
+              Speed of the motion relative to real time. The positional embeddings are conditioned on `frame_rate /
+              motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the Slow-Motion-Control LoRA's 5x
+              slow motion. `frame_rate` stays the playback rate.
           generator (`Generator`, *optional*):
               Torch generator for deterministic generation.
 
@@ -783,9 +816,12 @@ class LTX2InContextCoreDenoiseStep(SequentialPipelineBlocks):
     the reference implementation's uniform treatment of both.
 
       Components:
-          transformer (`LTX2VideoTransformer3DModel`) vae (`AutoencoderKLLTX2Video`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider
-          (`LTX2Guidance`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -831,6 +867,10 @@ class LTX2InContextCoreDenoiseStep(SequentialPipelineBlocks):
               `LTX2AutoDurationStep`).
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
+          motion_speed (`float`, *optional*, defaults to 1.0):
+              Speed of the motion relative to real time. The positional embeddings are conditioned on `frame_rate /
+              motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the Slow-Motion-Control LoRA's 5x
+              slow motion. `frame_rate` stays the playback rate.
           noise_scale (`float`, *optional*):
               Initial noise level for the un-conditioned tokens. `None` (default) resolves to `sigmas[0]` when custom
               `sigmas` are supplied, else 1.0.
@@ -914,9 +954,12 @@ class LTX2AutoCoreDenoiseStep(ConditionalPipelineBlocks):
        - `LTX2CoreDenoiseStep` otherwise (text-to-video).
 
       Components:
-          transformer (`LTX2VideoTransformer3DModel`) vae (`AutoencoderKLLTX2Video`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider
-          (`LTX2Guidance`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
 
       Inputs:
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
@@ -962,6 +1005,10 @@ class LTX2AutoCoreDenoiseStep(ConditionalPipelineBlocks):
               `LTX2AutoDurationStep`).
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
+          motion_speed (`float`, *optional*, defaults to 1.0):
+              Speed of the motion relative to real time. The positional embeddings are conditioned on `frame_rate /
+              motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the Slow-Motion-Control LoRA's 5x
+              slow motion. `frame_rate` stays the playback rate.
           noise_scale (`float`, *optional*):
               Initial noise level for the un-conditioned tokens. `None` (default) resolves to `sigmas[0]` when custom
               `sigmas` are supplied, else 1.0.
@@ -1038,8 +1085,10 @@ class LTX2DecoderStep(SequentialPipelineBlocks):
     Decode stage: VAE-decodes the video latents and vocodes the audio latents (or returns latents).
 
       Components:
-          vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) audio_vae (`AutoencoderKLLTX2Audio`)
-          vocoder (`LTX2Vocoder`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - video_processor (`VideoProcessor`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           latents (`Tensor`):
@@ -1099,8 +1148,10 @@ class LTX2ConditionDecoderStep(SequentialPipelineBlocks):
     latents and vocodes the audio latents (or returns latents).
 
       Components:
-          vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) audio_vae (`AutoencoderKLLTX2Audio`)
-          vocoder (`LTX2Vocoder`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - video_processor (`VideoProcessor`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           latents (`Tensor`):
@@ -1167,8 +1218,10 @@ class LTX2AutoDecoderStep(AutoPipelineBlocks):
        - `LTX2DecoderStep` otherwise (text-to-video, image-to-video).
 
       Components:
-          vae (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) audio_vae (`AutoencoderKLLTX2Audio`)
-          vocoder (`LTX2Vocoder`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - video_processor (`VideoProcessor`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           latents (`Tensor`):
@@ -1237,11 +1290,20 @@ class LTX2Blocks(SequentialPipelineBlocks):
     Modular pipeline blocks for LTX-2 text-to-video (joint video + audio).
 
       Components:
-          prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`) text_encoder (`PreTrainedModel`) tokenizer
-          (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) duration_head (`LTX2DurationHead`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) transformer (`LTX2VideoTransformer3DModel`) audio_vae
-          (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider (`LTX2Guidance`) vae
-          (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) vocoder (`LTX2Vocoder`)
+          - prompt_enhancer (`PreTrainedModel`)
+          - processor (`ProcessorMixin`)
+          - text_encoder (`PreTrainedModel`)
+          - tokenizer (`PreTrainedTokenizerBase`)
+          - connectors (`LTX2TextConnectors`)
+          - duration_head (`LTX2DurationHead`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - video_processor (`VideoProcessor`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -1297,6 +1359,10 @@ class LTX2Blocks(SequentialPipelineBlocks):
               which keeps the provided latents.
           audio_latents (`Tensor`, *optional*):
               Optional pre-encoded audio latents; random noise is used when not provided.
+          motion_speed (`float`, *optional*, defaults to 1.0):
+              Speed of the motion relative to real time. The positional embeddings are conditioned on `frame_rate /
+              motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the Slow-Motion-Control LoRA's 5x
+              slow motion. `frame_rate` stays the playback rate.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           use_cross_timestep (`bool`, *optional*, defaults to True):
@@ -1345,11 +1411,20 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
     Modular pipeline blocks for LTX-2 image-to-video (joint video + audio).
 
       Components:
-          prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`) text_encoder (`PreTrainedModel`) tokenizer
-          (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) duration_head (`LTX2DurationHead`) vae
-          (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) scheduler (`FlowMatchEulerDiscreteScheduler`)
-          transformer (`LTX2VideoTransformer3DModel`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`)
-          audio_guider (`LTX2Guidance`) vocoder (`LTX2Vocoder`)
+          - prompt_enhancer (`PreTrainedModel`)
+          - processor (`ProcessorMixin`)
+          - text_encoder (`PreTrainedModel`)
+          - tokenizer (`PreTrainedTokenizerBase`)
+          - connectors (`LTX2TextConnectors`)
+          - duration_head (`LTX2DurationHead`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - video_processor (`VideoProcessor`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -1412,6 +1487,10 @@ class LTX2ImageToVideoBlocks(SequentialPipelineBlocks):
               VAE-encoded reference-image latents used for image-to-video conditioning.
           audio_latents (`Tensor`, *optional*):
               Optional pre-encoded audio latents; random noise is used when not provided.
+          motion_speed (`float`, *optional*, defaults to 1.0):
+              Speed of the motion relative to real time. The positional embeddings are conditioned on `frame_rate /
+              motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the Slow-Motion-Control LoRA's 5x
+              slow motion. `frame_rate` stays the playback rate.
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           use_cross_timestep (`bool`, *optional*, defaults to True):
@@ -1462,11 +1541,20 @@ class LTX2ConditionBlocks(SequentialPipelineBlocks):
     arbitrary latent frame indices of the generated video.
 
       Components:
-          prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`) text_encoder (`PreTrainedModel`) tokenizer
-          (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) duration_head (`LTX2DurationHead`) vae
-          (`AutoencoderKLLTX2Video`) transformer (`LTX2VideoTransformer3DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider
-          (`LTX2Guidance`) video_processor (`VideoProcessor`) vocoder (`LTX2Vocoder`)
+          - prompt_enhancer (`PreTrainedModel`)
+          - processor (`ProcessorMixin`)
+          - text_encoder (`PreTrainedModel`)
+          - tokenizer (`PreTrainedTokenizerBase`)
+          - connectors (`LTX2TextConnectors`)
+          - duration_head (`LTX2DurationHead`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
+          - video_processor (`VideoProcessor`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -1511,6 +1599,10 @@ class LTX2ConditionBlocks(SequentialPipelineBlocks):
               The number of images to generate per prompt.
           latents (`Tensor`, *optional*):
               Pre-generated noisy latents for image generation.
+          motion_speed (`float`, *optional*, defaults to 1.0):
+              Speed of the motion relative to real time. The positional embeddings are conditioned on `frame_rate /
+              motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the Slow-Motion-Control LoRA's 5x
+              slow motion. `frame_rate` stays the playback rate.
           noise_scale (`float`, *optional*):
               Initial noise level for the un-conditioned tokens. `None` (default) resolves to `sigmas[0]` when custom
               `sigmas` are supplied, else 1.0.
@@ -1578,11 +1670,19 @@ class LTX2InContextBlocks(SequentialPipelineBlocks):
     `LTX2InContextPipeline`.
 
       Components:
-          prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`) text_encoder (`PreTrainedModel`) tokenizer
-          (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) vae (`AutoencoderKLLTX2Video`) transformer
-          (`LTX2VideoTransformer3DModel`) video_processor (`VideoProcessor`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`) audio_guider
-          (`LTX2Guidance`) vocoder (`LTX2Vocoder`)
+          - prompt_enhancer (`PreTrainedModel`)
+          - processor (`ProcessorMixin`)
+          - text_encoder (`PreTrainedModel`)
+          - tokenizer (`PreTrainedTokenizerBase`)
+          - connectors (`LTX2TextConnectors`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - video_processor (`VideoProcessor`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -1633,6 +1733,10 @@ class LTX2InContextBlocks(SequentialPipelineBlocks):
               `conditioning_attention_strength`.
           frame_rate (`float`, *optional*, defaults to 24.0):
               Frames per second of the generated video.
+          motion_speed (`float`, *optional*, defaults to 1.0):
+              Speed of the motion relative to real time. The positional embeddings are conditioned on `frame_rate /
+              motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the Slow-Motion-Control LoRA's 5x
+              slow motion. `frame_rate` stays the playback rate.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           reference_latents (`Tensor`, *optional*):
@@ -1730,11 +1834,20 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
         - `in_context`: requires `reference_conditions`, `num_frames`, `prompt`
 
       Components:
-          prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`) text_encoder (`PreTrainedModel`) tokenizer
-          (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) duration_head (`LTX2DurationHead`) vae
-          (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) transformer (`LTX2VideoTransformer3DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`)
-          audio_guider (`LTX2Guidance`) vocoder (`LTX2Vocoder`)
+          - prompt_enhancer (`PreTrainedModel`)
+          - processor (`ProcessorMixin`)
+          - text_encoder (`PreTrainedModel`)
+          - tokenizer (`PreTrainedTokenizerBase`)
+          - connectors (`LTX2TextConnectors`)
+          - duration_head (`LTX2DurationHead`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - video_processor (`VideoProcessor`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -1794,6 +1907,10 @@ class LTX2AutoBlocks(SequentialPipelineBlocks):
               Optional pixel-space mask of shape (1, 1, F, H, W) with values in [0, 1] giving spatially varying
               attention strength. Downsampled to the reference's latent grid and multiplied by
               `conditioning_attention_strength`.
+          motion_speed (`float`, *optional*, defaults to 1.0):
+              Speed of the motion relative to real time. The positional embeddings are conditioned on `frame_rate /
+              motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the Slow-Motion-Control LoRA's 5x
+              slow motion. `frame_rate` stays the playback rate.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           condition_latents (`list`, *optional*):

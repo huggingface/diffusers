@@ -22,7 +22,7 @@ from .before_denoise import (
     Krea2TurboSetTimestepsStep,
     Krea2TurboTextInputsStep,
 )
-from .decoders import Krea2DecodeStep
+from .decoders import Krea2DecodeStep, Krea2UnpackLatentsStep
 from .denoise import Krea2TurboDenoiseStep
 from .encoders import Krea2TurboTextEncoderStep
 
@@ -37,6 +37,7 @@ CORE_DENOISE_BLOCKS = InsertableDict(
         ("set_timesteps", Krea2TurboSetTimestepsStep()),
         ("prepare_position_ids", Krea2PreparePositionIdsStep()),
         ("denoise", Krea2TurboDenoiseStep()),
+        ("unpack_latents", Krea2UnpackLatentsStep()),
     ]
 )
 
@@ -49,7 +50,8 @@ class Krea2TurboCoreDenoiseStep(SequentialPipelineBlocks):
     denoised packed latents for the decoder.
 
       Components:
-          transformer (`Krea2Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Krea2Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -107,9 +109,12 @@ class Krea2TurboAutoBlocks(SequentialPipelineBlocks):
         - `text2image`: requires `prompt`
 
       Components:
-          text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`AutoTokenizer`): The tokenizer paired
-          with the text encoder. transformer (`Krea2Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
-          vae (`AutoencoderKLQwenImage`) image_processor (`VaeImageProcessor`)
+          - text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder.
+          - tokenizer (`AutoTokenizer`): The tokenizer paired with the text encoder.
+          - transformer (`Krea2Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - vae (`AutoencoderKLQwenImage`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           prompt (`str`):

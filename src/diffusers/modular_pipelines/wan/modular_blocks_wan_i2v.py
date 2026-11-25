@@ -52,7 +52,8 @@ class WanImage2VideoImageEncoderStep(SequentialPipelineBlocks):
     Image2Video Image Encoder step that resize the image and encode the image to generate the image embeddings
 
       Components:
-          image_processor (`CLIPImageProcessor`) image_encoder (`CLIPVisionModel`)
+          - image_processor (`CLIPImageProcessor`)
+          - image_encoder (`CLIPVisionModel`)
 
       Inputs:
           image (`Image`):
@@ -86,7 +87,8 @@ class WanFLF2VImageEncoderStep(SequentialPipelineBlocks):
     embeddings
 
       Components:
-          image_processor (`CLIPImageProcessor`) image_encoder (`CLIPVisionModel`)
+          - image_processor (`CLIPImageProcessor`)
+          - image_encoder (`CLIPVisionModel`)
 
       Inputs:
           image (`Image`):
@@ -126,7 +128,8 @@ class WanAutoImageEncoderStep(AutoPipelineBlocks):
     not provided, step will be skipped.
 
       Components:
-          image_processor (`CLIPImageProcessor`) image_encoder (`CLIPVisionModel`)
+          - image_processor (`CLIPImageProcessor`)
+          - image_encoder (`CLIPVisionModel`)
 
       Inputs:
           image (`Image`, *optional*):
@@ -176,7 +179,8 @@ class WanImage2VideoVaeEncoderStep(SequentialPipelineBlocks):
     representation
 
       Components:
-          vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
 
       Inputs:
           image (`Image`):
@@ -216,7 +220,8 @@ class WanFLF2VVaeEncoderStep(SequentialPipelineBlocks):
     latent conditions
 
       Components:
-          vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
 
       Inputs:
           image (`Image`):
@@ -267,7 +272,8 @@ class WanAutoVaeEncoderStep(AutoPipelineBlocks):
     provided, step will be skipped.
 
       Components:
-          vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
 
       Inputs:
           image (`Image`, *optional*):
@@ -325,7 +331,9 @@ class WanImage2VideoCoreDenoiseStep(SequentialPipelineBlocks):
     denoise block that takes encoded text and image latent conditions and runs the denoising process.
 
       Components:
-          transformer (`WanTransformer3DModel`) scheduler (`UniPCMultistepScheduler`) guider (`ClassifierFreeGuidance`)
+          - transformer (`WanTransformer3DModel`)
+          - scheduler (`UniPCMultistepScheduler`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           num_videos_per_prompt (`None`, *optional*, defaults to 1):
@@ -403,10 +411,15 @@ class WanImage2VideoAutoBlocks(SequentialPipelineBlocks):
         - `flf2v`: requires `last_image`, `image`, `prompt`
 
       Components:
-          text_encoder (`UMT5EncoderModel`) tokenizer (`AutoTokenizer`) guider (`ClassifierFreeGuidance`)
-          image_processor (`CLIPImageProcessor`) image_encoder (`CLIPVisionModel`) vae (`AutoencoderKLWan`)
-          video_processor (`VideoProcessor`) transformer (`WanTransformer3DModel`) scheduler
-          (`UniPCMultistepScheduler`)
+          - text_encoder (`UMT5EncoderModel`)
+          - tokenizer (`AutoTokenizer`)
+          - guider (`ClassifierFreeGuidance`)
+          - image_processor (`CLIPImageProcessor`)
+          - image_encoder (`CLIPVisionModel`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
+          - transformer (`WanTransformer3DModel`)
+          - scheduler (`UniPCMultistepScheduler`)
 
       Inputs:
           prompt (`None`, *optional*):

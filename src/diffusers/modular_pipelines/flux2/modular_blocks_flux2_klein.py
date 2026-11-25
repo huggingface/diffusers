@@ -47,7 +47,8 @@ class Flux2KleinVaeEncoderSequentialStep(SequentialPipelineBlocks):
     VAE encoder step that preprocesses and encodes the image inputs into their latent representations.
 
       Components:
-          image_processor (`Flux2ImageProcessor`) vae (`AutoencoderKLFlux2`)
+          - image_processor (`Flux2ImageProcessor`)
+          - vae (`AutoencoderKLFlux2`)
 
       Inputs:
           image (`None`, *optional*):
@@ -85,7 +86,8 @@ class Flux2KleinAutoVaeEncoderStep(AutoPipelineBlocks):
        - If `image` is not provided, step will be skipped.
 
       Components:
-          image_processor (`Flux2ImageProcessor`) vae (`AutoencoderKLFlux2`)
+          - image_processor (`Flux2ImageProcessor`)
+          - vae (`AutoencoderKLFlux2`)
 
       Inputs:
           image (`None`, *optional*):
@@ -143,7 +145,8 @@ class Flux2KleinCoreDenoiseStep(SequentialPipelineBlocks):
     generation.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`Flux2Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Flux2Transformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`None`, *optional*, defaults to 1):
@@ -211,7 +214,8 @@ class Flux2KleinImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoise step that performs the denoising process for Flux2-Klein (distilled model) with image conditioning.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`Flux2Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Flux2Transformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`None`, *optional*, defaults to 1):
@@ -267,7 +271,8 @@ class Flux2KleinAutoCoreDenoiseStep(AutoPipelineBlocks):
        - `Flux2KleinImageConditionedCoreDenoiseStep` is used for image-conditioned generation.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`Flux2Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Flux2Transformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`None`, *optional*, defaults to 1):
@@ -330,11 +335,15 @@ class Flux2KleinAutoBlocks(SequentialPipelineBlocks):
         - `image_conditioned`: requires `image`, `prompt`
 
       Components:
-          text_encoder (`Qwen3ForCausalLM`) tokenizer (`Qwen2Tokenizer`) image_processor (`Flux2ImageProcessor`) vae
-          (`AutoencoderKLFlux2`) scheduler (`FlowMatchEulerDiscreteScheduler`) transformer (`Flux2Transformer2DModel`)
+          - text_encoder (`Qwen3ForCausalLM`)
+          - tokenizer (`Qwen2Tokenizer`)
+          - image_processor (`Flux2ImageProcessor`)
+          - vae (`AutoencoderKLFlux2`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Flux2Transformer2DModel`)
 
       Configs:
-          is_distilled (default: True)
+          - is_distilled (default: True)
 
       Inputs:
           prompt (`None`, *optional*):

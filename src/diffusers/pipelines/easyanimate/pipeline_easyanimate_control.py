@@ -695,7 +695,7 @@ class EasyAnimateControlPipeline(DiffusionPipeline):
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         guidance_rescale: float = 0.0,
         timesteps: list[int] | None = None,
-    ):
+    ) -> EasyAnimatePipelineOutput | tuple:
         r"""
         Generates images or video using the EasyAnimate pipeline based on the provided prompts.
 

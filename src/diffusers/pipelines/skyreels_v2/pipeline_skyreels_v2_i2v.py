@@ -26,7 +26,7 @@ from ...loaders import SkyReelsV2LoraLoaderMixin
 from ...models import AutoencoderKLWan, SkyReelsV2Transformer3DModel
 from ...schedulers import UniPCMultistepScheduler
 from ...utils import is_ftfy_available, is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import SkyReelsV2PipelineOutput
@@ -209,7 +209,8 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, SkyReelsV2LoraLoaderMixi
         text_input_ids, mask = text_inputs.input_ids, text_inputs.attention_mask
         seq_lens = mask.gt(0).sum(dim=1).long()
 
-        prompt_embeds = self.text_encoder(text_input_ids.to(device), mask.to(device)).last_hidden_state
+        model_device = get_module_execution_device(self.text_encoder)
+        prompt_embeds = self.text_encoder(text_input_ids.to(model_device), mask.to(model_device)).last_hidden_state
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         prompt_embeds = [u[:v] for u, v in zip(prompt_embeds, seq_lens)]
         prompt_embeds = torch.stack(
@@ -230,9 +231,11 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, SkyReelsV2LoraLoaderMixi
         device: torch.device | None = None,
     ):
         device = device or self._execution_device
-        image = self.image_processor(images=image, return_tensors="pt").to(device)
+        image = self.image_processor(images=image, return_tensors="pt").to(
+            get_module_execution_device(self.image_encoder)
+        )
         image_embeds = self.image_encoder(**image, output_hidden_states=True)
-        return image_embeds.hidden_states[-2]
+        return image_embeds.hidden_states[-2].to(device)
 
     # Copied from diffusers.pipelines.wan.pipeline_wan_i2v.WanImageToVideoPipeline.encode_prompt
     def encode_prompt(
@@ -498,7 +501,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, SkyReelsV2LoraLoaderMixi
         callback_on_step_end: Callable[[int, int], None] | PipelineCallback | MultiPipelineCallbacks | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
-    ):
+    ) -> SkyReelsV2PipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 
@@ -678,7 +681,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, SkyReelsV2LoraLoaderMixi
                 latent_model_input = torch.cat([latents, condition], dim=1).to(transformer_dtype)
                 timestep = t.expand(latents.shape[0])
 
-                with self.transformer.cache_context("cond"):
+                with self.transformer.cache_context("cond", timestep=t):
                     noise_pred = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep,
@@ -689,7 +692,7 @@ class SkyReelsV2ImageToVideoPipeline(DiffusionPipeline, SkyReelsV2LoraLoaderMixi
                     )[0]
 
                 if self.do_classifier_free_guidance:
-                    with self.transformer.cache_context("uncond"):
+                    with self.transformer.cache_context("uncond", timestep=t):
                         noise_uncond = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,

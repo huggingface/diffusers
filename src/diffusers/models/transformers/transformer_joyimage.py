@@ -48,11 +48,14 @@ def _apply_rotary_emb(
     sin = freqs_cis[1].view(*shape).to(xq.device)
 
     def _rotate_half(x):
-        x_real, x_imag = x.float().reshape(*x.shape[:-1], -1, 2).unbind(-1)
+        x_real, x_imag = x.reshape(*x.shape[:-1], -1, 2).unbind(-1)
         return torch.stack([-x_imag, x_real], dim=-1).flatten(3)
 
-    xq_out = (xq.float() * cos + _rotate_half(xq) * sin).type_as(xq)
-    xk_out = (xk.float() * cos + _rotate_half(xk) * sin).type_as(xk)
+    # cast `cos`/`sin` to at least float32 so that input is promoted to float32 inside the multiplication
+    compute_dtype = torch.promote_types(torch.float32, cos.dtype)
+    cos, sin = cos.to(compute_dtype), sin.to(compute_dtype)
+    xq_out = (xq * cos + _rotate_half(xq) * sin).type_as(xq)
+    xk_out = (xk * cos + _rotate_half(xk) * sin).type_as(xk)
     return xq_out, xk_out
 
 
@@ -350,7 +353,7 @@ class JoyImageTimeTextImageEmbedding(nn.Module):
         self,
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-    ):
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         timestep = self.timesteps_proj(timestep)
 
         time_embedder_dtype = next(iter(self.time_embedder.parameters())).dtype
@@ -525,7 +528,7 @@ class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
         timestep: torch.Tensor,
         encoder_hidden_states: torch.Tensor = None,
         return_dict: bool = True,
-    ):
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`JoyImageEditTransformer3DModel`] forward method.
 
@@ -539,6 +542,10 @@ class JoyImageEditTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_2d.Transformer2DModelOutput`] instead of a plain
                 tuple.
+
+        Returns:
+            If `return_dict` is True, a [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
+            `tuple` where the first element is the sample tensor.
         """
         # handle multi-item input (b, n, c, t, h, w)
         is_multi_item = hidden_states.ndim == 6

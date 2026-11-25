@@ -25,7 +25,8 @@ class Cosmos3DistilledAutoVaeEncoderStep(ConditionalPipelineBlocks):
        - when no image or video conditioning is provided, this block is skipped.
 
       Components:
-          vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
 
       Inputs:
           video (`None`, *optional*):
@@ -83,10 +84,12 @@ class Cosmos3DistilledVisionCoreDenoiseStep(SequentialPipelineBlocks):
     Runs the text-and-vision distilled Cosmos3 denoising workflow.
 
       Components:
-          transformer (`Cosmos3OmniTransformer`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Cosmos3OmniTransformer`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Configs:
-          is_distilled (default: True) distilled_sigmas (default: None)
+          - is_distilled (default: True)
+          - distilled_sigmas (default: None)
 
       Inputs:
           cond_input_ids (`None`):
@@ -114,6 +117,15 @@ class Cosmos3DistilledVisionCoreDenoiseStep(SequentialPipelineBlocks):
           guidance_scale (`float`, *optional*):
               Unused for distilled checkpoints; classifier-free guidance is baked into the weights and the scale is
               forced to 1.0. Passing a value other than 1.0 raises an error.
+          mixed_precision_format (`str`, *optional*):
+              None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
+              ModelOpt FP8 only.
+          mixed_precision_first_steps (`int`, *optional*):
+              Optional leading W8A16 step count.
+          mixed_precision_last_steps (`int`, *optional*):
+              Optional trailing W8A16 step count.
+          mixed_precision_reasoner_policy (`str`, *optional*):
+              Optional reasoner path: 'high_precision' (W8A16) or 'base_precision' (native W8A8).
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
 
@@ -161,12 +173,17 @@ class Cosmos3DistilledBlocks(SequentialPipelineBlocks):
         - `video2video`: requires `prompt`, `video`
 
       Components:
-          text_tokenizer (`AutoTokenizer`) vae (`AutoencoderKLWan`) video_processor (`VideoProcessor`) transformer
-          (`Cosmos3OmniTransformer`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - text_tokenizer (`AutoTokenizer`)
+          - vae (`AutoencoderKLWan`)
+          - video_processor (`VideoProcessor`)
+          - transformer (`Cosmos3OmniTransformer`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Configs:
-          default_use_system_prompt (default: True) enable_safety_checker (default: True) is_distilled (default: True)
-          distilled_sigmas (default: None)
+          - default_use_system_prompt (default: True)
+          - enable_safety_checker (default: True)
+          - is_distilled (default: True)
+          - distilled_sigmas (default: None)
 
       Inputs:
           prompt (`str`):
@@ -179,7 +196,7 @@ class Cosmos3DistilledBlocks(SequentialPipelineBlocks):
               Width of the generated video or image in pixels.
           fps (`float`, *optional*, defaults to 24.0):
               Frame rate of the generated video.
-          use_system_prompt (`bool`, *optional*, defaults to True):
+          use_system_prompt (`bool | NoneType`, *optional*):
               Whether to prepend the Cosmos3 system prompt.
           add_resolution_template (`bool`, *optional*, defaults to True):
               Whether to add resolution metadata to the prompt.
@@ -206,6 +223,15 @@ class Cosmos3DistilledBlocks(SequentialPipelineBlocks):
           guidance_scale (`float`, *optional*):
               Unused for distilled checkpoints; classifier-free guidance is baked into the weights and the scale is
               forced to 1.0. Passing a value other than 1.0 raises an error.
+          mixed_precision_format (`str`, *optional*):
+              None follows the ModelOpt FP8 checkpoint schedule; 'none' keeps the native quantized forward; 'fp8' is
+              ModelOpt FP8 only.
+          mixed_precision_first_steps (`int`, *optional*):
+              Optional leading W8A16 step count.
+          mixed_precision_last_steps (`int`, *optional*):
+              Optional trailing W8A16 step count.
+          mixed_precision_reasoner_policy (`str`, *optional*):
+              Optional reasoner path: 'high_precision' (W8A16) or 'base_precision' (native W8A8).
           **denoiser_input_fields (`None`, *optional*):
               conditional model inputs for the denoiser: e.g. prompt_embeds, negative_prompt_embeds, etc.
           output_type (`str`, *optional*, defaults to pil):

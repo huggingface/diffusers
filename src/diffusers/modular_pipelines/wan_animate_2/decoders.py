@@ -20,6 +20,7 @@ from ...configuration_utils import FrozenDict
 from ...utils import logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .modular_pipeline import WanAnimate2ModularPipeline
 from .video_processor import WanAnimate2VideoProcessor
 
 
@@ -87,7 +88,7 @@ class WanAnimate2DecodeStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[WanAnimate2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         video = torch.cat(block_state.segment_frames, dim=2)[:, :, : block_state.real_frame_len]

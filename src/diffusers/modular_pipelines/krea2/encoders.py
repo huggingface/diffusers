@@ -51,8 +51,9 @@ class Krea2TextEncoderStep(ModularPipelineBlocks):
     prompt is encoded the same way when the guider enables CFG.
 
       Components:
-          text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`AutoTokenizer`): The tokenizer paired
-          with the text encoder. guider (`ClassifierFreeGuidance`)
+          - text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder.
+          - tokenizer (`AutoTokenizer`): The tokenizer paired with the text encoder.
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt (`str`):
@@ -110,21 +111,25 @@ class Krea2TextEncoderStep(ModularPipelineBlocks):
             OutputParam(
                 name="prompt_embeds",
                 type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
                 description="Per-prompt stacked text features (B, text_seq_len, num_text_layers, text_hidden_dim).",
             ),
             OutputParam(
                 name="prompt_embeds_mask",
                 type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
                 description="Per-prompt boolean text mask (B, text_seq_len).",
             ),
             OutputParam(
                 name="negative_prompt_embeds",
                 type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
                 description="Per-prompt negative text features (only when guidance is enabled).",
             ),
             OutputParam(
                 name="negative_prompt_embeds_mask",
                 type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
                 description="Per-prompt negative text mask (only when guidance is enabled).",
             ),
         ]
@@ -170,7 +175,9 @@ class Krea2TextEncoderStep(ModularPipelineBlocks):
         return hidden_states, attention_mask
 
     @torch.no_grad()
-    def __call__(self, components: Krea2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Krea2ModularPipeline, state: PipelineState
+    ) -> tuple[Krea2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -205,8 +212,8 @@ class Krea2TurboTextEncoderStep(Krea2TextEncoderStep):
     negative prompt and has no guider.
 
       Components:
-          text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`AutoTokenizer`): The tokenizer paired
-          with the text encoder.
+          - text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder.
+          - tokenizer (`AutoTokenizer`): The tokenizer paired with the text encoder.
 
       Inputs:
           prompt (`str`):
@@ -252,17 +259,21 @@ class Krea2TurboTextEncoderStep(Krea2TextEncoderStep):
             OutputParam(
                 name="prompt_embeds",
                 type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
                 description="Per-prompt stacked text features (B, text_seq_len, num_text_layers, text_hidden_dim).",
             ),
             OutputParam(
                 name="prompt_embeds_mask",
                 type_hint=torch.Tensor,
+                kwargs_type="denoiser_input_fields",
                 description="Per-prompt boolean text mask (B, text_seq_len).",
             ),
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Krea2ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Krea2ModularPipeline, state: PipelineState
+    ) -> tuple[Krea2ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device

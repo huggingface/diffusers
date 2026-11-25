@@ -23,7 +23,7 @@ import torch
 from transformers import AutoTokenizer, T5EncoderModel, UMT5EncoderModel
 
 from diffusers.image_processor import PipelineImageInput
-from diffusers.utils.torch_utils import randn_tensor
+from diffusers.utils.torch_utils import get_module_execution_device, randn_tensor
 from diffusers.video_processor import VideoProcessor
 
 from ...callbacks import MultiPipelineCallbacks, PipelineCallback
@@ -205,7 +205,8 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
         text_input_ids, mask = text_inputs.input_ids, text_inputs.attention_mask
         seq_lens = mask.gt(0).sum(dim=1).long()
 
-        prompt_embeds = self.text_encoder(text_input_ids.to(device), mask.to(device)).last_hidden_state
+        model_device = get_module_execution_device(self.text_encoder)
+        prompt_embeds = self.text_encoder(text_input_ids.to(model_device), mask.to(model_device)).last_hidden_state
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
         prompt_embeds = [u[:v] for u, v in zip(prompt_embeds, seq_lens)]
         prompt_embeds = torch.stack(
@@ -671,7 +672,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
         ar_step: int = 0,
         causal_block_size: int | None = None,
         fps: int = 24,
-    ):
+    ) -> SkyReelsV2PipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 
@@ -963,7 +964,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
                         )
                         timestep[:, valid_interval_start:prefix_video_latents_frames] = addnoise_condition
 
-                    with self.transformer.cache_context("cond"):
+                    with self.transformer.cache_context("cond", timestep=t):
                         noise_pred = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep,
@@ -975,7 +976,7 @@ class SkyReelsV2DiffusionForcingImageToVideoPipeline(DiffusionPipeline, SkyReels
                         )[0]
 
                     if self.do_classifier_free_guidance:
-                        with self.transformer.cache_context("uncond"):
+                        with self.transformer.cache_context("uncond", timestep=t):
                             noise_uncond = self.transformer(
                                 hidden_states=latent_model_input,
                                 timestep=timestep,

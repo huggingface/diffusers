@@ -91,9 +91,21 @@ else:
         "Flux2KleinModularPipeline",
         "Flux2KleinBaseModularPipeline",
     ]
+    _import_structure["flux3"] = [
+        "Flux3AutoBlocks",
+        "Flux3DistilledAutoBlocks",
+        "Flux3DistilledModularPipeline",
+        "Flux3ModularPipeline",
+    ]
     _import_structure["ideogram4"] = [
         "Ideogram4AutoBlocks",
         "Ideogram4ModularPipeline",
+    ]
+    _import_structure["kandinsky_s2v"] = [
+        "KandinskyS2VAutoBlocks",
+        "KandinskyS2VDistilledAutoBlocks",
+        "KandinskyS2VDistilledModularPipeline",
+        "KandinskyS2VModularPipeline",
     ]
     _import_structure["krea2"] = [
         "Krea2AutoBlocks",
@@ -111,6 +123,12 @@ else:
         "QwenImageLayeredModularPipeline",
         "QwenImageLayeredAutoBlocks",
     ]
+    _import_structure["qwenimage21"] = [
+        "QwenImage21AutoBlocks",
+        "QwenImage21ModularPipeline",
+        "QwenImage21TurboAutoBlocks",
+        "QwenImage21TurboModularPipeline",
+    ]
     _import_structure["anima"] = [
         "AnimaAutoBlocks",
         "AnimaModularPipeline",
@@ -124,6 +142,10 @@ else:
     _import_structure["ernie_image"] = [
         "ErnieImageAutoBlocks",
         "ErnieImageModularPipeline",
+    ]
+    _import_structure["echo"] = [
+        "EchoBlocks",
+        "EchoModularPipeline",
     ]
     _import_structure["hunyuan_video1_5"] = [
         "HunyuanVideo15AutoBlocks",
@@ -143,9 +165,30 @@ else:
         "MiniMaxH3Blocks",
         "MiniMaxH3ModularPipeline",
     ]
+    _import_structure["minimax_h3_image"] = [
+        "MiniMaxH3ImageBlocks",
+        "MiniMaxH3ImageModularPipeline",
+    ]
     _import_structure["minimax_music3"] = [
         "MiniMaxMusic3Blocks",
         "MiniMaxMusic3ModularPipeline",
+    ]
+    _import_structure["pan2"] = [
+        "PAN2Blocks",
+        "PAN2ModularPipeline",
+        "PAN2SafetyChecker",
+    ]
+    _import_structure["p_h3_image"] = [
+        "PH3ImageBlocks",
+        "PH3ImageModularPipeline",
+    ]
+    _import_structure["p_image_oss"] = [
+        "PImageOSSBlocks",
+        "PImageOSSModularPipeline",
+    ]
+    _import_structure["pika_h3_flex"] = [
+        "PikaH3FlexBlocks",
+        "PikaH3FlexModularPipeline",
     ]
     _import_structure["z_image"] = [
         "ZImageAutoBlocks",
@@ -168,6 +211,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Cosmos3OmniBlocks,
             Cosmos3OmniModularPipeline,
         )
+        from .echo import EchoBlocks, EchoModularPipeline
         from .ernie_image import ErnieImageAutoBlocks, ErnieImageModularPipeline
         from .flux import FluxAutoBlocks, FluxKontextAutoBlocks, FluxKontextModularPipeline, FluxModularPipeline
         from .flux2 import (
@@ -177,6 +221,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             Flux2KleinBaseModularPipeline,
             Flux2KleinModularPipeline,
             Flux2ModularPipeline,
+        )
+        from .flux3 import (
+            Flux3AutoBlocks,
+            Flux3DistilledAutoBlocks,
+            Flux3DistilledModularPipeline,
+            Flux3ModularPipeline,
         )
         from .helios import (
             HeliosAutoBlocks,
@@ -193,6 +243,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .ideogram4 import (
             Ideogram4AutoBlocks,
             Ideogram4ModularPipeline,
+        )
+        from .kandinsky_s2v import (
+            KandinskyS2VAutoBlocks,
+            KandinskyS2VDistilledAutoBlocks,
+            KandinskyS2VDistilledModularPipeline,
+            KandinskyS2VModularPipeline,
         )
         from .krea2 import (
             Krea2AutoBlocks,
@@ -216,6 +272,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             MiniMaxH3Blocks,
             MiniMaxH3ModularPipeline,
         )
+        from .minimax_h3_image import (
+            MiniMaxH3ImageBlocks,
+            MiniMaxH3ImageModularPipeline,
+        )
         from .minimax_music3 import (
             MiniMaxMusic3Blocks,
             MiniMaxMusic3ModularPipeline,
@@ -231,6 +291,19 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SequentialPipelineBlocks,
         )
         from .modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, InsertableDict, OutputParam
+        from .p_h3_image import (
+            PH3ImageBlocks,
+            PH3ImageModularPipeline,
+        )
+        from .p_image_oss import (
+            PImageOSSBlocks,
+            PImageOSSModularPipeline,
+        )
+        from .pan2 import PAN2Blocks, PAN2ModularPipeline, PAN2SafetyChecker
+        from .pika_h3_flex import (
+            PikaH3FlexBlocks,
+            PikaH3FlexModularPipeline,
+        )
         from .qwenimage import (
             QwenImageAutoBlocks,
             QwenImageEditAutoBlocks,
@@ -240,6 +313,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             QwenImageLayeredAutoBlocks,
             QwenImageLayeredModularPipeline,
             QwenImageModularPipeline,
+        )
+        from .qwenimage21 import (
+            QwenImage21AutoBlocks,
+            QwenImage21ModularPipeline,
+            QwenImage21TurboAutoBlocks,
+            QwenImage21TurboModularPipeline,
         )
         from .stable_diffusion_3 import StableDiffusion3AutoBlocks, StableDiffusion3ModularPipeline
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline

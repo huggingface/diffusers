@@ -22,7 +22,7 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
-from ...utils import apply_lora_scale, deprecate, is_torch_version, logging
+from ...utils import apply_lora_scale, deprecate, logging
 from ...utils.torch_utils import maybe_allow_in_graph
 from .._modeling_parallel import ContextParallelInput, ContextParallelOutput
 from ..attention import AttentionMixin, AttentionModuleMixin, FeedForward
@@ -53,12 +53,6 @@ class LTXVideoAttnProcessor:
 
     _attention_backend = None
     _parallel_config = None
-
-    def __init__(self):
-        if is_torch_version("<", "2.0"):
-            raise ValueError(
-                "LTX attention processors require a minimum PyTorch version of 2.0. Please upgrade your PyTorch installation."
-            )
 
     def __call__(
         self,
@@ -505,7 +499,7 @@ class LTXVideoTransformer3DModel(
         video_coords: torch.Tensor | None = None,
         attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> torch.Tensor:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`LTXVideoTransformer3DModel`] forward method.
 
@@ -597,5 +591,8 @@ def apply_rotary_emb(x, freqs):
     cos, sin = freqs
     x_real, x_imag = x.unflatten(2, (-1, 2)).unbind(-1)  # [B, S, C // 2]
     x_rotated = torch.stack([-x_imag, x_real], dim=-1).flatten(2)
-    out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+    # cast `cos`/`sin` to at least float32 so that input is promoted to float32 inside the multiplication
+    compute_dtype = torch.promote_types(torch.float32, cos.dtype)
+    cos, sin = cos.to(compute_dtype), sin.to(compute_dtype)
+    out = (x * cos + x_rotated * sin).to(x.dtype)
     return out

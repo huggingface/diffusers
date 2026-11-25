@@ -712,7 +712,7 @@ class StableDiffusion3PAGPipeline(DiffusionPipeline, SD3LoraLoaderMixin, FromSin
         max_sequence_length: int = 256,
         pag_scale: float = 3.0,
         pag_adaptive_scale: float = 0.0,
-    ):
+    ) -> StableDiffusion3PipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 

@@ -282,7 +282,7 @@ class QwenImageEditResizeStep(ModularPipelineBlocks):
     Image Resize step that resize the image to target area while maintaining the aspect ratio.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`)
+          - image_resize_processor (`VaeImageProcessor`)
 
       Inputs:
           image (`Image | list`):
@@ -325,7 +325,9 @@ class QwenImageEditResizeStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         images = block_state.image
@@ -356,7 +358,7 @@ class QwenImageLayeredResizeStep(ModularPipelineBlocks):
     maintaining the aspect ratio.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`)
+          - image_resize_processor (`VaeImageProcessor`)
 
       Inputs:
           image (`Image | list`):
@@ -414,7 +416,9 @@ class QwenImageLayeredResizeStep(ModularPipelineBlocks):
             raise ValueError(f"Resolution must be 1024 or 640 but is {resolution}")
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         self.check_inputs(resolution=block_state.resolution)
@@ -449,7 +453,7 @@ class QwenImageEditPlusResizeStep(ModularPipelineBlocks):
       encoding. Each image is resized independently based on its own aspect ratio.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`)
+          - image_resize_processor (`VaeImageProcessor`)
 
       Inputs:
           image (`Image | list`):
@@ -505,7 +509,9 @@ class QwenImageEditPlusResizeStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         images = block_state.image
@@ -551,7 +557,8 @@ class QwenImageLayeredGetImagePromptStep(ModularPipelineBlocks):
       passes through unchanged.
 
       Components:
-          text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor (`Qwen2VLProcessor`)
+          - text_encoder (`Qwen2_5_VLForConditionalGeneration`)
+          - processor (`Qwen2VLProcessor`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -619,7 +626,9 @@ class QwenImageLayeredGetImagePromptStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -663,8 +672,9 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
     Text Encoder step that generates text embeddings to guide the image generation.
 
       Components:
-          text_encoder (`Qwen2_5_VLForConditionalGeneration`): The text encoder to use tokenizer (`Qwen2Tokenizer`):
-          The tokenizer to use guider (`ClassifierFreeGuidance`)
+          - text_encoder (`Qwen2_5_VLForConditionalGeneration`): The text encoder to use
+          - tokenizer (`Qwen2Tokenizer`): The tokenizer to use
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt (`str`):
@@ -743,7 +753,9 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
             raise ValueError(f"`max_sequence_length` cannot be greater than 1024 but is {max_sequence_length}")
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -793,8 +805,9 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
     generation.
 
       Components:
-          text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor (`Qwen2VLProcessor`) guider
-          (`ClassifierFreeGuidance`)
+          - text_encoder (`Qwen2_5_VLForConditionalGeneration`)
+          - processor (`Qwen2VLProcessor`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt (`str`):
@@ -874,7 +887,9 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         self.check_inputs(block_state.prompt, block_state.negative_prompt)
@@ -916,8 +931,9 @@ class QwenImageEditPlusTextEncoderStep(ModularPipelineBlocks):
     embeddings for guiding image generation.
 
       Components:
-          text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor (`Qwen2VLProcessor`) guider
-          (`ClassifierFreeGuidance`)
+          - text_encoder (`Qwen2_5_VLForConditionalGeneration`)
+          - processor (`Qwen2VLProcessor`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt (`str`):
@@ -1002,7 +1018,9 @@ class QwenImageEditPlusTextEncoderStep(ModularPipelineBlocks):
             raise ValueError(f"`negative_prompt` has to be of type `str` or `list` but is {type(negative_prompt)}")
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         self.check_inputs(block_state.prompt, block_state.negative_prompt)
@@ -1053,7 +1071,7 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
     resized to the given height and width.
 
       Components:
-          image_mask_processor (`InpaintProcessor`)
+          - image_mask_processor (`InpaintProcessor`)
 
       Inputs:
           mask_image (`Image`):
@@ -1132,7 +1150,9 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
             raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         self.check_inputs(
@@ -1162,7 +1182,7 @@ class QwenImageEditInpaintProcessImagesInputStep(ModularPipelineBlocks):
     resized first.
 
       Components:
-          image_mask_processor (`InpaintProcessor`)
+          - image_mask_processor (`InpaintProcessor`)
 
       Inputs:
           mask_image (`Image`):
@@ -1228,7 +1248,9 @@ class QwenImageEditInpaintProcessImagesInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         width, height = block_state.resized_image[0].size
@@ -1253,7 +1275,7 @@ class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
     Image Preprocess step. will resize the image to the given height and width.
 
       Components:
-          image_processor (`VaeImageProcessor`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           image (`Image | list`):
@@ -1312,7 +1334,9 @@ class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
             raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         self.check_inputs(
@@ -1337,7 +1361,7 @@ class QwenImageEditProcessImagesInputStep(ModularPipelineBlocks):
     Image Preprocess step. Images needs to be resized first.
 
       Components:
-          image_processor (`VaeImageProcessor`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           resized_image (`list`):
@@ -1387,7 +1411,9 @@ class QwenImageEditProcessImagesInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         width, height = block_state.resized_image[0].size
@@ -1409,7 +1435,7 @@ class QwenImageEditPlusProcessImagesInputStep(ModularPipelineBlocks):
     processed images.
 
       Components:
-          image_processor (`VaeImageProcessor`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           resized_image (`list`):
@@ -1459,7 +1485,9 @@ class QwenImageEditPlusProcessImagesInputStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState):
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         image = block_state.resized_image
@@ -1496,7 +1524,7 @@ class QwenImageVaeEncoderStep(ModularPipelineBlocks):
       Handles both single images and lists of images with varied resolutions.
 
       Components:
-          vae (`AutoencoderKLQwenImage`)
+          - vae (`AutoencoderKLQwenImage`)
 
       Inputs:
           processed_image (`Tensor`):
@@ -1563,7 +1591,9 @@ class QwenImageVaeEncoderStep(ModularPipelineBlocks):
         return [self._output]  # default is "image_latents"
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device
@@ -1603,8 +1633,9 @@ class QwenImageControlNetVaeEncoderStep(ModularPipelineBlocks):
     VAE Encoder step that converts `control_image` into latent representations control_image_latents.
 
       Components:
-          vae (`AutoencoderKLQwenImage`) controlnet (`QwenImageControlNetModel`) control_image_processor
-          (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
+          - controlnet (`QwenImageControlNetModel`)
+          - control_image_processor (`VaeImageProcessor`)
 
       Inputs:
           control_image (`Image`):
@@ -1670,7 +1701,9 @@ class QwenImageControlNetVaeEncoderStep(ModularPipelineBlocks):
             raise ValueError(f"Width must be divisible by {vae_scale_factor * 2} but is {width}")
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         self.check_inputs(block_state.height, block_state.width, components.vae_scale_factor)
@@ -1769,7 +1802,7 @@ class QwenImageLayeredPermuteLatentsStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         # Permute: (B, C, 1, H, W) -> (B, 1, C, H, W)

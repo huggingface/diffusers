@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import torch
 from torch import nn
 
 from ..modeling_outputs import Transformer2DModelOutput
@@ -101,7 +102,7 @@ class DualTransformer2DModel(nn.Module):
         attention_mask=None,
         cross_attention_kwargs=None,
         return_dict: bool = True,
-    ):
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         Args:
             hidden_states ( When discrete, `torch.LongTensor` of shape `(batch size, num latent pixels)`.

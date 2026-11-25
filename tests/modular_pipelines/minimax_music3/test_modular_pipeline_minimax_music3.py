@@ -74,6 +74,8 @@ class MiniMaxMusic3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     batch_params = frozenset()
     optional_params = frozenset(["num_inference_steps", "output_type"])
     output_name = "audios"
+    latents_output_name = "latent_chunks"
+    expected_latents_shape = (1, 8, 17)
     expected_workflow_defaults = {
         None: {
             "components": {
@@ -109,10 +111,6 @@ class MiniMaxMusic3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestMiniMaxMusic3ModularPipelineFast(MiniMaxMusic3ModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    @pytest.mark.skip(reason=_SAMPLING_SKIP)
-    def test_float16_inference(self):
-        pass
-
     @pytest.mark.skip(reason="The pipeline generates a single waveform per call; there is no num_images_per_prompt.")
     def test_num_images_per_prompt(self):
         pass

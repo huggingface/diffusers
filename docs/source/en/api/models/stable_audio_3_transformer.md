@@ -13,7 +13,7 @@ specific language governing permissions and limitations under the License.
 # StableAudio3DiTModel
 
 A rectified-flow velocity-prediction Diffusion Transformer (DiT) for audio generation, used in
-[Stable Audio 3](https://stability.ai/news/stable-audio-3).
+[Stable Audio 3](https://stability.ai/news-updates/meet-stable-audio-3-the-model-family-built-for-artistic-experimentation-with-open-weight-models).
 
 Each [`StableAudio3DiTBlock`] performs:
 

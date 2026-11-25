@@ -79,7 +79,7 @@ class BriaFiboAttnProcessor:
         encoder_hidden_states: torch.Tensor = None,
         attention_mask: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor | None = None,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         query, key, value, encoder_query, encoder_key, encoder_value = _get_qkv_projections(
             attn, hidden_states, encoder_hidden_states
         )
@@ -197,7 +197,7 @@ class BriaFiboAttention(torch.nn.Module, AttentionModuleMixin):
         attention_mask: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor | None = None,
         **kwargs,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
         quiet_attn_parameters = {"ip_adapter_masks", "ip_hidden_states"}
         unused_kwargs = [k for k, _ in kwargs.items() if k not in attn_parameters and k not in quiet_attn_parameters]
@@ -216,7 +216,7 @@ class BriaFiboEmbedND(torch.nn.Module):
         self.theta = theta
         self.axes_dim = axes_dim
 
-    def forward(self, ids: torch.Tensor) -> torch.Tensor:
+    def forward(self, ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         n_axes = ids.shape[-1]
         cos_out = []
         sin_out = []
@@ -296,7 +296,7 @@ class BriaFiboTextProjection(nn.Module):
         super().__init__()
         self.linear = nn.Linear(in_features=in_features, out_features=hidden_size, bias=False)
 
-    def forward(self, caption):
+    def forward(self, caption) -> torch.Tensor:
         hidden_states = self.linear(caption)
         return hidden_states
 
@@ -398,7 +398,7 @@ class BriaFiboTimesteps(nn.Module):
         self.scale = scale
         self.time_theta = time_theta
 
-    def forward(self, timesteps):
+    def forward(self, timesteps) -> torch.Tensor:
         t_emb = get_timestep_embedding(
             timesteps,
             self.num_channels,
@@ -419,7 +419,7 @@ class BriaFiboTimestepProjEmbeddings(nn.Module):
         )
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
 
-    def forward(self, timestep, dtype):
+    def forward(self, timestep, dtype) -> torch.Tensor:
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=dtype))  # (N, D)
         return timesteps_emb
@@ -520,7 +520,7 @@ class BriaFiboTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, From
         guidance: torch.Tensor = None,
         joint_attention_kwargs: dict[str, Any] | None = None,
         return_dict: bool = True,
-    ) -> torch.FloatTensor | Transformer2DModelOutput:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
 
         Args:

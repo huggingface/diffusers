@@ -46,9 +46,10 @@ class Ideogram4PromptUpsampleStep(ModularPipelineBlocks):
     `Qwen3VLForConditionalGeneration`); install `outlines` for schema-constrained captions.
 
       Components:
-          text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`Qwen2Tokenizer`): The tokenizer paired
-          with the text encoder. prompt_enhancer_head (`Ideogram4PromptEnhancerHead`): LM head grafted onto the text
-          encoder for prompt upsampling.
+          - text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder.
+          - tokenizer (`Qwen2Tokenizer`): The tokenizer paired with the text encoder.
+          - prompt_enhancer_head (`Ideogram4PromptEnhancerHead`): LM head grafted onto the text encoder for prompt
+            upsampling.
 
       Inputs:
           prompt (`str`):
@@ -133,7 +134,9 @@ class Ideogram4PromptUpsampleStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Ideogram4ModularPipeline, state: PipelineState
+    ) -> tuple[Ideogram4ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         if block_state.prompt_upsampling:
@@ -180,8 +183,8 @@ class Ideogram4TextEncoderStep(ModularPipelineBlocks):
     tokens are appended later (the encoder is causal with image after text, so they never affect the text features).
 
       Components:
-          text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`Qwen2Tokenizer`): The tokenizer paired
-          with the text encoder.
+          - text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder.
+          - tokenizer (`Qwen2Tokenizer`): The tokenizer paired with the text encoder.
 
       Inputs:
           prompt (`str`):
@@ -280,7 +283,9 @@ class Ideogram4TextEncoderStep(ModularPipelineBlocks):
         return [captured[i] for i in QWEN3_VL_ACTIVATION_LAYERS]
 
     @torch.no_grad()
-    def __call__(self, components: Ideogram4ModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: Ideogram4ModularPipeline, state: PipelineState
+    ) -> tuple[Ideogram4ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         device = components._execution_device

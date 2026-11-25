@@ -60,8 +60,7 @@ EXAMPLE_INTERPOLATE_DOC_STRING = """
         ... )
         >>> pipe_prior.to("cuda")
         >>> img1 = load_image(
-        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-        ...     "/kandinsky/cat.png"
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png"
         ... )
         >>> img2 = load_image(
         ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
@@ -387,7 +386,7 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
-    ):
+    ) -> KandinskyPriorPipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 

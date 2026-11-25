@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
-
 from diffusers.modular_pipelines import ErnieImageAutoBlocks, ErnieImageModularPipeline
 
 from ..testing_utils import (
@@ -42,6 +40,7 @@ class ErnieImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = ErnieImageModularPipeline
     pipeline_blocks_class = ErnieImageAutoBlocks
     pretrained_model_name_or_path = "akshan-main/tiny-ernie-image-modular-pipe"
+    expected_latents_shape = (1, 16, 2, 2)
     params = frozenset(["prompt", "height", "width"])
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_images_per_prompt", "latents"])
@@ -60,9 +59,7 @@ class ErnieImageModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestErnieImageModularPipelineFast(ErnieImageModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    @pytest.mark.skip(reason="PE generation is non-deterministic on CPU")
-    def test_float16_inference(self):
-        pass
+    pass
 
 
 class TestErnieImageModularPipelineLoading(ErnieImageModularPipelineTesterConfig, ModularLoadingTesterMixin):

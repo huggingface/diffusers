@@ -46,7 +46,9 @@ class AnimaVaeDecoderStep(ModularPipelineBlocks):
         return [OutputParam.template("images", note="tensor output of the VAE decoder")]
 
     @torch.no_grad()
-    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: AnimaModularPipeline, state: PipelineState
+    ) -> tuple[AnimaModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         latents = block_state.latents.to(components.vae.dtype)
@@ -107,7 +109,9 @@ class AnimaProcessImagesOutputStep(ModularPipelineBlocks):
             raise ValueError(f"Invalid output_type: {output_type}")
 
     @torch.no_grad()
-    def __call__(self, components: AnimaModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: AnimaModularPipeline, state: PipelineState
+    ) -> tuple[AnimaModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         self.check_inputs(block_state.output_type)
 

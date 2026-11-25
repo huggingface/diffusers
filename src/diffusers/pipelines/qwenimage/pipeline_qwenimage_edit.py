@@ -527,7 +527,7 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
         callback_on_step_end: Callable[[int, int], None] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
-    ):
+    ) -> QwenImagePipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
@@ -768,7 +768,7 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
 
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0]).to(latents.dtype)
-                with self.transformer.cache_context("cond"):
+                with self.transformer.cache_context("cond", timestep=t):
                     noise_pred = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep / 1000,
@@ -782,7 +782,7 @@ class QwenImageEditPipeline(DiffusionPipeline, QwenImageLoraLoaderMixin):
                     noise_pred = noise_pred[:, : latents.size(1)]
 
                 if do_true_cfg:
-                    with self.transformer.cache_context("uncond"):
+                    with self.transformer.cache_context("uncond", timestep=t):
                         neg_noise_pred = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep / 1000,

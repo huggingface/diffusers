@@ -72,8 +72,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = pipe.to("cuda")
 
         >>> img = load_image(
-        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-        ...     "/kandinsky/cat.png"
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png"
         ... ).resize((768, 768))
 
 
@@ -215,7 +214,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
         callback: Callable[[int, int, torch.Tensor], None] | None = None,
         callback_steps: int = 1,
         return_dict: bool = True,
-    ):
+    ) -> ImagePipelineOutput | tuple:
         """
         Function invoked when calling the pipeline for generation.
 

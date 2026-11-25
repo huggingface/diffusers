@@ -57,7 +57,9 @@ class QwenImageLoopBeforeDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[QwenImageModularPipeline, BlockState]:
         # one timestep
         block_state.timestep = t.expand(block_state.latents.shape[0]).to(block_state.latents.dtype)
         block_state.latent_model_input = block_state.latents
@@ -88,7 +90,9 @@ class QwenImageEditLoopBeforeDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[QwenImageModularPipeline, BlockState]:
         # one timestep
 
         block_state.latent_model_input = torch.cat([block_state.latents, block_state.image_latents], dim=1)
@@ -138,7 +142,9 @@ class QwenImageLoopBeforeDenoiserControlNet(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: int):
+    def __call__(
+        self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: int
+    ) -> tuple[QwenImageModularPipeline, BlockState]:
         # cond_scale for the timestep (controlnet input)
         if isinstance(block_state.controlnet_keep[i], list):
             block_state.cond_scale = [
@@ -151,16 +157,17 @@ class QwenImageLoopBeforeDenoiserControlNet(ModularPipelineBlocks):
             block_state.cond_scale = controlnet_cond_scale * block_state.controlnet_keep[i]
 
         # run controlnet for the guidance batch
-        controlnet_block_samples = components.controlnet(
-            hidden_states=block_state.latent_model_input,
-            controlnet_cond=block_state.control_image_latents,
-            conditioning_scale=block_state.cond_scale,
-            timestep=block_state.timestep / 1000,
-            img_shapes=block_state.img_shapes,
-            encoder_hidden_states=block_state.prompt_embeds,
-            encoder_hidden_states_mask=block_state.prompt_embeds_mask,
-            return_dict=False,
-        )
+        with components.controlnet.cache_context("inference", timestep=t):
+            controlnet_block_samples = components.controlnet(
+                hidden_states=block_state.latent_model_input,
+                controlnet_cond=block_state.control_image_latents,
+                conditioning_scale=block_state.cond_scale,
+                timestep=block_state.timestep / 1000,
+                img_shapes=block_state.img_shapes,
+                encoder_hidden_states=block_state.prompt_embeds,
+                encoder_hidden_states_mask=block_state.prompt_embeds_mask,
+                return_dict=False,
+            )
 
         block_state.additional_cond_kwargs["controlnet_block_samples"] = controlnet_block_samples
 
@@ -205,7 +212,9 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[QwenImageModularPipeline, BlockState]:
         guider_inputs = {
             "encoder_hidden_states": (
                 getattr(block_state, "prompt_embeds", None),
@@ -231,15 +240,16 @@ class QwenImageLoopDenoiser(ModularPipelineBlocks):
             components.guider.prepare_models(components.transformer)
             cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
 
-            # YiYi TODO: add cache context
-            guider_state_batch.noise_pred = components.transformer(
-                hidden_states=block_state.latent_model_input,
-                timestep=block_state.timestep / 1000,
-                attention_kwargs=block_state.attention_kwargs,
-                return_dict=False,
-                **cond_kwargs,
-                **block_state.additional_cond_kwargs,
-            )[0]
+            context_name = getattr(guider_state_batch, components.guider._identifier_key)
+            with components.transformer.cache_context(context_name, timestep=t):
+                guider_state_batch.noise_pred = components.transformer(
+                    hidden_states=block_state.latent_model_input,
+                    timestep=block_state.timestep / 1000,
+                    attention_kwargs=block_state.attention_kwargs,
+                    return_dict=False,
+                    **cond_kwargs,
+                    **block_state.additional_cond_kwargs,
+                )[0]
 
             components.guider.cleanup_models(components.transformer)
 
@@ -290,7 +300,9 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[QwenImageModularPipeline, BlockState]:
         guider_inputs = {
             "encoder_hidden_states": (
                 getattr(block_state, "prompt_embeds", None),
@@ -316,15 +328,16 @@ class QwenImageEditLoopDenoiser(ModularPipelineBlocks):
             components.guider.prepare_models(components.transformer)
             cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
 
-            # YiYi TODO: add cache context
-            guider_state_batch.noise_pred = components.transformer(
-                hidden_states=block_state.latent_model_input,
-                timestep=block_state.timestep / 1000,
-                attention_kwargs=block_state.attention_kwargs,
-                return_dict=False,
-                **cond_kwargs,
-                **block_state.additional_cond_kwargs,
-            )[0]
+            context_name = getattr(guider_state_batch, components.guider._identifier_key)
+            with components.transformer.cache_context(context_name, timestep=t):
+                guider_state_batch.noise_pred = components.transformer(
+                    hidden_states=block_state.latent_model_input,
+                    timestep=block_state.timestep / 1000,
+                    attention_kwargs=block_state.attention_kwargs,
+                    return_dict=False,
+                    **cond_kwargs,
+                    **block_state.additional_cond_kwargs,
+                )[0]
 
             components.guider.cleanup_models(components.transformer)
 
@@ -366,7 +379,9 @@ class QwenImageLoopAfterDenoiser(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[QwenImageModularPipeline, BlockState]:
         latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(
             block_state.noise_pred,
@@ -419,7 +434,9 @@ class QwenImageLoopAfterDenoiserInpaint(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: QwenImageModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[QwenImageModularPipeline, BlockState]:
         block_state.init_latents_proper = block_state.image_latents
         if i < len(block_state.timesteps) - 1:
             block_state.noise_timestep = block_state.timesteps[i + 1]
@@ -462,11 +479,13 @@ class QwenImageDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
                 type_hint=torch.Tensor,
                 description="The timesteps to use for the denoising process. Can be generated in set_timesteps step.",
             ),
-            InputParam.template("num_inference_steps", required=True),
+            InputParam.template("num_inference_steps", required=True, default=None),
         ]
 
     @torch.no_grad()
-    def __call__(self, components: QwenImageModularPipeline, state: PipelineState) -> PipelineState:
+    def __call__(
+        self, components: QwenImageModularPipeline, state: PipelineState
+    ) -> tuple[QwenImageModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.num_warmup_steps = max(
@@ -508,8 +527,9 @@ class QwenImageDenoiseStep(QwenImageDenoiseLoopWrapper):
       This block supports text2image and image2image tasks for QwenImage.
 
       Components:
-          guider (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -566,8 +586,9 @@ class QwenImageInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
       This block supports inpainting tasks for QwenImage.
 
       Components:
-          guider (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -631,8 +652,10 @@ class QwenImageControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
       This block supports text2img/img2img tasks with controlnet for QwenImage.
 
       Components:
-          guider (`ClassifierFreeGuidance`) controlnet (`QwenImageControlNetModel`) transformer
-          (`QwenImageTransformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - controlnet (`QwenImageControlNetModel`)
+          - transformer (`QwenImageTransformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -697,8 +720,10 @@ class QwenImageInpaintControlNetDenoiseStep(QwenImageDenoiseLoopWrapper):
       This block supports inpainting tasks with controlnet for QwenImage.
 
       Components:
-          guider (`ClassifierFreeGuidance`) controlnet (`QwenImageControlNetModel`) transformer
-          (`QwenImageTransformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - controlnet (`QwenImageControlNetModel`)
+          - transformer (`QwenImageTransformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -775,8 +800,9 @@ class QwenImageEditDenoiseStep(QwenImageDenoiseLoopWrapper):
       This block supports QwenImage Edit.
 
       Components:
-          guider (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -834,8 +860,9 @@ class QwenImageEditInpaintDenoiseStep(QwenImageDenoiseLoopWrapper):
       This block supports inpainting tasks for QwenImage Edit.
 
       Components:
-          guider (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):
@@ -898,8 +925,9 @@ class QwenImageLayeredDenoiseStep(QwenImageDenoiseLoopWrapper):
       This block supports QwenImage Layered.
 
       Components:
-          guider (`ClassifierFreeGuidance`) transformer (`QwenImageTransformer2DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImageTransformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           timesteps (`Tensor`):

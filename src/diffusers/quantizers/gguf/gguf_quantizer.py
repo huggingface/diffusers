@@ -9,15 +9,15 @@ if TYPE_CHECKING:
     from ...models.modeling_utils import ModelMixin
 
 
+from ...dependency_versions_table import deps
 from ...utils import (
     get_module_from_name,
     is_accelerate_available,
-    is_accelerate_version,
     is_gguf_available,
-    is_gguf_version,
     is_torch_available,
     logging,
 )
+from ...utils.torch_utils import get_device
 
 
 if is_torch_available() and is_gguf_available():
@@ -50,13 +50,13 @@ class GGUFQuantizer(DiffusersQuantizer):
             self.modules_to_not_convert = [self.modules_to_not_convert]
 
     def validate_environment(self, *args, **kwargs):
-        if not is_accelerate_available() or is_accelerate_version("<", "0.26.0"):
+        if not is_accelerate_available():
             raise ImportError(
-                "Loading GGUF Parameters requires `accelerate` installed in your environment: `pip install 'accelerate>=0.26.0'`"
+                "Loading GGUF Parameters requires `accelerate` installed in your environment: `pip install -U accelerate`"
             )
-        if not is_gguf_available() or is_gguf_version("<", "0.10.0"):
+        if not is_gguf_available():
             raise ImportError(
-                "To load GGUF format files you must have `gguf` installed in your environment: `pip install gguf>=0.10.0`"
+                f"To load GGUF format files you must have `gguf` installed in your environment: `pip install -U '{deps['gguf']}'`"
             )
 
     # Copied from diffusers.quantizers.bitsandbytes.bnb_quantizer.BnB4BitDiffusersQuantizer.adjust_max_memory
@@ -177,12 +177,7 @@ class GGUFQuantizer(DiffusersQuantizer):
             logger.info(
                 "Model was found to be on CPU (could happen as a result of `enable_model_cpu_offload()`). So, moving it to accelerator. After dequantization, will move the model back to CPU again to preserve the previous device."
             )
-            device = (
-                torch.accelerator.current_accelerator()
-                if hasattr(torch, "accelerator")
-                else torch.cuda.current_device()
-            )
-            model.to(device)
+            model.to(get_device())
 
         model = _dequantize_gguf_and_restore_linear(model, self.modules_to_not_convert)
         if is_model_on_cpu:

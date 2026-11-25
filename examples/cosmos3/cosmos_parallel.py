@@ -431,7 +431,15 @@ def enable_cosmos3_tensor_parallel(transformer, tp_mesh):
     own processor) on a 2-D ``(tp, cp)`` mesh, or with ``enable_cosmos3_flash_attention``
     for TP without CP.
     """
-    from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel, parallelize_module
+    from torch.distributed.tensor.parallel import ColwiseParallel, parallelize_module
+    from torch.distributed.tensor.parallel import RowwiseParallel as TorchRowwiseParallel
+
+    # Skip ModelOpt quantizer children to avoid:
+    # AttributeError: 'TensorQuantizer' object has no attribute 'weight'
+    class RowwiseParallel(TorchRowwiseParallel):
+        def _partition_linear_fn(self, name, module, device_mesh):
+            if isinstance(module, torch.nn.Linear):
+                return super()._partition_linear_fn(name, module, device_mesh)
 
     tp = tp_mesh.size()
     dev = torch.device("cuda", torch.cuda.current_device())

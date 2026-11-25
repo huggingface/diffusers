@@ -22,6 +22,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPV
 from ...image_processor import VaeImageProcessor
 from ...loaders import StableDiffusionLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
+from ...models.condition_embedders import StableUnCLIPImageNormalizer
 from ...models.embeddings import get_timestep_embedding
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
@@ -36,7 +37,6 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput, StableDiffusionMixin
-from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
 
 if is_torch_xla_available():
@@ -646,7 +646,7 @@ class StableUnCLIPImg2ImgPipeline(
         noise_level: int = 0,
         image_embeds: torch.Tensor | None = None,
         clip_skip: int | None = None,
-    ):
+    ) -> ImagePipelineOutput | tuple:
         r"""
         The call function to the pipeline for generation.
 

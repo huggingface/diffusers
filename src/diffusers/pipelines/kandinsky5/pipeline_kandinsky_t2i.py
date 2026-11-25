@@ -175,8 +175,8 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
             scheduler=scheduler,
         )
 
-        self.prompt_template = "<|im_start|>system\nYou are a promt engineer. Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>\n<|im_start|>user\n{}<|im_end|>"
-        self.prompt_template_encode_start_idx = 41
+        self.prompt_template = "<|im_start|>system\nYou are a prompt engineer. Describe the image by detailing the color, shape, size, texture, quantity, text, spatial relationships of the objects and background:<|im_end|>\n<|im_start|>user\n{}<|im_end|>"
+        self.prompt_template_encode_start_idx = 40
 
         self.vae_scale_factor_spatial = 8
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
@@ -555,7 +555,7 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
         callback_on_step_end: Callable[[int, int, None], PipelineCallback | MultiPipelineCallbacks] | None = None,
         callback_on_step_end_tensor_inputs: list[str] = ["latents"],
         max_sequence_length: int = 512,
-    ):
+    ) -> KandinskyImagePipelineOutput | tuple:
         r"""
         The call function to the pipeline for text-to-image generation.
 
@@ -726,30 +726,32 @@ class Kandinsky5T2IPipeline(DiffusionPipeline, KandinskyLoraLoaderMixin):
                 timestep = t.unsqueeze(0).repeat(batch_size * num_images_per_prompt)
 
                 # Predict noise residual
-                pred_velocity = self.transformer(
-                    hidden_states=latents.to(dtype),
-                    encoder_hidden_states=prompt_embeds_qwen.to(dtype),
-                    pooled_projections=prompt_embeds_clip.to(dtype),
-                    timestep=timestep.to(dtype),
-                    visual_rope_pos=visual_rope_pos,
-                    text_rope_pos=text_rope_pos,
-                    scale_factor=scale_factor,
-                    sparse_params=sparse_params,
-                    return_dict=True,
-                ).sample
-
-                if self.guidance_scale > 1.0 and negative_prompt_embeds_qwen is not None:
-                    uncond_pred_velocity = self.transformer(
+                with self.transformer.cache_context("cond", timestep=t):
+                    pred_velocity = self.transformer(
                         hidden_states=latents.to(dtype),
-                        encoder_hidden_states=negative_prompt_embeds_qwen.to(dtype),
-                        pooled_projections=negative_prompt_embeds_clip.to(dtype),
+                        encoder_hidden_states=prompt_embeds_qwen.to(dtype),
+                        pooled_projections=prompt_embeds_clip.to(dtype),
                         timestep=timestep.to(dtype),
                         visual_rope_pos=visual_rope_pos,
-                        text_rope_pos=negative_text_rope_pos,
+                        text_rope_pos=text_rope_pos,
                         scale_factor=scale_factor,
                         sparse_params=sparse_params,
                         return_dict=True,
                     ).sample
+
+                if self.guidance_scale > 1.0 and negative_prompt_embeds_qwen is not None:
+                    with self.transformer.cache_context("uncond", timestep=t):
+                        uncond_pred_velocity = self.transformer(
+                            hidden_states=latents.to(dtype),
+                            encoder_hidden_states=negative_prompt_embeds_qwen.to(dtype),
+                            pooled_projections=negative_prompt_embeds_clip.to(dtype),
+                            timestep=timestep.to(dtype),
+                            visual_rope_pos=visual_rope_pos,
+                            text_rope_pos=negative_text_rope_pos,
+                            scale_factor=scale_factor,
+                            sparse_params=sparse_params,
+                            return_dict=True,
+                        ).sample
 
                     pred_velocity = uncond_pred_velocity + guidance_scale * (pred_velocity - uncond_pred_velocity)
 

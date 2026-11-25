@@ -162,7 +162,7 @@ class PatchedLoraProjection(torch.nn.Module):
         self.w_up = None
         self.w_down = None
 
-    def forward(self, input):
+    def forward(self, input) -> torch.Tensor:
         if self.lora_scale is None:
             self.lora_scale = 1.0
         if self.lora_linear_layer is None:

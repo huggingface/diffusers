@@ -43,6 +43,37 @@ Two checkpoints are released on the Hub — [`nvidia/Cosmos3-Nano`](https://hugg
 > [!TIP]
 > Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reusing-models-in-multiple-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
+## FP8 mixed W8A8/W8A16 denoising
+
+Official ModelOpt FP8 checkpoints for Nano, Super, and Edge are published as their own Hub repos: [`nvidia/Cosmos3-Nano-FP8`](https://huggingface.co/nvidia/Cosmos3-Nano-FP8), [`nvidia/Cosmos3-Super-FP8`](https://huggingface.co/nvidia/Cosmos3-Super-FP8), and [`nvidia/Cosmos3-Edge-FP8`](https://huggingface.co/nvidia/Cosmos3-Edge-FP8). Load `main` of the FP8 repo. [`nvidia/Cosmos3-Super-Image2Video`](https://huggingface.co/nvidia/Cosmos3-Super-Image2Video) does not have a separate FP8 repo; load it with `revision="fp8"`.
+
+All of these checkpoints are quantized the same way. **W8A8** uses 8-bit weights and 8-bit activations (the restored ModelOpt GEMM). **W8A16** reuses those same 8-bit weights but skips activation quantization: the FP8 weight is dequantized and a standard linear runs on BF16/FP16/FP32 activations.
+
+Running W8A8 on every step can produce visible flickering in multi-step video generation. The video Nano, Super, Super-I2V, and Edge FP8 checkpoints therefore declare a schedule in `transformer/config.json`: **W8A16 on the first 3 and last 3 steps**, **W8A8 in the middle**. Diffusers reads those counts from the checkpoint rather than hardcoding them. Precision is chosen once per scheduler step so classifier-free guidance cond/uncond calls match.
+
+Image generation and few-step distilled checkpoints do not show that flickering, so Super-T2I and the distilled 4-step FP8 repos declare no schedule and stay W8A8 on every step. The schedule is also **ModelOpt FP8 only**: other quantization backends (for example TorchAO) keep their native forwards.
+
+Load an FP8 repo with the same restore path as the [ModelOpt guide](../../quantization/modelopt). The repo already carries the quantization config. Mixed precision then follows the checkpoint automatically:
+
+```python
+import torch
+from diffusers import Cosmos3OmniPipeline
+
+pipe = Cosmos3OmniPipeline.from_pretrained(
+    "nvidia/Cosmos3-Nano-FP8",
+    dtype=torch.bfloat16,
+    device_map="cuda",
+)
+result = pipe(prompt="...", num_inference_steps=35)
+```
+
+Two generate-time choices:
+
+- **Default** (`mixed_precision_format=None`): if the checkpoint declares `diffusion_step_policy`, run W8A16 on the first/last N steps and native W8A8 in the middle. That is the intended recipe for multi-step **video** FP8 (less flickering than all-W8A8). Distilled 4-step and Super-T2I FP8 omit the policy, so the default is already all W8A8.
+- **`mixed_precision_format="none"`**: keep every step on native W8A8. Faster, because W8A16 is dequant + `torch.nn.functional.linear` rather than the restored FP8 GEMM, but multi-step video can flicker. Use this to A/B the schedule or to match a fully quantized baseline.
+
+On one Blackwell workstation, Cosmos3-Nano-FP8 at 720×1280 / 35 steps was about **27% slower** (T2I) and **13% slower** (49-frame T2V) with the default mixed schedule than with `"none"`. Those numbers are not a throughput guarantee. Pass `"fp8"` only to force the first/last-N schedule on a ModelOpt FP8 checkpoint that has no policy.
+
 ## Prompt upsampling
 
 Cosmos 3 was trained on long, highly descriptive captions. For optimal quality, short text prompts should be **upsampled into a specific JSON structure** before they are passed to the pipeline. The upsampler lives in the [cosmos-framework](https://github.com/NVIDIA/cosmos-framework) package.
@@ -660,6 +691,39 @@ if result.action is not None:
 </hfoption>
 </hfoptions>
 
+## SeaCache
+
+SeaCache is disabled by default. Cosmos 3 supports enabling it explicitly with [`SeaCacheConfig`]. SeaCache reuses
+transformer residuals when the Spectral-Evolution-Aware indicator changes slowly, reducing the number of full
+transformer executions. It computes the indicator from the raw vision latents, including clean conditioning frames for
+image-to-video generation. Enable it on the transformer with scheduler metadata callbacks from the pipeline:
+
+```python
+import torch
+from diffusers import Cosmos3OmniPipeline, SeaCacheConfig
+
+pipe = Cosmos3OmniPipeline.from_pretrained(
+    "nvidia/Cosmos3-Nano", dtype=torch.bfloat16, device_map="cuda"
+)
+
+pipe.transformer.enable_cache(SeaCacheConfig(threshold=0.2, max_consecutive_cached=2))
+```
+
+The same model-level API works with [`Cosmos3OmniPipeline`], [`Cosmos3OmniModularPipeline`], and
+[`Cosmos3DistilledModularPipeline`]. SeaCache is approximate and can change generated outputs. Disable it with
+`pipe.transformer.disable_cache()` when you need every denoising step to execute the full transformer. Cache state is
+reset after each pipeline call, and conditional and unconditional guidance branches keep independent histories.
+
+Cosmos 3 keeps the SeaCache gate outside its repeated decoder layers, so it is compatible with regional compilation.
+Compile the layers after enabling the cache:
+
+```python
+pipe.transformer.compile_repeated_blocks(fullgraph=True)
+```
+
+SeaCache also supports the Cosmos 3 Ulysses context-parallel and DTensor-based tensor-parallel helpers documented
+below. Cache decisions are synchronized across ranks. Full-model compilation and other model-sharding strategies are not claimed.
+
 ## Context parallelism
 
 For long videos or high resolutions, a single forward pass can exceed the memory and latency budget of one GPU. Cosmos 3 supports **context parallelism (CP)** to shard the sequence dimension across multiple GPUs, splitting the attention computation so each device holds only a slice of the tokens.
@@ -700,7 +764,39 @@ torchrun --nproc_per_node=4 examples/cosmos3/inference_cosmos3.py \
 
 ### Fitting large models with tensor parallelism
 
-CP shards *activations* but replicates every weight on every rank, so it does not reduce a model's weight footprint — a model that doesn't fit on one GPU still won't fit under CP alone. To shard the **weights**, `enable_cosmos3_tensor_parallel(transformer, tp_mesh)` applies Megatron-style tensor parallelism on a second, orthogonal mesh axis:
+CP shards *activations* but replicates every weight on every rank, so it does not reduce a model's weight footprint — a model that doesn't fit on one GPU still won't fit under CP alone.
+
+For TP-only inference, follow the [tensor parallelism guide](../../optimization/tensor_parallelism)
+for distributed setup, launching, seeding, and rank-zero output handling. After initializing the process group
+and selecting each rank's CUDA device, load the modular pipeline as follows:
+
+```python
+import torch
+from diffusers import Cosmos3OmniModularPipeline, Cosmos3OmniTransformer, TensorParallelConfig
+
+model_id = "nvidia/Cosmos3-Super"
+device = torch.device("cuda", torch.cuda.current_device())
+transformer = Cosmos3OmniTransformer.from_pretrained(
+    model_id,
+    subfolder="transformer",
+    dtype=torch.bfloat16,
+    parallel_config=TensorParallelConfig(tp_degree=4),
+)
+pipe = Cosmos3OmniModularPipeline.from_pretrained(model_id)
+pipe.update_components(transformer=transformer)
+pipe.load_components(dtype=torch.bfloat16)
+pipe.enable_safety_checker()
+pipe.to(device)
+```
+
+Continue with the [existing modular workflow](#modular-examples-for-all-existing-workflows)'s scheduler,
+prompts, and generation settings. To use Nano, set `model_id = "nvidia/Cosmos3-Nano"`.
+
+Nano and Super support TP degrees 1, 2, 4, and 8; the degree must divide the query and KV head counts
+and the MLP intermediate size.
+
+To combine TP with CP, the existing example helper
+`enable_cosmos3_tensor_parallel(transformer, tp_mesh)` shards the weights on a second, orthogonal mesh axis:
 
 - The attention and MLP projections are column/row sharded across the TP group (`to_q/to_k/to_v` + `add_q/k/v` and the MLPs' `gate/up` are column-parallel; `to_out/to_add_out` and the MLPs' `down` are row-parallel with an all-reduce). Each rank ends up owning `query_heads / tp` query heads and `kv_heads / tp` KV heads.
 - TP composes with CP on a 2-D `(tp, cp)` device mesh: TP splits heads/weights persistently, CP shards the sequence on top. The constraints are `tp` divides the KV heads (8), and `tp * cp` divides the query heads (32 for `Nano`, 64 for `Super`).
@@ -1063,10 +1159,10 @@ Transfer follows a **precomputed control video** (edge, blur, depth, segmentatio
 | Segmentation | 3.0 | 2.0 | 10.0 | 121 frames @ 30 FPS |
 | World scenario (WSM) | 1.0 | 3.0 | 10.0 | 101 frames @ 10 FPS |
 
-Diffusers does not ship the control assets. Ready-made ones (a control video + matching `prompt.json` per hint, plus a shared `negative_prompt.json`) live in the [Cosmos cookbook](https://github.com/NVIDIA/cosmos/tree/main/cookbooks/cosmos3/generator/transfer/assets). For the edge example below, download them into a local `assets/` folder:
+Diffusers does not ship the control assets. Ready-made ones (a control video + matching `prompt.json` per hint, plus a shared `negative_prompt.json`) live in the [Cosmos cookbook](https://github.com/NVIDIA/cosmos/tree/6e2c69afafd6444c1ca14a021aba93fcc6b7996a/cookbooks/cosmos3/generator/transfer/assets). For the edge example below, download them into a local `assets/` folder:
 
 ```bash
-base=https://github.com/NVIDIA/cosmos/raw/refs/heads/main/cookbooks/cosmos3/generator/transfer/assets
+base=https://github.com/NVIDIA/cosmos/raw/6e2c69afafd6444c1ca14a021aba93fcc6b7996a/cookbooks/cosmos3/generator/transfer/assets
 mkdir -p assets/edge
 curl -sL "$base/edge/control_edge.mp4" -o assets/edge/control_edge.mp4
 curl -sL "$base/edge/prompt.json"      -o assets/edge/prompt.json
@@ -1116,6 +1212,9 @@ not support them. `num_inference_steps` is fixed to the length of the `distilled
 config (from the checkpoint's `modular_model_index.json`) and `guidance_scale` is forced to
 1.0 since guidance is baked into the weights — passing any other value for either raises an error,
 and `negative_prompt` is warned about and ignored.
+
+FP8 distilled checkpoints (`revision="fp8"`) do not declare a mixed-precision policy, so every
+step stays native W8A8.
 
 Prompts follow the same descriptive JSON structure as the non-distilled models, so short text
 must be upsampled first — use `--mode text2image` (T2I) or `--mode image2video` (I2V) as

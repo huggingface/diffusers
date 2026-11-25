@@ -22,6 +22,7 @@ from ...utils import logging
 from ...video_processor import VideoProcessor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
+from .modular_pipeline import HeliosModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -72,7 +73,7 @@ class HeliosDecodeStep(ModularPipelineBlocks):
         ]
 
     @torch.no_grad()
-    def __call__(self, components, state: PipelineState) -> PipelineState:
+    def __call__(self, components, state: PipelineState) -> tuple[HeliosModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         vae = components.vae

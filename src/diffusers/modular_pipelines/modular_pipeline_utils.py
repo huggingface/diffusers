@@ -27,7 +27,7 @@ from ..configuration_utils import ConfigMixin, FrozenDict
 from ..loaders.single_file_utils import _is_single_file_path_or_url
 from ..utils import DIFFUSERS_LOAD_ID_FIELDS, _resolve_dtype, is_sdnq_available, is_torch_available, logging
 from ..utils.constants import DIFFUSERS_SDNQ_TRANSFORMERS
-from ..utils.import_utils import _is_package_available
+from ..utils.import_utils import _is_distribution_installed
 
 
 if is_torch_available():
@@ -571,6 +571,15 @@ class InputParam:
     # resolves its own default at runtime in `get_block_state`
     defaults_by_block: dict[str, Any] = None
 
+    def __post_init__(self):
+        if self.required and self.default is not None:
+            logger.warning(
+                f"InputParam '{self.name}' is required and declares a default ({self.default!r}), which cannot both "
+                f"hold: a required input is never missing, so its default is unreachable. Keeping the default and "
+                f"treating the input as optional. Pass `default=None` explicitly if '{self.name}' is meant to be required."
+            )
+            self.required = False
+
     def __repr__(self):
         return f"<{self.name}: {'required' if self.required else 'optional'}, default={self.default}>"
 
@@ -819,14 +828,14 @@ def format_params_markdown(params, header="Inputs"):
     return "\n".join(lines)
 
 
-def format_components(components, indent_level=4, max_line_length=115, add_empty_lines=True):
+def format_components(components, indent_level=4, *, add_empty_lines=True, list_marker=""):
     """Format a list of ComponentSpec objects into a readable string representation.
 
     Args:
         components: list of ComponentSpec objects to format
         indent_level: Number of spaces to indent each component line (default: 4)
-        max_line_length: Maximum length for each line before wrapping (default: 115)
         add_empty_lines: Whether to add empty lines between components (default: True)
+        list_marker: Prefix for each component name, such as `"- "` for a bullet. Defaults to an empty string.
 
     Returns:
         A formatted string representing all components
@@ -850,7 +859,7 @@ def format_components(components, indent_level=4, max_line_length=115, add_empty
             component.type_hint.__name__ if hasattr(component.type_hint, "__name__") else str(component.type_hint)
         )
 
-        component_desc = f"{component_indent}{component.name} (`{type_name}`)"
+        component_desc = f"{component_indent}{list_marker}{component.name} (`{type_name}`)"
         if component.description:
             component_desc += f": {component.description}"
 
@@ -874,13 +883,12 @@ def format_components(components, indent_level=4, max_line_length=115, add_empty
     return "\n".join(formatted_components)
 
 
-def format_configs(configs, indent_level=4, max_line_length=115, add_empty_lines=True):
+def format_configs(configs, indent_level=4, *, add_empty_lines=True, list_marker=""):
     """Format a list of ConfigSpec objects into a readable string representation.
 
     Args:
         configs: list of ConfigSpec objects to format
         indent_level: Number of spaces to indent each config line (default: 4)
-        max_line_length: Maximum length for each line before wrapping (default: 115)
         add_empty_lines: Whether to add empty lines between configs (default: True)
 
     Returns:
@@ -900,7 +908,7 @@ def format_configs(configs, indent_level=4, max_line_length=115, add_empty_lines
 
     # Add each config with optional empty lines between them
     for i, config in enumerate(configs):
-        config_desc = f"{config_indent}{config.name} (default: {config.default})"
+        config_desc = f"{config_indent}{list_marker}{config.name} (default: {config.default})"
         if config.description:
             config_desc += f": {config.description}"
         formatted_configs.append(config_desc)
@@ -977,12 +985,14 @@ def make_doc_string(
 
     # Add components section if provided
     if expected_components and len(expected_components) > 0:
-        components_str = format_components(expected_components, indent_level=2, add_empty_lines=False)
+        components_str = format_components(
+            expected_components, indent_level=2, add_empty_lines=False, list_marker="- "
+        )
         output += components_str + "\n\n"
 
     # Add configs section if provided
     if expected_configs and len(expected_configs) > 0:
-        configs_str = format_configs(expected_configs, indent_level=2, add_empty_lines=False)
+        configs_str = format_configs(expected_configs, indent_level=2, add_empty_lines=False, list_marker="- ")
         output += configs_str + "\n\n"
 
     # Add inputs section
@@ -1010,7 +1020,9 @@ def _validate_requirements(reqs):
 
     final: dict[str, str] = {}
     for req, specified_ver in normalized_reqs.items():
-        req_available, req_actual_ver = _is_package_available(req)
+        # Requirement names can come straight out of a downloaded `modular_config.json`, so they are resolved against
+        # the installed distributions instead of being handed to the import machinery.
+        req_available, req_actual_ver = _is_distribution_installed(req)
         if not req_available:
             logger.warning(f"{req} was specified in the requirements but wasn't found in the current environment.")
 
@@ -1082,8 +1094,8 @@ def combine_inputs(*named_input_lists: list[tuple[str, list[InputParam]]]) -> li
     """
     Combines multiple lists of InputParam objects from different blocks. Duplicate inputs keep the first occurrence. If
     duplicate inputs declare different defaults, the combined input's default is None and the per-block defaults are
-    recorded in `defaults_by_block`; each block resolves its own default at runtime in `get_block_state`, and the
-    docstring formatters render the per-block defaults.
+    recorded in `defaults_by_block`; the branch that runs fills in its own default when it reads the state
+    (`get_block_state`), and the docstring formatters render the per-block defaults.
 
     Example:
 

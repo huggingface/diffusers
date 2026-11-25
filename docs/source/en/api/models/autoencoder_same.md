@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # AutoencoderSAME
 
-The **SAME** (Semantically-Aligned Music Encoder) autoencoder is used by [Stable Audio 3](https://stability.ai/news/stable-audio-3)
+The **SAME** (Semantically-Aligned Music Encoder) autoencoder is used by [Stable Audio 3](https://stability.ai/news-updates/meet-stable-audio-3-the-model-family-built-for-artistic-experimentation-with-open-weight-models)
 to compress stereo audio waveforms into a compact latent sequence and reconstruct them.
 
 The encoder stacks [`SAMETransformerResamplingBlock`] modules, each of which groups a fixed number of audio

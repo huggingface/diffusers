@@ -30,7 +30,7 @@ from ....utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ....utils.torch_utils import randn_tensor
+from ....utils.torch_utils import get_module_execution_device, randn_tensor
 from ...pipeline_utils import DeprecatedPipelineMixin, DiffusionPipeline, StableDiffusionMixin
 
 
@@ -704,7 +704,9 @@ class TextToVideoZeroSDXLPipeline(
                         f" {tokenizer.model_max_length} tokens: {removed_text}"
                     )
 
-                prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
+                prompt_embeds = text_encoder(
+                    text_input_ids.to(get_module_execution_device(text_encoder)), output_hidden_states=True
+                )
 
                 # We are only ALWAYS interested in the pooled output of the final text encoder
                 if pooled_prompt_embeds is None and prompt_embeds[0].ndim == 2:
@@ -765,7 +767,7 @@ class TextToVideoZeroSDXLPipeline(
                 )
 
                 negative_prompt_embeds = text_encoder(
-                    uncond_input.input_ids.to(device),
+                    uncond_input.input_ids.to(get_module_execution_device(text_encoder)),
                     output_hidden_states=True,
                 )
 
@@ -1059,7 +1061,7 @@ class TextToVideoZeroSDXLPipeline(
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
-                [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             guidance_rescale (`float`, *optional*, defaults to 0.7):
                 Guidance rescale factor proposed by [Common Diffusion Noise Schedules and Sample Steps are
                 Flawed](https://huggingface.co/papers/2305.08891) `guidance_scale` is defined as `φ` in equation 16. of

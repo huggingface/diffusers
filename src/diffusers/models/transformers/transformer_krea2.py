@@ -21,7 +21,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin
+from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import apply_lora_scale, logging
 from ...utils.torch_utils import maybe_adjust_dtype_for_device
 from ..attention import AttentionMixin, AttentionModuleMixin
@@ -314,7 +314,7 @@ class Krea2RotaryPosEmbed(nn.Module):
         self.theta = theta
         self.axes_dim = axes_dim
 
-    def forward(self, ids: torch.Tensor) -> torch.Tensor:
+    def forward(self, ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         n_axes = ids.shape[-1]
         cos_out = []
         sin_out = []
@@ -336,7 +336,7 @@ class Krea2RotaryPosEmbed(nn.Module):
         return freqs_cos, freqs_sin
 
 
-class Krea2Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapterMixin):
+class Krea2Transformer2DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapterMixin, FromOriginalModelMixin):
     r"""
     The single-stream MMDiT flow-matching backbone used by the Krea 2 pipeline.
 

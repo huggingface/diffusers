@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Installation
 
-Diffusers is tested on Python 3.8+ and PyTorch 2.6+. Install [PyTorch](https://pytorch.org/get-started/locally/) according to your system and setup.
+Diffusers requires Python 3.10+ and is tested with PyTorch 2.6+. Install [PyTorch](https://pytorch.org/get-started/locally/) according to your system and setup.
 
 Create a [virtual environment](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/) for easier management of separate projects and to avoid compatibility issues between dependencies. Use [uv](https://docs.astral.sh/uv/), a Rust-based Python package and project manager, to create a virtual environment and install Diffusers.
 
@@ -25,8 +25,6 @@ Install Diffusers with one of the following methods.
 
 <hfoptions id="install">
 <hfoption id="pip">
-
-PyTorch only supports Python 3.8 - 3.11 on Windows.
 
 ```bash
 uv pip install diffusers["torch"] transformers
@@ -76,6 +74,8 @@ uv pip install git+https://github.com/huggingface/diffusers
 
 </hfoption>
 </hfoptions>
+
+Install with extras when you need them. `diffusers["torch"]` pulls PyTorch and Accelerate. Other extras cover quantization backends, training, and docs. See [`setup.py`](https://github.com/huggingface/diffusers/blob/main/setup.py) for the full list.
 
 ## Devices
 
@@ -150,6 +150,30 @@ export HF_HUB_OFFLINE=1
 ```
 
 For more details about managing and cleaning the cache, take a look at the [Understand caching](https://huggingface.co/docs/huggingface_hub/guides/manage-cache) guide.
+
+### Share files across repositories
+
+The cache keeps one copy of a file even when several Hub repositories contain it. Many pipelines use the same text encoder, like T5. If a second pipeline's repository has the same text encoder files as one you already downloaded, [`~DiffusionPipeline.from_pretrained`] uses the copy on disk instead of downloading it again. Diffusers requires `huggingface_hub>=1.32.0`, which turns file sharing on by default.
+
+The cache matches files by their [Xet](https://huggingface.co/docs/hub/xet/index) hash, not by repository or model name. A sharded checkpoint is matched shard by shard, so the shards that match are shared even if the others differ.
+
+A file is shared only when all of these are true:
+
+- Both repositories store the file with Xet.
+- Both downloads use the same cache directory, set by `HF_HUB_CACHE` or `cache_dir`.
+- The filesystem supports symlinks.
+- The files are byte-for-byte identical. Converting to a different dtype, saving in a different format, or resharding changes the hash.
+
+> [!NOTE]
+> Files you downloaded with an older version of `huggingface_hub` aren't shared with new downloads. Only files downloaded with version 1.32.0 or later are added to the shared store.
+
+File sharing saves download time and disk space, but not memory. To use one loaded model in several pipelines, see [Reusing models in multiple pipelines](./using-diffusers/loading#reusing-models-in-multiple-pipelines).
+
+To turn file sharing off, set `HF_HUB_DISABLE_SHARED_BLOBS=1`. Loading still works, and each repository keeps its own copy.
+
+```shell
+export HF_HUB_DISABLE_SHARED_BLOBS=1
+```
 
 ## Telemetry logging
 

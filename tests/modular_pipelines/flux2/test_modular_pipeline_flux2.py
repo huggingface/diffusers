@@ -53,6 +53,7 @@ class Flux2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = Flux2ModularPipeline
     pipeline_blocks_class = Flux2AutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux2-modular"
+    expected_latents_shape = (1, 4, 16, 16)
     params = frozenset(["prompt", "height", "width", "guidance_scale"])
     batch_params = frozenset(["prompt"])
     expected_workflow_blocks = FLUX2_TEXT2IMAGE_WORKFLOWS
@@ -75,8 +76,7 @@ class Flux2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestFlux2ModularPipelineFast(Flux2ModularPipelineTesterConfig, ModularPipelineTesterMixin):
-    def test_float16_inference(self):
-        super().test_float16_inference(9e-2)
+    pass
 
 
 class TestFlux2ModularPipelineLoading(Flux2ModularPipelineTesterConfig, ModularLoadingTesterMixin):
@@ -113,6 +113,7 @@ class Flux2ImageConditionedModularPipelineTesterConfig(BaseModularPipelineTester
     pipeline_class = Flux2ModularPipeline
     pipeline_blocks_class = Flux2AutoBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-flux2-modular"
+    expected_latents_shape = (1, 4, 16, 16)
     params = frozenset(["prompt", "height", "width", "guidance_scale", "image"])
     batch_params = frozenset(["prompt", "image"])
     expected_workflow_blocks = FLUX2_IMAGE_CONDITIONED_WORKFLOWS
@@ -142,9 +143,6 @@ class Flux2ImageConditionedModularPipelineTesterConfig(BaseModularPipelineTester
 class TestFlux2ImageConditionedModularPipelineFast(
     Flux2ImageConditionedModularPipelineTesterConfig, ModularPipelineTesterMixin
 ):
-    def test_float16_inference(self):
-        super().test_float16_inference(9e-2)
-
     @pytest.mark.skip(reason="batched inference is currently not supported")
     def test_inference_batch_single_identical(self, batch_size=2, expected_max_diff=0.0001):
         return

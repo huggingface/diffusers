@@ -108,7 +108,7 @@ def prepare_pos_ids(modality_id=0, type="text", start=(0, 0), num_token=None, he
     if type == "text":
         assert num_token
         if height or width:
-            print('Warning: The parameters of height and width will be ignored in "text" type.')
+            logger.warning('The parameters of height and width will be ignored in "text" type.')
         pos_ids = torch.zeros(num_token, 3)
         pos_ids[..., 0] = modality_id
         pos_ids[..., 1] = torch.arange(num_token) + start[0]
@@ -116,7 +116,7 @@ def prepare_pos_ids(modality_id=0, type="text", start=(0, 0), num_token=None, he
     elif type == "image":
         assert height and width
         if num_token:
-            print('Warning: The parameter of num_token will be ignored in "image" type.')
+            logger.warning('The parameter of num_token will be ignored in "image" type.')
         pos_ids = torch.zeros(height, width, 3)
         pos_ids[..., 0] = modality_id
         pos_ids[..., 1] = pos_ids[..., 1] + torch.arange(height)[:, None] + start[0]
@@ -546,7 +546,7 @@ class LongCatImageEditPipeline(DiffusionPipeline, FromSingleFileMixin):
         output_type: str | None = "pil",
         return_dict: bool = True,
         joint_attention_kwargs: dict[str, Any] | None = None,
-    ):
+    ) -> LongCatImagePipelineOutput | tuple:
         r"""
         Function invoked when calling the pipeline for generation.
 
@@ -694,7 +694,7 @@ class LongCatImageEditPipeline(DiffusionPipeline, FromSingleFileMixin):
                     latent_model_input = torch.cat([latents, image_latents], dim=1)
 
                 timestep = t.expand(latent_model_input.shape[0]).to(latents.dtype)
-                with self.transformer.cache_context("cond"):
+                with self.transformer.cache_context("cond", timestep=t):
                     noise_pred_text = self.transformer(
                         hidden_states=latent_model_input,
                         timestep=timestep / 1000,
@@ -706,7 +706,7 @@ class LongCatImageEditPipeline(DiffusionPipeline, FromSingleFileMixin):
                     )[0]
                     noise_pred_text = noise_pred_text[:, :image_seq_len]
                 if self.do_classifier_free_guidance:
-                    with self.transformer.cache_context("uncond"):
+                    with self.transformer.cache_context("uncond", timestep=t):
                         noise_pred_uncond = self.transformer(
                             hidden_states=latent_model_input,
                             timestep=timestep / 1000,
