@@ -128,6 +128,15 @@ and compilation policy. The pinned serving runtime compiles the text encoder,
 transformer, VAE decoder, scheduler step, and tensor preparation regions.
 See that branch's `examples/diffusers/README.md` for setup and serving examples.
 
+Neuron compiles static shapes, so the server only accepts the resolutions you declare up front.
+List them in `VLLM_OMNI_NEURON_DIFFUSERS_RESOLUTIONS` (default `256x256`). The server compiles
+all of them at startup and rejects any other resolution. The number of inference steps is not
+restricted.
+
+```bash
+export VLLM_OMNI_NEURON_DIFFUSERS_RESOLUTIONS=256x256,512x512
+```
+
 The real `black-forest-labs/FLUX.2-klein-4B` checkpoint has completed offline Omni
 generation on Trainium2 at 256×256, four steps, BF16, and TP=1. HTTP serving,
 larger shapes, and tensor parallelism remain unvalidated; this is not production
