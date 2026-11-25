@@ -53,6 +53,8 @@ from diffusers.utils.testing_utils import (
     require_torch_accelerator,
 )
 
+from ..testing_utils import is_lora
+
 
 AVAILABLE_COMMANDS = ("env", "fp16_safetensors", "custom_blocks", "run", "schema", "skills")
 
@@ -279,6 +281,7 @@ class TestRunCommand:
         assert frame_rel == sorted(f"{v:04d}-frames/{i:04d}.png" for v in range(2) for i in range(4))
         assert all((tmp_path / rel).exists() for rel in frame_rel)
 
+    @is_lora
     def test_lora_spec_passes_weight_name(self):
         # A LoRA repo can ship several weight files (e.g. a ComfyUI variant next to the diffusers
         # one), so `weight_name` has to reach `load_lora_weights` to disambiguate.

@@ -47,6 +47,7 @@ from ...testing_utils import (
     assert_tensors_close,
     backend_empty_cache,
     backend_synchronize,
+    is_lora,
     load_image,
     nightly,
     numpy_cosine_similarity_distance,
@@ -1008,6 +1009,7 @@ class TestStableDiffusionXLPipelineIntegration:
         assert max_diff < 1e-2
 
 
+@is_lora
 @slow
 @nightly
 @require_torch_accelerator
