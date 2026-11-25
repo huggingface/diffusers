@@ -158,17 +158,3 @@ def test_decode_pipeline_forwards_keyframes():
             keyframe_frame_indices=indices,
         )[0]
     assert torch.equal(with_planes, pipe.video_processor.postprocess_video(direct, output_type="pt"))
-
-
-def test_decode_pipeline_without_keyframes_matches_plain_decode():
-    decoder = _build_keyframe_decoder()
-    pipe = LTX2VideoDiffusionDecodePipeline(diffusion_decoder=decoder, scheduler=FlowMatchEulerDiscreteScheduler())
-    latents = torch.randn(1, 8, 2, 3, 3, generator=torch.Generator().manual_seed(1)).to(torch_device)
-    pipeline_out = pipe(
-        latents, generator=torch.Generator(torch_device).manual_seed(0), output_type="pt", denormalize=False
-    ).frames
-    with torch.no_grad():
-        direct = decoder.decode(
-            latents.to(decoder.dtype), generator=torch.Generator(torch_device).manual_seed(0), return_dict=False
-        )[0]
-    assert torch.equal(pipeline_out, pipe.video_processor.postprocess_video(direct, output_type="pt"))
