@@ -117,27 +117,17 @@ torchrun --nproc_per_node=8 tensor_parallel_neuron.py
 ```
 
 
-## Native FLUX.2 Klein serving proof of concept
+## Serving with vLLM-Omni
 
-The experimental `add-diffusers-support` branch of `vllm-omni-neuron` wraps
-`Flux2KleinPipeline` with vLLM-Omni's Diffusers adapter for single-device BF16
-inference. This is separate from the Optimum Neuron export workflow above.
+[vllm-omni-neuron](https://github.com/aws-neuron/vllm-omni-neuron) serves Diffusers pipelines on Neuron through
+vLLM-Omni. Diffusers runs the pipeline, and the plugin handles device placement and compilation.
 
-Diffusers owns model execution; the plugin owns worker initialization, placement,
-and compilation policy. The pinned serving runtime compiles the text encoder,
-transformer, VAE decoder, scheduler step, and tensor preparation regions.
-See that branch's `examples/diffusers/README.md` for setup and serving examples.
-
-Neuron compiles static shapes, so the server only accepts the resolutions you declare up front.
-List them in `VLLM_OMNI_NEURON_DIFFUSERS_RESOLUTIONS` (default `256x256`). The server compiles
-all of them at startup and rejects any other resolution. The number of inference steps is not
-restricted.
+Neuron compiles static shapes, so declare the resolutions to serve up front. The server compiles them at startup and
+rejects any other resolution. The number of inference steps isn't restricted.
 
 ```bash
 export VLLM_OMNI_NEURON_DIFFUSERS_RESOLUTIONS=256x256,512x512
+vllm serve <model-id> --omni --diffusion-load-format diffusers --dtype bfloat16
 ```
 
-The real `black-forest-labs/FLUX.2-klein-4B` checkpoint has completed offline Omni
-generation on Trainium2 at 256×256, four steps, BF16, and TP=1. HTTP serving,
-larger shapes, and tensor parallelism remain unvalidated; this is not production
-support.
+See the vllm-omni-neuron repository for installation and supported pipelines.
