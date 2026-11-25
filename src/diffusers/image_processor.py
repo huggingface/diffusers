@@ -633,8 +633,9 @@ class VaeImageProcessor(ConfigMixin):
                 image to fit within the specified width and height, maintaining the aspect ratio, and then center the
                 image within the dimensions, cropping the excess. Note that resize_mode `fill` and `crop` are only
                 supported for PIL image input.
-            crops_coords (`list[tuple[int, int, int, int]]`, *optional*, defaults to `None`):
-                The crop coordinates for each image in the batch. If `None`, will not crop the image.
+            crops_coords (`tuple[int, int, int, int]`, *optional*, defaults to `None`):
+                The crop box `(left, upper, right, lower)` applied to each image in the batch. Only supported for PIL
+                images. If `None`, no crop is applied.
 
         Returns:
             `torch.Tensor`:
@@ -681,6 +682,9 @@ class VaeImageProcessor(ConfigMixin):
             )
         if not isinstance(image, list):
             image = [image]
+
+        if crops_coords is not None and not all(isinstance(i, PIL.Image.Image) for i in image):
+            raise ValueError("`crops_coords` is only supported for PIL image inputs.")
 
         if isinstance(image[0], PIL.Image.Image):
             if crops_coords is not None:
