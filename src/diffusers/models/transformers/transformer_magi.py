@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import math
+from collections import OrderedDict
 from dataclasses import dataclass
 from numbers import Integral
 
@@ -292,16 +293,6 @@ class MagiAttention(nn.Module, AttentionModuleMixin):
         )
 
 
-class MagiAdaModulateLayer(nn.Module):
-    def __init__(self, condition_dim, dim):
-        super().__init__()
-        self.act = nn.SiLU()
-        self.proj = nn.Sequential(nn.Linear(condition_dim, 2 * dim))
-
-    def forward(self, condition):
-        return self.proj(self.act(condition))
-
-
 class MagiMLP(nn.Module):
     def __init__(self, dim, ffn_dim, gated_linear_unit, eps):
         super().__init__()
@@ -325,7 +316,9 @@ class MagiTransformerBlock(nn.Module):
         self, dim, condition_dim, ffn_dim, num_heads, num_kv_heads, gated_linear_unit, eps, zero_centered_gamma
     ):
         super().__init__()
-        self.ada_modulate_layer = MagiAdaModulateLayer(condition_dim, dim)
+        self.ada_modulate_layer = nn.Sequential(
+            OrderedDict([("act", nn.SiLU()), ("proj", nn.Sequential(nn.Linear(condition_dim, 2 * dim)))])
+        )
         self.self_attention = MagiAttention(dim, num_heads, num_kv_heads, eps, zero_centered_gamma)
         self.self_attn_post_norm = MagiLayerNorm(dim, eps, zero_centered_gamma, upcast=True)
         self.mlp = MagiMLP(dim, ffn_dim, gated_linear_unit, eps)
@@ -510,10 +503,8 @@ class MagiTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapte
         if frames % patch_t or height % patch_h or width % patch_w:
             raise ValueError("Video dimensions must be divisible by the patch dimensions.")
         if timestep.ndim == 1:
-            if timestep.shape[0] != batch_size:
-                raise ValueError("timestep must have shape (batch,) or (batch, chunks) with at least one chunk.")
             timestep = timestep[:, None]
-        elif timestep.ndim != 2 or timestep.shape[0] != batch_size or timestep.shape[1] == 0:
+        if timestep.ndim != 2 or timestep.shape[0] != batch_size or timestep.shape[1] == 0:
             raise ValueError("timestep must have shape (batch,) or (batch, chunks) with at least one chunk.")
         num_chunks = timestep.shape[1]
         if frames // patch_t % num_chunks:
@@ -551,29 +542,19 @@ class MagiTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapte
         spatial_tokens = (height // patch_h) * (width // patch_w)
         cached_tokens = 0
         if kv_cache is not None:
-            if not isinstance(kv_cache, (tuple, list)) or len(kv_cache) != len(self.transformer_blocks):
+            if len(kv_cache) != len(self.transformer_blocks):
                 raise ValueError("kv_cache must contain one key/value pair per Transformer block.")
             expected_cache_shape = (batch_size, self.config.num_key_value_heads, self.config.attention_head_dim)
-            expected_cached_tokens = None
-            for layer_cache in kv_cache:
-                if (
-                    not isinstance(layer_cache, (tuple, list))
-                    or len(layer_cache) != 2
-                    or not all(torch.is_tensor(tensor) for tensor in layer_cache)
-                    or layer_cache[0].ndim != 4
-                    or layer_cache[0].shape != layer_cache[1].shape
-                    or (layer_cache[0].shape[0], *layer_cache[0].shape[2:]) != expected_cache_shape
-                ):
+            for layer_index, (key, value) in enumerate(kv_cache):
+                if key.ndim != 4 or key.shape != value.shape or (key.shape[0], *key.shape[2:]) != expected_cache_shape:
                     raise ValueError(
                         "Each kv_cache entry must contain matching key/value tensors shaped "
                         "(batch, cached_tokens, key_value_heads, head_dim)."
                     )
-                layer_cached_tokens = layer_cache[0].shape[1]
-                if expected_cached_tokens is not None and layer_cached_tokens != expected_cached_tokens:
+                if layer_index == 0:
+                    cached_tokens = key.shape[1]
+                elif key.shape[1] != cached_tokens:
                     raise ValueError("All kv_cache entries must contain the same number of cached tokens.")
-                expected_cached_tokens = layer_cached_tokens
-            if expected_cached_tokens is not None:
-                cached_tokens = expected_cached_tokens
         if cached_tokens % spatial_tokens:
             raise ValueError("The cached prefix must contain complete temporal patches at the current resolution.")
         sequence_length = frames // patch_t * spatial_tokens
@@ -590,24 +571,17 @@ class MagiTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapte
         if kv_ranges is None:
             kv_ranges = tuple((0, cached_tokens + (chunk + 1) * chunk_length) for chunk in range(num_chunks))
         else:
-            valid_kv_ranges = isinstance(kv_ranges, (tuple, list)) and len(kv_ranges) == num_chunks
-            if valid_kv_ranges:
-                for bounds in kv_ranges:
-                    if not isinstance(bounds, (tuple, list)) or len(bounds) != 2:
-                        valid_kv_ranges = False
-                        break
-                    start, end = bounds
-                    if (
-                        not isinstance(start, Integral)
-                        or isinstance(start, bool)
-                        or not isinstance(end, Integral)
-                        or isinstance(end, bool)
-                        or not 0 <= start < end <= cached_tokens + sequence_length
-                    ):
-                        valid_kv_ranges = False
-                        break
-            if not valid_kv_ranges:
+            if len(kv_ranges) != num_chunks:
                 raise ValueError("Each chunk must have a nonempty key/value range within the available tokens.")
+            for start, end in kv_ranges:
+                if (
+                    not isinstance(start, Integral)
+                    or isinstance(start, bool)
+                    or not isinstance(end, Integral)
+                    or isinstance(end, bool)
+                    or not 0 <= start < end <= cached_tokens + sequence_length
+                ):
+                    raise ValueError("Each chunk must have a nonempty key/value range within the available tokens.")
         hidden_states = hidden_states * self.config.x_rescale_factor
         if self.config.duplicate_channels:
             hidden_states = torch.cat([hidden_states, hidden_states], dim=1)
@@ -615,7 +589,11 @@ class MagiTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapte
         hidden_states = hidden_states.flatten(2).transpose(1, 2).contiguous().to(self.dtype)
         rotary_emb = self.rope(frames // patch_t, height // patch_h, width // patch_w, cached_tokens // spatial_tokens)
         condition, encoder_hidden_states = self.condition_embedder(
-            timestep, encoder_hidden_states, caption_dropout_mask, timestep_delta, hidden_states.dtype
+            timestep=timestep,
+            encoder_hidden_states=encoder_hidden_states,
+            caption_dropout_mask=caption_dropout_mask,
+            timestep_delta=timestep_delta,
+            hidden_dtype=hidden_states.dtype,
         )
         condition = condition.to(hidden_states.dtype)
         encoder_hidden_states = encoder_hidden_states.to(hidden_states.dtype)
@@ -635,13 +613,13 @@ class MagiTransformer3DModel(ModelMixin, ConfigMixin, AttentionMixin, PeftAdapte
                 )
             else:
                 hidden_states, cached = block(
-                    hidden_states,
-                    condition,
-                    encoder_hidden_states,
-                    rotary_emb,
-                    encoder_attention_mask,
-                    kv_ranges,
-                    layer_cache,
+                    hidden_states=hidden_states,
+                    condition=condition,
+                    encoder_hidden_states=encoder_hidden_states,
+                    rotary_emb=rotary_emb,
+                    encoder_attention_mask=encoder_attention_mask,
+                    kv_ranges=kv_ranges,
+                    kv_cache=layer_cache,
                 )
             if use_cache:
                 if cache_token_count is not None or cache_device is not None:

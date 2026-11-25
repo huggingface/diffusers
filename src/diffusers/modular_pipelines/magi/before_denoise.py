@@ -485,7 +485,7 @@ class MagiPrepareDenoiseStep(ModularPipelineBlocks):
                 raise ValueError("All latents, text features, and masks must be on the same device.")
         if block_state.prompt_embeds.shape[-2] != block_state.negative_prompt_embeds.shape[-2]:
             raise ValueError("Conditional and null text features must have the same padded length.")
-        block_state.latents = block_state.latents.float().clone()
+        block_state.latents = block_state.latents.to(dtype=torch.float32, copy=True)
         if block_state.prompt_embeds.ndim == 3:
             block_state.prompt_embeds = block_state.prompt_embeds[:, None].expand(-1, block_state.num_chunks, -1, -1)
             block_state.prompt_attention_mask = block_state.prompt_attention_mask[:, None].expand(
@@ -511,7 +511,7 @@ class MagiPrepareDenoiseStep(ModularPipelineBlocks):
             if prefix.shape[2] <= 0 or prefix.shape[2] % block_state.chunk_width or prefix.shape[2] >= frames:
                 raise ValueError("prefix_latents must contain full chunks and leave at least one chunk to generate.")
             block_state.prefix_chunks = prefix.shape[2] // block_state.chunk_width
-            block_state.latents[:, :, : prefix.shape[2]] = prefix.float()
+            block_state.latents[:, :, : prefix.shape[2]] = prefix
             block_state.clean_kv_cache = components.transformer(
                 hidden_states=block_state.latents[:, :, : prefix.shape[2]],
                 encoder_hidden_states=block_state.negative_prompt_embeds,

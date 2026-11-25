@@ -360,15 +360,18 @@ class MagiLoopDenoiser(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(self, components, block_state, i):
-        batch, channels, _, height, width = block_state.latent_model_input.shape
-        count = block_state.chunk_end - block_state.chunk_start
+        batch_size = block_state.latent_model_input.shape[0]
+        num_chunks = block_state.chunk_end - block_state.chunk_start
         skip = int(block_state.refresh_cache) * block_state.chunk_width
-        independent = block_state.latent_model_input[:, :, skip:].reshape(
-            batch, channels, count, block_state.chunk_width, height, width
+        independent = (
+            block_state.latent_model_input[:, :, skip:]
+            .unflatten(2, (num_chunks, block_state.chunk_width))
+            .transpose(1, 2)
+            .flatten(0, 1)
         )
-        independent = independent.permute(0, 2, 1, 3, 4, 5).reshape(
-            batch * count, channels, block_state.chunk_width, height, width
-        )
+        caption_dropout_masks = torch.tensor(
+            [False, True, True], device=block_state.latent_model_input.device, dtype=torch.bool
+        ).split(1)
         guider = components.guider
         guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=block_state.chunk_times)
         branches = guider.prepare_inputs(
@@ -377,17 +380,21 @@ class MagiLoopDenoiser(ModularPipelineBlocks):
                 "encoder_hidden_states": (
                     block_state.window_prompt_embeds,
                     block_state.negative_prompt_embeds,
-                    block_state.negative_prompt_embeds.repeat_interleave(count, dim=0),
+                    block_state.negative_prompt_embeds.repeat_interleave(num_chunks, dim=0),
                 ),
                 "encoder_attention_mask": (
                     block_state.window_prompt_attention_mask,
                     block_state.negative_prompt_attention_mask,
-                    block_state.negative_prompt_attention_mask.repeat_interleave(count, dim=0),
+                    block_state.negative_prompt_attention_mask.repeat_interleave(num_chunks, dim=0),
                 ),
                 "timestep": (block_state.model_times, block_state.model_times, block_state.chunk_times.reshape(-1, 1)),
+                "caption_dropout_mask": caption_dropout_masks,
+                "kv_ranges": (block_state.kv_ranges, block_state.kv_ranges, None),
+                "kv_cache": (block_state.clean_kv_cache, block_state.clean_kv_cache, None),
+                "use_cache": (False, block_state.refresh_cache, False),
             }
         )
-        refreshed_cache = None
+        clean_kv_cache = block_state.clean_kv_cache
         for branch_index, branch in enumerate(branches):
             guider.prepare_models(components.transformer)
             try:
@@ -396,19 +403,12 @@ class MagiLoopDenoiser(ModularPipelineBlocks):
                     encoder_hidden_states=branch.encoder_hidden_states,
                     encoder_attention_mask=branch.encoder_attention_mask,
                     timestep=branch.timestep,
-                    caption_dropout_mask=torch.full(
-                        (1,),
-                        branch_index != 0,
-                        device=independent.device,
-                        dtype=torch.bool,
-                    ),
-                    kv_ranges=block_state.kv_ranges if branch_index < 2 else None,
-                    kv_cache=block_state.clean_kv_cache if branch_index < 2 else None,
-                    use_cache=branch_index == 1 and block_state.refresh_cache,
-                    cache_token_count=block_state.chunk_start * block_state.chunk_tokens
-                    if branch_index == 1 and block_state.refresh_cache
-                    else None,
-                    cache_device=block_state.cache_device if branch_index == 1 and block_state.refresh_cache else None,
+                    caption_dropout_mask=branch.caption_dropout_mask,
+                    kv_ranges=branch.kv_ranges,
+                    kv_cache=branch.kv_cache,
+                    use_cache=branch.use_cache,
+                    cache_token_count=block_state.chunk_start * block_state.chunk_tokens if branch.use_cache else None,
+                    cache_device=block_state.cache_device if branch.use_cache else None,
                     attention_kwargs=block_state.attention_kwargs,
                 )
             finally:
@@ -416,17 +416,12 @@ class MagiLoopDenoiser(ModularPipelineBlocks):
             if branch_index < 2:
                 branch.noise_pred = result.sample[:, :, skip:]
             else:
-                branch.noise_pred = (
-                    result.sample.reshape(batch, count, channels, block_state.chunk_width, height, width)
-                    .permute(0, 2, 1, 3, 4, 5)
-                    .reshape(batch, channels, count * block_state.chunk_width, height, width)
-                )
-            if branch_index == 1 and block_state.refresh_cache:
-                refreshed_cache = result.kv_cache
+                branch.noise_pred = result.sample.unflatten(0, (batch_size, num_chunks)).transpose(1, 2).flatten(2, 3)
+            if branch.use_cache:
+                clean_kv_cache = result.kv_cache
             del result
         block_state.velocity = guider(branches).pred
-        if refreshed_cache is not None:
-            block_state.clean_kv_cache = refreshed_cache
+        block_state.clean_kv_cache = clean_kv_cache
         return components, block_state
 
 
@@ -649,14 +644,14 @@ class MagiPrefixLoopBeforeDenoiser(MagiLoopBeforeDenoiser):
     def __call__(self, components, block_state, i):
         components, block_state = super().__call__(components, block_state, i)
         first = (block_state.chunk_start - int(block_state.refresh_cache)) * block_state.chunk_width
+        start = block_state.chunk_start * block_state.chunk_width
         end = min(block_state.conditioning_latents.shape[2], block_state.chunk_end * block_state.chunk_width)
-        if first < end:
+        # Euler integrates from the injected prefix, but cache refresh must not overwrite finalized output.
+        if start < end:
+            block_state.latents[:, :, start:end] = block_state.conditioning_latents[:, :, start:end]
+        if block_state.refresh_cache and first < end:
             block_state.latent_model_input = block_state.latent_model_input.clone()
             block_state.latent_model_input[:, :, : end - first] = block_state.conditioning_latents[:, :, first:end]
-            start = block_state.chunk_start * block_state.chunk_width
-            if start < end:
-                # Euler integrates from the injected prefix, but cache refresh must not overwrite finalized output.
-                block_state.latents[:, :, start:end] = block_state.conditioning_latents[:, :, start:end]
         return components, block_state
 
 

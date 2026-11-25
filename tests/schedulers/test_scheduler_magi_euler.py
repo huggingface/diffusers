@@ -72,17 +72,21 @@ class TestMagiEulerScheduler:
             rtol=0,
         )
 
-    def test_per_batch_chunk_update(self):
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16, torch.float16])
+    @pytest.mark.parametrize("transpose", [False, True])
+    def test_per_batch_chunk_update(self, dtype, transpose):
         scheduler = MagiEulerScheduler()
         scheduler.set_timesteps(64)
-        sample = torch.randn((2, 4, 6, 4, 6), generator=torch.Generator().manual_seed(0))
+        sample = torch.randn((2, 4, 6, 4, 6), generator=torch.Generator().manual_seed(0)).to(dtype)
+        if transpose:
+            sample = sample.transpose(-1, -2)
         velocity = sample.sin()
         before = torch.tensor([[0.4, 0.2, 0.0], [0.6, 0.4, 0.2]])
         after = torch.tensor([[0.5, 0.3, 0.1], [0.7, 0.5, 0.3]])
         expected = torch.cat(
             [
-                sample[:, :, index * 2 : (index + 1) * 2]
-                + velocity[:, :, index * 2 : (index + 1) * 2]
+                sample[:, :, index * 2 : (index + 1) * 2].float()
+                + velocity[:, :, index * 2 : (index + 1) * 2].float()
                 * (after[:, index] - before[:, index])[:, None, None, None, None]
                 for index in range(3)
             ],

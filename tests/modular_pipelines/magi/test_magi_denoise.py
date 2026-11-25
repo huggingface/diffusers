@@ -114,9 +114,11 @@ class TestMagiDenoise:
                 torch.testing.assert_close(compact.to(full), full, atol=0, rtol=0)
                 assert compact.untyped_storage().nbytes() == compact.numel() * compact.element_size()
 
-    def test_window_branches_and_clean_cache(self):
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16, torch.float16])
+    def test_window_branches_and_clean_cache(self, dtype):
         pipe = self.make_pipeline()
         inputs = self.inputs()
+        inputs["latents"] = inputs["latents"].to(dtype)
         original = {k: v.clone() for k, v in inputs.items() if isinstance(v, torch.Tensor)}
         calls = []
 
@@ -252,13 +254,14 @@ class TestMagiDenoise:
             for actual_tensor, expected_tensor in zip(actual_pair, expected_pair):
                 torch.testing.assert_close(actual_tensor, expected_tensor, atol=0, rtol=0)
 
-    def test_full_chunk_prefix(self):
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16, torch.float16])
+    def test_full_chunk_prefix(self, dtype):
         pipe = self.make_pipeline()
         inputs = self.inputs(chunks=4)
-        inputs["prefix_latents"] = torch.randn(1, 4, 4, 4, 4)
+        inputs["prefix_latents"] = torch.randn(1, 4, 4, 4, 4).to(dtype)
         prefix = inputs["prefix_latents"].clone()
         output = pipe(**inputs, output=["latents", "clean_kv_cache", "completed_chunks"])
-        torch.testing.assert_close(output["latents"][:, :, :4], prefix, atol=0, rtol=0)
+        torch.testing.assert_close(output["latents"][:, :, :4], prefix.float(), atol=0, rtol=0)
         torch.testing.assert_close(inputs["prefix_latents"], prefix, atol=0, rtol=0)
         assert output["completed_chunks"] == [0, 1, 2, 3]
         assert output["clean_kv_cache"][0][0].shape[1] == 24
@@ -275,11 +278,12 @@ class TestMagiDenoise:
                 torch.testing.assert_close(actual_tensor, expected_tensor, atol=0, rtol=0)
 
     @pytest.mark.parametrize("prefix_length", [1, 3])
-    def test_partial_prefix_branch_inputs_and_clean_cache_refresh(self, prefix_length):
+    @pytest.mark.parametrize("batch", [1, 2])
+    def test_partial_prefix_branch_inputs_and_clean_cache_refresh(self, prefix_length, batch):
         pipe = self.make_prefix_pipeline()
-        inputs = self.inputs(chunks=4)
+        inputs = self.inputs(batch=batch, chunks=4)
         inputs.update(num_inference_steps=2, noise2clean_kvrange=(2, 1))
-        prefix = torch.randn(1, 4, prefix_length, 4, 4, generator=torch.Generator().manual_seed(13)) + 10
+        prefix = torch.randn(batch, 4, prefix_length, 4, 4, generator=torch.Generator().manual_seed(13)) + 10
         calls = []
 
         def capture(module, args, kwargs):
@@ -309,7 +313,7 @@ class TestMagiDenoise:
             torch.testing.assert_close(calls[0]["hidden_states"], prefix[:, :, :full_length], atol=0, rtol=0)
         for call in calls[initial_calls : initial_calls + 3]:
             torch.testing.assert_close(
-                call["hidden_states"][:1, :, : partial_prefix.shape[2]], partial_prefix, atol=0, rtol=0
+                call["hidden_states"][:batch, :, : partial_prefix.shape[2]], partial_prefix, atol=0, rtol=0
             )
 
         refresh_prefix_index = next(
@@ -320,7 +324,7 @@ class TestMagiDenoise:
         refresh_independent = calls[refresh_prefix_index + 1]
         for call in (refresh_text, refresh_prefix):
             torch.testing.assert_close(
-                call["hidden_states"][:1, :, : partial_prefix.shape[2]], partial_prefix, atol=0, rtol=0
+                call["hidden_states"][:batch, :, : partial_prefix.shape[2]], partial_prefix, atol=0, rtol=0
             )
         assert not refresh_text["use_cache"]
         assert refresh_prefix["use_cache"]
@@ -331,8 +335,10 @@ class TestMagiDenoise:
         assert refresh_prefix["cache_token_count"] == (full_length // chunk_width + 1) * chunk_tokens
         active = refresh_text["hidden_states"][:, :, chunk_width:]
         count = active.shape[2] // chunk_width
-        expected_independent = active.reshape(1, 4, count, chunk_width, 4, 4)
-        expected_independent = expected_independent.permute(0, 2, 1, 3, 4, 5).reshape(count, 4, chunk_width, 4, 4)
+        expected_independent = active.reshape(batch, 4, count, chunk_width, 4, 4)
+        expected_independent = expected_independent.permute(0, 2, 1, 3, 4, 5).reshape(
+            batch * count, 4, chunk_width, 4, 4
+        )
         torch.testing.assert_close(refresh_independent["hidden_states"], expected_independent, atol=0, rtol=0)
 
         if full_length:
@@ -351,7 +357,7 @@ class TestMagiDenoise:
                 encoder_hidden_states=inputs["negative_prompt_embeds"],
                 encoder_attention_mask=inputs["negative_prompt_attention_mask"],
                 caption_dropout_mask=torch.ones(1, dtype=torch.bool),
-                timestep=torch.full((1, cached_chunks), 0.9999),
+                timestep=torch.full((batch, cached_chunks), 0.9999),
                 kv_ranges=tuple((index * chunk_tokens, (index + 1) * chunk_tokens) for index in range(cached_chunks)),
                 use_cache=True,
             ).kv_cache

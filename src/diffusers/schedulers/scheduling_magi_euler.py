@@ -159,12 +159,12 @@ class MagiEulerScheduler(SchedulerMixin, ConfigMixin):
         next_timestep = torch.as_tensor(next_timestep, dtype=torch.float32, device=sample.device)
         timestep, next_timestep = torch.broadcast_tensors(timestep, next_timestep)
         if (
-            not torch.isfinite(timestep).all()
-            or not torch.isfinite(next_timestep).all()
-            or (timestep < 0).any()
-            or (next_timestep > 1 + 1e-5).any()
-            or (next_timestep < timestep).any()
-        ):
+            ~torch.isfinite(timestep)
+            | ~torch.isfinite(next_timestep)
+            | (timestep < 0)
+            | (next_timestep > 1 + 1e-5)
+            | (next_timestep < timestep)
+        ).any():
             raise ValueError("Timesteps must be finite, increasing from 0 to 1 (allowing endpoint rounding).")
         delta_t = next_timestep - timestep
         if delta_t.ndim == 0:
@@ -182,12 +182,11 @@ class MagiEulerScheduler(SchedulerMixin, ConfigMixin):
                 raise ValueError(
                     "Chunk times must have shape (chunks,) or (batch, chunks), dividing video frames evenly."
                 )
-            chunk_shape = (*sample.shape[:2], delta_t.shape[1], -1, *sample.shape[3:])
             prev_sample = (
-                sample.float().reshape(chunk_shape)
-                + model_output.float().reshape(chunk_shape) * delta_t[:, None, :, None, None, None]
+                sample.float().unflatten(2, (delta_t.shape[1], -1))
+                + model_output.float().unflatten(2, (delta_t.shape[1], -1)) * delta_t[:, None, :, None, None, None]
             )
-            prev_sample = prev_sample.reshape(sample.shape)
+            prev_sample = prev_sample.flatten(2, 3)
         if sequential:
             self._step_index = step_index + 1
         if not return_dict:
