@@ -16,7 +16,7 @@ from typing import NamedTuple
 
 import torch
 
-from ..models._modeling_parallel import TensorParallelConfig
+from ..models._modeling_parallel import Conditional, TensorParallelConfig
 from ..utils import get_logger, is_peft_available
 
 
@@ -149,7 +149,8 @@ def resolve_tp_shard_specs(model: torch.nn.Module, tp_plan: dict, tp_degree: int
             if style == "colwise":
                 weight_spec = TPShardSpec(0, [submodule.weight.shape[0]])
                 bias_spec = weight_spec
-            elif style == "rowwise":
+            elif style in ("rowwise", "rowwise_split_input"):
+                # Both place the weight the same way; they differ only in the forward input/output hooks.
                 weight_spec = TPShardSpec(1, [submodule.weight.shape[1]])
                 bias_spec = TPShardSpec(None, None)
             elif isinstance(style, PackedColwiseParallel):
@@ -163,7 +164,8 @@ def resolve_tp_shard_specs(model: torch.nn.Module, tp_plan: dict, tp_degree: int
             else:
                 raise ValueError(
                     f"Unsupported tensor-parallel style '{style}' for '{path}'. "
-                    f"Expected 'colwise', 'rowwise', PackedColwiseParallel, or PackedRowwiseParallel."
+                    f"Expected 'colwise', 'rowwise', 'rowwise_split_input', PackedColwiseParallel, or "
+                    f"PackedRowwiseParallel."
                 )
 
             specs[f"{path}.weight"] = weight_spec
@@ -181,12 +183,25 @@ def resolve_tp_shard_specs(model: torch.nn.Module, tp_plan: dict, tp_degree: int
     return specs
 
 
-def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict) -> list:
+def _maybe_get_submodule(module: torch.nn.Module, path: str) -> "torch.nn.Module | None":
+    """Resolve the dotted `path` on `module`, or return `None` if an attribute along it is missing or `None`."""
+    for atom in path.split("."):
+        module = getattr(module, atom, None)
+        if module is None:
+            return None
+    return module
+
+
+def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict, log_unmatched: bool = False) -> list:
     """Group a flat `_tp_plan` into per-block `(submodule, {relative_path: style})` plans.
 
     Each glob is split at its single `*`; the prefix must resolve to a `ModuleList` and the suffix is the per-element
     key. Grouping by block lets the caller issue one `parallelize_module` call per block, which `RowwiseParallel` needs
     to attach its input redistribution at the block boundary.
+
+    A `Conditional` entry is unwrapped here and kept only for the blocks where its module exists, so the returned plans
+    hold plain styles. `log_unmatched` logs the `Conditional` entries that match no module; it is off by default
+    because the plan is resolved several times per model.
 
     Example: when `transformer_blocks` is a `ModuleList` of length 2, the input `{"transformer_blocks.*.ff.linear_out":
     "rowwise"}` returns `[(transformer_blocks[0], {"ff.linear_out": "rowwise"}), (transformer_blocks[1],
@@ -194,24 +209,42 @@ def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict) -> list:
     """
     grouped: dict[int, tuple] = {}
     order: list[int] = []
+    unmatched: list[str] = []
 
     for pattern, style in tp_plan.items():
         if pattern.count("*") > 1:
             raise ValueError(f"Wildcard '*' can only be used once in a `_tp_plan` key, got '{pattern}'.")
 
+        conditional = isinstance(style, Conditional)
+        if conditional:
+            style = style.value
+
         if "*" in pattern:
             prefix, _, suffix = pattern.partition("*")
-            container = model
-            for atom in prefix.strip(".").split("."):
-                container = getattr(container, atom)
-            if not isinstance(container, torch.nn.ModuleList):
+            prefix = prefix.strip(".")
+            if conditional:
+                container = _maybe_get_submodule(model, prefix)
+            else:
+                container = model
+                for atom in prefix.split("."):
+                    container = getattr(container, atom)
+            if conditional and container is None:
+                blocks = []
+            elif not isinstance(container, torch.nn.ModuleList):
                 raise ValueError(
                     f"`_tp_plan` wildcard '{pattern}' must expand over a `ModuleList`, but "
-                    f"'{prefix.strip('.')}' resolved to '{container.__class__.__name__}'."
+                    f"'{prefix}' resolved to '{container.__class__.__name__}'."
                 )
-            relative, blocks = suffix.strip("."), list(container)
+            else:
+                blocks = list(container)
+            relative = suffix.strip(".")
         else:
             relative, blocks = pattern, [model]
+
+        if conditional:
+            blocks = [block for block in blocks if _maybe_get_submodule(block, relative) is not None]
+            if not blocks:
+                unmatched.append(pattern)
 
         for block in blocks:
             key = id(block)
@@ -219,6 +252,12 @@ def _resolve_tp_plan(model: torch.nn.Module, tp_plan: dict) -> list:
                 grouped[key] = (block, {})
                 order.append(key)
             grouped[key][1][relative] = style
+
+    if log_unmatched and unmatched:
+        logger.debug(
+            f"Skipping the `Conditional` `_tp_plan` entries that match no module of '{model.__class__.__name__}': "
+            f"{unmatched}."
+        )
 
     return [grouped[key] for key in order]
 
@@ -242,9 +281,9 @@ def _shard_packed_param(param, dim: int, blocks: "list[int]", device_mesh, src_d
 def _styles(relative_plan: dict) -> dict:
     """Map a `{relative_path: style}` plan to `parallelize_module` style instances.
 
-    Values may be plain strings (`"colwise"` / `"rowwise"`) or `PackedColwiseParallel` / `PackedRowwiseParallel` marker
-    instances. Returns `{relative_path: ColwiseParallel() | RowwiseParallel() | <packed impl>}`. Divisibility by the TP
-    degree is checked earlier, by `resolve_tp_shard_specs`.
+    Values may be plain strings (`"colwise"` / `"rowwise"` / `"rowwise_split_input"`) or `PackedColwiseParallel` /
+    `PackedRowwiseParallel` marker instances. Returns `{relative_path: ColwiseParallel() | RowwiseParallel() | <packed
+    impl>}`. Divisibility by the TP degree is checked earlier, by `resolve_tp_shard_specs`.
     """
     from torch.distributed.tensor import Replicate, distribute_tensor
     from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
@@ -285,6 +324,12 @@ def _styles(relative_plan: dict) -> dict:
             resolved[path] = ColwiseParallel()
         elif style == "rowwise":
             resolved[path] = RowwiseParallel()
+        elif style == "rowwise_split_input":
+            # Same weight split as "rowwise", for a Linear whose input arrives whole instead of split by a "colwise"
+            # layer before it; each rank slices its own columns locally. E.g. an AdaLN modulation projection reading
+            # the timestep embedding (MiniMax-H3's `adaln_proj.linear`), or an output projection after a gathered
+            # QK-norm. Same as the transformers style of the same name.
+            resolved[path] = RowwiseParallel(input_layouts=Replicate())
         elif isinstance(style, PackedColwiseParallel):
             resolved[path] = _make_packed_col(style)
         elif isinstance(style, PackedRowwiseParallel):
@@ -292,7 +337,8 @@ def _styles(relative_plan: dict) -> dict:
         else:
             raise ValueError(
                 f"Unsupported tensor-parallel style '{style}' for '{path}'. "
-                f"Expected 'colwise', 'rowwise', PackedColwiseParallel, or PackedRowwiseParallel."
+                f"Expected 'colwise', 'rowwise', 'rowwise_split_input', PackedColwiseParallel, or "
+                f"PackedRowwiseParallel."
             )
     return resolved
 
@@ -308,6 +354,7 @@ def _hooks_only_styles(relative_plan: dict) -> dict:
     targeted module into a `Replicate()` DTensor via a broadcast. Callers should therefore place every planned
     parameter themselves, and must ensure none is left on `meta` — the broadcast would be issued on a meta tensor.
     """
+    from torch.distributed.tensor import Replicate
     from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
 
     class _NoPartitionColwise(ColwiseParallel):
@@ -324,10 +371,13 @@ def _hooks_only_styles(relative_plan: dict) -> dict:
             resolved[path] = _NoPartitionColwise()
         elif style == "rowwise" or isinstance(style, PackedRowwiseParallel):
             resolved[path] = _NoPartitionRowwise()
+        elif style == "rowwise_split_input":
+            resolved[path] = _NoPartitionRowwise(input_layouts=Replicate())
         else:
             raise ValueError(
                 f"Unsupported tensor-parallel style '{style}' for '{path}'. "
-                f"Expected 'colwise', 'rowwise', PackedColwiseParallel, or PackedRowwiseParallel."
+                f"Expected 'colwise', 'rowwise', 'rowwise_split_input', PackedColwiseParallel, or "
+                f"PackedRowwiseParallel."
             )
     return resolved
 
@@ -374,6 +424,7 @@ def _check_tp_supported(
     num_heads: "int | None",
     tp_config,
     *,
+    num_key_value_heads: "int | None" = None,
     model: "torch.nn.Module | None" = None,
     device_map=None,
     hf_quantizer=None,
@@ -398,6 +449,10 @@ def _check_tp_supported(
     tp_degree = _tp_degree(tp_config)
     if num_heads is not None and num_heads % tp_degree != 0:
         raise ValueError(f"`tp_degree` ({tp_degree}) must divide the number of attention heads ({num_heads}).")
+    if num_key_value_heads is not None and num_key_value_heads % tp_degree != 0:
+        raise ValueError(
+            f"`tp_degree` ({tp_degree}) must divide the number of key/value heads ({num_key_value_heads})."
+        )
 
     if device_map is not None:
         raise ValueError(
@@ -499,7 +554,7 @@ def apply_tensor_parallel(
         )
 
     backend = "neuron" if tp_mesh.device_type == "neuron" else "default"
-    groups = _resolve_tp_plan(model, tp_plan)
+    groups = _resolve_tp_plan(model, tp_plan, log_unmatched=True)
     logger.debug(f"Applying tensor parallel (backend={backend}) over {len(groups)} module group(s) on mesh {tp_mesh}.")
 
     from torch.distributed.tensor.parallel import parallelize_module

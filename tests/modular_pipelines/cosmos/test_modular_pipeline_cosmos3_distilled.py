@@ -71,6 +71,7 @@ class Cosmos3DistilledModularPipelineTesterConfig(BaseModularPipelineTesterConfi
     pipeline_class = Cosmos3DistilledModularPipeline
     pipeline_blocks_class = Cosmos3DistilledBlocks
     pretrained_model_name_or_path = TINY_DISTILLED_REPO
+    expected_latents_shape = (1, 4, 2, 4, 4)
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset()
     optional_params = frozenset(["num_inference_steps", "output_type"])
@@ -107,9 +108,12 @@ class TestCosmos3DistilledModularPipelineFast(Cosmos3DistilledModularPipelineTes
     def test_num_images_per_prompt(self):
         pass
 
-    @pytest.mark.skip(reason="Cosmos3 checkpoints support bfloat16, not float16, inference.")
-    def test_float16_inference(self):
-        pass
+    @pytest.mark.skipif(torch_device not in ["cuda", "xpu"], reason="half-precision inference requires CUDA or XPU")
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=str)
+    def test_half_precision_inference_no_nan(self, dtype):
+        if dtype == torch.float16:
+            pytest.skip("Cosmos3 checkpoints support bfloat16, not float16, inference.")
+        super().test_half_precision_inference_no_nan(dtype)
 
     def test_declares_distilled_configs(self):
         pipe = self.pipeline_class()

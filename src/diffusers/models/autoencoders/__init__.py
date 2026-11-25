@@ -1,3 +1,4 @@
+from .audio_tokenizer_ace_step import AceStepAudioTokenDetokenizer, AceStepAudioTokenizer
 from .autoencoder_asym_kl import AsymmetricAutoencoderKL
 from .autoencoder_cosmos3_audio import Cosmos3AVAEAudioTokenizer
 from .autoencoder_dc import AutoencoderDC
@@ -13,6 +14,7 @@ from .autoencoder_kl_hunyuanimage import AutoencoderKLHunyuanImage
 from .autoencoder_kl_hunyuanimage_refiner import AutoencoderKLHunyuanImageRefiner
 from .autoencoder_kl_hunyuanvideo15 import AutoencoderKLHunyuanVideo15
 from .autoencoder_kl_kvae import AutoencoderKLKVAE
+from .autoencoder_kl_kvae_audio import AutoencoderKLKVAEAudio
 from .autoencoder_kl_kvae_video import AutoencoderKLKVAEVideo
 from .autoencoder_kl_ltx import AutoencoderKLLTXVideo
 from .autoencoder_kl_ltx2 import AutoencoderKLLTX2Video
@@ -20,7 +22,10 @@ from .autoencoder_kl_ltx2_audio import AutoencoderKLLTX2Audio
 from .autoencoder_kl_magvit import AutoencoderKLMagvit
 from .autoencoder_kl_minimax_h3 import AutoencoderKLMiniMaxH3
 from .autoencoder_kl_minimax_h3_audio import AutoencoderKLMiniMaxH3Audio
+from .autoencoder_kl_minimax_h3_image import AutoencoderKLMiniMaxH3Image
 from .autoencoder_kl_mochi import AutoencoderKLMochi
+from .autoencoder_kl_p_h3_image import AutoencoderKLPH3Image
+from .autoencoder_kl_p_image_oss import AutoencoderKLPImageOSS
 from .autoencoder_kl_qwenimage import AutoencoderKLQwenImage
 from .autoencoder_kl_qwenimage21 import AutoencoderKLQwenImage21
 from .autoencoder_kl_temporal_decoder import AutoencoderKLTemporalDecoder
@@ -29,6 +34,7 @@ from .autoencoder_longcat_audio_dit import LongCatAudioDiTVae
 from .autoencoder_mmaudio import MMAudioVAE
 from .autoencoder_oobleck import AutoencoderOobleck
 from .autoencoder_rae import AutoencoderRAE
+from .autoencoder_rfd4_proteina import RFD4ProteinaAutoencoder
 from .autoencoder_same import AutoencoderSAME
 from .autoencoder_tiny import AutoencoderTiny
 from .autoencoder_vidtok import AutoencoderVidTok
@@ -36,4 +42,5 @@ from .consistency_decoder_vae import ConsistencyDecoderVAE
 from .ltx2_diffusion_decoder import LTX2VideoDiffusionDecoderModel
 from .minimax_music3_vocoder import MiniMaxMusic3Vocoder
 from .mmaudio_vocoder import MMAudioVocoder
+from .vocoder_ltx2 import LTX2Vocoder, LTX2VocoderWithBWE
 from .vq_model import VQModel

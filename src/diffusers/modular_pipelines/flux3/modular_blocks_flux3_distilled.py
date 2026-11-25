@@ -61,7 +61,8 @@ class Flux3DistilledCoreDenoiseStep(SequentialPipelineBlocks):
     generation.
 
       Components:
-          transformer (`Flux3Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Flux3Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -129,7 +130,8 @@ class Flux3DistilledImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
     (image-to-image).
 
       Components:
-          transformer (`Flux3Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Flux3Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -190,7 +192,8 @@ class Flux3DistilledAutoCoreDenoiseStep(AutoPipelineBlocks):
        - `Flux3DistilledCoreDenoiseStep` is used otherwise (text-to-image).
 
       Components:
-          transformer (`Flux3Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - transformer (`Flux3Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -266,10 +269,14 @@ class Flux3DistilledAutoBlocks(SequentialPipelineBlocks):
         - `image_conditioned`: requires `prompt`, `image`
 
       Components:
-          prompt_upsampler (`Qwen3_5ForConditionalGeneration`): The prompt upsampler. prompt_upsampler_processor
-          (`AutoProcessor`): Its processor. text_encoder (`Qwen3VLForConditionalGeneration`) tokenizer
-          (`AutoProcessor`) image_processor (`Flux3ImageProcessor`) vae (`AutoencoderKLFlux2`) transformer
-          (`Flux3Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - prompt_upsampler (`Qwen3_5ForConditionalGeneration`): The prompt upsampler.
+          - prompt_upsampler_processor (`AutoProcessor`): Its processor.
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - tokenizer (`AutoProcessor`)
+          - image_processor (`Flux3ImageProcessor`)
+          - vae (`AutoencoderKLFlux2`)
+          - transformer (`Flux3Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
 
       Inputs:
           prompt (`str`):

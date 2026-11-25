@@ -123,7 +123,7 @@ class MotifVideoAttnProcessor2_0:
         encoder_hidden_states: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         # Concatenate hidden states with encoder hidden states for joint attention if needed
         if attn.add_q_proj is None and encoder_hidden_states is not None:
             hidden_states = torch.cat([hidden_states, encoder_hidden_states], dim=1)
@@ -375,7 +375,7 @@ class MotifVideoAttention(torch.nn.Module, AttentionModuleMixin):
         attention_mask: torch.Tensor | None = None,
         image_rotary_emb: torch.Tensor | None = None,
         **kwargs,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
         unused_kwargs = [k for k, _ in kwargs.items() if k not in attn_parameters]
         if len(unused_kwargs) > 0:
@@ -468,7 +468,7 @@ class MotifVideoRotaryPosEmbed(nn.Module):
         self.rope_dim = rope_dim
         self.theta = theta
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         batch_size, num_channels, num_frames, height, width = hidden_states.shape
         rope_sizes = [
             num_frames // self.patch_size_t,
@@ -573,7 +573,7 @@ class MotifVideoSingleTransformerBlock(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         image_embed_seq_len: int = 0,
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         encoder_seq_length = encoder_hidden_states.shape[1]
         hidden_states = torch.cat([hidden_states, encoder_hidden_states], dim=1)
 
@@ -894,7 +894,7 @@ class MotifVideoTransformer3DModel(
         image_embeds: torch.Tensor | None = None,
         attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+    ) -> Union[Transformer2DModelOutput, tuple[torch.Tensor]]:
         """
         Forward pass of the MotifVideoTransformer3DModel.
 

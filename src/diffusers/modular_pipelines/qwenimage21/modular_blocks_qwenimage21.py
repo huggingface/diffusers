@@ -54,8 +54,9 @@ class QwenImage21VLEncoderStep(SequentialPipelineBlocks):
     Vision-language encoder step that resizes the condition images and encodes them together with the prompt.
 
       Components:
-          image_processor (`VaeImageProcessor`) text_encoder (`Qwen3VLForConditionalGeneration`) processor
-          (`Qwen3VLProcessor`)
+          - image_processor (`VaeImageProcessor`)
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - processor (`Qwen3VLProcessor`)
 
       Inputs:
           image (`Image | list`):
@@ -104,8 +105,9 @@ class QwenImage21AutoTextEncoderStep(AutoPipelineBlocks):
        - `QwenImage21TextEncoderStep` is used otherwise.
 
       Components:
-          image_processor (`VaeImageProcessor`) text_encoder (`Qwen3VLForConditionalGeneration`) processor
-          (`Qwen3VLProcessor`)
+          - image_processor (`VaeImageProcessor`)
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - processor (`Qwen3VLProcessor`)
 
       Inputs:
           image (`Image | list`, *optional*):
@@ -168,7 +170,8 @@ class QwenImage21VaeEncoderSequentialStep(SequentialPipelineBlocks):
     VAE encoder step that resizes, preprocesses and encodes the condition images into latents.
 
       Components:
-          image_processor (`VaeImageProcessor`) vae (`AutoencoderKLQwenImage21`)
+          - image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage21`)
 
       Inputs:
           image (`Image | list`):
@@ -205,7 +208,8 @@ class QwenImage21AutoVaeEncoderStep(AutoPipelineBlocks):
        - If `image` is not provided, step will be skipped.
 
       Components:
-          image_processor (`VaeImageProcessor`) vae (`AutoencoderKLQwenImage21`)
+          - image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage21`)
 
       Inputs:
           image (`Image | list`, *optional*):
@@ -261,8 +265,9 @@ class QwenImage21CoreDenoiseStep(SequentialPipelineBlocks):
     Core denoise step that performs the denoising process for text-to-image generation.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
-          (`QwenImage21Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImage21Transformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -342,8 +347,9 @@ class QwenImage21ImageConditionedCoreDenoiseStep(SequentialPipelineBlocks):
     Core denoise step that performs the denoising process for image-conditioned generation.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
-          (`QwenImage21Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImage21Transformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -415,8 +421,9 @@ class QwenImage21AutoCoreDenoiseStep(AutoPipelineBlocks):
        - `QwenImage21CoreDenoiseStep` is used otherwise.
 
       Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
-          (`QwenImage21Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImage21Transformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -505,9 +512,13 @@ class QwenImage21AutoBlocks(SequentialPipelineBlocks):
         - `image_conditioned`: requires `prompt`, `image`
 
       Components:
-          image_processor (`VaeImageProcessor`) text_encoder (`Qwen3VLForConditionalGeneration`) processor
-          (`Qwen3VLProcessor`) vae (`AutoencoderKLQwenImage21`) scheduler (`FlowMatchEulerDiscreteScheduler`) guider
-          (`ClassifierFreeGuidance`) transformer (`QwenImage21Transformer2DModel`)
+          - image_processor (`VaeImageProcessor`)
+          - text_encoder (`Qwen3VLForConditionalGeneration`)
+          - processor (`Qwen3VLProcessor`)
+          - vae (`AutoencoderKLQwenImage21`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`QwenImage21Transformer2DModel`)
 
       Inputs:
           image (`Image | list`, *optional*):

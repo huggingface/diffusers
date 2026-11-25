@@ -614,6 +614,7 @@ class WanPipeline(DiffusionPipeline, WanLoraLoaderMixin):
 
                 cache_context_kwargs = {
                     "step_index": i,
+                    "timestep": t,
                     "sigma": float(self.scheduler.sigmas[i]),
                     "num_inference_steps": self._num_timesteps,
                 }

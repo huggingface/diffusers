@@ -51,7 +51,6 @@ jobs:
           ALLOWED_IMAGES=(
             diffusers-pytorch-cpu
             diffusers-pytorch-cuda
-            diffusers-pytorch-xformers-cuda
             diffusers-pytorch-minimum-cuda
             diffusers-doc-builder
             diffusers-cli-cuda
@@ -100,7 +99,6 @@ jobs:
         image-name:
           - diffusers-pytorch-cpu
           - diffusers-pytorch-cuda
-          - diffusers-pytorch-xformers-cuda
           - diffusers-pytorch-minimum-cuda
           - diffusers-doc-builder
           - diffusers-cli-cuda

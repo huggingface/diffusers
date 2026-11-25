@@ -45,7 +45,7 @@ class LTXLoopBeforeDenoiser(ModularPipelineBlocks):
     def inputs(self) -> list[InputParam]:
         return [
             InputParam.template("latents", required=True),
-            InputParam.template("dtype", required=True),
+            InputParam.template("dtype", required=True, default=None),
         ]
 
     @torch.no_grad()
@@ -97,7 +97,7 @@ class LTXLoopDenoiser(ModularPipelineBlocks):
     def inputs(self) -> list[tuple[str, Any]]:
         inputs = [
             InputParam.template("attention_kwargs"),
-            InputParam.template("num_inference_steps", required=True),
+            InputParam.template("num_inference_steps", required=True, default=None),
             InputParam("rope_interpolation_scale", type_hint=tuple),
             InputParam.template("height"),
             InputParam.template("width"),
@@ -136,7 +136,7 @@ class LTXLoopDenoiser(ModularPipelineBlocks):
             }
 
             context_name = getattr(guider_state_batch, components.guider._identifier_key, None)
-            with components.transformer.cache_context(context_name):
+            with components.transformer.cache_context(context_name, timestep=t):
                 guider_state_batch.noise_pred = components.transformer(
                     hidden_states=block_state.latent_model_input,
                     timestep=t.expand(block_state.latent_model_input.shape[0]).to(block_state.dtype),
@@ -211,7 +211,7 @@ class LTXDenoiseLoopWrapper(LoopSequentialPipelineBlocks):
     def loop_inputs(self) -> list[InputParam]:
         return [
             InputParam.template("timesteps", required=True),
-            InputParam.template("num_inference_steps", required=True),
+            InputParam.template("num_inference_steps", required=True, default=None),
         ]
 
     @torch.no_grad()
@@ -277,7 +277,7 @@ class LTXImage2VideoLoopBeforeDenoiser(ModularPipelineBlocks):
         return [
             InputParam.template("latents", required=True),
             InputParam("conditioning_mask", required=True, type_hint=torch.Tensor),
-            InputParam.template("dtype", required=True),
+            InputParam.template("dtype", required=True, default=None),
         ]
 
     @torch.no_grad()
@@ -331,7 +331,7 @@ class LTXImage2VideoLoopDenoiser(ModularPipelineBlocks):
     def inputs(self) -> list[tuple[str, Any]]:
         inputs = [
             InputParam.template("attention_kwargs"),
-            InputParam.template("num_inference_steps", required=True),
+            InputParam.template("num_inference_steps", required=True, default=None),
             InputParam("rope_interpolation_scale", type_hint=tuple),
             InputParam.template("height"),
             InputParam.template("width"),
@@ -369,7 +369,7 @@ class LTXImage2VideoLoopDenoiser(ModularPipelineBlocks):
             }
 
             context_name = getattr(guider_state_batch, components.guider._identifier_key, None)
-            with components.transformer.cache_context(context_name):
+            with components.transformer.cache_context(context_name, timestep=t):
                 guider_state_batch.noise_pred = components.transformer(
                     hidden_states=block_state.latent_model_input,
                     timestep=block_state.timestep_adjusted,

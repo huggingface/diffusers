@@ -28,9 +28,9 @@ This guide will show you how to encode and decode latents with remote inference.
 
 ## Encoding
 
-Encoding converts images and videos into latent representations. Refer to the table below for the supported VAEs.
+Encoding converts images and videos into latent representations. The table at the top of this page lists the models that support encoding.
 
-Pass an image to [`~utils.remote_encode`] to encode it. The specific `scaling_factor` and `shift_factor` values for each model can be found in the [Remote inference](../hybrid_inference/api_reference) API reference.
+Pass an image to [`~utils.remote_utils.remote_encode`] to encode it. The specific `scaling_factor` and `shift_factor` values for each model can be found in the [Remote inference](../hybrid_inference/api_reference) API reference.
 
 ```py
 import torch
@@ -60,15 +60,17 @@ init_latent = remote_encode(
 
 ## Decoding
 
-Decoding converts latent representations back into images or videos. Refer to the table below for the available and supported VAEs.
+Decoding converts latent representations back into images or videos. The table at the top of this page lists the models that support decoding.
 
-Set the output type to `"latent"` in the pipeline and set the `vae` to `None`. Pass the latents to the [`~utils.remote_decode`] function. For Flux, the latents are packed so the `height` and `width` also need to be passed. The specific `scaling_factor` and `shift_factor` values for each model can be found in the [Remote inference](../hybrid_inference/api_reference) API reference.
+Set the output type to `"latent"` in the pipeline and set the `vae` to `None`. Pass the latents to the [`~utils.remote_utils.remote_decode`] function. For Flux, the latents are packed so the `height` and `width` also need to be passed. The specific `scaling_factor` and `shift_factor` values for each model can be found in the [Remote inference](../hybrid_inference/api_reference) API reference.
 
 <hfoptions id="decode">
 <hfoption id="Flux">
 
 ```py
+import torch
 from diffusers import FluxPipeline
+from diffusers.utils.remote_utils import remote_decode
 
 pipeline = FluxPipeline.from_pretrained(
     "black-forest-labs/FLUX.1-schnell",
@@ -104,12 +106,13 @@ image.save("image.jpg")
 ```py
 import torch
 from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel
+from diffusers.utils.remote_utils import remote_decode
 
 transformer = HunyuanVideoTransformer3DModel.from_pretrained(
     "hunyuanvideo-community/HunyuanVideo", subfolder="transformer", dtype=torch.bfloat16
 )
 pipeline = HunyuanVideoPipeline.from_pretrained(
-    model_id, transformer=transformer, vae=None, dtype=torch.float16, device_map="cuda"  # or "mps", "xpu", "cpu"
+    "hunyuanvideo-community/HunyuanVideo", transformer=transformer, vae=None, dtype=torch.float16, device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 latent = pipeline(
@@ -125,11 +128,11 @@ video = remote_decode(
     endpoint="https://o7ywnmrahorts457.us-east-1.aws.endpoints.huggingface.cloud/",
     tensor=latent,
     output_type="mp4",
+    return_type="mp4",
 )
 
-if isinstance(video, bytes):
-    with open("video.mp4", "wb") as f:
-        f.write(video)
+with open("video.mp4", "wb") as f:
+    f.write(video)
 ```
 
 </hfoption>
@@ -142,8 +145,10 @@ Remote inference supports queuing to process multiple generation requests. While
 ```py
 import queue
 import threading
+import torch
 from IPython.display import display
 from diffusers import StableDiffusionXLPipeline
+from diffusers.utils.remote_utils import remote_decode
 
 def decode_worker(q: queue.Queue):
     while True:
@@ -151,7 +156,7 @@ def decode_worker(q: queue.Queue):
         if item is None:
             break
         image = remote_decode(
-            endpoint="https://q1bj3bpq6kzilnsu.us-east-1.aws.endpoints.huggingface.cloud/",
+            endpoint="https://x2dmsqunjd6k9prw.us-east-1.aws.endpoints.huggingface.cloud/",
             tensor=item,
             scaling_factor=0.13025,
         )
@@ -175,14 +180,14 @@ prompts = [
 
 
 pipeline = StableDiffusionXLPipeline.from_pretrained(
-    "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0",
+    "stabilityai/stable-diffusion-xl-base-1.0",
     dtype=torch.float16,
     vae=None,
     device_map="cuda"  # or "mps", "xpu", "cpu"
 )
 
 pipeline.unet = pipeline.unet.to(memory_format=torch.channels_last)
-pipeline.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=True)
 
 _ = pipeline(
     prompt=prompts[0],

@@ -49,9 +49,11 @@ from diffusers.commands.schema import SchemaCommand, _parse_docstring_args
 from diffusers.utils.testing_utils import (
     require_accelerator,
     require_kernels_version_greater_or_equal,
+    require_torch,
     require_torch_accelerator,
-    require_torch_gpu,
 )
+
+from ..testing_utils import is_lora
 
 
 AVAILABLE_COMMANDS = ("env", "fp16_safetensors", "custom_blocks", "run", "schema", "skills")
@@ -228,7 +230,7 @@ class TestRunCommand:
         pipeline = _load_pipeline(args)
         assert pipeline.vae.use_slicing is True
 
-    @require_torch_gpu
+    @require_torch
     def test_compile_arg(self):
         args = self._parse_run_argv(["--compile"])
         pipeline = _load_pipeline(args)
@@ -242,7 +244,7 @@ class TestRunCommand:
         assert compiled_blocks
         assert all(m._compiled_call_impl is not None for m in compiled_blocks)
 
-    @require_torch_gpu
+    @require_torch
     # `--attention-backend` only exposes Hub-hosted kernels, all of which need `kernels>=0.12`.
     @require_kernels_version_greater_or_equal("0.12")
     def test_attention_backend_arg(self):
@@ -279,6 +281,7 @@ class TestRunCommand:
         assert frame_rel == sorted(f"{v:04d}-frames/{i:04d}.png" for v in range(2) for i in range(4))
         assert all((tmp_path / rel).exists() for rel in frame_rel)
 
+    @is_lora
     def test_lora_spec_passes_weight_name(self):
         # A LoRA repo can ship several weight files (e.g. a ComfyUI variant next to the diffusers
         # one), so `weight_name` has to reach `load_lora_weights` to disambiguate.

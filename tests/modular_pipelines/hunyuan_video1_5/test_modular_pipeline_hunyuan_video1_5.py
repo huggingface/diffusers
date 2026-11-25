@@ -53,6 +53,7 @@ class HunyuanVideo15ModularPipelineTesterConfig(BaseModularPipelineTesterConfig)
     pipeline_class = HunyuanVideo15ModularPipeline
     pipeline_blocks_class = HunyuanVideo15AutoBlocks
     pretrained_model_name_or_path = "akshan-main/tiny-hunyuanvideo1_5-modular-pipe"
+    expected_latents_shape = (1, 32, 3, 2, 2)
     params = frozenset(["prompt", "height", "width", "num_frames"])
     batch_params = frozenset(["prompt"])
     optional_params = frozenset(["num_inference_steps", "num_videos_per_prompt", "latents"])
@@ -85,9 +86,6 @@ class TestHunyuanVideo15ModularPipelineFast(HunyuanVideo15ModularPipelineTesterC
     @pytest.mark.skip(reason="VAE causal attention mask does not support batch>1 decode")
     def test_inference_batch_single_identical(self):
         pass
-
-    def test_float16_inference(self):
-        super().test_float16_inference(expected_max_diff=0.1)
 
 
 class TestHunyuanVideo15ModularPipelineLoading(HunyuanVideo15ModularPipelineTesterConfig, ModularLoadingTesterMixin):

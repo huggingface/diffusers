@@ -130,7 +130,10 @@ def apply_rotary_emb_qwen(
         else:
             raise ValueError(f"`use_real_unbind_dim={use_real_unbind_dim}` but should be -1 or -2.")
 
-        out = (x.float() * cos + x_rotated.float() * sin).to(x.dtype)
+        # cast `cos`/`sin` to at least float32 so that input is promoted to float32 inside the multiplication
+        compute_dtype = torch.promote_types(torch.float32, cos.dtype)
+        cos, sin = cos.to(compute_dtype), sin.to(compute_dtype)
+        out = (x * cos + x_rotated * sin).to(x.dtype)
 
         return out
     else:
@@ -493,7 +496,7 @@ class QwenDoubleStreamAttnProcessor2_0:
         encoder_hidden_states_mask: torch.FloatTensor = None,
         attention_mask: torch.FloatTensor | None = None,
         image_rotary_emb: torch.Tensor | None = None,
-    ) -> torch.FloatTensor:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         if encoder_hidden_states is None:
             raise ValueError("QwenDoubleStreamAttnProcessor2_0 requires encoder_hidden_states (text stream)")
 
@@ -878,7 +881,7 @@ class QwenImageTransformer2DModel(
         controlnet_block_samples=None,
         additional_t_cond=None,
         return_dict: bool = True,
-    ) -> torch.Tensor | Transformer2DModelOutput:
+    ) -> Transformer2DModelOutput | tuple[torch.Tensor]:
         """
         The [`QwenTransformer2DModel`] forward method.
 

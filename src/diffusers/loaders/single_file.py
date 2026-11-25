@@ -18,10 +18,9 @@ import os
 import torch
 from huggingface_hub import snapshot_download
 from huggingface_hub.utils import LocalEntryNotFoundError, validate_hf_hub_args
-from packaging import version
 from typing_extensions import Self
 
-from ..utils import deprecate, is_transformers_available, logging
+from ..utils import _maybe_remap_relocated_pipeline_class, deprecate, is_transformers_available, logging
 from .single_file_utils import (
     SingleFileComponentError,
     _is_legacy_scheduler_kwargs,
@@ -45,7 +44,6 @@ logger = logging.get_logger(__name__)
 SINGLE_FILE_OPTIONAL_COMPONENTS = ["safety_checker"]
 
 if is_transformers_available():
-    import transformers
     from transformers import PreTrainedModel, PreTrainedTokenizer
 
 
@@ -64,6 +62,11 @@ def load_single_file_sub_model(
     disable_mmap=False,
     **kwargs,
 ):
+    relocated_library_name = _maybe_remap_relocated_pipeline_class(library_name, class_name)
+    if relocated_library_name is not None:
+        library_name = relocated_library_name
+        is_pipeline_module = False
+
     if is_pipeline_module:
         pipeline_module = getattr(pipelines, library_name)
         class_obj = getattr(pipeline_module, class_name)
@@ -72,21 +75,8 @@ def load_single_file_sub_model(
         library = importlib.import_module(library_name)
         class_obj = getattr(library, class_name)
 
-    if is_transformers_available():
-        transformers_version = version.parse(version.parse(transformers.__version__).base_version)
-    else:
-        transformers_version = "N/A"
-
-    is_transformers_model = (
-        is_transformers_available()
-        and issubclass(class_obj, PreTrainedModel)
-        and transformers_version >= version.parse("4.20.0")
-    )
-    is_tokenizer = (
-        is_transformers_available()
-        and issubclass(class_obj, PreTrainedTokenizer)
-        and transformers_version >= version.parse("4.20.0")
-    )
+    is_transformers_model = is_transformers_available() and issubclass(class_obj, PreTrainedModel)
+    is_tokenizer = is_transformers_available() and issubclass(class_obj, PreTrainedTokenizer)
 
     diffusers_module = importlib.import_module(__name__.split(".")[0])
     is_diffusers_single_file_model = issubclass(class_obj, diffusers_module.FromOriginalModelMixin)
@@ -183,26 +173,13 @@ def _map_component_types_to_config_dict(component_types):
     config_dict = {}
     component_types.pop("self", None)
 
-    if is_transformers_available():
-        transformers_version = version.parse(version.parse(transformers.__version__).base_version)
-    else:
-        transformers_version = "N/A"
-
     for component_name, component_value in component_types.items():
         is_diffusers_model = issubclass(component_value[0], diffusers_module.ModelMixin)
         is_scheduler_enum = component_value[0].__name__ == "KarrasDiffusionSchedulers"
         is_scheduler = issubclass(component_value[0], diffusers_module.SchedulerMixin)
 
-        is_transformers_model = (
-            is_transformers_available()
-            and issubclass(component_value[0], PreTrainedModel)
-            and transformers_version >= version.parse("4.20.0")
-        )
-        is_transformers_tokenizer = (
-            is_transformers_available()
-            and issubclass(component_value[0], PreTrainedTokenizer)
-            and transformers_version >= version.parse("4.20.0")
-        )
+        is_transformers_model = is_transformers_available() and issubclass(component_value[0], PreTrainedModel)
+        is_transformers_tokenizer = is_transformers_available() and issubclass(component_value[0], PreTrainedTokenizer)
 
         if is_diffusers_model and component_name not in SINGLE_FILE_OPTIONAL_COMPONENTS:
             config_dict[component_name] = ["diffusers", component_value[0].__name__]

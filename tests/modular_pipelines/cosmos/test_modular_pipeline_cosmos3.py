@@ -132,6 +132,7 @@ class Cosmos3OmniModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
     pipeline_class = Cosmos3OmniModularPipeline
     pipeline_blocks_class = Cosmos3OmniBlocks
     pretrained_model_name_or_path = "hf-internal-testing/tiny-cosmos3-modular-pipe"
+    expected_latents_shape = (1, 4, 2, 4, 4)
     params = frozenset(["prompt", "height", "width", "num_frames", "guidance_scale"])
     batch_params = frozenset()
     optional_params = frozenset(["num_inference_steps", "output_type"])
@@ -170,9 +171,12 @@ class TestCosmos3OmniModularPipelineFast(Cosmos3OmniModularPipelineTesterConfig,
     def test_num_images_per_prompt(self):
         pass
 
-    @pytest.mark.skip(reason="Cosmos3 checkpoints support bfloat16, not float16, inference.")
-    def test_float16_inference(self):
-        pass
+    @pytest.mark.skipif(torch_device not in ["cuda", "xpu"], reason="half-precision inference requires CUDA or XPU")
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16], ids=str)
+    def test_half_precision_inference_no_nan(self, dtype):
+        if dtype == torch.float16:
+            pytest.skip("Cosmos3 checkpoints support bfloat16, not float16, inference.")
+        super().test_half_precision_inference_no_nan(dtype)
 
     def test_transformer_cache_contexts_receive_exact_scheduler_info(self):
         pipe = self.get_pipeline().to(torch_device)

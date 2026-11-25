@@ -15,7 +15,7 @@ from diffusers import (
     LTXPipeline,
     LTXVideoTransformer3DModel,
 )
-from diffusers.pipelines.ltx.modeling_latent_upsampler import LTXLatentUpsamplerModel
+from diffusers.models.latent_upscaler import LTXLatentUpsamplerModel
 
 
 def remove_keys_(key: str, state_dict: Dict[str, Any]):

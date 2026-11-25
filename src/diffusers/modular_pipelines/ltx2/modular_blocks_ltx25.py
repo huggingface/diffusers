@@ -39,8 +39,10 @@ class LTX25DecoderStep(SequentialPipelineBlocks):
     returns latents).
 
       Components:
-          diffusion_decoder (`LTX2VideoDiffusionDecoderModel`) video_processor (`VideoProcessor`) audio_vae
-          (`AutoencoderKLLTX2Audio`) vocoder (`LTX2Vocoder`)
+          - diffusion_decoder (`LTX2VideoDiffusionDecoderModel`)
+          - video_processor (`VideoProcessor`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           latents (`Tensor`):
@@ -95,8 +97,10 @@ class LTX25ConditionDecoderStep(SequentialPipelineBlocks):
     latents with the diffusion decoder and vocodes the audio latents (or returns latents).
 
       Components:
-          diffusion_decoder (`LTX2VideoDiffusionDecoderModel`) video_processor (`VideoProcessor`) audio_vae
-          (`AutoencoderKLLTX2Audio`) vocoder (`LTX2Vocoder`)
+          - diffusion_decoder (`LTX2VideoDiffusionDecoderModel`)
+          - video_processor (`VideoProcessor`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           latents (`Tensor`):
@@ -156,8 +160,10 @@ class LTX25AutoDecoderStep(AutoPipelineBlocks):
        - `LTX25DecoderStep` otherwise (text-to-video, image-to-video).
 
       Components:
-          diffusion_decoder (`LTX2VideoDiffusionDecoderModel`) video_processor (`VideoProcessor`) audio_vae
-          (`AutoencoderKLLTX2Audio`) vocoder (`LTX2Vocoder`)
+          - diffusion_decoder (`LTX2VideoDiffusionDecoderModel`)
+          - video_processor (`VideoProcessor`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           latents (`Tensor`):
@@ -226,11 +232,21 @@ class LTX25AutoBlocks(SequentialPipelineBlocks):
         - `in_context`: requires `reference_conditions`, `num_frames`, `prompt`
 
       Components:
-          prompt_enhancer (`PreTrainedModel`) processor (`ProcessorMixin`) text_encoder (`PreTrainedModel`) tokenizer
-          (`PreTrainedTokenizerBase`) connectors (`LTX2TextConnectors`) duration_head (`LTX2DurationHead`) vae
-          (`AutoencoderKLLTX2Video`) video_processor (`VideoProcessor`) transformer (`LTX2VideoTransformer3DModel`)
-          scheduler (`FlowMatchEulerDiscreteScheduler`) audio_vae (`AutoencoderKLLTX2Audio`) guider (`LTX2Guidance`)
-          audio_guider (`LTX2Guidance`) diffusion_decoder (`LTX2VideoDiffusionDecoderModel`) vocoder (`LTX2Vocoder`)
+          - prompt_enhancer (`PreTrainedModel`)
+          - processor (`ProcessorMixin`)
+          - text_encoder (`PreTrainedModel`)
+          - tokenizer (`PreTrainedTokenizerBase`)
+          - connectors (`LTX2TextConnectors`)
+          - duration_head (`LTX2DurationHead`)
+          - vae (`AutoencoderKLLTX2Video`)
+          - video_processor (`VideoProcessor`)
+          - transformer (`LTX2VideoTransformer3DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - audio_vae (`AutoencoderKLLTX2Audio`)
+          - guider (`LTX2Guidance`)
+          - audio_guider (`LTX2Guidance`)
+          - diffusion_decoder (`LTX2VideoDiffusionDecoderModel`)
+          - vocoder (`LTX2Vocoder`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -290,6 +306,10 @@ class LTX25AutoBlocks(SequentialPipelineBlocks):
               Optional pixel-space mask of shape (1, 1, F, H, W) with values in [0, 1] giving spatially varying
               attention strength. Downsampled to the reference's latent grid and multiplied by
               `conditioning_attention_strength`.
+          motion_speed (`float`, *optional*, defaults to 1.0):
+              Speed of the motion relative to real time. The positional embeddings are conditioned on `frame_rate /
+              motion_speed`, so values below 1 slow the motion down, e.g. `0.2` for the Slow-Motion-Control LoRA's 5x
+              slow motion. `frame_rate` stays the playback rate.
           num_videos_per_prompt (`int`, *optional*, defaults to 1):
               The number of images to generate per prompt.
           condition_latents (`list`, *optional*):
