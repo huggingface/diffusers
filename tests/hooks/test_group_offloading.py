@@ -694,3 +694,91 @@ class TestConditionalModuleGroupOffload(TestGroupOffload):
             assert torch.allclose(out_ref_no_opt2, out_no_opt2, atol=1e-5), (
                 f"[{offload_type}] Outputs do not match on third pass (back to no optional_input)."
             )
+
+
+@require_torch_accelerator
+class TestGroupOffloadingLowCpuMemStaging:
+    def test_low_cpu_mem_usage_preserves_cpu_storage_and_reuses_pinned_staging(self, tmp_path):
+        import safetensors.torch
+
+        from diffusers.hooks import group_offloading as go_mod
+
+        model = DummyModel(16, 32, 16, num_layers=3).eval()
+        ckpt = tmp_path / "dummy.safetensors"
+        safetensors.torch.save_file(model.state_dict(), str(ckpt))
+        loaded = safetensors.torch.load_file(str(ckpt), device="cpu")
+        model.load_state_dict(loaded, assign=True)
+        orig_ptrs = {name: param.data.data_ptr() for name, param in model.named_parameters()}
+
+        model_ref = DummyModel(16, 32, 16, num_layers=3).eval()
+        model_ref.load_state_dict(model.state_dict(), strict=True)
+        model_ref.to(torch_device)
+
+        model.enable_group_offload(
+            torch_device,
+            offload_type="block_level",
+            num_blocks_per_group=1,
+            use_stream=True,
+            record_stream=True,
+            low_cpu_mem_usage=True,
+        )
+
+        # Offload during initialization must preserve the original mmap/CPU data_ptrs without copying.
+        for name, param in model.named_parameters():
+            assert param.device.type == "cpu"
+            assert param.data.data_ptr() == orig_ptrs[name]
+            assert not param.data.is_pinned()
+
+        x = torch.randn(4, 16, device=torch_device)
+        with torch.no_grad():
+            for _ in range(3):
+                assert torch.allclose(model(x), model_ref(x), atol=1e-5)
+
+        # After multiple streamed passes, original CPU storages stay intact and unpinned,
+        # and the stream owns one reusable pinned staging buffer.
+        for name, param in model.named_parameters():
+            assert param.device.type == "cpu"
+            assert param.data.data_ptr() == orig_ptrs[name]
+            assert not param.data.is_pinned()
+
+        block_hook = model.blocks[0]._diffusers_hook.get_hook("group_offloading")
+        staging = go_mod._STREAM_PINNED_STAGING.get(block_hook.group.stream)
+        assert staging is not None and staging.is_pinned()
+
+    def test_low_cpu_mem_usage_staging_handles_mixed_dtypes_with_odd_sizes(self):
+        # An odd number of fp16 elements followed by fp32 tensors must not misalign the fp32 views.
+        class MixedBlock(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.half_scale = torch.nn.Parameter(torch.randn(7, dtype=torch.float16))
+                self.linear = torch.nn.Linear(7, 7)
+
+            def forward(self, x):
+                return self.linear(x) * self.half_scale.float()
+
+        class MixedModel(ModelMixin):
+            def __init__(self):
+                super().__init__()
+                self.blocks = torch.nn.ModuleList([MixedBlock() for _ in range(3)])
+
+            def forward(self, x):
+                for block in self.blocks:
+                    x = block(x)
+                return x
+
+        model = MixedModel().eval()
+        model_ref = MixedModel().eval()
+        model_ref.load_state_dict(model.state_dict())
+        model_ref.to(torch_device)
+        model.enable_group_offload(
+            torch_device,
+            offload_type="block_level",
+            num_blocks_per_group=1,
+            use_stream=True,
+            record_stream=True,
+            low_cpu_mem_usage=True,
+        )
+        x = torch.randn(2, 7, device=torch_device)
+        with torch.no_grad():
+            for _ in range(2):
+                assert torch.equal(model(x), model_ref(x))
