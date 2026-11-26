@@ -59,6 +59,17 @@ if is_peft_available():
     from diffusers.loaders.peft import PeftAdapterMixin
 
 
+# Devices whose `torch.compile` backend compiles static shapes only and rejects `dynamic=True`.
+_STATIC_SHAPE_COMPILE_DEVICES = ("tpu", "neuron")
+
+
+def _compiles_static_shapes_only(device) -> bool:
+    # A Neuron `torch_device` is the integer index from `torch.neuron.current_device()`.
+    if isinstance(device, int):
+        return True
+    return str(device).split(":")[0] in _STATIC_SHAPE_COMPILE_DEVICES
+
+
 def check_if_lora_correctly_set(model) -> bool:
     """
     Check if LoRA layers are correctly set in the model.
@@ -624,6 +635,39 @@ class LoraTesterMixin(BaseModelOutputMixin):
 
         model(**inputs_dict, return_dict=False)
 
+    def test_lora_tensor_parallel_requires_fused_adapter(self):
+        """An unfused adapter blocks tensor parallelism; fusing it and unloading the adapter layers unblocks it."""
+        if getattr(self.model_class, "_tp_plan", None) is None:
+            pytest.skip(f"{self.model_class.__name__} does not define a `_tp_plan`.")
+
+        from diffusers.hooks.tensor_parallel import _check_tp_supported, resolve_tp_shard_specs
+        from diffusers.models._modeling_parallel import TensorParallelConfig
+
+        model = self.model_class(**self.get_init_dict()).to(torch_device)
+        target_modules = sorted({name.rpartition(".")[0] for name in resolve_tp_shard_specs(model, model._tp_plan, 1)})
+        model.add_adapter(LoraConfig(r=4, lora_alpha=4, target_modules=target_modules, init_lora_weights=False))
+
+        # Both checks run before any process group is needed, so a single process is enough.
+        tp_config = TensorParallelConfig(tp_degree=1)
+
+        def check():
+            _check_tp_supported(
+                self.model_class.__name__,
+                model._tp_plan,
+                getattr(model.config, "num_attention_heads", None),
+                tp_config,
+                num_key_value_heads=getattr(model.config, "num_key_value_heads", None),
+                model=model,
+            )
+
+        with pytest.raises(ValueError, match="fuse_lora"):
+            check()
+
+        model.fuse_lora()
+        model.unload_lora()
+        assert not check_if_lora_correctly_set(model), "LoRA layers should be removed after `unload_lora()`"
+        check()
+
 
 @is_lora
 @is_torch_compile
@@ -708,6 +752,9 @@ class LoraHotSwappingForModelTesterMixin:
         fine.
         """
         different_shapes = self.different_shapes_for_compilation
+        if _compiles_static_shapes_only(torch_device):
+            # Check hotswapping at the dummy inputs' fixed shape instead.
+            different_shapes = None
         if different_shapes is not None:
             # Specifying `use_duck_shape=False` instructs the compiler if it should use the same symbolic
             # variable to represent input sizes that are the same. For more details,
@@ -950,6 +997,8 @@ class LoraHotSwappingForModelTesterMixin:
         different_shapes_for_compilation = self.different_shapes_for_compilation
         if different_shapes_for_compilation is None:
             pytest.skip(f"Skipping as `different_shapes_for_compilation` is not set for {self.__class__.__name__}.")
+        if _compiles_static_shapes_only(torch_device):
+            pytest.skip(f"The `torch.compile` backend for '{torch_device}' compiles static shapes only.")
 
         target_modules = ["to_q", "to_k", "to_v", "to_out.0"]
         with torch._dynamo.config.patch(error_on_recompile=True):

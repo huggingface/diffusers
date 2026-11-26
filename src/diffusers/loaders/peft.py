@@ -167,7 +167,8 @@ class PeftAdapterMixin:
             self,
             "have a LoRA adapter loaded",
             "The adapter layers are not covered by the model's `_tp_plan`. Load the adapter before sharding the "
-            "model.",
+            "model, then merge it into the base weights with `fuse_lora()` and remove the adapter layers with "
+            "`unload_lora()` (`fuse_lora()` and `unload_lora_weights()` on a pipeline).",
         )
 
         cache_dir = kwargs.pop("cache_dir", None)

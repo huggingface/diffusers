@@ -118,6 +118,11 @@ if is_torch_available():
             mps_backend_registered = hasattr(torch.backends, "mps")
             torch_device = "mps" if (mps_backend_registered and torch.backends.mps.is_available()) else torch_device
 
+    if str(torch_device).split(":")[0] == "tpu":
+        # TorchTPU runs float32 matmuls in reduced precision by default, while CUDA defaults to full float32. Use full
+        # precision so TPU outputs meet the tolerances the tests use everywhere else, e.g. fused vs. unfused LoRA.
+        torch.set_float32_matmul_precision("highest")
+
     from diffusers.utils.torch_utils import get_torch_cuda_device_capability
 
 

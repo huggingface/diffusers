@@ -100,6 +100,34 @@ If the pipeline doesn't fit on one chip:
   only the transformer's repeated blocks instead, with
   `pipe.transformer.compile_repeated_blocks(backend="tpu", fullgraph=True, dynamic=False)`.
 
+## LoRA
+
+LoRA adapters load the same way as on any other device. Move the pipeline to the TPU, then call
+[`~loaders.lora_base.LoraBaseMixin.load_lora_weights`].
+
+```python
+import torch
+
+from diffusers import StableDiffusion3Pipeline
+
+pipe = StableDiffusion3Pipeline.from_pretrained("stabilityai/stable-diffusion-3.5-medium", dtype=torch.bfloat16)
+pipe.to("tpu")
+# `lora_id` is a Hub repository or local path holding the LoRA weights.
+pipe.load_lora_weights(lora_id)
+```
+
+With a compiled transformer, how you load the adapter depends on whether it changes:
+
+- To keep one adapter, merge it into the base weights with `pipe.fuse_lora()` and remove the adapter layers with
+  `pipe.unload_lora_weights()` before compiling, as shown in [LoRA with torch.compile](../tutorials/using_peft_for_inference#torchcompile).
+  The compiled graph then has no extra LoRA matmuls.
+- To switch adapters without recompiling, call `pipe.enable_lora_hotswap(target_rank=...)` before loading the first
+  adapter, compile after loading it, and load the next ones with `hotswap=True`, as shown in
+  [Hotswapping](../tutorials/using_peft_for_inference#compiled-models). Keep `dynamic=False`.
+
+To combine a LoRA adapter with tensor parallelism, fuse it before sharding the model, as shown in
+[LoRA adapters](./tensor_parallelism#lora-adapters).
+
 ## Tensor parallelism
 
 Shard models too large for one chip across several. FLUX.2-dev's text encoder (~48GB) and transformer (~64GB) each
@@ -149,11 +177,9 @@ if dist.get_rank() == 0:
 Launch one process per chip. Set `--nproc_per_node` to use all the number of TPU chips on your host.
 
 ```bash
-eval $(python -m torch_tpu._internal.distributed.launchers.singlehost_wrapper | sed 's/^/export /')
+eval "$(python -m torch.tpu.distributed | sed 's/^/export /')"
 torchrun --nproc_per_node=8 flux2_tp.py
 ```
 
-> [!WARNING]
-> The launch command above uses a TorchTPU internal module (`torch_tpu._internal`), not a stable API, and is expected
-> to change in a future TorchTPU release. Check the [TorchTPU repository](https://github.com/google-pytorch/torch_tpu/)
-> for the current way to launch multi-chip jobs.
+`python -m torch.tpu.distributed` prints the TPU topology variables that every worker needs (available from TorchTPU
+0.3.0). Check the [TorchTPU repository](https://github.com/google-pytorch/torch_tpu/) for multi-host launches.
