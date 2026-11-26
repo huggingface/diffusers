@@ -89,3 +89,15 @@ python utils/generate_model_tests.py src/diffusers/models/transformers/transform
 - Fill in the `TODO`s in the generated `<Model>TesterConfig`: `pretrained_model_name_or_path`, `get_init_dict()` (tiny config), `get_dummy_inputs()`, `input_shape`, `output_shape`. Keep init dims small for speed.
 - Do **not** add the model-level `LoraTesterMixin` (from `tests/models/testing_utils/lora.py`, distinct from the pipeline-level one) at the start, even if the model subclasses `PeftAdapterMixin` — strip it from the generated file for the initial PR.
 - Reference: `tests/models/transformers/test_models_transformer_flux.py`.
+
+### Quantization backend tests
+
+Tests for a quantization backend (`src/diffusers/quantizers/<backend>/`) **always go in `tests/models/testing_utils/quantization.py`**, as mixins that model test files compose. Don't add a `tests/quantization/<backend>/` directory or any other per-backend test file, and don't hand-write backend tests inside a model's test file.
+
+- **Three mixins per backend**, named and decorated like the existing ones (`BitsAndBytes*`, `TorchAo*`, `GGUF*`, ...):
+  - `<Backend>ConfigMixin` — the configs to test, plus `_create_quantized_model(config_kwargs, **extra_kwargs)` and `_verify_if_layer_quantized(name, module, config_kwargs)`.
+  - `<Backend>TesterMixin(<Backend>ConfigMixin, QuantizationTesterMixin)` — `test_<backend>_*` methods that call the shared `_test_*` helpers on `QuantizationTesterMixin`.
+  - `<Backend>CompileTesterMixin(<Backend>ConfigMixin, QuantizationCompileTesterMixin)` — `torch.compile` tests, through `_test_torch_compile` and `_test_torch_compile_with_group_offload`.
+- **A check that applies to every backend is a `_test_*` helper on `QuantizationTesterMixin`**, not a test in one backend's mixin.
+- Mark the mixins with `@is_quantization`, the backend's own `@is_<backend>` marker (`tests/testing_utils.py`, registered in `tests/conftest.py`) and its `require_*` guards, and export them from `tests/models/testing_utils/__init__.py`.
+- A model opts in with one test class per mixin, e.g. `class TestFluxTransformerBitsAndBytes(FluxTransformerTesterConfig, BitsAndBytesTesterMixin)` in `tests/models/transformers/test_models_transformer_flux.py`.
