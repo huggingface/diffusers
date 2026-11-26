@@ -15,8 +15,8 @@
 
 import torch
 
-from diffusers import DDIMScheduler, DDPMScheduler, UNet2DModel
-from diffusers.training_utils import compute_confidence_aware_loss, set_seed
+from diffusers import DDIMScheduler, DDPMScheduler, FlowMatchEulerDiscreteScheduler, UNet2DModel
+from diffusers.training_utils import compute_confidence_aware_loss, compute_loss_weighting_for_sd3, set_seed
 
 from ..testing_utils import slow
 
@@ -25,6 +25,17 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class TestTraining:
+    def test_sd3_sigma_sqrt_weighting_fp16(self):
+        sigmas = FlowMatchEulerDiscreteScheduler(shift=3.0).sigmas[-1:].to(torch.float16)
+        weighting = compute_loss_weighting_for_sd3("sigma_sqrt", sigmas)
+        prediction = torch.ones(1, requires_grad=True)
+        loss = (weighting * (-sigmas * prediction).square()).mean()
+        loss.backward()
+
+        assert weighting.dtype == torch.float32
+        torch.testing.assert_close(loss, torch.tensor(1.0))
+        torch.testing.assert_close(prediction.grad, torch.tensor([2.0]))
+
     def get_model_optimizer(self, resolution=32):
         set_seed(0)
         model = UNet2DModel(sample_size=resolution, in_channels=3, out_channels=3)
