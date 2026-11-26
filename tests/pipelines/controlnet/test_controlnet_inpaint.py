@@ -170,7 +170,13 @@ class ControlNetInpaintPipelineTests:
 class TestControlNetInpaintPipeline(
     ControlNetInpaintPipelineTesterConfig, ControlNetInpaintPipelineTests, PipelineTesterMixin
 ):
-    pass
+    def test_mask_crop_rejects_empty_control_image_list(self):
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
+        inputs.update(control_image=[], padding_mask_crop=4, output_type="pil")
+
+        with pytest.raises(ValueError, match="PIL image"):
+            pipe(**inputs)
 
 
 class TestControlNetInpaintPipelineMemory(ControlNetInpaintPipelineTesterConfig, MemoryTesterMixin):
@@ -382,6 +388,25 @@ class MultiControlNetInpaintPipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestMultiControlNetInpaintPipeline(MultiControlNetInpaintPipelineTesterConfig, PipelineTesterMixin):
+    def test_mask_crop_with_multiple_controlnets(self):
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
+        image = inputs["image"]
+        mask_image = Image.new("L", image.size)
+        mask_image.paste(255, (20, 20, 44, 44))
+        inputs.update(
+            mask_image=mask_image,
+            control_image=[Image.new("RGB", image.size, color) for color in ("red", "blue")],
+            controlnet_conditioning_scale=[0.5, 0.5],
+            padding_mask_crop=4,
+            output_type="pil",
+        )
+
+        output = pipe(**inputs).images[0]
+
+        assert output.size == image.size
+        assert output.getpixel((0, 0)) == image.getpixel((0, 0))
+
     def test_control_guidance_switch(self):
         pipe = self.get_pipeline().to(torch_device)
 

@@ -652,10 +652,9 @@ class StableDiffusionControlNetInpaintPipeline(
                 )
 
         if padding_mask_crop is not None:
-            if not isinstance(image, PIL.Image.Image):
-                raise ValueError(
-                    f"The image should be a PIL image when inpainting mask crop, but is of type {type(image)}."
-                )
+            control_images = image if isinstance(image, list) else [image]
+            if not control_images or not all(isinstance(control, PIL.Image.Image) for control in control_images):
+                raise ValueError("Control images must be PIL images when inpainting mask crop.")
             if not isinstance(mask_image, PIL.Image.Image):
                 raise ValueError(
                     f"The mask image should be a PIL image when inpainting mask crop, but is of type"
@@ -1181,6 +1180,10 @@ class StableDiffusionControlNetInpaintPipeline(
             )
 
         # 1. Check inputs. Raise error if not correct
+        if padding_mask_crop is not None and not isinstance(image, PIL.Image.Image):
+            raise ValueError(
+                f"The image should be a PIL image when inpainting mask crop, but is of type {type(image)}."
+            )
         self.check_inputs(
             prompt,
             control_image,
