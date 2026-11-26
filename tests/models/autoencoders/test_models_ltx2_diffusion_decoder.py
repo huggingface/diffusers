@@ -240,3 +240,58 @@ class TestLTX2VideoDiffusionDecoderModelNattenProcessor(LTX2VideoDiffusionDecode
 
         assert output.shape == (inputs["z"].shape[0], *self.output_shape)
         assert torch.isfinite(output).all(), "NATTEN decode produced NaN/inf values"
+
+
+class TestLTX2VideoDiffusionDecoderModelKeyframes(LTX2VideoDiffusionDecoderModelTesterConfig):
+    """Keyframe-aware decoding: a second stream of single-frame planes, attended jointly with the video."""
+
+    def get_model(self, keyframe_type_embedding=True):
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict(), decoder_keyframe_type_embedding=keyframe_type_embedding)
+        with torch.no_grad():
+            # Random, not default-initialized: the zero `type_emb` and `scale_shift_table` would hide wiring errors.
+            for parameter in model.parameters():
+                parameter.copy_(torch.randn(parameter.shape, generator=self.generator) * 0.3)
+        return model.to(torch_device).eval()
+
+    def get_latents(self, num_planes=2, latent_frames=3):
+        generator = self.generator
+        latents = randn_tensor((1, 8, latent_frames, 3, 4), generator=generator, device=torch_device)
+        keyframes = randn_tensor((1, 8, num_planes, 3, 4), generator=generator, device=torch_device)
+        return latents, keyframes
+
+    def decode(self, model, latents, **kwargs):
+        generator = torch.Generator("cpu").manual_seed(0)
+        with torch.no_grad():
+            return model.decode(latents, generator=generator, return_dict=False, **kwargs)[0]
+
+    def test_single_covering_tile_matches_untiled_with_keyframes(self):
+        """One tile spanning the video must reproduce the untiled keyframe decode bit for bit."""
+        latents, keyframes = self.get_latents(num_planes=3)
+        model = self.get_model()
+        indices = torch.tensor([8, 16, 40])  # 40 lies past the 17-frame clip: kept as the nearest plane after it
+        for num_inference_steps in (None, 3):
+            untiled = self.decode(
+                model,
+                latents,
+                num_inference_steps=num_inference_steps,
+                keyframe_latents=keyframes,
+                keyframe_frame_indices=indices,
+            )
+            generator = torch.Generator("cpu").manual_seed(0)
+            with torch.no_grad():
+                tiled = model.tiled_decode(
+                    latents,
+                    generator=generator,
+                    num_inference_steps=num_inference_steps,
+                    keyframe_latents=keyframes,
+                    keyframe_frame_indices=indices,
+                )
+            assert torch.equal(tiled, untiled), (tiled - untiled).abs().max()
+
+    def test_keyframe_decode_requires_trained_type_emb(self):
+        """A checkpoint without `decoder.type_emb` must refuse keyframe planes rather than decode them untagged."""
+        latents, keyframes = self.get_latents()
+        model = self.get_model(keyframe_type_embedding=False)
+        with pytest.raises(ValueError, match="decoder.type_emb"):
+            self.decode(model, latents, keyframe_latents=keyframes, keyframe_frame_indices=[8, 16])
