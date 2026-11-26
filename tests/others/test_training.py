@@ -26,7 +26,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 class TestTraining:
     def test_sd3_sigma_sqrt_weighting_fp16(self):
-        sigmas = FlowMatchEulerDiscreteScheduler(shift=3.0).sigmas[-1:].to(torch.float16)
+        sigmas = FlowMatchEulerDiscreteScheduler().sigmas[-1:].to(torch.float16)
         weighting = compute_loss_weighting_for_sd3("sigma_sqrt", sigmas)
         prediction = torch.ones(1, requires_grad=True)
         loss = (weighting * (-sigmas * prediction).square()).mean()
