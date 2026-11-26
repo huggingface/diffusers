@@ -52,8 +52,9 @@ class Ideogram4CoreDenoiseStep(SequentialPipelineBlocks):
     unpatchifies the result for the decoder.
 
       Components:
-          transformer (`Ideogram4Transformer2DModel`) scheduler (`FlowMatchEulerDiscreteScheduler`)
-          unconditional_transformer (`Ideogram4Transformer2DModel`)
+          - transformer (`Ideogram4Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - unconditional_transformer (`Ideogram4Transformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -115,11 +116,15 @@ class Ideogram4AutoBlocks(SequentialPipelineBlocks):
         - `text2image`: requires `prompt`
 
       Components:
-          text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder. tokenizer (`Qwen2Tokenizer`): The tokenizer paired
-          with the text encoder. prompt_enhancer_head (`Ideogram4PromptEnhancerHead`): LM head grafted onto the text
-          encoder for prompt upsampling. transformer (`Ideogram4Transformer2DModel`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) unconditional_transformer (`Ideogram4Transformer2DModel`) vae
-          (`AutoencoderKLFlux2`) image_processor (`VaeImageProcessor`)
+          - text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder.
+          - tokenizer (`Qwen2Tokenizer`): The tokenizer paired with the text encoder.
+          - prompt_enhancer_head (`Ideogram4PromptEnhancerHead`): LM head grafted onto the text encoder for prompt
+            upsampling.
+          - transformer (`Ideogram4Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - unconditional_transformer (`Ideogram4Transformer2DModel`)
+          - vae (`AutoencoderKLFlux2`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           prompt (`str`):

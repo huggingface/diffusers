@@ -75,9 +75,6 @@ class TestStableDiffusion3ModularPipelineFast(StableDiffusion3ModularPipelineTes
         # (guidance_scale) which are intentionally omitted from pipeline inputs.
         pass
 
-    def test_float16_inference(self):
-        super().test_float16_inference(9e-2)
-
 
 class TestStableDiffusion3ModularPipelineLoading(
     StableDiffusion3ModularPipelineTesterConfig, ModularLoadingTesterMixin
@@ -180,9 +177,6 @@ class TestStableDiffusion3Img2ImgModularPipelineFast(
         # Override to prevent signature check failure for guider configurations
         # (guidance_scale) which are intentionally omitted from pipeline inputs.
         pass
-
-    def test_float16_inference(self):
-        super().test_float16_inference(9e-2)
 
 
 class TestStableDiffusion3Img2ImgModularPipelineLoading(

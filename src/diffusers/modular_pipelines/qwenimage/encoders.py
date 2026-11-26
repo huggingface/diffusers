@@ -282,7 +282,7 @@ class QwenImageEditResizeStep(ModularPipelineBlocks):
     Image Resize step that resize the image to target area while maintaining the aspect ratio.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`)
+          - image_resize_processor (`VaeImageProcessor`)
 
       Inputs:
           image (`Image | list`):
@@ -358,7 +358,7 @@ class QwenImageLayeredResizeStep(ModularPipelineBlocks):
     maintaining the aspect ratio.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`)
+          - image_resize_processor (`VaeImageProcessor`)
 
       Inputs:
           image (`Image | list`):
@@ -453,7 +453,7 @@ class QwenImageEditPlusResizeStep(ModularPipelineBlocks):
       encoding. Each image is resized independently based on its own aspect ratio.
 
       Components:
-          image_resize_processor (`VaeImageProcessor`)
+          - image_resize_processor (`VaeImageProcessor`)
 
       Inputs:
           image (`Image | list`):
@@ -557,7 +557,8 @@ class QwenImageLayeredGetImagePromptStep(ModularPipelineBlocks):
       passes through unchanged.
 
       Components:
-          text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor (`Qwen2VLProcessor`)
+          - text_encoder (`Qwen2_5_VLForConditionalGeneration`)
+          - processor (`Qwen2VLProcessor`)
 
       Inputs:
           prompt (`str`, *optional*):
@@ -671,8 +672,9 @@ class QwenImageTextEncoderStep(ModularPipelineBlocks):
     Text Encoder step that generates text embeddings to guide the image generation.
 
       Components:
-          text_encoder (`Qwen2_5_VLForConditionalGeneration`): The text encoder to use tokenizer (`Qwen2Tokenizer`):
-          The tokenizer to use guider (`ClassifierFreeGuidance`)
+          - text_encoder (`Qwen2_5_VLForConditionalGeneration`): The text encoder to use
+          - tokenizer (`Qwen2Tokenizer`): The tokenizer to use
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt (`str`):
@@ -803,8 +805,9 @@ class QwenImageEditTextEncoderStep(ModularPipelineBlocks):
     generation.
 
       Components:
-          text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor (`Qwen2VLProcessor`) guider
-          (`ClassifierFreeGuidance`)
+          - text_encoder (`Qwen2_5_VLForConditionalGeneration`)
+          - processor (`Qwen2VLProcessor`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt (`str`):
@@ -928,8 +931,9 @@ class QwenImageEditPlusTextEncoderStep(ModularPipelineBlocks):
     embeddings for guiding image generation.
 
       Components:
-          text_encoder (`Qwen2_5_VLForConditionalGeneration`) processor (`Qwen2VLProcessor`) guider
-          (`ClassifierFreeGuidance`)
+          - text_encoder (`Qwen2_5_VLForConditionalGeneration`)
+          - processor (`Qwen2VLProcessor`)
+          - guider (`ClassifierFreeGuidance`)
 
       Inputs:
           prompt (`str`):
@@ -1067,7 +1071,7 @@ class QwenImageInpaintProcessImagesInputStep(ModularPipelineBlocks):
     resized to the given height and width.
 
       Components:
-          image_mask_processor (`InpaintProcessor`)
+          - image_mask_processor (`InpaintProcessor`)
 
       Inputs:
           mask_image (`Image`):
@@ -1178,7 +1182,7 @@ class QwenImageEditInpaintProcessImagesInputStep(ModularPipelineBlocks):
     resized first.
 
       Components:
-          image_mask_processor (`InpaintProcessor`)
+          - image_mask_processor (`InpaintProcessor`)
 
       Inputs:
           mask_image (`Image`):
@@ -1271,7 +1275,7 @@ class QwenImageProcessImagesInputStep(ModularPipelineBlocks):
     Image Preprocess step. will resize the image to the given height and width.
 
       Components:
-          image_processor (`VaeImageProcessor`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           image (`Image | list`):
@@ -1357,7 +1361,7 @@ class QwenImageEditProcessImagesInputStep(ModularPipelineBlocks):
     Image Preprocess step. Images needs to be resized first.
 
       Components:
-          image_processor (`VaeImageProcessor`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           resized_image (`list`):
@@ -1431,7 +1435,7 @@ class QwenImageEditPlusProcessImagesInputStep(ModularPipelineBlocks):
     processed images.
 
       Components:
-          image_processor (`VaeImageProcessor`)
+          - image_processor (`VaeImageProcessor`)
 
       Inputs:
           resized_image (`list`):
@@ -1520,7 +1524,7 @@ class QwenImageVaeEncoderStep(ModularPipelineBlocks):
       Handles both single images and lists of images with varied resolutions.
 
       Components:
-          vae (`AutoencoderKLQwenImage`)
+          - vae (`AutoencoderKLQwenImage`)
 
       Inputs:
           processed_image (`Tensor`):
@@ -1629,8 +1633,9 @@ class QwenImageControlNetVaeEncoderStep(ModularPipelineBlocks):
     VAE Encoder step that converts `control_image` into latent representations control_image_latents.
 
       Components:
-          vae (`AutoencoderKLQwenImage`) controlnet (`QwenImageControlNetModel`) control_image_processor
-          (`VaeImageProcessor`)
+          - vae (`AutoencoderKLQwenImage`)
+          - controlnet (`QwenImageControlNetModel`)
+          - control_image_processor (`VaeImageProcessor`)
 
       Inputs:
           control_image (`Image`):

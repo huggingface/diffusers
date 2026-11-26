@@ -195,6 +195,13 @@ def populate_model_card(model_card: ModelCard, tags: str | list[str] | None = No
         for tag in tags:
             model_card.data.tags.append(tag)
 
+    # Hugging Face Jobs sets `HF_JOB_ID` inside a Job: tag models trained or pushed from a Job.
+    if "HF_JOB_ID" in os.environ:
+        if model_card.data.tags is None:
+            model_card.data.tags = []
+        if "hf_jobs" not in model_card.data.tags:
+            model_card.data.tags.append("hf_jobs")
+
     return model_card
 
 

@@ -38,7 +38,8 @@ logger = logging.get_logger(__name__)
 class StableDiffusion3Img2ImgVaeEncoderStep(SequentialPipelineBlocks):
     """
     Components:
-          image_processor (`VaeImageProcessor`) vae (`AutoencoderKL`)
+          - image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKL`)
 
       Inputs:
           image (`None`, *optional*):
@@ -69,7 +70,8 @@ class StableDiffusion3Img2ImgVaeEncoderStep(SequentialPipelineBlocks):
 class StableDiffusion3AutoVaeEncoderStep(AutoPipelineBlocks):
     """
     Components:
-          image_processor (`VaeImageProcessor`) vae (`AutoencoderKL`)
+          - image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKL`)
 
       Inputs:
           image (`None`, *optional*):
@@ -98,8 +100,9 @@ class StableDiffusion3AutoVaeEncoderStep(AutoPipelineBlocks):
 class StableDiffusion3T2ICoreDenoiseStep(SequentialPipelineBlocks):
     """
     Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
-          (`SD3Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`SD3Transformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`None`, *optional*, defaults to 1):
@@ -154,8 +157,9 @@ class StableDiffusion3T2ICoreDenoiseStep(SequentialPipelineBlocks):
 class StableDiffusion3I2ICoreDenoiseStep(SequentialPipelineBlocks):
     """
     Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
-          (`SD3Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`SD3Transformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`None`, *optional*, defaults to 1):
@@ -223,8 +227,9 @@ class StableDiffusion3I2ICoreDenoiseStep(SequentialPipelineBlocks):
 class StableDiffusion3AutoCoreDenoiseStep(AutoPipelineBlocks):
     """
     Components:
-          scheduler (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer
-          (`SD3Transformer2DModel`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`SD3Transformer2DModel`)
 
       Inputs:
           num_images_per_prompt (`None`, *optional*, defaults to 1):
@@ -296,10 +301,17 @@ class StableDiffusion3AutoBlocks(SequentialPipelineBlocks):
         - `image2image`: requires `image`, `prompt`
 
       Components:
-          text_encoder (`CLIPTextModelWithProjection`) tokenizer (`CLIPTokenizer`) text_encoder_2
-          (`CLIPTextModelWithProjection`) tokenizer_2 (`CLIPTokenizer`) text_encoder_3 (`T5EncoderModel`) tokenizer_3
-          (`T5Tokenizer`) image_processor (`VaeImageProcessor`) vae (`AutoencoderKL`) scheduler
-          (`FlowMatchEulerDiscreteScheduler`) guider (`ClassifierFreeGuidance`) transformer (`SD3Transformer2DModel`)
+          - text_encoder (`CLIPTextModelWithProjection`)
+          - tokenizer (`CLIPTokenizer`)
+          - text_encoder_2 (`CLIPTextModelWithProjection`)
+          - tokenizer_2 (`CLIPTokenizer`)
+          - text_encoder_3 (`T5EncoderModel`)
+          - tokenizer_3 (`T5Tokenizer`)
+          - image_processor (`VaeImageProcessor`)
+          - vae (`AutoencoderKL`)
+          - scheduler (`FlowMatchEulerDiscreteScheduler`)
+          - guider (`ClassifierFreeGuidance`)
+          - transformer (`SD3Transformer2DModel`)
 
       Inputs:
           prompt (`None`, *optional*):

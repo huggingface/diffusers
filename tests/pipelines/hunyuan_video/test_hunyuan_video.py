@@ -31,6 +31,7 @@ from ...testing_utils import (
     assert_tensors_close,
     backend_empty_cache,
     enable_full_determinism,
+    is_lora,
     nightly,
     numpy_cosine_similarity_distance,
     require_big_accelerator,
@@ -276,6 +277,7 @@ class TestHunyuanVideoPipelineLoRAMemory(HunyuanVideoPipelineTesterConfig, LoraM
     """LoRA x memory-optimization tests (group offload, CPU offload) for the HunyuanVideo pipeline."""
 
 
+@is_lora
 @nightly
 @require_torch_accelerator
 @require_peft_backend
