@@ -102,9 +102,16 @@ class TestLongCatAudioDiTTransformerAttention(LongCatAudioDiTTransformerTesterCo
 
 
 def test_longcat_audio_attention_uses_standard_self_attn_kwargs():
-    from diffusers.models.transformers.transformer_longcat_audio_dit import AudioDiTAttention
+    from diffusers.models.transformers.transformer_longcat_audio_dit import (
+        AudioDiTAttention,
+        AudioDiTSelfAttnProcessor,
+    )
 
     attn = AudioDiTAttention(q_dim=4, kv_dim=None, heads=1, dim_head=4, dropout=0.0, bias=False)
+
+    assert attn._default_processor_cls is AudioDiTSelfAttnProcessor
+    assert AudioDiTSelfAttnProcessor in attn._available_processors
+    assert attn.use_bias is False
 
     eye = torch.eye(4)
     with torch.no_grad():
@@ -119,3 +126,30 @@ def test_longcat_audio_attention_uses_standard_self_attn_kwargs():
     output = attn(hidden_states=hidden_states, attention_mask=attention_mask)
 
     assert torch.allclose(output[:, 1], torch.zeros_like(output[:, 1]))
+
+
+def test_longcat_audio_attention_direct_fuse_projections_noops():
+    from diffusers.models.transformers.transformer_longcat_audio_dit import AudioDiTAttention
+
+    attn = AudioDiTAttention(q_dim=4, kv_dim=None, heads=1, dim_head=4)
+
+    attn.fuse_projections()
+
+    assert not attn.fused_projections
+    assert not hasattr(attn, "to_qkv")
+
+
+def test_longcat_audio_transformer_exposes_attention_processors():
+    model = LongCatAudioDiTTransformer(
+        dit_dim=64,
+        dit_depth=2,
+        dit_heads=4,
+        dit_text_dim=32,
+        latent_dim=8,
+        text_conv=False,
+    )
+
+    processors = model.attn_processors
+
+    assert len(processors) == 4
+    model.set_attn_processor(dict(processors))
