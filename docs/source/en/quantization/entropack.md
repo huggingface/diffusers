@@ -15,7 +15,7 @@ specific language governing permissions and limitations under the License.
 
 [EntroPack](https://github.com/modelscope/entropack) compresses `nn.Linear` weights with lattice quantization and entropy coding. It supports fractional target rates, such as 3.5 bits per parameter (bpp), and does not require a calibration dataset.
 
-Install EntroPack with the extra that matches your CUDA version. Diffusers requires EntroPack 0.1.8 or newer.
+Install EntroPack with the extra that matches your CUDA version. Diffusers requires EntroPack 0.1.9 or newer.
 
 ```bash
 pip install --upgrade diffusers "entropack[cuda12]"
@@ -36,7 +36,6 @@ model = ZImageTransformer2DModel.from_pretrained(
     subfolder="transformer",
     quantization_config=EntroPackConfig(target_bpp=4.0),
     torch_dtype=torch.bfloat16,
-    device_map={"": "cuda"},
 )
 ```
 
@@ -111,13 +110,40 @@ pipe = ZImagePipeline.from_pretrained(
     "Tongyi-MAI/Z-Image-Turbo",
     quantization_config=quantization_config,
     torch_dtype=torch.bfloat16,
-).to("cuda")
+    device_map="cuda",
+)
 image = pipe(
     prompt="A cat holding a sign that says hello world",
     num_inference_steps=8,
     guidance_scale=0.0,
 ).images[0]
 ```
+
+`device_map="cuda"` quantizes on the GPU during loading: fast, but temporarily needs extra GPU memory for the original plus quantized weights. If GPU memory is tight, drop `device_map` and call `pipeline.to("cuda")` after loading:
+
+```py
+pipe = ZImagePipeline.from_pretrained(
+    "Tongyi-MAI/Z-Image-Turbo",
+    quantization_config=quantization_config,
+    torch_dtype=torch.bfloat16,
+)
+pipe.to("cuda")
+```
+
+Without `device_map`, the layers are quantized on the CPU, which is slower but avoids the temporary GPU-memory spike.
+
+## Speed, memory, and quality trade-offs
+
+Lower target rates save memory but cost reconstruction quality. The entropy-coded (`default`) path reconstructs weights on every forward, adding a per-step decode overhead (within ~10% of bf16 on the setup below); the `fp8`/`int8` paths decode 8-bit codes and run low-precision tensor-core GEMMs, which can be faster than bf16 at some quality cost. Measured on Z-Image-Turbo (single H20, 1024x1024, 8 steps, fixed seed; PSNR against the bf16 output):
+
+| config | PSNR vs bf16 | per-step latency | peak VRAM |
+|---|---|---|---|
+| bf16 | — | 536.8 ms | 21.69 GiB |
+| `target_bpp=8.0` | 31.89 dB | 587.6 ms | 15.99 GiB |
+| `target_bpp=4.0` | 21.61 dB | 576.6 ms | 13.01 GiB |
+| `target_bpp=3.0` | 13.66 dB | 572.4 ms | 12.33 GiB |
+| `target_bpp=4.0, linear_type="int8"` | 18.50 dB | 440.5 ms | 13.01 GiB |
+| `target_bpp=4.0, linear_type="fp8"` | 23.46 dB | 460.0 ms | 13.01 GiB |
 
 ## Save and reload
 
@@ -133,7 +159,6 @@ Load the saved model without passing another [`EntroPackConfig`]. Diffusers read
 model = ZImageTransformer2DModel.from_pretrained(
     "zimage-entropack-4bpp",
     torch_dtype=torch.bfloat16,
-    device_map={"": "cuda"},
 )
 ```
 

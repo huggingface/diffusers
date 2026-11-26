@@ -196,6 +196,6 @@ class EntroPackQuantizer(DiffusersQuantizer):
         return True
 
     def _dequantize(self, model):
-        from .utils import _dequantize_and_replace
+        import entropack
 
-        return _dequantize_and_replace(model)
+        return entropack.dequantize_model(model)

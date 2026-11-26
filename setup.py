@@ -133,7 +133,7 @@ _deps = [
     "bitsandbytes>=0.43.3",
     "nvidia_modelopt[hf]>=0.33.1",
     "sdnq>=0.2.2",
-    "entropack>=0.1.8",
+    "entropack>=0.1.9",
     "regex!=2019.12.17",
     "requests",
     "tensorboard",

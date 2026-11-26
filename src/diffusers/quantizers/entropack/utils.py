@@ -108,27 +108,3 @@ def _replace_with_entropack_linear(
         )
 
     return model
-
-
-def _dequantize_and_replace(model: "ModelMixin") -> "ModelMixin":
-    import entropack
-
-    for name, module in model.named_children():
-        if isinstance(module, entropack.CompressedLinear):
-            device = module.weight.device
-            with torch.device("meta"):
-                new_module = nn.Linear(
-                    module.in_features,
-                    module.out_features,
-                    bias=module.bias is not None,
-                    dtype=module._init_dtype,
-                )
-            new_module.weight = nn.Parameter(
-                module.dequantize(device).to(device=device, dtype=module._init_dtype), requires_grad=False
-            )
-            if module.bias is not None:
-                new_module.bias = nn.Parameter(module.bias.data.to(device), requires_grad=False)
-            model._modules[name] = new_module
-        else:
-            _dequantize_and_replace(module)
-    return model
