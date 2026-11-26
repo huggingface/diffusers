@@ -517,13 +517,25 @@ def _create_lokr_config(state_dict, metadata):
         raise TypeError("`LoKrConfig` class could not be instantiated.") from e
 
 
+# `LoraConfig` fields that make peft import a module by name (`importlib.import_module(megatron_core)` when
+# `megatron_config` is set). Diffusers models never use Megatron tensor-parallel layers, so these are not taken from
+# the adapter metadata stored in a LoRA checkpoint.
+_LORA_METADATA_IGNORED_KEYS = ("megatron_config", "megatron_core")
+
+
 def _create_lora_config(
     state_dict, network_alphas, metadata, rank_pattern_dict, is_unet=True, model_state_dict=None, adapter_name=None
 ):
     from peft import LoraConfig
 
     if metadata is not None:
-        lora_config_kwargs = metadata
+        # Every saved `LoraConfig` carries these keys with their defaults, so only warn when Megatron was requested.
+        if metadata.get("megatron_config") is not None:
+            logger.warning(
+                "Ignoring `megatron_config` and `megatron_core` from the LoRA adapter metadata: Megatron "
+                "tensor-parallel layers are not supported when loading LoRA adapters in Diffusers."
+            )
+        lora_config_kwargs = {k: v for k, v in metadata.items() if k not in _LORA_METADATA_IGNORED_KEYS}
     else:
         lora_config_kwargs = get_peft_kwargs(
             rank_pattern_dict,
