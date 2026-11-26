@@ -737,8 +737,15 @@ def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOf
     matched_module_groups = []
 
     for name, submodule in module.named_children():
+        is_module_list = isinstance(submodule, torch.nn.ModuleList)
+        if name in block_modules and is_module_list:
+            logger.warning(
+                f"'{name}' in `block_modules` is a `{submodule.__class__.__name__}`, which is already offloaded in "
+                "groups of `num_blocks_per_group` blocks. Ignoring it."
+            )
+
         # Check if this is an explicitly defined block module
-        if name in block_modules:
+        if name in block_modules and not is_module_list:
             # Track submodule using a prefix to avoid filename collisions during disk offload.
             # Without this, submodules sharing the same model class would be assigned identical
             # filenames (derived from the class name).
