@@ -346,6 +346,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                     "Please set `use_flow_sigmas=True` during scheduler initialization."
                 )
             num_inference_steps = len(sigmas)
+            sigmas = np.array(sigmas).astype(np.float32)
 
         # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://huggingface.co/papers/2305.08891
         if self.config.timestep_spacing == "linspace":
