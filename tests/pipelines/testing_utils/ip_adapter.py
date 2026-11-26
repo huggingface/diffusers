@@ -51,7 +51,7 @@ class IPAdapterTesterMixin(BasePipelineOutputMixin):
         inputs["return_dict"] = False
         return inputs
 
-    def _load_ip_adapters(self, pipe, num_adapters=1, faceid=False):
+    def create_ip_adapter_state_dict(self, model, faceid=False):
         # The state dict builders are imported here rather than at module scope: they live in a model test module
         # that calls `enable_full_determinism()` on import, which would otherwise flip that global for every test
         # collected alongside this directory.
@@ -61,7 +61,10 @@ class IPAdapterTesterMixin(BasePipelineOutputMixin):
         )
 
         create_state_dict = create_ip_adapter_faceid_state_dict if faceid else create_ip_adapter_state_dict
-        state_dicts = [create_state_dict(pipe.unet) for _ in range(num_adapters)]
+        return create_state_dict(model)
+
+    def _load_ip_adapters(self, pipe, num_adapters=1, faceid=False):
+        state_dicts = [self.create_ip_adapter_state_dict(pipe.unet, faceid=faceid) for _ in range(num_adapters)]
 
         # Load through the pipeline's public IP-Adapter API. `image_encoder_folder=None` skips fetching a CLIP image
         # encoder since these tests feed pre-computed `ip_adapter_image_embeds` directly.
