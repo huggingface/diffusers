@@ -39,6 +39,7 @@ from ...testing_utils import (
     is_context_parallel,
     is_kernels_available,
     is_tensor_parallel,
+    require_peft_version_greater,
     require_torch_multi_accelerator,
     require_torch_neuron,
     require_torch_tpu,
@@ -758,6 +759,9 @@ class TensorParallelTesterMixin:
     def test_tensor_parallel_batch_inputs(self):
         self.test_tensor_parallel_inference(batch_size=2)
 
+    # PEFT 0.19.x imports TP helpers that transformers 5.16 removed whenever `torch.distributed` is initialized, so
+    # loading the adapter in a worker fails (huggingface/peft#3261).
+    @require_peft_version_greater("0.19.1")
     def test_tensor_parallel_fused_lora_inference(self):
         """A LoRA adapter fused and unloaded before sharding matches the unsharded model with the adapter."""
         self.test_tensor_parallel_inference(fused_lora=True)
@@ -904,6 +908,9 @@ class TensorParallelTPUTesterMixin:
         tp_output = torch.tensor(return_dict["output"])
         torch.testing.assert_close(ref_output, tp_output, atol=atol, rtol=rtol)
 
+    # PEFT 0.19.x imports TP helpers that transformers 5.16 removed whenever `torch.distributed` is initialized, so
+    # loading the adapter in a worker fails (huggingface/peft#3261).
+    @require_peft_version_greater("0.19.1")
     def test_tensor_parallel_tpu_fused_lora_inference(self):
         """A LoRA adapter fused and unloaded before sharding matches the unsharded model with the adapter."""
         self.test_tensor_parallel_tpu_inference(fused_lora=True)
@@ -995,6 +1002,9 @@ class TensorParallelNeuronTesterMixin:
         # Neuron runs matmuls in bf16 internally, so compare with a bf16-level tolerance.
         torch.testing.assert_close(ref_output, tp_output, atol=atol, rtol=rtol)
 
+    # PEFT 0.19.x imports TP helpers that transformers 5.16 removed whenever `torch.distributed` is initialized, so
+    # loading the adapter in a worker fails (huggingface/peft#3261).
+    @require_peft_version_greater("0.19.1")
     def test_tensor_parallel_neuron_fused_lora_inference(self):
         """A LoRA adapter fused and unloaded before sharding matches the unsharded model with the adapter."""
         self.test_tensor_parallel_neuron_inference(fused_lora=True)
