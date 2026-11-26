@@ -1026,18 +1026,18 @@ class EntroPackConfig(QuantizationConfigMixin):
         linear_type (`str`, *optional*, defaults to `"default"`):
             Linear implementation to use. Choose from `"default"`, `"fp8"`, and `"int8"`.
         modules_to_not_convert (`list`, *optional*, default to `None`):
-            The list of modules to not quantize, useful for quantizing models that explicitly require to have
-            some modules left in their original precision.
+            The list of modules to not quantize, useful for quantizing models that explicitly require to have some
+            modules left in their original precision.
         entropack_lossy_config (`dict`, *optional*):
             Additional settings for the EntroPack lossy compression backend. `target_bpp` takes precedence over the
             value in this dictionary.
         use_convrot (`bool`, *optional*, defaults to `True`):
             For `linear_type="int8"`, rotate weights and activations with a block Hadamard rotation before
-            quantization. Ignored for other linear types. The flag is not stored in the packed weights, so it is
-            read back from `config.json` when reloading.
+            quantization. Ignored for other linear types. The flag is not stored in the packed weights, so it is read
+            back from `config.json` when reloading.
         convrot_groupsize (`int`, *optional*, defaults to 256):
-            Requested power-of-four rotation block size for `use_convrot`, reduced by factors of four until it
-            divides the layer's `in_features`.
+            Requested power-of-four rotation block size for `use_convrot`, reduced by factors of four until it divides
+            the layer's `in_features`.
     """
 
     def __init__(

@@ -31,7 +31,8 @@ if is_torch_available():
 if is_entropack_available():
     import entropack
 
-    # present weights in the layer's compute dtype and decode codes directly from the packed header
+    # fp8 code dtype is floating-point, so the plain wrapper would leak it into model.dtype;
+    # keep the compute dtype and decode from the header instead of a per-step wrapper cast.
     class _CompressedFP8Linear(entropack.CompressedFP8Linear):
         def __setattr__(self, name, value):
             if name == "weight" and isinstance(value, nn.Parameter) and value.dtype == self.code_dtype:

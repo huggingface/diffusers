@@ -33,6 +33,7 @@ from ..testing_utils import (
     BitsAndBytesTesterMixin,
     ContextParallelAttentionBackendsTesterMixin,
     ContextParallelTesterMixin,
+    EntroPackTesterMixin,
     FasterCacheTesterMixin,
     FirstBlockCacheTesterMixin,
     GGUFCompileTesterMixin,
@@ -386,6 +387,20 @@ class TestFluxTransformerBitsAndBytes(FluxTransformerTesterConfig, BitsAndBytesT
     def get_dummy_inputs(self):
         """Override to build inputs in the quantizer compute dtype (excluded/unquantized linears
         do strict-dtype matmuls)."""
+        inputs = super().get_dummy_inputs()
+        return {k: v.to(self.torch_dtype) if torch.is_floating_point(v) else v for k, v in inputs.items()}
+
+
+class TestFluxTransformerEntroPack(FluxTransformerTesterConfig, EntroPackTesterMixin):
+    """EntroPack quantization tests for Flux Transformer."""
+
+    modules_to_not_convert_for_test = ["proj_out"]
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
+    def get_dummy_inputs(self):
         inputs = super().get_dummy_inputs()
         return {k: v.to(self.torch_dtype) if torch.is_floating_point(v) else v for k, v in inputs.items()}
 

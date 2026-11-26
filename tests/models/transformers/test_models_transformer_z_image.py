@@ -223,6 +223,10 @@ class TestZImageTransformerLoKr(ZImageTransformerTesterConfig, LoKrTesterMixin):
 
 # TODO: Add pretrained_model_name_or_path once a tiny Z-Image model is available on the Hub
 # class TestZImageTransformerTorchAo(ZImageTransformerTesterConfig, TorchAoTesterMixin):
+
+
+# TODO: Add pretrained_model_name_or_path once a tiny Z-Image model is available on the Hub
+# class TestZImageTransformerEntroPack(ZImageTransformerTesterConfig, EntroPackTesterMixin):
 #     """TorchAo quantization tests for Z-Image Transformer."""
 
 
