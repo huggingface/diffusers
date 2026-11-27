@@ -438,6 +438,14 @@ def is_torchao(test_case):
     return pytest.mark.torchao(test_case)
 
 
+def is_entropack(test_case):
+    """
+    Decorator marking a test as an EntroPack quantization test. These tests can be filtered using:
+        pytest -m "not entropack" to skip pytest -m entropack to run only these tests
+    """
+    return pytest.mark.entropack(test_case)
+
+
 def is_gguf(test_case):
     """
     Decorator marking a test as a GGUF quantization test. These tests can be filtered using:

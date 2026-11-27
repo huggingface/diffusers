@@ -50,6 +50,7 @@ class QuantizationMethod(str, Enum):
     MODELOPT = "modelopt"
     AUTOROUND = "auto-round"
     SDNQ = "sdnq"
+    ENTROPACK = "entropack"
 
 
 @dataclass
@@ -1012,3 +1013,66 @@ class SDNQConfig(QuantizationConfigMixin):
         from sdnq import SDNQConfig as SDNQLibConfig
 
         return SDNQLibConfig(*args, **kwargs)
+
+
+@dataclass
+class EntroPackConfig(QuantizationConfigMixin):
+    """
+    Configuration for loading a model with EntroPack weight compression.
+
+    Args:
+        target_bpp (`float`, *optional*, defaults to 4.0):
+            Target number of bits per parameter for compressed linear weights.
+        linear_type (`str`, *optional*, defaults to `"default"`):
+            Linear implementation to use. Choose from `"default"`, `"fp8"`, and `"int8"`.
+        modules_to_not_convert (`list`, *optional*, default to `None`):
+            The list of modules to not quantize, useful for quantizing models that explicitly require to have some
+            modules left in their original precision.
+        entropack_lossy_config (`dict`, *optional*):
+            Additional settings for the EntroPack lossy compression backend. `target_bpp` takes precedence over the
+            value in this dictionary.
+        use_convrot (`bool`, *optional*, defaults to `True`):
+            For `linear_type="int8"`, rotate weights and activations with a block Hadamard rotation before
+            quantization. Ignored for other linear types. The flag is not stored in the packed weights, so it is read
+            back from `config.json` when reloading.
+        convrot_groupsize (`int`, *optional*, defaults to 256):
+            Requested power-of-four rotation block size for `use_convrot`, reduced by factors of four until it divides
+            the layer's `in_features`.
+    """
+
+    def __init__(
+        self,
+        target_bpp: float = 4.0,
+        linear_type: str = "default",
+        modules_to_not_convert: list | None = None,
+        entropack_lossy_config: dict | None = None,
+        use_convrot: bool = True,
+        convrot_groupsize: int = 256,
+        **kwargs,
+    ):
+        self.quant_method = QuantizationMethod.ENTROPACK
+        self.target_bpp = float(target_bpp)
+        self.linear_type = linear_type
+        self.modules_to_not_convert = list(modules_to_not_convert) if modules_to_not_convert else None
+        self.entropack_lossy_config = entropack_lossy_config
+        self.use_convrot = bool(use_convrot)
+        self.convrot_groupsize = convrot_groupsize
+        self.post_init()
+
+    def post_init(self):
+        if self.linear_type not in ("default", "fp8", "int8"):
+            raise ValueError(f'linear_type must be "default", "fp8" or "int8", got {self.linear_type!r}')
+        if self.linear_type in ("fp8", "int8"):
+            valid_rate, rate_range = 0.001 <= self.target_bpp < 8.0, "[0.001, 8)"
+        else:
+            valid_rate, rate_range = 0.001 <= self.target_bpp <= 11.0, "[0.001, 11]"
+        if not valid_rate:
+            raise ValueError(
+                f"target_bpp must be within {rate_range} for linear_type={self.linear_type!r}, got {self.target_bpp}"
+            )
+        if self.linear_type == "int8" and self.use_convrot:
+            group = self.convrot_groupsize
+            while group > 1 and group % 4 == 0:
+                group //= 4
+            if group != 1 or self.convrot_groupsize < 4:
+                raise ValueError(f"convrot_groupsize must be a power of four >= 4, got {self.convrot_groupsize}")

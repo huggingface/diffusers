@@ -9,6 +9,7 @@ from .utils import (
     is_accelerate_available,
     is_auto_round_available,
     is_bitsandbytes_available,
+    is_entropack_available,
     is_gguf_available,
     is_librosa_available,
     is_note_seq_available,
@@ -43,10 +44,11 @@ _import_structure = {
     "modular_pipelines": [],
     "pipelines": [],
     "quantizers.pipe_quant_config": ["PipelineQuantizationConfig"],
-    "quantizers.quantization_config": [],
+    "quantizers.quantization_config": ["EntroPackConfig"],
     "schedulers": [],
     "utils": [
         "OptionalDependencyNotAvailable",
+        "is_entropack_available",
         "is_inflect_available",
         "is_invisible_watermark_available",
         "is_librosa_available",
@@ -1036,6 +1038,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils.dummy_bitsandbytes_objects import *
     else:
         from .quantizers.quantization_config import BitsAndBytesConfig
+    from .quantizers.quantization_config import EntroPackConfig
 
     try:
         if not is_gguf_available():
