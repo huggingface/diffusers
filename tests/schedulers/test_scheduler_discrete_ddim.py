@@ -104,3 +104,21 @@ class DiscreteDDIMSchedulerTest(unittest.TestCase):
         out = scheduler.step_correct(logits, timestep=2, sample=sample, return_dict=False)
         self.assertIsInstance(out, tuple)
         self.assertEqual(len(out), 4)
+
+    def test_step_with_cpu_generator(self):
+        scheduler = self.get_scheduler()
+        scheduler.set_timesteps(8)
+        sample = torch.randint(0, 100, (2, 16))
+        logits = torch.randn(2, 16, 100)
+        generator = torch.Generator("cpu").manual_seed(42)
+        out = scheduler.step(logits, timestep=2, sample=sample, temperature=0.7, generator=generator)
+        self.assertEqual(out.prev_sample.shape, sample.shape)
+
+    def test_step_correct_with_cpu_generator(self):
+        scheduler = self.get_scheduler(corrector_steps=1)
+        scheduler.set_timesteps(8)
+        sample = torch.randint(0, 100, (2, 16))
+        logits = torch.randn(2, 16, 100)
+        generator = torch.Generator("cpu").manual_seed(42)
+        out = scheduler.step_correct(logits, timestep=2, sample=sample, generator=generator)
+        self.assertEqual(out.prev_sample.shape, sample.shape)

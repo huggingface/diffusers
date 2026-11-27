@@ -54,3 +54,12 @@ class EntropyBoundSchedulerTest(unittest.TestCase):
         out = scheduler.step(logits, timestep=0, sample=sample)
         self.assertEqual(out.prev_sample.shape, sample.shape)
         self.assertEqual(out.accepted_index.shape, sample.shape)
+
+    def test_step_with_cpu_generator(self):
+        scheduler = self.get_scheduler()
+        sample = torch.randint(0, 100, (2, 16))
+        logits = torch.randn(2, 16, 100)
+        generator = torch.Generator("cpu").manual_seed(42)
+        out = scheduler.step(logits, timestep=0, sample=sample, generator=generator)
+        self.assertEqual(out.prev_sample.shape, sample.shape)
+        self.assertEqual(out.accepted_index.shape, sample.shape)

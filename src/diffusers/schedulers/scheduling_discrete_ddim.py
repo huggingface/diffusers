@@ -117,7 +117,12 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
             token = flat_logits.argmax(dim=-1, keepdim=True)
         else:
             scaled_probs = torch.softmax(flat_logits.float() / temperature, dim=-1)
-            token = torch.multinomial(scaled_probs, num_samples=1, generator=generator)
+            orig_device = scaled_probs.device
+            sample_device = generator.device if generator is not None else orig_device
+            sample_probs = scaled_probs.to(sample_device) if sample_device != orig_device else scaled_probs
+            if sample_probs.device.type == "cpu" and sample_probs.dtype not in (torch.float32, torch.float64):
+                sample_probs = sample_probs.float()
+            token = torch.multinomial(sample_probs, num_samples=1, generator=generator).to(orig_device)
 
         token_prob = torch.gather(probs, -1, token)
         return token.view(*logits.shape[:-1]), token_prob.view(*logits.shape[:-1])
@@ -200,11 +205,18 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
 
         route_probs = torch.stack([clean_mass, stay_mass, noise_mass], dim=-1)
         route_probs = route_probs / route_probs.sum(dim=-1, keepdim=True)
-        routes = torch.multinomial(route_probs.view(-1, 3), num_samples=1, generator=generator).view_as(sample)
+        route_probs_flat = route_probs.view(-1, 3)
+        orig_device = route_probs_flat.device
+        sample_device = generator.device if generator is not None else orig_device
+        sample_route_probs = route_probs_flat.to(sample_device) if sample_device != orig_device else route_probs_flat
+        if sample_route_probs.device.type == "cpu" and sample_route_probs.dtype not in (torch.float32, torch.float64):
+            sample_route_probs = sample_route_probs.float()
+        routes = torch.multinomial(sample_route_probs, num_samples=1, generator=generator).to(orig_device).view_as(sample)
 
+        rand_device = generator.device if generator is not None else sample.device
         random_tokens = torch.randint(
-            low=0, high=vocab_size, size=sample.shape, device=sample.device, generator=generator
-        )
+            low=0, high=vocab_size, size=sample.shape, device=rand_device, generator=generator
+        ).to(sample.device)
         prev_sample = torch.where(routes == 0, sampled_tokens, sample)
         prev_sample = torch.where(routes == 2, random_tokens, prev_sample)
 
@@ -226,7 +238,8 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
         k_eff = min(max(1, int(self.config.corrector_k)), seq_len)
 
         if selection == "random":
-            scores = torch.rand(batch_size, seq_len, device=sample.device, generator=generator)
+            rand_device = generator.device if generator is not None else sample.device
+            scores = torch.rand(batch_size, seq_len, device=rand_device, generator=generator).to(sample.device)
             return torch.topk(scores, k=k_eff, dim=-1).indices
 
         if selection == "lowest_maxprob":
@@ -241,7 +254,8 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(f"Unknown `corrector_selection`: {selection!r}.")
 
         keys = confidence / float(self.config.corrector_selection_tau)
-        u = torch.rand(keys.shape, device=keys.device, generator=generator).clamp_(1e-12, 1.0 - 1e-12)
+        rand_device = generator.device if generator is not None else keys.device
+        u = torch.rand(keys.shape, device=rand_device, generator=generator).to(keys.device).clamp_(1e-12, 1.0 - 1e-12)
         keys = keys + (-torch.log(-torch.log(u)))
         return torch.topk(keys, k=k_eff, dim=-1).indices
 
@@ -295,9 +309,15 @@ class DiscreteDDIMScheduler(SchedulerMixin, ConfigMixin):
         positions = self._select_positions(sample, cond_log_probs, generator)
         rows = torch.arange(sample.shape[0], device=sample.device).unsqueeze(-1).expand_as(positions)
         chosen_probs = cond_log_probs[rows, positions].exp()
+        chosen_probs_flat = chosen_probs.reshape(-1, vocab_size)
+        orig_device = chosen_probs_flat.device
+        sample_device = generator.device if generator is not None else orig_device
+        sample_chosen_probs = chosen_probs_flat.to(sample_device) if sample_device != orig_device else chosen_probs_flat
+        if sample_chosen_probs.device.type == "cpu" and sample_chosen_probs.dtype not in (torch.float32, torch.float64):
+            sample_chosen_probs = sample_chosen_probs.float()
         resampled = torch.multinomial(
-            chosen_probs.reshape(-1, vocab_size), num_samples=1, generator=generator
-        ).view_as(positions)
+            sample_chosen_probs, num_samples=1, generator=generator
+        ).to(orig_device).view_as(positions)
 
         prev_sample = sample.clone()
         prev_sample[rows, positions] = resampled
