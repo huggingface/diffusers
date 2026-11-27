@@ -25,6 +25,7 @@ from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
     ContextParallelTesterMixin,
+    LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     TorchCompileTesterMixin,
@@ -173,6 +174,110 @@ class TestMiniMaxH3ImageTransformer(MiniMaxH3ImageTransformerTesterConfig, Model
 
         with torch.no_grad(), pytest.raises(IndexError):
             model(**{**self.get_dummy_inputs(), "pdd_step_index": 3})
+
+
+class TestMiniMaxH3ImageTransformerLoRA(MiniMaxH3ImageTransformerTesterConfig, LoraTesterMixin):
+    """LoRA tests for the MiniMax-H3-Image transformer."""
+
+    @torch.no_grad()
+    def test_attention_kwargs_scale(self):
+        from peft import LoraConfig
+
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
+        inputs = self.get_dummy_inputs()
+        base_output = model(**inputs, return_dict=False)[0]
+
+        model.add_adapter(
+            LoraConfig(
+                r=4,
+                lora_alpha=4,
+                target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+                init_lora_weights=False,
+            )
+        )
+        lora_output = model(**inputs, return_dict=False)[0]
+        zero_scale_output = model(**inputs, return_dict=False, attention_kwargs={"scale": 0.0})[0]
+        full_scale_output = model(**inputs, return_dict=False, attention_kwargs={"scale": 1.0})[0]
+        half_scale_output = model(**inputs, return_dict=False, attention_kwargs={"scale": 0.5})[0]
+
+        assert not torch.allclose(base_output, lora_output, atol=1e-4, rtol=1e-4)
+        torch.testing.assert_close(zero_scale_output, base_output, atol=1e-6, rtol=1e-6)
+        torch.testing.assert_close(full_scale_output, lora_output, atol=0, rtol=0)
+        assert not torch.allclose(half_scale_output, base_output, atol=1e-4, rtol=1e-4)
+        assert not torch.allclose(half_scale_output, lora_output, atol=1e-4, rtol=1e-4)
+
+    def test_lora_training_step(self):
+        from peft import LoraConfig
+
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict()).train().to(torch_device)
+        model.requires_grad_(False)
+        model.add_adapter(
+            LoraConfig(
+                r=4,
+                lora_alpha=4,
+                target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+                init_lora_weights=False,
+            )
+        )
+
+        lora_parameters = [(name, parameter) for name, parameter in model.named_parameters() if "lora_" in name]
+        base_parameters = [(name, parameter) for name, parameter in model.named_parameters() if "lora_" not in name]
+        assert lora_parameters
+        assert all(parameter.requires_grad for _, parameter in lora_parameters)
+        assert all(not parameter.requires_grad for _, parameter in base_parameters)
+
+        loss = model(**self.get_dummy_inputs(), return_dict=False)[0].float().square().mean()
+        loss.backward()
+        before_step = [parameter.detach().clone() for _, parameter in lora_parameters]
+        optimizer = torch.optim.AdamW([parameter for _, parameter in lora_parameters], lr=0.01)
+        optimizer.step()
+
+        assert all(parameter.grad is not None for _, parameter in lora_parameters)
+        assert any(parameter.grad.abs().sum() > 0 for _, parameter in lora_parameters)
+        assert all(parameter.grad is None for _, parameter in base_parameters)
+        assert any(not torch.equal(parameter, before) for (_, parameter), before in zip(lora_parameters, before_step))
+
+    @torch.no_grad()
+    def test_adapter_lifecycle(self):
+        from peft import LoraConfig
+
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict()).eval().to(torch_device)
+        inputs = self.get_dummy_inputs()
+        base_output = model(**inputs, return_dict=False)[0]
+
+        lora_config = LoraConfig(
+            r=4,
+            lora_alpha=4,
+            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            init_lora_weights=False,
+        )
+        model.add_adapter(lora_config, adapter_name="a")
+        output_a = model(**inputs, return_dict=False)[0]
+        model.add_adapter(lora_config, adapter_name="b")
+        output_b = model(**inputs, return_dict=False)[0]
+        assert not torch.allclose(output_a, output_b, atol=1e-4, rtol=1e-4)
+
+        model.set_adapter("a")
+        torch.testing.assert_close(model(**inputs, return_dict=False)[0], output_a, atol=0, rtol=0)
+        model.set_adapters(["a", "b"], weights=[0.5, 0.5])
+        mixed_output = model(**inputs, return_dict=False)[0]
+        assert not torch.allclose(mixed_output, output_a, atol=1e-4, rtol=1e-4)
+        assert not torch.allclose(mixed_output, output_b, atol=1e-4, rtol=1e-4)
+
+        model.set_adapter("b")
+        model.set_adapters(["b"], weights=[1.0])
+        torch.testing.assert_close(model(**inputs, return_dict=False)[0], output_b, atol=0, rtol=0)
+        model.disable_adapters()
+        torch.testing.assert_close(model(**inputs, return_dict=False)[0], base_output, atol=0, rtol=0)
+        model.enable_adapters()
+        torch.testing.assert_close(model(**inputs, return_dict=False)[0], output_b, atol=0, rtol=0)
+
+        model.delete_adapters(["a", "b"])
+        assert not hasattr(model, "peft_config")
+        torch.testing.assert_close(model(**inputs, return_dict=False)[0], base_output, atol=0, rtol=0)
 
 
 class TestMiniMaxH3ImageTransformerMemory(MiniMaxH3ImageTransformerTesterConfig, MemoryTesterMixin):

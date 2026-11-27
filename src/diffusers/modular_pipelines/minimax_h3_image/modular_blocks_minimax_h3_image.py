@@ -191,6 +191,8 @@ class MiniMaxH3ImageCoreDenoiseStep(SequentialPipelineBlocks):
           **denoiser_input_fields (`None`, *optional*):
               The structural description of the packed sequence the transformer reads by name: `token_tags`,
               `position_ids` and the two row-index tensors.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
 
       Outputs:
           latents (`Tensor`):
@@ -267,6 +269,8 @@ class MiniMaxH3ImageEditCoreDenoiseStep(SequentialPipelineBlocks):
           **denoiser_input_fields (`None`, *optional*):
               The structural description of the packed sequence the transformer reads by name: `token_tags`,
               `position_ids` and the two row-index tensors.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
 
       Outputs:
           latents (`Tensor`):
@@ -354,6 +358,8 @@ class MiniMaxH3ImageAutoDenoiseStep(AutoPipelineBlocks):
           **denoiser_input_fields (`None`, *optional*):
               The structural description of the packed sequence the transformer reads by name: `token_tags`,
               `position_ids` and the two row-index tensors.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
 
       Outputs:
           latents (`Tensor`):
@@ -433,6 +439,8 @@ class MiniMaxH3ImageBlocks(SequentialPipelineBlocks):
           **denoiser_input_fields (`None`, *optional*):
               The structural description of the packed sequence the transformer reads by name: `token_tags`,
               `position_ids` and the two row-index tensors.
+          attention_kwargs (`dict`, *optional*):
+              Additional kwargs for attention processors.
           output_type (`str`, *optional*, defaults to pil):
               Output format: 'pil', 'np', 'pt'.
 
