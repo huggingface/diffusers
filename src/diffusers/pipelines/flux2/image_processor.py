@@ -152,6 +152,24 @@ class Flux2ImageProcessor(VaeImageProcessor):
 
         return image.crop((left, top, right, bottom))
 
+    def apply_overlay(
+        self,
+        mask: PIL.Image.Image,
+        init_image: PIL.Image.Image,
+        image: PIL.Image.Image,
+        crop_coords: tuple[int, int, int, int] | None = None,
+    ) -> PIL.Image.Image:
+        r"""
+        Applies an overlay of the mask and the inpainted image on the original image as
+        [`~image_processor.VaeImageProcessor.apply_overlay`] does. `_resize_and_crop` only center crops here, so with
+        `crop_coords` the inpainted image is first resized to the crop region with
+        `VaeImageProcessor._resize_and_crop`.
+        """
+        if crop_coords is not None:
+            x, y, x2, y2 = crop_coords
+            image = super()._resize_and_crop(image, x2 - x, y2 - y)
+        return super().apply_overlay(mask, init_image, image, crop_coords)
+
     # Taken from
     # https://github.com/black-forest-labs/flux2/blob/5a5d316b1b42f6b59a8c9194b77c8256be848432/src/flux2/sampling.py#L310C1-L339C19
     @staticmethod

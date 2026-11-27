@@ -1,5 +1,8 @@
 import random
+from unittest import mock
 
+import numpy as np
+import PIL.Image
 import pytest
 import torch
 from transformers import Qwen2TokenizerFast, Qwen3Config, Qwen3ForCausalLM
@@ -10,6 +13,7 @@ from diffusers import (
     Flux2KleinInpaintPipeline,
     Flux2Transformer2DModel,
 )
+from diffusers.image_processor import VaeImageProcessor
 
 from ...testing_utils import floats_tensor, torch_device
 from ..testing_utils import BasePipelineTesterConfig, MemoryTesterMixin, PipelineTesterMixin
@@ -174,6 +178,33 @@ class TestFlux2KleinInpaintPipeline(Flux2KleinInpaintPipelineTesterConfig, Pipel
         assert (output_height, output_width) == (expected_height, expected_width), (
             f"Output shape {image.shape} does not match expected shape {(expected_height, expected_width)} when conditioned on a reference image."
         )
+
+    def test_flux2_klein_inpaint_padding_mask_crop_overlay(self):
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
+
+        image = PIL.Image.fromarray(np.random.default_rng(0).integers(0, 256, (32, 32, 3), dtype=np.uint8))
+        mask = np.zeros((32, 32), dtype=np.uint8)
+        mask[12:20, 12:20] = 255
+        mask_image = PIL.Image.fromarray(mask)
+        inputs.update({"image": image, "mask_image": mask_image, "padding_mask_crop": 4, "output_type": "pil"})
+
+        generated = []
+        postprocess = pipe.image_processor.postprocess
+
+        def capture(*args, **kwargs):
+            images = postprocess(*args, **kwargs)
+            generated.extend(images)
+            return images
+
+        with mock.patch.object(pipe.image_processor, "postprocess", side_effect=capture):
+            output = pipe(**inputs).images[0]
+
+        # The generated crop has to be resized back into the crop region before it is pasted.
+        crops_coords = pipe.mask_processor.get_crop_region(mask_image, 32, 32, pad=4)
+        expected = VaeImageProcessor().apply_overlay(mask_image, image, generated[0], crops_coords)
+
+        assert np.array_equal(np.array(output), np.array(expected))
 
     @pytest.mark.skip("Needs to be revisited")
     def test_encode_prompt_works_in_isolation(self):
