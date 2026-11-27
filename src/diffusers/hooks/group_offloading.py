@@ -21,8 +21,9 @@ from typing import Set
 
 import safetensors.torch
 import torch
+from torch.utils._python_dispatch import is_traceable_wrapper_subclass
 
-from ..utils import get_logger, is_accelerate_available, is_torchao_available
+from ..utils import get_logger, is_accelerate_available
 from ..utils.torch_utils import TorchDeviceBackend
 from ._common import _GO_LC_SUPPORTED_PYTORCH_LAYERS
 from .hooks import HookRegistry, ModelHook
@@ -36,52 +37,55 @@ if is_accelerate_available():
 logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def _is_torchao_tensor(tensor: torch.Tensor) -> bool:
-    if not is_torchao_available():
-        return False
-    from torchao.utils import TorchAOBaseTensor
+def _apply_to_inner_tensors(tensor: torch.Tensor, fn) -> torch.Tensor:
+    """Rebuild a wrapper subclass tensor with `fn` applied to each of its inner tensors.
 
-    return isinstance(tensor, TorchAOBaseTensor)
+    Wrapper subclasses differ in which tensor methods they implement and how: `.cpu()` can return the same object,
+    `.pin_memory()` can dequantize, `.to()` can drop `non_blocking`, and the inner tensors can be stored on a nested
+    object rather than as attributes. Going through `__tensor_flatten__`/`__tensor_unflatten__` only relies on the
+    protocol that every wrapper subclass implements, and always returns a new wrapper so `tensor` is not mutated.
+    """
+    inner_tensor_names, ctx = tensor.__tensor_flatten__()
+    inner_tensors = {}
+    for attr_name in inner_tensor_names:
+        inner_tensor = getattr(tensor, attr_name)
+        if is_traceable_wrapper_subclass(inner_tensor):
+            inner_tensors[attr_name] = _apply_to_inner_tensors(inner_tensor, fn)
+        else:
+            inner_tensors[attr_name] = fn(inner_tensor)
+    return type(tensor).__tensor_unflatten__(inner_tensors, ctx, tensor.shape, tensor.stride())
 
 
-def _get_torchao_inner_tensor_names(tensor: torch.Tensor) -> list[str]:
-    """Get names of all internal tensor data attributes from a TorchAO tensor."""
-    cls = type(tensor)
-    names = list(getattr(cls, "tensor_data_names", []))
-    for attr_name in getattr(cls, "optional_tensor_data_names", []):
-        if getattr(tensor, attr_name, None) is not None:
-            names.append(attr_name)
-    return names
-
-
-def _swap_torchao_tensor(param: torch.Tensor, source: torch.Tensor) -> None:
-    """Move a TorchAO parameter to the device of `source` via `swap_tensors`.
+def _swap_wrapper_tensor(param: torch.Tensor, source: torch.Tensor) -> None:
+    """Replace the contents of a wrapper subclass parameter with those of `source` via `swap_tensors`.
 
     `param.data = source` does not work for `_make_wrapper_subclass` tensors because the `.data` setter only replaces
-    the outer wrapper storage while leaving the subclass's internal attributes (e.g. `.qdata`, `.scale`) on the
+    the outer wrapper storage while leaving the subclass's inner tensors (e.g. TorchAO's `.qdata`, `.scale`) on the
     original device. `swap_tensors` swaps the full tensor contents in-place, preserving the parameter's identity so
     that any dict keyed by `id(param)` remains valid.
+
+    `source` ends up holding the previous contents of `param`, so it must be a tensor that is not used afterwards.
 
     Refer to https://github.com/huggingface/diffusers/pull/13276#discussion_r2944471548 for the full discussion.
     """
     torch.utils.swap_tensors(param, source)
 
 
-def _restore_torchao_tensor(param: torch.Tensor, source: torch.Tensor) -> None:
-    """Restore internal tensor data of a TorchAO parameter from `source` without mutating `source`.
-
-    Unlike `_swap_torchao_tensor` this copies attribute references one-by-one via `setattr` so that `source` is **not**
-    modified. Use this when `source` is a cached tensor that must remain unchanged (e.g. a pinned CPU copy in
-    `cpu_param_dict`).
-    """
-    for attr_name in _get_torchao_inner_tensor_names(source):
-        setattr(param, attr_name, getattr(source, attr_name))
+def _pin_memory(tensor: torch.Tensor) -> torch.Tensor:
+    if is_traceable_wrapper_subclass(tensor):
+        return _apply_to_inner_tensors(tensor, _pin_memory)
+    return tensor if tensor.is_pinned() else tensor.pin_memory()
 
 
-def _record_stream_torchao_tensor(param: torch.Tensor, stream) -> None:
-    """Record stream for all internal tensors of a TorchAO parameter."""
-    for attr_name in _get_torchao_inner_tensor_names(param):
-        getattr(param, attr_name).record_stream(stream)
+def _record_stream_wrapper_tensor(param: torch.Tensor, stream) -> None:
+    """Record stream for all inner tensors of a wrapper subclass parameter."""
+    inner_tensor_names, _ = param.__tensor_flatten__()
+    for attr_name in inner_tensor_names:
+        inner_tensor = getattr(param, attr_name)
+        if is_traceable_wrapper_subclass(inner_tensor):
+            _record_stream_wrapper_tensor(inner_tensor, stream)
+        else:
+            inner_tensor.record_stream(stream)
 
 
 # fmt: off
@@ -171,10 +175,11 @@ class ModuleGroup:
 
     @staticmethod
     def _to_cpu(tensor, low_cpu_mem_usage):
-        # For TorchAO tensors, `.data` returns an incomplete wrapper without internal attributes
-        # (e.g. `.qdata`, `.scale`), so we must call `.cpu()` on the tensor directly.
-        t = tensor.cpu() if _is_torchao_tensor(tensor) else tensor.data.cpu()
-        return t if low_cpu_mem_usage else t.pin_memory()
+        if is_traceable_wrapper_subclass(tensor):
+            t = _apply_to_inner_tensors(tensor, lambda inner_tensor: inner_tensor.data.cpu())
+        else:
+            t = tensor.data.cpu()
+        return t if low_cpu_mem_usage else _pin_memory(t)
 
     def _init_cpu_param_dict(self):
         cpu_param_dict = {}
@@ -198,23 +203,22 @@ class ModuleGroup:
     @contextmanager
     def _pinned_memory_tensors(self):
         try:
-            pinned_dict = {
-                param: tensor.pin_memory() if not tensor.is_pinned() else tensor
-                for param, tensor in self.cpu_param_dict.items()
-            }
+            pinned_dict = {param: _pin_memory(tensor) for param, tensor in self.cpu_param_dict.items()}
             yield pinned_dict
         finally:
             pinned_dict = None
 
     def _transfer_tensor_to_device(self, tensor, source_tensor, default_stream):
-        moved = source_tensor.to(self.onload_device, non_blocking=self.non_blocking)
-        if _is_torchao_tensor(tensor):
-            _swap_torchao_tensor(tensor, moved)
+        if is_traceable_wrapper_subclass(tensor):
+            moved = _apply_to_inner_tensors(
+                source_tensor, lambda inner_tensor: inner_tensor.to(self.onload_device, non_blocking=self.non_blocking)
+            )
+            _swap_wrapper_tensor(tensor, moved)
         else:
-            tensor.data = moved
+            tensor.data = source_tensor.to(self.onload_device, non_blocking=self.non_blocking)
         if self.record_stream:
-            if _is_torchao_tensor(tensor):
-                _record_stream_torchao_tensor(tensor, default_stream)
+            if is_traceable_wrapper_subclass(tensor):
+                _record_stream_wrapper_tensor(tensor, default_stream)
             else:
                 tensor.data.record_stream(default_stream)
 
@@ -235,18 +239,18 @@ class ModuleGroup:
             source = pinned_memory[buffer] if pinned_memory else buffer.data
             self._transfer_tensor_to_device(buffer, source, default_stream)
 
-    def _check_disk_offload_torchao(self):
+    def _check_disk_offload_wrapper_tensors(self):
         all_tensors = list(self.tensor_to_key.keys())
-        has_torchao = any(_is_torchao_tensor(t) for t in all_tensors)
-        if has_torchao:
+        wrapper_tensor_types = {type(t).__name__ for t in all_tensors if is_traceable_wrapper_subclass(t)}
+        if wrapper_tensor_types:
             raise ValueError(
-                "Disk offloading is not supported for TorchAO quantized tensors because safetensors "
-                "cannot serialize TorchAO subclass tensors. Use memory offloading instead by not "
+                f"Disk offloading is not supported for wrapper subclass tensors ({sorted(wrapper_tensor_types)}) "
+                "because safetensors cannot serialize them. Use memory offloading instead by not "
                 "setting `offload_to_disk_path`."
             )
 
     def _onload_from_disk(self):
-        self._check_disk_offload_torchao()
+        self._check_disk_offload_wrapper_tensors()
 
         if self.stream is not None:
             # Wait for previous Host->Device transfer to complete
@@ -289,7 +293,7 @@ class ModuleGroup:
                 self._process_tensors_from_modules(None)
 
     def _offload_to_disk(self):
-        self._check_disk_offload_torchao()
+        self._check_disk_offload_wrapper_tensors()
 
         # Releasing the onloaded tensors below frees their device memory, which the compute stream may still be
         # reading. `record_stream` already prevents the allocator from reusing it too early.
@@ -320,33 +324,33 @@ class ModuleGroup:
 
             for group_module in self.modules:
                 for param in group_module.parameters():
-                    if _is_torchao_tensor(param):
-                        _restore_torchao_tensor(param, self.cpu_param_dict[param])
+                    if is_traceable_wrapper_subclass(param):
+                        _swap_wrapper_tensor(param, _apply_to_inner_tensors(self.cpu_param_dict[param], lambda t: t))
                     else:
                         param.data = self.cpu_param_dict[param]
             for param in self.parameters:
-                if _is_torchao_tensor(param):
-                    _restore_torchao_tensor(param, self.cpu_param_dict[param])
+                if is_traceable_wrapper_subclass(param):
+                    _swap_wrapper_tensor(param, _apply_to_inner_tensors(self.cpu_param_dict[param], lambda t: t))
                 else:
                     param.data = self.cpu_param_dict[param]
             for buffer in self.buffers:
-                if _is_torchao_tensor(buffer):
-                    _restore_torchao_tensor(buffer, self.cpu_param_dict[buffer])
+                if is_traceable_wrapper_subclass(buffer):
+                    _swap_wrapper_tensor(buffer, _apply_to_inner_tensors(self.cpu_param_dict[buffer], lambda t: t))
                 else:
                     buffer.data = self.cpu_param_dict[buffer]
         else:
             for group_module in self.modules:
                 group_module.to(self.offload_device, non_blocking=False)
             for param in self.parameters:
-                if _is_torchao_tensor(param):
-                    moved = param.to(self.offload_device, non_blocking=False)
-                    _swap_torchao_tensor(param, moved)
+                if is_traceable_wrapper_subclass(param):
+                    moved = _apply_to_inner_tensors(param, lambda t: t.to(self.offload_device, non_blocking=False))
+                    _swap_wrapper_tensor(param, moved)
                 else:
                     param.data = param.data.to(self.offload_device, non_blocking=False)
             for buffer in self.buffers:
-                if _is_torchao_tensor(buffer):
-                    moved = buffer.to(self.offload_device, non_blocking=False)
-                    _swap_torchao_tensor(buffer, moved)
+                if is_traceable_wrapper_subclass(buffer):
+                    moved = _apply_to_inner_tensors(buffer, lambda t: t.to(self.offload_device, non_blocking=False))
+                    _swap_wrapper_tensor(buffer, moved)
                 else:
                     buffer.data = buffer.data.to(self.offload_device, non_blocking=False)
 
