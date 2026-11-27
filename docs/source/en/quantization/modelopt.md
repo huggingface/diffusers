@@ -111,9 +111,10 @@ model = AutoModel.from_pretrained(
 model.save_pretrained('path/to/sana_fp8', safe_serialization=False)
 ```
 
-To load a serialized quantized model, use the [`~ModelMixin.from_pretrained`] method.
+To load a serialized quantized model, use the [`~ModelMixin.from_pretrained`] method. For FP8 checkpoints, also import `modelopt.torch.quantization.backends.fp8_per_tensor_gemm` so ModelOpt registers its FP8 GEMM kernel before inference.
 
 ```python
+import modelopt.torch.quantization.backends.fp8_per_tensor_gemm  # noqa: F401
 import torch
 from diffusers import AutoModel, NVIDIAModelOptConfig, SanaPipeline
 from modelopt.torch.opt import enable_huggingface_checkpointing
