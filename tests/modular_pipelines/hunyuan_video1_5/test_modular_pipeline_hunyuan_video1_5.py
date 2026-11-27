@@ -87,9 +87,6 @@ class TestHunyuanVideo15ModularPipelineFast(HunyuanVideo15ModularPipelineTesterC
     def test_inference_batch_single_identical(self):
         pass
 
-    def test_float16_inference(self):
-        super().test_float16_inference(expected_max_diff=0.1)
-
 
 class TestHunyuanVideo15ModularPipelineLoading(HunyuanVideo15ModularPipelineTesterConfig, ModularLoadingTesterMixin):
     pass

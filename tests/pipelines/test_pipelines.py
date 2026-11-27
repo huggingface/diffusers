@@ -72,6 +72,7 @@ from ..testing_utils import (
     floats_tensor,
     get_python_version,
     get_tests_dir,
+    is_lora,
     is_torch_compile,
     load_numpy,
     nightly,
@@ -2281,6 +2282,7 @@ class TestPipelineNightly:
         assert np.abs(ddpm_images - ddim_images).max() < 1e-1
 
 
+@is_lora
 @slow
 @require_torch_2
 @require_torch_accelerator

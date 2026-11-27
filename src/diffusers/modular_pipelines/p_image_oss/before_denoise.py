@@ -21,7 +21,7 @@ from ...utils.torch_utils import maybe_adjust_dtype_for_device, randn_tensor
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, ConfigSpec, InputParam, OutputParam
 from .before_encoder import round_canvas
-from .modular_pipeline import PH3ImageModularPipeline
+from .modular_pipeline import PImageOSSModularPipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -132,8 +132,8 @@ def _fill_audio_positions(
     )
 
 
-class PH3ImagePrepareLayoutStep(ModularPipelineBlocks):
-    model_name = "p-h3-image"
+class PImageOSSPrepareLayoutStep(ModularPipelineBlocks):
+    model_name = "p-image-oss"
 
     @property
     def description(self) -> str:
@@ -335,8 +335,8 @@ class PH3ImagePrepareLayoutStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: PH3ImageModularPipeline, state: PipelineState
-    ) -> tuple[PH3ImageModularPipeline, PipelineState]:
+        self, components: PImageOSSModularPipeline, state: PipelineState
+    ) -> tuple[PImageOSSModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -380,8 +380,8 @@ class PH3ImagePrepareLayoutStep(ModularPipelineBlocks):
         return components, state
 
 
-class PH3ImageEditPrepareLayoutStep(ModularPipelineBlocks):
-    model_name = "p-h3-image"
+class PImageOSSEditPrepareLayoutStep(ModularPipelineBlocks):
+    model_name = "p-image-oss"
 
     @property
     def description(self) -> str:
@@ -557,8 +557,8 @@ class PH3ImageEditPrepareLayoutStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: PH3ImageModularPipeline, state: PipelineState
-    ) -> tuple[PH3ImageModularPipeline, PipelineState]:
+        self, components: PImageOSSModularPipeline, state: PipelineState
+    ) -> tuple[PImageOSSModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -604,9 +604,9 @@ class PH3ImageEditPrepareLayoutStep(ModularPipelineBlocks):
         return components, state
 
 
-# Copied from diffusers.modular_pipelines.minimax_h3.before_denoise.MiniMaxH3PrepareConditionLatentsStep with \bMiniMaxH3->PH3Image, minimax-h3->p-h3-image, PH3ImageScheduler->MiniMaxH3Scheduler
-class PH3ImagePrepareConditionLatentsStep(ModularPipelineBlocks):
-    model_name = "p-h3-image"
+# Copied from diffusers.modular_pipelines.minimax_h3.before_denoise.MiniMaxH3PrepareConditionLatentsStep with \bMiniMaxH3->PImageOSS, minimax-h3->p-image-oss, PImageOSSScheduler->MiniMaxH3Scheduler
+class PImageOSSPrepareConditionLatentsStep(ModularPipelineBlocks):
+    model_name = "p-image-oss"
 
     @property
     def description(self) -> str:
@@ -660,8 +660,8 @@ class PH3ImagePrepareConditionLatentsStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: PH3ImageModularPipeline, state: PipelineState
-    ) -> tuple[PH3ImageModularPipeline, PipelineState]:
+        self, components: PImageOSSModularPipeline, state: PipelineState
+    ) -> tuple[PImageOSSModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
         patch_size = components.patch_size
@@ -693,8 +693,8 @@ class PH3ImagePrepareConditionLatentsStep(ModularPipelineBlocks):
         return components, state
 
 
-class PH3ImagePrepareLatentsStep(ModularPipelineBlocks):
-    model_name = "p-h3-image"
+class PImageOSSPrepareLatentsStep(ModularPipelineBlocks):
+    model_name = "p-image-oss"
 
     @property
     def description(self) -> str:
@@ -740,8 +740,8 @@ class PH3ImagePrepareLatentsStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: PH3ImageModularPipeline, state: PipelineState
-    ) -> tuple[PH3ImageModularPipeline, PipelineState]:
+        self, components: PImageOSSModularPipeline, state: PipelineState
+    ) -> tuple[PImageOSSModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 
@@ -761,9 +761,9 @@ class PH3ImagePrepareLatentsStep(ModularPipelineBlocks):
         return components, state
 
 
-# Copied from diffusers.modular_pipelines.minimax_h3.before_denoise.MiniMaxH3FL2VAPrepareLatentsStep with MiniMaxH3FL2VA->PH3ImageEdit, \bMiniMaxH3->PH3Image, minimax-h3->p-h3-image
-class PH3ImageEditPrepareLatentsStep(ModularPipelineBlocks):
-    model_name = "p-h3-image"
+# Copied from diffusers.modular_pipelines.minimax_h3.before_denoise.MiniMaxH3FL2VAPrepareLatentsStep with MiniMaxH3FL2VA->PImageOSSEdit, \bMiniMaxH3->PImageOSS, minimax-h3->p-image-oss
+class PImageOSSEditPrepareLatentsStep(ModularPipelineBlocks):
+    model_name = "p-image-oss"
 
     @property
     def description(self) -> str:
@@ -802,8 +802,8 @@ class PH3ImageEditPrepareLatentsStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: PH3ImageModularPipeline, state: PipelineState
-    ) -> tuple[PH3ImageModularPipeline, PipelineState]:
+        self, components: PImageOSSModularPipeline, state: PipelineState
+    ) -> tuple[PImageOSSModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
         block_state.latents = torch.cat([block_state.condition_rows, block_state.latents])
@@ -812,8 +812,8 @@ class PH3ImageEditPrepareLatentsStep(ModularPipelineBlocks):
         return components, state
 
 
-class PH3ImageSetTimestepsStep(ModularPipelineBlocks):
-    model_name = "p-h3-image"
+class PImageOSSSetTimestepsStep(ModularPipelineBlocks):
+    model_name = "p-image-oss"
 
     @property
     def description(self) -> str:
@@ -945,8 +945,8 @@ class PH3ImageSetTimestepsStep(ModularPipelineBlocks):
 
     @torch.no_grad()
     def __call__(
-        self, components: PH3ImageModularPipeline, state: PipelineState
-    ) -> tuple[PH3ImageModularPipeline, PipelineState]:
+        self, components: PImageOSSModularPipeline, state: PipelineState
+    ) -> tuple[PImageOSSModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
         device = components._execution_device
 

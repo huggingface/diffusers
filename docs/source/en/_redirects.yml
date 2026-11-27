@@ -1,2 +1,4 @@
 # old_local: new_local
 stable_diffusion: optimization/overview
+api/pipelines/p_h3_image: api/pipelines/p_image_oss
+api/models/autoencoderkl_p_h3_image: api/models/autoencoderkl_p_image_oss
