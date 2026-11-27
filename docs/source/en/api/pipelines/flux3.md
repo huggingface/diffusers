@@ -209,13 +209,12 @@ print(t2i.blocks.doc)
 
 ## Per-step callbacks
 
-To use an existing callback function, insert a block into the denoising loop. The [callbacks guide](../../using-diffusers/callback#modular-pipelines) has a simple example with the `CallbackOnStepEnd` block and the `walk_denoise_loops` helper:
+To use an existing callback function, call [`~modular_pipelines.insert_step_callback`] on the pipeline. See the [callbacks guide](../../using-diffusers/callback#modular-pipelines) for details:
 
 ```python
-blocks = Flux3AutoBlocks()  # or Flux3DistilledAutoBlocks
-for loop in walk_denoise_loops(blocks):
-    loop.sub_blocks["callback"] = CallbackOnStepEnd()
-pipe = blocks.init_pipeline("black-forest-labs/flux-3-image-klein-base")
+from diffusers.modular_pipelines import insert_step_callback
+
+insert_step_callback(pipe)
 
 image = pipe(prompt=caption, callback_on_step_end=my_callback, output="images")[0]
 ```

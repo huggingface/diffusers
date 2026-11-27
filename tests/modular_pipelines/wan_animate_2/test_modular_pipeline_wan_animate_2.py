@@ -115,6 +115,14 @@ class WanAnimate2ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 class WanAnimate2ModularPipelineFastTesterMixin(ModularPipelineTesterMixin):
     """`ModularPipelineTesterMixin` minus the tests that assume a batchable pipeline; shared by both presets."""
 
+    @pytest.mark.skip(reason="Nested denoising loop; `insert_step_callback` is not supported.")
+    def test_step_callback(self):
+        pass
+
+    @pytest.mark.skip(reason="Nested denoising loop; `insert_step_callback` is not supported.")
+    def test_step_callback_early_stop(self):
+        pass
+
     @pytest.mark.skip(reason="Wan-Animate-2 decodes inside its segment loop and leaves no latents in the state.")
     def test_latents_output_in_canonical_form(self):
         pass

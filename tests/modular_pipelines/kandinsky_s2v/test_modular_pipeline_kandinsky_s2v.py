@@ -112,6 +112,14 @@ class KandinskyS2VModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestKandinskyS2VModularPipelineFast(KandinskyS2VModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    @pytest.mark.skip(reason="Nested denoising loop; `insert_step_callback` is not supported.")
+    def test_step_callback(self):
+        pass
+
+    @pytest.mark.skip(reason="Nested denoising loop; `insert_step_callback` is not supported.")
+    def test_step_callback_early_stop(self):
+        pass
+
     @pytest.mark.skip(reason="The pipeline takes one prompt at a time; batching is not supported")
     def test_inference_batch_consistent(self):
         pass
@@ -240,6 +248,14 @@ class KandinskyS2VDistilledModularPipelineTesterConfig(KandinskyS2VModularPipeli
 class TestKandinskyS2VDistilledModularPipelineFast(
     KandinskyS2VDistilledModularPipelineTesterConfig, ModularPipelineTesterMixin
 ):
+    @pytest.mark.skip(reason="Nested denoising loop; `insert_step_callback` is not supported.")
+    def test_step_callback(self):
+        pass
+
+    @pytest.mark.skip(reason="Nested denoising loop; `insert_step_callback` is not supported.")
+    def test_step_callback_early_stop(self):
+        pass
+
     @pytest.mark.skip(reason=FAST_SKIPS["test_inference_batch_consistent"])
     def test_inference_batch_consistent(self):
         pass

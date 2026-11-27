@@ -140,53 +140,15 @@ image = pipeline(
 
 ## Modular pipelines
 
-Modular pipelines don't carry the `callback_on_step_end` and `interrupt` mechanism. It will come with first-class streaming support instead: [huggingface/diffusers#14159](https://github.com/huggingface/diffusers/pull/14159), not merged yet, adds `pipe.stream()`, which yields the pipeline state at every denoising step and ends the run when you stop iterating. For now, to reuse your existing callback functions, insert a block into the denoising loop: it receives the loop's `BlockState` with the step index and timestep, and can read or edit `latents`.
-
-> [!TIP]
-> Edit the blocks *before* [`~modular_pipelines.ModularPipelineBlocks.init_pipeline`]: `pipe.blocks` returns a copy, so changing it after the pipeline exists has no effect.
-
-The block below takes the callback as a pipeline input and calls it with the same signature as above: the pipeline, the step index, the timestep and a dict of tensors, whose returned values are written back. `walk_denoise_loops` finds every denoising loop in the blocks, whichever workflow it belongs to, so the same snippet works for any modular pipeline.
+Modular pipelines don't carry the `callback_on_step_end` and `interrupt` mechanism. It will come with first-class streaming support instead: [huggingface/diffusers#14159](https://github.com/huggingface/diffusers/pull/14159), not merged yet, adds `pipe.stream()`, which yields the pipeline state at every denoising step and ends the run when you stop iterating. For now, to reuse your existing callback functions, call [`~modular_pipelines.insert_step_callback`] on the pipeline. It adds a block to the end of every denoising loop that calls your function.
 
 ```py
-from typing import Callable
-
 import torch
 from diffusers import ModularPipeline
-from diffusers.modular_pipelines import InputParam, LoopSequentialPipelineBlocks, ModularPipelineBlocks
+from diffusers.modular_pipelines import insert_step_callback
 
-
-class CallbackOnStepEnd(ModularPipelineBlocks):
-    @property
-    def inputs(self):
-        return [
-            InputParam(
-                "callback_on_step_end",
-                type_hint=Callable,
-                description="Called after each scheduler step as `callback(pipe, i, t, {'latents': ...})`; the dict it returns is written back.",
-            ),
-            InputParam("latents", required=True),
-        ]
-
-    def __call__(self, components, block_state, i, t):
-        if block_state.callback_on_step_end is not None:
-            outputs = block_state.callback_on_step_end(components, i, t, {"latents": block_state.latents})
-            block_state.latents = outputs.get("latents", block_state.latents)
-        return components, block_state
-
-
-def walk_denoise_loops(block):
-    """Every denoising loop in the blocks, whichever workflow it belongs to."""
-    if isinstance(block, LoopSequentialPipelineBlocks) and "denoiser" in block.sub_blocks:
-        yield block
-    for sub in getattr(block, "sub_blocks", {}).values():
-        yield from walk_denoise_loops(sub)
-
-
-repo_id = "stabilityai/stable-diffusion-xl-base-1.0"
-blocks = ModularPipeline.from_pretrained(repo_id).blocks
-for loop in walk_denoise_loops(blocks):
-    loop.sub_blocks["callback"] = CallbackOnStepEnd()  # appended after the last step of the loop
-pipe = blocks.init_pipeline(repo_id)
+pipe = ModularPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
+insert_step_callback(pipe)
 pipe.load_components(dtype=torch.float16)
 pipe.to("cuda")
 ```
@@ -197,6 +159,39 @@ pipe.to("cuda")
 image = pipe(prompt="A croissant shaped like a cute bear.", callback_on_step_end=decode_tensors, output="images")[0]
 ```
 
+The callback is called with the same signature as above: the pipeline, the step index, the timestep and `callback_kwargs`. There are two differences from a [`DiffusionPipeline`]:
+
+- There is no `callback_on_step_end_tensor_inputs`. `callback_kwargs` holds every value of the denoising loop, such as `latents`, and the values the callback returns are written back.
+- A modular pipeline has no `num_timesteps` attribute, so the number of steps is in `callback_kwargs["num_timesteps"]`.
+
 [Early stopping](#early-stopping) works differently: a block cannot skip the loop it runs in, so setting `_interrupt` has no effect. Raise from the callback instead: the exception propagates out of `pipe(...)` (no image is decoded), and the pipeline stays usable afterwards.
 
-This works for every modular pipeline except the inner loop of nested loops (autoregressive video models such as Helios and Wan-Animate-2 denoise each chunk inside a block of the outer loop). There, insert the block into the outer loop instead: it runs once per chunk and receives the chunk index `k` in place of `i` and `t`.
+A stopped run returns nothing, so save the intermediate values you want to keep in the callback before raising.
+
+```py
+class StopGeneration(BaseException):
+    pass
+
+
+partial = {}
+
+
+def interrupt_callback(pipeline, i, t, callback_kwargs):
+    stop_idx = 10
+    if i == stop_idx:
+        partial["latents"] = callback_kwargs["latents"]
+        raise StopGeneration
+    return callback_kwargs
+
+
+try:
+    image = pipe(prompt="A photo of a cat", callback_on_step_end=interrupt_callback, output="images")[0]
+except StopGeneration:
+    print("stopped early")
+```
+
+`StopGeneration` subclasses `BaseException` so that the blocks don't log it as an error on the way out. A subclass of `Exception` stops the run too, but each block it passes through logs a traceback.
+
+The saved latents are in the form the denoising loop uses, which for many models is packed. To get an image, you may need to unpack before running the decode step.
+
+This works for every modular pipeline whose denoising loop runs its steps as blocks. Autoregressive models such as Helios and Wan-Animate-2 denoise each chunk inside one block of an outer loop, so there is no place for the callback and [`~modular_pipelines.insert_step_callback`] raises a `ValueError`.

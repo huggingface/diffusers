@@ -19,3 +19,7 @@
 ## ConditionalPipelineBlocks
 
 [[autodoc]] diffusers.modular_pipelines.modular_pipeline.ConditionalPipelineBlocks
+
+## insert_step_callback
+
+[[autodoc]] diffusers.modular_pipelines.step_callback.insert_step_callback

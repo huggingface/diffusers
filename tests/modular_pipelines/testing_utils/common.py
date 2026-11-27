@@ -360,10 +360,7 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
 
     def test_step_callback(self, base_pipe_output):
         pipe = self.get_pipeline().to(torch_device)
-        try:
-            insert_step_callback(pipe)
-        except ValueError:
-            pytest.skip("The pipeline has no denoising loop that runs its steps as sub-blocks.")
+        insert_step_callback(pipe)
 
         calls = []
 
@@ -378,6 +375,27 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
         assert [step for step, _, _ in calls] == list(range(num_timesteps))
         assert all(has_latents for _, _, has_latents in calls)
         assert torch.abs(base_pipe_output - output).max() < 1e-3, "The callback changed the output"
+
+    def test_step_callback_early_stop(self, base_pipe_output):
+        pipe = self.get_pipeline().to(torch_device)
+        insert_step_callback(pipe)
+
+        class StopGeneration(BaseException):
+            pass
+
+        steps = []
+
+        def callback(pipeline, step, timestep, callback_kwargs):
+            steps.append(step)
+            raise StopGeneration
+
+        with pytest.raises(StopGeneration):
+            self.run_pipe(pipe, callback_on_step_end=callback)
+        assert steps == [0], "The run did not stop at the first step"
+
+        # the pipeline stays usable after a stopped run
+        output = self.run_pipe(pipe)
+        assert torch.abs(base_pipe_output - output).max() < 1e-3
 
     def test_num_images_per_prompt(self, batch_sizes=[1, 2], num_images_per_prompts=[1, 2]):
         pipe = self.get_pipeline().to(torch_device)

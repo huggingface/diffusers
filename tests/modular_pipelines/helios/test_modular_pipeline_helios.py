@@ -94,6 +94,14 @@ class HeliosModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestHeliosModularPipelineFast(HeliosModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    @pytest.mark.skip(reason="Nested denoising loop; `insert_step_callback` is not supported.")
+    def test_step_callback(self):
+        pass
+
+    @pytest.mark.skip(reason="Nested denoising loop; `insert_step_callback` is not supported.")
+    def test_step_callback_early_stop(self):
+        pass
+
     @pytest.mark.skip(reason="num_videos_per_prompt")
     def test_num_images_per_prompt(self):
         pass
@@ -171,6 +179,14 @@ class HeliosPyramidModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestHeliosPyramidModularPipelineFast(HeliosPyramidModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    @pytest.mark.skip(reason="Nested denoising loop; `insert_step_callback` is not supported.")
+    def test_step_callback(self):
+        pass
+
+    @pytest.mark.skip(reason="Nested denoising loop; `insert_step_callback` is not supported.")
+    def test_step_callback_early_stop(self):
+        pass
+
     def test_inference_batch_single_identical(self):
         # Pyramid pipeline injects noise at each stage, so batch vs single can differ more
         super().test_inference_batch_single_identical(expected_max_diff=5e-1)
