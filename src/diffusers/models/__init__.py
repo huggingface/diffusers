@@ -51,6 +51,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_kl_ltx"] = ["AutoencoderKLLTXVideo"]
     _import_structure["autoencoders.autoencoder_kl_ltx2"] = ["AutoencoderKLLTX2Video"]
     _import_structure["autoencoders.autoencoder_kl_ltx2_audio"] = ["AutoencoderKLLTX2Audio"]
+    _import_structure["autoencoders.autoencoder_kl_magi"] = ["AutoencoderKLMagi"]
     _import_structure["autoencoders.autoencoder_kl_magvit"] = ["AutoencoderKLMagvit"]
     _import_structure["autoencoders.autoencoder_kl_minimax_h3"] = ["AutoencoderKLMiniMaxH3"]
     _import_structure["autoencoders.autoencoder_kl_minimax_h3_audio"] = ["AutoencoderKLMiniMaxH3Audio"]
@@ -83,6 +84,7 @@ if is_torch_available():
     _import_structure["condition_embedders.condition_embedder_flux_redux"] = ["ReduxImageEncoder"]
     _import_structure["condition_embedders.condition_embedder_gligen"] = ["CLIPImageProjection"]
     _import_structure["condition_embedders.condition_embedder_ltx2"] = ["LTX2TextConnectors"]
+    _import_structure["condition_embedders.condition_embedder_magi"] = ["MagiTextConditioningModel"]
     _import_structure["condition_embedders.condition_embedder_minimax_music3"] = ["MiniMaxMusic3ConditionEncoder"]
     _import_structure["condition_embedders.condition_embedder_p_h3_image"] = ["PH3ImageTextConnector"]
     _import_structure["condition_embedders.condition_embedder_p_image_oss"] = ["PImageOSSTextConnector"]
@@ -167,6 +169,7 @@ if is_torch_available():
     _import_structure["transformers.transformer_ltx"] = ["LTXVideoTransformer3DModel"]
     _import_structure["transformers.transformer_ltx2"] = ["LTX2VideoTransformer3DModel"]
     _import_structure["transformers.transformer_lumina2"] = ["Lumina2Transformer2DModel"]
+    _import_structure["transformers.transformer_magi"] = ["MagiTransformer3DModel"]
     _import_structure["transformers.transformer_minimax_h3"] = ["MiniMaxH3Transformer3DModel"]
     _import_structure["transformers.transformer_minimax_h3_image"] = ["MiniMaxH3ImageTransformer2DModel"]
     _import_structure["transformers.transformer_minimax_music3"] = ["MiniMaxMusic3Transformer1DModel"]
@@ -232,6 +235,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderKLLTX2Audio,
             AutoencoderKLLTX2Video,
             AutoencoderKLLTXVideo,
+            AutoencoderKLMagi,
             AutoencoderKLMagvit,
             AutoencoderKLMiniMaxH3,
             AutoencoderKLMiniMaxH3Audio,
@@ -268,6 +272,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AudioLDM2ProjectionModel,
             CLIPImageProjection,
             LTX2TextConnectors,
+            MagiTextConditioningModel,
             MiniMaxMusic3ConditionEncoder,
             PH3ImageTextConnector,
             PImageOSSTextConnector,
@@ -347,6 +352,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LTXVideoTransformer3DModel,
             Lumina2Transformer2DModel,
             LuminaNextDiT2DModel,
+            MagiTransformer3DModel,
             MiniMaxH3ImageTransformer2DModel,
             MiniMaxH3Transformer3DModel,
             MiniMaxMusic3RVQDepthDecoder,
