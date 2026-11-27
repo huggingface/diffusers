@@ -436,3 +436,107 @@ class TestHooks:
 
         exported_output = exported.module()(hidden_states=hidden_states, timestep=timestep)
         assert torch.allclose(exported_output, eager_output)
+
+    def test_remove_hook_preserves_next_new_forward(self):
+        class RecordingNewForwardHook(ModelHook):
+            def __init__(self, call_log: list[str], tag: str, scale: float = 1.0, offset: float = 0.0):
+                super().__init__()
+                self.call_log = call_log
+                self.tag = tag
+                self.scale = scale
+                self.offset = offset
+
+            def new_forward(self, module, *args, **kwargs):
+                self.call_log.append(self.tag)
+                return self.fn_ref.original_forward(*args, **kwargs) * self.scale + self.offset
+
+        class RecordingAddHook(AddHook):
+            def __init__(self, value: int, call_log: list[str], tag: str):
+                super().__init__(value)
+                self.call_log = call_log
+                self.tag = tag
+
+            def pre_forward(self, module: torch.nn.Module, *args, **kwargs):
+                self.call_log.append(f"{self.tag}:pre")
+                return super().pre_forward(module, *args, **kwargs)
+
+            def post_forward(self, module, output):
+                self.call_log.append(f"{self.tag}:post")
+                return super().post_forward(module, output)
+
+        input = torch.randn(1, 4, device=torch_device, generator=self.get_generator())
+        sig_before = inspect.signature(self.model.forward)
+        baseline_output = self.model(input)
+        expected_with_add = self.model(input + 1)
+
+        call_log: list[str] = []
+        registry = HookRegistry.check_if_exists_or_initialize(self.model)
+        registry.register_hook(RecordingAddHook(1, call_log, "add"), "add_hook")
+        registry.register_hook(RecordingNewForwardHook(call_log, "new_fwd", offset=10.0), "new_fwd_hook")
+
+        assert torch.allclose(self.model(input), expected_with_add + 10.0, atol=1e-5)
+        assert call_log == ["new_fwd", "add:pre", "add:post"]
+
+        call_log.clear()
+        registry.remove_hook("add_hook")
+        assert inspect.signature(self.model.forward) == sig_before
+        assert torch.allclose(self.model(input), baseline_output + 10.0, atol=1e-5)
+        assert call_log == ["new_fwd"]
+
+        call_log.clear()
+        registry.remove_hook("new_fwd_hook")
+        assert inspect.signature(self.model.forward) == sig_before
+        assert torch.allclose(self.model(input), baseline_output, atol=1e-5)
+        assert call_log == []
+
+    def test_remove_chained_new_forward_hooks(self):
+        class ScaleNewForwardHook(ModelHook):
+            def __init__(self, scale: float, call_log: list[str], tag: str):
+                super().__init__()
+                self.scale = scale
+                self.call_log = call_log
+                self.tag = tag
+
+            def new_forward(self, module, *args, **kwargs):
+                self.call_log.append(self.tag)
+                return self.fn_ref.original_forward(*args, **kwargs) * self.scale
+
+        input = torch.randn(1, 4, device=torch_device, generator=self.get_generator())
+        baseline_output = self.model(input)
+
+        call_log: list[str] = []
+        registry = HookRegistry.check_if_exists_or_initialize(self.model)
+        registry.register_hook(ScaleNewForwardHook(2.0, call_log, "h1"), "h1")
+        registry.register_hook(ScaleNewForwardHook(3.0, call_log, "h2"), "h2")
+        registry.register_hook(ScaleNewForwardHook(5.0, call_log, "h3"), "h3")
+
+        assert torch.allclose(self.model(input), baseline_output * 30.0, atol=1e-5)
+        assert call_log == ["h3", "h2", "h1"]
+
+        call_log.clear()
+        registry.remove_hook("h2")
+        assert torch.allclose(self.model(input), baseline_output * 10.0, atol=1e-5)
+        assert call_log == ["h3", "h1"]
+
+        call_log.clear()
+        registry.remove_hook("h1")
+        assert torch.allclose(self.model(input), baseline_output * 5.0, atol=1e-5)
+        assert call_log == ["h3"]
+
+        call_log.clear()
+        registry.remove_hook("h3")
+        assert torch.allclose(self.model(input), baseline_output, atol=1e-5)
+        assert call_log == []
+
+    def test_remove_new_forward_hook_before_regular_hook(self):
+        input = torch.randn(1, 4, device=torch_device, generator=self.get_generator())
+        expected_add_output = self.model(input + 1)
+
+        registry = HookRegistry.check_if_exists_or_initialize(self.model)
+        registry.register_hook(SkipLayerHook(skip_layer=True), "skip_hook")
+        registry.register_hook(AddHook(1), "add_hook")
+
+        assert torch.allclose(self.model(input), input + 1)
+
+        registry.remove_hook("skip_hook")
+        assert torch.allclose(self.model(input), expected_add_output, atol=1e-5)

@@ -261,7 +261,11 @@ class HookRegistry:
             if index == num_hooks - 1:
                 self._module_ref.forward = old_forward
             else:
-                self._fn_refs[index + 1].forward = old_forward
+                next_fn_ref = self._fn_refs[index + 1]
+                if next_fn_ref.original_forward is not None:
+                    next_fn_ref.original_forward = old_forward
+                else:
+                    next_fn_ref.forward = old_forward
 
             self._module_ref = hook.deinitalize_hook(self._module_ref)
             del self.hooks[name]
