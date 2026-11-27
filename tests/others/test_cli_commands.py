@@ -56,7 +56,7 @@ from diffusers.utils.testing_utils import (
 from ..testing_utils import is_lora
 
 
-AVAILABLE_COMMANDS = ("env", "fp16_safetensors", "custom_blocks", "run", "schema", "skills")
+AVAILABLE_COMMANDS = ("env", "fp16_safetensors", "custom_blocks", "run", "schema", "serve", "skills")
 
 
 class TestRunCommand:

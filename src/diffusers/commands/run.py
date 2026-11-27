@@ -28,7 +28,7 @@ import sys
 import time
 import uuid
 import wave
-from argparse import ArgumentParser, Namespace, RawDescriptionHelpFormatter, _SubParsersAction
+from argparse import SUPPRESS, ArgumentParser, Namespace, RawDescriptionHelpFormatter, _SubParsersAction
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -149,7 +149,12 @@ REMOTE_KEYS = frozenset(
 
 
 def _add_loading_arguments(parser: ArgumentParser) -> None:
-    parser.add_argument("--model", "-m", required=True, help="Model id on the Hugging Face Hub or local path.")
+    # The model can be passed positionally or with --model. The positional's default is SUPPRESS so that, when it is
+    # left out, it doesn't overwrite --model's value; --model's `None` default keeps `args.model` defined either way.
+    parser.add_argument(
+        "model", nargs="?", default=SUPPRESS, metavar="MODEL", help="Model id on the Hugging Face Hub or local path."
+    )
+    parser.add_argument("--model", "-m", default=None, help="Model id on the Hugging Face Hub or local path.")
     parser.add_argument(
         "--device-map",
         default=None,
@@ -176,6 +181,12 @@ def _add_loading_arguments(parser: ArgumentParser) -> None:
             "`weight_name` picks the weight file when the repo ships more than one."
         ),
     )
+
+
+def _require_model(args: Namespace, task: str) -> None:
+    """Exit when neither the positional model nor --model was passed; argparse can't require one of the two."""
+    if args.model is None:
+        raise SystemExit(f"Pass the model to {task}, e.g. `diffusers-cli {task} black-forest-labs/FLUX.2-klein-4B`.")
 
 
 def _add_optimization_arguments(parser: ArgumentParser) -> None:
@@ -504,18 +515,15 @@ def _compile_denoiser(pipeline: Any, compile_spec: str) -> None:
             setattr(pipeline, attr, torch.compile(module, **compile_kwargs))
 
 
-def _load_lora(pipeline: Any, args: Namespace) -> None:
-    """Attach one or more LoRA adapters. Each `--lora` value is a JSON dict.
+def _lora_specs(args: Namespace) -> list[tuple[str, str, str | None, float]]:
+    """Parse each `--lora` JSON dict into `(lora_id, adapter_name, weight_name, scale)`.
 
     Per-entry fields: `lora_id` (required), `lora_scale` (optional float, default 1.0), `adapter_name` (optional;
     auto-generated as `lora_<i>` when stacking), `weight_name` (optional; required when the repo ships more than one
-    weight file, e.g. a ComfyUI variant alongside the diffusers one). Multiple `--lora` flags stack via a single
-    `set_adapters(...)` call at the end.
+    weight file, e.g. a ComfyUI variant alongside the diffusers one).
     """
-    if not args.lora:
-        return
     specs = []
-    for raw in args.lora:
+    for raw in args.lora or []:
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError as e:
@@ -523,22 +531,28 @@ def _load_lora(pipeline: Any, args: Namespace) -> None:
         if not isinstance(parsed, dict):
             raise SystemExit(f"--lora must decode to a JSON object; got {type(parsed).__name__}.")
         specs.append(parsed)
-    if not hasattr(pipeline, "load_lora_weights"):
-        raise SystemExit(f"{type(pipeline).__name__} does not support LoRA loading.")
 
-    names: list[str] = []
-    scales: list[float] = []
+    entries = []
     for i, spec in enumerate(specs):
         lora_id = spec.get("lora_id")
         if not lora_id:
             raise SystemExit(f"--lora entry {i} is missing 'lora_id'.")
         adapter_name = spec.get("adapter_name") or (f"lora_{i}" if len(specs) > 1 else "default")
-        pipeline.load_lora_weights(lora_id, adapter_name=adapter_name, weight_name=spec.get("weight_name", None))
-        names.append(adapter_name)
-        scales.append(float(spec.get("lora_scale", 1.0)))
+        entries.append((lora_id, adapter_name, spec.get("weight_name", None), float(spec.get("lora_scale", 1.0))))
+    return entries
 
+
+def _load_lora(pipeline: Any, args: Namespace) -> None:
+    """Attach the `--lora` adapters, stacked via a single `set_adapters(...)` call at the end."""
+    specs = _lora_specs(args)
+    if not specs:
+        return
+    if not hasattr(pipeline, "load_lora_weights"):
+        raise SystemExit(f"{type(pipeline).__name__} does not support LoRA loading.")
+    for lora_id, adapter_name, weight_name, _ in specs:
+        pipeline.load_lora_weights(lora_id, adapter_name=adapter_name, weight_name=weight_name)
     if hasattr(pipeline, "set_adapters"):
-        pipeline.set_adapters(names, adapter_weights=scales)
+        pipeline.set_adapters([spec[1] for spec in specs], adapter_weights=[spec[3] for spec in specs])
 
 
 def _load_pipeline(args: Namespace) -> Any:
@@ -1227,7 +1241,7 @@ class RunCommand(BaseDiffusersCLICommand):
         parser: ArgumentParser = subparsers.add_parser(
             "run",
             help="Run any diffusers pipeline locally or remotely in an HF Sandbox.",
-            usage="\n  diffusers-cli run [options]",
+            usage="\n  diffusers-cli run <model> [options]",
             epilog=epilog,
             formatter_class=RawDescriptionHelpFormatter,
         )
@@ -1293,6 +1307,7 @@ class RunCommand(BaseDiffusersCLICommand):
         self.args = args
 
     def run(self) -> None:
+        _require_model(self.args, self.task)
         _get_or_create_run_id()  # populate RUN_ID_ENV so local output dir + remote bucket prefix agree
 
         call_kwargs = _parse_pipeline_kwargs(self.args.pipeline_kwargs)
