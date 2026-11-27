@@ -15,7 +15,13 @@
 import torch
 from transformers import AutoConfig, AutoTokenizer, T5EncoderModel
 
-from diffusers import AutoencoderKLLTXVideo, FlowMatchEulerDiscreteScheduler, LTXPipeline, LTXVideoTransformer3DModel
+from diffusers import (
+    AutoencoderKLLTXVideo,
+    FlowMatchEulerDiscreteScheduler,
+    LTXPipeline,
+    LTXVideoTransformer3DModel,
+    UniPCMultistepScheduler,
+)
 
 from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
@@ -114,6 +120,27 @@ class LTXPipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestLTXPipeline(LTXPipelineTesterConfig, PipelineTesterMixin):
+    def test_stochastic_scheduler_uses_generator(self):
+        pipe = self.get_pipeline()
+        pipe.scheduler = FlowMatchEulerDiscreteScheduler(stochastic_sampling=True)
+        inputs = self.get_dummy_inputs()
+        inputs.update(output_type="latent", num_inference_steps=4)
+        outputs = []
+        with torch.random.fork_rng(devices=[]):
+            for seed in (13, 99):
+                torch.random.default_generator.manual_seed(seed)
+                inputs["generator"] = torch.Generator().manual_seed(17)
+                outputs.append(pipe(**inputs)[0])
+
+        torch.testing.assert_close(outputs[0], outputs[1], rtol=0, atol=0)
+
+    def test_generator_with_unipc_scheduler(self):
+        pipe = self.get_pipeline()
+        pipe.scheduler = UniPCMultistepScheduler(use_flow_sigmas=True, prediction_type="flow_prediction")
+        inputs = self.get_dummy_inputs()
+        inputs.update(generator=torch.Generator().manual_seed(17), output_type="latent")
+        assert torch.isfinite(pipe(**inputs)[0]).all()
+
     def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-3):
         super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 

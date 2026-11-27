@@ -669,8 +669,8 @@ class FluxPipeline(
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
+                A generator for sampling the initial latents and for scheduler steps that accept a generator. To seed
+                each image individually, pass one generator per output image.
             latents (`torch.FloatTensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
@@ -883,6 +883,9 @@ class FluxPipeline(
             )
 
         # 6. Denoising loop
+        step_kwargs = (
+            {"generator": generator} if "generator" in inspect.signature(self.scheduler.step).parameters else {}
+        )
         # We set the index here to remove DtoH sync, helpful especially during compilation.
         # Check out more details here: https://github.com/huggingface/diffusers/pull/11696
         self.scheduler.set_begin_index(0)
@@ -930,7 +933,7 @@ class FluxPipeline(
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
-                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False, **step_kwargs)[0]
 
                 if latents.dtype != latents_dtype:
                     if torch.backends.mps.is_available():

@@ -602,8 +602,8 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixi
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
             generator (`torch.Generator` or `list[torch.Generator]`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
+                A generator for sampling the initial latents and for scheduler steps that accept a generator. To seed
+                each video individually, pass one generator per output video.
             latents (`torch.Tensor`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
@@ -754,6 +754,9 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixi
         )
 
         # 7. Denoising loop
+        step_kwargs = (
+            {"generator": generator} if "generator" in inspect.signature(self.scheduler.step).parameters else {}
+        )
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
@@ -793,7 +796,7 @@ class LTXPipeline(DiffusionPipeline, FromSingleFileMixin, LTXVideoLoraLoaderMixi
                         )
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+                latents = self.scheduler.step(noise_pred, t, latents, return_dict=False, **step_kwargs)[0]
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
