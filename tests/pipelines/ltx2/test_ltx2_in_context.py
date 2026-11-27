@@ -81,7 +81,9 @@ class TestLTX2InContextPipelineMemory(LTX2InContextPipelineTesterConfig, LTX2Mem
 
 
 class TestLTX2InContextPipelineSplitDevice(LTX2InContextPipelineTesterConfig, SplitDeviceTesterMixin):
-    """Split-device tests (denoiser on the accelerator, other components on CPU) for the LTX2 IC pipeline."""
+    """Split-device tests (transformer on the accelerator, other components on CPU) for the LTX2 IC pipeline."""
+
+    accelerator_components = ("transformer",)
 
 
 class TestLTX2InContextPipelineLoRA(LTX2InContextPipelineTesterConfig, LTX2LoraTesterMixin):

@@ -114,7 +114,9 @@ class TestLTX2HDRPipelineMemory(LTX2HDRPipelineTesterConfig, LTX2MemoryTesterMix
 
 
 class TestLTX2HDRPipelineSplitDevice(LTX2HDRPipelineTesterConfig, SplitDeviceTesterMixin):
-    """Split-device tests (denoiser on the accelerator, other components on CPU) for the LTX2 HDR pipeline."""
+    """Split-device tests (transformer on the accelerator, other components on CPU) for the LTX2 HDR pipeline."""
+
+    accelerator_components = ("transformer",)
 
     # Compares decoded frames rather than latents to cover the VAE decode. The inverse LogC3 transfer function
     # amplifies the differences between devices, hence the looser tolerance.

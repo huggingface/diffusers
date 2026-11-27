@@ -300,7 +300,9 @@ class TestLTX2ImageToVideoPipelineMemory(LTX2ImageToVideoPipelineTesterConfig, L
 
 
 class TestLTX2ImageToVideoPipelineSplitDevice(LTX2ImageToVideoPipelineTesterConfig, SplitDeviceTesterMixin):
-    """Split-device tests (denoiser on the accelerator, other components on CPU) for the LTX2 I2V pipeline."""
+    """Split-device tests (transformer on the accelerator, other components on CPU) for the LTX2 I2V pipeline."""
+
+    accelerator_components = ("transformer",)
 
 
 class TestLTX2ImageToVideoPipelineLoRA(LTX2ImageToVideoPipelineTesterConfig, LTX2LoraTesterMixin):

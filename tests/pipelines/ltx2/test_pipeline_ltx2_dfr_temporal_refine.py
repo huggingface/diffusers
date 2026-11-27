@@ -309,4 +309,4 @@ class TestLTX2DFRTemporalRefinePipeline(LTX2DFRTemporalRefinePipelineTesterConfi
 
 
 class TestLTX2DFRTemporalRefinePipelineSplitDevice(LTX2DFRTemporalRefinePipelineTesterConfig, SplitDeviceTesterMixin):
-    pass
+    accelerator_components = ("transformer",)

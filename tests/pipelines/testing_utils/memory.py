@@ -469,10 +469,9 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
 class SplitDeviceTesterMixin(BasePipelineOutputMixin):
     """Inference with the `accelerator_components` on the accelerator and every other component on the CPU.
 
-    Not part of `MemoryTesterMixin`: compose it for the pipelines that support this placement.
+    Not part of `MemoryTesterMixin`: compose it for the pipelines that support this placement, and set
+    `accelerator_components` on the test class.
     """
-
-    accelerator_components = ("transformer",)
 
     def test_split_device_forward_pass(self, base_pipe_output, expected_max_diff=1e-4):
         pipe = self.get_pipeline()

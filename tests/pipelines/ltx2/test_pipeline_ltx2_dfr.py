@@ -526,4 +526,4 @@ class TestLTX2DFRPipelineMemory(LTX2DFRPipelineTesterConfig, LTX2MemoryTesterMix
 
 
 class TestLTX2DFRPipelineSplitDevice(LTX2DFRPipelineTesterConfig, SplitDeviceTesterMixin):
-    pass
+    accelerator_components = ("transformer",)

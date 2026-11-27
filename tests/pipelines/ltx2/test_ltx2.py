@@ -280,7 +280,9 @@ class TestLTX2PipelineMemory(LTX2PipelineTesterConfig, LTX2MemoryTesterMixin):
 
 
 class TestLTX2PipelineSplitDevice(LTX2PipelineTesterConfig, SplitDeviceTesterMixin):
-    """Split-device tests (denoiser on the accelerator, other components on CPU) for the LTX2 pipeline."""
+    """Split-device tests (transformer on the accelerator, other components on CPU) for the LTX2 pipeline."""
+
+    accelerator_components = ("transformer",)
 
 
 class TestLTX2PipelineLoRA(LTX2PipelineTesterConfig, LTX2LoraTesterMixin):
