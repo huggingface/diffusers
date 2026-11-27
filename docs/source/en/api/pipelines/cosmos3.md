@@ -53,11 +53,15 @@ Running W8A8 on every step can produce visible flickering in multi-step video ge
 
 Image generation and few-step distilled checkpoints do not show that flickering, so Super-T2I and the distilled 4-step FP8 repos declare no schedule and stay W8A8 on every step. The schedule is also **ModelOpt FP8 only**: other quantization backends (for example TorchAO) keep their native forwards.
 
-Load an FP8 repo with the same restore path as the [ModelOpt guide](../../quantization/modelopt). The repo already carries the quantization config. Mixed precision then follows the checkpoint automatically:
+Load an FP8 repo with the same restore path as the [ModelOpt guide](../../quantization/modelopt), calling `enable_huggingface_checkpointing()` and importing ModelOpt's FP8 GEMM backend before `from_pretrained`. Without `enable_huggingface_checkpointing()`, quantized layers load as plain `nn.Linear` and raise a mixed-precision error; without `modelopt.torch.quantization.backends.fp8_per_tensor_gemm`, the first W8A8 step finds no registered FP8 GEMM kernel. The repo already carries the quantization config, so mixed precision follows the checkpoint automatically:
 
 ```python
+import modelopt.torch.quantization.backends.fp8_per_tensor_gemm  # noqa: F401
 import torch
 from diffusers import Cosmos3OmniPipeline
+from modelopt.torch.opt import enable_huggingface_checkpointing
+
+enable_huggingface_checkpointing()
 
 pipe = Cosmos3OmniPipeline.from_pretrained(
     "nvidia/Cosmos3-Nano-FP8",
