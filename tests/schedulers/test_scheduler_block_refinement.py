@@ -521,6 +521,29 @@ class BlockRefinementSchedulerUniformTest(unittest.TestCase):
         scheduler.step(logits, timestep=0, sample=sample, mask_token_id=None)  # new block resets committed
         self.assertEqual(scheduler._committed.sum().item(), 6)
 
+    def test_step_with_cpu_generator(self):
+        scheduler = self.get_scheduler()
+        sample = torch.randint(0, 1000, (2, 64))
+        logits = torch.randn(2, 64, 1000)
+        generator = torch.Generator("cpu").manual_seed(42)
+        out = scheduler.step(logits, timestep=5, sample=sample, mask_token_id=None, temperature=0.8, generator=generator)
+        self.assertEqual(out.prev_sample.shape, sample.shape)
+
+    def test_add_noise_with_cpu_generator(self):
+        scheduler = self.get_scheduler()
+        sample = torch.randint(0, 1000, (2, 64))
+        attention_mask = torch.ones(2, 64)
+        generator = torch.Generator("cpu").manual_seed(42)
+        noisy, noisy_rev, masked, masked_rev = scheduler.add_noise(
+            original_samples=sample,
+            mask_token_id=0,
+            attention_mask=attention_mask,
+            prompt_length=16,
+            block_length=16,
+            generator=generator,
+        )
+        self.assertEqual(noisy.shape, sample.shape)
+
 
 if __name__ == "__main__":
     unittest.main()
