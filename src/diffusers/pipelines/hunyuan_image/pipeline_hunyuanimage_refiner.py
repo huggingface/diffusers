@@ -247,12 +247,6 @@ class HunyuanImageRefinerPipeline(DiffusionPipeline):
                 argument.
             prompt_embeds_mask (`torch.Tensor`, *optional*):
                 Pre-generated text mask. If not provided, text mask will be generated from `prompt` input argument.
-            prompt_embeds_2 (`torch.Tensor`, *optional*):
-                Pre-generated glyph text embeddings from ByT5. If not provided, will be generated from `prompt` input
-                argument using self.tokenizer_2 and self.text_encoder_2.
-            prompt_embeds_mask_2 (`torch.Tensor`, *optional*):
-                Pre-generated glyph text mask from ByT5. If not provided, will be generated from `prompt` input
-                argument using self.tokenizer_2 and self.text_encoder_2.
         """
         device = device or self._execution_device
 

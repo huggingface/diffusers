@@ -210,17 +210,12 @@ class BaseGuidance(ConfigMixin, PushToHubMixin):
         `BaseGuidance` class. It prepares the batch based on the provided tuple index.
 
         Args:
-            input_fields (`dict[str, str | tuple[str, str]]`):
-                A dictionary where the keys are the names of the fields that will be used to store the data once it is
-                prepared with `prepare_inputs`. The values can be either a string or a tuple of length 2, which is used
-                to look up the required data provided for preparation. If a string is provided, it will be used as the
-                conditional data (or unconditional if used with a guidance method that requires it). If a tuple of
-                length 2 is provided, the first element must be the conditional data identifier and the second element
-                must be the unconditional data identifier or None.
-            data (`BlockState`):
+            data (`dict[str, tuple[torch.Tensor, torch.Tensor]]`):
                 The input data to be prepared.
             tuple_index (`int`):
                 The index to use when accessing input fields that are tuples.
+            identifier (`str`):
+                The identifier for the prepared batch.
 
         Returns:
             `BlockState`: The prepared batch of data.
