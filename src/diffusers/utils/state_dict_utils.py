@@ -39,7 +39,7 @@ class _TorchStateDict(dict):
     `metadata` before converting.
     """
 
-    def __init__(self, state_dict=(), metadata: dict[str, Any] | None = None):
+    def __init__(self, state_dict, metadata: dict[str, Any] | None = None):
         super().__init__(state_dict)
         self.metadata = metadata if metadata is not None else {}
 
