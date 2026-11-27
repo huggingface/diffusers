@@ -15,6 +15,7 @@
 import torch
 
 from diffusers import HunyuanVideoTransformer3DModel
+from diffusers.loaders import HunyuanVideoLoraLoaderMixin
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -305,4 +306,21 @@ class TestHunyuanVideoTokenReplaceTransformer(HunyuanVideoTokenReplaceTransforme
 
 
 class TestHunyuanVideoTransformerLoRA(HunyuanVideoTransformerTesterConfig, LoraTesterMixin):
-    pass
+    def test_lora_original_final_layer_modulation(self):
+        # The original final layer orders its modulation (shift, scale) and diffusers' `norm_out` (scale, shift). Only
+        # lora_B's rows are the layer's outputs, so the converted update must be the original one with its halves swapped.
+        torch.manual_seed(0)
+        lora_A, lora_B = torch.randn(2, 16), torch.randn(32, 2)
+        state_dict = {
+            "diffusion_model.final_layer.adaLN_modulation.1.lora_A.weight": lora_A,
+            "diffusion_model.final_layer.adaLN_modulation.1.lora_B.weight": lora_B,
+            "diffusion_model.double_blocks.0.img_attn_qkv.lora_A.weight": torch.randn(2, 16),
+            "diffusion_model.double_blocks.0.img_attn_qkv.lora_B.weight": torch.randn(48, 2),
+        }
+        converted = HunyuanVideoLoraLoaderMixin.lora_state_dict(state_dict)
+        delta = (
+            converted["transformer.norm_out.linear.lora_B.weight"]
+            @ converted["transformer.norm_out.linear.lora_A.weight"]
+        )
+        shift, scale = (lora_B @ lora_A).chunk(2, dim=0)
+        assert torch.allclose(delta, torch.cat([scale, shift]))
