@@ -516,7 +516,9 @@ def _check_tp_supported(
                 raise ValueError(
                     f"'{model.__class__.__name__}' has adapter (LoRA) layers injected, which cannot be combined with "
                     "tensor parallelism: `_tp_plan` covers the base `Linear` layers only, so the adapter weights "
-                    "would stay unsharded and the result would be wrong. Unload the adapter before sharding."
+                    "would stay unsharded and the result would be wrong. To keep the adapter, merge it into the base "
+                    "weights with `fuse_lora()` and remove the adapter layers with `unload_lora()` before sharding "
+                    "(`fuse_lora()` and `unload_lora_weights()` on a pipeline). Otherwise, unload the adapter."
                 )
 
 

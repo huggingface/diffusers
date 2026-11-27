@@ -311,9 +311,9 @@ class TestQwenImageTransformerTensorParallelTPU(QwenImageTransformerTesterConfig
         # One head per chip.
         return {**super().get_init_dict(), "num_attention_heads": self.tp_world_size}
 
-    def test_tensor_parallel_tpu_inference(self):
+    def test_tensor_parallel_tpu_inference(self, **kwargs):
         # TPU numerics differ by ~1e-2 between sharded and unsharded QwenImage (~1e-7 on CPU).
-        super().test_tensor_parallel_tpu_inference(atol=2e-2, rtol=2e-2)
+        super().test_tensor_parallel_tpu_inference(atol=2e-2, rtol=2e-2, **kwargs)
 
 
 class TestQwenImageTransformerTensorParallelNeuron(QwenImageTransformerTesterConfig, TensorParallelNeuronTesterMixin):

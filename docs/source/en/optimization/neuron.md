@@ -86,6 +86,34 @@ image.save("output.png")
 
 For transformers with repeated blocks, use `compile_repeated_blocks(...)` to compile those blocks individually. This block is reused and reduces compile time considerably.
 
+## LoRA
+
+LoRA adapters load the same way as on any other device. Move the pipeline to the `"neuron"` device, then call
+[`~loaders.lora_base.LoraBaseMixin.load_lora_weights`].
+
+```python
+import torch
+
+from diffusers import Flux2KleinPipeline
+
+pipe = Flux2KleinPipeline.from_pretrained("black-forest-labs/FLUX.2-klein-4B", dtype=torch.bfloat16)
+pipe.to("neuron")
+# `lora_id` is a Hub repository or local path holding the LoRA weights.
+pipe.load_lora_weights(lora_id)
+```
+
+With a compiled transformer, how you load the adapter depends on whether it changes:
+
+- To keep one adapter, merge it into the base weights with `pipe.fuse_lora()` and remove the adapter layers with
+  `pipe.unload_lora_weights()` before compiling, as shown in [LoRA with torch.compile](../tutorials/using_peft_for_inference#torchcompile).
+  The compiled graph then has no extra LoRA matmuls.
+- To switch adapters without recompiling, call `pipe.enable_lora_hotswap(target_rank=...)` before loading the first
+  adapter, compile after loading it, and load the next ones with `hotswap=True`, as shown in
+  [Hotswapping](../tutorials/using_peft_for_inference#compiled-models). Keep `dynamic=False`.
+
+To combine a LoRA adapter with tensor parallelism, fuse it before sharding the model, as shown in
+[LoRA adapters](./tensor_parallelism#lora-adapters).
+
 ## Tensor parallelism
 
 Follow the [Tensor parallelism](./tensor_parallelism) guide for model loading,

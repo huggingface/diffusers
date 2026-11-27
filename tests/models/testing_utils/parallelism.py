@@ -31,7 +31,7 @@ from diffusers.models._modeling_parallel import (
     TensorParallelConfig,
 )
 from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
-from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME
+from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME, is_peft_available
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import (
@@ -39,6 +39,7 @@ from ...testing_utils import (
     is_context_parallel,
     is_kernels_available,
     is_tensor_parallel,
+    require_peft_version_greater,
     require_torch_multi_accelerator,
     require_torch_neuron,
     require_torch_tpu,
@@ -64,6 +65,44 @@ def _find_free_port():
         s.listen(1)
         port = s.getsockname()[1]
     return port
+
+
+def _prepare_tpu_environment(world_size: int) -> None:
+    """Set the TorchTPU topology environment variables in the parent process, before spawning one worker per chip."""
+    try:
+        # Public API from torch_tpu 0.3.0.
+        from torch.tpu.distributed import set_tpu_launch_env
+    except ImportError:
+        from torch_tpu._internal.distributed.launchers.singlehost_wrapper import prepare_tpu_environment
+
+        prepare_tpu_environment(world_size)
+    else:
+        set_tpu_launch_env(nproc_per_node=world_size)
+
+
+def _add_random_lora_to_tp_layers(model, rank: int = 4) -> dict:
+    """Inject a randomly initialized LoRA adapter into every `_tp_plan`-sharded layer of `model`, in place.
+
+    Returns the adapter's state dict on CPU, in the format `load_lora_adapter(..., prefix=None)` reads, so the
+    tensor-parallel workers can load the same adapter. Skips the test for models without PEFT support.
+    """
+    from diffusers.hooks.tensor_parallel import resolve_tp_shard_specs
+    from diffusers.loaders.peft import PeftAdapterMixin
+
+    if not is_peft_available():
+        pytest.skip("PEFT is not available.")
+    if not isinstance(model, PeftAdapterMixin):
+        pytest.skip(f"PEFT is not supported for this model ({model.__class__.__name__}).")
+
+    from peft import LoraConfig
+    from peft.utils import get_peft_model_state_dict
+
+    # Target exactly the sharded layers, the ones whose fused weights the shard then splits.
+    target_modules = sorted({name.rpartition(".")[0] for name in resolve_tp_shard_specs(model, model._tp_plan, 1)})
+    # `init_lora_weights=False` gives a non-zero `lora_B`, so the adapter changes the output. `lora_alpha` equals the
+    # rank because `load_lora_adapter` defaults to that when the state dict carries no metadata.
+    model.add_adapter(LoraConfig(r=rank, lora_alpha=rank, target_modules=target_modules, init_lora_weights=False))
+    return {k: v.detach().cpu() for k, v in get_peft_model_state_dict(model).items()}
 
 
 class DummyConditionalPlanBlock(torch.nn.Module):
@@ -324,6 +363,7 @@ def _tensor_parallel_worker(
     return_dict,
     state_dict,
     device_type=torch_device,
+    lora_state_dict=None,
 ):
     """Worker function for tensor parallel inference testing.
 
@@ -331,6 +371,9 @@ def _tensor_parallel_worker(
     with `enable_parallelism(config=TensorParallelConfig(tp_degree=world_size))` and runs a forward pass. Rank 0
     reports its output so the caller can compare it against a single-device reference (TP is mathematically equivalent
     to the unsharded model up to floating-point reduction order).
+
+    With `lora_state_dict`, each rank loads that LoRA adapter, fuses it into the base weights and unloads the adapter
+    layers before sharding, the supported way to combine a LoRA adapter with tensor parallelism.
     """
     try:
         from torch.distributed.tensor import DTensor
@@ -356,6 +399,12 @@ def _tensor_parallel_worker(
         model.load_state_dict(state_dict)
         model.to(device)
         model.eval()
+
+        if lora_state_dict is not None:
+            # `_tp_plan` covers the base layers only: merge the adapter into them and drop the adapter layers first.
+            model.load_lora_adapter(lora_state_dict, prefix=None)
+            model.fuse_lora()
+            model.unload_lora()
 
         inputs_on_device = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs_dict.items()}
         for k, v in inputs_on_device.items():
@@ -647,7 +696,7 @@ def _check_parallel_rng_sync(
 @is_tensor_parallel
 @require_torch_multi_accelerator
 class TensorParallelTesterMixin:
-    def test_tensor_parallel_inference(self, batch_size: int = 1):
+    def test_tensor_parallel_inference(self, batch_size: int = 1, fused_lora: bool = False):
         if not torch.distributed.is_available():
             pytest.skip("torch.distributed is not available.")
 
@@ -665,6 +714,7 @@ class TensorParallelTesterMixin:
         # Single-device reference
         model = self.model_class(**init_dict).eval().to(torch_device)
         state_dict = {k: v.cpu() for k, v in model.state_dict().items()}
+        lora_state_dict = _add_random_lora_to_tp_layers(model) if fused_lora else None
         with torch.no_grad():
             ref_output = model(**inputs_dict, return_dict=False)[0]
         if isinstance(ref_output, (list, tuple)):
@@ -683,7 +733,17 @@ class TensorParallelTesterMixin:
 
         mp.spawn(
             _tensor_parallel_worker,
-            args=(world_size, master_port, self.model_class, init_dict, inputs_dict, return_dict, state_dict),
+            args=(
+                world_size,
+                master_port,
+                self.model_class,
+                init_dict,
+                inputs_dict,
+                return_dict,
+                state_dict,
+                torch_device,
+                lora_state_dict,
+            ),
             nprocs=world_size,
             join=True,
         )
@@ -698,6 +758,13 @@ class TensorParallelTesterMixin:
 
     def test_tensor_parallel_batch_inputs(self):
         self.test_tensor_parallel_inference(batch_size=2)
+
+    # PEFT 0.19.x imports TP helpers that transformers 5.16 removed whenever `torch.distributed` is initialized, so
+    # loading the adapter in a worker fails (huggingface/peft#3261).
+    @require_peft_version_greater("0.19.1")
+    def test_tensor_parallel_fused_lora_inference(self):
+        """A LoRA adapter fused and unloaded before sharding matches the unsharded model with the adapter."""
+        self.test_tensor_parallel_inference(fused_lora=True)
 
     def _tp_checkpoint_and_reference(self, tmp_path, world_size, sharded):
         """Write a checkpoint for the sharded loaders to read, and record its single-device output.
@@ -787,8 +854,7 @@ class TensorParallelTPUTesterMixin:
     # Smallest slice every TPU generation supports, so the test is the same on any CI host.
     tp_world_size = 4
 
-    def test_tensor_parallel_tpu_inference(self, atol=1e-3, rtol=1e-3):
-        from torch_tpu._internal.distributed.launchers.singlehost_wrapper import prepare_tpu_environment
+    def test_tensor_parallel_tpu_inference(self, atol=1e-3, rtol=1e-3, fused_lora=False):
         from torch_tpu._internal.utils import hardware
 
         if getattr(self.model_class, "_tp_plan", None) is None:
@@ -805,13 +871,15 @@ class TensorParallelTPUTesterMixin:
         # Reference on CPU: touching the TPU here would bind every chip to this process.
         inputs_dict = self.get_dummy_inputs(device="cpu")
         model = self.model_class(**init_dict).eval()
+        state_dict = model.state_dict()
+        lora_state_dict = _add_random_lora_to_tp_layers(model) if fused_lora else None
         with torch.no_grad():
             ref_output = model(**inputs_dict, return_dict=False)[0].float()
 
         tpu_env = ("TORCH_TPU_TOPOLOGY", "TORCH_TPU_SLICEBUILDER_ADDRESSES")
         for key in tpu_env:
             os.environ.pop(key, None)
-        prepare_tpu_environment(world_size)
+        _prepare_tpu_environment(world_size)
         return_dict = mp.Manager().dict()
         try:
             mp.spawn(
@@ -823,8 +891,9 @@ class TensorParallelTPUTesterMixin:
                     init_dict,
                     inputs_dict,
                     return_dict,
-                    model.state_dict(),
+                    state_dict,
                     "tpu",
+                    lora_state_dict,
                 ),
                 nprocs=world_size,
                 join=True,
@@ -839,11 +908,17 @@ class TensorParallelTPUTesterMixin:
         tp_output = torch.tensor(return_dict["output"])
         torch.testing.assert_close(ref_output, tp_output, atol=atol, rtol=rtol)
 
+    # PEFT 0.19.x imports TP helpers that transformers 5.16 removed whenever `torch.distributed` is initialized, so
+    # loading the adapter in a worker fails (huggingface/peft#3261).
+    @require_peft_version_greater("0.19.1")
+    def test_tensor_parallel_tpu_fused_lora_inference(self):
+        """A LoRA adapter fused and unloaded before sharding matches the unsharded model with the adapter."""
+        self.test_tensor_parallel_tpu_inference(fused_lora=True)
+
     @pytest.mark.parametrize("loading", ["enable_parallelism", "from_pretrained"])
     @pytest.mark.parametrize("parallelism", ["tensor_parallel", "tensor_parallel_submesh"], ids=["mesh", "submesh"])
     def test_tensor_parallel_tpu_rng_sync(self, tmp_path, parallelism, loading, atol=2e-2, rtol=2e-2):
         """Loading with a TP config gives every rank of the TP mesh the same default RNG, and only those ranks."""
-        from torch_tpu._internal.distributed.launchers.singlehost_wrapper import prepare_tpu_environment
         from torch_tpu._internal.utils import hardware
 
         world_size = self.tp_world_size
@@ -853,7 +928,7 @@ class TensorParallelTPUTesterMixin:
         tpu_env = ("TORCH_TPU_TOPOLOGY", "TORCH_TPU_SLICEBUILDER_ADDRESSES")
         for key in tpu_env:
             os.environ.pop(key, None)
-        prepare_tpu_environment(world_size)
+        _prepare_tpu_environment(world_size)
         try:
             # Inputs, and so the reference, stay on CPU: touching the TPU here would bind every chip to this process.
             _check_parallel_rng_sync(
@@ -884,7 +959,7 @@ class TensorParallelNeuronTesterMixin:
 
     tp_world_size = 2
 
-    def test_tensor_parallel_neuron_inference(self, atol=2e-2, rtol=2e-2):
+    def test_tensor_parallel_neuron_inference(self, atol=2e-2, rtol=2e-2, fused_lora=False):
         if getattr(self.model_class, "_tp_plan", None) is None:
             pytest.skip("Model does not define a `_tp_plan` for tensor parallel inference.")
 
@@ -897,6 +972,8 @@ class TensorParallelNeuronTesterMixin:
         # Reference on CPU: touching the Neuron device here would break the spawned workers.
         inputs_dict = self.get_dummy_inputs(device="cpu")
         model = self.model_class(**init_dict).eval()
+        state_dict = model.state_dict()
+        lora_state_dict = _add_random_lora_to_tp_layers(model) if fused_lora else None
         with torch.no_grad():
             ref_output = model(**inputs_dict, return_dict=False)[0].float()
 
@@ -910,8 +987,9 @@ class TensorParallelNeuronTesterMixin:
                 init_dict,
                 inputs_dict,
                 return_dict,
-                model.state_dict(),
+                state_dict,
                 "neuron",
+                lora_state_dict,
             ),
             nprocs=world_size,
             join=True,
@@ -923,6 +1001,13 @@ class TensorParallelNeuronTesterMixin:
         tp_output = torch.tensor(return_dict["output"])
         # Neuron runs matmuls in bf16 internally, so compare with a bf16-level tolerance.
         torch.testing.assert_close(ref_output, tp_output, atol=atol, rtol=rtol)
+
+    # PEFT 0.19.x imports TP helpers that transformers 5.16 removed whenever `torch.distributed` is initialized, so
+    # loading the adapter in a worker fails (huggingface/peft#3261).
+    @require_peft_version_greater("0.19.1")
+    def test_tensor_parallel_neuron_fused_lora_inference(self):
+        """A LoRA adapter fused and unloaded before sharding matches the unsharded model with the adapter."""
+        self.test_tensor_parallel_neuron_inference(fused_lora=True)
 
     @pytest.mark.parametrize("loading", ["enable_parallelism", "from_pretrained"])
     @pytest.mark.parametrize("parallelism", ["tensor_parallel", "tensor_parallel_submesh"], ids=["mesh", "submesh"])

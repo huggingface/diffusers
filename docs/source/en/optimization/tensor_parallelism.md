@@ -81,12 +81,33 @@ Loading with `parallel_config` is faster and uses less CPU memory per rank than 
 | 4 | `from_pretrained(parallel_config=...)` | 12.5s | 6.8GB |
 | 4 | `from_pretrained` + `enable_parallelism` | 30.4s | 64.1GB |
 
+## LoRA adapters
+
+The `_tp_plan` shards a model's base `Linear` layers, not the adapter layers that a LoRA injects next to them. Sharding a model that has LoRA layers, or loading a LoRA into a sharded model, raises an error.
+
+To use a LoRA adapter, merge it into the base weights with [`~loaders.PeftAdapterMixin.fuse_lora`] and remove the adapter layers with [`~loaders.PeftAdapterMixin.unload_lora`] before sharding. The merged weights are ordinary weights, so they shard like the rest of the model. Pass `lora_scale` to `fuse_lora` to set the adapter's strength.
+
+```py
+transformer = Flux2Transformer2DModel.from_pretrained(
+    "black-forest-labs/FLUX.2-dev", subfolder="transformer", dtype=torch.bfloat16
+)
+# `lora_id` is a Hub repository or local path holding the LoRA weights.
+transformer.load_lora_adapter(lora_id, prefix="transformer")
+transformer.fuse_lora()
+transformer.unload_lora()
+
+transformer.to(device)
+transformer.enable_parallelism(config=TensorParallelConfig(tp_degree=world_size))
+```
+
+The LoRA must be fused before the model is sharded, so the model is sharded in memory with [`~ModelMixin.enable_parallelism`] rather than loaded with `parallel_config`, and every rank needs memory for the full checkpoint. The adapter can't be changed after sharding. To use another adapter, load the model again.
+
 ## Limitations
 
 Tensor parallelism doesn't work with some loading options and features, and you can't save a sharded model.
 
 - Loading with a tensor-parallel `parallel_config` doesn't work with `device_map`, `quantization_config`, `low_cpu_mem_usage=False`, `use_flashpack=True`, or non-safetensors weights. Each one raises an error instead of quietly loading the full checkpoint.
-- Combining tensor parallelism with quantization, offloading, or LoRA adapters also raises an error, no matter how the model is sharded.
+- Combining tensor parallelism with quantization, offloading, or unfused LoRA adapters also raises an error, no matter how the model is sharded. To use a LoRA adapter, fuse it before sharding as shown in [LoRA adapters](#lora-adapters).
 - To shard a model that's already in memory, call [`~ModelMixin.enable_parallelism`] with the same config. It loads the full model first and then shards it, so every rank needs memory for the full checkpoint. Loading with `parallel_config` avoids that cost.
 - Saving a tensor-parallel model raises an error in [`~ModelMixin.save_pretrained`]. Save the model before sharding it.
 
