@@ -30,6 +30,10 @@ Quantization techniques reduce memory and computational costs by representing we
 
 [[autodoc]] quantizers.quantization_config.BitsAndBytesConfig
 
+## EntroPackConfig
+
+[[autodoc]] quantizers.quantization_config.EntroPackConfig
+
 ## GGUFQuantizationConfig
 
 [[autodoc]] quantizers.quantization_config.GGUFQuantizationConfig

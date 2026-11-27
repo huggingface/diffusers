@@ -80,6 +80,7 @@ from .import_utils import (
     is_bs4_available,
     is_comfy_kitchen_available,
     is_cosmos_guardrail_available,
+    is_entropack_available,
     is_flash_attn_3_available,
     is_flash_attn_available,
     is_flash_attn_version,

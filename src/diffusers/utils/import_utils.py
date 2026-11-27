@@ -73,6 +73,7 @@ _PKG_TO_DEPS_KEY = {
     "modelopt": "nvidia_modelopt[hf]",
     "sdnq": "sdnq",
     "auto_round": "auto-round",
+    "entropack": "entropack",
 }
 
 
@@ -257,6 +258,7 @@ _accelerate_available, _accelerate_version = _is_package_available("accelerate")
 _xformers_available, _xformers_version = _is_package_available("xformers")
 _gguf_available, _gguf_version = _is_package_available("gguf")
 _comfy_kitchen_available, _comfy_kitchen_version = _is_package_available("comfy_kitchen")
+_entropack_available, _entropack_version = _is_package_available("entropack")
 _torchao_available, _torchao_version = _is_package_available("torchao")
 _optimum_quanto_available, _optimum_quanto_version = _is_package_available("optimum", get_dist_name=True)
 _pytorch_retinaface_available, _pytorch_retinaface_version = _is_package_available("pytorch_retinaface")
@@ -422,6 +424,10 @@ def is_flashinfer_available():
 
 def is_flashpack_available():
     return _flashpack_available
+
+
+def is_entropack_available():
+    return _entropack_available
 
 
 def is_torchao_available():

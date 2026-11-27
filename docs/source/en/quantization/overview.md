@@ -145,6 +145,7 @@ The following backends support loading prequantized checkpoints out of the box.
 |---|---|
 | [bitsandbytes](./bitsandbytes) | Config is saved in `config.json`; no extra arguments needed. Supports quantizing on the fly as well as loading prequantized checkpoints. |
 | [torchao](./torchao) | Same as above. |
+| [EntroPack](./entropack) | Config is saved in `config.json`; supports online quantization and loading prequantized checkpoints. |
 | [GGUF](./gguf) | Uses `from_single_file` with Model classes; pipeline-level loading is not supported. |
 | [BFL](./bfl) | Loads Black Forest Labs `fp8r` and `nvfp4` single-file checkpoints with `from_single_file`; pipeline-level loading is not supported. |
 | [AutoRound](./autoround) | Only loading is supported; quantize first with the AutoRound CLI or Python API. |

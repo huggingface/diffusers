@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import json
 
-import safetensors
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
 from tokenizers import Tokenizer as TokenizerFast
@@ -86,7 +85,7 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
                         subfolder=subfolder,
                         user_agent=user_agent,
                     )
-                    state_dict = safetensors.torch.load_file(model_file, device="cpu")
+                    state_dict = load_state_dict(model_file)
                 except Exception as e:
                     if not allow_pickle:
                         raise e

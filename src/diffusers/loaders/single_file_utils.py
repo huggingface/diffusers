@@ -46,6 +46,7 @@ from ..utils import (
 )
 from ..utils.constants import DIFFUSERS_REQUEST_TIMEOUT
 from ..utils.hub_utils import _get_model_file
+from ..utils.state_dict_utils import _TorchStateDict
 from ..utils.torch_utils import empty_device_cache
 
 
@@ -505,8 +506,11 @@ def load_single_file_checkpoint(
     checkpoint = load_state_dict(pretrained_model_link_or_path, disable_mmap=disable_mmap)
 
     # some checkpoints contain the model state dict under a "state_dict" key
+    metadata = checkpoint.metadata
     while "state_dict" in checkpoint:
         checkpoint = checkpoint["state_dict"]
+    if not isinstance(checkpoint, _TorchStateDict):
+        checkpoint = _TorchStateDict(checkpoint, metadata=metadata)
 
     return checkpoint
 

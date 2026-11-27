@@ -22,6 +22,7 @@ from .autoround import AutoRoundQuantizer
 from .bfl import BFLQuantizer
 from .bitsandbytes import BnB4BitDiffusersQuantizer, BnB8BitDiffusersQuantizer
 from .comfy import ComfyQuantizer
+from .entropack import EntroPackQuantizer
 from .gguf import GGUFQuantizer
 from .modelopt import NVIDIAModelOptQuantizer
 from .nunchaku import NunchakuLiteQuantizer
@@ -30,6 +31,7 @@ from .quantization_config import (
     BFLQuantizationConfig,
     BitsAndBytesConfig,
     ComfyQuantizationConfig,
+    EntroPackConfig,
     GGUFQuantizationConfig,
     NunchakuLiteQuantizationConfig,
     NVIDIAModelOptConfig,
@@ -49,6 +51,7 @@ AUTO_QUANTIZER_MAPPING = {
     "bfl": BFLQuantizer,
     "bitsandbytes_4bit": BnB4BitDiffusersQuantizer,
     "bitsandbytes_8bit": BnB8BitDiffusersQuantizer,
+    "entropack": EntroPackQuantizer,
     "gguf": GGUFQuantizer,
     "quanto": QuantoQuantizer,
     "torchao": TorchAoHfQuantizer,
@@ -63,6 +66,7 @@ AUTO_QUANTIZATION_CONFIG_MAPPING = {
     "bfl": BFLQuantizationConfig,
     "bitsandbytes_4bit": BitsAndBytesConfig,
     "bitsandbytes_8bit": BitsAndBytesConfig,
+    "entropack": EntroPackConfig,
     "gguf": GGUFQuantizationConfig,
     "quanto": QuantoConfig,
     "torchao": TorchAoConfig,

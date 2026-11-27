@@ -44,7 +44,7 @@ from ..utils.peft_utils import (
     _maybe_fuse_qkv_projections_for_lokr,
     _maybe_warn_for_unhandled_keys,
 )
-from .lora_base import _fetch_state_dict, _func_optionally_disable_offloading
+from .lora_base import _fetch_state_dict, _func_optionally_disable_offloading, _get_lora_adapter_metadata
 from .unet_loader_utils import _maybe_expand_lora_scales
 
 
@@ -187,7 +187,7 @@ class PeftAdapterMixin:
         allow_pickle = False
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -200,8 +200,8 @@ class PeftAdapterMixin:
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
-            metadata=metadata,
         )
+        metadata = metadata or _get_lora_adapter_metadata(state_dict)
         if network_alphas is not None and prefix is None:
             raise ValueError("`network_alphas` cannot be None when `prefix` is None.")
         if network_alphas and metadata:

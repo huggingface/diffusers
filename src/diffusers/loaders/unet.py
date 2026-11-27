@@ -154,7 +154,7 @@ class UNet2DConditionLoadersMixin:
                         subfolder=subfolder,
                         user_agent=user_agent,
                     )
-                    state_dict = safetensors.torch.load_file(model_file, device="cpu")
+                    state_dict = load_state_dict(model_file)
                 except IOError as e:
                     if not allow_pickle:
                         raise e

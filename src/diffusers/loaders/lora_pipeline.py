@@ -36,6 +36,7 @@ from .lora_base import (  # noqa
     LORA_WEIGHT_NAME_SAFE,
     LoraBaseMixin,
     _fetch_state_dict,
+    _get_lora_adapter_metadata,
     _load_lora_into_text_encoder,
     _pack_dict_with_prefix,
 )
@@ -312,7 +313,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -326,6 +327,7 @@ class StableDiffusionLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
             warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
@@ -734,7 +736,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -748,6 +750,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
             warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
@@ -1005,7 +1008,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -1019,6 +1022,7 @@ class SD3LoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -1289,7 +1293,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -1303,6 +1307,7 @@ class AuraFlowLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -1483,7 +1488,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -1497,6 +1502,7 @@ class FluxLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
             warn_msg = "It seems like you are using a DoRA checkpoint that is not compatible in Diffusers at the moment. So, we are going to filter out the keys associated to 'dora_scale` from the state dict. If you think this is a mistake please open an issue https://github.com/huggingface/diffusers/issues/new."
@@ -2390,7 +2396,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -2404,6 +2410,7 @@ class CogVideoXLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -2575,7 +2582,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -2589,6 +2596,7 @@ class Mochi1LoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -2763,7 +2771,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -2777,6 +2785,7 @@ class LTXVideoLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -2956,7 +2965,7 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -2970,6 +2979,7 @@ class LTX2LoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -3172,7 +3182,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -3186,6 +3196,7 @@ class SanaLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -3360,7 +3371,7 @@ class HeliosLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -3374,6 +3385,7 @@ class HeliosLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
         if any(k.startswith("diffusion_model.") for k in state_dict):
             state_dict = _convert_non_diffusers_wan_lora_to_diffusers(state_dict)
         elif any(k.startswith("lora_unet_") for k in state_dict):
@@ -3550,7 +3562,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -3564,6 +3576,7 @@ class HunyuanVideoLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -3744,7 +3757,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -3758,6 +3771,7 @@ class Lumina2LoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -3938,7 +3952,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -3952,6 +3966,7 @@ class KandinskyLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -4126,7 +4141,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -4140,6 +4155,7 @@ class WanLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
         if any(k.startswith("diffusion_model.") for k in state_dict):
             state_dict = _convert_non_diffusers_wan_lora_to_diffusers(state_dict)
         elif any(k.startswith("lora_unet_") for k in state_dict):
@@ -4390,7 +4406,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -4404,6 +4420,7 @@ class SkyReelsV2LoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
         if any(k.startswith("diffusion_model.") for k in state_dict):
             state_dict = _convert_non_diffusers_wan_lora_to_diffusers(state_dict)
         elif any(k.startswith("lora_unet_") for k in state_dict):
@@ -4656,7 +4673,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -4670,6 +4687,7 @@ class CogView4LoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -4844,7 +4862,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -4858,6 +4876,7 @@ class HiDreamImageLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -5036,7 +5055,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -5050,6 +5069,7 @@ class QwenImageLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -5231,7 +5251,7 @@ class Krea2LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -5245,6 +5265,7 @@ class Krea2LoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -5425,7 +5446,7 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -5439,6 +5460,7 @@ class ZImageLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -5624,7 +5646,7 @@ class AnimaLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -5638,6 +5660,7 @@ class AnimaLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -5811,7 +5834,7 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -5825,6 +5848,7 @@ class Flux2LoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -6013,7 +6037,7 @@ class Flux3LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -6027,6 +6051,7 @@ class Flux3LoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -6205,7 +6230,7 @@ class BriaFibo2LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -6219,6 +6244,7 @@ class BriaFibo2LoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -6393,7 +6419,7 @@ class Ideogram4LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -6407,6 +6433,7 @@ class Ideogram4LoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -6589,7 +6616,7 @@ class ErnieImageLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -6603,6 +6630,7 @@ class ErnieImageLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -6791,7 +6819,7 @@ class CosmosLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -6805,6 +6833,7 @@ class CosmosLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -6977,7 +7006,7 @@ class AceStepLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -6991,6 +7020,7 @@ class AceStepLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -7187,8 +7217,7 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        # `return_file_metadata=True` because some H3 LoRAs record their training alpha in the file's `__metadata__`.
-        state_dict, metadata, file_metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -7201,11 +7230,33 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
             subfolder=subfolder,
             user_agent=user_agent,
             allow_pickle=allow_pickle,
-            return_file_metadata=True,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         # Read before the conversion below, which folds per-module alphas into the weights and drops the scalars.
         has_alpha_tensors = any(k.endswith(".alpha") for k in state_dict)
+
+        # Published H3 LoRAs are alpha-less and mixed-rank (64 on attention and FFN, 16 on the AdaLN projections), and
+        # `get_peft_kwargs` would scale one of the two rank groups by `alpha / r`, so `alpha == rank` is pinned below.
+        #
+        # An alpha-less file may instead record its training alpha in the `__metadata__`, honored as a uniform network
+        # alpha (`alpha / rank` per module). Per-module scalars win, the fold below having already applied them.
+        # Read before the conversions, which return a plain dict without `metadata`.
+        network_alpha = None
+        if "alpha" in state_dict.metadata and not has_alpha_tensors:
+            try:
+                network_alpha = float(state_dict.metadata["alpha"])
+            except ValueError:
+                logger.warning(
+                    f"This LoRA file records `alpha` as {state_dict.metadata['alpha']!r} in its `__metadata__`."
+                    " MiniMax-H3 reads that entry as the network alpha every module was trained with, and it has to be"
+                    " a number, so it is being ignored — the adapter is loaded with `alpha == rank` instead."
+                )
+            else:
+                logger.info(
+                    f"Using the network alpha {network_alpha} this LoRA file records in its `__metadata__`; every "
+                    "module is scaled by `alpha / rank`."
+                )
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
@@ -7229,27 +7280,6 @@ class MiniMaxH3LoraLoaderMixin(LoraBaseMixin):
             state_dict = _convert_non_diffusers_minimax_h3_lora_to_diffusers(state_dict)
         elif is_unprefixed_diffusers_format:
             state_dict = {f"{cls.transformer_name}.{k.replace('.default.', '.')}": v for k, v in state_dict.items()}
-
-        # Published H3 LoRAs are alpha-less and mixed-rank (64 on attention and FFN, 16 on the AdaLN projections), and
-        # `get_peft_kwargs` would scale one of the two rank groups by `alpha / r`, so `alpha == rank` is pinned below.
-        #
-        # An alpha-less file may instead record its training alpha in the `__metadata__`, honored as a uniform network
-        # alpha (`alpha / rank` per module). Per-module scalars win, the fold above having already applied them.
-        network_alpha = None
-        if file_metadata is not None and "alpha" in file_metadata and not has_alpha_tensors:
-            try:
-                network_alpha = float(file_metadata["alpha"])
-            except ValueError:
-                logger.warning(
-                    f"This LoRA file records `alpha` as {file_metadata['alpha']!r} in its `__metadata__`. MiniMax-H3"
-                    " reads that entry as the network alpha every module was trained with, and it has to be a number,"
-                    " so it is being ignored — the adapter is loaded with `alpha == rank` instead."
-                )
-            else:
-                logger.info(
-                    f"Using the network alpha {network_alpha} this LoRA file records in its `__metadata__`; every "
-                    "module is scaled by `alpha / rank`."
-                )
 
         # Without a `__metadata__` alpha, no metadata is built: `get_peft_kwargs` already derives `alpha == rank` for
         # alpha-less files, which is the fold's contract too.
@@ -7571,7 +7601,7 @@ class RFD4ProteinaLoraLoaderMixin(LoraBaseMixin):
 
         user_agent = {"file_type": "attn_procs_weights", "framework": "pytorch"}
 
-        state_dict, metadata = _fetch_state_dict(
+        state_dict = _fetch_state_dict(
             pretrained_model_name_or_path_or_dict=pretrained_model_name_or_path_or_dict,
             weight_name=weight_name,
             use_safetensors=use_safetensors,
@@ -7585,6 +7615,7 @@ class RFD4ProteinaLoraLoaderMixin(LoraBaseMixin):
             user_agent=user_agent,
             allow_pickle=allow_pickle,
         )
+        metadata = _get_lora_adapter_metadata(state_dict)
 
         is_dora_scale_present = any("dora_scale" in k for k in state_dict)
         if is_dora_scale_present:
