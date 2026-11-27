@@ -139,6 +139,20 @@ self.to_out._tp_packed_row_blocks = [self.inner_dim, self.mlp_hidden_dim]
 
 The plan in [`transformer_flux2.py`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/transformers/transformer_flux2.py) uses both forms. The double-stream SwiGLU pair passes `blocks` directly. The fused single-stream QKV and MLP projection stores its sizes on the `Linear` in `Flux2ParallelSelfAttention.__init__`, because they depend on `mlp_ratio` and `mlp_mult_factor`.
 
+### Packed gated experts
+
+Use `"packed_gated_experts"` on an expert module with two bias-free projections stored as packed weight parameters. `gate_up_proj` has shape `[num_experts, hidden_size, 2 * intermediate_size]`, with the gate channels followed by the up channels. `down_proj` has shape `[num_experts, intermediate_size, hidden_size]`. The TP degree must divide `intermediate_size`.
+
+All ranks process the same routed tokens. Each rank takes a different slice of the intermediate channels, pairing the corresponding gate and up channels with the same input channels of the down projection. The expert computes its own elementwise gate activation on those local shards. After the down projection, PyTorch sums the partial outputs across ranks.
+
+NucleusMoE-Image uses this plan entry because only some blocks contain routed experts.
+
+```py
+_tp_plan = {"transformer_blocks.*.img_mlp.experts": Conditional("packed_gated_experts")}
+```
+
+The released NucleusMoE-Image transformer supports TP2 and TP4 with attention, routing, and its shared expert replicated.
+
 ### What to leave out
 
 Modules left out of the plan are replicated on every rank. Leave out normalization layers, patch and text embeddings, and the final `norm_out` and `proj_out`. They're small, so sharding them saves little memory and adds communication. AdaLN modulation (`img_mod` and `txt_mod`) is usually small enough to leave out too. When it's large, like MiniMax-H3's `adaln_proj.linear`, shard it with `"rowwise_split_input"`.
