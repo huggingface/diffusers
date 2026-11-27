@@ -2911,7 +2911,7 @@ class ModularPipeline(ConfigMixin, PushToHubMixin):
         Args:
             name (str):
                 The name of the component.
-            specdict (dict[str, Any]):
+            spec_dict (dict[str, Any]):
                 A dictionary containing the component specification data.
 
         Returns:

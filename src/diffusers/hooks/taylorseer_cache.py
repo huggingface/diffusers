@@ -321,7 +321,6 @@ def _apply_taylorseer_cache_hook(
     Registers the TaylorSeer hook on the specified nn.Module.
 
     Args:
-        name: Name of the module.
         module: The nn.Module to be hooked.
         config: Cache configuration.
         is_inactive: Whether this module should operate in "inactive" mode.

@@ -1199,8 +1199,6 @@ def download_from_original_stable_diffusion_ckpt(
         model_type (`str`, *optional*, defaults to `None`):
             The pipeline type. `None` to automatically infer, or one of `["FrozenOpenCLIPEmbedder",
             "FrozenCLIPEmbedder", "PaintByExample"]`.
-        is_img2img (`bool`, *optional*, defaults to `False`):
-            Whether the model should be loaded as an img2img pipeline.
         extract_ema (`bool`, *optional*, defaults to `False`): Only relevant for
             checkpoints that have both EMA and non-EMA weights. Whether to extract the EMA weights or not. Defaults to
             `False`. Pass `True` to extract the EMA weights. EMA weights usually yield higher quality images for
@@ -1243,7 +1241,9 @@ def download_from_original_stable_diffusion_ckpt(
                 - `v2`: Config file for Stable Diffusion v2
                 - `xl`: Config file for Stable Diffusion XL
                 - `xl_refiner`: Config file for Stable Diffusion XL Refiner
-        return: A StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
+
+    Returns:
+        `DiffusionPipeline`: A StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
     """
 
     # import pipelines here to avoid circular import error when using from_single_file method

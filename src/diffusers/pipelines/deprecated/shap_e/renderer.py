@@ -308,7 +308,6 @@ class BoundingBoxVolume(nn.Module):
             origin: [batch_size, *shape, 3]
             direction: [batch_size, *shape, 3]
             t0_lower: Optional [batch_size, *shape, 1] lower bound of t0 when intersecting this volume.
-            params: Optional meta parameters in case Volume is parametric
             epsilon: to stabilize calculations
 
         Return:
