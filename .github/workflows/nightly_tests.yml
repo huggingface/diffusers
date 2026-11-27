@@ -366,6 +366,9 @@ jobs:
           - backend: "torchao"
             marker: "torchao"
             additional_deps: ["mslk"]
+          - backend: "comfy-kitchen"
+            marker: "comfy"
+            additional_deps: []
           - backend: "nvidia_modelopt"
             marker: "modelopt"
             additional_deps: []
