@@ -441,6 +441,32 @@ class TestSampleFromLogits(unittest.TestCase):
         )
         self.assertEqual(tokens.item(), 1)
 
+    def test_multinomial_sampling_with_cpu_generator(self):
+        # Regression test for huggingface/diffusers#15285: a CPU generator must be honoured when the
+        # logits live on another device (GPU/MPS on CI); on CPU this pins the seeded behaviour.
+        logits = torch.tensor([[0.0, 1.0, 2.0, 3.0]])
+        gen = torch.Generator("cpu").manual_seed(0)
+        tokens, _ = BlockRefinementScheduler._sample_from_logits(
+            logits,
+            temperature=1.0,
+            top_k=None,
+            top_p=None,
+            generator=gen,
+            use_multinomial=True,
+        )
+        self.assertEqual(tokens.shape, (1,))
+        # Same seed reproduces the same draw: the generator is consumed, not ignored.
+        gen = torch.Generator("cpu").manual_seed(0)
+        tokens_again, _ = BlockRefinementScheduler._sample_from_logits(
+            logits,
+            temperature=1.0,
+            top_k=None,
+            top_p=None,
+            generator=gen,
+            use_multinomial=True,
+        )
+        self.assertTrue(torch.equal(tokens, tokens_again))
+
     def test_temperature_scaling(self):
         logits = torch.tensor([[1.0, 2.0, 3.0]])
         tokens, _ = BlockRefinementScheduler._sample_from_logits(
@@ -520,6 +546,38 @@ class BlockRefinementSchedulerUniformTest(unittest.TestCase):
         scheduler.step(logits, timestep=5, sample=sample, mask_token_id=None)
         scheduler.step(logits, timestep=0, sample=sample, mask_token_id=None)  # new block resets committed
         self.assertEqual(scheduler._committed.sum().item(), 6)
+
+    def test_step_with_cpu_generator(self):
+        # Regression test for huggingface/diffusers#15285: with temperature > 0 the step samples via
+        # `torch.multinomial` and renoises uncommitted positions via `torch.randint`; both must honour
+        # a CPU generator when the sample lives on another device (GPU/MPS on CI).
+        scheduler = self.get_scheduler()
+        sample = torch.randint(0, 10000, (1, 256))
+        logits = torch.randn(1, 256, 10000)
+        gen = torch.Generator("cpu").manual_seed(0)
+        out = scheduler.step(logits, timestep=0, sample=sample, mask_token_id=None, temperature=1.0, generator=gen)
+        self.assertEqual(out.prev_sample.shape, sample.shape)
+        self.assertEqual(out.prev_sample.device, sample.device)
+
+    def test_add_noise_with_cpu_generator(self):
+        # Regression test for huggingface/diffusers#15285: `add_noise` draws its masks with `torch.rand`.
+        scheduler = self.get_scheduler()
+        samples = torch.randint(0, 10000, (2, 256))
+        attention_mask = torch.ones_like(samples)
+        gen = torch.Generator("cpu").manual_seed(0)
+        noisy, noisy_rev, masked, masked_rev = scheduler.add_noise(
+            samples, attention_mask, prompt_length=0, block_length=256, mask_token_id=9999, generator=gen
+        )
+        self.assertEqual(noisy.shape, samples.shape)
+        self.assertEqual(noisy.device, samples.device)
+        # The two views are complementary: every valid position is masked in exactly one of them.
+        self.assertTrue(torch.equal(masked ^ masked_rev, torch.ones_like(masked)))
+        # Same seed reproduces the same masks.
+        gen = torch.Generator("cpu").manual_seed(0)
+        _, _, masked_again, _ = scheduler.add_noise(
+            samples, attention_mask, prompt_length=0, block_length=256, mask_token_id=9999, generator=gen
+        )
+        self.assertTrue(torch.equal(masked, masked_again))
 
 
 if __name__ == "__main__":

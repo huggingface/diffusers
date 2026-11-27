@@ -136,6 +136,35 @@ class TestDiffusionGemmaPipeline:
         assert sequences.shape == (1, self.canvas_length)
         assert len(texts) == 1
 
+    def test_generate_with_cpu_generator(self):
+        # Regression test for huggingface/diffusers#15285: the reproducibility guide recommends a CPU
+        # generator, but the pipeline drew its initial canvas with `torch.randint` on the pipeline
+        # device, which PyTorch rejects for a CPU generator on GPU/MPS. Runs on CPU here; the
+        # GPU/MPS path is exercised by CI. Temperature > 0 also exercises the scheduler sampling path.
+        generator = torch.Generator("cpu").manual_seed(0)
+        out = self.pipe(
+            prompt=self.prompt,
+            gen_length=self.canvas_length,
+            num_inference_steps=4,
+            temperature=1.0,
+            eos_early_stop=False,
+            output_type="seq",
+            generator=generator,
+        )
+        assert out.sequences.shape == (1, self.canvas_length)
+        # Same CPU seed reproduces the same generation.
+        generator = torch.Generator("cpu").manual_seed(0)
+        out_again = self.pipe(
+            prompt=self.prompt,
+            gen_length=self.canvas_length,
+            num_inference_steps=4,
+            temperature=1.0,
+            eos_early_stop=False,
+            output_type="seq",
+            generator=generator,
+        )
+        assert torch.equal(out.sequences, out_again.sequences)
+
     def test_adaptive_stopping_freezes_finished_rows(self):
         forward_calls = 0
 
