@@ -399,7 +399,7 @@ def compute_loss_weighting_for_sd3(weighting_scheme: str, sigmas=None):
     SD3 paper reference: https://huggingface.co/papers/2403.03206v1.
     """
     if weighting_scheme == "sigma_sqrt":
-        weighting = (sigmas**-2.0).float()
+        weighting = sigmas.float().pow(-2.0)
     elif weighting_scheme == "cosmap":
         bot = 1 - 2 * sigmas + 2 * sigmas**2
         weighting = 2 / (math.pi * bot)
