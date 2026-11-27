@@ -467,24 +467,24 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
 @is_memory
 @require_accelerator
 class SplitDeviceTesterMixin(BasePipelineOutputMixin):
-    """Inference with the denoiser on the accelerator and every other component on the CPU.
+    """Inference with the `accelerator_components` on the accelerator and every other component on the CPU.
 
     Not part of `MemoryTesterMixin`: compose it for the pipelines that support this placement.
     """
 
+    accelerator_components = ("transformer",)
+
     def test_split_device_forward_pass(self, base_pipe_output, expected_max_diff=1e-4):
         pipe = self.get_pipeline()
-        denoiser = getattr(pipe, "transformer", None) or getattr(pipe, "unet", None)
-        if denoiser is None:
-            pytest.skip(f"{self.pipeline_class.__name__} has no denoiser to place on the accelerator.")
-        denoiser.to(torch_device)
+        for name in self.accelerator_components:
+            getattr(pipe, name).to(torch_device)
 
         output = self.run_pipe(pipe)
         assert_tensors_close(
             output.cpu(),
             base_pipe_output.cpu(),
             atol=expected_max_diff,
-            msg="running the components other than the denoiser on the CPU should not affect the inference results",
+            msg="running the other components on the CPU should not affect the inference results",
         )
 
 
