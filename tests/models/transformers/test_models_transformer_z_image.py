@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import os
 
 import pytest
@@ -21,7 +22,7 @@ from diffusers import ZImageTransformer2DModel
 from diffusers.loaders.lora_pipeline import ZImageLoraLoaderMixin
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import assert_tensors_close, torch_device
+from ...testing_utils import assert_tensors_close, backend_empty_cache, torch_device
 from ..testing_utils import (
     AutoRoundCompileTesterMixin,
     AutoRoundTesterMixin,
@@ -251,6 +252,8 @@ class TestZImageTransformerEntroPack(ZImageTransformerTesterConfig, EntroPackTes
             for k, v in inputs.items()
         }
 
+    # Z-Image's forward returns a list of per-sample tensors, while the common quantization helpers
+    # assert on a single tensor; override them here to unwrap the list instead of changing the shared helpers.
     @torch.no_grad()
     def _test_quantization_inference(self, config_kwargs):
         model_quantized = self._create_quantized_model(config_kwargs)
@@ -266,10 +269,6 @@ class TestZImageTransformerEntroPack(ZImageTransformerTesterConfig, EntroPackTes
 
     @torch.no_grad()
     def _test_quantization_serialization(self, config_kwargs, tmp_path, max_shard_size=None):
-        import gc
-
-        from ...testing_utils import backend_empty_cache
-
         model = self._create_quantized_model(config_kwargs)
         model.to(torch_device)
 

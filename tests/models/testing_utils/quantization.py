@@ -2222,6 +2222,9 @@ class EntroPackTesterMixin(EntroPackConfigMixin, QuantizationTesterMixin):
     def test_entropack_quantization_serialization(self, config_name, tmp_path):
         self._test_quantization_serialization(EntroPackConfigMixin.ENTROPACK_CONFIGS[config_name], tmp_path)
 
+    # The generic sharded test sizes shards from get_memory_footprint() // 2; EntroPack's footprint
+    # reports the dense wrapper view rather than the packed bytes, so "auto" yields a single shard.
+    # Multi-shard reload is covered here with a fixed shard size instead.
     @pytest.mark.parametrize(
         "config_name",
         list(EntroPackConfigMixin.ENTROPACK_CONFIGS.keys()),
