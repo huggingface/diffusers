@@ -394,6 +394,102 @@ class TestLLaDA2Regression:
         # Row 0's first generated tokens must not be overwritten by later-block sampling (token 7).
         assert 7 not in out.sequences[0].tolist()[:2]
 
+    def test_padded_row_with_eos_pad_still_finishes(self):
+        """Issue #15242 (part 1): a padded row must still finish when a genuine EOS is committed.
+
+        The LLaDA2 tokenizer uses `<|endoftext|>` as both EOS and pad, so a
+        shorter prompt in a batch holds an EOS in its padding (index 3 here,
+        before `prompt_length`). That padding EOS must not hide the genuine
+        EOS committed at the first generated position (index 4).
+        """
+        cur_x = torch.tensor([[10, 11, 12, 2, 2, 99]])
+        sampled_tokens = torch.tensor([[2, 99]])
+        final_transfer = torch.tensor([[True, False]])
+        finished = BlockRefinementScheduler.check_eos_finished(
+            cur_x=cur_x,
+            sampled_tokens=sampled_tokens,
+            final_transfer=final_transfer,
+            finished=torch.tensor([False]),
+            eos_token_id=2,
+            mask_token_id=99,
+            prompt_length=4,
+        )
+        assert bool(finished[0].item())
+
+        # Negative control: EOS only in the padding, nothing genuine committed.
+        finished = BlockRefinementScheduler.check_eos_finished(
+            cur_x=torch.tensor([[10, 11, 12, 2, 99, 99]]),
+            sampled_tokens=torch.tensor([[5, 99]]),
+            final_transfer=torch.tensor([[True, False]]),
+            finished=torch.tensor([False]),
+            eos_token_id=2,
+            mask_token_id=99,
+            prompt_length=4,
+        )
+        assert not bool(finished[0].item())
+
+    def test_padded_batch_eos_early_stop(self):
+        """Issue #15242 (parts 1 + 2): a padded batch must stop early once all rows finish.
+
+        Row 0's prompt is padded with the EOS id (pad == EOS for the LLaDA2
+        tokenizer). Both rows commit EOS in the first block, so the batch must
+        stop after a single model call instead of running every remaining
+        block to the step limit, and no later-block junk may leak into the
+        finished rows.
+        """
+
+        class _EosThenJunkModel(_DummyCausalLM):
+            """Predicts EOS in the first generation block, junk token 7 after."""
+
+            def __init__(self, vocab_size: int):
+                super().__init__(vocab_size)
+                self.calls = 0
+
+            def forward(self, input_ids, attention_mask=None, position_ids=None, **kwargs):
+                self.calls += 1
+                batch_size, seq_len = input_ids.shape
+                logits = torch.zeros((batch_size, seq_len, self.vocab_size), device=input_ids.device)
+                if seq_len <= 8:  # first generation block (window end 8)
+                    # EOS strongly predicted at the first block position only, so
+                    # the top-k commit order commits EOS first; ordinary token 6
+                    # elsewhere in the block.
+                    logits[:, -4, 2] = 20.0
+                    logits[:, -3:, 6] = 10.0
+                else:  # later blocks: must never run once all rows finished
+                    logits[:, :, 7] = 10.0
+                return _DummyModelOutput(logits=logits)
+
+        model = _EosThenJunkModel(vocab_size=32)
+        pipe = LLaDA2Pipeline(model=model, scheduler=BlockRefinementScheduler()).to("cpu")
+        pipe.set_progress_bar_config(disable=True)
+        out = pipe(
+            input_ids=torch.tensor([[10, 11, 12, 2], [20, 21, 22, 23]], dtype=torch.long),
+            attention_mask=torch.tensor([[1, 1, 1, 0], [1, 1, 1, 1]], dtype=torch.long),
+            use_chat_template=False,
+            gen_length=8,
+            block_length=4,
+            num_inference_steps=4,
+            temperature=0.0,
+            threshold=2.0,  # force top-k commits
+            minimal_topk=1,
+            eos_early_stop=True,
+            mask_token_id=31,
+            eos_token_id=2,
+            output_type="seq",
+        )
+
+        # Both rows finished in the first block: exactly one model call, no
+        # later block ever ran (without the fix this takes 8 calls: 4 steps
+        # per block across both blocks).
+        assert model.calls == 1
+        assert out.sequences.shape == (2, 8)
+        # Both rows committed EOS as their first generated token ...
+        assert out.sequences[0, 0].item() == 2
+        assert out.sequences[1, 0].item() == 2
+        # ... and no later-block junk leaked into either finished row.
+        assert 7 not in out.sequences[0].tolist()
+        assert 7 not in out.sequences[1].tolist()
+
     def test_progress_bar_disable_is_preserved_after_call(self):
         """Issue #6: calling the pipeline must not mutate `_progress_bar_config`."""
         pipe = _make_pipeline().to("cpu")
