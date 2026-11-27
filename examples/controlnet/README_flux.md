@@ -134,7 +134,7 @@ Once training is done, we can perform inference like so:
 import torch
 from diffusers.utils import load_image
 from diffusers.pipelines.flux.pipeline_flux_controlnet import FluxControlNetPipeline
-from diffusers.models.controlnet_flux import FluxControlNetModel
+from diffusers import FluxControlNetModel
 
 base_model = 'black-forest-labs/FLUX.1-dev'
 controlnet_model = 'promeai/FLUX.1-controlnet-lineart-promeai'
