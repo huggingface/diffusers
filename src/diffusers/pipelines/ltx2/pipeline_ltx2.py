@@ -36,7 +36,7 @@ from ...models.condition_embedders import LTX2TextConnectors
 from ...models.transformers import LTX2VideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .duration_head import LTX2DurationHead
@@ -343,15 +343,17 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         )
         text_input_ids = text_inputs.input_ids
         prompt_attention_mask = text_inputs.attention_mask
-        text_input_ids = text_input_ids.to(device)
-        prompt_attention_mask = prompt_attention_mask.to(device)
+        model_device = get_module_execution_device(self.text_encoder)
 
         text_encoder_outputs = self.text_encoder(
-            input_ids=text_input_ids, attention_mask=prompt_attention_mask, output_hidden_states=True
+            input_ids=text_input_ids.to(model_device),
+            attention_mask=prompt_attention_mask.to(model_device),
+            output_hidden_states=True,
         )
         text_encoder_hidden_states = text_encoder_outputs.hidden_states
         text_encoder_hidden_states = torch.stack(text_encoder_hidden_states, dim=-1)
-        prompt_embeds = text_encoder_hidden_states.flatten(2, 3).to(dtype=dtype)  # Pack to 3D
+        prompt_embeds = text_encoder_hidden_states.flatten(2, 3).to(device=device, dtype=dtype)  # Pack to 3D
+        prompt_attention_mask = prompt_attention_mask.to(device)
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         _, seq_len, _ = prompt_embeds.shape
@@ -1247,8 +1249,14 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
         tokenizer_padding_side = "left"  # Padding side for the default Gemma text encoder
         if getattr(self, "tokenizer", None) is not None:
             tokenizer_padding_side = getattr(self.tokenizer, "padding_side", "left")
-        connector_prompt_embeds, connector_audio_prompt_embeds, connector_attention_mask = self.connectors(
-            prompt_embeds, prompt_attention_mask, padding_side=tokenizer_padding_side
+        connectors_device = get_module_execution_device(self.connectors)
+        connector_outputs = self.connectors(
+            prompt_embeds.to(connectors_device),
+            prompt_attention_mask.to(connectors_device),
+            padding_side=tokenizer_padding_side,
+        )
+        connector_prompt_embeds, connector_audio_prompt_embeds, connector_attention_mask = (
+            output.to(device) for output in connector_outputs
         )
 
         if auto_duration:
@@ -1258,9 +1266,10 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 video_tokens = video_tokens.chunk(2, dim=0)[1]
                 audio_tokens = audio_tokens.chunk(2, dim=0)[1]
             # Rows past the first are `num_videos_per_prompt` duplicates of the same prompt.
+            duration_head_device = get_module_execution_device(self.duration_head)
             num_frames = self.duration_head.predict_num_frames(
-                video_tokens[:1],
-                audio_tokens[:1],
+                video_tokens[:1].to(duration_head_device),
+                audio_tokens[:1].to(duration_head_device),
                 frame_rate=frame_rate,
                 temporal_compression_ratio=self.vae_temporal_compression_ratio,
                 min_seconds=min_seconds,
@@ -1654,13 +1663,15 @@ class LTX2Pipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixin):
                 latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
             )
 
-            latents = latents.to(self.vae.dtype)
+            latents = latents.to(device=get_module_execution_device(self.vae), dtype=self.vae.dtype)
             video = self.vae.decode(latents, timestep, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
 
-            audio_latents = audio_latents.to(self.audio_vae.dtype)
+            audio_latents = audio_latents.to(
+                device=get_module_execution_device(self.audio_vae), dtype=self.audio_vae.dtype
+            )
             generated_mel_spectrograms = self.audio_vae.decode(audio_latents, return_dict=False)[0]
-            audio = self.vocoder(generated_mel_spectrograms)
+            audio = self.vocoder(generated_mel_spectrograms.to(get_module_execution_device(self.vocoder)))
 
         # Offload all models
         self.maybe_free_model_hooks()

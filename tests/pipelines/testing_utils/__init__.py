@@ -15,6 +15,7 @@ from .memory import (
     LayerwiseCastingTesterMixin,
     MemoryTesterMixin,
     PipelineOffloadTesterMixin,
+    SplitDeviceTesterMixin,
 )
 
 
@@ -30,6 +31,7 @@ __all__ = [
     "PipelineOffloadTesterMixin",
     "GroupOffloadTesterMixin",
     "LayerwiseCastingTesterMixin",
+    "SplitDeviceTesterMixin",
     "CacheTesterMixin",
     "PyramidAttentionBroadcastTesterMixin",
     "FasterCacheTesterMixin",

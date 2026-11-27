@@ -19,7 +19,7 @@ from diffusers import LTX2ImageToVideoPipeline
 from diffusers.pipelines.ltx2 import LTX2LatentUpsamplePipeline
 
 from ...testing_utils import assert_tensors_close, enable_full_determinism, torch_device
-from ..testing_utils import PipelineTesterMixin
+from ..testing_utils import PipelineTesterMixin, SplitDeviceTesterMixin
 from .testing_utils import (
     LTX2BaseTesterConfig,
     LTX2LoraMemoryTesterMixin,
@@ -297,6 +297,10 @@ class TestLTX2ImageToVideoPipeline(LTX2ImageToVideoPipelineTesterConfig, Pipelin
 
 class TestLTX2ImageToVideoPipelineMemory(LTX2ImageToVideoPipelineTesterConfig, LTX2MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the LTX2 I2V pipeline."""
+
+
+class TestLTX2ImageToVideoPipelineSplitDevice(LTX2ImageToVideoPipelineTesterConfig, SplitDeviceTesterMixin):
+    """Split-device tests (denoiser on the accelerator, other components on CPU) for the LTX2 I2V pipeline."""
 
 
 class TestLTX2ImageToVideoPipelineLoRA(LTX2ImageToVideoPipelineTesterConfig, LTX2LoraTesterMixin):

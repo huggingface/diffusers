@@ -21,7 +21,7 @@ from diffusers.pipelines.ltx2.pipeline_ltx2_dfr_temporal_refine import _audio_wi
 from diffusers.pipelines.ltx2.utils import EPILOGUE_KEYFRAME_STRENGTH, MAX_CONDITIONING_FPS, trim_canvas
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..testing_utils import BasePipelineTesterConfig, PipelineTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, PipelineTesterMixin, SplitDeviceTesterMixin
 from .testing_utils import LTX2MemoryTesterMixin, get_dfr_dummy_components, get_dfr_dummy_inputs
 
 
@@ -522,4 +522,8 @@ class TestLTX2DFRPipeline(LTX2DFRPipelineTesterConfig, PipelineTesterMixin):
 
 
 class TestLTX2DFRPipelineMemory(LTX2DFRPipelineTesterConfig, LTX2MemoryTesterMixin):
+    pass
+
+
+class TestLTX2DFRPipelineSplitDevice(LTX2DFRPipelineTesterConfig, SplitDeviceTesterMixin):
     pass

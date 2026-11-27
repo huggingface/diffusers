@@ -20,7 +20,7 @@ from diffusers import LTX2HDRPipeline
 from diffusers.pipelines.ltx2 import LTX2HDRReferenceCondition
 
 from ...testing_utils import enable_full_determinism
-from ..testing_utils import PipelineTesterMixin
+from ..testing_utils import PipelineTesterMixin, SplitDeviceTesterMixin
 from .testing_utils import (
     LTX2BaseTesterConfig,
     LTX2LoraMemoryTesterMixin,
@@ -111,6 +111,15 @@ class TestLTX2HDRPipeline(LTX2HDRPipelineTesterConfig, PipelineTesterMixin):
 
 class TestLTX2HDRPipelineMemory(LTX2HDRPipelineTesterConfig, LTX2MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the LTX2 HDR pipeline."""
+
+
+class TestLTX2HDRPipelineSplitDevice(LTX2HDRPipelineTesterConfig, SplitDeviceTesterMixin):
+    """Split-device tests (denoiser on the accelerator, other components on CPU) for the LTX2 HDR pipeline."""
+
+    # Compares decoded frames rather than latents to cover the VAE decode. The inverse LogC3 transfer function
+    # amplifies the differences between devices, hence the looser tolerance.
+    def test_split_device_forward_pass(self, base_pipe_output, expected_max_diff=1e-2):
+        super().test_split_device_forward_pass(base_pipe_output, expected_max_diff=expected_max_diff)
 
 
 class TestLTX2HDRPipelineLoRA(LTX2HDRPipelineTesterConfig, LTX2LoraTesterMixin):
