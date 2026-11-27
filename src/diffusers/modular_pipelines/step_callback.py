@@ -45,7 +45,9 @@ class StepCallbackBlock(ModularPipelineBlocks):
             ),
         ]
 
-    def __call__(self, components, block_state: BlockState, i: int, t: torch.Tensor):
+    def __call__(
+        self, components: ModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
+    ) -> tuple[ModularPipeline, BlockState]:
         if block_state.callback_on_step_end is None:
             return components, block_state
 
