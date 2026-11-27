@@ -263,10 +263,11 @@ def _fetch_state_dict(
                 user_agent=user_agent,
             )
             state_dict = load_state_dict(model_file)
-    elif isinstance(pretrained_model_name_or_path_or_dict, _TorchStateDict):
-        state_dict = pretrained_model_name_or_path_or_dict
     else:
-        state_dict = _TorchStateDict(pretrained_model_name_or_path_or_dict)
+        state_dict = pretrained_model_name_or_path_or_dict
+
+    if not isinstance(state_dict, _TorchStateDict):
+        state_dict = _TorchStateDict(state_dict)
 
     return state_dict
 
