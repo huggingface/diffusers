@@ -32,6 +32,7 @@ else:
         "PipelineState",
         "BlockState",
     ]
+    _import_structure["step_callback"] = ["insert_step_callback"]
     _import_structure["modular_pipeline_utils"] = [
         "ComponentSpec",
         "ConfigSpec",
@@ -302,6 +303,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .stable_diffusion_3 import StableDiffusion3AutoBlocks, StableDiffusion3ModularPipeline
         from .stable_diffusion_xl import StableDiffusionXLAutoBlocks, StableDiffusionXLModularPipeline
+        from .step_callback import insert_step_callback
         from .wan import (
             Wan22Blocks,
             Wan22Image2VideoBlocks,

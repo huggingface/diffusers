@@ -111,6 +111,14 @@ class MiniMaxMusic3ModularPipelineTesterConfig(BaseModularPipelineTesterConfig):
 
 
 class TestMiniMaxMusic3ModularPipelineFast(MiniMaxMusic3ModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    @pytest.mark.skip(reason="Nested denoising loop; `insert_step_callback` is not supported.")
+    def test_step_callback(self):
+        pass
+
+    @pytest.mark.skip(reason="Nested denoising loop; `insert_step_callback` is not supported.")
+    def test_step_callback_early_stop(self):
+        pass
+
     @pytest.mark.skip(reason="The pipeline generates a single waveform per call; there is no num_images_per_prompt.")
     def test_num_images_per_prompt(self):
         pass

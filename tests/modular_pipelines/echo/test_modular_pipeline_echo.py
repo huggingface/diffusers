@@ -34,6 +34,14 @@ from .testing_utils import EchoModularPipelineTesterConfig
 
 
 class TestEchoModularPipelineFast(EchoModularPipelineTesterConfig, ModularPipelineTesterMixin):
+    @pytest.mark.skip(reason="The denoising loop steps over `sigma`; `insert_step_callback` is not supported.")
+    def test_step_callback(self):
+        pass
+
+    @pytest.mark.skip(reason="The denoising loop steps over `sigma`; `insert_step_callback` is not supported.")
+    def test_step_callback_early_stop(self):
+        pass
+
     def test_multi_prompt_multi_video(self):
         pipe = self.get_pipeline()
         inputs = self.get_dummy_inputs()

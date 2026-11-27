@@ -21,6 +21,7 @@ import torch
 
 import diffusers
 from diffusers import ModularPipeline, ModularPipelineBlocks
+from diffusers.modular_pipelines import insert_step_callback
 from diffusers.utils import logging
 
 from ...pipelines.testing_utils.common import cast_pipeline_to_dtype
@@ -356,6 +357,45 @@ class ModularPipelineTesterMixin(BaseModularPipelineOutputMixin):
     @require_accelerator
     def test_inference_is_not_nan(self, base_pipe_output):
         assert torch.isnan(base_pipe_output).sum() == 0, "Accelerator Inference returns NaN"
+
+    def test_step_callback(self, base_pipe_output):
+        pipe = self.get_pipeline().to(torch_device)
+        insert_step_callback(pipe)
+
+        calls = []
+
+        def callback(pipeline, step, timestep, callback_kwargs):
+            calls.append((step, callback_kwargs["num_timesteps"], "latents" in callback_kwargs))
+            return callback_kwargs
+
+        output = self.run_pipe(pipe, callback_on_step_end=callback)
+
+        assert len(calls) > 0, "The callback was never called"
+        num_timesteps = calls[0][1]
+        assert [step for step, _, _ in calls] == list(range(num_timesteps))
+        assert all(has_latents for _, _, has_latents in calls)
+        assert torch.abs(base_pipe_output - output).max() < 1e-3, "The callback changed the output"
+
+    def test_step_callback_early_stop(self, base_pipe_output):
+        pipe = self.get_pipeline().to(torch_device)
+        insert_step_callback(pipe)
+
+        class StopGeneration(BaseException):
+            pass
+
+        steps = []
+
+        def callback(pipeline, step, timestep, callback_kwargs):
+            steps.append(step)
+            raise StopGeneration
+
+        with pytest.raises(StopGeneration):
+            self.run_pipe(pipe, callback_on_step_end=callback)
+        assert steps == [0], "The run did not stop at the first step"
+
+        # the pipeline stays usable after a stopped run
+        output = self.run_pipe(pipe)
+        assert torch.abs(base_pipe_output - output).max() < 1e-3
 
     def test_num_images_per_prompt(self, batch_sizes=[1, 2], num_images_per_prompts=[1, 2]):
         pipe = self.get_pipeline().to(torch_device)
