@@ -24,7 +24,7 @@ from diffusers import FasterCacheConfig, PyramidAttentionBroadcastConfig, __vers
 from diffusers.utils import deprecate, torch_utils
 from diffusers.utils.torch_utils import TorchDeviceBackend, empty_device_cache, get_device
 
-from ..testing_utils import CaptureLogger, Expectations, str_to_bool
+from ..testing_utils import CaptureLogger, Expectations, require_gguf_version_greater_or_equal, str_to_bool
 
 
 # Used to test the hub
@@ -248,6 +248,100 @@ class TestFourierFilter:
             out = fourier_filter(x, threshold=1, scale=0.5)
             assert out.dtype == dtype
             assert out.shape == x.shape
+
+
+class TestTorchStateDict:
+    """Tests for :class:`diffusers.utils.state_dict_utils._TorchStateDict`."""
+
+    @pytest.mark.parametrize("disable_mmap", [False, True])
+    def test_load_state_dict_carries_safetensors_metadata(self, tmp_path, disable_mmap):
+        import safetensors.torch
+        import torch
+
+        from diffusers.models.model_loading_utils import load_state_dict
+
+        checkpoint_file = os.path.join(tmp_path, "model.safetensors")
+        safetensors.torch.save_file(
+            {"weight": torch.ones(2, 2)}, checkpoint_file, metadata={"format": "pt", "alpha": "8"}
+        )
+
+        state_dict = load_state_dict(checkpoint_file, disable_mmap=disable_mmap)
+
+        assert isinstance(state_dict, dict), f"Expected a dict subclass, got {type(state_dict)}"
+        assert list(state_dict.keys()) == ["weight"], f"Unexpected keys: {list(state_dict.keys())}"
+        assert state_dict.metadata == {"format": "pt", "alpha": "8"}, f"Unexpected metadata: {state_dict.metadata}"
+
+    def test_load_state_dict_without_metadata(self, tmp_path):
+        import safetensors.torch
+        import torch
+
+        from diffusers.models.model_loading_utils import load_state_dict
+
+        checkpoint_file = os.path.join(tmp_path, "model.safetensors")
+        safetensors.torch.save_file({"weight": torch.ones(2, 2)}, checkpoint_file)
+
+        state_dict = load_state_dict(checkpoint_file)
+
+        assert state_dict.metadata == {}, f"Unexpected metadata: {state_dict.metadata}"
+
+    def test_load_state_dict_from_pickle(self, tmp_path):
+        import torch
+
+        from diffusers.models.model_loading_utils import load_state_dict
+        from diffusers.utils.state_dict_utils import _TorchStateDict
+
+        checkpoint_file = os.path.join(tmp_path, "model.bin")
+        torch.save({"weight": torch.ones(2, 2)}, checkpoint_file)
+
+        state_dict = load_state_dict(checkpoint_file)
+
+        assert isinstance(state_dict, _TorchStateDict), f"Expected _TorchStateDict, got {type(state_dict)}"
+        assert list(state_dict.keys()) == ["weight"], f"Unexpected keys: {list(state_dict.keys())}"
+        assert state_dict.metadata == {}, f"Unexpected metadata: {state_dict.metadata}"
+
+    @require_gguf_version_greater_or_equal("0.10.0")
+    def test_load_state_dict_carries_gguf_fields(self, tmp_path):
+        import gguf
+        import numpy as np
+
+        from diffusers.models.model_loading_utils import load_state_dict
+
+        checkpoint_file = os.path.join(tmp_path, "model.gguf")
+        writer = gguf.GGUFWriter(checkpoint_file, "flux")
+        writer.add_uint32("test.layers", 3)
+        writer.add_array("test.names", ["a", "b"])
+        writer.add_tensor("weight", np.ones((2, 2), dtype=np.float32))
+        writer.write_header_to_file()
+        writer.write_kv_data_to_file()
+        writer.write_tensors_to_file()
+        writer.close()
+
+        state_dict = load_state_dict(checkpoint_file)
+
+        assert list(state_dict.keys()) == ["weight"], f"Unexpected keys: {list(state_dict.keys())}"
+        assert state_dict.metadata["general.architecture"] == "flux", f"Unexpected metadata: {state_dict.metadata}"
+        assert state_dict.metadata["test.layers"] == 3, f"Unexpected metadata: {state_dict.metadata}"
+        assert state_dict.metadata["test.names"] == ["a", "b"], f"Unexpected metadata: {state_dict.metadata}"
+
+    @require_gguf_version_greater_or_equal("0.10.0")
+    def test_load_gguf_checkpoint_metadata_only(self, tmp_path):
+        import gguf
+        import numpy as np
+
+        from diffusers.models.model_loading_utils import load_gguf_checkpoint
+
+        checkpoint_file = os.path.join(tmp_path, "model.gguf")
+        writer = gguf.GGUFWriter(checkpoint_file, "flux")
+        writer.add_tensor("weight", np.ones((2, 2), dtype=np.float32))
+        writer.write_header_to_file()
+        writer.write_kv_data_to_file()
+        writer.write_tensors_to_file()
+        writer.close()
+
+        state_dict = load_gguf_checkpoint(checkpoint_file, return_tensors=False)
+
+        assert list(state_dict.keys()) == [], f"Expected no tensors, got {list(state_dict.keys())}"
+        assert state_dict.metadata["general.architecture"] == "flux", f"Unexpected metadata: {state_dict.metadata}"
 
 
 class TestRandnTensor:

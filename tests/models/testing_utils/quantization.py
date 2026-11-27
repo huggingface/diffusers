@@ -25,6 +25,7 @@ from diffusers import (
     AutoRoundConfig,
     BFLQuantizationConfig,
     BitsAndBytesConfig,
+    EntroPackConfig,
     GGUFQuantizationConfig,
     NunchakuLiteQuantizationConfig,
     NVIDIAModelOptConfig,
@@ -34,6 +35,7 @@ from diffusers import (
 from diffusers.loaders.single_file_model import SINGLE_FILE_LOADABLE_CLASSES, _get_single_file_loadable_mapping_class
 from diffusers.utils.import_utils import (
     is_bitsandbytes_available,
+    is_entropack_available,
     is_flashinfer_available,
     is_gguf_available,
     is_kernels_available,
@@ -48,6 +50,7 @@ from ...testing_utils import (
     is_autoround,
     is_bfl,
     is_bitsandbytes,
+    is_entropack,
     is_gguf,
     is_lora,
     is_modelopt,
@@ -2122,3 +2125,161 @@ class BFLCompileTesterMixin(BFLConfigMixin, QuantizationCompileTesterMixin):
     @pytest.mark.parametrize("config_name", ["fp8r"], ids=["fp8r"])
     def test_bfl_torch_compile_with_group_offload(self, config_name):
         self._test_torch_compile_with_group_offload(BFLConfigMixin.BFL_CONFIGS[config_name])
+
+
+class EntroPackConfigMixin:
+    """
+    Base mixin providing EntroPack quantization config and model creation.
+
+    Expected class attributes:
+        - model_class: The model class to test
+        - pretrained_model_name_or_path: Hub repository ID for the pretrained model
+        - pretrained_model_kwargs: (Optional) Dict of kwargs to pass to from_pretrained
+    """
+
+    ENTROPACK_CONFIGS = {
+        "default": {"target_bpp": 4.0},
+        "int8": {"target_bpp": 4.0, "linear_type": "int8"},
+        "fp8": {"target_bpp": 4.0, "linear_type": "fp8"},
+        "int8_convrot_off": {"target_bpp": 4.0, "linear_type": "int8", "use_convrot": False},
+    }
+
+    def _create_quantized_model(self, config_kwargs, **extra_kwargs):
+        linear_type = config_kwargs.get("linear_type", "default")
+        if linear_type != "default" and torch_device != "cuda":
+            pytest.skip("W8A8 requires CUDA")
+        if linear_type == "int8" and torch.cuda.get_device_capability() < (8, 0):
+            pytest.skip("int8 W8A8 requires CUDA compute capability 8.0+")
+        if linear_type == "fp8" and torch.cuda.get_device_capability() < (8, 9):
+            pytest.skip("fp8 W8A8 requires CUDA compute capability 8.9+")
+        config = EntroPackConfig(**config_kwargs)
+        kwargs = getattr(self, "pretrained_model_kwargs", {}).copy()
+        kwargs["quantization_config"] = config
+        kwargs["device_map"] = str(torch_device)
+        kwargs.update(extra_kwargs)
+        return self.model_class.from_pretrained(self.pretrained_model_name_or_path, **kwargs)
+
+    def _verify_if_layer_quantized(self, name, module, config_kwargs):
+        import entropack
+
+        assert isinstance(module, entropack.CompressedLinear), (
+            f"Layer {name} is {type(module)}, expected an entropack CompressedLinear"
+        )
+
+
+@is_entropack
+@require_accelerator
+@pytest.mark.skipif(not is_entropack_available(), reason="test requires entropack")
+class EntroPackTesterMixin(EntroPackConfigMixin, QuantizationTesterMixin):
+    """
+    Mixin class for testing EntroPack quantization on models.
+
+    Expected class attributes:
+        - model_class: The model class to test
+        - pretrained_model_name_or_path: Hub repository ID for the pretrained model
+        - pretrained_model_kwargs: (Optional) Dict of kwargs to pass to from_pretrained
+
+    Expected methods to be implemented by subclasses:
+        - get_dummy_inputs(): Returns dict of inputs to pass to the model forward pass
+
+    Pytest mark: entropack
+        Use `pytest -m "not entropack"` to skip these tests
+    """
+
+    @pytest.mark.parametrize(
+        "config_name",
+        list(EntroPackConfigMixin.ENTROPACK_CONFIGS.keys()),
+        ids=list(EntroPackConfigMixin.ENTROPACK_CONFIGS.keys()),
+    )
+    def test_entropack_quantization_num_parameters(self, config_name):
+        self._test_quantization_num_parameters(EntroPackConfigMixin.ENTROPACK_CONFIGS[config_name])
+
+    @pytest.mark.parametrize(
+        "config_name",
+        list(EntroPackConfigMixin.ENTROPACK_CONFIGS.keys()),
+        ids=list(EntroPackConfigMixin.ENTROPACK_CONFIGS.keys()),
+    )
+    def test_entropack_quantization_memory_footprint(self, config_name):
+        self._test_quantization_memory_footprint(
+            EntroPackConfigMixin.ENTROPACK_CONFIGS[config_name], expected_memory_reduction=1.5
+        )
+
+    @pytest.mark.parametrize(
+        "config_name",
+        list(EntroPackConfigMixin.ENTROPACK_CONFIGS.keys()),
+        ids=list(EntroPackConfigMixin.ENTROPACK_CONFIGS.keys()),
+    )
+    def test_entropack_quantization_inference(self, config_name):
+        self._test_quantization_inference(EntroPackConfigMixin.ENTROPACK_CONFIGS[config_name])
+
+    @pytest.mark.parametrize(
+        "config_name",
+        list(EntroPackConfigMixin.ENTROPACK_CONFIGS.keys()),
+        ids=list(EntroPackConfigMixin.ENTROPACK_CONFIGS.keys()),
+    )
+    def test_entropack_quantized_layers(self, config_name):
+        self._test_quantized_layers(EntroPackConfigMixin.ENTROPACK_CONFIGS[config_name])
+
+    @pytest.mark.parametrize(
+        "config_name",
+        list(EntroPackConfigMixin.ENTROPACK_CONFIGS.keys()),
+        ids=list(EntroPackConfigMixin.ENTROPACK_CONFIGS.keys()),
+    )
+    def test_entropack_quantization_serialization(self, config_name, tmp_path):
+        self._test_quantization_serialization(EntroPackConfigMixin.ENTROPACK_CONFIGS[config_name], tmp_path)
+
+    # The generic sharded test sizes shards from get_memory_footprint() // 2; EntroPack's footprint
+    # reports the dense wrapper view rather than the packed bytes, so "auto" yields a single shard.
+    # Multi-shard reload is covered here with a fixed shard size instead.
+    @pytest.mark.parametrize(
+        "config_name",
+        list(EntroPackConfigMixin.ENTROPACK_CONFIGS.keys()),
+        ids=list(EntroPackConfigMixin.ENTROPACK_CONFIGS.keys()),
+    )
+    def test_entropack_quantization_sharded_serialization(self, config_name, tmp_path):
+        self._test_quantization_serialization(
+            EntroPackConfigMixin.ENTROPACK_CONFIGS[config_name], tmp_path, max_shard_size="16KB"
+        )
+
+    def test_entropack_modules_to_not_convert(self):
+        modules_to_exclude = getattr(self, "modules_to_not_convert_for_test", None)
+        if modules_to_exclude is None:
+            pytest.skip("modules_to_not_convert_for_test not defined for this model")
+        config_kwargs = {
+            **EntroPackConfigMixin.ENTROPACK_CONFIGS["default"],
+            "modules_to_not_convert": modules_to_exclude,
+        }
+        model = self._create_quantized_model(config_kwargs)
+        found_excluded = False
+        for name, module in model.named_modules():
+            if isinstance(module, torch.nn.Linear) and any(excluded in name for excluded in modules_to_exclude):
+                found_excluded = True
+                assert not self._is_module_quantized(module), f"Module {name} should not be quantized"
+        assert found_excluded, f"No linear layers found in excluded modules: {modules_to_exclude}"
+        with torch.no_grad():
+            output = model(**self.get_dummy_inputs(), return_dict=False)[0]
+        assert output is not None, "Model output is None"
+        assert not torch.isnan(output).any(), "Model output contains NaN"
+
+    @pytest.mark.parametrize(
+        "config_name",
+        list(EntroPackConfigMixin.ENTROPACK_CONFIGS.keys()),
+        ids=list(EntroPackConfigMixin.ENTROPACK_CONFIGS.keys()),
+    )
+    def test_entropack_dequantize(self, config_name):
+        self._test_dequantize(EntroPackConfigMixin.ENTROPACK_CONFIGS[config_name])
+
+    @pytest.mark.parametrize(
+        "config_name", ["int8", "fp8", "int8_convrot_off"], ids=["int8", "fp8", "int8_convrot_off"]
+    )
+    def test_entropack_w8a8_state(self, config_name):
+        import entropack
+
+        config_kwargs = EntroPackConfigMixin.ENTROPACK_CONFIGS[config_name]
+        model = self._create_quantized_model(config_kwargs)
+        layers = [m for m in model.modules() if isinstance(m, entropack.CompressedLinear)]
+        assert layers
+        assert all(m.weight_quant_scale.dtype == torch.float32 for m in layers)
+        if config_kwargs.get("linear_type") == "int8":
+            expected_convrot = config_kwargs.get("use_convrot", True)
+            assert all(m.use_convrot == expected_convrot for m in layers)

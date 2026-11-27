@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import os
 
 import pytest
@@ -21,11 +22,13 @@ from diffusers import ZImageTransformer2DModel
 from diffusers.loaders.lora_pipeline import ZImageLoraLoaderMixin
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...testing_utils import assert_tensors_close, torch_device
+from ...testing_utils import assert_tensors_close, backend_empty_cache, torch_device
 from ..testing_utils import (
     AutoRoundCompileTesterMixin,
     AutoRoundTesterMixin,
     BaseModelTesterConfig,
+    EntroPackConfigMixin,
+    EntroPackTesterMixin,
     LoKrTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
@@ -223,7 +226,118 @@ class TestZImageTransformerLoKr(ZImageTransformerTesterConfig, LoKrTesterMixin):
 
 # TODO: Add pretrained_model_name_or_path once a tiny Z-Image model is available on the Hub
 # class TestZImageTransformerTorchAo(ZImageTransformerTesterConfig, TorchAoTesterMixin):
-#     """TorchAo quantization tests for Z-Image Transformer."""
+
+
+class TestZImageTransformerEntroPack(ZImageTransformerTesterConfig, EntroPackTesterMixin):
+    """EntroPack quantization tests for Z-Image Transformer."""
+
+    modules_to_not_convert_for_test = ["to_q"]
+
+    @property
+    def pretrained_model_name_or_path(self):
+        return "DiffSynth-Studio/tiny-random-z-image-transformer"
+
+    @property
+    def pretrained_model_kwargs(self):
+        return {"subfolder": "transformer"}
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
+    def get_dummy_inputs(self):
+        inputs = super().get_dummy_inputs()
+        return {
+            k: [t.to(self.torch_dtype) for t in v] if isinstance(v, list) else v.to(self.torch_dtype)
+            for k, v in inputs.items()
+        }
+
+    # Z-Image's forward returns a list of per-sample tensors, while the common quantization helpers
+    # assert on a single tensor; override them here to unwrap the list instead of changing the shared helpers.
+    @torch.no_grad()
+    def _test_quantization_inference(self, config_kwargs):
+        model_quantized = self._create_quantized_model(config_kwargs)
+        model_quantized.to(torch_device)
+
+        inputs = self.get_dummy_inputs()
+        output = model_quantized(**inputs, return_dict=False)[0]
+        # Z-Image returns a list of tensors from unpatchify
+        output = output[0] if isinstance(output, (list, tuple)) else output
+
+        assert output is not None, "Model output is None"
+        assert not torch.isnan(output).any(), "Model output contains NaN"
+
+    @torch.no_grad()
+    def _test_quantization_serialization(self, config_kwargs, tmp_path, max_shard_size=None):
+        model = self._create_quantized_model(config_kwargs)
+        model.to(torch_device)
+
+        inputs = self.get_dummy_inputs()
+        expected_output = model(**inputs, return_dict=False)[0]
+        expected_output = expected_output[0] if isinstance(expected_output, (list, tuple)) else expected_output
+        expected_output = expected_output.detach().cpu()
+
+        if max_shard_size == "auto":
+            max_shard_size = max(int(model.get_memory_footprint() // 2), 1)
+
+        save_kwargs = {"safe_serialization": True}
+        if max_shard_size is not None:
+            save_kwargs["max_shard_size"] = max_shard_size
+        model.save_pretrained(str(tmp_path), **save_kwargs)
+
+        del model
+        gc.collect()
+        backend_empty_cache(torch_device)
+
+        if max_shard_size is not None:
+            assert len(list(tmp_path.glob("*.safetensors"))) > 1, "Expected a sharded safe-serialization checkpoint."
+            assert any(path.name.endswith(".index.json") for path in tmp_path.iterdir()), (
+                "Expected an index file for sharded safe checkpoint."
+            )
+
+        model_loaded = self.model_class.from_pretrained(str(tmp_path), device_map=str(torch_device))
+
+        output = model_loaded(**inputs, return_dict=False)[0]
+        output = output[0] if isinstance(output, (list, tuple)) else output
+        assert_tensors_close(output.detach().cpu(), expected_output, rtol=1e-3, atol=1e-3)
+
+    @torch.no_grad()
+    def _test_dequantize(self, config_kwargs):
+        model = self._create_quantized_model(config_kwargs)
+        model.to(torch_device)
+
+        model.dequantize()
+
+        for name, module in model.named_modules():
+            if isinstance(module, torch.nn.Linear):
+                assert not self._is_module_quantized(module, config_kwargs), (
+                    f"Module {name} is still quantized after dequantize()"
+                )
+
+        inputs = self.get_dummy_inputs()
+        output = model(**inputs, return_dict=False)[0]
+        output = output[0] if isinstance(output, (list, tuple)) else output
+        assert output is not None, "Model output is None after dequantization"
+        assert not torch.isnan(output).any(), "Model output contains NaN after dequantization"
+
+    def test_entropack_modules_to_not_convert(self):
+        modules_to_exclude = self.modules_to_not_convert_for_test
+        config_kwargs = {
+            **EntroPackConfigMixin.ENTROPACK_CONFIGS["default"],
+            "modules_to_not_convert": modules_to_exclude,
+        }
+        model = self._create_quantized_model(config_kwargs)
+        found_excluded = False
+        for name, module in model.named_modules():
+            if isinstance(module, torch.nn.Linear) and any(excluded in name for excluded in modules_to_exclude):
+                found_excluded = True
+                assert not self._is_module_quantized(module), f"Module {name} should not be quantized"
+        assert found_excluded, f"No linear layers found in excluded modules: {modules_to_exclude}"
+        with torch.no_grad():
+            output = model(**self.get_dummy_inputs(), return_dict=False)[0]
+        output = output[0] if isinstance(output, (list, tuple)) else output
+        assert output is not None, "Model output is None"
+        assert not torch.isnan(output).any(), "Model output contains NaN"
 
 
 class TestZImageTransformerCompile(ZImageTransformerTesterConfig, TorchCompileTesterMixin):
