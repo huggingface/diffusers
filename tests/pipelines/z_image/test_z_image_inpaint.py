@@ -178,6 +178,17 @@ class TestZImageInpaintPipeline(ZImageInpaintPipelineTesterConfig, PipelineTeste
         generated_slice = torch.cat([generated_slice[:8], generated_slice[-8:]])
         assert_tensors_close(generated_slice, expected_slice, atol=5e-2)
 
+    def test_height_width_resize_init_image(self):
+        # height/width set the output size and must resize the init image to match. The mask already did.
+        pipe = self.get_pipeline()
+        inputs = self.get_dummy_inputs()
+        inputs["image"] = floats_tensor((1, 3, 32, 32), rng=random.Random(0)).to(torch_device)
+        inputs["height"] = 64
+        inputs["width"] = 64
+        inputs["mask_image"] = get_dummy_mask(64, 64)
+        image = pipe(**inputs).images
+        assert image.shape == (1, 3, 64, 64)
+
     def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-1):
         # Z-Image pads the batch to a common sequence length, so batched and single runs diverge slightly more.
         super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)

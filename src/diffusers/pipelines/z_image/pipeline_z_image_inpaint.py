@@ -670,7 +670,7 @@ class ZImageInpaintPipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingle
         )
 
         # 2. Preprocess image and mask
-        init_image = self.image_processor.preprocess(image)
+        init_image = self.image_processor.preprocess(image, height=height, width=width)
         init_image = init_image.to(dtype=torch.float32)
 
         # Get dimensions from the preprocessed image if not specified
