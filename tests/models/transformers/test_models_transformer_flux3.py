@@ -15,6 +15,7 @@
 
 import pytest
 import torch
+from huggingface_hub import get_token
 
 from diffusers import Flux3Transformer2DModel
 from diffusers.utils.torch_utils import randn_tensor
@@ -177,6 +178,8 @@ class Flux3TransformerBFLTesterConfig(Flux3TransformerTesterConfig):
 
     @property
     def bfl_checkpoints(self):
+        if get_token() is None:
+            pytest.skip("FLUX.3 quantized checkpoint headers require a Hugging Face token")
         return {
             "fp8r": "https://huggingface.co/black-forest-labs/flux-3-image-klein-base/blob/main/variants/fp8r/model.safetensors",
             "nvfp4": "https://huggingface.co/black-forest-labs/flux-3-image-klein-base/blob/main/variants/nvfp4/model.safetensors",
