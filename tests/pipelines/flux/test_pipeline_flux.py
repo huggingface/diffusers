@@ -13,6 +13,7 @@ from diffusers import (
     FlowMatchEulerDiscreteScheduler,
     FluxPipeline,
     FluxTransformer2DModel,
+    UniPCMultistepScheduler,
 )
 from diffusers.utils.import_utils import is_peft_available
 
@@ -138,6 +139,27 @@ class FluxPipelineTesterConfig(BasePipelineTesterConfig):
 
 
 class TestFluxPipeline(FluxPipelineTesterConfig, PipelineTesterMixin):
+    def test_stochastic_scheduler_uses_generator(self):
+        pipe = self.get_pipeline()
+        pipe.scheduler = FlowMatchEulerDiscreteScheduler(stochastic_sampling=True)
+        inputs = self.get_dummy_inputs()
+        inputs.update(output_type="latent", num_inference_steps=4)
+        outputs = []
+        with torch.random.fork_rng(devices=[]):
+            for seed in (13, 99):
+                torch.random.default_generator.manual_seed(seed)
+                inputs["generator"] = torch.Generator().manual_seed(17)
+                outputs.append(pipe(**inputs)[0])
+
+        torch.testing.assert_close(outputs[0], outputs[1], rtol=0, atol=0)
+
+    def test_generator_with_unipc_scheduler(self):
+        pipe = self.get_pipeline()
+        pipe.scheduler = UniPCMultistepScheduler(use_flow_sigmas=True, prediction_type="flow_prediction")
+        inputs = self.get_dummy_inputs()
+        inputs.update(generator=torch.Generator().manual_seed(17), output_type="latent")
+        assert torch.isfinite(pipe(**inputs)[0]).all()
+
     def test_flux_different_prompts(self):
         pipe = self.pipeline_class(**self.get_dummy_components()).to(torch_device)
 
