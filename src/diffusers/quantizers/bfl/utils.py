@@ -26,10 +26,6 @@ if is_accelerate_available():
     from accelerate import init_empty_weights
     from accelerate.hooks import add_hook_to_module, remove_hook_from_module
 
-if is_flashinfer_available():
-    import flashinfer
-
-
 FP8_MAX = 448.0
 E2M1_MAX = 6.0
 NVFP4_BLOCK = 16
@@ -217,6 +213,8 @@ class BFLNVFP4Linear(nn.Linear):
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         if inputs.is_cuda and is_flashinfer_available() and torch.cuda.get_device_capability(inputs.device)[0] >= 10:
+            import flashinfer
+
             x = inputs.reshape(-1, self.in_features).to(torch.bfloat16).contiguous()
             x_q, x_scale = flashinfer.nvfp4_quantize(
                 x, (1.0 / self.input_scale).reshape(1), sfLayout=flashinfer.SfLayout.layout_128x4, do_shuffle=False

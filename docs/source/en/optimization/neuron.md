@@ -115,3 +115,19 @@ Launch one process per NeuronCore. Set `--nproc_per_node` to the number of Neuro
 ```bash
 torchrun --nproc_per_node=8 tensor_parallel_neuron.py
 ```
+
+
+## Serving with vLLM-Omni
+
+[vllm-omni-neuron](https://github.com/aws-neuron/vllm-omni-neuron) serves Diffusers pipelines on Neuron through
+vLLM-Omni. Diffusers runs the pipeline, and the plugin handles device placement and compilation.
+
+Neuron compiles static shapes, so declare the resolutions to serve up front. The server compiles them at startup and
+rejects any other resolution. The number of inference steps isn't restricted.
+
+```bash
+export VLLM_OMNI_NEURON_DIFFUSERS_RESOLUTIONS=256x256,512x512
+vllm serve <model-id> --omni --diffusion-load-format diffusers --dtype bfloat16
+```
+
+See the vllm-omni-neuron repository for installation and supported pipelines.

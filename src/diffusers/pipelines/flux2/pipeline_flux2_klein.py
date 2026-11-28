@@ -426,6 +426,15 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
         return torch.stack(x_list, dim=0)
 
+    @staticmethod
+    def _prepare_timestep(timestep: torch.Tensor, latents: torch.Tensor) -> torch.Tensor:
+        """Broadcast the timestep to the batch and cast it to the latents dtype.
+
+        Kept as a tensor-only method so backends can compile it as its own region (e.g. libtorch-neuronx-lite, where
+        running this cast eagerly breaks the denoising loop).
+        """
+        return timestep.expand(latents.shape[0]).to(latents.dtype)
+
     def encode_prompt(
         self,
         prompt: str | list[str],
@@ -838,7 +847,7 @@ class Flux2KleinPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
                 self._current_timestep = t
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latents.shape[0]).to(latents.dtype)
+                timestep = self._prepare_timestep(t, latents)
 
                 latent_model_input = latents.to(self.transformer.dtype)
                 latent_image_ids = latent_ids

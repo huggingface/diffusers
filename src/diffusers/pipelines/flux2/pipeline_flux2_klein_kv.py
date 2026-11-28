@@ -427,6 +427,16 @@ class Flux2KleinKVPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
         return torch.stack(x_list, dim=0)
 
+    @staticmethod
+    # Copied from diffusers.pipelines.flux2.pipeline_flux2_klein.Flux2KleinPipeline._prepare_timestep
+    def _prepare_timestep(timestep: torch.Tensor, latents: torch.Tensor) -> torch.Tensor:
+        """Broadcast the timestep to the batch and cast it to the latents dtype.
+
+        Kept as a tensor-only method so backends can compile it as its own region (e.g. libtorch-neuronx-lite, where
+        running this cast eagerly breaks the denoising loop).
+        """
+        return timestep.expand(latents.shape[0]).to(latents.dtype)
+
     def _set_kv_attn_processors(self):
         """Replace default attention processors with KV-cache-aware variants."""
         for block in self.transformer.transformer_blocks:
@@ -789,7 +799,7 @@ class Flux2KleinKVPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
                     continue
 
                 self._current_timestep = t
-                timestep = t.expand(latents.shape[0]).to(latents.dtype)
+                timestep = self._prepare_timestep(t, latents)
 
                 if i == 0 and image_latents is not None:
                     # Step 0: include ref tokens, extract KV cache

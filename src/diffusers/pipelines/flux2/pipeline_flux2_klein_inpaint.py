@@ -504,6 +504,16 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
         raise ValueError(f"Unsupported image type: {type(image)}")
 
+    @staticmethod
+    # Copied from diffusers.pipelines.flux2.pipeline_flux2_klein.Flux2KleinPipeline._prepare_timestep
+    def _prepare_timestep(timestep: torch.Tensor, latents: torch.Tensor) -> torch.Tensor:
+        """Broadcast the timestep to the batch and cast it to the latents dtype.
+
+        Kept as a tensor-only method so backends can compile it as its own region (e.g. libtorch-neuronx-lite, where
+        running this cast eagerly breaks the denoising loop).
+        """
+        return timestep.expand(latents.shape[0]).to(latents.dtype)
+
     # Copied from diffusers.pipelines.flux2.pipeline_flux2_klein.Flux2KleinPipeline.encode_prompt
     def encode_prompt(
         self,
@@ -1173,7 +1183,7 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
 
                 self._current_timestep = t
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latents.shape[0]).to(latents.dtype)
+                timestep = self._prepare_timestep(t, latents)
 
                 latent_model_input = torch.cat([latents, condition_image_latents], dim=1)
                 img_ids = combined_image_ids
