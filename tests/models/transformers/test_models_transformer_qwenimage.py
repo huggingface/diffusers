@@ -25,6 +25,7 @@ from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
     BitsAndBytesTesterMixin,
+    ContextAndTensorParallelTesterMixin,
     ContextParallelAttentionBackendsTesterMixin,
     ContextParallelTesterMixin,
     LoraHotSwappingForModelTesterMixin,
@@ -314,6 +315,20 @@ class TestQwenImageTransformerTensorParallelTPU(QwenImageTransformerTesterConfig
     def test_tensor_parallel_tpu_inference(self):
         # TPU numerics differ by ~1e-2 between sharded and unsharded QwenImage (~1e-7 on CPU).
         super().test_tensor_parallel_tpu_inference(atol=2e-2, rtol=2e-2)
+
+
+class TestQwenImageTransformerContextAndTensorParallel(
+    QwenImageTransformerTesterConfig, ContextAndTensorParallelTesterMixin
+):
+    def get_init_dict(self):
+        return {**super().get_init_dict(), "num_attention_heads": 8}
+
+    def get_dummy_inputs(self, batch_size: int = 1, device=torch_device) -> dict[str, torch.Tensor]:
+        inputs = super().get_dummy_inputs(batch_size=batch_size, device=device)
+        mask = inputs["encoder_hidden_states_mask"]
+        mask[:, 1:4:2] = 0
+        mask[:, 5:] = 0
+        return inputs
 
 
 class TestQwenImageTransformerTensorParallelNeuron(QwenImageTransformerTesterConfig, TensorParallelNeuronTesterMixin):

@@ -19,6 +19,8 @@ Context parallelism runs inside the attention backend, and only some backends su
 > [!NOTE]
 > [`~ModelMixin.enable_parallelism`] only applies to the model you call it on. If a pipeline has more than one transformer, such as `transformer` and `transformer_2`, call it on each one. Otherwise, the denoising steps that use the other transformers aren't split across GPUs.
 
+To combine context parallelism with [tensor parallelism](./tensor_parallelism) when the weights don't fit on one device either, see [Combine with context parallelism](./tensor_parallelism#combine-with-context-parallelism).
+
 Configure every variant below with [`ContextParallelConfig`].
 
 | Variant | Config | Requirements | Use when |

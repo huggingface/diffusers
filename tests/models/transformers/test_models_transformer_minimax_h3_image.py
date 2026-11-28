@@ -24,6 +24,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    ContextAndTensorParallelTesterMixin,
     ContextParallelTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
@@ -194,6 +195,13 @@ class TestMiniMaxH3ImageTransformerAttention(MiniMaxH3ImageTransformerTesterConf
 
 class TestMiniMaxH3ImageTransformerTorchCompile(MiniMaxH3ImageTransformerTesterConfig, TorchCompileTesterMixin):
     """Torch compile tests for the MiniMax-H3-Image transformer."""
+
+
+class TestMiniMaxH3ImageTransformerContextAndTensorParallel(
+    MiniMaxH3ImageTransformerTesterConfig, ContextAndTensorParallelTesterMixin
+):
+    def get_init_dict(self):
+        return {**super().get_init_dict(), "num_attention_heads": 8}
 
 
 class TestMiniMaxH3ImageTransformerContextParallel(MiniMaxH3ImageTransformerTesterConfig, ContextParallelTesterMixin):

@@ -23,6 +23,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    ContextAndTensorParallelTesterMixin,
     ContextParallelTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
@@ -191,6 +192,17 @@ class TestMiniMaxH3TransformerAttention(MiniMaxH3TransformerTesterConfig, Attent
 
 class TestMiniMaxH3TransformerTorchCompile(MiniMaxH3TransformerTesterConfig, TorchCompileTesterMixin):
     """Torch compile tests for the MiniMax-H3 transformer."""
+
+
+class TestMiniMaxH3TransformerContextAndTensorParallel(
+    MiniMaxH3TransformerTesterConfig, ContextAndTensorParallelTesterMixin
+):
+    def get_init_dict(self):
+        return {**super().get_init_dict(), "num_attention_heads": 8}
+
+    def get_dummy_inputs(self, batch_size=1, device="cpu"):
+        # Four text, six audio, and ten video tokens split evenly across two or four CP ranks.
+        return super().get_dummy_inputs(num_video_tokens=10, batch_size=batch_size, device=device)
 
 
 class TestMiniMaxH3TransformerContextParallel(MiniMaxH3TransformerTesterConfig, ContextParallelTesterMixin):

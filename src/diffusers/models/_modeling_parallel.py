@@ -198,7 +198,8 @@ class TensorParallelConfig:
 @dataclass
 class ParallelConfig:
     """
-    Configuration for applying different parallelisms.
+    Both `enable_parallelism` and `from_pretrained(..., parallel_config=...)` can combine tensor and context
+    parallelism. Each uses its own process groups on a shared `("tp", "ring", "ulysses")` device mesh.
 
     Args:
         context_parallel_config (`ContextParallelConfig`, *optional*):
@@ -216,11 +217,16 @@ class ParallelConfig:
     _mesh: torch.distributed.device_mesh.DeviceMesh = None
 
     def __post_init__(self):
-        if self.context_parallel_config is not None and self.tensor_parallel_config is not None:
+        if self.context_parallel_config is None and self.tensor_parallel_config is None:
             raise ValueError(
-                "Combining context parallelism and tensor parallelism in a single `ParallelConfig` is not supported. "
-                "Please specify only one of `context_parallel_config` or `tensor_parallel_config`."
+                "A `ParallelConfig` must specify at least one of `context_parallel_config` or "
+                "`tensor_parallel_config`."
             )
+
+    @property
+    def _is_combined(self) -> bool:
+        """Whether both context and tensor parallelism are requested, i.e. they must share one mesh."""
+        return self.context_parallel_config is not None and self.tensor_parallel_config is not None
 
     def setup(
         self,
@@ -234,10 +240,25 @@ class ParallelConfig:
         self._world_size = world_size
         self._device = device
         self._mesh = mesh
+
+        cp_mesh = tp_mesh = mesh
+        if self._is_combined:
+            dim_names = mesh.mesh_dim_names if mesh is not None else None
+            missing = [d for d in ("ring", "ulysses", "tp") if dim_names is None or d not in dim_names]
+            if missing:
+                raise ValueError(
+                    f"Combining context and tensor parallelism requires a device mesh with 'ring', 'ulysses' and "
+                    f"'tp' dimensions, but {missing} {'is' if len(missing) == 1 else 'are'} missing (got "
+                    f"{dim_names}). `enable_parallelism` and `from_pretrained` build this mesh from `ring_degree`/"
+                    f"`ulysses_degree`/`tp_degree`; if you build it yourself, set `mesh=` on one of the two configs."
+                )
+            # CP selects its axes in setup. TP takes a one-dimensional submesh.
+            tp_mesh = mesh["tp"]
+
         if self.context_parallel_config is not None:
-            self.context_parallel_config.setup(rank, world_size, device, mesh)
+            self.context_parallel_config.setup(rank, world_size, device, cp_mesh)
         if self.tensor_parallel_config is not None:
-            self.tensor_parallel_config.setup(rank, world_size, device, mesh)
+            self.tensor_parallel_config.setup(rank, world_size, device, tp_mesh)
 
 
 @dataclass(frozen=True)

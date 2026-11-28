@@ -32,6 +32,7 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     BitsAndBytesCompileTesterMixin,
     BitsAndBytesTesterMixin,
+    ContextAndTensorParallelTesterMixin,
     ContextParallelAttentionBackendsTesterMixin,
     ContextParallelTesterMixin,
     EntroPackTesterMixin,
@@ -283,6 +284,11 @@ class TestFluxTransformerTensorParallelTPU(FluxTransformerTesterConfig, TensorPa
     def get_init_dict(self):
         # One head per chip.
         return {**super().get_init_dict(), "num_attention_heads": self.tp_world_size}
+
+
+class TestFluxTransformerContextAndTensorParallel(FluxTransformerTesterConfig, ContextAndTensorParallelTesterMixin):
+    def get_init_dict(self):
+        return {**super().get_init_dict(), "num_attention_heads": 8}
 
 
 class TestFluxTransformerTensorParallelNeuron(FluxTransformerTesterConfig, TensorParallelNeuronTesterMixin):

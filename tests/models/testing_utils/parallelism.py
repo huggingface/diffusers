@@ -15,6 +15,8 @@
 
 import os
 import socket
+from datetime import timedelta
+from unittest.mock import patch
 
 import pytest
 import torch
@@ -28,9 +30,10 @@ from diffusers.models._modeling_parallel import (
     ContextParallelConfig,
     ContextParallelInput,
     ContextParallelOutput,
+    ParallelConfig,
     TensorParallelConfig,
 )
-from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry
+from diffusers.models.attention_dispatch import AttentionBackendName, _AttentionBackendRegistry, attention_backend
 from diffusers.utils import SAFE_WEIGHTS_INDEX_NAME
 from diffusers.utils.torch_utils import randn_tensor
 
@@ -870,6 +873,148 @@ class TensorParallelTPUTesterMixin:
         finally:
             for key in tpu_env:
                 os.environ.pop(key, None)
+
+
+def _context_and_tensor_parallel_worker(
+    rank, world_size, master_port, device_type, model_class, checkpoint, inputs, reference, config, loading
+):
+    from torch.distributed.tensor import DTensor
+
+    os.environ.update(
+        MASTER_ADDR="localhost",
+        MASTER_PORT=str(master_port),
+        RANK=str(rank),
+        LOCAL_RANK=str(rank),
+        LOCAL_WORLD_SIZE=str(world_size),
+        WORLD_SIZE=str(world_size),
+    )
+    if device_type in ("cuda", "xpu"):
+        DEVICE_CONFIG[device_type]["module"].set_device(rank)
+
+    dist.init_process_group(backend=DEVICE_CONFIG[device_type]["backend"], timeout=timedelta(minutes=3))
+    try:
+        if device_type == "tpu":
+            device = torch.device("tpu")
+            torch.set_float32_matmul_precision("highest")
+        elif device_type == "neuron":
+            device = torch.neuron.current_device()
+        else:
+            device = torch.device(device_type, rank)
+
+        if loading == "from_pretrained":
+            model = model_class.from_pretrained(checkpoint, parallel_config=config)
+        else:
+            model = model_class.from_pretrained(checkpoint)
+            if device_type == "neuron":
+                model.enable_parallelism(config=config)
+                model.to(device)
+            else:
+                model.to(device)
+                model.enable_parallelism(config=config)
+
+        assert any(
+            isinstance(param, DTensor) and any(placement.is_shard() for placement in param.placements)
+            for param in model.parameters()
+        ), "No model weights were sharded by tensor parallelism."
+
+        assert any(
+            name.startswith(("cp_input", "cp_output"))
+            for module in model.modules()
+            for name in getattr(getattr(module, "_diffusers_hook", None), "hooks", {})
+        ), "The combined config did not install context-parallel hooks."
+        processors = model.attn_processors.values()
+        assert processors and all(getattr(processor, "_parallel_config", None) is config for processor in processors)
+
+        device_inputs = {
+            name: value.to(device) if isinstance(value, torch.Tensor) else value for name, value in inputs.items()
+        }
+        with torch.no_grad():
+            output = model(**device_inputs, return_dict=False)
+        tolerance = 2e-2 if device_type in ("tpu", "neuron") else 1e-3
+        torch.testing.assert_close(
+            tuple(item.float().cpu() for item in output), reference, atol=tolerance, rtol=tolerance
+        )
+    finally:
+        dist.destroy_process_group()
+
+
+@is_context_parallel
+@is_tensor_parallel
+class ContextAndTensorParallelTesterMixin:
+    """Run TPU and Neuron cases in a fresh pytest process so workers can acquire their devices."""
+
+    @pytest.mark.parametrize("cp_axis", ["ulysses", "ring"])
+    @pytest.mark.parametrize(
+        ("loading", "batch_size"),
+        [("enable_parallelism", 1), ("enable_parallelism", 2), ("from_pretrained", 1)],
+        ids=["enable", "enable-batched", "load"],
+    )
+    def test_context_and_tensor_parallel_inference(self, tmp_path, cp_axis, loading, batch_size):
+        if not dist.is_available():
+            pytest.skip("torch.distributed is not available.")
+        for plan in ("_tp_plan", "_cp_plan"):
+            if not getattr(self.model_class, plan, None):
+                pytest.skip(f"Model does not define a `{plan}`.")
+
+        device_type = torch.device(torch_device).type
+        if device_type == "cpu" and "DIFFUSERS_TEST_DEVICE" not in os.environ and hasattr(torch, "tpu"):
+            device_type = "tpu"
+        if device_type not in DEVICE_CONFIG:
+            pytest.skip("Combined context and tensor parallelism requires CUDA, XPU, TPU, or Neuron.")
+
+        active_backend, _ = _AttentionBackendRegistry.get_active_backend()
+        if cp_axis == "ring" and active_backend == AttentionBackendName.NATIVE:
+            pytest.skip("Ring attention requires an attention backend that returns log-sum-exp.")
+
+        tp_degree = 2
+        # Neuron all-to-all requires at least four ranks in each Ulysses group.
+        cp_degree = 4 if device_type == "neuron" and cp_axis == "ulysses" else 2
+        world_size = tp_degree * cp_degree
+        device_count = (
+            torch.accelerator.device_count()
+            if device_type == "tpu"
+            else DEVICE_CONFIG[device_type]["module"].device_count()
+        )
+        if device_count < world_size:
+            pytest.skip(f"Needs {world_size} {device_type} devices, found {device_count}.")
+
+        init_dict = self.get_init_dict()
+        head_count = init_dict.get("num_attention_heads")
+        head_divisor = world_size if cp_axis == "ulysses" else tp_degree
+        if head_count is not None and head_count % head_divisor:
+            pytest.skip(f"Number of attention heads ({head_count}) must be divisible by {head_divisor}.")
+
+        inputs = self.get_dummy_inputs(batch_size=batch_size, device="cpu")
+        with torch.random.fork_rng(devices=[]), torch.no_grad(), attention_backend(AttentionBackendName.NATIVE):
+            torch.random.default_generator.manual_seed(0)
+            model = self.model_class(**init_dict).eval()
+            reference = tuple(item.float() for item in model(**inputs, return_dict=False))
+
+        checkpoint = tmp_path / "checkpoint"
+        model.save_pretrained(checkpoint)
+        config = ParallelConfig(
+            context_parallel_config=ContextParallelConfig(**{f"{cp_axis}_degree": cp_degree}),
+            tensor_parallel_config=TensorParallelConfig(tp_degree=tp_degree),
+        )
+        with patch.dict(os.environ):
+            if device_type == "tpu":
+                torch.tpu.distributed.set_tpu_launch_env(nproc_per_node=world_size)
+            mp.spawn(
+                _context_and_tensor_parallel_worker,
+                args=(
+                    world_size,
+                    _find_free_port(),
+                    device_type,
+                    self.model_class,
+                    checkpoint,
+                    inputs,
+                    reference,
+                    config,
+                    loading,
+                ),
+                nprocs=world_size,
+                join=True,
+            )
 
 
 @is_tensor_parallel

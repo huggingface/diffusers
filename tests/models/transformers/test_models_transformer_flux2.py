@@ -31,6 +31,7 @@ from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
     BitsAndBytesTesterMixin,
+    ContextAndTensorParallelTesterMixin,
     ContextParallelTesterMixin,
     GGUFCompileTesterMixin,
     GGUFTesterMixin,
@@ -158,6 +159,11 @@ class TestFlux2TransformerTraining(Flux2TransformerTesterConfig, TrainingTesterM
 
 class TestFlux2TransformerAttention(Flux2TransformerTesterConfig, AttentionTesterMixin):
     """Attention processor tests for Flux2 Transformer."""
+
+
+class TestFlux2TransformerContextAndTensorParallel(Flux2TransformerTesterConfig, ContextAndTensorParallelTesterMixin):
+    def get_init_dict(self):
+        return {**super().get_init_dict(), "num_attention_heads": 8}
 
 
 class TestFlux2TransformerContextParallel(Flux2TransformerTesterConfig, ContextParallelTesterMixin):
