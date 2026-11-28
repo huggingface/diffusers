@@ -48,6 +48,45 @@ class Cosmos3OmniTransformerOutput(BaseOutput):
     action: list[torch.Tensor] | None = None
 
 
+class Cosmos3KVLayerCache:
+    """Per-layer KV cache for the text (understanding) prefix.
+
+    Stores the und keys (post-RoPE, as read by the generation pathway) and values extracted during the first denoising
+    step. Tensor format: ``(und_len, num_key_value_heads, head_dim)``.
+    """
+
+    def __init__(self):
+        self.k: torch.Tensor | None = None
+        self.v: torch.Tensor | None = None
+
+    def store(self, k: torch.Tensor, v: torch.Tensor):
+        self.k = k
+        self.v = v
+
+    def get(self) -> tuple[torch.Tensor, torch.Tensor]:
+        if self.k is None:
+            raise RuntimeError("KV cache has not been populated yet.")
+        return self.k, self.v
+
+    def clear(self):
+        self.k = None
+        self.v = None
+
+
+class Cosmos3KVCache:
+    """Container for all decoder layers' text-prefix KV caches."""
+
+    def __init__(self, num_layers: int):
+        self.layer_caches = [Cosmos3KVLayerCache() for _ in range(num_layers)]
+
+    def get_layer(self, layer_idx: int) -> Cosmos3KVLayerCache:
+        return self.layer_caches[layer_idx]
+
+    def clear(self):
+        for cache in self.layer_caches:
+            cache.clear()
+
+
 class Cosmos3AttnProcessor:
     """Dual-pathway attention processor for Cosmos3.
 
@@ -61,47 +100,55 @@ class Cosmos3AttnProcessor:
     def __call__(
         self,
         attn: "Cosmos3PackedMoTAttention",
-        und_seq: torch.Tensor,
+        und_seq: torch.Tensor | None,
         gen_seq: torch.Tensor,
         rotary_emb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        # Infer local head counts from the projection widths after tensor parallel sharding.
-        q_und = attn.to_q(und_seq).unflatten(-1, (-1, attn.head_dim))
-        k_und = attn.to_k(und_seq).unflatten(-1, (-1, attn.head_dim))
-        v_und = attn.to_v(und_seq).unflatten(-1, (-1, attn.head_dim))
+        layer_cache: Cosmos3KVLayerCache | None = None,
+        kv_cache_mode: str | None = None,
+    ) -> tuple[torch.Tensor | None, torch.Tensor]:
+        cos_und, sin_und, cos_gen, sin_gen = rotary_emb
+
+        # Causal pathway (understanding): und tokens self-attend with causal masking and never read gen tokens, so
+        # the und keys/values used by the gen pathway only depend on the text. "extract" stores them in
+        # `layer_cache`; "cached" reads them from it and skips the und pathway.
+        und_out = None
+        if kv_cache_mode == "cached":
+            k_und_for_gen, v_und = layer_cache.get()
+        else:
+            # Infer local head counts from the projection widths after tensor parallel sharding.
+            q_und = attn.to_q(und_seq).unflatten(-1, (-1, attn.head_dim))
+            k_und = attn.to_k(und_seq).unflatten(-1, (-1, attn.head_dim))
+            v_und = attn.to_v(und_seq).unflatten(-1, (-1, attn.head_dim))
+            q_und = attn.norm_q(q_und)
+            k_und = attn.norm_k(k_und)
+            k_und_for_gen = attn.k_norm_und_for_gen(k_und) if attn.k_norm_und_for_gen is not None else k_und
+            cos_und = cos_und.unsqueeze(1)
+            sin_und = sin_und.unsqueeze(1)
+            q_und = q_und * cos_und + _rotate_half(q_und) * sin_und
+            k_und = k_und * cos_und + _rotate_half(k_und) * sin_und
+            k_und_for_gen = k_und_for_gen * cos_und + _rotate_half(k_und_for_gen) * sin_und
+            causal_out = dispatch_attention_fn(
+                q_und.unsqueeze(0),
+                k_und.unsqueeze(0),
+                v_und.unsqueeze(0),
+                is_causal=True,
+                enable_gqa=True,
+                backend=self._attention_backend,
+                parallel_config=self._parallel_config,
+            )
+            und_out = attn.to_out(causal_out.squeeze(0).flatten(-2, -1))
+            if kv_cache_mode == "extract":
+                layer_cache.store(k_und_for_gen, v_und)
+
         q_gen = attn.add_q_proj(gen_seq).unflatten(-1, (-1, attn.head_dim))
         k_gen = attn.add_k_proj(gen_seq).unflatten(-1, (-1, attn.head_dim))
         v_gen = attn.add_v_proj(gen_seq).unflatten(-1, (-1, attn.head_dim))
-
-        q_und = attn.norm_q(q_und)
-        k_und = attn.norm_k(k_und)
-        k_und_for_gen = attn.k_norm_und_for_gen(k_und) if attn.k_norm_und_for_gen is not None else k_und
         q_gen = attn.norm_added_q(q_gen)
         k_gen = attn.norm_added_k(k_gen)
-
-        # Apply rotary position embeddings per pathway
-        cos_und, sin_und, cos_gen, sin_gen = rotary_emb
-        cos_und = cos_und.unsqueeze(1)
-        sin_und = sin_und.unsqueeze(1)
-        q_und = q_und * cos_und + _rotate_half(q_und) * sin_und
-        k_und = k_und * cos_und + _rotate_half(k_und) * sin_und
-        k_und_for_gen = k_und_for_gen * cos_und + _rotate_half(k_und_for_gen) * sin_und
         cos_gen = cos_gen.unsqueeze(1)
         sin_gen = sin_gen.unsqueeze(1)
         q_gen = q_gen * cos_gen + _rotate_half(q_gen) * sin_gen
         k_gen = k_gen * cos_gen + _rotate_half(k_gen) * sin_gen
-
-        # Causal pathway (understanding): und tokens self-attend with causal masking.
-        causal_out = dispatch_attention_fn(
-            q_und.unsqueeze(0),
-            k_und.unsqueeze(0),
-            v_und.unsqueeze(0),
-            is_causal=True,
-            enable_gqa=True,
-            backend=self._attention_backend,
-            parallel_config=self._parallel_config,
-        )
-        causal_out = causal_out.squeeze(0).flatten(-2, -1)
 
         # Full pathway (generation): gen tokens cross-attend to all (und + gen) keys/values.
         all_k = torch.cat([k_und_for_gen, k_gen], dim=0)
@@ -116,9 +163,6 @@ class Cosmos3AttnProcessor:
             parallel_config=self._parallel_config,
         )
         full_out = full_out.squeeze(0).flatten(-2, -1)
-
-        # Per-pathway output projection
-        und_out = attn.to_out(causal_out)
         gen_out = attn.to_add_out(full_out)
         return und_out, gen_out
 
@@ -295,11 +339,15 @@ class Cosmos3PackedMoTAttention(nn.Module, AttentionModuleMixin):
 
     def forward(
         self,
-        und_seq: torch.Tensor,
+        und_seq: torch.Tensor | None,
         gen_seq: torch.Tensor,
         rotary_emb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        return self.processor(self, und_seq, gen_seq, rotary_emb)
+        layer_cache: Cosmos3KVLayerCache | None = None,
+        kv_cache_mode: str | None = None,
+    ) -> tuple[torch.Tensor | None, torch.Tensor]:
+        if kv_cache_mode is None:
+            return self.processor(self, und_seq, gen_seq, rotary_emb)
+        return self.processor(self, und_seq, gen_seq, rotary_emb, layer_cache=layer_cache, kv_cache_mode=kv_cache_mode)
 
 
 class Cosmos3VLTextMoTDecoderLayer(nn.Module):
@@ -355,20 +403,26 @@ class Cosmos3VLTextMoTDecoderLayer(nn.Module):
 
     def forward(
         self,
-        und_seq: torch.Tensor,
+        und_seq: torch.Tensor | None,
         gen_seq: torch.Tensor,
         rotary_emb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        und_norm = self.input_layernorm(und_seq)
+        layer_cache: Cosmos3KVLayerCache | None = None,
+        kv_cache_mode: str | None = None,
+    ) -> tuple[torch.Tensor | None, torch.Tensor]:
+        # `und_seq` is None in "cached" mode: the und keys/values come from `layer_cache` (see `Cosmos3AttnProcessor`).
+        und_norm = self.input_layernorm(und_seq) if und_seq is not None else None
         gen_norm = self.input_layernorm_moe_gen(gen_seq)
 
-        und_attn_out, gen_attn_out = self.self_attn(und_norm, gen_norm, rotary_emb)
-        residual_und = und_seq + und_attn_out
+        und_attn_out, gen_attn_out = self.self_attn(
+            und_norm, gen_norm, rotary_emb, layer_cache=layer_cache, kv_cache_mode=kv_cache_mode
+        )
         residual_gen = gen_seq + gen_attn_out
-
-        mlp_out_und = self.mlp(self.post_attention_layernorm(residual_und))
         mlp_out_gen = self.mlp_moe_gen(self.post_attention_layernorm_moe_gen(residual_gen))
+        if und_seq is None:
+            return None, residual_gen + mlp_out_gen
 
+        residual_und = und_seq + und_attn_out
+        mlp_out_und = self.mlp(self.post_attention_layernorm(residual_und))
         return residual_und + mlp_out_und, residual_gen + mlp_out_gen
 
 
@@ -401,6 +455,15 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
     # expressed as diffusers' declarative `_cp_plan`, so CP lives outside the model.
     _cp_shard_fn = None
     _cp_gather_fn = None
+    _skip_keys = ["kv_cache"]
+    # Hooks that only move or cast weights. Any other diffusers hook (cache, layer skip, guidance, context parallel)
+    # may skip, replace or reshard blocks, which `kv_cache` does not support.
+    _kv_cache_compatible_hooks = {
+        "group_offloading",
+        "lazy_prefetch_group_offloading",
+        "layerwise_casting",
+        "peft_autocast_disable",
+    }
     # `dtype` is injected into init_dict by ModelMixin.from_pretrained (configuration_utils.py:289),
     # so __init__ must accept it. Excluding it here keeps save_pretrained from writing it into
     # config.json — the value is a load-time runtime hint, not part of the model architecture.
@@ -661,21 +724,37 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             unpacked.append(output)
         return unpacked
 
+    def _has_kv_cache_incompatible_hooks(self) -> bool:
+        # Also catches hooks added with `apply_*` functions, which do not set `_cache_config`.
+        for module in self.modules():
+            registry = getattr(module, "_diffusers_hook", None)
+            if registry is not None and set(registry.hooks) - self._kv_cache_compatible_hooks:
+                return True
+        return False
+
     def _run_decoder_stack(
         self,
         und_seq: torch.Tensor,
         gen_seq: torch.Tensor,
         rotary_emb: tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        for decoder_layer in self.layers:
+        kv_cache: Cosmos3KVCache | None = None,
+        kv_cache_mode: str | None = None,
+    ) -> tuple[torch.Tensor | None, torch.Tensor]:
+        # In "cached" mode the und pathway is skipped: every layer reads the und keys/values from `kv_cache`.
+        if kv_cache_mode == "cached":
+            und_seq = None
+        for index_block, decoder_layer in enumerate(self.layers):
+            layer_cache = kv_cache.get_layer(index_block) if kv_cache is not None else None
             if torch.is_grad_enabled() and self.gradient_checkpointing:
                 und_seq, gen_seq = self._gradient_checkpointing_func(
-                    decoder_layer.__call__, und_seq, gen_seq, rotary_emb
+                    decoder_layer.__call__, und_seq, gen_seq, rotary_emb, layer_cache, kv_cache_mode
                 )
             else:
-                und_seq, gen_seq = decoder_layer(und_seq, gen_seq, rotary_emb)
+                und_seq, gen_seq = decoder_layer(
+                    und_seq, gen_seq, rotary_emb, layer_cache=layer_cache, kv_cache_mode=kv_cache_mode
+                )
 
-        return self.norm(und_seq), self.norm_moe_gen(gen_seq)
+        return self.norm(und_seq) if und_seq is not None else None, self.norm_moe_gen(gen_seq)
 
     # -------------------------------------------------------------------------
     # forward: full per-step pass — encode text/vision/sound/action → run layers →
@@ -708,6 +787,8 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         action_timesteps: torch.Tensor | None = None,
         action_noisy_frame_indexes: list[torch.Tensor] | None = None,
         action_domain_ids: list[torch.Tensor] | None = None,
+        kv_cache: Cosmos3KVCache | None = None,
+        kv_cache_mode: str | None = None,
         return_dict: bool = True,
     ) -> (
         Cosmos3OmniTransformerOutput | tuple[list[torch.Tensor], list[torch.Tensor] | None, list[torch.Tensor] | None]
@@ -739,12 +820,29 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
             action_timesteps: Optional per-token diffusion timesteps for action tokens.
             action_noisy_frame_indexes: Optional noisy frame indices per action item.
             action_domain_ids: Optional per-item domain IDs selecting the action head weights.
+            kv_cache: Optional ``Cosmos3KVCache`` holding the text-prefix keys/values. Pass together with
+                ``kv_cache_mode``. Valid because the und tokens never attend to the generation tokens, so their
+                keys/values only depend on ``input_ids`` and ``position_ids``.
+            kv_cache_mode: ``"extract"`` (run the und pathway and store its keys/values in ``kv_cache``) or
+                ``"cached"`` (skip the und pathway and read them from ``kv_cache``). Use one cache per text input,
+                e.g. one per CFG branch.
             return_dict: Whether to return a [`Cosmos3OmniTransformerOutput`] instead of a tuple.
 
         Returns:
             A [`Cosmos3OmniTransformerOutput`] or a tuple of per-modality prediction lists. Optional modalities return
             ``None`` when their inputs are omitted.
         """
+        if kv_cache is not None and kv_cache_mode not in ("extract", "cached"):
+            raise ValueError(
+                f"kv_cache_mode must be 'extract' or 'cached' when kv_cache is provided, got {kv_cache_mode!r}."
+            )
+        if kv_cache is None and kv_cache_mode is not None:
+            raise ValueError(f"kv_cache_mode is {kv_cache_mode!r} but no kv_cache was passed to hold the prefix.")
+        if kv_cache is not None and self._cp_shard_fn is not None:
+            raise ValueError("kv_cache is not supported with context parallelism.")
+        if kv_cache is not None and self._has_kv_cache_incompatible_hooks():
+            raise ValueError("kv_cache cannot be combined with cache, layer-skip or context-parallel hooks.")
+
         has_sound = sound_tokens is not None and sound_sequence_indexes is not None
         has_action = action_tokens is not None and action_sequence_indexes is not None
 
@@ -829,7 +927,14 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         if self._cp_shard_fn is not None:
             und_seq, gen_seq, rotary_emb = self._cp_shard_fn(und_seq, gen_seq, rotary_emb)
 
-        und_out, gen_out = self._run_decoder_stack(und_seq, gen_seq, rotary_emb)
+        # Cache hooks (e.g. SeaCache) replace `_run_decoder_stack` with a 3-argument version, so the KV-cache
+        # arguments are only passed when a cache is used (rejected above together with such hooks).
+        if kv_cache is None:
+            und_out, gen_out = self._run_decoder_stack(und_seq, gen_seq, rotary_emb)
+        else:
+            und_out, gen_out = self._run_decoder_stack(
+                und_seq, gen_seq, rotary_emb, kv_cache=kv_cache, kv_cache_mode=kv_cache_mode
+            )
 
         # Optional context-parallelism gather seam: re-gather the full per-pathway
         # sequence on every rank (and drop the padding) before the global-index decode
@@ -837,6 +942,10 @@ class Cosmos3OmniTransformer(ModelMixin, ConfigMixin, PeftAdapterMixin, Attentio
         # sequence. No-op unless `_cp_shard_fn`'s counterpart is set.
         if self._cp_gather_fn is not None:
             und_out, gen_out = self._cp_gather_fn(und_out, gen_out)
+
+        # The und pathway was skipped ("cached" mode); predictions are only read at gen positions.
+        if und_out is None:
+            und_out = gen_out.new_zeros(und_len, gen_out.shape[-1])
 
         last_hidden_state = torch.cat([und_out, gen_out], dim=0)
 
