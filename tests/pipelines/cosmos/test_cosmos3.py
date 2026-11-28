@@ -215,6 +215,31 @@ class TestCosmos3OmniPipeline(Cosmos3OmniPipelineTesterConfig, PipelineTesterMix
 
         torch.testing.assert_close(wide_output, crop_output)
 
+    def test_inactive_modalities_ignore_sound_and_action_latents(self):
+        pipeline = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
+        inputs.update(output_type="latent")
+
+        control_output = pipeline(**inputs, generator=self.get_generator(0))
+
+        with_sound = pipeline(
+            **inputs,
+            generator=self.get_generator(0),
+            sound_latents=torch.zeros(2, 3),
+        )
+        torch.testing.assert_close(with_sound.video, control_output.video)
+        assert with_sound.sound is None
+        assert with_sound.action is None
+
+        with_action = pipeline(
+            **inputs,
+            generator=self.get_generator(0),
+            action_latents=torch.zeros(3, 7),
+        )
+        torch.testing.assert_close(with_action.video, control_output.video)
+        assert with_action.sound is None
+        assert with_action.action is None
+
     @pytest.mark.skip("Cosmos3 currently supports one prompt per pipeline call.")
     def test_inference_batch_consistent(self):
         pass

@@ -969,6 +969,8 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                 )
             else:
                 sound_latents = sound_latents.to(device=device, dtype=dtype)
+        else:
+            sound_latents = None
 
         if action_mode is not None and x0_tokens_action is not None:
             action_condition_mask = torch.zeros((x0_tokens_action.shape[0], 1), device=device, dtype=dtype)
@@ -986,6 +988,8 @@ class Cosmos3OmniPipeline(DiffusionPipeline):
                     action_latents[:, raw_action_dim_resolved:] = 0
             else:
                 action_latents = action_latents.to(device=device, dtype=dtype)
+        else:
+            action_latents = None
 
         return (
             latents,
