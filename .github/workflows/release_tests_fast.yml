@@ -90,6 +90,7 @@ jobs:
         run: |
           printf 'torch==2.10.0\ntorchvision==0.25.0\ntorchaudio==2.10.0\n' > "$UV_OVERRIDE"
           uv pip install -e ".[quality]"
+          uv pip install peft@git+https://github.com/huggingface/peft.git
           uv pip uninstall accelerate && uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
           uv pip uninstall transformers huggingface_hub && UV_PRERELEASE=allow uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
       - name: Environment
@@ -133,7 +134,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        module: [models, schedulers, lora, others, single_file]
+        module: [models, modular_pipelines, schedulers, hooks, lora, others, single_file]
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
