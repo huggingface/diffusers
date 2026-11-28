@@ -694,3 +694,68 @@ class TestConditionalModuleGroupOffload(TestGroupOffload):
             assert torch.allclose(out_ref_no_opt2, out_no_opt2, atol=1e-5), (
                 f"[{offload_type}] Outputs do not match on third pass (back to no optional_input)."
             )
+
+
+class BufferOnlyScale(torch.nn.Module):
+    def __init__(self, features: int) -> None:
+        super().__init__()
+        self.register_buffer("scale", torch.full((features,), 2.0))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x * self.scale
+
+
+# Model with a buffer-only submodule called twice in a row, like a rotary embedding computed once per attention
+# type (e.g. Gemma 4 text models).
+class DummyModelWithRepeatedBufferOnlyModule(ModelMixin):
+    def __init__(self, in_features: int, hidden_features: int, out_features: int) -> None:
+        super().__init__()
+
+        self.linear_1 = torch.nn.Linear(in_features, hidden_features)
+        self.scale = BufferOnlyScale(hidden_features)
+        self.linear_2 = torch.nn.Linear(hidden_features, out_features)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.linear_1(x)
+        x = self.scale(self.scale(x))
+        x = self.linear_2(x)
+        return x
+
+
+@require_torch_accelerator
+class TestRepeatedBufferOnlyModuleGroupOffload:
+    in_features = 64
+    hidden_features = 256
+    out_features = 64
+
+    def get_model(self):
+        torch.manual_seed(0)
+        return DummyModelWithRepeatedBufferOnlyModule(self.in_features, self.hidden_features, self.out_features)
+
+    @pytest.mark.parametrize("offload_to_disk", [False, True], ids=["memory", "disk"])
+    @pytest.mark.skipif(
+        torch.device(torch_device).type not in ["cuda", "xpu"],
+        reason="Test requires a CUDA or XPU device.",
+    )
+    def test_repeated_buffer_only_module_with_stream(self, offload_to_disk: bool, tmp_path):
+        """A buffer-only group called twice in a row is offloaded after its first call. With streams it relies on
+        prefetching, which only covers its first call, so the second call must fall back to a synchronous onload.
+        """
+        model = self.get_model()
+        model_ref = self.get_model()
+        model_ref.load_state_dict(model.state_dict(), strict=True)
+        model_ref.to(torch_device)
+
+        model.enable_group_offload(
+            torch_device,
+            offload_type="leaf_level",
+            use_stream=True,
+            offload_to_disk_path=str(tmp_path) if offload_to_disk else None,
+        )
+
+        x = torch.randn(4, self.in_features).to(torch_device)
+        with torch.no_grad():
+            out_ref = model_ref(x)
+            for i in range(3):
+                out = model(x)
+                assert torch.allclose(out_ref, out, atol=1e-5), f"Outputs do not match on forward pass {i + 1}."
