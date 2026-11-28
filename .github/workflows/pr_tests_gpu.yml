@@ -191,7 +191,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    name: Torch CUDA Tests
+    name: Torch CUDA Tests (${{ matrix.module }}, ${{ matrix.name }})
     needs: [check_code_quality, check_repository_consistency]
     runs-on:
       group: aws-g4dn-2xlarge
