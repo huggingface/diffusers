@@ -482,7 +482,8 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas)
-        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.int64)
+        timestep_dtype = torch.float32 if self.config.use_flow_sigmas else torch.int64
+        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=timestep_dtype)
 
         self.num_inference_steps = len(timesteps)
 
