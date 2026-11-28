@@ -687,19 +687,24 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
             `torch.Tensor`:
                 The noisy samples.
         """
-        # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
+        # Make sure alphas_cumprod and timestep have same device as original_samples
         # Move the self.alphas_cumprod to device to avoid redundant CPU to GPU data movement
         # for the subsequent add_noise calls
         self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device)
-        alphas_cumprod = self.alphas_cumprod.to(dtype=original_samples.dtype)
+        # Keep the schedule in its own dtype for the math and cast only the coefficients: in float16/bfloat16
+        # `alphas_cumprod[t]` rounds to 1 for the first timesteps, so `1 - alphas_cumprod[t]` is exactly 0 and we
+        # would return the clean sample untouched while the model is asked to predict noise that is not there.
+        alphas_cumprod = self.alphas_cumprod.to(
+            dtype=torch.promote_types(self.alphas_cumprod.dtype, original_samples.dtype)
+        )
         timesteps = timesteps.to(original_samples.device)
 
-        sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
+        sqrt_alpha_prod = (alphas_cumprod[timesteps] ** 0.5).to(original_samples.dtype)
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()
         while len(sqrt_alpha_prod.shape) < len(original_samples.shape):
             sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
 
-        sqrt_one_minus_alpha_prod = (1 - alphas_cumprod[timesteps]) ** 0.5
+        sqrt_one_minus_alpha_prod = ((1 - alphas_cumprod[timesteps]) ** 0.5).to(original_samples.dtype)
         sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
         while len(sqrt_one_minus_alpha_prod.shape) < len(original_samples.shape):
             sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)
@@ -724,17 +729,18 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
             `torch.Tensor`:
                 The computed velocity.
         """
-        # Make sure alphas_cumprod and timestep have same device and dtype as sample
+        # Make sure alphas_cumprod and timestep have same device as sample
         self.alphas_cumprod = self.alphas_cumprod.to(device=sample.device)
-        alphas_cumprod = self.alphas_cumprod.to(dtype=sample.dtype)
+        # Same as in `add_noise`: compute in the schedule's dtype, cast the coefficients afterwards
+        alphas_cumprod = self.alphas_cumprod.to(dtype=torch.promote_types(self.alphas_cumprod.dtype, sample.dtype))
         timesteps = timesteps.to(sample.device)
 
-        sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
+        sqrt_alpha_prod = (alphas_cumprod[timesteps] ** 0.5).to(sample.dtype)
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()
         while len(sqrt_alpha_prod.shape) < len(sample.shape):
             sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
 
-        sqrt_one_minus_alpha_prod = (1 - alphas_cumprod[timesteps]) ** 0.5
+        sqrt_one_minus_alpha_prod = ((1 - alphas_cumprod[timesteps]) ** 0.5).to(sample.dtype)
         sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
         while len(sqrt_one_minus_alpha_prod.shape) < len(sample.shape):
             sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)

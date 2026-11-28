@@ -888,13 +888,17 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             timesteps = timesteps.to(sample.device)
 
         step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
-        alphas_cumprod = self.alphas_cumprod.to(sample)
-        sqrt_alpha_prod = alphas_cumprod[step_indices] ** 0.5
+        # Do the math in the schedule's dtype and cast the coefficients afterwards: in float16/bfloat16
+        # `alphas_cumprod[t]` rounds to 1 at the first timesteps, which makes `sqrt(1 - alphas_cumprod[t])` 0.
+        alphas_cumprod = self.alphas_cumprod.to(
+            device=sample.device, dtype=torch.promote_types(self.alphas_cumprod.dtype, sample.dtype)
+        )
+        sqrt_alpha_prod = (alphas_cumprod[step_indices] ** 0.5).to(sample.dtype)
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()
         while len(sqrt_alpha_prod.shape) < len(sample.shape):
             sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
 
-        sqrt_one_minus_alpha_prod = (1 - alphas_cumprod[step_indices]) ** 0.5
+        sqrt_one_minus_alpha_prod = ((1 - alphas_cumprod[step_indices]) ** 0.5).to(sample.dtype)
         sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
         while len(sqrt_one_minus_alpha_prod.shape) < len(sample.shape):
             sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)

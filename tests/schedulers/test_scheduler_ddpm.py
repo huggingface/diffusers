@@ -220,3 +220,36 @@ class DDPMSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 387.9466) < 1e-2, f" expected result sum 387.9466, but get {result_sum}"
         assert abs(result_mean.item() - 0.5051) < 1e-3, f" expected result mean 0.5051, but get {result_mean}"
+
+    def test_add_noise_in_low_precision(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler = scheduler_class(**self.get_scheduler_config())
+
+        # x0 = 0 and noise = 1, so the output is the noise coefficient `sqrt(1 - alphas_cumprod[t])` itself
+        timesteps = torch.tensor([0, 1, 2])
+        sample = torch.zeros(1, 3, 4, 4)
+        noise = torch.ones(1, 3, 4, 4)
+        expected = scheduler.add_noise(sample.double(), noise.double(), timesteps)[:, 0, 0, 0]
+
+        for dtype in [torch.float16, torch.bfloat16]:
+            noisy = scheduler.add_noise(sample.to(dtype), noise.to(dtype), timesteps)
+            # fp16/bf16 only keep ~3 significant digits, so a relative tolerance is what we can ask for
+            assert torch.allclose(noisy[:, 0, 0, 0].float(), expected.float(), rtol=1e-2), (
+                f"{dtype}: expected {expected.tolist()}, got {noisy[:, 0, 0, 0].tolist()}"
+            )
+
+    def test_get_velocity_in_low_precision(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler = scheduler_class(**self.get_scheduler_config())
+
+        # noise = 0, so the output is the `-sqrt(1 - alphas_cumprod[t])` term applied to the sample
+        timesteps = torch.tensor([0, 1, 2])
+        sample = torch.ones(1, 3, 4, 4)
+        noise = torch.zeros(1, 3, 4, 4)
+        expected = scheduler.get_velocity(sample.double(), noise.double(), timesteps)[:, 0, 0, 0]
+
+        for dtype in [torch.float16, torch.bfloat16]:
+            velocity = scheduler.get_velocity(sample.to(dtype), noise.to(dtype), timesteps)
+            assert torch.allclose(velocity[:, 0, 0, 0].float(), expected.float(), rtol=1e-2), (
+                f"{dtype}: expected {expected.tolist()}, got {velocity[:, 0, 0, 0].tolist()}"
+            )
