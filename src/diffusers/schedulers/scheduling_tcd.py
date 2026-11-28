@@ -678,7 +678,7 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
         # Eta (referred to as "gamma" in the paper) was introduced to control the stochasticity in every step.
         # When eta = 0, it represents deterministic sampling, whereas eta = 1 indicates full stochastic sampling.
         if eta > 0:
-            if self.step_index != self.num_inference_steps - 1:
+            if prev_step_index < len(self.timesteps) and timestep_s < prev_timestep:
                 noise = randn_tensor(
                     model_output.shape, generator=generator, device=model_output.device, dtype=pred_noised_sample.dtype
                 )
