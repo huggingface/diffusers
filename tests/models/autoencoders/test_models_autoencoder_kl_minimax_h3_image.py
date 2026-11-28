@@ -136,6 +136,28 @@ class TestAutoencoderKLMiniMaxH3Image(AutoencoderKLMiniMaxH3ImageTesterConfig, M
 
         torch.testing.assert_close(tiled, untiled, rtol=0, atol=0)
 
+    def test_batched_tile_decode_matches_per_tile_decode(self):
+        # Stacking tiles along the batch axis must keep each sample's tiles in place.
+        model = self.model_class(**self.get_init_dict()).to(torch_device).eval()
+        model.enable_tiling(
+            tile_sample_min_height=16,
+            tile_sample_min_width=16,
+            tile_sample_min_overlap_height=4,
+            tile_sample_min_overlap_width=4,
+        )
+        latents = torch.randn(2, 4, 12, 10, device=torch_device)
+
+        with torch.no_grad():
+            per_tile = model.decode(latents).sample
+            model.enable_tiling(tile_decode_batch_size=3)
+            batched = model.decode(latents).sample
+
+        assert per_tile.shape == (2, 3, 48, 40)
+        torch.testing.assert_close(batched, per_tile, rtol=1e-5, atol=1e-5)
+
+        with pytest.raises(ValueError):
+            model.enable_tiling(tile_decode_batch_size=0)
+
 
 class TestAutoencoderKLMiniMaxH3ImageMemory(AutoencoderKLMiniMaxH3ImageTesterConfig, MemoryTesterMixin):
     """Memory optimization tests for the MiniMax-H3-Image autoencoder."""
