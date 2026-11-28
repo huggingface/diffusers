@@ -12,7 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from diffusers.utils.peft_utils import get_peft_kwargs
+import logging
+
+import torch
+
+from diffusers.utils import peft_utils
+from diffusers.utils.peft_utils import _create_lora_config, get_peft_kwargs
+
+from ..testing_utils import CaptureLogger, require_peft_backend
 
 
 def _rank_dict(module_ranks):
@@ -112,3 +119,50 @@ def test_text_encoder_alpha_pattern_handles_mlp_and_text_projection():
     kwargs = get_peft_kwargs({"m.lora_B.weight": 4}, network_alphas, peft_state_dict, is_unet=False)
     assert kwargs["lora_alpha"] == 8.0
     assert kwargs["alpha_pattern"] == {"encoder.layers.0.mlp.fc2": 4.0}
+
+
+class _TinyAttention(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.to_q = torch.nn.Linear(4, 4)
+        self.to_v = torch.nn.Linear(4, 4)
+
+
+def _lora_metadata(**extra):
+    return {"r": 4, "lora_alpha": 8, "target_modules": ["to_q", "to_v"], **extra}
+
+
+@require_peft_backend
+def test_lora_metadata_megatron_fields_are_ignored():
+    # A checkpoint's adapter metadata must not be able to switch peft to Megatron layers, which imports the
+    # module named by `megatron_core`.
+    from peft import LoraConfig, inject_adapter_in_model
+    from peft.tuners.lora import Linear as LoraLinear
+
+    metadata = _lora_metadata(megatron_core="megatron.core", megatron_config={"params_dtype": "float32"})
+    peft_utils.logger.setLevel(logging.WARNING)
+    with CaptureLogger(peft_utils.logger) as cap_logger:
+        config = _create_lora_config(state_dict={}, network_alphas=None, metadata=metadata, rank_pattern_dict={})
+
+    assert config.megatron_config is None
+    assert config.megatron_core == LoraConfig().megatron_core
+    assert (config.r, config.lora_alpha, set(config.target_modules)) == (4, 8, {"to_q", "to_v"})
+    assert "megatron_config" in metadata
+    assert "Ignoring `megatron_config`" in cap_logger.out
+
+    model = inject_adapter_in_model(config, _TinyAttention(), adapter_name="default")
+    assert isinstance(model.to_q, LoraLinear)
+
+
+@require_peft_backend
+def test_lora_metadata_with_default_megatron_fields_does_not_warn():
+    # `LoraConfig.to_dict()` always includes the Megatron fields, so a regularly saved adapter carries them with
+    # their default values.
+    from peft import LoraConfig
+
+    metadata = _lora_metadata(megatron_core=LoraConfig().megatron_core, megatron_config=None)
+    peft_utils.logger.setLevel(logging.WARNING)
+    with CaptureLogger(peft_utils.logger) as cap_logger:
+        _create_lora_config(state_dict={}, network_alphas=None, metadata=metadata, rank_pattern_dict={})
+
+    assert "megatron" not in cap_logger.out
