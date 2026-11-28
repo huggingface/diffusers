@@ -429,9 +429,9 @@ class GGUFQuantizationConfig(QuantizationConfigMixin):
 class ComfyQuantizationConfig(QuantizationConfigMixin):
     """Load native Comfy checkpoints with Comfy-Kitchen kernels.
 
-    Quantization formats are read from each layer's `comfy_quant` metadata in the prequantized checkpoint.
-    See the [Comfy quantization guide](https://huggingface.co/docs/diffusers/main/en/quantization/comfy) for validated
-    formats and checkpoint limitations.
+    Quantization formats are read from each layer's `comfy_quant` metadata in the prequantized checkpoint. See the
+    [Comfy quantization guide](https://huggingface.co/docs/diffusers/main/en/quantization/comfy) for validated formats
+    and checkpoint limitations.
 
     Args:
         compute_dtype (`torch.dtype`, defaults to `torch.bfloat16`):
