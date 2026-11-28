@@ -21,7 +21,7 @@ import torch.nn.functional as F
 from ..utils import deprecate, logging
 from ..utils.import_utils import is_torch_npu_available, is_torch_xla_available, is_xformers_available
 from ..utils.torch_utils import maybe_allow_in_graph
-from .activations import GEGLU, GELU, ApproximateGELU, FP32SiLU, LinearActivation, SwiGLU
+from .activations import GEGLU, GELU, ApproximateGELU, LinearActivation, SwiGLU
 from .attention_processor import Attention, AttentionProcessor, JointAttnProcessor2_0
 from .embeddings import SinusoidalPositionalEmbedding
 from .normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZero, RMSNorm, SD35AdaLayerNormZeroX
@@ -1129,10 +1129,9 @@ class LuminaFeedForward(nn.Module):
             inner_dim,
             bias=False,
         )
-        self.silu = FP32SiLU()
 
     def forward(self, x) -> torch.Tensor:
-        return self.linear_2(self.silu(self.linear_1(x)) * self.linear_3(x))
+        return self.linear_2(F.silu(self.linear_1(x)) * self.linear_3(x))
 
 
 @maybe_allow_in_graph
