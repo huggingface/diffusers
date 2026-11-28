@@ -32,18 +32,17 @@ In the following, we give an overview of different ways to contribute, ranked by
 * 1. Asking and answering questions on [GitHub Discussions](https://github.com/huggingface/diffusers/discussions) or on [Discord](https://discord.gg/G7tWnz98XR).
 * 2. Opening new issues on [the GitHub Issues tab](https://github.com/huggingface/diffusers/issues/new/choose).
 * 3. Answering issues on [the GitHub Issues tab](https://github.com/huggingface/diffusers/issues).
-* 4. Fix a simple issue, marked by the "Good first issue" label, see [here](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22).
+* 4. Share your thoughts on an open design question, marked by the "idea-contribution-welcome" label, see [here](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3Aidea-contribution-welcome).
 * 5. Contribute to the [documentation](https://github.com/huggingface/diffusers/tree/main/docs/source).
 * 6. Publish a pipeline or model on the Hub as remote code with [Modular Diffusers](../modular_diffusers/overview).
 * 7. Contribute to the [examples](https://github.com/huggingface/diffusers/tree/main/examples).
-* 8. Fix a more difficult issue, marked by the "Good second issue" label, see [here](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22Good+second+issue%22).
-* 9. Take on an issue from the [Diffusers MVP program](https://github.com/huggingface/diffusers/issues/12635).
-* 10. Add a new pipeline, model, or scheduler to the library. For this contribution we usually work with the model authors directly; as a community contributor, start on the Hub (6) instead. See the open ["New Pipeline/Model"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22) and ["New scheduler"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+scheduler%22) issues, and read the [Design Philosophy](./philosophy) first.
+* 8. Fix an issue marked by the "contributions-welcome" label, see [here](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3Acontributions-welcome). The most challenging ones are part of the [Diffusers MVP program](https://github.com/huggingface/diffusers/issues/12635).
+* 9. Add a new pipeline, model, or scheduler to the library. For this contribution we usually work with the model authors directly; as a community contributor, start on the Hub (6) instead. See the open ["New Pipeline/Model"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22) and ["New scheduler"](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+scheduler%22) issues, and read the [Design Philosophy](./philosophy) first.
 
 As said before, **all contributions are valuable to the community**.
 In the following, we will explain each contribution a bit more in detail.
 
-For contributions 4 to 10, except 6 which lives on the Hub, you will need to open a PR. It is explained in detail how to do so in [Opening a pull request](#how-to-open-a-pr).
+For contributions 5 to 9, except 6 which lives on the Hub, you will need to open a PR. It is explained in detail how to do so in [Opening a pull request](#how-to-open-a-pr).
 
 ### 1. Asking and answering questions on GitHub Discussions or on Discord
 
@@ -76,8 +75,11 @@ question won't be visible anymore over time, and it's much harder to find inform
 
 ### 2. Opening new issues on the GitHub issues tab
 
-The 🧨 Diffusers library is robust and reliable thanks to the users who notify us of
-the problems they encounter. So thank you for reporting an issue.
+The 🧨 Diffusers library is robust and reliable thanks to the users who notify us of the problems they encounter. **Opening an issue is the most valuable contribution you can make.**
+
+With AI agents, it has become much easier to implement a PR once the problem is identified and a solution is agreed on. What we cannot produce ourselves is the knowledge of where the library fails in real use. That only comes from people who generate, train, and build with Diffusers. So when you run into a problem, show us how to reproduce it, and discuss with us what should change, you have done the part of the work we cannot do without you. Thank you for reporting an issue.
+
+If you work with an AI agent, ask it to tell you when it runs into a bug, a confusing API, or a wrong doc. Agents are good at working around problems, so these often never reach us. The [agent guide](https://github.com/huggingface/diffusers/blob/main/.ai/AGENTS.md) asks agents to report them to you.
 
 Remember, GitHub issues are reserved for technical questions directly related to the Diffusers library, bug reports, feature requests, or feedback on the library design.
 
@@ -93,9 +95,9 @@ open a new issue nevertheless and link to the related issue.
 
 New issues usually include the following.
 
-#### 2.1. Reproducible, minimal bug reports
+#### 2.1. Reproducible, real-use-case, minimal bug reports
 
-A bug report should always have a reproducible code snippet and be as minimal and concise as possible.
+A bug report should always have a reproducible code snippet, come from a real use case, and be as minimal and concise as possible.
 This means in more detail:
 - Narrow the bug down as much as you can, **do not just dump your whole code file**.
 - Format your code.
@@ -103,7 +105,11 @@ This means in more detail:
 - **Always** provide all necessary information about your environment; for this, you can run: `diffusers-cli env` in your shell and copy-paste the displayed information to the issue.
 - Explain the issue. If the reader doesn't know what the issue is and why it is an issue, (s)he cannot solve it.
 - **Always** make sure the reader can reproduce your issue with as little effort as possible. If your code snippet cannot be run because of missing libraries or undefined variables, the reader cannot help you. Make sure your reproducible code snippet is as minimal as possible and can be copy-pasted into a simple Python shell.
+- Keep it a real use case. Minimal means removing what is unrelated, not replacing the real thing with a contrived example. Whenever possible, the snippet should run end to end, with a real checkpoint, real inputs, and the output you got.
 - If in order to reproduce your issue a model and/or dataset is required, make sure the reader has access to that model or dataset. You can always upload your model or dataset to the [Hub](https://huggingface.co) to make it easily downloadable. Try to keep your model and dataset as small as possible, to make the reproduction of your issue as effortless as possible.
+- Tell us how you found the bug: what you were doing when you ran into it. We prioritize bugs that someone hit while using the library. A bug found by reading the code is lower priority for us.
+- If something used to work, name the last Diffusers version where it worked, or the PR that changed the behavior if you know it.
+- If you changed something from the documented example, like the dtype, the scheduler, or a config option, point it out.
 
 For more information, please have a look through the [How to write a good issue](#how-to-write-a-good-issue) section.
 
@@ -151,13 +157,16 @@ If the diffusion model community released a new model, pipeline, or scheduler th
 
 Also, don't forget to tag the original author of the component (model, scheduler, pipeline, etc.) by GitHub handle if you can find it.
 
-If you want to bring the model to Diffusers yourself, see [Publish a pipeline or model on the Hub](#6-publish-a-pipeline-or-model-on-the-hub) and [Adding pipelines, models, schedulers](#10-adding-pipelines-models-schedulers).
+If you want to bring the model to Diffusers yourself, see [Publish a pipeline or model on the Hub](#6-publish-a-pipeline-or-model-on-the-hub) and [Adding pipelines, models, schedulers](#9-adding-pipelines-models-schedulers).
 
 You can open a request for a model/pipeline/scheduler [here](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=New+model%2Fpipeline%2Fscheduler&template=new-model-addition.yml).
 
 ### 3. Answering issues on the GitHub issues tab
 
-Answering issues on GitHub might require some technical knowledge of Diffusers, but we encourage everybody to give it a try even if you are not 100% certain that your answer is correct.
+Sharing a meaningful insight in a discussion is harder than opening a PR, and more valuable to us. Anyone can ask an AI agent to analyze an issue and write a fix, so an answer that an agent could have written does not add much. What we want is what is unique to you: your experience with the library, your use case, and your judgment.
+
+When an issue already describes the problem and proposes a fix, tell us whether you agree or disagree and why, point out a use case the proposal would break, or add something the discussion has missed. This is not a test with a standard answer, so please don't restate the issue or post another version of the same fix. Comment only when you have something to add. If your feedback is used, we will credit you as a co-author of the PR, even if you did not implement it.
+
 Some tips to give a high-quality answer to an issue:
 - Be as concise and minimal as possible.
 - Stay on topic. An answer to the issue should concern the issue and only the issue.
@@ -168,20 +177,15 @@ Also, many issues tend to be simply off-topic, duplicates of other issues, or ir
 help to the maintainers if you can answer such issues, encouraging the author of the issue to be
 more precise, provide the link to a duplicated issue or redirect them to [GitHub Discussions](https://github.com/huggingface/diffusers/discussions) or [Discord](https://discord.gg/G7tWnz98XR).
 
-If you have verified that the issued bug report is correct and requires a correction in the source code,
-please have a look at the next sections.
+For contributions 5 to 9, except [6](#6-publish-a-pipeline-or-model-on-the-hub), you need to open a PR. The [Opening a pull request](#how-to-open-a-pr) section explains how.
 
-For all contributions, except [6](#6-publish-a-pipeline-or-model-on-the-hub), you need to open a PR. The [Opening a pull request](https://github.com/huggingface/diffusers/pull/15179/changes#how-to-open-a-pr) section explains how.
+### 4. Sharing your thoughts on an "idea-contribution-welcome" issue
 
-### 4. Fixing a "Good first issue"
+Issues marked by the [idea-contribution-welcome](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3Aidea-contribution-welcome) label are open design questions. We are looking for a discussion there, not a PR. Tell us how you would use the feature, what would break for you, or which option you would pick and why. A few sentences are enough.
 
-*Good first issues* are marked by the [Good first issue](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) label. Usually, the issue already
-explains how a potential solution should look so that it is easier to fix.
-If the issue hasn't been closed and you would like to try to fix this issue, you can just leave a message "I would like to try this issue.". There are usually three scenarios:
-- a.) The issue description already proposes a fix. In this case and if the solution makes sense to you, you can open a PR or draft PR to fix it.
-- b.) The issue description does not propose a fix. In this case, propose a fix yourself in a comment on the issue. A few sentences describing the approach are enough. Wait for someone from the Diffusers team to confirm it before you open a PR.
-- c.) There is already an open PR to fix the issue, but the issue hasn't been closed yet. If the PR has gone stale, you can simply open a new PR and link to the stale PR. PRs often go stale if the original contributor who wanted to fix the issue suddenly cannot find the time anymore to proceed. This often happens in open-source and is very normal. In this case, the community will be very happy if you give it a new try and leverage the knowledge of the existing PR. If there is already a PR and it is active, you can help the author by giving suggestions, reviewing the PR or even asking whether you can contribute to the PR.
+If your feedback shapes what we end up building, you are credited as a co-author on the PR.
 
+If you have an idea of your own, the [ideas track](https://github.com/huggingface/diffusers/issues/14529) of the Diffusers MVP program is the place for it: tell us one idea that would increase the impact of Diffusers, in a few sentences and without implementation details.
 
 ### 5. Contribute to the documentation
 
@@ -252,17 +256,19 @@ Once an example script works, please make sure to add a comprehensive `README.md
 
 If you are contributing to the official training examples, please also make sure to add a test to its folder such as [examples/dreambooth/test_dreambooth.py](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/test_dreambooth.py). This is not necessary for non-official training examples.
 
-### 8. Fixing a "Good second issue"
+### 8. Fixing a "contributions-welcome" issue
 
-*Good second issues* are marked by the [Good second issue](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22Good+second+issue%22) label. They are usually more complicated to solve than [Good first issues](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22), the description gives less guidance on the fix, and they require a decent understanding of the library.
+For most issues, what we are looking for is the report itself and the discussion that follows. Once those are done, the fix is usually easy, and we don't welcome PRs that only implement a fix for an issue someone else opened, with a solution that others proposed or already agreed on.
 
-If you are interested in tackling a good second issue, share your take on the issue and the approach you have in mind as a comment, in a few sentences, and get an acknowledgment from a maintainer before you open the PR. If a PR has already been opened for the issue but did not get merged, have a look to understand why before you propose something new.
+The [contributions-welcome](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3Acontributions-welcome) label marks the exceptions: issues where we would like help from the community with the implementation. Some come with a proposed fix. Others only describe the problem, and require a decent understanding of the library.
 
-### 9. Taking on a Diffusers MVP issue
+If you are interested in tackling one, share your take on the issue and the approach you have in mind as a comment, in a few sentences, and get an acknowledgment from a maintainer before you open the PR. If a PR has already been opened for the issue but did not get merged, have a look to understand why before you propose something new.
 
-The [Diffusers MVP program](https://github.com/huggingface/diffusers/issues/12635) lists the issues where we most want help. They work like Good second issues, but are harder and take more time, and the program rewards the contributors who take them on. Share your approach as a comment first and get an acknowledgment from a maintainer before you open the PR. The program also has an [ideas track](https://github.com/huggingface/diffusers/issues/14529): tell us one idea that would increase the impact of Diffusers, in a few sentences and without implementation details.
+The hardest of these are listed in the [Diffusers MVP program](https://github.com/huggingface/diffusers/issues/12635). They take more time, and the program rewards the contributors who take them on.
 
-### 10. Adding pipelines, models, schedulers
+We often work on these issues with contributors we already know from their bug reports, discussions, and earlier PRs, so the contributions above are a good way to get started.
+
+### 9. Adding pipelines, models, schedulers
 
 > [!TIP]
 > If you are the model's author, please get in touch so we can coordinate the integration with you: open a feature request, or drop a comment if one is already open.
@@ -336,7 +342,7 @@ To learn more, read this section of the [~Don't~ Repeat Yourself*](https://huggi
 
 ## How to write a good PR
 
-1. Always start from an issue. Find the issue your pull request addresses, or open one if nobody has, and give maintainers a chance to respond before you write code. The workflow that works best for us is to open an issue, then a discussion of the solution, then a PR based on that discussion. It lets us focus our time on the most impactful issues, agree on the scope before code exists, and avoid duplicate work. Mention the issue number in the PR description (e.g. `Fixes #1234`) so the two are linked.
+1. Always start from an issue. Find the issue your pull request addresses, or open one if nobody has, and give maintainers a chance to respond before you write code. The workflow that works best for us is to open an issue, then a discussion of the solution, then a PR based on that discussion. It lets us focus our time on the most impactful issues, agree on the scope before code exists, and avoid duplicate work. Mention the issue number in the PR description (e.g. `Fixes #1234`) so the two are linked. Please don't open a PR for an issue someone else reported, unless it has the `contributions-welcome` label or a maintainer asked for one.
 2. Be a chameleon. Understand existing design patterns and syntax and make sure your code additions flow seamlessly into the existing code base. Pull requests that significantly diverge from existing design patterns or user interfaces will not be merged.
 3. Be laser focused. A pull request should solve one problem and one problem only. Make sure to not fall into the trap of "also fixing another problem while we're adding it". It is much more difficult to review pull requests that solve multiple, unrelated problems at once.
 4. Fix patterns, not one-offs. One problem can span many files: if the same bug recurs across the codebase, search for every instance and fix them all in one PR with a clear, systematic scope (e.g. "fix mutable defaults across all schedulers"), rather than one PR per instance.
@@ -553,4 +559,4 @@ AI-assisted contributions are welcome, but they must be coordinated, scoped, and
   - The **test commands you ran** and their results (paste relevant output, not just "tests pass").
   - Your **self-review notes** (or a link to the PR comment containing them), as described above.
 
-If you are a model author or part of a team that officially maintains a model, we encourage you to use agents for a new model integration. Follow the repository's [recommended setup](https://github.com/huggingface/diffusers/blob/main/.ai/AGENTS.md) and use the [`model-integration`](https://github.com/huggingface/diffusers/blob/main/.ai/skills/model-integration/SKILL.md) skill. Coordinate the scope with maintainers before opening a PR — see [Adding pipelines, models, schedulers](#10-adding-pipelines-models-schedulers).
+If you are a model author or part of a team that officially maintains a model, we encourage you to use agents for a new model integration. Follow the repository's [recommended setup](https://github.com/huggingface/diffusers/blob/main/.ai/AGENTS.md) and use the [`model-integration`](https://github.com/huggingface/diffusers/blob/main/.ai/skills/model-integration/SKILL.md) skill. Coordinate the scope with maintainers before opening a PR — see [Adding pipelines, models, schedulers](#9-adding-pipelines-models-schedulers).
