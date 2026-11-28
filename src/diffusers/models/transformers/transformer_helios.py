@@ -458,7 +458,8 @@ class HeliosTransformerBlock(nn.Module):
             rotary_emb,
             original_context_length,
         )
-        hidden_states = (hidden_states.float() + attn_output * gate_msa).type_as(hidden_states)
+        # gate_msa is float32, so the residual add is float32 through type promotion (no float32 copy of hidden_states)
+        hidden_states = (hidden_states + attn_output * gate_msa).type_as(hidden_states)
 
         # 2. Cross-attention
         if self.guidance_cross_attn:
@@ -493,7 +494,7 @@ class HeliosTransformerBlock(nn.Module):
             hidden_states
         )
         ff_output = self.ffn(norm_hidden_states)
-        hidden_states = (hidden_states.float() + ff_output.float() * c_gate_msa).type_as(hidden_states)
+        hidden_states = (hidden_states + ff_output * c_gate_msa).type_as(hidden_states)
 
         return hidden_states
 

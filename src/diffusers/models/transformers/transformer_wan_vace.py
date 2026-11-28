@@ -112,7 +112,8 @@ class WanVACETransformerBlock(nn.Module):
             control_hidden_states
         )
         attn_output = self.attn1(norm_hidden_states, None, None, rotary_emb)
-        control_hidden_states = (control_hidden_states.float() + attn_output * gate_msa).type_as(control_hidden_states)
+        # gate_msa is float32, so the residual add is float32 through type promotion (no float32 copy of the input)
+        control_hidden_states = (control_hidden_states + attn_output * gate_msa).type_as(control_hidden_states)
 
         # 2. Cross-attention
         norm_hidden_states = self.norm2(control_hidden_states.float()).type_as(control_hidden_states)
@@ -124,9 +125,7 @@ class WanVACETransformerBlock(nn.Module):
             control_hidden_states
         )
         ff_output = self.ffn(norm_hidden_states)
-        control_hidden_states = (control_hidden_states.float() + ff_output.float() * c_gate_msa).type_as(
-            control_hidden_states
-        )
+        control_hidden_states = (control_hidden_states + ff_output * c_gate_msa).type_as(control_hidden_states)
 
         conditioning_states = None
         if self.proj_out is not None:
