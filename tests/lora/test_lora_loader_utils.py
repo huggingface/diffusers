@@ -29,7 +29,7 @@ from diffusers.models.modeling_utils import ModelMixin
 from diffusers.utils import is_transformers_version
 from diffusers.utils.import_utils import is_peft_available
 
-from ..testing_utils import CaptureLogger, require_peft_backend
+from ..testing_utils import CaptureLogger, is_lora, require_peft_backend
 
 
 if is_peft_available():
@@ -58,6 +58,7 @@ def model_info_mock(monkeypatch):
     return model_info_mock
 
 
+@is_lora
 def test_local_directory_in_offline_mode(lora_weight_path, monkeypatch, model_info_mock):
     monkeypatch.setattr(lora_base, "HF_HUB_OFFLINE", True)
 
@@ -67,6 +68,7 @@ def test_local_directory_in_offline_mode(lora_weight_path, monkeypatch, model_in
     model_info_mock.assert_not_called()
 
 
+@is_lora
 def test_local_directory_with_local_files_only(lora_weight_path, model_info_mock):
     state_dict, _ = StableDiffusionLoraLoaderMixin.lora_state_dict(lora_weight_path.parent, local_files_only=True)
 
@@ -74,6 +76,7 @@ def test_local_directory_with_local_files_only(lora_weight_path, model_info_mock
     model_info_mock.assert_not_called()
 
 
+@is_lora
 def test_local_file_in_offline_mode(lora_weight_path, monkeypatch, model_info_mock):
     monkeypatch.setattr(lora_base, "HF_HUB_OFFLINE", True)
 
@@ -83,6 +86,7 @@ def test_local_file_in_offline_mode(lora_weight_path, monkeypatch, model_info_mo
     model_info_mock.assert_not_called()
 
 
+@is_lora
 def test_remote_repository_in_offline_mode_requires_weight_name(monkeypatch, model_info_mock):
     monkeypatch.setattr(lora_base, "HF_HUB_OFFLINE", True)
 
@@ -92,6 +96,7 @@ def test_remote_repository_in_offline_mode_requires_weight_name(monkeypatch, mod
     model_info_mock.assert_not_called()
 
 
+@is_lora
 def test_local_directory_without_matching_files_returns_none(tmp_path, monkeypatch):
     (tmp_path / "notes.txt").touch()
     monkeypatch.setattr(lora_base, "HF_HUB_OFFLINE", True)
@@ -101,6 +106,7 @@ def test_local_directory_without_matching_files_returns_none(tmp_path, monkeypat
     assert weight_name is None
 
 
+@is_lora
 def test_local_directory_with_multiple_files_warns_and_uses_first(tmp_path, monkeypatch):
     first_path = tmp_path / "first.safetensors"
     second_path = tmp_path / "second.safetensors"
@@ -120,6 +126,7 @@ def test_local_directory_with_multiple_files_warns_and_uses_first(tmp_path, monk
     assert "contains more than one weights file" in cap_logger.out
 
 
+@is_lora
 @require_peft_backend
 def test_unfuse_lora_partial_components_keeps_merged_adapters_in_sync():
     """Regression test for gh-14214.
@@ -163,6 +170,7 @@ def test_unfuse_lora_partial_components_keeps_merged_adapters_in_sync():
     assert pipe.num_fused_loras == 0
 
 
+@is_lora
 @require_peft_backend
 @pytest.mark.skipif(
     not is_transformers_version(">=", "5.6.0"),

@@ -14,6 +14,8 @@
 
 from diffusers.utils.peft_utils import get_peft_kwargs
 
+from ..testing_utils import is_lora
+
 
 def _rank_dict(module_ranks):
     return {f"{module}.lora_B.weight": rank for module, rank in module_ranks.items()}
@@ -33,6 +35,7 @@ def _effective_scale(kwargs, module):
     return alpha / rank
 
 
+@is_lora
 def test_mixed_ranks_without_alphas_apply_at_scale_one():
     # An adapter with per-module ranks and no alpha keys means `W_eff = W + lora_B @ lora_A`,
     # i.e. alpha == rank, so every module must come out at scale 1.0.
@@ -42,6 +45,7 @@ def test_mixed_ranks_without_alphas_apply_at_scale_one():
         assert _effective_scale(kwargs, module) == 1.0
 
 
+@is_lora
 def test_mixed_ranks_without_alphas_are_order_independent():
     # The scale must not depend on which module happens to come first in the state dict.
     module_ranks = {"blocks.0.to_q": 64, "blocks.0.to_v": 64, "blocks.0.adaln": 16}
@@ -52,6 +56,7 @@ def test_mixed_ranks_without_alphas_are_order_independent():
             assert _effective_scale(kwargs, module) == 1.0
 
 
+@is_lora
 def test_uniform_rank_without_alphas_unchanged():
     module_ranks = {"blocks.0.to_q": 32, "blocks.0.to_v": 32}
     kwargs = get_peft_kwargs(_rank_dict(module_ranks), None, _peft_state_dict(module_ranks))
@@ -60,6 +65,7 @@ def test_uniform_rank_without_alphas_unchanged():
     assert kwargs["alpha_pattern"] == {}
 
 
+@is_lora
 def test_mixed_ranks_with_uniform_alpha_keep_declared_alpha():
     # A declared alpha must win over the alpha == rank convention: scale is alpha / rank per module.
     module_ranks = {"blocks.0.adaln": 16, "blocks.0.to_q": 64}
@@ -71,6 +77,7 @@ def test_mixed_ranks_with_uniform_alpha_keep_declared_alpha():
     assert _effective_scale(kwargs, "blocks.0.to_q") == 0.5
 
 
+@is_lora
 def test_mixed_ranks_with_per_module_alphas_unchanged():
     module_ranks = {"blocks.0.adaln": 16, "blocks.0.to_q": 64}
     network_alphas = {"blocks.0.adaln.alpha": 16, "blocks.0.to_q.alpha": 64}
@@ -79,6 +86,7 @@ def test_mixed_ranks_with_per_module_alphas_unchanged():
         assert _effective_scale(kwargs, module) == 1.0
 
 
+@is_lora
 def test_text_encoder_alpha_pattern_names_lora_modules():
     # Regression test for https://github.com/huggingface/diffusers/issues/14970:
     # text-encoder `alpha_pattern` keys must name the LoRA module itself (e.g. `k_proj`),
@@ -102,6 +110,7 @@ def test_text_encoder_alpha_pattern_names_lora_modules():
     assert _effective_scale(kwargs, "encoder.layers.0.self_attn.q_proj") == 1.0
 
 
+@is_lora
 def test_text_encoder_alpha_pattern_handles_mlp_and_text_projection():
     peft_state_dict = {"m.lora_A.weight": None, "m.lora_B.weight": None}
     network_alphas = {
