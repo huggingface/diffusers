@@ -100,10 +100,9 @@ class HunyuanVideo15AttnProcessor2_0:
 
         batch_size, seq_len, heads, dim = query.shape
         attention_mask = F.pad(attention_mask, (seq_len - attention_mask.shape[1], 0), value=True)
-        attention_mask = attention_mask.bool()
-        self_attn_mask_1 = attention_mask.view(batch_size, 1, 1, seq_len).repeat(1, 1, seq_len, 1)
-        self_attn_mask_2 = self_attn_mask_1.transpose(2, 3)
-        attention_mask = (self_attn_mask_1 & self_attn_mask_2).bool()
+        # Key-only padding mask, broadcast over the queries; padded encoder rows are never attended to and the encoder
+        # stream is discarded after the last block.
+        attention_mask = attention_mask.bool().view(batch_size, 1, 1, seq_len)
 
         # 5. Attention
         hidden_states = dispatch_attention_fn(
