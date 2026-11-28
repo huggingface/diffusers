@@ -122,18 +122,23 @@ class Flux3LoopDenoiser(ModularPipelineBlocks):
         components.guider.set_state(step=i, num_inference_steps=block_state.num_inference_steps, timestep=t)
         guider_state = components.guider.prepare_inputs(guider_inputs)
 
-        for guider_state_batch in guider_state:
-            components.guider.prepare_models(components.transformer)
-            cond_kwargs = {input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()}
+        # the guider batches share the image inputs and differ only in the text inputs: the image-only part of the
+        # transformer forward is computed once per step
+        with components.transformer.cache_image_prefix():
+            for guider_state_batch in guider_state:
+                components.guider.prepare_models(components.transformer)
+                cond_kwargs = {
+                    input_name: getattr(guider_state_batch, input_name) for input_name in guider_inputs.keys()
+                }
 
-            guider_state_batch.noise_pred = components.transformer(
-                hidden_states=latents,
-                timestep=timestep,
-                return_dict=False,
-                **transformer_kwargs,
-                **cond_kwargs,
-            )[0]
-            components.guider.cleanup_models(components.transformer)
+                guider_state_batch.noise_pred = components.transformer(
+                    hidden_states=latents,
+                    timestep=timestep,
+                    return_dict=False,
+                    **transformer_kwargs,
+                    **cond_kwargs,
+                )[0]
+                components.guider.cleanup_models(components.transformer)
 
         block_state.noise_pred = components.guider(guider_state)[0]
 
