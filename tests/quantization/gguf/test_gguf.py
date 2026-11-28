@@ -29,7 +29,29 @@ enable_full_determinism()
 
 # Model-level GGUF tests live in `tests/models/testing_utils/quantization.py` and pipeline-level
 # ones in `tests/pipelines/testing_utils/quantization.py`. This module covers backend behavior that
-# fits neither: CUDA kernel correctness.
+# fits neither: checkpoint parsing and CUDA kernel correctness.
+@is_quantization
+@is_gguf
+@require_gguf_version_greater_or_equal("0.10.0")
+def test_load_gguf_checkpoint_bf16_tensor(tmp_path):
+    from diffusers.models.model_loading_utils import load_gguf_checkpoint
+
+    path = str(tmp_path / "bf16.gguf")
+    expected = torch.tensor([[0.5, -1.0, 2.0], [3.0, 0.0, -0.25]], dtype=torch.bfloat16)
+    writer = gguf.GGUFWriter(path, arch="test")
+    writer.add_tensor("norm.weight", expected.view(torch.uint8).numpy(), raw_dtype=gguf.GGMLQuantizationType.BF16)
+    writer.write_header_to_file()
+    writer.write_kv_data_to_file()
+    writer.write_tensors_to_file()
+    writer.close()
+
+    weight = load_gguf_checkpoint(path)["norm.weight"]
+
+    assert not isinstance(weight, GGUFParameter)
+    assert weight.dtype == torch.bfloat16
+    assert torch.equal(weight, expected)
+
+
 @is_quantization
 @is_gguf
 @nightly
