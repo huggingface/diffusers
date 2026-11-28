@@ -90,17 +90,20 @@ def _rotate_half(x: torch.Tensor) -> torch.Tensor:
 
 
 # Copied from diffusers.models.transformers.transformer_stable_audio3._apply_rotary_partial
-def _apply_rotary_partial(t: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
+def _apply_rotary_partial(t: torch.Tensor, freqs: tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
     """Partial RoPE — rotate the first `rot_dim` channels, leave the rest.
 
-    `t` has shape `(batch, seq_len, heads, head_dim)`; `freqs` has shape `(seq_len, rot_dim)`.
+    `t` has shape `(batch, seq_len, heads, head_dim)`; `freqs` is the float32 `(cos, sin)` pair, each of shape
+    `(seq_len, rot_dim)`.
     """
-    rot_dim = freqs.shape[-1]
+    cos, sin = freqs
+    rot_dim = cos.shape[-1]
     out_dtype = t.dtype
     t_rot, t_pass = t[..., :rot_dim], t[..., rot_dim:]
     t_rot = t_rot.float()
-    freqs = freqs[-t_rot.shape[-3] :].float().unsqueeze(1)  # (seq_len, 1, rot_dim) broadcasts over heads
-    t_rot = t_rot * freqs.cos() + _rotate_half(t_rot) * freqs.sin()
+    cos = cos[-t_rot.shape[-3] :].unsqueeze(1)  # (seq_len, 1, rot_dim) broadcasts over heads
+    sin = sin[-t_rot.shape[-3] :].unsqueeze(1)
+    t_rot = t_rot * cos + _rotate_half(t_rot) * sin
     return torch.cat((t_rot.to(out_dtype), t_pass), dim=-1)
 
 
@@ -185,15 +188,21 @@ class SAMEAttnProcessor:
             return x.unflatten(-1, (attn.heads, attn.dim_heads))
 
         N = hidden_states.shape[1]
-        freqs = attn.rope(N, hidden_states.device)
+        freqs = attn.rope(N, hidden_states.device).float()
+        rope = (freqs.cos(), freqs.sin())
 
         if attn.use_differential:
-            q1, q2, k1, k2, v = attn.to_qkv(hidden_states).chunk(5, dim=-1)
-            q1, q2, k1, k2, v = map(heads, (q1, q2, k1, k2, v))
-            q1, q2 = attn.q_norm(q1), attn.q_norm(q2)
-            k1, k2 = attn.k_norm(k1), attn.k_norm(k2)
-            q1, q2 = _apply_rotary_partial(q1, freqs), _apply_rotary_partial(q2, freqs)
-            k1, k2 = _apply_rotary_partial(k1, freqs), _apply_rotary_partial(k2, freqs)
+            # q1 / q2 share q_norm, k1 / k2 share k_norm, and all four share RoPE, so each pair runs as one
+            # (2 * heads)-head tensor
+            inner_dim = attn.heads * attn.dim_heads
+            q, k, v = attn.to_qkv(hidden_states).split([2 * inner_dim, 2 * inner_dim, inner_dim], dim=-1)
+            q = q.unflatten(-1, (2 * attn.heads, attn.dim_heads))
+            k = k.unflatten(-1, (2 * attn.heads, attn.dim_heads))
+            v = heads(v)
+            q = _apply_rotary_partial(attn.q_norm(q), rope)
+            k = _apply_rotary_partial(attn.k_norm(k), rope)
+            q1, q2 = q.chunk(2, dim=2)
+            k1, k2 = k.chunk(2, dim=2)
             out = dispatch_attention_fn(
                 q1, k1, v, attn_mask=attn_mask, backend=self._attention_backend, parallel_config=self._parallel_config
             ) - dispatch_attention_fn(
@@ -203,7 +212,7 @@ class SAMEAttnProcessor:
             q, k, v = attn.to_qkv(hidden_states).chunk(3, dim=-1)
             q, k, v = map(heads, (q, k, v))
             q, k = attn.q_norm(q), attn.k_norm(k)
-            q, k = _apply_rotary_partial(q, freqs), _apply_rotary_partial(k, freqs)
+            q, k = _apply_rotary_partial(q, rope), _apply_rotary_partial(k, rope)
             out = dispatch_attention_fn(
                 q, k, v, attn_mask=attn_mask, backend=self._attention_backend, parallel_config=self._parallel_config
             )
