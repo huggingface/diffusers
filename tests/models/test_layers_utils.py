@@ -22,11 +22,13 @@ from torch import nn
 
 from diffusers.models.attention import GEGLU, AdaLayerNorm, ApproximateGELU
 from diffusers.models.embeddings import get_timestep_embedding
+from diffusers.models.normalization import FP32LayerNorm
 from diffusers.models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
 from diffusers.models.transformers.transformer_2d import Transformer2DModel
 
 from ..testing_utils import (
     backend_manual_seed,
+    require_torch_accelerator,
     require_torch_accelerator_with_fp64,
     require_torch_version_greater_equal,
     torch_device,
@@ -107,6 +109,36 @@ class EmbeddingsTests(unittest.TestCase):
             torch.tensor([-0.9801, -0.9464, -0.9349, -0.3952, 0.8887, -0.9709, 0.5299, -0.2853, -0.9927]),
             1e-3,
         )
+
+
+class FP32LayerNormTests(unittest.TestCase):
+    @require_torch_accelerator
+    def test_fp32_layer_norm_matches_float32_reference(self):
+        # Output and input gradient must equal "layer_norm in float32, cast back" bit for bit.
+        generator = torch.Generator().manual_seed(0)
+        for dtype in (torch.float16, torch.bfloat16):
+            for affine in (True, False):
+                norm = FP32LayerNorm(64, eps=1e-6, elementwise_affine=affine).to(torch_device, dtype)
+                if affine:
+                    with torch.no_grad():
+                        norm.weight.copy_(torch.randn(64, generator=generator))
+                        norm.bias.copy_(torch.randn(64, generator=generator))
+                x = (torch.randn(2, 33, 64, generator=generator) * 3 + 0.5).to(torch_device, dtype)
+                grad = torch.randn(2, 33, 64, generator=generator).to(torch_device, dtype)
+
+                x_out = x.clone().requires_grad_(True)
+                out = norm(x_out)
+                out.backward(grad)
+
+                x_ref = x.clone().requires_grad_(True)
+                weight = norm.weight.float() if affine else None
+                bias = norm.bias.float() if affine else None
+                expected = torch.nn.functional.layer_norm(x_ref.float(), (64,), weight, bias, 1e-6).to(dtype)
+                expected.backward(grad)
+
+                assert out.dtype == dtype
+                assert torch.equal(out, expected), (dtype, affine)
+                assert torch.equal(x_out.grad, x_ref.grad), (dtype, affine)
 
 
 class Upsample2DBlockTests(unittest.TestCase):
