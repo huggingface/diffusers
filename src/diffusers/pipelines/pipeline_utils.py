@@ -1414,9 +1414,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 useful when the CPU memory is a bottleneck but may counteract the benefits of using streams.
             exclude_modules (`Union[str, List[str]]`, defaults to `None`): List of modules to exclude from offloading.
             pin_cpu_memory_in_place (`bool`, defaults to `False`):
-                Only used with `use_stream=True` and `low_cpu_mem_usage=True`. Page-locks the offloaded CPU weights where
-                they already live (e.g. the memory-mapped checkpoint) instead of copying them into a pinned buffer on
-                every forward pass. See [`~hooks.group_offloading.apply_group_offloading`].
+                Only used with `use_stream=True` and `low_cpu_mem_usage=True`. Page-locks the memory-mapped checkpoint
+                files the offloaded CPU weights live in, instead of copying the weights into a pinned buffer on every
+                forward pass. See [`~hooks.group_offloading.apply_group_offloading`].
 
         Example:
             ```python

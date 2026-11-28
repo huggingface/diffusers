@@ -844,7 +844,7 @@ class TestGroupOffloadingPinCpuMemoryInPlace:
         first, second = DummyModel(16, 32, 16, num_layers=2).eval(), DummyModel(16, 32, 16, num_layers=2).eval()
         for model in (first, second):
             model.load_state_dict(shared, assign=True)
-        del shared
+        del model, shared
         kwargs = {
             "offload_type": "block_level",
             "num_blocks_per_group": 1,
@@ -852,6 +852,7 @@ class TestGroupOffloadingPinCpuMemoryInPlace:
             "low_cpu_mem_usage": True,
             "pin_cpu_memory_in_place": True,
         }
+        gc.collect()
         before = len(go_mod._HOST_REGISTERED_RANGES)
         first.enable_group_offload(torch_device, **kwargs)
         second.enable_group_offload(torch_device, **kwargs)
@@ -868,3 +869,56 @@ class TestGroupOffloadingPinCpuMemoryInPlace:
         del second
         gc.collect()
         assert len(go_mod._HOST_REGISTERED_RANGES) == before
+
+    def test_pin_in_place_never_partially_covers_a_tensor(self, tmp_path):
+        import safetensors.torch
+
+        from diffusers.hooks import group_offloading as go_mod
+
+        # Odd sizes: the last weight shares a page with "zzz_other", which safetensors stores after it and which
+        # extends past that page.
+        model = DummyModel(15, 33, 17, num_layers=2).eval()
+        ckpt = tmp_path / "dummy.safetensors"
+        safetensors.torch.save_file({**model.state_dict(), "zzz_other": torch.randn(64, 32)}, str(ckpt))
+        loaded = safetensors.torch.load_file(str(ckpt), device="cpu")
+        other = loaded.pop("zzz_other")
+        model.load_state_dict(loaded, assign=True)
+        model.enable_group_offload(
+            torch_device,
+            offload_type="block_level",
+            num_blocks_per_group=1,
+            use_stream=True,
+            low_cpu_mem_usage=True,
+            pin_cpu_memory_in_place=True,
+        )
+        assert all(param.is_pinned() for param in model.parameters())
+
+        for tensor in [other, *loaded.values()]:
+            begin = tensor.untyped_storage().data_ptr()
+            end = begin + tensor.untyped_storage().nbytes()
+            overlapping = [(s, e) for s, e in go_mod._HOST_REGISTERED_RANGES if s < end and begin < e]
+            assert len(overlapping) == 1 and overlapping[0][0] <= begin and end <= overlapping[0][1]
+        assert torch.equal(other.to(torch_device).cpu(), other)
+
+    def test_pin_in_place_leaves_tensors_not_in_a_file_to_staging(self):
+        from diffusers.hooks import group_offloading as go_mod
+
+        model = DummyModel(16, 32, 16, num_layers=2).eval()
+        model_ref = DummyModel(16, 32, 16, num_layers=2).eval()
+        model_ref.load_state_dict(model.state_dict())
+        model_ref.to(torch_device)
+        gc.collect()
+        before = len(go_mod._HOST_REGISTERED_RANGES)
+        model.enable_group_offload(
+            torch_device,
+            offload_type="block_level",
+            num_blocks_per_group=1,
+            use_stream=True,
+            low_cpu_mem_usage=True,
+            pin_cpu_memory_in_place=True,
+        )
+        assert len(go_mod._HOST_REGISTERED_RANGES) == before
+        assert not any(param.is_pinned() for param in model.parameters())
+        x = torch.randn(4, 16, device=torch_device)
+        with torch.no_grad():
+            assert torch.equal(model(x), model_ref(x))

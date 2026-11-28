@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import bisect
 import hashlib
 import itertools
-import mmap
 import os
 import weakref
 from contextlib import contextmanager, nullcontext
@@ -39,7 +39,7 @@ if is_accelerate_available():
 logger = get_logger(__name__)  # pylint: disable=invalid-name
 
 _STREAM_PINNED_STAGING: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
-# (start, end) -> [number of modules using the range, CPU tensors backing it]
+# (start, end) of a whole file mapping -> [number of modules using it, CPU tensors keeping the mapping alive]
 _HOST_REGISTERED_RANGES: dict[tuple[int, int], list] = {}
 _CUDA_HOST_REGISTER_READ_ONLY = 8
 
@@ -682,11 +682,13 @@ def apply_group_offloading(
             caching lists that need to maintain their object identity across forward passes. If not provided, will be
             inferred from the module's `_skip_keys` attribute if it exists.
         pin_cpu_memory_in_place (`bool`, defaults to `False`):
-            Only used with `use_stream=True` and `low_cpu_mem_usage=True`. If True, the CPU tensors of the module are
-            page-locked where they already live (for example the memory-mapped safetensors file) with
-            `cudaHostRegister`, so streamed onloading copies them to the device directly instead of first copying them
-            into a pinned buffer on every forward pass. No second copy of the weights is allocated, but the registered
-            pages stay resident and cannot be reclaimed by the OS until the module is garbage collected.
+            Only used with `use_stream=True` and `low_cpu_mem_usage=True`. If True, CPU tensors of the module that are
+            views of a memory-mapped file (as loaded from safetensors with `low_cpu_mem_usage=True`) are page-locked
+            where they live with `cudaHostRegister`, so streamed onloading copies them to the device directly instead
+            of first copying them into a pinned buffer on every forward pass. Each file mapping is registered as a
+            whole, so every tensor of that file is pinned, and its pages stay resident and cannot be reclaimed by the
+            OS until the module is garbage collected. No second copy of the weights is allocated. Other CPU tensors,
+            and every tensor on platforms without `/proc/self/maps`, use the pinned staging path.
 
     Example:
         ```python
@@ -779,62 +781,87 @@ def _release_host_ranges(ranges: list[tuple[int, int]]) -> None:
         del _HOST_REGISTERED_RANGES[key]
 
 
+def _file_mappings() -> list[tuple[int, int]]:
+    # Linux only; elsewhere nothing is page-locked in place.
+    try:
+        with open("/proc/self/maps") as f:
+            lines = f.readlines()
+    except OSError:
+        return []
+    mappings = []
+    for line in lines:
+        fields = line.split(maxsplit=5)
+        if len(fields) == 6 and fields[5].startswith("/") and not fields[5].startswith(("/dev/", "/memfd:")):
+            start, end = fields[0].split("-")
+            mappings.append((int(start, 16), int(end, 16)))
+    return sorted(mappings)
+
+
 def _pin_cpu_tensors_in_place(module: torch.nn.Module) -> None:
     if not torch.cuda.is_available():
         logger.warning("`pin_cpu_memory_in_place=True` needs a CUDA/ROCm device; falling back to pinned staging.")
         return
-    page = mmap.PAGESIZE
-    spans = []
-    keepalive = []
+    # Whole file mappings are registered, never parts of one: CUDA rejects a copy that lies partly inside a
+    # registration, so page-rounded spans would break unregistered neighbours sharing the edge pages.
+    mappings = _file_mappings()
+    starts = [start for start, _ in mappings]
+    tensors_by_mapping: dict[tuple[int, int], list[torch.Tensor]] = {}
+    rejected = set()
+    num_skipped = 0
     for tensor in itertools.chain(module.parameters(), module.buffers()):
         if tensor.device.type != "cpu" or tensor.numel() == 0 or _is_torchao_tensor(tensor):
             continue
-        start = tensor.data_ptr() // page * page
-        end = -(-(tensor.data_ptr() + tensor.numel() * tensor.element_size()) // page) * page
-        # Pinned by another module's registration: still take a reference. Pinned any other way: leave it alone.
-        if tensor.is_pinned() and not any(
-            r_start < end and start < r_end for r_start, r_end in _HOST_REGISTERED_RANGES
-        ):
+        storage = tensor.untyped_storage()
+        begin, end = storage.data_ptr(), storage.data_ptr() + storage.nbytes()
+        overlapping = []
+        i = max(bisect.bisect_right(starts, begin) - 1, 0)
+        while i < len(mappings) and mappings[i][0] < end:
+            if begin < mappings[i][1]:
+                overlapping.append(mappings[i])
+            i += 1
+        inside = len(overlapping) == 1 and overlapping[0][0] <= begin and end <= overlapping[0][1]
+        # Pinned through an existing registration: share it. Pinned any other way: leave the mapping alone.
+        if not inside or (tensor.is_pinned() and overlapping[0] not in _HOST_REGISTERED_RANGES):
+            rejected.update(overlapping)
+            num_skipped += 1
             continue
-        keepalive.append(tensor.data)
-        spans.append((start, end))
-    spans.sort()
-    merged = []
-    for start, end in spans:
-        if merged and start <= merged[-1][1]:
-            merged[-1][1] = max(merged[-1][1], end)
-        else:
-            merged.append([start, end])
+        tensors_by_mapping.setdefault(overlapping[0], []).append(tensor.data)
 
     cudart = torch.cuda.cudart()
     held = []
-    for start, end in merged:
-        # Ranges already registered by another module (e.g. a shared mmap page) are shared, not registered again.
-        for key in sorted(_HOST_REGISTERED_RANGES):
-            r_start, r_end = key
-            if r_end <= start or r_start >= end:
-                continue
-            if r_start > start:
-                held += _register_host_range(cudart, start, r_start, keepalive)
-            _HOST_REGISTERED_RANGES[key][0] += 1
-            held.append(key)
-            start = max(start, r_end)
-        if start < end:
-            held += _register_host_range(cudart, start, end, keepalive)
+    for mapping, tensors in tensors_by_mapping.items():
+        if mapping in _HOST_REGISTERED_RANGES:
+            _HOST_REGISTERED_RANGES[mapping][0] += 1
+            held.append(mapping)
+        elif mapping not in rejected and _register_host_range(cudart, mapping, tensors):
+            held.append(mapping)
+        else:
+            num_skipped += len(tensors)
+    if num_skipped and not held:
+        logger.warning(
+            "`pin_cpu_memory_in_place=True` has no effect: none of the CPU tensors is a view of a memory-mapped file "
+            "that can be page-locked as a whole (load the model from safetensors with `low_cpu_mem_usage=True`)."
+        )
+    elif num_skipped:
+        logger.info(
+            f"{num_skipped} CPU tensors are not views of a memory-mapped file that can be page-locked as a whole; "
+            "they use pinned staging."
+        )
     if held:
         weakref.finalize(module, _release_host_ranges, held)
 
 
-def _register_host_range(cudart, start: int, end: int, keepalive: list[torch.Tensor]) -> list[tuple[int, int]]:
+def _register_host_range(cudart, mapping: tuple[int, int], keepalive: list[torch.Tensor]) -> bool:
+    start, end = mapping
     # Read-only first: memory-mapped checkpoints are usually mapped without write permission.
     for flags in (_CUDA_HOST_REGISTER_READ_ONLY, 0):
         if int(cudart.cudaHostRegister(start, end - start, flags)) == 0:
             # The backing tensors (and so their mmap) live as long as the registration: unmapping a still-registered
             # range corrupts the runtime's host-memory tracking.
-            _HOST_REGISTERED_RANGES[(start, end)] = [1, keepalive]
-            return [(start, end)]
-    logger.warning("Could not page-lock a CPU memory range in place; it will use pinned staging instead.")
-    return []
+            _HOST_REGISTERED_RANGES[mapping] = [1, keepalive]
+            return True
+    logger.warning("Could not page-lock a memory-mapped CPU range in place; it will use pinned staging instead.")
+    return False
 
 
 def _apply_group_offloading_block_level(module: torch.nn.Module, config: GroupOffloadingConfig) -> None:
