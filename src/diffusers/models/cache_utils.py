@@ -70,7 +70,6 @@ class CacheMixin:
         from ..hooks import (
             FasterCacheConfig,
             FirstBlockCacheConfig,
-            HookRegistry,
             MagCacheConfig,
             PyramidAttentionBroadcastConfig,
             SeaCacheConfig,
@@ -106,11 +105,6 @@ class CacheMixin:
             apply_taylorseer_cache(self, config)
         else:
             raise ValueError(f"Cache config {type(config)} is not supported.")
-
-        # Applying a cache technique registers hooks on child blocks, which stales any
-        # `_child_registries_cache` built earlier (e.g. by a prior `cache_context`). Invalidate it
-        # so later context updates reach the freshly-registered block hooks.
-        HookRegistry.check_if_exists_or_initialize(self).invalidate_child_registries_cache()
 
         self._cache_config = config
 

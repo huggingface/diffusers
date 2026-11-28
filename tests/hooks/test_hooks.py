@@ -18,11 +18,24 @@ import inspect
 import pytest
 import torch
 
+from diffusers import (
+    FasterCacheConfig,
+    FirstBlockCacheConfig,
+    FluxTransformer2DModel,
+    MagCacheConfig,
+    PyramidAttentionBroadcastConfig,
+    TaylorSeerCacheConfig,
+    apply_faster_cache,
+    apply_first_block_cache,
+    apply_mag_cache,
+    apply_pyramid_attention_broadcast,
+    apply_taylorseer_cache,
+)
 from diffusers.hooks import HookRegistry, ModelHook
 from diffusers.training_utils import free_memory
 from diffusers.utils.logging import get_logger
 
-from ..testing_utils import CaptureLogger, torch_device
+from ..testing_utils import CaptureLogger, assert_tensors_close, torch_device
 
 
 logger = get_logger(__name__)  # pylint: disable=invalid-name
@@ -225,6 +238,77 @@ class TestHooks:
         # Invalidating across the tree makes the new child registry reachable from the parent.
         parent.invalidate_child_registries_cache()
         assert child in parent._get_child_registries()
+
+    @pytest.mark.parametrize(
+        "apply_cache, cache_config",
+        [
+            (apply_first_block_cache, lambda: FirstBlockCacheConfig(threshold=1.0)),
+            (
+                apply_pyramid_attention_broadcast,
+                lambda: PyramidAttentionBroadcastConfig(spatial_attention_block_skip_range=2),
+            ),
+            (
+                apply_faster_cache,
+                lambda: FasterCacheConfig(tensor_format="BCHW", is_guidance_distilled=True),
+            ),
+            (apply_taylorseer_cache, lambda: TaylorSeerCacheConfig(disable_cache_before_step=1)),
+            (
+                apply_mag_cache,
+                lambda: MagCacheConfig(
+                    num_inference_steps=2, retention_ratio=0.0, threshold=100.0, mag_ratios=[1.0, 1.0]
+                ),
+            ),
+        ],
+    )
+    @torch.no_grad()
+    def test_apply_cache_after_cache_context(self, apply_cache, cache_config):
+        # A pipeline calls the model inside `cache_context` even when no cache is applied, which builds the
+        # child-registry cache of the model. Applying a cache afterwards must behave as on a fresh model.
+        def get_model():
+            torch.manual_seed(0)
+            return FluxTransformer2DModel(
+                patch_size=1,
+                in_channels=4,
+                num_layers=1,
+                num_single_layers=1,
+                attention_head_dim=16,
+                num_attention_heads=2,
+                joint_attention_dim=32,
+                pooled_projection_dim=32,
+                axes_dims_rope=[4, 4, 8],
+            ).to(torch_device)
+
+        generator = torch.Generator("cpu").manual_seed(0)
+        inputs = {
+            "hidden_states": torch.randn(1, 16, 4, generator=generator).to(torch_device),
+            "encoder_hidden_states": torch.randn(1, 8, 32, generator=generator).to(torch_device),
+            "pooled_projections": torch.randn(1, 32, generator=generator).to(torch_device),
+            "img_ids": torch.randn(16, 3, generator=generator).to(torch_device),
+            "txt_ids": torch.randn(8, 3, generator=generator).to(torch_device),
+            "timestep": torch.tensor([1.0], device=torch_device),
+            "return_dict": False,
+        }
+
+        def run_denoising_loop(model):
+            outputs = []
+            for step_index in range(2):
+                for name in ("cond", "uncond"):
+                    with model.cache_context(name, timestep=500, step_index=step_index, num_inference_steps=2):
+                        step_inputs = {**inputs, "hidden_states": inputs["hidden_states"] + 0.1 * len(outputs)}
+                        outputs.append(model(**step_inputs)[0])
+            return torch.stack(outputs)
+
+        expected_model = get_model()
+        apply_cache(expected_model, cache_config())
+        expected_output = run_denoising_loop(expected_model)
+
+        model = get_model()
+        with model.cache_context("cond", timestep=500):
+            model(**inputs)
+        apply_cache(model, cache_config())
+        output = run_denoising_loop(model)
+
+        assert_tensors_close(output, expected_output, atol=1e-6, rtol=0)
 
     def test_inference(self):
         registry = HookRegistry.check_if_exists_or_initialize(self.model)

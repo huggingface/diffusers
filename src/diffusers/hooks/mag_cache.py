@@ -405,8 +405,9 @@ def apply_mag_cache(module: torch.nn.Module, config: MagCacheConfig) -> None:
         config (`MagCacheConfig`):
             The configuration for MagCache.
     """
-    # Initialize registry on the root module so the Pipeline can set context.
-    HookRegistry.check_if_exists_or_initialize(module)
+    # Initialize registry on the root module so the Pipeline can set context, and drop its cached child registries so
+    # that the context also reaches the block hooks registered below.
+    HookRegistry.check_if_exists_or_initialize(module).invalidate_child_registries_cache()
 
     state_manager = StateManager(MagCacheState, (), {})
     remaining_blocks = []

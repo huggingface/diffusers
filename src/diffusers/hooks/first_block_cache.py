@@ -245,6 +245,8 @@ def apply_first_block_cache(module: torch.nn.Module, config: FirstBlockCacheConf
     logger.debug(f"Applying FBCBlockHook to tail block '{tail_block_name}'")
     _apply_fbc_block_hook(tail_block, state_manager, is_tail=True)
 
+    HookRegistry.check_if_exists_or_initialize(module).invalidate_child_registries_cache()
+
 
 def _apply_fbc_head_block_hook(block: torch.nn.Module, state_manager: StateManager, threshold: float) -> None:
     registry = HookRegistry.check_if_exists_or_initialize(block)

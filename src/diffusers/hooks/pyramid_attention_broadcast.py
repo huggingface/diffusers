@@ -252,6 +252,8 @@ def apply_pyramid_attention_broadcast(module: torch.nn.Module, config: PyramidAt
             continue
         _apply_pyramid_attention_broadcast_on_attention_class(name, submodule, config)
 
+    HookRegistry.check_if_exists_or_initialize(module).invalidate_child_registries_cache()
+
 
 def _apply_pyramid_attention_broadcast_on_attention_class(
     name: str, module: Attention, config: PyramidAttentionBroadcastConfig

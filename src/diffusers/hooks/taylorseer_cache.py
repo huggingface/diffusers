@@ -311,6 +311,8 @@ def apply_taylorseer_cache(module: torch.nn.Module, config: TaylorSeerCacheConfi
             is_inactive=matches_inactive,
         )
 
+    HookRegistry.check_if_exists_or_initialize(module).invalidate_child_registries_cache()
+
 
 def _apply_taylorseer_cache_hook(
     module: nn.Module,
