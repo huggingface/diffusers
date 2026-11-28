@@ -466,5 +466,28 @@ class GroupOffloadTesterMixin(BasePipelineOutputMixin):
 
 @is_memory
 @require_accelerator
+class SplitDeviceTesterMixin(BasePipelineOutputMixin):
+    """Inference with the `accelerator_components` on the accelerator and every other component on the CPU.
+
+    Not part of `MemoryTesterMixin`: compose it for the pipelines that support this placement, and set
+    `accelerator_components` on the test class.
+    """
+
+    def test_split_device_forward_pass(self, base_pipe_output, expected_max_diff=1e-4):
+        pipe = self.get_pipeline()
+        for name in self.accelerator_components:
+            getattr(pipe, name).to(torch_device)
+
+        output = self.run_pipe(pipe)
+        assert_tensors_close(
+            output.cpu(),
+            base_pipe_output.cpu(),
+            atol=expected_max_diff,
+            msg="running the other components on the CPU should not affect the inference results",
+        )
+
+
+@is_memory
+@require_accelerator
 class MemoryTesterMixin(PipelineOffloadTesterMixin, GroupOffloadTesterMixin, LayerwiseCastingTesterMixin):
     """Umbrella mixin bundling all memory-placement tests (cf. model-level `MemoryTesterMixin`)."""

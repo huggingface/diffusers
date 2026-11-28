@@ -18,7 +18,7 @@ from diffusers import LTX2ConditionPipeline
 from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
 
 from ...testing_utils import enable_full_determinism
-from ..testing_utils import PipelineTesterMixin
+from ..testing_utils import PipelineTesterMixin, SplitDeviceTesterMixin
 from .testing_utils import (
     LTX2BaseTesterConfig,
     LTX2LoraMemoryTesterMixin,
@@ -88,6 +88,12 @@ class TestLTX2ConditionPipeline(LTX2ConditionPipelineTesterConfig, PipelineTeste
 
 class TestLTX2ConditionPipelineMemory(LTX2ConditionPipelineTesterConfig, LTX2MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the LTX2 condition pipeline."""
+
+
+class TestLTX2ConditionPipelineSplitDevice(LTX2ConditionPipelineTesterConfig, SplitDeviceTesterMixin):
+    """Split-device tests (transformer on the accelerator, other components on CPU) for the LTX2 condition pipeline."""
+
+    accelerator_components = ("transformer",)
 
 
 class TestLTX2ConditionPipelineLoRA(LTX2ConditionPipelineTesterConfig, LTX2LoraTesterMixin):

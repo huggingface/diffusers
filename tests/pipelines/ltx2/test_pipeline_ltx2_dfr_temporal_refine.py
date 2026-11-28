@@ -27,7 +27,7 @@ from diffusers.pipelines.ltx2.pipeline_ltx2_condition import LTX2VideoCondition
 from diffusers.pipelines.ltx2.utils import ANCHOR_KEYFRAME_STRENGTH
 
 from ...testing_utils import enable_full_determinism, torch_device
-from ..testing_utils import BasePipelineTesterConfig, PipelineTesterMixin
+from ..testing_utils import BasePipelineTesterConfig, PipelineTesterMixin, SplitDeviceTesterMixin
 from .testing_utils import get_dfr_dummy_components, get_dfr_dummy_inputs, get_temporal_dummy_components
 
 
@@ -306,3 +306,7 @@ class TestLTX2DFRTemporalRefinePipeline(LTX2DFRTemporalRefinePipelineTesterConfi
         _, anchor_latent, strength = round_2_anchors[0]
         assert strength == ANCHOR_KEYFRAME_STRENGTH
         assert torch.equal(pipe._pack_latents(anchor_latent), first_tile_slot)
+
+
+class TestLTX2DFRTemporalRefinePipelineSplitDevice(LTX2DFRTemporalRefinePipelineTesterConfig, SplitDeviceTesterMixin):
+    accelerator_components = ("transformer",)

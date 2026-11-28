@@ -18,7 +18,7 @@ import torch
 from diffusers import LTX2Pipeline
 
 from ...testing_utils import assert_tensors_close, enable_full_determinism, torch_device
-from ..testing_utils import PipelineTesterMixin
+from ..testing_utils import PipelineTesterMixin, SplitDeviceTesterMixin
 from .testing_utils import (
     LTX2BaseTesterConfig,
     LTX2LoraMemoryTesterMixin,
@@ -277,6 +277,12 @@ class TestLTX2Pipeline(LTX2PipelineTesterConfig, PipelineTesterMixin):
 
 class TestLTX2PipelineMemory(LTX2PipelineTesterConfig, LTX2MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the LTX2 pipeline."""
+
+
+class TestLTX2PipelineSplitDevice(LTX2PipelineTesterConfig, SplitDeviceTesterMixin):
+    """Split-device tests (transformer on the accelerator, other components on CPU) for the LTX2 pipeline."""
+
+    accelerator_components = ("transformer",)
 
 
 class TestLTX2PipelineLoRA(LTX2PipelineTesterConfig, LTX2LoraTesterMixin):

@@ -36,7 +36,7 @@ from ...models.condition_embedders import LTX2TextConnectors
 from ...models.transformers import LTX2VideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler, LTXEulerAncestralRFScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .dfr_layout import LTX2DFREpilogueTile, resolve_canvas, video_tile_plan
@@ -505,15 +505,17 @@ class LTX2DFRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
         )
         text_input_ids = text_inputs.input_ids
         prompt_attention_mask = text_inputs.attention_mask
-        text_input_ids = text_input_ids.to(device)
-        prompt_attention_mask = prompt_attention_mask.to(device)
+        model_device = get_module_execution_device(self.text_encoder)
 
         text_encoder_outputs = self.text_encoder(
-            input_ids=text_input_ids, attention_mask=prompt_attention_mask, output_hidden_states=True
+            input_ids=text_input_ids.to(model_device),
+            attention_mask=prompt_attention_mask.to(model_device),
+            output_hidden_states=True,
         )
         text_encoder_hidden_states = text_encoder_outputs.hidden_states
         text_encoder_hidden_states = torch.stack(text_encoder_hidden_states, dim=-1)
-        prompt_embeds = text_encoder_hidden_states.flatten(2, 3).to(dtype=dtype)  # Pack to 3D
+        prompt_embeds = text_encoder_hidden_states.flatten(2, 3).to(device=device, dtype=dtype)  # Pack to 3D
+        prompt_attention_mask = prompt_attention_mask.to(device)
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         _, seq_len, _ = prompt_embeds.shape
@@ -1206,7 +1208,7 @@ class LTX2DFRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
         The returned index is on `num_frames`' own pixel grid; carrying it onto a refined canvas is the caller's job.
         """
         condition_frames, condition_strengths, condition_indices, condition_pixel_frames = self.preprocess_conditions(
-            conditions, height, width, num_frames, device=device
+            conditions, height, width, num_frames, device=get_module_execution_device(self.vae)
         )
         encoded = []
         for pixels, strength, latent_index, num_pixel_frames in zip(
@@ -1505,7 +1507,11 @@ class LTX2DFRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
                 )
                 plane = (1 - decode_noise_scale) * plane + decode_noise_scale * noise
                 timestep = torch.full((plane.shape[0],), decode_timestep, device=device, dtype=plane.dtype)
-            frames = self.vae.decode(plane.to(self.vae.dtype), timestep, return_dict=False)[0]
+            frames = self.vae.decode(
+                plane.to(device=get_module_execution_device(self.vae), dtype=self.vae.dtype),
+                timestep,
+                return_dict=False,
+            )[0]
 
             # PIL is the reference's Lanczos, and it wants one 8-bit channels-last image at a time.
             stretched_batch = []
@@ -1515,7 +1521,9 @@ class LTX2DFRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
                 image = image.resize((image.width * 2, image.height * 2), resample=PIL.Image.Resampling.LANCZOS)
                 stretched = torch.from_numpy(np.asarray(image, dtype=np.float32) / 127.5 - 1.0)
                 stretched_batch.append(stretched.permute(2, 0, 1).unsqueeze(1))
-            stretched = torch.stack(stretched_batch).to(device=device, dtype=self.vae.dtype)
+            stretched = torch.stack(stretched_batch).to(
+                device=get_module_execution_device(self.vae), dtype=self.vae.dtype
+            )
 
             encoded.append(retrieve_latents(self.vae.encode(stretched), sample_mode="argmax"))
         return torch.cat(encoded, dim=2).to(device=device, dtype=dtype)
@@ -1763,8 +1771,14 @@ class LTX2DFRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
             max_sequence_length=max_sequence_length,
             device=device,
         )
-        video_prompt_embeds, audio_prompt_embeds, connector_attention_mask = self.connectors(
-            prompt_embeds, prompt_attention_mask, padding_side=self.tokenizer_padding_side
+        connectors_device = get_module_execution_device(self.connectors)
+        connector_outputs = self.connectors(
+            prompt_embeds.to(connectors_device),
+            prompt_attention_mask.to(connectors_device),
+            padding_side=self.tokenizer_padding_side,
+        )
+        video_prompt_embeds, audio_prompt_embeds, connector_attention_mask = (
+            output.to(device) for output in connector_outputs
         )
 
         if num_frames is None:
@@ -1772,9 +1786,10 @@ class LTX2DFRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
                 raise ValueError(
                     "`num_frames` must be supplied when the pipeline has no `duration_head` component to predict it."
                 )
+            duration_head_device = get_module_execution_device(self.duration_head)
             num_frames = self.duration_head.predict_num_frames(
-                video_prompt_embeds[:1],
-                audio_prompt_embeds[:1],
+                video_prompt_embeds[:1].to(duration_head_device),
+                audio_prompt_embeds[:1].to(duration_head_device),
                 frame_rate=frame_rate,
                 temporal_compression_ratio=self.vae_temporal_compression_ratio,
                 min_seconds=min_seconds,
@@ -1943,10 +1958,15 @@ class LTX2DFRPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoaderMixi
             video_latents = self._denormalize_latents(
                 video_latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
             )
-            video = self.vae.decode(video_latents.to(self.vae.dtype), timestep, return_dict=False)[0]
+            video_latents = video_latents.to(device=get_module_execution_device(self.vae), dtype=self.vae.dtype)
+            video = self.vae.decode(video_latents, timestep, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
 
-            audio = self.vocoder(self.audio_vae.decode(public_audio.to(self.audio_vae.dtype), return_dict=False)[0])
+            public_audio = public_audio.to(
+                device=get_module_execution_device(self.audio_vae), dtype=self.audio_vae.dtype
+            )
+            generated_mel_spectrograms = self.audio_vae.decode(public_audio, return_dict=False)[0]
+            audio = self.vocoder(generated_mel_spectrograms.to(get_module_execution_device(self.vocoder)))
             audio_samples = min(
                 audio.shape[-1], round(requested_frames / frame_rate * self.vocoder.config.output_sampling_rate)
             )

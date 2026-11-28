@@ -38,7 +38,7 @@ from ...models.condition_embedders import LTX2TextConnectors
 from ...models.transformers import LTX2VideoTransformer3DModel
 from ...schedulers import FlowMatchEulerDiscreteScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_ltx2_condition import LTX2VideoCondition
@@ -416,15 +416,17 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
         )
         text_input_ids = text_inputs.input_ids
         prompt_attention_mask = text_inputs.attention_mask
-        text_input_ids = text_input_ids.to(device)
-        prompt_attention_mask = prompt_attention_mask.to(device)
+        model_device = get_module_execution_device(self.text_encoder)
 
         text_encoder_outputs = self.text_encoder(
-            input_ids=text_input_ids, attention_mask=prompt_attention_mask, output_hidden_states=True
+            input_ids=text_input_ids.to(model_device),
+            attention_mask=prompt_attention_mask.to(model_device),
+            output_hidden_states=True,
         )
         text_encoder_hidden_states = text_encoder_outputs.hidden_states
         text_encoder_hidden_states = torch.stack(text_encoder_hidden_states, dim=-1)
-        prompt_embeds = text_encoder_hidden_states.flatten(2, 3).to(dtype=dtype)  # Pack to 3D
+        prompt_embeds = text_encoder_hidden_states.flatten(2, 3).to(device=device, dtype=dtype)  # Pack to 3D
+        prompt_attention_mask = prompt_attention_mask.to(device)
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         _, seq_len, _ = prompt_embeds.shape
@@ -1182,7 +1184,7 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
             )
 
         condition_frames, condition_strengths, condition_indices, condition_pixel_frames = self.preprocess_conditions(
-            conditions, height, width, num_frames, device=device
+            conditions, height, width, num_frames, device=get_module_execution_device(self.vae)
         )
         # Encode each condition through the VAE. We keep both the 5D latent (for coord computation) and the packed
         # 3D latent (for first-frame replacement or keyframe append).
@@ -1426,7 +1428,7 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
             ref_pixels = self.video_processor.preprocess_video(video_like, ref_height, ref_width, resize_mode="crop")
             # Trim to num_frames
             ref_pixels = ref_pixels[:, :, :num_frames]
-            ref_pixels = ref_pixels.to(dtype=self.vae.dtype, device=device)
+            ref_pixels = ref_pixels.to(dtype=self.vae.dtype, device=get_module_execution_device(self.vae))
 
             # Encode through VAE
             ref_latent = retrieve_latents(self.vae.encode(ref_pixels), generator=generator, sample_mode="argmax")
@@ -2076,8 +2078,14 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
-        connector_prompt_embeds, connector_audio_prompt_embeds, connector_attention_mask = self.connectors(
-            prompt_embeds, prompt_attention_mask, padding_side=self.tokenizer_padding_side
+        connectors_device = get_module_execution_device(self.connectors)
+        connector_outputs = self.connectors(
+            prompt_embeds.to(connectors_device),
+            prompt_attention_mask.to(connectors_device),
+            padding_side=self.tokenizer_padding_side,
+        )
+        connector_prompt_embeds, connector_audio_prompt_embeds, connector_attention_mask = (
+            output.to(device) for output in connector_outputs
         )
 
         # 4. Prepare latent variables
@@ -2541,13 +2549,15 @@ class LTX2InContextPipeline(DiffusionPipeline, FromSingleFileMixin, LTX2LoraLoad
                 latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
             )
 
-            latents = latents.to(self.vae.dtype)
+            latents = latents.to(device=get_module_execution_device(self.vae), dtype=self.vae.dtype)
             video = self.vae.decode(latents, timestep, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
 
-            audio_latents = audio_latents.to(self.audio_vae.dtype)
+            audio_latents = audio_latents.to(
+                device=get_module_execution_device(self.audio_vae), dtype=self.audio_vae.dtype
+            )
             generated_mel_spectrograms = self.audio_vae.decode(audio_latents, return_dict=False)[0]
-            audio = self.vocoder(generated_mel_spectrograms)
+            audio = self.vocoder(generated_mel_spectrograms.to(get_module_execution_device(self.vocoder)))
 
         # Offload all models
         self.maybe_free_model_hooks()

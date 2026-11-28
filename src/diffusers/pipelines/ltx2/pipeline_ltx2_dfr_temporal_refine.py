@@ -34,7 +34,7 @@ from ...models.latent_upscaler import LTX2LatentUpsamplerModel
 from ...models.transformers import LTX2VideoTransformer3DModel
 from ...schedulers import LTXEulerAncestralRFScheduler
 from ...utils import is_torch_xla_available, logging, replace_example_docstring
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import get_module_execution_device, randn_tensor
 from ...video_processor import VideoProcessor
 from ..pipeline_utils import DiffusionPipeline
 from .dfr_layout import temporal_tile_plan
@@ -445,15 +445,17 @@ class LTX2DFRTemporalRefinePipeline(DiffusionPipeline, FromSingleFileMixin, LTX2
         )
         text_input_ids = text_inputs.input_ids
         prompt_attention_mask = text_inputs.attention_mask
-        text_input_ids = text_input_ids.to(device)
-        prompt_attention_mask = prompt_attention_mask.to(device)
+        model_device = get_module_execution_device(self.text_encoder)
 
         text_encoder_outputs = self.text_encoder(
-            input_ids=text_input_ids, attention_mask=prompt_attention_mask, output_hidden_states=True
+            input_ids=text_input_ids.to(model_device),
+            attention_mask=prompt_attention_mask.to(model_device),
+            output_hidden_states=True,
         )
         text_encoder_hidden_states = text_encoder_outputs.hidden_states
         text_encoder_hidden_states = torch.stack(text_encoder_hidden_states, dim=-1)
-        prompt_embeds = text_encoder_hidden_states.flatten(2, 3).to(dtype=dtype)  # Pack to 3D
+        prompt_embeds = text_encoder_hidden_states.flatten(2, 3).to(device=device, dtype=dtype)  # Pack to 3D
+        prompt_attention_mask = prompt_attention_mask.to(device)
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         _, seq_len, _ = prompt_embeds.shape
@@ -1118,7 +1120,7 @@ class LTX2DFRTemporalRefinePipeline(DiffusionPipeline, FromSingleFileMixin, LTX2
         The returned index is on `num_frames`' own pixel grid; carrying it onto a refined canvas is the caller's job.
         """
         condition_frames, condition_strengths, condition_indices, condition_pixel_frames = self.preprocess_conditions(
-            conditions, height, width, num_frames, device=device
+            conditions, height, width, num_frames, device=get_module_execution_device(self.vae)
         )
         encoded = []
         for pixels, strength, latent_index, num_pixel_frames in zip(
@@ -1528,8 +1530,14 @@ class LTX2DFRTemporalRefinePipeline(DiffusionPipeline, FromSingleFileMixin, LTX2
             max_sequence_length=max_sequence_length,
             device=device,
         )
-        video_prompt_embeds, audio_prompt_embeds, connector_attention_mask = self.connectors(
-            prompt_embeds, prompt_attention_mask, padding_side=self.tokenizer_padding_side
+        connectors_device = get_module_execution_device(self.connectors)
+        connector_outputs = self.connectors(
+            prompt_embeds.to(connectors_device),
+            prompt_attention_mask.to(connectors_device),
+            padding_side=self.tokenizer_padding_side,
+        )
+        video_prompt_embeds, audio_prompt_embeds, connector_attention_mask = (
+            output.to(device) for output in connector_outputs
         )
 
         num_channels_latents = self.transformer.config.in_channels
@@ -1740,10 +1748,15 @@ class LTX2DFRTemporalRefinePipeline(DiffusionPipeline, FromSingleFileMixin, LTX2
             video_latents = self._denormalize_latents(
                 video_latents, self.vae.latents_mean, self.vae.latents_std, self.vae.config.scaling_factor
             )
-            video = self.vae.decode(video_latents.to(self.vae.dtype), timestep, return_dict=False)[0]
+            video_latents = video_latents.to(device=get_module_execution_device(self.vae), dtype=self.vae.dtype)
+            video = self.vae.decode(video_latents, timestep, return_dict=False)[0]
             video = self.video_processor.postprocess_video(video, output_type=output_type)
 
-            audio = self.vocoder(self.audio_vae.decode(public_audio.to(self.audio_vae.dtype), return_dict=False)[0])
+            public_audio = public_audio.to(
+                device=get_module_execution_device(self.audio_vae), dtype=self.audio_vae.dtype
+            )
+            generated_mel_spectrograms = self.audio_vae.decode(public_audio, return_dict=False)[0]
+            audio = self.vocoder(generated_mel_spectrograms.to(get_module_execution_device(self.vocoder)))
             audio_samples = min(
                 audio.shape[-1], round(canvas_frames / playback_fps * self.vocoder.config.output_sampling_rate)
             )
