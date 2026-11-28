@@ -76,24 +76,15 @@ def get_qwen3vl_prompt_embeds(
     for name, value in (vision_inputs or {}).items():
         vision_kwargs[name] = value.to(device, text_encoder.dtype) if name.startswith("pixel_") else value.to(device)
 
-    # `text_encoder.model` is a submodule, and a CPU-offload hook — accelerate's or the one the
-    # `ComponentsManager` attaches — wraps the *top-level* module's `forward` alone, so calling the submodule
-    # directly would leave the conditioner on the CPU. Fire the hook by hand instead of routing through
-    # `text_encoder(...)`: MiniMax-H3 reads `hidden_states[50]` and never uses the language-model head, whose
-    # vocabulary-wide projection over every token is all the top-level forward would add.
-    # TODO: firing another module's offload hook by hand is not something a block should do. It is here
-    # because MiniMax-H3 reads `hidden_states[50]` off `text_encoder.model` while the hook wraps only the
-    # top-level `forward`. Needs a real answer — an opt-in on the conditioner, or a hook that follows
-    # submodule calls.
-    hook = getattr(text_encoder, "_hf_hook", None)
-    if hook is not None and hasattr(hook, "pre_forward"):
-        hook.pre_forward(text_encoder)
-    outputs = text_encoder.model(
+    # Call the top-level module so every offload hook on it (accelerate, `ComponentsManager`, group offloading)
+    # fires; `logits_to_keep=1` keeps the unused language-model head to a single token.
+    outputs = text_encoder(
         input_ids=input_ids,
         attention_mask=torch.ones_like(input_ids),
         mm_token_type_ids=mm_token_type_ids,
         use_cache=False,
         output_hidden_states=True,
+        logits_to_keep=1,
         **vision_kwargs,
     )
     return outputs.hidden_states[text_encoder_layer].to(device=device, dtype=dtype)
