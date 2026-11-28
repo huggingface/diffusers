@@ -333,6 +333,23 @@ class TestGroupOffload:
             pipe.to(torch_device)
         assert f"The module '{self.model.__class__.__name__}' is group offloaded" in caplog.text
 
+    def test_warning_logged_and_block_modules_ignored_for_module_list(self, caplog):
+        if torch.device(torch_device).type not in ["cuda", "xpu"]:
+            return
+        with _propagate_diffusers_logs(), caplog.at_level(logging.WARNING, logger="diffusers.hooks.group_offloading"):
+            self.model.enable_group_offload(
+                torch_device, offload_type="block_level", num_blocks_per_group=1, block_modules=["blocks"]
+            )
+        assert "'blocks' in `block_modules` is a `ModuleList`" in caplog.text
+
+        assert HookRegistry.check_if_exists_or_initialize(self.model.blocks).get_hook("group_offloading") is None
+        for block in self.model.blocks:
+            assert HookRegistry.check_if_exists_or_initialize(block).get_hook("group_offloading") is not None
+
+        model_ref = self.get_model().to(torch_device)
+        with torch.no_grad():
+            assert torch.allclose(model_ref(self.input), self.model(self.input), atol=1e-5)
+
     def test_error_raised_if_streams_used_and_no_accelerator_device(self):
         with pytest.raises(ValueError, match="backend implements streams, got `cpu`"):
             self.model.enable_group_offload(

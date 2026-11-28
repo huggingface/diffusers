@@ -1700,7 +1700,7 @@ if is_torch_available():
             modules_with_group_offloading = set()
             unmatched_modules = []
             for name, submodule in module.named_children():
-                if name in block_modules_set:
+                if name in block_modules_set and not isinstance(submodule, torch.nn.ModuleList):
                     new_prefix = f"{module_prefix}{name}." if module_prefix else f"{name}."
                     submodule_files = _get_expected_safetensors_files(
                         submodule, offload_to_disk_path, offload_type, num_blocks_per_group, block_modules, new_prefix
