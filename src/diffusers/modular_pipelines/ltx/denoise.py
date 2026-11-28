@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 from typing import Any
 
 import torch
@@ -172,15 +173,28 @@ class LTXLoopAfterDenoiser(ModularPipelineBlocks):
             "object (e.g. `LTXDenoiseLoopWrapper`)"
         )
 
+    @property
+    def inputs(self) -> list[InputParam]:
+        return [InputParam("generator")]
+
+    @staticmethod
+    def prepare_extra_kwargs(func, **kwargs):
+        accepted = set(inspect.signature(func).parameters.keys())
+        return {k: v for k, v in kwargs.items() if k in accepted}
+
     @torch.no_grad()
     def __call__(
         self, components: LTXModularPipeline, block_state: BlockState, i: int, t: torch.Tensor
     ) -> tuple[LTXModularPipeline, BlockState]:
+        extra_step_kwargs = self.prepare_extra_kwargs(
+            components.scheduler.step, generator=block_state.generator
+        )
         latents_dtype = block_state.latents.dtype
         block_state.latents = components.scheduler.step(
             block_state.noise_pred,
             t,
             block_state.latents,
+            **extra_step_kwargs,
             return_dict=False,
         )[0]
 
@@ -416,7 +430,13 @@ class LTXImage2VideoLoopAfterDenoiser(ModularPipelineBlocks):
             InputParam.template("height"),
             InputParam.template("width"),
             InputParam("num_frames", type_hint=int),
+            InputParam("generator"),
         ]
+
+    @staticmethod
+    def prepare_extra_kwargs(func, **kwargs):
+        accepted = set(inspect.signature(func).parameters.keys())
+        return {k: v for k, v in kwargs.items() if k in accepted}
 
     @torch.no_grad()
     def __call__(
@@ -433,9 +453,12 @@ class LTXImage2VideoLoopAfterDenoiser(ModularPipelineBlocks):
             block_state.latents, latent_num_frames, latent_height, latent_width
         )
 
+        extra_step_kwargs = self.prepare_extra_kwargs(
+            components.scheduler.step, generator=block_state.generator
+        )
         noise_pred = noise_pred[:, :, 1:]
         noise_latents = latents[:, :, 1:]
-        pred_latents = components.scheduler.step(noise_pred, t, noise_latents, return_dict=False)[0]
+        pred_latents = components.scheduler.step(noise_pred, t, noise_latents, **extra_step_kwargs, return_dict=False)[0]
 
         latents = torch.cat([latents[:, :, :1], pred_latents], dim=2)
         block_state.latents = components.pachifier.pack_latents(latents)
