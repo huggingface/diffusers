@@ -34,6 +34,7 @@ from ..pipeline_params import (
 from ..testing_utils import (
     BasePipelineTesterConfig,
     FromPipeTesterMixin,
+    IPAdapterTesterMixin,
     LoraMemoryTesterMixin,
     LoraTesterMixin,
     MemoryTesterMixin,
@@ -192,6 +193,10 @@ class TestKolorsPAGPipeline(KolorsPAGPipelineTesterConfig, PAGPipelineTesterMixi
 
 class TestKolorsPAGPipelineMemory(KolorsPAGPipelineTesterConfig, MemoryTesterMixin):
     """Memory optimization tests (CPU offload, group offload, layerwise casting) for the Kolors PAG pipeline."""
+
+
+class TestKolorsPAGPipelineIPAdapter(KolorsPAGPipelineTesterConfig, IPAdapterTesterMixin):
+    """IP-Adapter tests for the Kolors PAG pipeline."""
 
 
 class TestKolorsPAGPipelineLoRA(KolorsPAGPipelineTesterConfig, LoraTesterMixin, UNetLoraTesterMixin):
