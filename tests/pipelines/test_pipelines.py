@@ -990,6 +990,27 @@ class TestDownload:
         assert final_tokenizer_size == orig_tokenizer_size
         assert final_emb_size == orig_emb_size
 
+    def test_textual_inversion_unload_multi_vector(self):
+        pipe1 = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        pipe1 = pipe1.to(torch_device)
+        orig_tokenizer_size = len(pipe1.tokenizer)
+        orig_emb_size = len(pipe1.text_encoder.get_input_embeddings().weight)
+
+        token = "<*>"
+        ten = torch.ones((3, 32))
+        pipe1.load_textual_inversion(ten, token=token)
+        pipe1.unload_textual_inversion(token)
+        pipe1.load_textual_inversion(ten, token=token)
+        pipe1.unload_textual_inversion(token)
+
+        final_tokenizer_size = len(pipe1.tokenizer)
+        final_emb_size = len(pipe1.text_encoder.get_input_embeddings().weight)
+        # both should be restored to original size
+        assert final_tokenizer_size == orig_tokenizer_size
+        assert final_emb_size == orig_emb_size
+
 
 class TestCustomPipeline:
     def test_load_custom_pipeline(self):
