@@ -162,7 +162,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        pip install -e [quality]
+        uv pip install -e ".[quality]"
 
     - name: Environment
       run: |
