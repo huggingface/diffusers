@@ -314,15 +314,20 @@ class Attention(nn.Module):
         partition_spec: tuple[str | None, ...] | None = None,
         is_flux=False,
     ) -> None:
-        r"""
-        Set whether to use xla flash attention from `torch_xla` or not.
+        # Deprecated and scheduled for removal in version 0.46.0.
+        deprecation_message = (
+            "`set_use_xla_flash_attention` is deprecated and will be removed in version 0.46.0. Use"
+            " `set_processor(XLAFlashAttnProcessor2_0(partition_spec))` instead."
+        )
+        deprecate("set_use_xla_flash_attention", "0.46.0", deprecation_message, standard_warn=False)
+        self._set_use_xla_flash_attention(use_xla_flash_attention, partition_spec, is_flux)
 
-        Args:
-            use_xla_flash_attention (`bool`):
-                Whether to use pallas flash attention kernel from `torch_xla` or not.
-            partition_spec (`tuple[]`, *optional*):
-                Specify the partition specification if using SPMD. Otherwise None.
-        """
+    def _set_use_xla_flash_attention(
+        self,
+        use_xla_flash_attention: bool,
+        partition_spec: tuple[str | None, ...] | None = None,
+        is_flux=False,
+    ) -> None:
         if use_xla_flash_attention:
             if not is_torch_xla_available:
                 raise "torch_xla is not available"
@@ -342,10 +347,15 @@ class Attention(nn.Module):
         self.set_processor(processor)
 
     def set_use_npu_flash_attention(self, use_npu_flash_attention: bool) -> None:
-        r"""
-        Set whether to use npu flash attention from `torch_npu` or not.
+        # Deprecated and scheduled for removal in version 0.46.0.
+        deprecation_message = (
+            "`set_use_npu_flash_attention` is deprecated and will be removed in version 0.46.0. Use"
+            " `set_processor(AttnProcessorNPU())` instead."
+        )
+        deprecate("set_use_npu_flash_attention", "0.46.0", deprecation_message, standard_warn=False)
+        self._set_use_npu_flash_attention(use_npu_flash_attention)
 
-        """
+    def _set_use_npu_flash_attention(self, use_npu_flash_attention: bool) -> None:
         if use_npu_flash_attention:
             processor = AttnProcessorNPU()
         else:

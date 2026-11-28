@@ -50,6 +50,7 @@ from transformers import AutoTokenizer, PretrainedConfig
 
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionXLPipeline, UNet2DConditionModel
+from diffusers.models.attention_processor import AttnProcessorNPU
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, compute_snr
 from diffusers.utils import check_min_version, is_wandb_available
@@ -852,7 +853,7 @@ def main(args):
     if args.enable_npu_flash_attention:
         if is_torch_npu_available():
             logger.info("npu flash attention enabled.")
-            unet.enable_npu_flash_attention()
+            unet.set_attn_processor(AttnProcessorNPU())
         else:
             raise ValueError("npu flash attention requires torch_npu extensions and is supported only on npu devices.")
     if args.enable_xformers_memory_efficient_attention:

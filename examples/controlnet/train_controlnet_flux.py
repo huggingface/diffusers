@@ -985,7 +985,7 @@ def main(args):
     if args.enable_npu_flash_attention:
         if is_torch_npu_available():
             logger.info("npu flash attention enabled.")
-            flux_transformer.enable_npu_flash_attention()
+            flux_transformer.set_attention_backend("_native_npu")
         else:
             raise ValueError("npu flash attention requires torch_npu extensions and is supported only on npu devices.")
 

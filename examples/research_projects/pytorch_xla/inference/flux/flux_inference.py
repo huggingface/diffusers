@@ -36,7 +36,7 @@ def _main(index, args, text_pipe, ckpt_id):
     flux_pipe = FluxPipeline.from_pretrained(
         ckpt_id, text_encoder=None, tokenizer=None, text_encoder_2=None, tokenizer_2=None, torch_dtype=torch.bfloat16
     ).to(device0)
-    flux_pipe.transformer.enable_xla_flash_attention(partition_spec=("data", None, None, None), is_flux=True)
+    flux_pipe.transformer.set_attention_backend("_native_xla")
     FlashAttention.DEFAULT_BLOCK_SIZES = {
         "block_q": 1536,
         "block_k_major": 1536,
