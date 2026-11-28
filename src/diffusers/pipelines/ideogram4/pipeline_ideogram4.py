@@ -30,11 +30,12 @@ from ...models.transformers.transformer_ideogram4 import (
     Ideogram4Transformer2DModel,
 )
 from ...schedulers import FlowMatchEulerDiscreteScheduler
-from ...utils import is_outlines_available, logging, replace_example_docstring
+from ...utils import deprecate, is_outlines_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import Ideogram4PipelineOutput
 from .prompt_enhancer import (
+    _PROMPT_ENHANCER_DEPRECATION_MESSAGE,
     PROMPT_UPSAMPLE_TEMPERATURE,
     Ideogram4PromptEnhancerHead,
     build_caption_logits_processor,
@@ -57,7 +58,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import Ideogram4Pipeline
 
-        >>> pipe = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-v4", torch_dtype=torch.bfloat16)
+        >>> pipe = Ideogram4Pipeline.from_pretrained("ideogram-ai/ideogram-4-nf4-diffusers", dtype=torch.bfloat16)
         >>> pipe.to("cuda")
 
         >>> prompt = "A photo of a cat holding a sign that says hello world"
@@ -213,17 +214,20 @@ class Ideogram4Pipeline(DiffusionPipeline, Ideogram4LoraLoaderMixin):
     ) -> list[str]:
         """Rewrite each prompt into Ideogram4's native structured JSON caption.
 
+        Deprecated in favor of the modular prompt enhancer at
+        https://huggingface.co/diffusers/ideogram4-prompt-enhancer. Pass its output as `prompt` to this pipeline
+        without `prompt_upsampling`.
+
         Requires the optional `prompt_enhancer_head` component, which is grafted onto the shared `text_encoder` body to
         make it generative. Generation is schema-constrained when `outlines` is installed, otherwise it runs
         unconstrained. Pass `generator` (the same one accepted by `__call__`) to make sampling reproducible.
         """
         if self.prompt_enhancer_head is None:
             raise ValueError(
-                "Prompt upsampling requires the `prompt_enhancer_head` component, which is not loaded. Load it and "
-                "pass it in, e.g.:\n"
-                "    from diffusers import Ideogram4PromptEnhancerHead\n"
-                "    head = Ideogram4PromptEnhancerHead.from_pretrained('diffusers/qwen3-vl-8b-instruct-lm-head')\n"
-                "    pipe = Ideogram4Pipeline.from_pretrained(model_id, prompt_enhancer_head=head)"
+                "Prompt upsampling requires the `prompt_enhancer_head` component, which is not loaded. "
+                "Built-in prompt upsampling is deprecated. Use the modular prompt enhancer at "
+                "https://huggingface.co/diffusers/ideogram4-prompt-enhancer and pass its output as `prompt` to this "
+                "pipeline without `prompt_upsampling`."
             )
         if self._prompt_enhancer is None:
             self._prompt_enhancer = build_prompt_enhancer(self.text_encoder, self.prompt_enhancer_head)
@@ -490,7 +494,7 @@ class Ideogram4Pipeline(DiffusionPipeline, Ideogram4LoraLoaderMixin):
         guidance_schedule: list[float] | torch.Tensor | None = (7.0,) * 45 + (3.0,) * 3,
         mu: float = 0.0,
         std: float = 1.5,
-        prompt_upsampling: bool = False,
+        prompt_upsampling: bool | None = None,
         prompt_upsampling_temperature: float = PROMPT_UPSAMPLE_TEMPERATURE,
         max_sequence_length: int = 2048,
         num_images_per_prompt: int = 1,
@@ -507,7 +511,8 @@ class Ideogram4Pipeline(DiffusionPipeline, Ideogram4LoraLoaderMixin):
 
         Args:
             prompt (`str` or `list[str]`):
-                Prompt(s) to guide image generation.
+                Prompt(s) to guide image generation, including structured JSON prompts produced by the modular prompt
+                enhancer.
             height (`int`, *optional*, defaults to 2048):
                 Output image height in pixels; must be a multiple of `vae_scale_factor * patch_size`.
             width (`int`, *optional*, defaults to 2048):
@@ -528,11 +533,13 @@ class Ideogram4Pipeline(DiffusionPipeline, Ideogram4LoraLoaderMixin):
                 the resolution ratio relative to 512x512.
             std (`float`, *optional*, defaults to 1.5):
                 Standard deviation of the logit-normal flow-matching schedule.
-            prompt_upsampling (`bool`, *optional*, defaults to `False`):
-                If `True`, rewrite `prompt` into Ideogram4's native structured JSON caption via
-                [`~Ideogram4Pipeline.upsample_prompt`] before encoding. Requires the optional `prompt_enhancer_head`
-                component; install `outlines` for schema-constrained captions. `generator` is reused to make the
-                upsampling reproducible.
+            prompt_upsampling (`bool`, *optional*):
+                Deprecated. Omit this argument and use the [modular prompt
+                enhancer](https://huggingface.co/diffusers/ideogram4-prompt-enhancer), passing its output as `prompt`.
+                Built-in upsampling is disabled when this argument is omitted. If `True`, rewrite `prompt` into
+                Ideogram4's native structured JSON caption via [`~Ideogram4Pipeline.upsample_prompt`] before encoding.
+                Requires the optional `prompt_enhancer_head` component; install `outlines` for schema-constrained
+                captions. `generator` is reused to make the upsampling reproducible.
             prompt_upsampling_temperature (`float`, *optional*, defaults to 1.0):
                 Sampling temperature for prompt upsampling when `prompt_upsampling=True`.
             max_sequence_length (`int`, *optional*, defaults to 2048):
@@ -560,6 +567,9 @@ class Ideogram4Pipeline(DiffusionPipeline, Ideogram4LoraLoaderMixin):
         Returns:
             [`~pipelines.ideogram4.Ideogram4PipelineOutput`] or `tuple`.
         """
+        if prompt_upsampling is not None:
+            deprecate("prompt_upsampling", "1.0.0", _PROMPT_ENHANCER_DEPRECATION_MESSAGE)
+
         self.check_inputs(
             prompt=prompt,
             height=height,

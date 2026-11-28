@@ -18,13 +18,14 @@ from transformers import Qwen2Tokenizer, Qwen3VLModel
 from transformers.masking_utils import create_causal_mask
 
 from ...pipelines.ideogram4.prompt_enhancer import (
+    _PROMPT_ENHANCER_DEPRECATION_MESSAGE,
     PROMPT_UPSAMPLE_TEMPERATURE,
     Ideogram4PromptEnhancerHead,
     build_caption_logits_processor,
     build_prompt_enhancer,
     generate_captions,
 )
-from ...utils import is_outlines_available, logging
+from ...utils import deprecate, is_outlines_available, logging
 from ..modular_pipeline import ModularPipelineBlocks, PipelineState
 from ..modular_pipeline_utils import ComponentSpec, InputParam, OutputParam
 from .modular_pipeline import Ideogram4ModularPipeline
@@ -41,9 +42,9 @@ QWEN3_VL_ACTIVATION_LAYERS = (0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 35)
 # auto_docstring
 class Ideogram4PromptUpsampleStep(ModularPipelineBlocks):
     """
-    Optional step that rewrites the prompt(s) into Ideogram4's native structured JSON caption when
-    `prompt_upsampling=True` (the format the model is trained on). Requires a generative `text_encoder` (a
-    `Qwen3VLForConditionalGeneration`); install `outlines` for schema-constrained captions.
+    Deprecated prompt upsampling step. Use the modular prompt enhancer at
+    https://huggingface.co/diffusers/ideogram4-prompt-enhancer and pass its output as `prompt` to the image pipeline
+    without `prompt_upsampling`.
 
       Components:
           - text_encoder (`Qwen3VLModel`): The Qwen3-VL text encoder.
@@ -54,8 +55,9 @@ class Ideogram4PromptUpsampleStep(ModularPipelineBlocks):
       Inputs:
           prompt (`str`):
               The prompt or prompts to guide image generation.
-          prompt_upsampling (`bool`, *optional*, defaults to False):
-              If True, rewrite the prompt into Ideogram4's native JSON caption before encoding.
+          prompt_upsampling (`bool`, *optional*):
+              Deprecated. Use https://huggingface.co/diffusers/ideogram4-prompt-enhancer to expand the prompt before
+              calling this pipeline without `prompt_upsampling`. Upsampling is disabled when omitted.
           prompt_upsampling_temperature (`float`, *optional*, defaults to 1.0):
               Sampling temperature for prompt upsampling.
           height (`int`, *optional*):
@@ -84,9 +86,9 @@ class Ideogram4PromptUpsampleStep(ModularPipelineBlocks):
     @property
     def description(self) -> str:
         return (
-            "Optional step that rewrites the prompt(s) into Ideogram4's native structured JSON caption when "
-            "`prompt_upsampling=True` (the format the model is trained on). Requires a generative `text_encoder` "
-            "(a `Qwen3VLForConditionalGeneration`); install `outlines` for schema-constrained captions."
+            "Deprecated prompt upsampling step. Use the modular prompt enhancer at "
+            "https://huggingface.co/diffusers/ideogram4-prompt-enhancer and pass its output as `prompt` to the image "
+            "pipeline without `prompt_upsampling`."
         )
 
     @property
@@ -108,8 +110,10 @@ class Ideogram4PromptUpsampleStep(ModularPipelineBlocks):
             InputParam(
                 name="prompt_upsampling",
                 type_hint=bool,
-                default=False,
-                description="If True, rewrite the prompt into Ideogram4's native JSON caption before encoding.",
+                description=(
+                    "Deprecated. Use https://huggingface.co/diffusers/ideogram4-prompt-enhancer to expand the prompt "
+                    "before calling this pipeline without `prompt_upsampling`. Upsampling is disabled when omitted."
+                ),
             ),
             InputParam(
                 name="prompt_upsampling_temperature",
@@ -139,11 +143,16 @@ class Ideogram4PromptUpsampleStep(ModularPipelineBlocks):
     ) -> tuple[Ideogram4ModularPipeline, PipelineState]:
         block_state = self.get_block_state(state)
 
+        if block_state.prompt_upsampling is not None:
+            deprecate("prompt_upsampling", "1.0.0", _PROMPT_ENHANCER_DEPRECATION_MESSAGE)
+
         if block_state.prompt_upsampling:
             if components.prompt_enhancer_head is None:
                 raise ValueError(
-                    "Prompt upsampling requires the `prompt_enhancer_head` component, which is not loaded. Load an "
-                    "`Ideogram4PromptEnhancerHead` and add it to the pipeline."
+                    "Prompt upsampling requires the `prompt_enhancer_head` component, which is not loaded. "
+                    "Built-in prompt upsampling is deprecated. Use the modular prompt enhancer at "
+                    "https://huggingface.co/diffusers/ideogram4-prompt-enhancer and pass its output as `prompt` to this "
+                    "pipeline without `prompt_upsampling`."
                 )
             if self._prompt_enhancer is None:
                 self._prompt_enhancer = build_prompt_enhancer(components.text_encoder, components.prompt_enhancer_head)
