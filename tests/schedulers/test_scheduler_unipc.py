@@ -1,5 +1,6 @@
 import tempfile
 
+import numpy as np
 import torch
 
 from diffusers import (
@@ -207,6 +208,26 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
     def test_inference_steps(self):
         for num_inference_steps in [1, 2, 3, 5, 10, 50, 100, 999, 1000]:
             self.check_over_forward(num_inference_steps=num_inference_steps, time_step=0)
+
+    def test_set_timesteps_with_custom_flow_sigmas_list(self):
+        # `sigmas` is typed as `list[float]`, so a list must give the same schedule as an array.
+        sigmas = [1.0, 0.75, 0.5, 0.25, 0.1]
+        scheduler_class = self.scheduler_classes[0]
+
+        for extra_config, mu in [({"flow_shift": 3.0}, None), ({"use_dynamic_shifting": True}, 0.8)]:
+            scheduler_config = self.get_scheduler_config(
+                use_flow_sigmas=True, prediction_type="flow_prediction", **extra_config
+            )
+
+            scheduler_from_list = scheduler_class(**scheduler_config)
+            scheduler_from_list.set_timesteps(sigmas=sigmas, mu=mu)
+
+            scheduler_from_array = scheduler_class(**scheduler_config)
+            scheduler_from_array.set_timesteps(sigmas=np.array(sigmas), mu=mu)
+
+            assert len(scheduler_from_list.timesteps) == len(sigmas)
+            assert torch.equal(scheduler_from_list.timesteps, scheduler_from_array.timesteps)
+            assert torch.equal(scheduler_from_list.sigmas, scheduler_from_array.sigmas)
 
     def test_full_loop_no_noise(self):
         sample = self.full_loop()
