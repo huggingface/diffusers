@@ -41,15 +41,17 @@ def _apply_rotary_emb(hidden_states: torch.Tensor, cos: torch.Tensor, sin: torch
     `hidden_states` is `(batch_size, seq_len, num_heads, head_dim)` and `cos`/`sin` are `(seq_len, rotary_dim)`.
     """
     rotary_dim = cos.shape[-1]
-    hidden_states_rotary = hidden_states[..., :rotary_dim]
-    hidden_states_pass = hidden_states[..., rotary_dim:]
+    half = rotary_dim // 2
 
     cos = cos.to(hidden_states.dtype)[None, :, None, :]
     sin = sin.to(hidden_states.dtype)[None, :, None, :]
-    x1, x2 = hidden_states_rotary.chunk(2, dim=-1)
-    hidden_states_rotated = torch.cat((-x2, x1), dim=-1)
-    hidden_states_rotary = hidden_states_rotary * cos + hidden_states_rotated * sin
-    return torch.cat((hidden_states_rotary, hidden_states_pass), dim=-1).contiguous()
+    x1, x2 = hidden_states[..., :half], hidden_states[..., half:rotary_dim]
+    # Writing the rotated halves into a copy avoids two concatenations, which are several times slower than a copy
+    # on some GPUs; every element keeps the rounding of `x * cos + rotate_half(x) * sin`.
+    output = hidden_states.clone()
+    output[..., :half] = x1 * cos[..., :half] - x2 * sin[..., :half]
+    output[..., half:rotary_dim] = x2 * cos[..., half:] + x1 * sin[..., half:]
+    return output
 
 
 # Copied from diffusers.models.transformers.transformer_minimax_h3.MiniMaxH3RotaryPosEmbed with MiniMaxH3->MiniMaxH3Image
