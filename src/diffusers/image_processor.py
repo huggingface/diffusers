@@ -644,7 +644,14 @@ class VaeImageProcessor(ConfigMixin):
         supported_formats = (PIL.Image.Image, np.ndarray, torch.Tensor)
 
         # Expand the missing dimension for 3-dimensional pytorch tensor or numpy array that represents grayscale image
-        if self.config.do_convert_grayscale and isinstance(image, (torch.Tensor, np.ndarray)) and image.ndim == 3:
+        if (
+            self.config.do_convert_grayscale
+            and isinstance(image, np.ndarray)
+            and image.ndim == 3
+            and image.shape[-1] in (3, 4)
+        ):
+            image = np.dot(image[..., :3], np.array([0.299, 0.587, 0.114], dtype=np.float32))
+        elif self.config.do_convert_grayscale and isinstance(image, (torch.Tensor, np.ndarray)) and image.ndim == 3:
             if isinstance(image, torch.Tensor):
                 # if image is a pytorch tensor could have 2 possible shapes:
                 #    1. batch x height x width: we should insert the channel dimension at position 1

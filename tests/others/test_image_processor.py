@@ -126,6 +126,16 @@ class TestImageProcessor:
         assert np.abs(out_pt_4d - out_pt_3d).max() < 1e-6
         assert np.abs(out_np_4d - out_np_3d).max() < 1e-6
 
+    def test_preprocess_rgb_numpy_to_grayscale(self):
+        image_processor = VaeImageProcessor(do_resize=False, do_normalize=False, do_convert_grayscale=True)
+        image = np.random.rand(8, 8, 3).astype(np.float32)
+
+        output = image_processor.preprocess(image)
+        expected = np.einsum("hwc,c->hw", image, np.array([0.299, 0.587, 0.114], dtype=np.float32))
+
+        assert output.shape == (1, 1, 8, 8)
+        np.testing.assert_allclose(output[0, 0].numpy(), expected, atol=1e-7)
+
     def test_preprocess_input_list(self):
         image_processor = VaeImageProcessor(do_resize=False, do_normalize=False)
 
