@@ -214,12 +214,49 @@ class StableDiffusionXLControlNetInpaintPipelineTesterConfig(BasePipelineTesterC
 class TestStableDiffusionXLControlNetInpaintPipeline(
     StableDiffusionXLControlNetInpaintPipelineTesterConfig, PipelineTesterMixin
 ):
+    def test_mask_crop_rejects_empty_control_image_list(self):
+        pipe = self.get_pipeline().to(torch_device)
+        inputs = self.get_dummy_inputs()
+        inputs.update(control_image=[], padding_mask_crop=4, output_type="pil")
+
+        with pytest.raises(ValueError, match="PIL image"):
+            pipe(**inputs)
+
     def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=2e-3):
         super().test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
     @pytest.mark.skip("TODO(Patrick, Sayak) - skip for now as this requires more refiner tests")
     def test_save_load_optional_components(self):
         pass
+
+    def test_mask_crop_with_multiple_controlnets(self):
+        components = self.get_dummy_components()
+        controlnet = components["controlnet"]
+        components["controlnet"] = [controlnet, ControlNetModel.from_config(controlnet.config)]
+        pipe = self.get_pipeline(**components).to(torch_device)
+        inputs = self.get_dummy_inputs()
+        image = inputs["image"]
+        mask_image = Image.new("L", image.size)
+        mask_image.paste(255, (20, 20, 44, 44))
+        inputs.update(
+            mask_image=mask_image,
+            control_image=[inputs["control_image"], Image.new("RGB", image.size, "white")],
+            controlnet_conditioning_scale=[0.5, 0.5],
+            padding_mask_crop=4,
+            output_type="pil",
+            num_images_per_prompt=2,
+        )
+
+        outputs = pipe(**inputs).images
+
+        assert len(outputs) == 2
+        for output in outputs:
+            assert output.size == image.size
+            assert output.getpixel((0, 0)) == image.getpixel((0, 0))
+
+        inputs["control_image"][1] = torch.zeros(3, image.height, image.width)
+        with pytest.raises(ValueError, match="Control images must be PIL images"):
+            pipe(**inputs)
 
     def test_stable_diffusion_xl_multi_prompts(self):
         pipe = self.get_pipeline().to(torch_device)
