@@ -19,10 +19,12 @@ from typing import Any
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.distributed.tensor import DTensor
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import FromOriginalModelMixin, PeftAdapterMixin
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
+from .._modeling_parallel import Conditional
 from ..attention import AttentionMixin, FeedForward
 from ..attention_dispatch import dispatch_attention_fn
 from ..attention_processor import Attention
@@ -394,6 +396,11 @@ class SwiGLUExperts(nn.Module):
         self.gate_up_proj = nn.Parameter(torch.empty(num_experts, hidden_size, 2 * moe_intermediate_dim))
         self.down_proj = nn.Parameter(torch.empty(num_experts, moe_intermediate_dim, hidden_size))
 
+    def _local_weights(self) -> tuple[torch.Tensor, torch.Tensor]:
+        if isinstance(self.gate_up_proj, DTensor):
+            return self.gate_up_proj.to_local(), self.down_proj.to_local()
+        return self.gate_up_proj, self.down_proj
+
     def _run_experts_for_loop(
         self,
         x: torch.Tensor,
@@ -444,11 +451,12 @@ class SwiGLUExperts(nn.Module):
             dim=0,
         )
 
+        gate_up_proj, down_proj = self._local_weights()
         expert_outputs = []
         for expert_idx, x_expert in enumerate(x_per_expert):
-            gate_up = torch.matmul(x_expert, self.gate_up_proj[expert_idx])
+            gate_up = torch.matmul(x_expert, gate_up_proj[expert_idx])
             gate, up = gate_up.chunk(2, dim=-1)
-            out_expert = torch.matmul(F.silu(gate) * up, self.down_proj[expert_idx])
+            out_expert = torch.matmul(F.silu(gate) * up, down_proj[expert_idx])
             expert_outputs.append(out_expert)
 
         # Concatenate real-token outputs, then re-append zero rows for the padding.
@@ -489,9 +497,10 @@ class SwiGLUExperts(nn.Module):
         """
         offsets = torch.cumsum(num_tokens_per_expert, dim=0, dtype=torch.int32)
 
-        gate_up = F.grouped_mm(x, self.gate_up_proj, offs=offsets)
+        gate_up_proj, down_proj = self._local_weights()
+        gate_up = F.grouped_mm(x, gate_up_proj, offs=offsets)
         gate, up = gate_up.chunk(2, dim=-1)
-        out = F.grouped_mm(F.silu(gate) * up, self.down_proj, offs=offsets)
+        out = F.grouped_mm(F.silu(gate) * up, down_proj, offs=offsets)
 
         return out.type_as(x)
 
@@ -580,8 +589,18 @@ class NucleusMoELayer(nn.Module):
         global_token_indices = (batch_offsets + top_indices).transpose(0, 1).reshape(self.num_experts, -1).reshape(-1)
         gating_flat = gating.transpose(0, 1).reshape(self.num_experts, -1).reshape(-1)
 
-        token_score_sums = torch.zeros(bs * slen, device=hidden_states.device, dtype=gating_flat.dtype)
-        token_score_sums.scatter_add_(0, global_token_indices, gating_flat)
+        sharded_experts = isinstance(self.experts.gate_up_proj, DTensor)
+        if sharded_experts:
+            # Repeated token indices must accumulate in the same order on every rank,
+            # otherwise the next block can route different tokens into the same collective.
+            indices, order = global_token_indices.sort(stable=True)
+            offsets = torch.searchsorted(indices, torch.arange(bs * slen + 1, device=indices.device))
+            token_score_sums = torch.segment_reduce(gating_flat[order].float(), "sum", offsets=offsets).to(
+                gating_flat.dtype
+            )
+        else:
+            token_score_sums = gating_flat.new_zeros(bs * slen)
+            token_score_sums.scatter_add_(0, global_token_indices, gating_flat)
         gating_flat = gating_flat / (token_score_sums[global_token_indices] + 1e-12)
         gating_flat = gating_flat * self.route_scale
 
@@ -600,8 +619,12 @@ class NucleusMoELayer(nn.Module):
 
         out = self.shared_expert(hidden_states).reshape(bs * slen, dim)
 
-        scatter_idx = global_token_indices.reshape(-1, 1).expand(-1, dim)
-        out = out.scatter_add(dim=0, index=scatter_idx, src=routed_output)
+        if sharded_experts:
+            routed_sum = torch.segment_reduce(routed_output[order].float(), "sum", offsets=offsets)
+            out = (out.float() + routed_sum).to(hidden_states.dtype)
+        else:
+            scatter_idx = global_token_indices.reshape(-1, 1).expand(-1, dim)
+            out = out.scatter_add(dim=0, index=scatter_idx, src=routed_output)
         out = out.reshape(bs, slen, dim)
 
         return out
@@ -770,6 +793,7 @@ class NucleusMoEImageTransformer2DModel(
             Scaling factor applied to routing weights.
     """
 
+    _tp_plan = {"transformer_blocks.*.img_mlp.experts": Conditional("packed_gated_experts")}
     _supports_gradient_checkpointing = True
     _no_split_modules = ["NucleusMoEImageTransformerBlock"]
     _skip_layerwise_casting_patterns = ["pos_embed", "norm"]

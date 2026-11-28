@@ -13,9 +13,12 @@
 # limitations under the License.
 
 
+import pytest
 import torch
 
 from diffusers import NucleusMoEImageTransformer2DModel
+from diffusers.hooks.tensor_parallel import TPShardSpec, resolve_tp_shard_specs
+from diffusers.models.transformers.transformer_nucleusmoe_image import SwiGLUExperts
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import enable_full_determinism, torch_device
@@ -26,6 +29,7 @@ from ..testing_utils import (
     LoraTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
+    TensorParallelTesterMixin,
     TorchCompileTesterMixin,
     TrainingTesterMixin,
 )
@@ -73,8 +77,7 @@ class NucleusMoEImageTransformerTesterConfig(BaseModelTesterConfig):
             "capacity_factors": [8.0, 8.0],
         }
 
-    def get_dummy_inputs(self) -> dict:
-        batch_size = 1
+    def get_dummy_inputs(self, batch_size=1) -> dict:
         in_channels = 16
         joint_attention_dim = 16
         height = width = 4
@@ -126,6 +129,41 @@ class TestNucleusMoEImageTransformer(NucleusMoEImageTransformerTesterConfig, Mod
             output = model(**inputs)
 
         assert output.sample.shape[1] == inputs["hidden_states"].shape[1]
+
+
+class TestNucleusMoEImageTransformerTensorParallel(NucleusMoEImageTransformerTesterConfig, TensorParallelTesterMixin):
+    def get_init_dict(self):
+        return {
+            **super().get_init_dict(),
+            "moe_enabled": True,
+            "dense_moe_strategy": "leave_first_block_dense",
+            "num_experts": 4,
+            "moe_intermediate_dim": 32,
+            "capacity_factors": [0, 2],
+        }
+
+    def test_packed_expert_shard_specs(self):
+        with torch.device("meta"):
+            model = self.model_class(**self.get_init_dict())
+        prefix = "transformer_blocks.1.img_mlp.experts"
+        assert resolve_tp_shard_specs(model, model._tp_plan, tp_degree=4) == {
+            f"{prefix}.gate_up_proj": TPShardSpec(2, [32, 32]),
+            f"{prefix}.down_proj": TPShardSpec(1, [32]),
+        }
+        with pytest.raises(ValueError, match="not divisible by 3"):
+            resolve_tp_shard_specs(model, model._tp_plan, tp_degree=3)
+
+    @pytest.fixture(autouse=True)
+    def initialize_experts(self, monkeypatch):
+        # The checkpoint normally supplies these two torch.empty parameters.
+        original_init = SwiGLUExperts.__init__
+
+        def init(module, *args, **kwargs):
+            original_init(module, *args, **kwargs)
+            torch.nn.init.normal_(module.gate_up_proj, std=0.1)
+            torch.nn.init.normal_(module.down_proj, std=0.1)
+
+        monkeypatch.setattr(SwiGLUExperts, "__init__", init)
 
 
 class TestNucleusMoEImageTransformerMemory(NucleusMoEImageTransformerTesterConfig, MemoryTesterMixin):

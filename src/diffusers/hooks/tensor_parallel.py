@@ -92,6 +92,12 @@ class TPShardSpec(NamedTuple):
     block_sizes: "list[int] | None"
 
 
+def _packed_gated_expert_specs(module) -> dict[str, TPShardSpec]:
+    """Shard matching intermediate channels of the packed gate, up, and down projections for every expert."""
+    width = module.down_proj.shape[1]
+    return {"gate_up_proj": TPShardSpec(2, [width, width]), "down_proj": TPShardSpec(1, [width])}
+
+
 def _local_shard(tensor, dim: int, block_sizes: "list[int]", tp_mesh) -> torch.Tensor:
     """Extract this rank's slice of `tensor` along `dim`.
 
@@ -119,8 +125,8 @@ def _local_shard(tensor, dim: int, block_sizes: "list[int]", tp_mesh) -> torch.T
 def resolve_tp_shard_specs(model: torch.nn.Module, tp_plan: dict, tp_degree: int) -> "dict[str, TPShardSpec]":
     """Map every `_tp_plan`-covered parameter name to its `TPShardSpec`.
 
-    Parameters absent from the result are untouched by tensor parallelism. Both `weight` and `bias` of each planned
-    module are covered.
+    A planned linear contributes its weight and optional bias. A packed gated expert module contributes its
+    `gate_up_proj` and `down_proj` parameters. Parameters absent from the result are untouched by tensor parallelism.
 
     Raises if any sharded block is not divisible by `tp_degree`, so an uneven split is rejected before any weight is
     read or sharded. Left to `Shard`, it would give the trailing ranks a smaller slice and break the paired
@@ -144,6 +150,11 @@ def resolve_tp_shard_specs(model: torch.nn.Module, tp_plan: dict, tp_degree: int
                 submodule = getattr(submodule, atom)
             path = f"{prefix}.{relative_path}" if prefix else relative_path
 
+            if style == "packed_gated_experts":
+                for name, spec in _packed_gated_expert_specs(submodule).items():
+                    specs[f"{path}.{name}"] = spec
+                continue
+
             # `_tp_packed_*_blocks` hold absolute sizes rather than proportions; that works because
             # they sum to the full dimension, so `_blocks_to_block_sizes` computes `unit == 1`.
             if style == "colwise":
@@ -164,8 +175,8 @@ def resolve_tp_shard_specs(model: torch.nn.Module, tp_plan: dict, tp_degree: int
             else:
                 raise ValueError(
                     f"Unsupported tensor-parallel style '{style}' for '{path}'. "
-                    f"Expected 'colwise', 'rowwise', 'rowwise_split_input', PackedColwiseParallel, or "
-                    f"PackedRowwiseParallel."
+                    f"Expected 'colwise', 'rowwise', 'rowwise_split_input', 'packed_gated_experts', "
+                    f"PackedColwiseParallel, or PackedRowwiseParallel."
                 )
 
             specs[f"{path}.weight"] = weight_spec
@@ -285,8 +296,8 @@ def _styles(relative_plan: dict) -> dict:
     `PackedRowwiseParallel` marker instances. Returns `{relative_path: ColwiseParallel() | RowwiseParallel() | <packed
     impl>}`. Divisibility by the TP degree is checked earlier, by `resolve_tp_shard_specs`.
     """
-    from torch.distributed.tensor import Replicate, distribute_tensor
-    from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
+    from torch.distributed.tensor import Partial, Replicate, distribute_tensor
+    from torch.distributed.tensor.parallel import ColwiseParallel, PrepareModuleOutput, RowwiseParallel
 
     def _make_packed_col(marker: PackedColwiseParallel) -> ColwiseParallel:
         class _PackedColwiseImpl(ColwiseParallel):
@@ -318,6 +329,14 @@ def _styles(relative_plan: dict) -> dict:
 
         return _PackedRowwiseImpl()
 
+    class _PackedGatedExperts(PrepareModuleOutput):
+        def _apply(self, module, device_mesh):
+            for name, spec in _packed_gated_expert_specs(module).items():
+                param = getattr(module, name)
+                local = _shard_packed_param(param, spec.dim, spec.block_sizes, device_mesh, self.src_data_rank)
+                module.register_parameter(name, local)
+            return super()._apply(module, device_mesh)
+
     resolved = {}
     for path, style in relative_plan.items():
         if style == "colwise":
@@ -330,6 +349,8 @@ def _styles(relative_plan: dict) -> dict:
             # the timestep embedding (MiniMax-H3's `adaln_proj.linear`), or an output projection after a gathered
             # QK-norm. Same as the transformers style of the same name.
             resolved[path] = RowwiseParallel(input_layouts=Replicate())
+        elif style == "packed_gated_experts":
+            resolved[path] = _PackedGatedExperts(output_layouts=Partial(), desired_output_layouts=Replicate())
         elif isinstance(style, PackedColwiseParallel):
             resolved[path] = _make_packed_col(style)
         elif isinstance(style, PackedRowwiseParallel):
@@ -337,8 +358,8 @@ def _styles(relative_plan: dict) -> dict:
         else:
             raise ValueError(
                 f"Unsupported tensor-parallel style '{style}' for '{path}'. "
-                f"Expected 'colwise', 'rowwise', 'rowwise_split_input', PackedColwiseParallel, or "
-                f"PackedRowwiseParallel."
+                f"Expected 'colwise', 'rowwise', 'rowwise_split_input', 'packed_gated_experts', "
+                f"PackedColwiseParallel, or PackedRowwiseParallel."
             )
     return resolved
 
@@ -348,14 +369,14 @@ def _hooks_only_styles(relative_plan: dict) -> dict:
 
     Used when the caller has already placed every planned parameter as a sharded `DTensor`. `parallelize_module` then
     runs only to register the forward input/output hooks; `_partition_linear_fn` must not re-partition. Packed and
-    plain styles share hook behaviour, so both collapse onto the two styles here.
+    plain linear projections share hooks. Packed gated experts reduce the partial output of the expert module.
 
     Note this is not purely additive: `distribute_module` still replicates any *remaining* plain parameter of the
     targeted module into a `Replicate()` DTensor via a broadcast. Callers should therefore place every planned
     parameter themselves, and must ensure none is left on `meta` — the broadcast would be issued on a meta tensor.
     """
-    from torch.distributed.tensor import Replicate
-    from torch.distributed.tensor.parallel import ColwiseParallel, RowwiseParallel
+    from torch.distributed.tensor import Partial, Replicate
+    from torch.distributed.tensor.parallel import ColwiseParallel, PrepareModuleOutput, RowwiseParallel
 
     class _NoPartitionColwise(ColwiseParallel):
         def _partition_linear_fn(self, name, module, device_mesh):
@@ -371,13 +392,15 @@ def _hooks_only_styles(relative_plan: dict) -> dict:
             resolved[path] = _NoPartitionColwise()
         elif style == "rowwise" or isinstance(style, PackedRowwiseParallel):
             resolved[path] = _NoPartitionRowwise()
+        elif style == "packed_gated_experts":
+            resolved[path] = PrepareModuleOutput(output_layouts=Partial(), desired_output_layouts=Replicate())
         elif style == "rowwise_split_input":
             resolved[path] = _NoPartitionRowwise(input_layouts=Replicate())
         else:
             raise ValueError(
                 f"Unsupported tensor-parallel style '{style}' for '{path}'. "
-                f"Expected 'colwise', 'rowwise', 'rowwise_split_input', PackedColwiseParallel, or "
-                f"PackedRowwiseParallel."
+                f"Expected 'colwise', 'rowwise', 'rowwise_split_input', 'packed_gated_experts', "
+                f"PackedColwiseParallel, or PackedRowwiseParallel."
             )
     return resolved
 
