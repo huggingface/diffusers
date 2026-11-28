@@ -57,6 +57,14 @@ Everything a PR reviewer sees must come from a human, or be approved by one for 
   your own.** The user decides when anything is published, each time.
 - **Don't post to GitHub directly** — no comments, reviews, or replies. Draft when asked and hand the text to the user.
 
+## Report potential issues
+
+When you hit a bug, a confusing API, or a wrong doc in diffusers that is not part of your task, don't silently work around it.
+
+- Tell the user what happened and how you got past it, and ask whether it is worth an issue.
+- If you draft the issue, search for an existing one first and follow [reporting.md](references/reporting.md). Add a short proposed fix if you understand the cause. Don't guess.
+- Remind them of the [contribution guide](https://huggingface.co/docs/diffusers/main/en/conceptual/contribution): the report is a contribution on its own, and a fix PR waits for a maintainer's reply on the issue.
+
 ## Code formatting
 
 - `make style` and `make fix-copies` should be run before opening a PR
