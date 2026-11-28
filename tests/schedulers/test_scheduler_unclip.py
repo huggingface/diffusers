@@ -1,14 +1,13 @@
-import unittest
-
+import pytest
 import torch
 
 from diffusers import UnCLIPScheduler
 
-from .test_schedulers import SchedulerCommonTest
+from .test_schedulers import SchedulerTesterMixin
 
 
 # UnCLIPScheduler is a modified DDPMScheduler with a subset of the configuration.
-class UnCLIPSchedulerTest(SchedulerCommonTest):
+class TestUnCLIPScheduler(SchedulerTesterMixin):
     scheduler_classes = (UnCLIPScheduler,)
 
     def get_scheduler_config(self, **kwargs):
@@ -132,10 +131,10 @@ class UnCLIPSchedulerTest(SchedulerCommonTest):
         assert abs(result_sum.item() - 258.2044983) < 1e-2
         assert abs(result_mean.item() - 0.3362038) < 1e-3
 
-    @unittest.skip("Test not supported.")
+    @pytest.mark.skip(reason="Test not supported.")
     def test_trained_betas(self):
         pass
 
-    @unittest.skip("Test not supported.")
+    @pytest.mark.skip(reason="Test not supported.")
     def test_add_noise_device(self):
         pass

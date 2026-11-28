@@ -1,5 +1,4 @@
 import tempfile
-import unittest
 
 import numpy as np
 import torch
@@ -7,8 +6,8 @@ import torch
 from diffusers import ScoreSdeVeScheduler
 
 
-class ScoreSdeVeSchedulerTest(unittest.TestCase):
-    # TODO adapt with class SchedulerCommonTest (scheduler needs Numpy Integration)
+class TestScoreSdeVeScheduler:
+    # TODO adapt with class SchedulerTesterMixin (scheduler needs Numpy Integration)
     scheduler_classes = (ScoreSdeVeScheduler,)
     forward_default_kwargs = ()
 
@@ -185,5 +184,5 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
             output_0 = scheduler.step_pred(residual, 0, sample, generator=torch.manual_seed(0), **kwargs).prev_sample
             output_1 = scheduler.step_pred(residual, 1, sample, generator=torch.manual_seed(0), **kwargs).prev_sample
 
-            self.assertEqual(output_0.shape, sample.shape)
-            self.assertEqual(output_0.shape, output_1.shape)
+            assert output_0.shape == sample.shape
+            assert output_0.shape == output_1.shape

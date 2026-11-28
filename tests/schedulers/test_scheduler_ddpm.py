@@ -1,11 +1,14 @@
+import re
+
+import pytest
 import torch
 
 from diffusers import DDPMScheduler
 
-from .test_schedulers import SchedulerCommonTest
+from .test_schedulers import SchedulerTesterMixin
 
 
-class DDPMSchedulerTest(SchedulerCommonTest):
+class TestDDPMScheduler(SchedulerTesterMixin):
     scheduler_classes = (DDPMScheduler,)
 
     def get_scheduler_config(self, **kwargs):
@@ -154,7 +157,7 @@ class DDPMSchedulerTest(SchedulerCommonTest):
             prev_t = scheduler.previous_timestep(timestep)
             prev_t = prev_t.item()
 
-            self.assertEqual(prev_t, expected_prev_t)
+            assert prev_t == expected_prev_t
 
     def test_custom_timesteps_increasing_order(self):
         scheduler_class = self.scheduler_classes[0]
@@ -163,7 +166,7 @@ class DDPMSchedulerTest(SchedulerCommonTest):
 
         timesteps = [100, 87, 50, 51, 0]
 
-        with self.assertRaises(ValueError, msg="`custom_timesteps` must be in descending order."):
+        with pytest.raises(ValueError, match=re.escape("`custom_timesteps` must be in descending order.")):
             scheduler.set_timesteps(timesteps=timesteps)
 
     def test_custom_timesteps_passing_both_num_inference_steps_and_timesteps(self):
@@ -174,7 +177,9 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         timesteps = [100, 87, 50, 1, 0]
         num_inference_steps = len(timesteps)
 
-        with self.assertRaises(ValueError, msg="Can only pass one of `num_inference_steps` or `custom_timesteps`."):
+        with pytest.raises(
+            ValueError, match=re.escape("Can only pass one of `num_inference_steps` or `custom_timesteps`.")
+        ):
             scheduler.set_timesteps(num_inference_steps=num_inference_steps, timesteps=timesteps)
 
     def test_custom_timesteps_too_large(self):
@@ -184,9 +189,11 @@ class DDPMSchedulerTest(SchedulerCommonTest):
 
         timesteps = [scheduler.config.num_train_timesteps]
 
-        with self.assertRaises(
+        with pytest.raises(
             ValueError,
-            msg="`timesteps` must start before `self.config.train_timesteps`: {scheduler.config.num_train_timesteps}}",
+            match=re.escape(
+                f"`timesteps` must start before `self.config.train_timesteps`: {scheduler.config.num_train_timesteps}."
+            ),
         ):
             scheduler.set_timesteps(timesteps=timesteps)
 

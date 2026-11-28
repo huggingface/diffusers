@@ -3,11 +3,11 @@ import torch
 from diffusers import SASolverScheduler
 
 from ..testing_utils import require_torchsde, torch_device
-from .test_schedulers import SchedulerCommonTest
+from .test_schedulers import SchedulerTesterMixin
 
 
 @require_torchsde
-class SASolverSchedulerTest(SchedulerCommonTest):
+class TestSASolverScheduler(SchedulerTesterMixin):
     scheduler_classes = (SASolverScheduler,)
     forward_default_kwargs = (("num_inference_steps", 10),)
     num_inference_steps = 10
@@ -55,8 +55,8 @@ class SASolverSchedulerTest(SchedulerCommonTest):
             output_0 = scheduler.step(residual, time_step_0, sample, **kwargs).prev_sample
             output_1 = scheduler.step(residual, time_step_1, sample, **kwargs).prev_sample
 
-            self.assertEqual(output_0.shape, sample.shape)
-            self.assertEqual(output_0.shape, output_1.shape)
+            assert output_0.shape == sample.shape
+            assert output_0.shape == output_1.shape
 
     def test_timesteps(self):
         for timesteps in [10, 50, 100, 1000]:

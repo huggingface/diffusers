@@ -1,15 +1,16 @@
-import tempfile
+import re
 from typing import Dict, List, Tuple
 
+import pytest
 import torch
 
 from diffusers import LCMScheduler
 
 from ..testing_utils import torch_device
-from .test_schedulers import SchedulerCommonTest
+from .test_schedulers import SchedulerTesterMixin
 
 
-class LCMSchedulerTest(SchedulerCommonTest):
+class TestLCMScheduler(SchedulerTesterMixin):
     scheduler_classes = (LCMScheduler,)
     forward_default_kwargs = (("num_inference_steps", 10),)
 
@@ -97,15 +98,15 @@ class LCMSchedulerTest(SchedulerCommonTest):
 
             sample = self.dummy_sample.to(torch_device)
             scaled_sample = scheduler.scale_model_input(sample, 0.0)
-            self.assertEqual(sample.shape, scaled_sample.shape)
+            assert sample.shape == scaled_sample.shape
 
             noise = torch.randn(scaled_sample.shape).to(torch_device)
             t = scheduler.timesteps[5][None]
             noised = scheduler.add_noise(scaled_sample, noise, t)
-            self.assertEqual(noised.shape, scaled_sample.shape)
+            assert noised.shape == scaled_sample.shape
 
     # Override test_from_save_pretrained because it hardcodes a timestep of 1
-    def test_from_save_pretrained(self):
+    def test_from_save_pretrained(self, tmp_path):
         kwargs = dict(self.forward_default_kwargs)
         num_inference_steps = kwargs.pop("num_inference_steps", None)
 
@@ -118,9 +119,8 @@ class LCMSchedulerTest(SchedulerCommonTest):
             sample = self.dummy_sample
             residual = 0.1 * sample
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
+            scheduler.save_config(tmp_path)
+            new_scheduler = scheduler_class.from_pretrained(tmp_path)
 
             scheduler.set_timesteps(num_inference_steps)
             new_scheduler.set_timesteps(num_inference_steps)
@@ -153,8 +153,8 @@ class LCMSchedulerTest(SchedulerCommonTest):
             output_0 = scheduler.step(residual, timestep_0, sample, **kwargs).prev_sample
             output_1 = scheduler.step(residual, timestep_1, sample, **kwargs).prev_sample
 
-            self.assertEqual(output_0.shape, sample.shape)
-            self.assertEqual(output_0.shape, output_1.shape)
+            assert output_0.shape == sample.shape
+            assert output_0.shape == output_1.shape
 
     # Override test_set_scheduler_outputs_equivalence since it uses 0 as a hardcoded timestep
     def test_scheduler_outputs_equivalence(self):
@@ -172,16 +172,13 @@ class LCMSchedulerTest(SchedulerCommonTest):
             elif tuple_object is None:
                 return
             else:
-                self.assertTrue(
-                    torch.allclose(
-                        set_nan_tensor_to_zero(tuple_object), set_nan_tensor_to_zero(dict_object), atol=1e-5
-                    ),
-                    msg=(
-                        "Tuple and dict output are not equal. Difference:"
-                        f" {torch.max(torch.abs(tuple_object - dict_object))}. Tuple has `nan`:"
-                        f" {torch.isnan(tuple_object).any()} and `inf`: {torch.isinf(tuple_object)}. Dict has"
-                        f" `nan`: {torch.isnan(dict_object).any()} and `inf`: {torch.isinf(dict_object)}."
-                    ),
+                assert torch.allclose(
+                    set_nan_tensor_to_zero(tuple_object), set_nan_tensor_to_zero(dict_object), atol=1e-5
+                ), (
+                    "Tuple and dict output are not equal. Difference:"
+                    f" {torch.max(torch.abs(tuple_object - dict_object))}. Tuple has `nan`:"
+                    f" {torch.isnan(tuple_object).any()} and `inf`: {torch.isinf(tuple_object)}. Dict has"
+                    f" `nan`: {torch.isnan(dict_object).any()} and `inf`: {torch.isinf(dict_object)}."
                 )
 
         kwargs = dict(self.forward_default_kwargs)
@@ -263,7 +260,7 @@ class LCMSchedulerTest(SchedulerCommonTest):
             prev_t = scheduler.previous_timestep(timestep)
             prev_t = prev_t.item()
 
-            self.assertEqual(prev_t, expected_prev_t)
+            assert prev_t == expected_prev_t
 
     def test_custom_timesteps_increasing_order(self):
         scheduler_class = self.scheduler_classes[0]
@@ -272,7 +269,7 @@ class LCMSchedulerTest(SchedulerCommonTest):
 
         timesteps = [100, 87, 50, 51, 0]
 
-        with self.assertRaises(ValueError, msg="`custom_timesteps` must be in descending order."):
+        with pytest.raises(ValueError, match=re.escape("`custom_timesteps` must be in descending order.")):
             scheduler.set_timesteps(timesteps=timesteps)
 
     def test_custom_timesteps_passing_both_num_inference_steps_and_timesteps(self):
@@ -283,7 +280,9 @@ class LCMSchedulerTest(SchedulerCommonTest):
         timesteps = [100, 87, 50, 1, 0]
         num_inference_steps = len(timesteps)
 
-        with self.assertRaises(ValueError, msg="Can only pass one of `num_inference_steps` or `custom_timesteps`."):
+        with pytest.raises(
+            ValueError, match=re.escape("Can only pass one of `num_inference_steps` or `custom_timesteps`.")
+        ):
             scheduler.set_timesteps(num_inference_steps=num_inference_steps, timesteps=timesteps)
 
     def test_custom_timesteps_too_large(self):
@@ -293,8 +292,10 @@ class LCMSchedulerTest(SchedulerCommonTest):
 
         timesteps = [scheduler.config.num_train_timesteps]
 
-        with self.assertRaises(
+        with pytest.raises(
             ValueError,
-            msg="`timesteps` must start before `self.config.train_timesteps`: {scheduler.config.num_train_timesteps}}",
+            match=re.escape(
+                f"`timesteps` must start before `self.config.train_timesteps`: {scheduler.config.num_train_timesteps}."
+            ),
         ):
             scheduler.set_timesteps(timesteps=timesteps)

@@ -3,10 +3,10 @@ import torch
 from diffusers import EulerDiscreteScheduler
 
 from ..testing_utils import torch_device
-from .test_schedulers import SchedulerCommonTest
+from .test_schedulers import SchedulerTesterMixin
 
 
-class EulerDiscreteSchedulerTest(SchedulerCommonTest):
+class TestEulerDiscreteScheduler(SchedulerTesterMixin):
     scheduler_classes = (EulerDiscreteScheduler,)
     num_inference_steps = 10
 

@@ -1,11 +1,14 @@
+import re
+
+import pytest
 import torch
 
 from diffusers import CMStochasticIterativeScheduler
 
-from .test_schedulers import SchedulerCommonTest
+from .test_schedulers import SchedulerTesterMixin
 
 
-class CMStochasticIterativeSchedulerTest(SchedulerCommonTest):
+class TestCMStochasticIterativeScheduler(SchedulerTesterMixin):
     scheduler_classes = (CMStochasticIterativeScheduler,)
     num_inference_steps = 10
 
@@ -40,8 +43,8 @@ class CMStochasticIterativeSchedulerTest(SchedulerCommonTest):
         output_0 = scheduler.step(residual, timestep_0, sample).prev_sample
         output_1 = scheduler.step(residual, timestep_1, sample).prev_sample
 
-        self.assertEqual(output_0.shape, sample.shape)
-        self.assertEqual(output_0.shape, output_1.shape)
+        assert output_0.shape == sample.shape
+        assert output_0.shape == output_1.shape
 
     def test_timesteps(self):
         for timesteps in [10, 50, 100, 1000]:
@@ -161,7 +164,7 @@ class CMStochasticIterativeSchedulerTest(SchedulerCommonTest):
 
         timesteps = [39, 30, 12, 15, 0]
 
-        with self.assertRaises(ValueError, msg="`timesteps` must be in descending order."):
+        with pytest.raises(ValueError, match=re.escape("`timesteps` must be in descending order.")):
             scheduler.set_timesteps(timesteps=timesteps)
 
     def test_custom_timesteps_passing_both_num_inference_steps_and_timesteps(self):
@@ -172,7 +175,7 @@ class CMStochasticIterativeSchedulerTest(SchedulerCommonTest):
         timesteps = [39, 30, 12, 1, 0]
         num_inference_steps = len(timesteps)
 
-        with self.assertRaises(ValueError, msg="Can only pass one of `num_inference_steps` or `timesteps`."):
+        with pytest.raises(ValueError, match=re.escape("Can only pass one of `num_inference_steps` or `timesteps`.")):
             scheduler.set_timesteps(num_inference_steps=num_inference_steps, timesteps=timesteps)
 
     def test_custom_timesteps_too_large(self):
@@ -182,8 +185,10 @@ class CMStochasticIterativeSchedulerTest(SchedulerCommonTest):
 
         timesteps = [scheduler.config.num_train_timesteps]
 
-        with self.assertRaises(
+        with pytest.raises(
             ValueError,
-            msg="`timesteps` must start before `self.config.train_timesteps`: {scheduler.config.num_train_timesteps}}",
+            match=re.escape(
+                f"`timesteps` must start before `self.config.train_timesteps`: {scheduler.config.num_train_timesteps}."
+            ),
         ):
             scheduler.set_timesteps(timesteps=timesteps)

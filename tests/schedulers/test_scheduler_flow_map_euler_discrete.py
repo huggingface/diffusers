@@ -12,18 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
 
+import pytest
 import torch
 
 from diffusers import FlowMapEulerDiscreteScheduler
 from diffusers.schedulers.scheduling_flow_map_euler_discrete import FlowMapEulerDiscreteSchedulerOutput
 
 
-class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
+class TestFlowMapEulerDiscreteScheduler:
     """
     The flow-map scheduler has a non-standard ``step`` signature that takes both ``timestep`` and
-    ``r_timestep`` (the target timestep), so it cannot use ``SchedulerCommonTest``. The tests below
+    ``r_timestep`` (the target timestep), so it cannot use ``SchedulerTesterMixin``. The tests below
     exercise the contract that the scheduler exposes to ``AnyFlowPipeline`` and ``AnyFlowFARPipeline``.
     """
 
@@ -39,8 +39,8 @@ class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
 
     def test_instantiation_with_defaults(self):
         scheduler = self.scheduler_class(**self.get_default_config())
-        self.assertEqual(scheduler.config.num_train_timesteps, 1000)
-        self.assertEqual(scheduler.config.shift, 1.0)
+        assert scheduler.config.num_train_timesteps == 1000
+        assert scheduler.config.shift == 1.0
 
     def test_set_timesteps_endpoints(self):
         scheduler = self.scheduler_class(**self.get_default_config())
@@ -48,10 +48,10 @@ class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
             scheduler.set_timesteps(num_inference_steps=nfe)
             # `timesteps` is N-length (mirrors FlowMatchEulerDiscreteScheduler); the final
             # r-endpoint sigma=0 lives in the internal `sigmas` buffer of length N+1.
-            self.assertEqual(scheduler.timesteps.shape, (nfe,))
-            self.assertEqual(scheduler.sigmas.shape, (nfe + 1,))
-            self.assertAlmostEqual(scheduler.timesteps[0].item(), 1000.0, places=4)
-            self.assertAlmostEqual(scheduler.sigmas[-1].item(), 0.0, places=4)
+            assert scheduler.timesteps.shape == (nfe,)
+            assert scheduler.sigmas.shape == (nfe + 1,)
+            assert scheduler.timesteps[0].item() == pytest.approx(1000.0, abs=1e-4)
+            assert scheduler.sigmas[-1].item() == pytest.approx(0.0, abs=1e-4)
 
     def test_apply_shift_identity(self):
         scheduler = self.scheduler_class(**self.get_default_config(shift=1.0))
@@ -63,9 +63,9 @@ class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
         sigmas = torch.linspace(0.01, 0.99, 16)
         shifted = scheduler.apply_shift(sigmas)
         # shift > 1 must monotonically map [0,1] to [0,1] and increase intermediate values
-        self.assertTrue(torch.all(shifted >= 0))
-        self.assertTrue(torch.all(shifted <= 1))
-        self.assertTrue(torch.all(shifted[1:] - shifted[:-1] >= -1e-6))
+        assert torch.all(shifted >= 0)
+        assert torch.all(shifted <= 1)
+        assert torch.all(shifted[1:] - shifted[:-1] >= -1e-6)
 
     def test_step_shape_preserved(self):
         scheduler = self.scheduler_class(**self.get_default_config())
@@ -77,10 +77,10 @@ class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
         r_timestep = scheduler.timesteps[1:2]
 
         output = scheduler.step(model_output, timestep, sample, r_timestep=r_timestep)
-        self.assertIsInstance(output, FlowMapEulerDiscreteSchedulerOutput)
+        assert isinstance(output, FlowMapEulerDiscreteSchedulerOutput)
         prev_sample = output.prev_sample
-        self.assertEqual(prev_sample.shape, sample.shape)
-        self.assertEqual(prev_sample.dtype, model_output.dtype)
+        assert prev_sample.shape == sample.shape
+        assert prev_sample.dtype == model_output.dtype
 
         # return_dict=False yields a tuple with the same prev_sample.
         (prev_sample_tuple,) = scheduler.step(model_output, timestep, sample, r_timestep=r_timestep, return_dict=False)
@@ -114,20 +114,20 @@ class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
             timesteps[0:1],
             sample,
         ).prev_sample
-        self.assertEqual(prev_sample.shape, sample.shape)
-        self.assertFalse(torch.allclose(prev_sample, sample))
+        assert prev_sample.shape == sample.shape
+        assert not torch.allclose(prev_sample, sample)
 
     def test_step_index_advances(self):
         # After `set_timesteps`, `step_index` is None. Each `step` call advances it; `begin_index` defaults to None.
         scheduler = self.scheduler_class(**self.get_default_config())
         scheduler.set_timesteps(num_inference_steps=4)
-        self.assertIsNone(scheduler.step_index)
-        self.assertIsNone(scheduler.begin_index)
+        assert scheduler.step_index is None
+        assert scheduler.begin_index is None
 
         sample = torch.randn(1, 4, 4, 4)
         for i, t in enumerate(scheduler.timesteps):
             scheduler.step(torch.randn_like(sample), t, sample)
-            self.assertEqual(scheduler.step_index, i + 1)
+            assert scheduler.step_index == (i + 1)
 
     def test_step_off_schedule_anystep_supported(self):
         # Documented contract: `step` accepts off-schedule (timestep, r_timestep) pairs and falls back to
@@ -142,41 +142,41 @@ class FlowMapEulerDiscreteSchedulerTest(unittest.TestCase):
         r_off = torch.tensor([123.4])
 
         prev = scheduler.step(model_output, t_off, sample, r_timestep=r_off).prev_sample
-        self.assertEqual(prev.shape, sample.shape)
+        assert prev.shape == sample.shape
         # step_index initialized to 0 (observable counter) and advanced after the call.
-        self.assertEqual(scheduler.step_index, 1)
+        assert scheduler.step_index == 1
 
     def test_set_begin_index_anchors_step_index(self):
         # `set_begin_index(k)` makes the first `step` initialize `_step_index = k` (mid-schedule restart).
         scheduler = self.scheduler_class(**self.get_default_config())
         scheduler.set_timesteps(num_inference_steps=4)
         scheduler.set_begin_index(2)
-        self.assertEqual(scheduler.begin_index, 2)
+        assert scheduler.begin_index == 2
 
         sample = torch.randn(1, 4, 4, 4)
         scheduler.step(torch.randn_like(sample), scheduler.timesteps[0], sample)
-        self.assertEqual(scheduler.step_index, 3)  # 2 -> 3 after one step
+        assert scheduler.step_index == 3  # 2 -> 3 after one step
 
     def test_set_timesteps_custom_sigmas(self):
         # Custom sigmas override: length N, terminal 0 appended automatically. Default-shift schedule untouched.
         scheduler = self.scheduler_class(**self.get_default_config(shift=1.0))
         custom = [0.9, 0.7, 0.4, 0.1]
         scheduler.set_timesteps(sigmas=custom)
-        self.assertEqual(scheduler.num_inference_steps, 4)
-        self.assertEqual(scheduler.timesteps.shape, (4,))
-        self.assertEqual(scheduler.sigmas.shape, (5,))
-        self.assertAlmostEqual(scheduler.sigmas[-1].item(), 0.0, places=6)
+        assert scheduler.num_inference_steps == 4
+        assert scheduler.timesteps.shape == (4,)
+        assert scheduler.sigmas.shape == (5,)
+        assert scheduler.sigmas[-1].item() == pytest.approx(0.0, abs=1e-6)
         for i, s in enumerate(custom):
-            self.assertAlmostEqual(scheduler.sigmas[i].item(), s, places=5)
+            assert scheduler.sigmas[i].item() == pytest.approx(s, abs=1e-5)
 
     def test_set_timesteps_custom_timesteps(self):
         # Custom timesteps override: scheduler converts to sigmas via /num_train_timesteps.
         scheduler = self.scheduler_class(**self.get_default_config(shift=1.0))
         custom = [900.0, 700.0, 400.0, 100.0]
         scheduler.set_timesteps(timesteps=custom)
-        self.assertEqual(scheduler.num_inference_steps, 4)
+        assert scheduler.num_inference_steps == 4
         for i, t in enumerate(custom):
-            self.assertAlmostEqual(scheduler.sigmas[i].item(), t / 1000.0, places=5)
+            assert scheduler.sigmas[i].item() == pytest.approx(t / 1000.0, abs=1e-5)
 
     def test_scale_noise_endpoints(self):
         scheduler = self.scheduler_class(**self.get_default_config())

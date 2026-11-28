@@ -3,11 +3,11 @@ import torch
 from diffusers import DPMSolverSDEScheduler
 
 from ..testing_utils import require_torchsde, torch_device
-from .test_schedulers import SchedulerCommonTest
+from .test_schedulers import SchedulerTesterMixin
 
 
 @require_torchsde
-class DPMSolverSDESchedulerTest(SchedulerCommonTest):
+class TestDPMSolverSDEScheduler(SchedulerTesterMixin):
     scheduler_classes = (DPMSolverSDEScheduler,)
     num_inference_steps = 10
 
