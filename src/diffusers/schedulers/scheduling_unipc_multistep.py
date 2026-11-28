@@ -345,6 +345,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                     "Passing `sigmas` is only supported when `use_flow_sigmas=True`. "
                     "Please set `use_flow_sigmas=True` during scheduler initialization."
                 )
+            sigmas = np.array(sigmas).astype(np.float32)
             num_inference_steps = len(sigmas)
 
         # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://huggingface.co/papers/2305.08891
