@@ -24,6 +24,7 @@ from ..testing_utils import (
     BaseModelTesterConfig,
     ModelTesterMixin,
     TrainingTesterMixin,
+    UlyssesAnythingBackwardTesterMixin,
 )
 
 
@@ -103,6 +104,17 @@ class TestChronoEditTransformer(ChronoEditTransformerTesterConfig, ModelTesterMi
         super().test_from_save_pretrained_dtype_inference(
             tmp_path, dtype, atol=3e-2 if dtype == torch.bfloat16 else 1e-2
         )
+
+
+class TestChronoEditTransformerUlyssesAnythingBackward(
+    ChronoEditTransformerTesterConfig, UlyssesAnythingBackwardTesterMixin
+):
+    def get_ulysses_anything_inputs(self):
+        inputs = self.get_dummy_inputs()
+        uneven = dict(inputs)
+        uneven["hidden_states"] = inputs["hidden_states"][:, :, :1, :6, :6]
+        uneven["encoder_hidden_states"] = inputs["encoder_hidden_states"][:, :-1]
+        return [inputs, uneven]
 
 
 class TestChronoEditTransformerTraining(ChronoEditTransformerTesterConfig, TrainingTesterMixin):
