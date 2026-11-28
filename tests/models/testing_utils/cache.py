@@ -956,7 +956,7 @@ class TaylorSeerCacheTesterMixin(TaylorSeerCacheConfigMixin, CacheTesterMixin):
 
     @torch.no_grad()
     def _test_cache_inference(self):
-        """Test that model can run inference with TaylorSeer cache enabled (requires cache_context)."""
+        """Test that model can run inference with TaylorSeer cache enabled."""
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**init_dict).to(torch_device)
@@ -965,7 +965,6 @@ class TaylorSeerCacheTesterMixin(TaylorSeerCacheConfigMixin, CacheTesterMixin):
         config = self._get_cache_config()
         model.enable_cache(config)
 
-        # TaylorSeer requires cache_context to be set for inference
         with model.cache_context("taylorseer_test"):
             # First pass populates the cache
             _ = model(**inputs_dict, return_dict=False)[0]
@@ -994,7 +993,7 @@ class TaylorSeerCacheTesterMixin(TaylorSeerCacheConfigMixin, CacheTesterMixin):
 
     @torch.no_grad()
     def _test_reset_stateful_cache(self):
-        """Test that _reset_stateful_cache resets the TaylorSeer cache state (requires cache_context)."""
+        """Test that _reset_stateful_cache resets the TaylorSeer cache state."""
         init_dict = self.get_init_dict()
         inputs_dict = self.get_dummy_inputs()
         model = self.model_class(**init_dict).to(torch_device)
@@ -1029,6 +1028,31 @@ class TaylorSeerCacheTesterMixin(TaylorSeerCacheConfigMixin, CacheTesterMixin):
     @require_cache_mixin
     def test_taylorseer_cache_context_manager(self):
         self._test_cache_context_manager()
+
+    @require_cache_mixin
+    @torch.no_grad()
+    def test_taylorseer_cache_inference_without_context(self):
+        inputs_dict = self.get_dummy_inputs()
+        model = self.model_class(**self.get_init_dict()).to(torch_device)
+        model.eval()
+        model.enable_cache(self._get_cache_config())
+
+        # Second pass is predicted from the first, see `TAYLORSEER_CACHE_CONFIG`.
+        _ = model(**inputs_dict, return_dict=False)[0]
+        output_without_context = model(**inputs_dict, return_dict=False)[0]
+
+        model._reset_stateful_cache()
+        with model.cache_context("taylorseer_test"):
+            _ = model(**inputs_dict, return_dict=False)[0]
+            output_with_context = model(**inputs_dict, return_dict=False)[0]
+
+        assert_tensors_close(
+            output_without_context,
+            output_with_context,
+            atol=1e-5,
+            rtol=0,
+            msg="TaylorSeer output without a cache context should match the output with one.",
+        )
 
     @require_cache_mixin
     def test_taylorseer_cache_reset_stateful_cache(self):
