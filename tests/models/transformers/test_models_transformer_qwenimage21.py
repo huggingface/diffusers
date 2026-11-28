@@ -25,6 +25,7 @@ from ...testing_utils import enable_full_determinism, torch_device
 from ..testing_utils import (
     AttentionTesterMixin,
     BaseModelTesterConfig,
+    ComfyTesterMixin,
     MemoryTesterMixin,
     ModelTesterMixin,
     SingleFileTesterMixin,
@@ -392,3 +393,37 @@ class TestQwenImage21TransformerTensorParallelNeuron(
     QwenImage21TransformerTesterConfig, TensorParallelNeuronTesterMixin
 ):
     """Tensor Parallel inference test for QwenImage 2.1 Transformer on AWS Neuron."""
+
+
+class TestQwenImage21TransformerComfy(QwenImage21TransformerTesterConfig, ComfyTesterMixin):
+    @property
+    def comfy_filename(self):
+        return "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/blob/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors"
+
+    @property
+    def torch_dtype(self):
+        return torch.bfloat16
+
+    def get_dummy_inputs(self):
+        batch_size = 1
+        text_len, target_height, target_width = 32, 16, 16
+        target_tokens = target_height * target_width
+
+        hidden_states = randn_tensor(
+            (batch_size, target_tokens, 64), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+        )
+        encoder_hidden_states = randn_tensor(
+            (batch_size, text_len, 4096), generator=self.generator, device=torch_device, dtype=self.torch_dtype
+        )
+        encoder_hidden_states_mask = torch.ones((batch_size, text_len), device=torch_device, dtype=torch.long)
+        img_mask = torch.zeros((batch_size, text_len + target_tokens // 4), device=torch_device, dtype=torch.bool)
+        img_mask[:, text_len:] = True
+
+        return {
+            "hidden_states": hidden_states,
+            "encoder_hidden_states": encoder_hidden_states,
+            "encoder_hidden_states_mask": encoder_hidden_states_mask,
+            "timestep": torch.tensor([1.0], device=torch_device, dtype=self.torch_dtype).expand(batch_size),
+            "img_shapes": [[(1, target_height, target_width)]] * batch_size,
+            "img_mask": img_mask,
+        }

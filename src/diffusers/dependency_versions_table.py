@@ -35,6 +35,7 @@ deps = {
     "onnx": "onnx",
     "optimum_quanto": "optimum_quanto>=0.2.6",
     "gguf": "gguf>=0.10.0",
+    "comfy-kitchen": "comfy-kitchen>=0.2.41",
     "auto-round": "auto-round>=0.13.0",
     "torchao": "torchao>=0.15.0",
     "bitsandbytes": "bitsandbytes>=0.43.3",

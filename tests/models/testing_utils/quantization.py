@@ -25,6 +25,7 @@ from diffusers import (
     AutoRoundConfig,
     BFLQuantizationConfig,
     BitsAndBytesConfig,
+    ComfyQuantizationConfig,
     EntroPackConfig,
     GGUFQuantizationConfig,
     NunchakuLiteQuantizationConfig,
@@ -50,6 +51,7 @@ from ...testing_utils import (
     is_autoround,
     is_bfl,
     is_bitsandbytes,
+    is_comfy,
     is_entropack,
     is_gguf,
     is_lora,
@@ -62,6 +64,7 @@ from ...testing_utils import (
     require_accelerator,
     require_auto_round_version_greater_or_equal,
     require_bitsandbytes_version_greater,
+    require_comfy_kitchen,
     require_gguf_version_greater_or_equal,
     require_modelopt_version_greater_or_equal,
     require_sdnq,
@@ -2125,6 +2128,56 @@ class BFLCompileTesterMixin(BFLConfigMixin, QuantizationCompileTesterMixin):
     @pytest.mark.parametrize("config_name", ["fp8r"], ids=["fp8r"])
     def test_bfl_torch_compile_with_group_offload(self, config_name):
         self._test_torch_compile_with_group_offload(BFLConfigMixin.BFL_CONFIGS[config_name])
+
+
+class ComfyConfigMixin:
+    @property
+    def comfy_filename(self):
+        raise NotImplementedError("Subclasses must implement the `comfy_filename` property.")
+
+    def _create_quantized_model(self, config_kwargs=None, **extra_kwargs):
+        if config_kwargs is None:
+            config_kwargs = {"compute_dtype": torch.bfloat16}
+
+        config = ComfyQuantizationConfig(**config_kwargs)
+        kwargs = {
+            "quantization_config": config,
+            "torch_dtype": config.compute_dtype,
+            "device_map": str(torch_device),
+        }
+        kwargs.update(extra_kwargs)
+        return self.model_class.from_single_file(self.comfy_filename, **kwargs)
+
+    def _verify_if_layer_quantized(self, name, module, config_kwargs=None):
+        from diffusers.quantizers.comfy.utils import ComfyLinear, ComfyQuantizedTensor
+
+        assert isinstance(module, ComfyLinear), f"{name} is not a ComfyLinear"
+        assert isinstance(module.weight, ComfyQuantizedTensor), f"{name} weight is not a ComfyQuantizedTensor"
+
+
+@is_quantization
+@is_comfy
+@require_accelerate
+@require_accelerator
+@require_comfy_kitchen
+class ComfyTesterMixin(ComfyConfigMixin, QuantizationTesterMixin):
+    def test_comfy_quantization_inference(self):
+        self._test_quantization_inference({"compute_dtype": torch.bfloat16})
+
+    def test_comfy_keep_modules_in_fp32(self):
+        _keep_in_fp32_modules = self.model_class._keep_in_fp32_modules
+        self.model_class._keep_in_fp32_modules = ["to_q"]
+
+        try:
+            self._test_keep_modules_in_fp32({"compute_dtype": torch.bfloat16})
+        finally:
+            self.model_class._keep_in_fp32_modules = _keep_in_fp32_modules
+
+    def test_comfy_quantization_dtype_assignment(self):
+        self._test_quantization_dtype_assignment({"compute_dtype": torch.bfloat16})
+
+    def test_comfy_dequantize(self):
+        self._test_dequantize({"compute_dtype": torch.bfloat16})
 
 
 class EntroPackConfigMixin:
