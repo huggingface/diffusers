@@ -820,6 +820,26 @@ class LuminaPipeline(DiffusionPipeline):
 
         self._num_timesteps = len(timesteps)
 
+        # Time-aware RoPE scaling from Lumina-Next (https://huggingface.co/papers/2406.18583, Sec 2.3): build the
+        # linear-scaled and the NTK-scaled table once on the latent token grid; the denoising loop picks one per step
+        # at `scaling_watershed`.
+        patch_size = self.transformer.config.patch_size
+        height_tokens, width_tokens = latents.shape[-2] // patch_size, latents.shape[-1] // patch_size
+        image_rotary_emb_linear = get_2d_rotary_pos_embed_lumina(
+            self.transformer.head_dim,
+            height_tokens,
+            width_tokens,
+            linear_factor=scaling_factor,
+            ntk_factor=1.0,
+        ).to(device)
+        image_rotary_emb_ntk = get_2d_rotary_pos_embed_lumina(
+            self.transformer.head_dim,
+            height_tokens,
+            width_tokens,
+            linear_factor=1.0,
+            ntk_factor=scaling_factor,
+        ).to(device)
+
         # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -849,24 +869,10 @@ class LuminaPipeline(DiffusionPipeline):
                 # reverse the timestep since Lumina uses t=0 as the noise and t=1 as the image
                 current_timestep = 1 - current_timestep / self.scheduler.config.num_train_timesteps
 
-                # prepare image_rotary_emb for positional encoding
-                # dynamic scaling_factor for different resolution.
-                # NOTE: For `Time-aware` denosing mechanism from Lumina-Next
-                # https://huggingface.co/papers/2406.18583, Sec 2.3
-                # NOTE: We should compute different image_rotary_emb with different timestep.
                 if current_timestep[0] < scaling_watershed:
-                    linear_factor = scaling_factor
-                    ntk_factor = 1.0
+                    image_rotary_emb = image_rotary_emb_linear
                 else:
-                    linear_factor = 1.0
-                    ntk_factor = scaling_factor
-                image_rotary_emb = get_2d_rotary_pos_embed_lumina(
-                    self.transformer.head_dim,
-                    384,
-                    384,
-                    linear_factor=linear_factor,
-                    ntk_factor=ntk_factor,
-                )
+                    image_rotary_emb = image_rotary_emb_ntk
 
                 noise_pred = self.transformer(
                     hidden_states=latent_model_input,
