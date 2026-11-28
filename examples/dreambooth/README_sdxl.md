@@ -106,20 +106,18 @@ Our experiments were conducted on a single 40GB A100 GPU.
 
 ### Dog toy example with < 16GB VRAM
 
-By making use of [`gradient_checkpointing`](https://pytorch.org/docs/stable/checkpoint.html) (which is natively supported in Diffusers), [`xformers`](https://github.com/facebookresearch/xformers), and [`bitsandbytes`](https://github.com/TimDettmers/bitsandbytes) libraries, you can train SDXL LoRAs with less than 16GB of VRAM by adding the following flags to your accelerate launch command:
+By making use of [`gradient_checkpointing`](https://pytorch.org/docs/stable/checkpoint.html) (which is natively supported in Diffusers) and the [`bitsandbytes`](https://github.com/TimDettmers/bitsandbytes) library, you can train SDXL LoRAs with less than 16GB of VRAM by adding the following flags to your accelerate launch command:
 
 ```diff
-+  --enable_xformers_memory_efficient_attention \
 +  --gradient_checkpointing \
 +  --use_8bit_adam \
 +  --mixed_precision="fp16" \
 ```
 
-and making sure that you have the following libraries installed:
+and making sure that you have the following library installed:
 
 ```
 bitsandbytes>=0.40.0
-xformers>=0.0.20
 ```
 
 ### Inference

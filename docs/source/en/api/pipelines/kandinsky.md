@@ -712,17 +712,7 @@ make_image_grid([img.resize((512, 512)), image.resize((512, 512))], rows=1, cols
 
 Kandinsky is unique because it requires a prior pipeline to generate the mappings, and a second pipeline to decode the latents into an image. Optimization efforts should be focused on the second pipeline because that is where the bulk of the computation is done. Here are some tips to improve Kandinsky during inference.
 
-1. Enable [xFormers](../../optimization/attention_backends) if you're using PyTorch < 2.0:
-
-```diff
-  from diffusers import DiffusionPipeline
-  import torch
-
-  pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", dtype=torch.float16)
-+ pipe.enable_xformers_memory_efficient_attention()
-```
-
-2. Enable `torch.compile` if you're using PyTorch >= 2.0 to automatically use scaled dot-product attention (SDPA):
+1. Enable `torch.compile` if you're using PyTorch >= 2.0 to automatically use scaled dot-product attention (SDPA):
 
 ```diff
   pipe.unet.to(memory_format=torch.channels_last)
@@ -737,7 +727,7 @@ from diffusers.models.attention_processor import AttnAddedKVProcessor2_0
 pipe.unet.set_attn_processor(AttnAddedKVProcessor2_0())
 ```
 
-3. Offload the model to the CPU with [`~KandinskyPriorPipeline.enable_model_cpu_offload`] to avoid out-of-memory errors:
+2. Offload the model to the CPU with [`~KandinskyPriorPipeline.enable_model_cpu_offload`] to avoid out-of-memory errors:
 
 ```diff
   from diffusers import DiffusionPipeline
@@ -747,7 +737,7 @@ pipe.unet.set_attn_processor(AttnAddedKVProcessor2_0())
 + pipe.enable_model_cpu_offload()
 ```
 
-4. By default, the text-to-image pipeline uses the [`DDIMScheduler`] but you can replace it with another scheduler like [`DDPMScheduler`] to see how that affects the tradeoff between inference speed and image quality:
+3. By default, the text-to-image pipeline uses the [`DDIMScheduler`] but you can replace it with another scheduler like [`DDPMScheduler`] to see how that affects the tradeoff between inference speed and image quality:
 
 ```py
 from diffusers import DDPMScheduler

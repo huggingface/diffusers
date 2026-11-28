@@ -52,7 +52,7 @@ from .. import __version__
 from ..configuration_utils import ConfigMixin
 from ..dependency_versions_table import deps
 from ..models import AutoencoderKL
-from ..models.attention_processor import FusedAttnProcessor2_0
+from ..models.attention_processor import XFORMERS_DEPRECATION_MESSAGE, FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
 from ..quantizers import PipelineQuantizationConfig
 from ..quantizers.bitsandbytes.utils import _check_bnb_status
@@ -66,6 +66,7 @@ from ..utils import (
     _get_detailed_type,
     _is_valid_type,
     _resolve_dtype,
+    deprecate,
     is_accelerate_available,
     is_accelerate_version,
     is_bitsandbytes_version,
@@ -1973,48 +1974,34 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self._progress_bar_config = kwargs
 
     def enable_xformers_memory_efficient_attention(self, attention_op: Callable | None = None):
-        r"""
-        Enable memory efficient attention from [xFormers](https://facebookresearch.github.io/xformers/). When this
-        option is enabled, you should observe lower GPU memory usage and a potential speed up during inference. Speed
-        up during training is not guaranteed.
-
-        > [!WARNING] > ⚠️ When memory efficient attention and sliced attention are both enabled, memory efficient
-        attention takes > precedent.
-
-        Parameters:
-            attention_op (`Callable`, *optional*):
-                Override the default `None` operator for use as `op` argument to the
-                [`memory_efficient_attention()`](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.memory_efficient_attention)
-                function of xFormers.
-
-        Examples:
-
-        ```py
-        >>> import torch
-        >>> from diffusers import DiffusionPipeline
-        >>> from xformers.ops import MemoryEfficientAttentionFlashAttentionOp
-
-        >>> pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", dtype=torch.float16)
-        >>> pipe = pipe.to("cuda")
-        >>> pipe.enable_xformers_memory_efficient_attention(attention_op=MemoryEfficientAttentionFlashAttentionOp)
-        >>> # Workaround for not accepting attention shape using VAE for Flash Attention
-        >>> pipe.vae.enable_xformers_memory_efficient_attention(attention_op=None)
-        ```
-        """
-        self.set_use_memory_efficient_attention_xformers(True, attention_op)
+        # Deprecated and scheduled for removal in version 0.46.0.
+        deprecate(
+            "enable_xformers_memory_efficient_attention", "0.46.0", XFORMERS_DEPRECATION_MESSAGE, standard_warn=False
+        )
+        self._set_use_memory_efficient_attention_xformers(True, attention_op)
 
     def disable_xformers_memory_efficient_attention(self):
-        r"""
-        Disable memory efficient attention from [xFormers](https://facebookresearch.github.io/xformers/).
-        """
-        self.set_use_memory_efficient_attention_xformers(False)
+        # Deprecated and scheduled for removal in version 0.46.0.
+        deprecate(
+            "disable_xformers_memory_efficient_attention", "0.46.0", XFORMERS_DEPRECATION_MESSAGE, standard_warn=False
+        )
+        self._set_use_memory_efficient_attention_xformers(False)
 
     def set_use_memory_efficient_attention_xformers(self, valid: bool, attention_op: Callable | None = None) -> None:
+        # Deprecated and scheduled for removal in version 0.46.0.
+        deprecate(
+            "set_use_memory_efficient_attention_xformers", "0.46.0", XFORMERS_DEPRECATION_MESSAGE, standard_warn=False
+        )
+        self._set_use_memory_efficient_attention_xformers(valid, attention_op)
+
+    def _set_use_memory_efficient_attention_xformers(self, valid: bool, attention_op: Callable | None = None) -> None:
         # Recursively walk through all the children.
         # Any children which exposes the set_use_memory_efficient_attention_xformers method
         # gets the message
         def fn_recursive_set_mem_eff(module: torch.nn.Module):
-            if hasattr(module, "set_use_memory_efficient_attention_xformers"):
+            if hasattr(module, "_set_use_memory_efficient_attention_xformers"):
+                module._set_use_memory_efficient_attention_xformers(valid, attention_op)
+            elif hasattr(module, "set_use_memory_efficient_attention_xformers"):
                 module.set_use_memory_efficient_attention_xformers(valid, attention_op)
 
             for child in module.children():

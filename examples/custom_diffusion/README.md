@@ -80,8 +80,6 @@ accelerate launch train_custom_diffusion.py \
   --modifier_token "<new1>"
 ```
 
-**Use `--enable_xformers_memory_efficient_attention` for faster training with lower VRAM requirement (16GB per GPU). Follow [this guide](https://github.com/facebookresearch/xformers) for installation instructions.**
-
 To track your experiments using Weights and Biases (`wandb`) and to save intermediate results (which we HIGHLY recommend), follow these steps:
 
 * Install `wandb`: `pip install wandb`.
@@ -183,8 +181,7 @@ accelerate launch train_custom_diffusion.py \
   --max_train_steps=1000 \
   --scale_lr --hflip --noaug \
   --freeze_model crossattn \
-  --modifier_token "<new1>" \
-  --enable_xformers_memory_efficient_attention
+  --modifier_token "<new1>"
 ```
 
 ## Inference

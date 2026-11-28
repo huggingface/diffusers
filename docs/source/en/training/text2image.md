@@ -17,7 +17,7 @@ specific language governing permissions and limitations under the License.
 
 Text-to-image models like Stable Diffusion are conditioned to generate images given a text prompt.
 
-Training a model can be taxing on your hardware, but if you enable `gradient_checkpointing` and `mixed_precision`, it is possible to train a model on a single 24GB GPU. If you're training with larger batch sizes or want to train faster, it's better to use GPUs with more than 30GB of memory. You can reduce your memory footprint by enabling memory-efficient attention with [xFormers](../optimization/attention_backends).
+Training a model can be taxing on your hardware, but if you enable `gradient_checkpointing` and `mixed_precision`, it is possible to train a model on a single 24GB GPU. If you're training with larger batch sizes or want to train faster, it's better to use GPUs with more than 30GB of memory.
 
 This guide will explore the [train_text_to_image.py](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image.py) training script to help you become familiar with it, and how you can adapt it for your own use-case.
 
@@ -156,7 +156,6 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --max_train_steps=15000 \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
-  --enable_xformers_memory_efficient_attention \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
   --output_dir="sd-naruto-model" \
   --push_to_hub

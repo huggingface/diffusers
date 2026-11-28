@@ -58,7 +58,6 @@ accelerate launch train_text_to_image_sdxl.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --pretrained_vae_model_name_or_path=$VAE_NAME \
   --dataset_name=$DATASET_NAME \
-  --enable_xformers_memory_efficient_attention \
   --resolution=512 --center_crop --random_flip \
   --proportion_empty_prompts=0.2 \
   --train_batch_size=1 \

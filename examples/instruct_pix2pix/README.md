@@ -75,7 +75,6 @@ Now, we can launch training:
 accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
     --pretrained_model_name_or_path=$MODEL_NAME \
     --dataset_name=$DATASET_ID \
-    --enable_xformers_memory_efficient_attention \
     --resolution=256 --random_flip \
     --train_batch_size=4 --gradient_accumulation_steps=4 --gradient_checkpointing \
     --max_train_steps=15000 \
@@ -94,7 +93,6 @@ with Weights and Biases. You can enable this feature with `report_to="wandb"`:
 accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
     --pretrained_model_name_or_path=$MODEL_NAME \
     --dataset_name=$DATASET_ID \
-    --enable_xformers_memory_efficient_attention \
     --resolution=256 --random_flip \
     --train_batch_size=4 --gradient_accumulation_steps=4 --gradient_checkpointing \
     --max_train_steps=15000 \
@@ -125,7 +123,6 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix.py
  --pretrained_model_name_or_path=stable-diffusion-v1-5/stable-diffusion-v1-5 \
  --dataset_name=sayakpaul/instructpix2pix-1000-samples \
  --use_ema \
- --enable_xformers_memory_efficient_attention \
  --resolution=512 --random_flip \
  --train_batch_size=4 --gradient_accumulation_steps=4 --gradient_checkpointing \
  --max_train_steps=15000 \

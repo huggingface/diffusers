@@ -70,6 +70,7 @@ from ._modeling_parallel import (
     ParallelConfig,
     TensorParallelConfig,
 )
+from .attention_processor import XFORMERS_DEPRECATION_MESSAGE
 from .model_loading_utils import (
     _caching_allocator_warmup,
     _determine_device_map,
@@ -388,11 +389,20 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         self.set_use_xla_flash_attention(False)
 
     def set_use_memory_efficient_attention_xformers(self, valid: bool, attention_op: Callable | None = None) -> None:
+        # Deprecated and scheduled for removal in version 0.46.0.
+        deprecate(
+            "set_use_memory_efficient_attention_xformers", "0.46.0", XFORMERS_DEPRECATION_MESSAGE, standard_warn=False
+        )
+        self._set_use_memory_efficient_attention_xformers(valid, attention_op)
+
+    def _set_use_memory_efficient_attention_xformers(self, valid: bool, attention_op: Callable | None = None) -> None:
         # Recursively walk through all the children.
         # Any children which exposes the set_use_memory_efficient_attention_xformers method
         # gets the message
         def fn_recursive_set_mem_eff(module: torch.nn.Module):
-            if hasattr(module, "set_use_memory_efficient_attention_xformers"):
+            if hasattr(module, "_set_use_memory_efficient_attention_xformers"):
+                module._set_use_memory_efficient_attention_xformers(valid, attention_op)
+            elif hasattr(module, "set_use_memory_efficient_attention_xformers"):
                 module.set_use_memory_efficient_attention_xformers(valid, attention_op)
 
             for child in module.children():
@@ -403,42 +413,18 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 fn_recursive_set_mem_eff(module)
 
     def enable_xformers_memory_efficient_attention(self, attention_op: Callable | None = None) -> None:
-        r"""
-        Enable memory efficient attention from [xFormers](https://facebookresearch.github.io/xformers/).
-
-        When this option is enabled, you should observe lower GPU memory usage and a potential speed up during
-        inference. Speed up during training is not guaranteed.
-
-        > [!WARNING] > ⚠️ When memory efficient attention and sliced attention are both enabled, memory efficient
-        attention takes > precedent.
-
-        Parameters:
-            attention_op (`Callable`, *optional*):
-                Override the default `None` operator for use as `op` argument to the
-                [`memory_efficient_attention()`](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.memory_efficient_attention)
-                function of xFormers.
-
-        Examples:
-
-        ```py
-        >>> import torch
-        >>> from diffusers import UNet2DConditionModel
-        >>> from xformers.ops import MemoryEfficientAttentionFlashAttentionOp
-
-        >>> model = UNet2DConditionModel.from_pretrained(
-        ...     "stabilityai/stable-diffusion-2-1", subfolder="unet", torch_dtype=torch.float16
-        ... )
-        >>> model = model.to("cuda")
-        >>> model.enable_xformers_memory_efficient_attention(attention_op=MemoryEfficientAttentionFlashAttentionOp)
-        ```
-        """
-        self.set_use_memory_efficient_attention_xformers(True, attention_op)
+        # Deprecated and scheduled for removal in version 0.46.0.
+        deprecate(
+            "enable_xformers_memory_efficient_attention", "0.46.0", XFORMERS_DEPRECATION_MESSAGE, standard_warn=False
+        )
+        self._set_use_memory_efficient_attention_xformers(True, attention_op)
 
     def disable_xformers_memory_efficient_attention(self) -> None:
-        r"""
-        Disable memory efficient attention from [xFormers](https://facebookresearch.github.io/xformers/).
-        """
-        self.set_use_memory_efficient_attention_xformers(False)
+        # Deprecated and scheduled for removal in version 0.46.0.
+        deprecate(
+            "disable_xformers_memory_efficient_attention", "0.46.0", XFORMERS_DEPRECATION_MESSAGE, standard_warn=False
+        )
+        self._set_use_memory_efficient_attention_xformers(False)
 
     def enable_layerwise_casting(
         self,

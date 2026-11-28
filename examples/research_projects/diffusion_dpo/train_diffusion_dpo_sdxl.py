@@ -35,7 +35,6 @@ from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
-from packaging import version
 from peft import LoraConfig
 from peft.utils import get_peft_model_state_dict
 from PIL import Image
@@ -54,7 +53,6 @@ from diffusers import (
 from diffusers.loaders import StableDiffusionXLLoraLoaderMixin
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, convert_state_dict_to_diffusers
-from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -432,9 +430,6 @@ def parse_args(input_args=None):
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument(
-        "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
-    )
-    parser.add_argument(
         "--is_turbo",
         action="store_true",
         help=("Use if tuning SDXL Turbo instead of SDXL"),
@@ -670,19 +665,6 @@ def main(args):
             # only upcast trainable parameters (LoRA) into fp32
             if param.requires_grad:
                 param.data = param.to(torch.float32)
-
-    if args.enable_xformers_memory_efficient_attention:
-        if is_xformers_available():
-            import xformers
-
-            xformers_version = version.parse(xformers.__version__)
-            if xformers_version == version.parse("0.0.16"):
-                logger.warning(
-                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
-                )
-            unet.enable_xformers_memory_efficient_attention()
-        else:
-            raise ValueError("xformers is not available. Make sure it is installed correctly")
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()

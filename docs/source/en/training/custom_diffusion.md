@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 [Custom Diffusion](https://huggingface.co/papers/2212.04488) is a training technique for personalizing image generation models. Like Textual Inversion, DreamBooth, and LoRA, Custom Diffusion only requires a few (~4-5) example images. This technique works by only training weights in the cross-attention layers, and it uses a special word to represent the newly learned concept. Custom Diffusion is unique because it can also learn multiple concepts at the same time.
 
-If you're training on a GPU with limited vRAM, you should try enabling xFormers with `--enable_xformers_memory_efficient_attention` for faster training with lower vRAM requirements (16GB). To save even more memory, add `--set_grads_to_none` in the training argument to set the gradients to `None` instead of zero (this option can cause some issues, so if you experience any, try removing this parameter).
+If you're training on a GPU with limited vRAM, add `--set_grads_to_none` in the training argument to set the gradients to `None` instead of zero (this option can cause some issues, so if you experience any, try removing this parameter).
 
 This guide will explore the [train_custom_diffusion.py](https://github.com/huggingface/diffusers/blob/main/examples/custom_diffusion/train_custom_diffusion.py) script to help you become more familiar with it, and how you can adapt it for your own use-case.
 

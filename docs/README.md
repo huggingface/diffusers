@@ -142,8 +142,6 @@ This will include every public method of the pipeline that is documented, as wel
 	- __call__
 	- enable_attention_slicing
 	- disable_attention_slicing
-    - enable_xformers_memory_efficient_attention
-    - disable_xformers_memory_efficient_attention
 ```
 
 You can follow the same process to create a new scheduler under the `docs/source/<languageCode>/api/schedulers` folder.

@@ -171,7 +171,6 @@ accelerate launch train_controlnet.py \
 Optimizations:
 - Gradient checkpointing
 - bitsandbyte's 8-bit optimizer
-- xformers
 - set grads to none
 
 ```bash
@@ -190,11 +189,8 @@ accelerate launch train_controlnet.py \
  --gradient_accumulation_steps=4 \
  --gradient_checkpointing \
  --use_8bit_adam \
- --enable_xformers_memory_efficient_attention \
  --set_grads_to_none
 ```
-
-When using `enable_xformers_memory_efficient_attention`, please make sure to install `xformers` by `pip install xformers`.
 
 ## Training on an 8 GB GPU
 
@@ -204,7 +200,6 @@ have to make changes to the config to have a successful training run.
 
 Optimizations:
 - Gradient checkpointing
-- xformers
 - set grads to none
 - DeepSpeed stage 2 with parameter and optimizer offloading
 - fp16 mixed precision
@@ -248,7 +243,6 @@ accelerate launch train_controlnet.py \
  --train_batch_size=1 \
  --gradient_accumulation_steps=4 \
  --gradient_checkpointing \
- --enable_xformers_memory_efficient_attention \
  --set_grads_to_none \
  --mixed_precision fp16
 ```
