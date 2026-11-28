@@ -14,11 +14,13 @@
 # limitations under the License.
 
 import os
+from unittest import mock
 
 import pytest
 import torch
 
 from diffusers import ErnieImageTransformer2DModel
+from diffusers.models.transformers.transformer_ernie_image import ErnieImageSharedAdaLNBlock
 from diffusers.utils.torch_utils import randn_tensor
 
 from ...testing_utils import torch_device
@@ -102,6 +104,49 @@ class ErnieImageTransformerTesterConfig(BaseModelTesterConfig):
 
 class TestErnieImageTransformer(ErnieImageTransformerTesterConfig, ModelTesterMixin):
     pass
+
+
+class TestErnieImageTransformerAdaLN(ErnieImageTransformerTesterConfig):
+    def test_adaln_broadcast_matches_expanded_float32_path(self):
+        """Broadcasting the [1, B, H] modulation tensors gives the same bfloat16 output, bit for bit, as expanding
+        them to [S, B, H] and upcasting the activations to float32 before the products."""
+
+        def block_forward_reference(block, x, rotary_pos_emb, temb, attention_mask=None):
+            shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = [
+                t.expand(x.shape[0], -1, -1).contiguous() for t in temb
+            ]
+            residual = x
+            x = block.adaLN_sa_ln(x)
+            x = (x.float() * (1 + scale_msa.float()) + shift_msa.float()).to(x.dtype)
+            attn_out = block.self_attention(
+                x.permute(1, 0, 2), attention_mask=attention_mask, image_rotary_emb=rotary_pos_emb
+            )
+            x = residual + (gate_msa.float() * attn_out.permute(1, 0, 2).float()).to(x.dtype)
+            residual = x
+            x = block.adaLN_mlp_ln(x)
+            x = (x.float() * (1 + scale_mlp.float()) + shift_mlp.float()).to(x.dtype)
+            return residual + (gate_mlp.float() * block.mlp(x).float()).to(x.dtype)
+
+        torch.manual_seed(0)
+        model = self.model_class(**self.get_init_dict()).to(torch_device, torch.bfloat16).eval()
+        with torch.no_grad():
+            # zero-initialised: gate = 0 would hide the attention and MLP outputs, and the output would be all zeros
+            for linear in (model.adaLN_modulation[-1], model.final_linear):
+                linear.weight.normal_(std=0.5)
+                linear.bias.normal_(std=0.5)
+
+        inputs = self.get_dummy_inputs(batch_size=2)
+        inputs["hidden_states"] = inputs["hidden_states"].to(torch.bfloat16)
+        inputs["text_bth"] = inputs["text_bth"].to(torch.bfloat16)
+        # a different timestep per sample, so the two samples get different scale / shift / gate
+        inputs["timestep"] = torch.tensor([1.0, 500.0], device=torch_device)
+        inputs["text_lens"] = torch.tensor([16, 9], device=torch_device)
+
+        with torch.no_grad():
+            out = model(**inputs).sample
+            with mock.patch.object(ErnieImageSharedAdaLNBlock, "forward", block_forward_reference):
+                ref = model(**inputs).sample
+        assert torch.equal(out, ref)
 
 
 class TestErnieImageTransformerTraining(ErnieImageTransformerTesterConfig, TrainingTesterMixin):
